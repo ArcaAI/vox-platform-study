@@ -21,6 +21,7 @@ import {
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
 import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
+import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../config-resolver';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
@@ -88,6 +89,12 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // skipping. The TypeScript `?` marker is retained only so the positional
     // `new DnaWritingStyleProcessor(...)` fixtures keep compiling.
     @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
+    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
+    // body with no `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
+    // fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -446,37 +453,44 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     if (this.harnessPolicyService) {
       ({ provider, model } = await this.harnessPolicyService.resolveTextSelection());
     }
-    const response = await this.httpService.axiosRef.post(
-      `${this.textServiceUrl}/api/v1/generate`,
-      {
-        prompt: textSamples,
-        system_prompt: systemPrompt,
-        stream: false,
-        provider,
-        model,
-        // TASK-700: constrain DNA output to the closed-vocabulary schema
-        // (mirrors the SOAP `response_format` binding —
-        // `text-compat.controller.ts`'s `response_format: { type: 'json_schema',
-        // json_schema: responseSchema, strict: true }`). Omitted entirely
-        // (not even as `undefined`) when the resolved template carries no
-        // schema, so the outgoing payload shape is unchanged for legacy
-        // templates/fixtures.
-        ...(outputSchema ? { response_format: { type: 'json_schema' as const, json_schema: outputSchema, strict: true } } : {}),
-      },
-      {
-        timeout: 120000,
-        // TASK-737 — the tenant is MANDATORY on this hop: `apps/text /generate`
-        // answers 428 without it. `processWithContext` puts the job's tenant in
-        // CLS (see `process`), so it is always present for real work; the
-        // JOB_QUEUE marker is the declared fallback rather than an absent header,
-        // which would be indistinguishable from one dropped in transit.
-        headers: internalServiceHeaders({
-          serviceToken: await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN'),
-          tenantId: this.clsService.get<string>('tenantId'),
-          tenantlessReason: TENANTLESS.JOB_QUEUE,
-        }),
-      },
-    );
+    // TASK-808 — the payload is HOISTED out of the call argument (it used to be
+    // an inline object literal) so the shared credential enrichment below has
+    // something to fold `provider_overrides` into. The fields are unchanged.
+    const textPayload = {
+      prompt: textSamples,
+      system_prompt: systemPrompt,
+      stream: false,
+      provider,
+      model,
+      // TASK-700: constrain DNA output to the closed-vocabulary schema
+      // (mirrors the SOAP `response_format` binding —
+      // `text-compat.controller.ts`'s `response_format: { type: 'json_schema',
+      // json_schema: responseSchema, strict: true }`). Omitted entirely
+      // (not even as `undefined`) when the resolved template carries no
+      // schema, so the outgoing payload shape is unchanged for legacy
+      // templates/fixtures.
+      ...(outputSchema ? { response_format: { type: 'json_schema' as const, json_schema: outputSchema, strict: true } } : {}),
+    };
+    // TASK-808 — inject the tenant's resolved provider credential through the
+    // ONE shared implementation. Without it TEXT fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING: TASK-799 lane B (`70eec34d5`) removed its
+    // per-provider env plane, so the endpoint and key must arrive per request.
+    // `processWithContext` puts the job's tenant in CLS, which is where the
+    // resolver reads it from.
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
+      timeout: 120000,
+      // TASK-737 — the tenant is MANDATORY on this hop: `apps/text /generate`
+      // answers 428 without it. `processWithContext` puts the job's tenant in
+      // CLS (see `process`), so it is always present for real work; the
+      // JOB_QUEUE marker is the declared fallback rather than an absent header,
+      // which would be indistinguishable from one dropped in transit.
+      headers: internalServiceHeaders({
+        serviceToken: await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN'),
+        tenantId: this.clsService.get<string>('tenantId'),
+        tenantlessReason: TENANTLESS.JOB_QUEUE,
+      }),
+    });
     this.jobMetrics.recordTextCallDuration(JobQueue.GenerateDnaReport, 'text', (Date.now() - textStart) / 1000);
     return response.data;
   }

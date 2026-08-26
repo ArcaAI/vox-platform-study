@@ -63,6 +63,7 @@ import {
   type AgenticTranscriptMode,
 } from '../../settings-registry/descriptors/agentic-context.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 
 // F-28: defensive caps on the append-only `LiveSession.transcriptParts` buffer.
 // A pathological/runaway session (mic left open past `stop()`) would otherwise
@@ -440,6 +441,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // code-default snapshot locally from the in-code constants, i.e. behavior
     // byte-identical to pre-C3.
     @Optional() @Inject(ILiveAgentResolver) private readonly liveAgentResolver?: ILiveAgentResolverPort,
+    // TASK-808 — the SHARED TEXT enrichment path. TEXT holds no endpoint or
+    // credential of its own since TASK-799 lane B (`70eec34d5`) deleted its
+    // per-provider env plane, so an outgoing `/api/v1/generate` body without a
+    // `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING — which is exactly what this, the
+    // highest-volume TEXT hop in the platform, was doing on every flush.
+    // Optional + trailing so existing positional fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -2015,6 +2024,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       stream: false as const,
       response_format: includeResponseFormat ? LIVE_SOAP_RESPONSE_FORMAT : undefined,
     };
+    // TASK-808 — fold in the caller tenant's resolved provider credential
+    // (`provider_overrides`) through the ONE shared implementation. Not
+    // hand-rolled here: the resolver cascades tenant → SYSTEM and each entry's
+    // `funding` label rides along, so TEXT meters platform-funded generation as
+    // CLOUD rather than as this tenant's own BYOK. Fail-open by contract — a
+    // resolver error injects nothing and the call proceeds, while a POLICY
+    // refusal (tenant veto / missing entitlement) still throws so the outage is
+    // attributable instead of surfacing as TEXT's unattributable 503.
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
     // every environment where `TEXT_SERVICE_TOKEN` is non-empty — the live loop

@@ -19,6 +19,7 @@ import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
+import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 
 @Module({
   imports: [
@@ -30,6 +31,10 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
     PromptResolutionServiceModule, // Required for prompt fallback chain
     NoteGenerationServiceModule, // TASK-704 seam — harnessEnabled routing for ConsultationEventHandler
     HarnessPolicyServiceModule, // TEXT-selection resolver for the pre-summary/comprehensive processors
+    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // endpoint or credential of its own; without a `provider_overrides` entry it
+    // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
+    TextRequestServiceModule,
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + pre-summary/comprehensive processors)
     UsageLedgerServiceModule, // usage emission for ComprehensiveSummaryProcessor
     // TASK-795 W2 (finishing TASK-792's R7) — supplies `IGateEditExemplarRetriever` for the

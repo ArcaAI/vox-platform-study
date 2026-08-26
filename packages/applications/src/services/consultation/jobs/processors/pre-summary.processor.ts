@@ -13,6 +13,7 @@ import { JobMetricsService } from '../../../baseServices/observability/job-metri
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
+import { TextRequestEnrichmentService } from '../../../text-request/text-request-enrichment.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import {
@@ -63,6 +64,12 @@ export class PreSummaryProcessor extends WorkerHost {
     // this processor's generation body always runs regardless. Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
+    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
+    // body with no `provider_overrides` entry fails closed with 503
+    // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
+    // fixtures keep their arity.
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -304,6 +311,12 @@ export class PreSummaryProcessor extends WorkerHost {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
       });
+      // TASK-808 — inject the tenant's resolved provider credential through the
+      // ONE shared implementation (tenant → SYSTEM cascade, `funding` label
+      // carried so metering is derived from the supplying row). `process()`
+      // rebinds `tenantId` into a fresh CLS scope above, which is where the
+      // resolver reads it from.
+      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
       // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is the
       // fail-closed-validated `job.data.tenantId` already threaded in above and used

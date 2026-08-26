@@ -1,7 +1,7 @@
 import { BuildInfoService } from '@arcaai/applications';
 import { Controller, Get, HttpCode, HttpStatus, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { Public, ForbidApiKey } from '../../decorators';
 import { GracefulShutdownService, IGracefulShutdownService } from '../../services';
 
@@ -50,7 +50,40 @@ export class ApiHealthController {
     private readonly buildInfoService: BuildInfoService,
   ) {}
 
+  // TASK-808 — the three KUBELET probes are exempt from the class cap above.
+  //
+  // `TieredThrottlerGuard` is GLOBAL and runs FIRST, ahead of
+  // `UnifiedAuthGuard`, so `@Public()` exempts these routes from AUTH but NOT
+  // from the throttler. The bucket key is `tenant:${tenantId}` and an
+  // unauthenticated request resolves `tenantId` to `null` — so the kubelet's
+  // probes and every anonymous caller on the internet shared ONE 30/min bucket.
+  //
+  // The kubelet is not "well below" that cap. Against the live `hope-api`
+  // Deployment: readiness `periodSeconds: 5` = 12/min, liveness
+  // `periodSeconds: 30` = 2/min — 14/min steady state, ~47% of the budget, and
+  // 26/min (87%) while the startup probe is also running at 5s. A modest
+  // anonymous burst therefore exhausts the window and the PROBE takes the 429.
+  // A non-2xx is a probe failure to the kubelet, and `failureThreshold: 2` at
+  // `periodSeconds: 5` removes the pod from Endpoints ~10s later, until the 60s
+  // window rolls: the ~1-minute 09:02→09:03 flap observed on `hope-v2-dev` with
+  // no container restart, which also broke TEXT's effective-config pull
+  // (`last_refresh_ok:false, sources:{}` — `hope-api:8868` refused).
+  //
+  // So the cap added to blunt unauthenticated reconnaissance against
+  // /live,/ready,/startup was itself a remote unauthenticated way to evict the
+  // pod from its Service. A probe reporting on THIS process must never be
+  // answerable by shared, remotely-exhaustible state.
+  //
+  // The reconnaissance concern is unaffected: these three return a constant
+  // `{status}` with nothing to enumerate, while `/health` — the detailed route
+  // that does expose version and uptime — deliberately KEEPS the 30/min cap.
+  //
+  // `@SkipThrottle()` with no argument skips the `default` tier only, which is
+  // exactly the exposure: `default` is the tier the class `@Throttle` above
+  // declares, and `TieredThrottlerGuard` lets every other (opt-in) tier through
+  // for a route that did not select it.
   @Get('live')
+  @SkipThrottle()
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Liveness probe - is the process running?' })
@@ -60,6 +93,7 @@ export class ApiHealthController {
   }
 
   @Get('ready')
+  @SkipThrottle()
   @Public()
   @ApiOperation({ summary: 'Readiness probe - is the service ready for traffic?' })
   @ApiResponse({ status: 200, description: 'Service is ready' })
@@ -75,6 +109,7 @@ export class ApiHealthController {
   }
 
   @Get('startup')
+  @SkipThrottle()
   @Public()
   @ApiOperation({ summary: 'Startup probe - has the service finished initialization?' })
   @ApiResponse({ status: 200, description: 'Service has started' })

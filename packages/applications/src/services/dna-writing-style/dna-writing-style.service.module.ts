@@ -14,6 +14,7 @@ import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.ser
 import { PipelinePolicyServiceModule } from '../pipeline-policy';
 import { ConfigResolverModule } from '../config-resolver';
 import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.service.module';
+import { TextRequestServiceModule } from '../text-request/text-request.service.module';
 
 @Module({
   imports: [
@@ -24,6 +25,10 @@ import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.servic
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
     HarnessPolicyServiceModule, // TEXT-selection resolver for DnaWritingStyleProcessor
+    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // endpoint or credential of its own; without a `provider_overrides` entry it
+    // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
+    TextRequestServiceModule,
     // PipelinePolicyService backs the per-doctor DNA
     // toggle (service); ConfigResolver gates the processor's learning corpus.
     PipelinePolicyServiceModule,
