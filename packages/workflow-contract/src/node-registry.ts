@@ -40,6 +40,8 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
 import type { CompilerNodeInfo } from './compiler';
 import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from './node-config-schemas';
+import { EMPTY_PORTS, NODE_PORTS } from './node-ports';
+import type { WorkflowPortDescriptor } from './port-model';
 import type { WorkflowNodeClassLookup } from './predicates';
 
 export interface WorkflowNodeDescriptor {
@@ -76,6 +78,64 @@ export interface WorkflowNodeDescriptor {
    *  with a real, committed schema source). Attached below via `NODE_CONFIG_SCHEMAS`, never
    *  inline on these literals, so the schema source stays the single place it is authored. */
   readonly configSchema?: NodeConfigSchema;
+
+  // -------------------------------------------------------------------------------------------
+  // TASK-809 — the node CONTRACT. Everything above describes how a node is DISPATCHED; the
+  // fields below describe what it may be WIRED TO, when it runs, and what must be true of it
+  // before a graph containing it can be published. All seven are TypeScript-side only: the
+  // cross-language parity fixture carries the eight fields both runtimes share, and
+  // `classes`/`paletteKey` are the standing precedent for a TS-only concept (the fixture's own
+  // `_comment` records it). Do not add any of them to either projection without adding them to
+  // `registry.py`'s `NodeSpec` and BOTH projections in the same change.
+  // -------------------------------------------------------------------------------------------
+
+  /** Declared input ports. Attached below from `NODE_PORTS` (`node-ports.ts`) for the same
+   *  reason `configSchema` is: the tables are bulky and belong in one place. Closes D-4. */
+  readonly inputs: readonly WorkflowPortDescriptor[];
+  /** Declared output ports — see `inputs`. */
+  readonly outputs: readonly WorkflowPortDescriptor[];
+  /** WHEN the node runs, ORTHOGONAL to `lane` (DD-5). `on-start` once at the opening,
+   *  `per-turn` as new material arrives, `on-end` once at the close. This is what lets two
+   *  nodes share a lane without sharing a cadence, and it absorbs the endpoint stage uniformly
+   *  as `on-end`. */
+  readonly trigger: WorkflowNodeTrigger;
+  /** WHICH RUNTIME executes it. `realtime` carries a latency budget; `durable` must survive a
+   *  restart. Every node registered today is `durable` — each one's `activityName` is a
+   *  registered Temporal `@activity.defn` dispatched by the interpreter workflow, which IS the
+   *  durable lane. The realtime executor arrives with TASK-811; assigning nodes to a lane whose
+   *  runtime does not exist yet would be a claim this package cannot back. */
+  readonly lane: WorkflowNodeLane;
+  /** Guard attachment keys — node types that must be wired to EVERY INSTANCE of this node
+   *  before a graph containing it can be published (`workflowPublishProblems`, checked per
+   *  instance, not per type). Empty on every node today: the `guard.*` node types the target
+   *  catalogue names do not exist yet, and the summarization palette's mandatory guardrail is
+   *  already enforced by the rule catalogue — a second enforcement path for one policy is how
+   *  the two drift apart. */
+  readonly requires: readonly string[];
+  /** MUST be `true` for any `lane: 'durable'` node, because Temporal retries activities and a
+   *  non-idempotent retry double-writes invisibly. Enforced by
+   *  `nodeDescriptorContractProblems`. */
+  readonly idempotent: boolean;
+  /** The node TYPE's version. A node type is a contract with every saved tenant graph, so a
+   *  published node's ports are never reshaped in place — a breaking change becomes a new key
+   *  with an `@N` suffix (`agent.ner@2`) and this field must agree with that suffix. Otherwise
+   *  definition-level immutability is undermined by node-level mutation. */
+  readonly schemaVersion: number;
+  /** OD-11: the eval gate binds to the NODE, not to a `DepartmentAgent`. Declared here so the
+   *  binding has a home; `undefined` on every node today — TASK-815 migrates the data onto it. */
+  readonly evalGate?: WorkflowNodeEvalGate;
+}
+
+/** When a node runs — orthogonal to `lane` (DD-5). */
+export type WorkflowNodeTrigger = 'on-start' | 'per-turn' | 'on-end';
+
+/** Which runtime executes a node. */
+export type WorkflowNodeLane = 'realtime' | 'durable';
+
+/** OD-11 — the golden-set binding, on the node rather than on an agent row. */
+export interface WorkflowNodeEvalGate {
+  readonly goldenSetId: string;
+  readonly enabled: boolean;
 }
 
 /**
@@ -84,7 +144,7 @@ export interface WorkflowNodeDescriptor {
  * types to both sides together. `configSchema` is deliberately NOT set on these literals —
  * see the derivation below, which attaches it uniformly from `NODE_CONFIG_SCHEMAS`.
  */
-const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDescriptor, 'configSchema'>>> = Object.freeze({
+const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDescriptor, 'configSchema' | 'inputs' | 'outputs'>>> = Object.freeze({
   noop: Object.freeze({
     key: 'noop',
     implemented: true,
@@ -96,6 +156,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   passthrough: Object.freeze({
     key: 'passthrough',
@@ -108,6 +173,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // -------------------------------------------------------------------------------------------
   // Graph boundary markers (palette-agnostic). The four palette-independent structural rules
@@ -132,6 +202,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'core.end': Object.freeze({
     key: 'core.end',
@@ -144,6 +219,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // -------------------------------------------------------------------------------------------
   // Summarization palette (TASK-720) — five node types, `paletteKey: 'summarization'`. `classes`
@@ -175,6 +255,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'prompt.template_ref': Object.freeze({
     key: 'prompt.template_ref',
@@ -187,6 +272,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'generate.text': Object.freeze({
     key: 'generate.text',
@@ -199,6 +289,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 300,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'guardrail.check': Object.freeze({
     key: 'guardrail.check',
@@ -211,6 +306,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'output.deliver': Object.freeze({
     key: 'output.deliver',
@@ -223,6 +323,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // -------------------------------------------------------------------------------------------
   // STT palette (TASK-724) — eight node types, `paletteKey: 'stt'`. See
@@ -244,6 +349,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.vad': Object.freeze({
     key: 'stt.vad',
@@ -256,6 +366,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.noiseFilter': Object.freeze({
     key: 'stt.noiseFilter',
@@ -268,6 +383,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.diarization': Object.freeze({
     key: 'stt.diarization',
@@ -280,6 +400,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 120,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.languageDetection': Object.freeze({
     key: 'stt.languageDetection',
@@ -292,6 +417,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.asrEngine': Object.freeze({
     key: 'stt.asrEngine',
@@ -304,6 +434,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 600,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'stt.transcriptOutput': Object.freeze({
     key: 'stt.transcriptOutput',
@@ -316,6 +451,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // PLACEHOLDER — implemented:false, see palette.md. TASK-710/phi-redactor is not landed.
   'stt.phiHop': Object.freeze({
@@ -329,6 +469,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // -------------------------------------------------------------------------------------------
   // Consultation palette (TASK-731) — all 13 node types from
@@ -360,6 +505,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.captureBinding': Object.freeze({
     key: 'consultation.captureBinding',
@@ -372,6 +522,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // externalWrite for the persist leg (persist_entities), not the extraction itself — see
   // node-types.md's `critical` rationale, third bullet.
@@ -386,6 +541,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.bindTerminology': Object.freeze({
     key: 'consultation.bindTerminology',
@@ -398,6 +558,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.phiHop': Object.freeze({
     key: 'consultation.phiHop',
@@ -410,6 +575,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.retrieveEvidence': Object.freeze({
     key: 'consultation.retrieveEvidence',
@@ -422,6 +592,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.assemblePrompt': Object.freeze({
     key: 'consultation.assemblePrompt',
@@ -434,6 +609,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.synthesize': Object.freeze({
     key: 'consultation.synthesize',
@@ -446,6 +626,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.sensors': Object.freeze({
     key: 'consultation.sensors',
@@ -458,6 +643,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.inferentialSensors': Object.freeze({
     key: 'consultation.inferentialSensors',
@@ -470,6 +660,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 900,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.persistDraft': Object.freeze({
     key: 'consultation.persistDraft',
@@ -482,6 +677,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.finalizeAssurance': Object.freeze({
     key: 'consultation.finalizeAssurance',
@@ -494,6 +694,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 3,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // The ONE durable human wait in this substrate (TASK-731 Phase B, now implemented). The `gate`
   // class is load-bearing on BOTH sides: the compiler lifts a `gate`-classed node out of
@@ -512,6 +717,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 1,
     entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   // -------------------------------------------------------------------------------------------
   // R3's three missing capabilities (TASK-791 W1-W3). The owner's R3 asks ONE workflow to
@@ -540,6 +750,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.suggestions': Object.freeze({
     key: 'consultation.suggestions',
@@ -553,6 +768,11 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
   'consultation.proposeCorrections': Object.freeze({
     key: 'consultation.proposeCorrections',
@@ -570,21 +790,34 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultTimeoutSeconds: 150,
     defaultMaxAttempts: 2,
     entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
   }),
 });
 
 /**
  * The public registry: `WORKFLOW_NODE_REGISTRY_BASE` with each entry's `configSchema` attached
- * from `NODE_CONFIG_SCHEMAS` (`node-config-schemas.ts`). A key absent from that map yields
+ * from `NODE_CONFIG_SCHEMAS` (`node-config-schemas.ts`) and its `inputs`/`outputs` from
+ * `NODE_PORTS` (`node-ports.ts`). A key absent from the schema map yields
  * `configSchema: undefined` — the documented, structural "no schema authored yet" state, not a
  * defect (see that module's docstring for which node types this applies to and why).
+ *
+ * A key absent from `NODE_PORTS` is NOT the same kind of state: it yields empty port lists,
+ * which is the exact D-4 condition this ticket closes, so `__tests__/node-contract.test.ts`
+ * fails on it rather than letting a portless node type ship.
  */
 export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescriptor>> = Object.freeze(
   Object.fromEntries(
-    Object.entries(WORKFLOW_NODE_REGISTRY_BASE).map(([key, descriptor]) => [
-      key,
-      Object.freeze({ ...descriptor, configSchema: NODE_CONFIG_SCHEMAS[key] }),
-    ]),
+    Object.entries(WORKFLOW_NODE_REGISTRY_BASE).map(([key, descriptor]) => {
+      const declaredPorts = NODE_PORTS[key] ?? EMPTY_PORTS;
+      return [
+        key,
+        Object.freeze({ ...descriptor, configSchema: NODE_CONFIG_SCHEMAS[key], inputs: declaredPorts.inputs, outputs: declaredPorts.outputs }),
+      ];
+    }),
   ),
 );
 
