@@ -214,7 +214,10 @@ export class MyTenantDocumentTemplateController {
   @ApiQuery({ name: 'slug', required: false, description: 'Resolve this template by slug instead of the tenant default.' })
   @ApiHeader({ name: 'ETag', description: 'Strong validator over the served representation.' })
   @ApiResponse({ status: 200, type: DocumentTemplateBundleResponse })
-  async getEffective(@Query('slug') slug: string | undefined, @Res({ passthrough: true }) response: Response): Promise<DocumentTemplateBundleResponse> {
+  async getEffective(
+    @Query('slug') slug: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<DocumentTemplateBundleResponse> {
     const bundle = await this.service.getEffectiveBundle(slug);
 
     // Set explicitly rather than leaving it to the global `ETagInterceptor`:

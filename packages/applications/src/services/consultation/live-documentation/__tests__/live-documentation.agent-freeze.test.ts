@@ -287,18 +287,16 @@ describe('C3-T2 — freeze semantics and three-tier recovery', () => {
       // `findLiveSnapshotRow` now delegates to this repository
       // helper; mirror it through the SAME `findPreSummaries` mock above so
       // the create-vs-reuse dedup this test drives is unaffected.
-      findLatestPreSummaryWithDecryptedContent: vi.fn(
-        async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
-          const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> =
-            await contextItemRepository.findPreSummaries(consultationId);
-          const candidates = options?.subType
-            ? rows.filter((r) => (r.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
-            : rows;
-          if (candidates.length === 0) return { entity: null, plaintext: null };
-          const entity = candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
-          return { entity, plaintext: entity.content ?? null };
-        },
-      ),
+      findLatestPreSummaryWithDecryptedContent: vi.fn(async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
+        const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> =
+          await contextItemRepository.findPreSummaries(consultationId);
+        const candidates = options?.subType
+          ? rows.filter((r) => (r.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
+          : rows;
+        if (candidates.length === 0) return { entity: null, plaintext: null };
+        const entity = candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+        return { entity, plaintext: entity.content ?? null };
+      }),
       create: vi.fn().mockImplementation(async (entity: { metaData?: Record<string, unknown> }) => {
         created.push(entity);
       }),

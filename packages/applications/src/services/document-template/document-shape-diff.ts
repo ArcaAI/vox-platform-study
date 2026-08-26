@@ -85,9 +85,7 @@ export function classifyShapeChange(previous: unknown, next: unknown): ShapeChan
       breakingChanges.push(`section \`${key}\` changed form from ${String(previousSection.form)} to ${String(nextSection.form)}`);
     }
     if (previousSection.required !== true && nextSection.required === true) {
-      breakingChanges.push(
-        `section \`${key}\` became required — the model loses its ability to record that the section was not discussed (D-21)`,
-      );
+      breakingChanges.push(`section \`${key}\` became required — the model loses its ability to record that the section was not discussed (D-21)`);
     }
     if (previousSection.form === 'STRUCTURED' && nextSection.form === 'STRUCTURED') {
       // The `fields` sub-schema is compared as canonical bytes rather than

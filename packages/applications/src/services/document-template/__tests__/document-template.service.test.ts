@@ -80,10 +80,7 @@ const SHAPE_V1 = {
 const SHAPE_V2_ADDITIVE = {
   schemaVersion: '1.0',
   title: 'Discharge Summary',
-  sections: [
-    ...SHAPE_V1.sections,
-    { key: 'procedures', title: 'Procedures', form: 'BULLETS' },
-  ],
+  sections: [...SHAPE_V1.sections, { key: 'procedures', title: 'Procedures', form: 'BULLETS' }],
 };
 
 /** BREAKING: `follow_up` is gone. */

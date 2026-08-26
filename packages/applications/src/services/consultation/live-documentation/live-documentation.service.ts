@@ -55,7 +55,11 @@ import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from '.
 import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
 import { compileDocumentTemplate } from '../../document-template/document-template-compiler';
 import { SOAP_NOTE_SHAPE, SOAP_NOTE_SLUG } from '../../document-template/platform-document-shapes';
-import { IDocumentTemplateService, type IDocumentTemplateService as IDocumentTemplateServicePort, type ResolvedDocumentTemplate } from '../../document-template/IDocumentTemplateService';
+import {
+  IDocumentTemplateService,
+  type IDocumentTemplateService as IDocumentTemplateServicePort,
+  type ResolvedDocumentTemplate,
+} from '../../document-template/IDocumentTemplateService';
 import {
   DEFAULT_LIVE_TOOL_PLAN,
   ILiveAgentResolver,
@@ -1100,8 +1104,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // with exactly the same discipline as the agent above. `ensureTemplateResolved`
     // never rejects (the service's own `resolveForGeneration` fails open to the
     // platform shape), so this can never fail a flush.
-    const template =
-      session.templateSnapshot ?? (session.templateSnapshot = await (session.templatePromise ?? this.ensureTemplateResolved(session)));
+    const template = session.templateSnapshot ?? (session.templateSnapshot = await (session.templatePromise ?? this.ensureTemplateResolved(session)));
 
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane

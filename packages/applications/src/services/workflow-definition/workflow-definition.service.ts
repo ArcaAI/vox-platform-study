@@ -574,8 +574,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           // An UNPINNED node is not "behind": it deliberately follows the
           // template, which is the pre-DD-11 behaviour and a legitimate choice.
           // Reporting it as stale would train admins to ignore the signal.
-          hasNewVersion:
-            binding.pinnedVersionNumber !== null && latestVersionNumber !== null && latestVersionNumber > binding.pinnedVersionNumber,
+          hasNewVersion: binding.pinnedVersionNumber !== null && latestVersionNumber !== null && latestVersionNumber > binding.pinnedVersionNumber,
         };
       }),
     );
