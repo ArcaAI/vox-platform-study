@@ -20,9 +20,25 @@ describe('NODE_CONFIG_SCHEMAS', () => {
     expect(authorableJsonSchemaProblems(schema)).toEqual([]);
   });
 
-  it('carries a schema for every node type with a committed contract document (13 palette node types + 3 derivable utility/marker types)', () => {
+  it('carries a schema for every node type in the registry except `passthrough` (TASK-809 D-9)', () => {
     expect(Object.keys(NODE_CONFIG_SCHEMAS).sort()).toEqual(
       [
+        'consultation.assemblePrompt',
+        'consultation.bindTerminology',
+        'consultation.captureBinding',
+        'consultation.consentGate',
+        'consultation.extractEntities',
+        'consultation.finalizeAssurance',
+        'consultation.hitlGate',
+        'consultation.inferentialSensors',
+        'consultation.persistDraft',
+        'consultation.phiHop',
+        'consultation.proposeCorrections',
+        'consultation.realtimeSummary',
+        'consultation.retrieveEvidence',
+        'consultation.sensors',
+        'consultation.suggestions',
+        'consultation.synthesize',
         'core.end',
         'core.start',
         'generate.text',
@@ -41,6 +57,112 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'stt.vad',
       ].sort(),
     );
+  });
+});
+
+/**
+ * TASK-809 Task 9 — the 16 `consultation.*` schemas, closing D-9 ("13 of 16 `consultation.*`
+ * node types have no config schema", `node-config-schemas.ts:25-38`; the true count is 16 of 16
+ * — the "13" predates TASK-791's three additions).
+ *
+ * `node-types.md` named `contracts/nodes/*.schema.json` files for these and they were never
+ * authored, so each schema below is derived from the two sources that DO exist and are already
+ * enforced:
+ *
+ *   1. `DRAFT_CONSULTATION_RULE_SET` (`rule-catalogue.ts`) — every config field a published
+ *      consultation graph is already REQUIRED to carry (`occ`, `producesCode`, `purposeScope`,
+ *      `unmappedOutputKey`, `requiresFinalized`, and `onError` on every activity-classed node).
+ *   2. The interpreter activities themselves (`apps/harness/src/harness/temporal/interpreter/
+ *      nodes/consultation*.py`) — every key each activity actually reads off `payload.config`.
+ *
+ * A schema that omitted (1) would reject graphs the validator demands; one that omitted (2)
+ * would reject config the runtime honours. Both directions are asserted here.
+ */
+describe('consultation.* config schemas (D-9)', () => {
+  const CONSULTATION_KEYS = Object.keys(WORKFLOW_NODE_REGISTRY).filter((key) => key.startsWith('consultation.'));
+
+  it('covers all 16 consultation node types', () => {
+    expect(CONSULTATION_KEYS).toHaveLength(16);
+    for (const key of CONSULTATION_KEYS) {
+      expect(WORKFLOW_NODE_REGISTRY[key].configSchema).toBeDefined();
+    }
+  });
+
+  it.each(CONSULTATION_KEYS)('%s is a closed object schema', (key) => {
+    const schema = NODE_CONFIG_SCHEMAS[key];
+    expect(schema.type).toBe('object');
+    expect(schema.additionalProperties).toBe(false);
+  });
+
+  // Every field the DRAFT consultation rule set already demands must be AUTHORABLE, or the
+  // schema and the validator contradict each other and no graph can satisfy both.
+  it.each([
+    ['consultation.persistDraft', 'occ'],
+    ['consultation.synthesize', 'producesCode'],
+    ['consultation.bindTerminology', 'purposeScope'],
+    ['consultation.bindTerminology', 'unmappedOutputKey'],
+    ['consultation.extractEntities', 'requiresFinalized'],
+    ['consultation.assemblePrompt', 'requiresFinalized'],
+  ])('%s permits the rule-catalogue field %s', (key, field) => {
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, unknown>;
+    expect(Object.hasOwn(properties, field)).toBe(true);
+  });
+
+  it('requires `onError` on exactly the activity-classed nodes WF-CONS-019 applies to', () => {
+    for (const key of CONSULTATION_KEYS) {
+      const descriptor = WORKFLOW_NODE_REGISTRY[key];
+      const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, { enum?: string[] } | undefined>;
+      if (descriptor.classes.includes('activity')) {
+        expect(properties.onError?.enum).toEqual(['degrade', 'retry', 'fail']);
+        expect(NODE_CONFIG_SCHEMAS[key].required).toContain('onError');
+      } else {
+        // consentGate and hitlGate are not `activity`-classed, so WF-CONS-019 never fires for
+        // them and demanding an error policy would be a constraint nothing enforces.
+        expect(properties.onError).toBeUndefined();
+      }
+    }
+  });
+
+  it('offers only the three onError values the interpreter can honour — never `abort`', () => {
+    // Same posture as `guardrail.check.onFail` above: a value the runtime cannot enforce must
+    // be rejected at authoring time, not accepted and silently ignored.
+    for (const key of CONSULTATION_KEYS) {
+      const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, { enum?: string[] } | undefined>;
+      expect(properties.onError?.enum ?? []).not.toContain('abort');
+    }
+  });
+
+  it.each([
+    ['consultation.captureBinding', ['action', 'persistSnapshot']],
+    ['consultation.extractEntities', ['language', 'persist']],
+    ['consultation.bindTerminology', ['unmappedOutputKey']],
+    ['consultation.phiHop', ['mode']],
+    ['consultation.retrieveEvidence', ['retrievalEnabled']],
+    ['consultation.assemblePrompt', ['template', 'dnaStyleId', 'conversationLanguage']],
+    ['consultation.realtimeSummary', ['taskKey', 'windowChars', 'systemPrompt', 'temperature', 'maxTokens']],
+    ['consultation.suggestions', ['taskKey', 'maxSuggestions', 'temperature', 'maxTokens']],
+    ['consultation.proposeCorrections', ['taskKey', 'language', 'temperature', 'maxTokens']],
+  ] as const)('%s permits every key its interpreter activity reads', (key, fields) => {
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, unknown>;
+    for (const field of fields) {
+      expect(Object.hasOwn(properties, field)).toBe(true);
+    }
+  });
+
+  it('consultation.synthesize accepts the generate.text knobs it delegates to', () => {
+    // `interpreter_consultation_synthesize` returns `await interpreter_text_generate(payload)`
+    // verbatim (consultation_compose.py:151-200), so its config surface IS generate.text's,
+    // plus `producesCode`.
+    const properties = NODE_CONFIG_SCHEMAS['consultation.synthesize'].properties as Record<string, unknown>;
+    for (const field of ['taskKey', 'systemPrompt', 'temperature', 'maxTokens', 'topP', 'responseFormat', 'producesCode']) {
+      expect(Object.hasOwn(properties, field)).toBe(true);
+    }
+  });
+
+  it('the two gate nodes accept no config at all', () => {
+    for (const key of ['consultation.consentGate', 'consultation.hitlGate']) {
+      expect(NODE_CONFIG_SCHEMAS[key].properties).toEqual({});
+    }
   });
 });
 
@@ -85,12 +207,9 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
     expect(WORKFLOW_NODE_REGISTRY.passthrough.configSchema).toBeUndefined();
   });
 
-  it('leaves every consultation node type without a schema — no committed contract document exists yet', () => {
-    const consultationKeys = Object.keys(WORKFLOW_NODE_REGISTRY).filter((key) => key.startsWith('consultation.'));
-    expect(consultationKeys.length).toBeGreaterThan(0);
-    for (const key of consultationKeys) {
-      expect(WORKFLOW_NODE_REGISTRY[key].configSchema).toBeUndefined();
-    }
+  it('passthrough is now the ONLY node type without a schema (TASK-809 closed D-9 for the rest)', () => {
+    const unschemad = Object.keys(WORKFLOW_NODE_REGISTRY).filter((key) => WORKFLOW_NODE_REGISTRY[key].configSchema === undefined);
+    expect(unschemad).toEqual(['passthrough']);
   });
 
   it('every OTHER descriptor field is unaffected by the configSchema derivation', () => {
