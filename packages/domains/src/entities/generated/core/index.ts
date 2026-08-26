@@ -97,3 +97,5 @@ export * from './WorkflowAssignmentChangeEntity';
 export * from './WorkflowAssignmentEntity';
 export * from './WorkflowInvariantRuleEntity';
 export * from './RateLimitRuleEntity';
+export * from './DocumentTemplateEntity';
+export * from './DocumentTemplateVersionEntity';

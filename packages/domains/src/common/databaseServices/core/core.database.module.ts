@@ -35,6 +35,8 @@ import { AuditLogRepository } from '../../../repositories/generated/core/AuditLo
 import { ConsultationRepository } from '../../../repositories/generated/core/ConsultationRepository';
 import { ConsultationContextSchemaRepository } from '../../../repositories/generated/core/ConsultationContextSchemaRepository';
 import { ConsultationContextSchemaVersionRepository } from '../../../repositories/generated/core/ConsultationContextSchemaVersionRepository';
+import { DocumentTemplateRepository } from '../../../repositories/generated/core/DocumentTemplateRepository';
+import { DocumentTemplateVersionRepository } from '../../../repositories/generated/core/DocumentTemplateVersionRepository';
 import { ContextItemRepository } from '../../../repositories/generated/core/ContextItemRepository';
 import { ContextItemVersionRepository } from '../../../repositories/generated/core/ContextItemVersionRepository';
 import { DepartmentAgentRepository } from '../../../repositories/generated/core/DepartmentAgentRepository';
@@ -130,6 +132,10 @@ const repositories = [
   // head and its immutable published version snapshots.
   ConsultationContextSchemaRepository,
   ConsultationContextSchemaVersionRepository,
+  // Clinical-document SHAPE catalog (TASK-810): the mutable head and its
+  // immutable published version snapshots (shape + compiled artifacts).
+  DocumentTemplateRepository,
+  DocumentTemplateVersionRepository,
   ContextItemRepository,
   ContextItemVersionRepository,
   AudioRecordingRepository,
