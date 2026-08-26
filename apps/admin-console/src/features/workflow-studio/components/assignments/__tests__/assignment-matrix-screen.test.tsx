@@ -42,6 +42,8 @@ function node(overrides: Partial<WorkflowNodeDescriptor> = {}): WorkflowNodeDesc
     defaultMaxAttempts: 3,
     entitlementKey: null,
     configSchema: null,
+    inputs: [],
+    outputs: [],
     ...overrides,
   };
 }

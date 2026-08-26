@@ -208,17 +208,36 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     [storeApi],
   );
   const duplicateSelected = useCallback(() => handleDuplicate(storeApi.getState().selectedNodeId), [handleDuplicate, storeApi]);
-  // Drag-time guard: the SAME store predicate the committed `connect` runs, so React Flow
-  // refuses an invalid drop target visually instead of the consumer toasting after the fact.
+  // Drag-time guard: the SAME store predicate (`canConnect`, port-lattice check included via
+  // `descriptorByType`) the committed `connect` below runs, so drag-time and commit-time can
+  // never disagree (`@arcaai/ui`'s `workflow-canvas/types.ts:64-69`). React Flow refuses an
+  // invalid drop target visually, but a color change alone doesn't say WHY — so this also
+  // toasts the store's reason (e.g. "`document` cannot feed an input expecting `transcript`."),
+  // deduped per attempted (source, target) pair so hovering the same invalid handle doesn't
+  // spam the user while the pointer is still moving (11-ux-ui-principles.md §5: feedback within
+  // 100ms, never silent, but not noisy either).
+  const lastRefusedConnectionRef = useRef<string | null>(null);
   const isValidConnection = useCallback(
-    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) =>
-      storeApi.getState().canConnect({
+    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
+      const request = {
         source: connection.source,
         sourceHandle: connection.sourceHandle ?? 'out',
         target: connection.target,
         targetHandle: connection.targetHandle ?? 'in',
-      }).ok,
-    [storeApi],
+      };
+      const result = storeApi.getState().canConnect(request, descriptorByType);
+      if (result.ok) {
+        lastRefusedConnectionRef.current = null;
+        return true;
+      }
+      const key = `${request.source}:${request.sourceHandle}->${request.target}:${request.targetHandle}`;
+      if (lastRefusedConnectionRef.current !== key) {
+        lastRefusedConnectionRef.current = key;
+        toast.error(result.reason);
+      }
+      return false;
+    },
+    [storeApi, descriptorByType],
   );
 
   useStudioShortcuts({ enabled: !readOnly, onUndo: handleUndo, onRedo: handleRedo, onDuplicate: duplicateSelected });
@@ -373,12 +392,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 if (!result.ok) toast.error(result.reason);
               }}
               onConnect={(connection) => {
-                const result = storeApi.getState().connect({
-                  source: connection.source,
-                  sourceHandle: connection.sourceHandle ?? 'out',
-                  target: connection.target,
-                  targetHandle: connection.targetHandle ?? 'in',
-                });
+                const result = storeApi.getState().connect(
+                  {
+                    source: connection.source,
+                    sourceHandle: connection.sourceHandle ?? 'out',
+                    target: connection.target,
+                    targetHandle: connection.targetHandle ?? 'in',
+                  },
+                  descriptorByType,
+                );
                 if (!result.ok) toast.error(result.reason);
               }}
               onNodesChange={(next) => {
@@ -401,7 +423,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               onMove={(nodeId, direction) => storeApi.getState().reorderNode(nodeId, direction)}
               onDuplicate={handleDuplicate}
               onConnect={(source, target) => {
-                const result = storeApi.getState().connect({ source, sourceHandle: 'out', target, targetHandle: 'in' });
+                const result = storeApi.getState().connect({ source, sourceHandle: 'out', target, targetHandle: 'in' }, descriptorByType);
                 if (!result.ok) toast.error(result.reason);
                 return result;
               }}
