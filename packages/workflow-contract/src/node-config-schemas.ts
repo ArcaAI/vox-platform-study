@@ -348,9 +348,10 @@ const BOUNDARY_MARKER_SCHEMA: NodeConfigSchema = Object.freeze({
 //     NOTABLY not `abort`. Same posture as `guardrail.check.onFail`: the v1 interpreter cannot
 //     promote a node failure to a run-level abort (`NodeActivityResult.status` has no `FAILED`),
 //     so offering the value would be silent non-enforcement. Reject at authoring time instead.
-//   - The two GATE nodes (`consentGate`, `hitlGate`) accept no config. They are also the two
-//     nodes that are not `activity`-classed, so WF-CONS-019 never fires for them and requiring
-//     an error policy would be a constraint nothing enforces.
+//   - Neither GATE node (`consentGate`, `hitlGate`) declares `onError`. They are the two nodes
+//     that are not `activity`-classed, so WF-CONS-019 never fires for them and requiring an error
+//     policy would be a constraint nothing enforces. NOTE: `consentGate` takes no config at all,
+//     but `hitlGate` DOES — `compileGate` reads four fields off it (see its schema below).
 // -----------------------------------------------------------------------------------------
 
 /** WF-CONS-019's permitted error policies, verbatim. Shared so the rule and the schemas cannot
