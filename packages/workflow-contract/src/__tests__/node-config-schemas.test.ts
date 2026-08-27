@@ -10,9 +10,9 @@
  *    authored schema (documented in `node-config-schemas.ts`'s docstring) stay `undefined`
  *    rather than silently inheriting one.
  */
-import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
+import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
-import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
+import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schemas';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
 describe('NODE_CONFIG_SCHEMAS', () => {
@@ -253,5 +253,101 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
     expect(descriptor.key).toBe('generate.text');
     expect(descriptor.paletteKey).toBe('summarization');
     expect(descriptor.classes).toEqual(['activity', 'generation', 'mandatory']);
+  });
+});
+
+/**
+ * TASK-810 carry-over 1 — DD-11's prompt PIN must survive a schema round-trip.
+ *
+ * DD-11 stores a node's prompt binding as two keys on that node's OWN config
+ * (`node-prompt-binding.ts` in `@arcaai/applications`): `promptTemplateId` (WHICH template) and
+ * `promptVersionNumber` (WHICH IMMUTABLE VERSION — the node's own movable pin). The pin is the
+ * entire mechanism that stops an admin editing one shared template from silently changing every
+ * workflow that references it.
+ *
+ * Every config schema here is `additionalProperties: false`, and the Studio's inspector builds
+ * its form from `Object.entries(schema.properties)` alone
+ * (`apps/admin-console/src/features/workflow-studio/lib/schema-form.ts:130`). So an UNDECLARED
+ * binding key is stripped twice over: rejected by the value evaluator, and dropped by form
+ * generation because no field is ever rendered for it. A node round-tripped through the
+ * authoring UI would come back UNPINNED — silently undoing DD-11 on a published clinical
+ * workflow.
+ */
+describe('DD-11 prompt binding survives a config-schema round-trip', () => {
+  /** Node types that may legitimately carry a prompt binding. */
+  const PROMPT_CARRYING_KEYS = [
+    'prompt.template_ref',
+    'generate.text',
+    'consultation.assemblePrompt',
+    'consultation.synthesize',
+    'consultation.realtimeSummary',
+    'consultation.suggestions',
+    'consultation.proposeCorrections',
+  ] as const;
+
+  /** A minimal config satisfying each schema's own `required`, so the assertions below fail on
+   *  the BINDING and never on an unrelated missing field. */
+  const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, unknown>> = {
+    'prompt.template_ref': {},
+    'generate.text': { taskKey: 'text.finalize' },
+    'consultation.assemblePrompt': { requiresFinalized: true, onError: 'fail' },
+    'consultation.synthesize': { producesCode: false, onError: 'fail' },
+    'consultation.realtimeSummary': { onError: 'degrade' },
+    'consultation.suggestions': { onError: 'degrade' },
+    'consultation.proposeCorrections': { onError: 'degrade' },
+  };
+
+  const TEMPLATE_ID = '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41';
+  const PINNED_VERSION = 4;
+
+  /** What the Studio actually does to a config: render a field per DECLARED property, then read
+   *  the form back. Anything absent from `schema.properties` has no field, so it is dropped. */
+  function roundTripThroughGeneratedForm(schema: NodeConfigSchema, config: Record<string, unknown>): Record<string, unknown> {
+    const declared = Object.keys((schema.properties ?? {}) as Record<string, unknown>);
+    return Object.fromEntries(Object.entries(config).filter(([key]) => declared.includes(key)));
+  }
+
+  it('covers every generation-classed node type in the registry', () => {
+    // Keyed off the REGISTRY, not a hand-kept list: `collectPromptBindings` deliberately reads
+    // the binding off ANY node rather than a type allow-list, so a new generation node added to
+    // the registry whose schema omits the binding keys is exactly the regression this catches.
+    const generationKeys = Object.values(WORKFLOW_NODE_REGISTRY)
+      .filter((descriptor) => descriptor.classes.includes('generation'))
+      .map((descriptor) => descriptor.key)
+      .sort();
+    expect(generationKeys.filter((key) => !PROMPT_CARRYING_KEYS.includes(key as never))).toEqual([]);
+  });
+
+  it.each(PROMPT_CARRYING_KEYS)('%s declares both DD-11 binding keys', (key) => {
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, unknown>;
+    expect(Object.hasOwn(properties, 'promptTemplateId')).toBe(true);
+    expect(Object.hasOwn(properties, 'promptVersionNumber')).toBe(true);
+  });
+
+  it.each(PROMPT_CARRYING_KEYS)('%s: the value evaluator accepts a config carrying a pin', (key) => {
+    const config = { ...BASE_CONFIG[key], promptTemplateId: TEMPLATE_ID, promptVersionNumber: PINNED_VERSION };
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).toEqual([]);
+  });
+
+  it.each(PROMPT_CARRYING_KEYS)('%s: the pin survives a generated-form round-trip', (key) => {
+    const config = { ...BASE_CONFIG[key], promptTemplateId: TEMPLATE_ID, promptVersionNumber: PINNED_VERSION };
+    const roundTripped = roundTripThroughGeneratedForm(NODE_CONFIG_SCHEMAS[key], config);
+    expect(roundTripped.promptTemplateId).toBe(TEMPLATE_ID);
+    expect(roundTripped.promptVersionNumber).toBe(PINNED_VERSION);
+  });
+
+  it.each(PROMPT_CARRYING_KEYS)('%s types the pin exactly as DD-11 writes it (a positive integer)', (key) => {
+    // `readBinding` accepts the pin only when `Number.isInteger(pinned) && pinned > 0`, and the
+    // compiled artifact declares `versionNumber: { type: 'integer', minimum: 1 }` on the
+    // normative schema AND both Python models. All three must agree, or a value authorable here
+    // is unpinnable there.
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, { type?: string; minimum?: number }>;
+    expect(properties.promptVersionNumber.type).toBe('integer');
+    expect(properties.promptVersionNumber.minimum).toBe(1);
+  });
+
+  it.each(PROMPT_CARRYING_KEYS)('%s still rejects a non-positive pin', (key) => {
+    const config = { ...BASE_CONFIG[key], promptTemplateId: TEMPLATE_ID, promptVersionNumber: 0 };
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).not.toEqual([]);
   });
 });
