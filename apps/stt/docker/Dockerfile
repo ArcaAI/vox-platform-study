@@ -383,6 +383,16 @@ RUN set -eu; \
 
 USER hope
 
+# HF_HOME below is the STANDALONE default and is DELIBERATELY OVERRIDDEN in the
+# cluster (TASK-817 F-3). `/models` is created and chowned to `hope` above, so a
+# plain `docker run` of this image has a writable cache. But the deployed
+# Deployment (arca/hope-v2-deployment, deployment/k8s/base/stt.yaml) sets
+# HOME=/home/hope, HF_HOME=/home/hope/.cache/huggingface and
+# HUGGINGFACE_CACHE_DIR=/home/hope/.cache/huggingface/hub, and mounts the
+# persistent `models-cache` hostPath at that hub path. Host env beats image env
+# (00-project-context.md §Precedence), so the HF_HOME line below is INERT in
+# every deployed environment — when a cached weight is missing, look at the
+# manifest, not here. Guarded by tests/test_hf_home_manifest_divergence_task817.py.
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

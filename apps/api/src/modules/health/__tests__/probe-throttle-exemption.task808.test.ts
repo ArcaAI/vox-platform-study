@@ -12,10 +12,16 @@
  * throttler, so every kubelet probe was passing through the Redis-backed
  * default tier. Its bucket key is `tenant:${tenantId}` and an unauthenticated
  * request resolves `tenantId` to `null`, so all anonymous traffic — the probes
- * included — shares ONE `tenant:null` bucket of 100 requests / 60s.
+ * included — shares ONE `tenant:null` bucket. For THIS controller that bucket is
+ * 30 requests / 60s, not the platform default tier's 100: the class carries
+ * `@Throttle({ default: { limit: 30, ttl: 60000 } })`, which seeds the guard's
+ * rank-5 value and wins absent a DB `RateLimitRule`.
  *
- * The kubelet alone spends ~13 of those per minute (readiness every 5s,
- * liveness every 30s). Any other anonymous burst exhausts the window, the
+ * The kubelet alone spends 14 of those per minute — readiness every 5s (12) plus
+ * liveness every 30s (2), verified against `deployment/k8s/base/api.yaml` in
+ * `arca/hope-v2-deployment`, which the `dev` overlay does not patch. That is ~47%
+ * of the budget at rest and ~87% while the startup probe also runs at 5s. Any
+ * other anonymous burst exhausts the window, the
  * probe gets a 429, and a non-2xx IS a probe failure to the kubelet: two of
  * them (`failureThreshold: 2`, `periodSeconds: 5`) pull the pod out of
  * Endpoints ~10s later, and it returns when the 60s window rolls. A ~1 minute

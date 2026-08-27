@@ -15,8 +15,11 @@
 #
 # Notes:
 #   - libgomp1 (onnxruntime runtime dep) + curl (healthcheck) come from the base.
-#   - GLiNER ONNX model downloads from HuggingFace on first boot (~150 MB).
-#     Mount a persistent volume at /app/.hf-cache to avoid re-downloading.
+#   - Guardrail holds NO model weights and needs NO model cache (TASK-817 F-2).
+#     TASK-735 Phase 3 moved the GLiNER runtime and MiniCheck to `apps/nlp`;
+#     this image installs no huggingface library, so it downloads nothing and
+#     has nothing to persist. Do not add HF_HOME or a cache volume here — the
+#     service that needs one is `hope-nlp`.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
@@ -71,17 +74,12 @@ LABEL maintainer="HOPE Team" \
     org.opencontainers.image.description="GLiNER ONNX content safety + medical context validation"
 
 ENV PYTHONPATH="/app/src" \
-    HF_HOME="/app/.hf-cache" \
-    TRANSFORMERS_OFFLINE=0 \
     GUARDRAIL_HOST=0.0.0.0 \
     GUARDRAIL_PORT=8863
 
 # Copy the resolved venv (includes guardrail + all deps) and the source.
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/guardrail/src ./src
-
-# HuggingFace model cache dir (mount a volume here for persistence).
-RUN mkdir -p /app/.hf-cache && chown -R hope:hope /app/.hf-cache
 
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
