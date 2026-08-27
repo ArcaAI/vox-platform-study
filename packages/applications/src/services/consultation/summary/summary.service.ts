@@ -74,6 +74,8 @@ import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultServi
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
+import { IDocumentTemplateService, type IDocumentTemplateService as IDocumentTemplateServicePort } from '../../document-template/IDocumentTemplateService';
+import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -292,6 +294,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
+    // TASK-810 carry-over A — the section vocabulary for the edit-capture
+    // diff. `content-diff.util.ts` no longer owns a hardcoded four-key SOAP
+    // tuple, so the tenant's PINNED document shape has to arrive from
+    // somewhere; this is that seam. Optional + trailing so the 17 existing
+    // positional `new SummaryService(...)` fixtures keep their arity, and
+    // because a diff is enrichment, never a precondition: absent ⇒ the util's
+    // documented whole-document fallback, which is exactly today's behaviour
+    // for an unparseable note.
+    @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplateService?: IDocumentTemplateServicePort,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -858,6 +869,32 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
+   * The tenant's PINNED document shape, for keying the edit-capture
+   * `fieldChanges` map (TASK-810 carry-over A). Null when no catalog is wired
+   * or resolution fails.
+   *
+   * `resolveForGeneration` is itself fail-open (it falls back to the compiled
+   * PLATFORM shape rather than throwing for an unconfigured tenant), so the
+   * catch here only covers an unreachable catalog. Either way the answer is
+   * null and `diffContent` records a whole-document delta: a clinician's edit
+   * or signature must never fail because a template could not be read.
+   */
+  private async resolveDiffTemplate(tenantId: string): Promise<CompiledDocumentTemplate | null> {
+    if (!this.documentTemplateService) return null;
+    try {
+      const resolved = await this.documentTemplateService.resolveForGeneration(tenantId);
+      return resolved?.compiled ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve document template for edit-capture diff (non-fatal; whole-document delta used)',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Update existing summary content
    */
   async updateSummary(contextItemId: string, request: UpdateSummaryRequest): Promise<SummaryResponse> {
@@ -898,7 +935,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     // (request.content is applied below), so diff(previous, new). A metadata-only
     // edit (no `content`) leaves both columns null. This runs BEFORE the
     // `signalEdit` hook below — order preserved.
-    const editDelta = request.content !== undefined ? diffContent(contextItem.content, request.content) : { contentDiff: null, fieldChanges: null };
+    const editDelta =
+      request.content !== undefined
+        ? diffContent(contextItem.content, request.content, await this.resolveDiffTemplate(tenantId))
+        : { contentDiff: null, fieldChanges: null };
     version.contentDiff = editDelta.contentDiff;
     version.fieldChanges = editDelta.fieldChanges as unknown as JsonValue | null;
 
@@ -1090,7 +1130,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // delta columns. This is append-only and never blocks the sign-off below.
     const draftBaseline = await this.resolveAiDraftBaseline(contextItemId);
     if (draftBaseline !== null) {
-      const signDelta = diffContent(draftBaseline, contextItem.content);
+      const signDelta = diffContent(draftBaseline, contextItem.content, await this.resolveDiffTemplate(tenantId));
       version.contentDiff = signDelta.contentDiff;
       version.fieldChanges = signDelta.fieldChanges as unknown as JsonValue | null;
     }

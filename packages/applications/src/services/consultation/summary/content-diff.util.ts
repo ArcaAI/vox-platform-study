@@ -3,11 +3,42 @@
  *
  * Computes the draft→edit delta that gets stamped onto the existing
  * `ContextItemVersion.contentDiff` (a compact unified line diff) and
- * `ContextItemVersion.fieldChanges` (a per-SOAP-section old/new map, with a
+ * `ContextItemVersion.fieldChanges` (a per-SECTION old/new map, with a
  * whole-document fallback). Intentionally dependency-light (hand-rolled LCS line
  * diff) so the summary write path pulls in no new packages, and pure so it is
  * trivially unit-testable. NO schema change — both columns already exist.
+ *
+ * ## Why the section vocabulary is a PARAMETER (TASK-810 carry-over A)
+ *
+ * This module used to own a private four-key tuple —
+ * `['subjective','objective','assessment','plan']` — and match note headings
+ * against it. That is the same structural commitment to exactly four sections
+ * that TASK-810 removed from the live-flush plane, surviving here only because
+ * it sits on a DIFFERENT call graph: the FINAL summary write (clinician edit and
+ * sign-off in `summary.service.ts`), not the live loop.
+ *
+ * The vocabulary now arrives as a COMPILED DOCUMENT TEMPLATE, so a tenant whose
+ * shape is a ten-section discharge summary gets a ten-key `fieldChanges` map
+ * through identical code. Nothing in this file knows the word SOAP.
+ *
+ * ## The fallback is preserved, and it is what "no shape" means
+ *
+ * `fieldChanges` always documented a whole-document fallback for a note that
+ * does not parse into sections. That fallback is now ALSO the answer when no
+ * template resolves at all: without a shape this module has no section
+ * vocabulary, and inventing one — by quietly reinstating the four SOAP names —
+ * would key a tenant's clinical edit history on sections their template never
+ * declared. A whole-document delta is less granular but always true.
+ *
+ * Matching accepts a section's TITLE ("Follow-up") *and* its KEY ("follow_up"),
+ * for the reason `document-shape-parser.ts` gives: a model handed a JSON-shaped
+ * instruction that falls back to prose emits whichever of the two the
+ * instruction named last. The emitted map is always keyed on the KEY, so the
+ * persisted shape of `fieldChanges` is stable no matter which heading the model
+ * wrote — and, for the platform SOAP shape, byte-identical to what this module
+ * emitted when the four names were hardcoded.
  */
+import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
 
 /** Per-field old/new pair captured in `fieldChanges`. */
 export interface FieldChange {
@@ -19,42 +50,57 @@ export interface FieldChange {
 export interface ContentDelta {
   /** Unified line diff (`  ` context, `- ` removed, `+ ` added), or null when unchanged. */
   contentDiff: string | null;
-  /** Per-SOAP-section (or whole-document) changes, or null when unchanged. */
+  /** Per-section (or whole-document) changes, or null when unchanged. */
   fieldChanges: Record<string, FieldChange> | null;
 }
 
-/** The canonical SOAP section names `fieldChanges` keys on. */
-const SOAP_SECTIONS = ['subjective', 'objective', 'assessment', 'plan'] as const;
+/**
+ * Lower-cased heading keyword (title OR key) → the section KEY to report under.
+ * Null when the template supplies no sections to match against.
+ */
+type SectionLookup = Map<string, string>;
+
+function sectionLookupFor(compiled: CompiledDocumentTemplate | null | undefined): SectionLookup | null {
+  if (!compiled || compiled.checklist.length === 0) return null;
+
+  const lookup: SectionLookup = new Map();
+  for (const entry of compiled.checklist) {
+    lookup.set(entry.title.trim().toLowerCase(), entry.key);
+    lookup.set(entry.key.trim().toLowerCase(), entry.key);
+  }
+  return lookup;
+}
 
 /**
- * Normalize a line to a canonical SOAP header name, or null when it is not a
- * section header. Tolerates the common heading shapes (`Subjective:`,
- * `## Assessment`, `**Plan**`, `S O A P` words) by stripping leading markdown /
- * list markers and trailing punctuation before matching.
+ * Normalize a line to one of the template's section keys, or null when it is not
+ * a section header. Tolerates the common heading shapes (`Subjective:`,
+ * `## Assessment`, `**Plan**`) by stripping leading markdown / list markers and
+ * trailing punctuation before matching. Unchanged from the SOAP version except
+ * for what it matches AGAINST.
  */
-function canonicalSoapHeader(line: string): string | null {
+function canonicalSectionKey(line: string, lookup: SectionLookup): string | null {
   const stripped = line
     .trim()
     .replace(/^[#*>\-\s]+/, '')
     .replace(/[:*\s]+$/, '')
     .trim()
     .toLowerCase();
-  return (SOAP_SECTIONS as readonly string[]).includes(stripped) ? stripped : null;
+  return lookup.get(stripped) ?? null;
 }
 
 /**
- * Group a note's lines under their SOAP section headers. Returns null when no
- * recognizable SOAP header is present (the caller then uses the whole-document
+ * Group a note's lines under their section headers. Returns null when no
+ * recognizable header is present (the caller then uses the whole-document
  * fallback). Content before the first header is ignored for the section map.
  */
-function parseSoapSections(text: string): Record<string, string> | null {
+function parseSections(text: string, lookup: SectionLookup): Record<string, string> | null {
   const lines = text.split(/\r?\n/);
   const buckets: Record<string, string[]> = {};
   let current: string | null = null;
   let found = false;
 
   for (const line of lines) {
-    const header = canonicalSoapHeader(line);
+    const header = canonicalSectionKey(line, lookup);
     if (header) {
       current = header;
       found = true;
@@ -116,8 +162,16 @@ function buildLineDiff(oldText: string, newText: string): string {
  * Compute the edit-capture delta between two note contents. Returns
  * `{ contentDiff: null, fieldChanges: null }` when the content is unchanged
  * (null/undefined are treated as the empty string).
+ *
+ * @param compiled The tenant's resolved, pinned document shape. Omit (or pass
+ *   null) when none resolves — `fieldChanges` then carries the whole-document
+ *   delta rather than guessing a section vocabulary.
  */
-export function diffContent(oldContent: string | null | undefined, newContent: string | null | undefined): ContentDelta {
+export function diffContent(
+  oldContent: string | null | undefined,
+  newContent: string | null | undefined,
+  compiled?: CompiledDocumentTemplate | null,
+): ContentDelta {
   const oldStr = oldContent ?? '';
   const newStr = newContent ?? '';
 
@@ -127,8 +181,9 @@ export function diffContent(oldContent: string | null | undefined, newContent: s
 
   const contentDiff = buildLineDiff(oldStr, newStr);
 
-  const oldSections = parseSoapSections(oldStr);
-  const newSections = parseSoapSections(newStr);
+  const lookup = sectionLookupFor(compiled);
+  const oldSections = lookup ? parseSections(oldStr, lookup) : null;
+  const newSections = lookup ? parseSections(newStr, lookup) : null;
 
   let fieldChanges: Record<string, FieldChange> | null = null;
   if (oldSections || newSections) {
@@ -142,8 +197,9 @@ export function diffContent(oldContent: string | null | undefined, newContent: s
     if (Object.keys(changes).length > 0) fieldChanges = changes;
   }
 
-  // Whole-document fallback: unparseable notes, or a change outside any SOAP
-  // section (e.g. a preamble edit) where the section map came back unchanged.
+  // Whole-document fallback, now covering three cases: no template resolved,
+  // an unparseable note, and a change outside any recognised section (e.g. a
+  // preamble edit) where the section map came back unchanged.
   if (!fieldChanges) {
     fieldChanges = { document: { old: oldStr, new: newStr } };
   }
