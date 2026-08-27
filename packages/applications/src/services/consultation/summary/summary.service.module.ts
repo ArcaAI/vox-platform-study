@@ -19,6 +19,7 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
 import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.service.module';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
+import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -71,6 +72,12 @@ import { TextRequestServiceModule } from '../../text-request/text-request.servic
     // BELOW injects with `@Optional()` — without this import that resolves to
     // `undefined` and few-shot silently degrades to zero-shot.
     GateEditMiningServiceModule,
+    // TASK-810 carry-over A — supplies `IDocumentTemplateService`, which
+    // `SummaryService` injects with `@Optional()` to key the edit-capture
+    // `fieldChanges` map on the tenant's PINNED document shape. Without this
+    // import the token resolves to `undefined` and every edit/sign delta
+    // silently degrades to the whole-document fallback.
+    DocumentTemplateServiceModule,
   ],
   providers: [
     PromptAssemblyService,

@@ -193,8 +193,13 @@ export type {
   ClaimEvidence,
   ClaimStatus,
   ClinicalReviewData,
+  DocumentSectionGroup,
+  DocumentSectionKey,
+  DocumentSectionSpec,
   HighlightSegment,
+  LegacySoapSectionCode,
   SensorScores,
+  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup (TASK-810).
   SoapSection,
   SoapSectionGroup,
   TranscriptSource,
