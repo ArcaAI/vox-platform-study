@@ -14,7 +14,10 @@
 #   docker build -f apps/guardrail/Dockerfile --target production -t guardrail .
 #
 # Notes:
-#   - libgomp1 (onnxruntime runtime dep) + curl (healthcheck) come from the base.
+#   - curl (healthcheck) comes from the base. So does libgomp1, but guardrail no
+#     longer needs it: TASK-735 Phase 3 removed onnxruntime along with the GLiNER
+#     runtime, and nothing guardrail installs links against OpenMP. It costs
+#     nothing here — the base carries it for `hope-stt` and `hope-nlp`.
 #   - Guardrail holds NO model weights and needs NO model cache (TASK-817 F-2).
 #     TASK-735 Phase 3 moved the GLiNER runtime and MiniCheck to `apps/nlp`;
 #     this image installs no huggingface library, so it downloads nothing and
@@ -71,7 +74,7 @@ FROM ${BASE_IMAGE} AS production
 LABEL maintainer="HOPE Team" \
     service="guardrail" \
     org.opencontainers.image.title="HOPE Guardrail Service" \
-    org.opencontainers.image.description="GLiNER ONNX content safety + medical context validation"
+    org.opencontainers.image.description="Content-safety and medical-context policy decisions; delegates NER to hope-nlp and LLM judgement to hope-text"
 
 ENV PYTHONPATH="/app/src" \
     GUARDRAIL_HOST=0.0.0.0 \
@@ -104,7 +107,9 @@ RUN set -eu; \
 
 USER hope
 
-# Longer start-period: first boot downloads the GLiNER ONNX model (~150 MB).
+# The start-period covers process start alone: guardrail loads no weights
+# (TASK-735 Phase 3), so it is live once uvicorn binds and the DB/Redis pools
+# open. The 120s is slack for a cold host, not for a model download.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:${GUARDRAIL_PORT}/api/health/live || exit 1
 
