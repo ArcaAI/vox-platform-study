@@ -74,7 +74,7 @@ export const COMPILED_AT = '2026-08-16T00:00:00.000Z';
 // (a checksum over the seven-entry registry of the time, `compilerVersion: 'task-720-seed-1'`,
 // and `caps.maxNodeSeconds: 900`), all of which differed from what a real publish through
 // `WorkflowDefinitionService` stamps. The script's own drift verdict is now clean.
-const REGISTRY_CHECKSUM = 'd53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1';
+const REGISTRY_CHECKSUM = '0836b1f31e1b5463cdee0ddfe6aa3a57db50777963cc14884346050159587763';
 
 export const GRAPH = {
   version: 1,
@@ -231,7 +231,7 @@ export const COMPILED_CONFIG = {
   },
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
   // sha256 over canonicalJson of every field above (computed by `compile()` — see docstring).
-  checksum: '1787a0825c1f378bd9d6495da436d476ed8c3350ea6f78ac7966c86a66afee15',
+  checksum: '7353420b1f9d041a1968fa7cac1906b28b17ffd6c9617e72640e3242439e8d7c',
 };
 
 // sha256 over canonicalJson(GRAPH), computed by the same `canonicalJson` the compiler uses.
