@@ -28,6 +28,8 @@ import type { CompiledWorkflowConfig, CompilerContext, WorkflowFinding, Workflow
 import { createHash } from 'node:crypto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { IConsultationContextSchemaService } from '../consultation-context-schema/IConsultationContextSchemaService';
+import type { IConsultationContextSchemaService as IConsultationContextSchemaServicePort } from '../consultation-context-schema/IConsultationContextSchemaService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy';
 import { WorkflowValidatorService } from '../workflow-validator/workflow-validator.service';
@@ -59,12 +61,23 @@ const SHAPE_FINDING_RULE_ID = 'WF-SHAPE';
 const COMPILER_VERSION = '0.1.0';
 const RULE_SET_VERSION = 1;
 const DEFAULT_CAPS = { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 };
-const DEFAULT_POLICY_BINDINGS = {
+
+/**
+ * The two `policyBindings` fields that are NOT derivable from the graph.
+ *
+ * This constant used to carry all five, and every compile passed it verbatim — which is what
+ * D-7 recorded: a published graph pinned NOTHING. `contextSchemaVersionId`, `promptTemplateRefs`
+ * and `entitlementKeys` are now derived per compile (see `buildCompilerContext`), leaving only
+ * the two below, whose values genuinely have no source in the graph yet.
+ *
+ * `guardrailProfile` selects PLACEMENT, not permission — the actual clinical-safety enforcement
+ * runs at a boundary this field only names — so a fixed `STANDARD` here is not a safety
+ * shortcut. When a real per-tenant guardrail profile and redaction rule set exist, they resolve
+ * the same way the context schema now does.
+ */
+const NON_DERIVABLE_POLICY_BINDINGS = {
   guardrailProfile: 'STANDARD' as const,
   redactionRuleSetId: null,
-  promptTemplateRefs: [],
-  contextSchemaVersionId: null,
-  entitlementKeys: [],
 };
 
 /** TASK-724: the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
@@ -130,6 +143,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // prompt-binding surfaces below refuse rather than half-work.
     @Optional() private readonly promptTemplateRepository?: PromptTemplateRepository,
     @Optional() private readonly promptVersionRepository?: PromptVersionRepository,
+    // D-7 — the tenant's context-schema pin. `@Optional()` + trailing for the same reason as
+    // the four above (positional unit fixtures); production DI supplies it via
+    // `ConsultationContextSchemaServiceModule`. Absent ⇒ the pin resolves to `null` and the
+    // publish still succeeds: an unpinned artifact is worse than a pinned one, but refusing to
+    // publish at all would be worse than both, and the graph-derived bindings do not need it.
+    @Optional() @Inject(IConsultationContextSchemaService) private readonly contextSchemaService?: IConsultationContextSchemaServicePort,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -226,7 +245,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       // The engine gate: compile() needs the entity's client-generated id/versionNumber, both
       // already assigned by the factory before this insert — so a genuinely uncompilable graph
       // (cycle, unregistered node type) is rejected BEFORE anything is written, not after.
-      this.compileGraphOrThrow(entity, graph);
+      //
+      // The compiled artifact is DISCARDED here — this call is a yes/no gate, not a stamp — so
+      // the context-schema pin is passed as `null` rather than resolved: it could not reach any
+      // persisted row, and reading it would add a DB round-trip inside this transaction for a
+      // value nothing consumes.
+      this.compileGraphOrThrow(entity, graph, null);
 
       return this.workflowDefinitionRepository.create(entity, tx);
     });
@@ -253,7 +277,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       if (reportIsShapeBroken(report)) {
         throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
       }
-      this.compileGraphOrThrow(entity, graph);
+      // Engine gate only — the compiled artifact is discarded and a graph edit resets the row to
+      // DRAFT, so there is nothing here for a context-schema pin to be stamped onto.
+      this.compileGraphOrThrow(entity, graph, null);
 
       entity.graph = graph as unknown as JsonValue;
       entity.graphChecksum = graphChecksum(graph);
@@ -310,7 +336,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const graph = entity.graph as unknown as WorkflowGraph;
     const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
-    const compileResult = compile(graph, this.buildCompilerContext(entity));
+    // Same bindings publish() will stamp — a validate() that compiled against different
+    // policyBindings would greenlight an artifact the publish then produces differently.
+    const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId()));
     const engineClean = !reportIsShapeBroken(report) && !('findings' in compileResult);
 
     entity.validationReport = report as unknown as JsonValue;
@@ -346,7 +374,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
     }
 
-    const compiled = this.compileGraphOrThrow(entity, graph);
+    // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
+    // records WHICH schema version it was built against instead of a hardcoded null.
+    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
 
     // TASK-724 Task 4 — an `stt`-palette publish ALSO compiles the graph into an
     // `AsrPipeline`/`AsrPipelineVersion` row (README §1's central design decision). Runs BEFORE
@@ -409,7 +439,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     assertEqualTenants(entity, { tenantId: this.tenantId });
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    const compiledConfig = this.compileGraphOrThrow(entity, graph);
+    // The sandbox must preview exactly what publish would stamp, bindings included.
+    const compiledConfig = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
 
@@ -685,7 +716,58 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     );
   }
 
-  private buildCompilerContext(entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'tenantId' | 'paletteKey'>): CompilerContext {
+  /**
+   * D-7 — the tenant's CURRENT context-schema pin, or `null`.
+   *
+   * Resolved through `getEffectiveBundle`, which owns the DEPARTMENT → TENANT discovery cascade
+   * and the "a schema only participates when it is SERVABLE" rule. Re-deriving that here would
+   * be a second, silently-diverging copy of a resolution the platform already has one answer for.
+   *
+   * Never throws: `getEffectiveBundle` returns nulls (not an error) for a tenant that has
+   * configured no schema, and a lookup failure must not be the thing that fails a publish. A
+   * `null` pin from here is an honest "this tenant pinned nothing" — which is exactly what D-7's
+   * hardcoded `null` could not distinguish itself from.
+   */
+  private async resolveContextSchemaVersionId(): Promise<string | null> {
+    if (!this.contextSchemaService) return null;
+    const bundle = await this.contextSchemaService.getEffectiveBundle().catch(() => null);
+    return bundle?.contextSchemaVersionId ?? null;
+  }
+
+  /**
+   * D-7 — `policyBindings` describing THIS graph rather than a frozen empty constant.
+   *
+   * `promptTemplateRefs` reuses DD-11's `collectPromptBindings`, which reads the binding off ANY
+   * node carrying `promptTemplateId` rather than a node-TYPE allow-list — so a generation node
+   * added to the registry later is picked up here for free, instead of being silently omitted
+   * from the compiled artifact.
+   *
+   * UNPINNED bindings are dropped, not defaulted. The compiled shape requires
+   * `versionNumber: integer >= 1` (the normative `compiled-config.schema.json` and both pydantic
+   * models agree), so emitting `0` for "no pin" would hand the interpreter a pin onto a version
+   * that cannot exist. Absent is the truthful encoding of "this node follows the template's
+   * approved version".
+   */
+  private buildCompilerContext(
+    entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'tenantId' | 'paletteKey'>,
+    graph: WorkflowGraph,
+    contextSchemaVersionId: string | null,
+  ): CompilerContext {
+    const promptTemplateRefs = collectPromptBindings(graph)
+      .filter((binding) => binding.pinnedVersionNumber !== null)
+      .map((binding) => ({ nodeId: binding.nodeId, templateId: binding.promptTemplateId, versionNumber: binding.pinnedVersionNumber as number }));
+
+    // Distinct + SORTED: `compiledConfig` is checksummed over its canonical JSON, so an
+    // order that followed node authoring order would make the same graph compile to two
+    // different checksums depending on how the author happened to lay it out.
+    const entitlementKeys = [
+      ...new Set(
+        (Array.isArray(graph.nodes) ? graph.nodes : [])
+          .map((node) => WORKFLOW_NODE_REGISTRY[node.type]?.entitlementKey)
+          .filter((key): key is string => typeof key === 'string' && key.length > 0),
+      ),
+    ].sort();
+
     return {
       definitionId: entity.id,
       slug: entity.slug,
@@ -696,7 +778,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       registryChecksum: registryChecksum(),
       ruleSetVersion: RULE_SET_VERSION,
       caps: DEFAULT_CAPS,
-      policyBindings: DEFAULT_POLICY_BINDINGS,
+      policyBindings: { ...NON_DERIVABLE_POLICY_BINDINGS, promptTemplateRefs, contextSchemaVersionId, entitlementKeys },
       nodeInfo: registryNodeInfo,
     };
   }
@@ -706,8 +788,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private compileGraphOrThrow(
     entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'tenantId' | 'paletteKey'>,
     graph: WorkflowGraph,
+    contextSchemaVersionId: string | null,
   ): CompiledWorkflowConfig {
-    const result = compile(graph, this.buildCompilerContext(entity));
+    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId));
     if ('findings' in result) {
       throw new BadRequestException({ message: 'The workflow graph could not be compiled.', findings: result.findings satisfies WorkflowFinding[] });
     }
