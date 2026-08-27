@@ -117,6 +117,49 @@ const INPUT_CONTEXT_BINDING_SCHEMA: NodeConfigSchema = Object.freeze({
   },
 });
 
+/**
+ * DD-11's prompt binding, as two config keys on the node that carries it.
+ *
+ * `promptTemplateId` says WHICH template; `promptVersionNumber` is that node's own movable PIN
+ * onto one IMMUTABLE version of it. The pin is the whole mechanism that stops an admin editing
+ * one shared template on the Prompt-management screen from silently re-prompting every workflow
+ * that references it — including published clinical ones.
+ *
+ * Declared here rather than per-schema because every schema in this module is
+ * `additionalProperties: false` AND the Studio inspector builds its form from
+ * `Object.entries(schema.properties)` alone. A node type that can carry a binding but does not
+ * DECLARE it loses the pin twice over: the value evaluator rejects it, and form generation drops
+ * it because no field is ever rendered for it — so a node round-tripped through the authoring UI
+ * comes back unpinned. Sharing one frozen object is what stops the seven declaration sites
+ * drifting apart into that state one node at a time.
+ *
+ * `minimum: 1` is not cosmetic: it is the same bound as `readBinding`'s `pinned > 0` guard
+ * (`node-prompt-binding.ts`) and as `versionNumber` on the compiled artifact — the normative
+ * `compiled-config.schema.json` and both pydantic models (`ge=1`). A pin authorable here that
+ * those reject would be a pin the interpreter cannot honour.
+ *
+ * Deliberately NOT added to any schema's `required`: DD-11 says a generation node MUST reference
+ * a prompt, but making the key required HERE would invalidate every graph already published
+ * without one. Shape is this module's job; "must reference" is a rule-catalogue job.
+ */
+const PROMPT_TEMPLATE_ID_PROPERTY = Object.freeze({
+  type: 'string',
+  pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  description: 'DD-11 — the prompt template this node uses.',
+});
+
+const PROMPT_VERSION_NUMBER_PROPERTY = Object.freeze({
+  type: 'integer',
+  minimum: 1,
+  description:
+    "DD-11 — this node's own pin onto one immutable version of that template. Absent means the node follows the template's approved version.",
+});
+
+const PROMPT_BINDING_PROPERTIES = Object.freeze({
+  promptTemplateId: PROMPT_TEMPLATE_ID_PROPERTY,
+  promptVersionNumber: PROMPT_VERSION_NUMBER_PROPERTY,
+});
+
 const PROMPT_TEMPLATE_REF_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/workflow-nodes/prompt.template_ref.schema.json',
@@ -125,7 +168,7 @@ const PROMPT_TEMPLATE_REF_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: ['promptTemplateId'],
   properties: {
-    promptTemplateId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
+    ...PROMPT_BINDING_PROPERTIES,
     variableBindings: { type: 'object', additionalProperties: { type: 'string', maxLength: 4000 } },
   },
 });
@@ -139,6 +182,7 @@ const GENERATE_TEXT_SCHEMA: NodeConfigSchema = Object.freeze({
   required: ['taskKey'],
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
+    ...PROMPT_BINDING_PROPERTIES,
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },
@@ -512,6 +556,9 @@ const CONSULTATION_ASSEMBLE_PROMPT_SCHEMA: NodeConfigSchema = Object.freeze({
   required: ['requiresFinalized', 'onError'],
   properties: {
     requiresFinalized: { type: 'boolean', description: 'WF-CONS-018 — the prompt may only be assembled from FINALIZED material.' },
+    // The prompt-assembly node is the one most likely to reference a MANAGED template rather
+    // than the inline `template` string below, so it must be able to carry — and keep — a pin.
+    ...PROMPT_BINDING_PROPERTIES,
     template: { type: 'string', maxLength: 50000 },
     dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
     conversationLanguage: { type: 'string', minLength: 2, maxLength: 16 },
@@ -537,6 +584,7 @@ const CONSULTATION_SYNTHESIZE_SCHEMA: NodeConfigSchema = Object.freeze({
         'WF-CONS-015 pins this to false — the synthesizer drafts prose. Code binding belongs to consultation.bindTerminology, against a terminology server, not to a language model recalling codes.',
     },
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
+    ...PROMPT_BINDING_PROPERTIES,
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },
@@ -620,6 +668,7 @@ const CONSULTATION_REALTIME_SUMMARY_SCHEMA: NodeConfigSchema = Object.freeze({
   required: ['onError'],
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    ...PROMPT_BINDING_PROPERTIES,
     windowChars: { type: 'integer', minimum: 1, description: 'How much of the tail of the running transcript each interim summary reads.' },
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
@@ -636,6 +685,7 @@ const CONSULTATION_SUGGESTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
   required: ['onError'],
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    ...PROMPT_BINDING_PROPERTIES,
     maxSuggestions: {
       type: 'integer',
       minimum: 0,
@@ -655,6 +705,7 @@ const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze(
   required: ['onError'],
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
+    ...PROMPT_BINDING_PROPERTIES,
     language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },
