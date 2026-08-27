@@ -56,6 +56,7 @@ export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } 
 export {
   SOAP_SECTIONS,
   SOAP_SECTION_LABELS,
+  labelForSection,
   isNeedsAttention,
   sortClaimsByAttention,
   selectClaimsNeedingAttention,
