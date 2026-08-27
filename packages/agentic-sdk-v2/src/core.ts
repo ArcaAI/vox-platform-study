@@ -380,8 +380,13 @@ export type {
   ClaimEvidence,
   ClaimStatus,
   ClinicalReviewData,
+  DocumentSectionGroup,
+  DocumentSectionKey,
+  DocumentSectionSpec,
   HighlightSegment,
+  LegacySoapSectionCode,
   SensorScores,
+  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup (TASK-810).
   SoapSection,
   SoapSectionGroup,
   TranscriptSource,
@@ -636,6 +641,7 @@ export {
   // Provenance/citations helpers for the review UI.
   SOAP_SECTIONS,
   SOAP_SECTION_LABELS,
+  labelForSection,
   isNeedsAttention,
   sortClaimsByAttention,
   selectClaimsNeedingAttention,

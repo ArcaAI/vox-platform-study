@@ -32,8 +32,46 @@
  */
 export type ClaimStatus = 'verified' | 'unverified' | 'flagged';
 
-/** SOAP note section a claim belongs to. */
-export type SoapSection = 'S' | 'O' | 'A' | 'P';
+/**
+ * The four legacy SOAP section codes.
+ *
+ * These are still what `apps/harness` emits on the wire today
+ * (`sensors/aggregator.py` → `DEFAULT_SOAP_SECTIONS = ("S","O","A","P")`), so
+ * they keep a name, canonical ordering and canonical labels of their own — see
+ * `SOAP_SECTIONS` / `SOAP_SECTION_LABELS` in `utils/citations`.
+ */
+export type LegacySoapSectionCode = 'S' | 'O' | 'A' | 'P';
+
+/**
+ * The section of a clinical document a claim belongs to (TASK-810).
+ *
+ * ## Why this is open rather than a four-value union
+ *
+ * This used to be `'S' | 'O' | 'A' | 'P'` — a CLOSED union, and the deepest
+ * structural commitment to exactly four sections anywhere in the platform.
+ * TASK-810 made document shapes tenant-authored: a `DocumentTemplate` declares
+ * its own ordered sections, each with its own key, and SOAP is one row in that
+ * catalog rather than the only expressible shape. A tenant publishing a
+ * ten-section discharge summary could not previously even TYPE a claim against
+ * it, so the review UI could not render one.
+ *
+ * The value is therefore a template SECTION KEY: either one of the four legacy
+ * codes above, or a key from the tenant's published shape (`hospital_course`,
+ * `follow_up`, …). The `(string & {})` half is what opens the union while
+ * keeping the four legacy codes in editor autocomplete.
+ *
+ * Nothing here validates the key against a template — the SDK is a client, and
+ * the pinned `DocumentTemplateVersion` on the server is the authority on which
+ * sections exist.
+ */
+export type DocumentSectionKey = LegacySoapSectionCode | (string & {});
+
+/**
+ * @deprecated Renamed to {@link DocumentSectionKey} — a claim's section is a
+ * document-template section key, and documents are no longer always SOAP.
+ * Retained as an alias so existing imports keep compiling.
+ */
+export type SoapSection = DocumentSectionKey;
 
 /**
  * A single piece of transcript evidence backing a claim. Offsets are character
@@ -58,8 +96,8 @@ export interface CitationClaim {
   id: string;
   /** The claim text as it appears in the drafted note. */
   text: string;
-  /** SOAP section the claim is filed under. */
-  section: SoapSection;
+  /** Document-template section key the claim is filed under. */
+  section: DocumentSectionKey;
   /** Sensor/model confidence in the claim, 0–1. */
   confidence: number;
   /** Verification status from the harness sensors. */
@@ -130,12 +168,25 @@ export interface ClinicalReviewData {
 // Derived view models (produced by the citations utilities)
 // =============================================================================
 
-/** A SOAP section grouped with the claims filed under it. */
-export interface SoapSectionGroup {
-  section: SoapSection;
+/** A document section grouped with the claims filed under it. */
+export interface DocumentSectionGroup {
+  section: DocumentSectionKey;
   label: string;
   claims: CitationClaim[];
 }
+
+/**
+ * @deprecated Renamed to {@link DocumentSectionGroup}. Retained as an alias so
+ * existing imports keep compiling.
+ */
+export type SoapSectionGroup = DocumentSectionGroup;
+
+/**
+ * A section to group claims under: either a bare key, or a key paired with the
+ * label to render. Pass the pair when you have the template's section TITLE —
+ * it beats humanizing the key ("Reason for Admission" vs "Admission Reason").
+ */
+export type DocumentSectionSpec = DocumentSectionKey | { key: DocumentSectionKey; label: string };
 
 /**
  * A contiguous run of transcript text, flagged for whether it falls inside a
