@@ -345,9 +345,14 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     reserved: true,
   },
   'admin:agent-promotion:manage': {
-    description: 'Manage department-agent promotions',
+    description: 'Manage cross-tenant workflow promotions',
     category: 'Admin',
-    implies: [{ action: 'manage', subject: 'DepartmentAgent' }],
+    // TASK-815 repointed this implication with the promotable itself: promotion
+    // moved from a `DepartmentAgentVersion` to a `WorkflowDefinition` version,
+    // and `AgentPromotionService.assertManagesBothTenants` now asks for
+    // `manage:WorkflowDefinition` in both tenants. A scope that still implied
+    // the deleted subject would grant nothing at all.
+    implies: [{ action: 'manage', subject: 'WorkflowDefinition' }],
     reserved: true,
   },
   'admin:agent-trajectory:read': {

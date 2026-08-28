@@ -6,22 +6,11 @@ import {
   AgentPromotionEntity,
   AgentPromotionFactory,
   AgentPromotionRepository,
-  ConsultationContextSchemaRepository,
-  ConsultationContextSchemaScope,
-  ConsultationContextSchemaStatus,
-  ConsultationContextSchemaVersionRepository,
   ConsultationRepository,
   ConsultationStatus,
   CoreUnitOfWorkService,
   CorePrisma,
-  DepartmentAgentEntity,
-  DepartmentAgentFactory,
-  DepartmentAgentRepository,
-  DepartmentAgentRole,
-  DepartmentAgentVersionEntity,
-  DepartmentAgentVersionFactory,
-  DepartmentAgentVersionRepository,
-  DepartmentRepository,
+  DocumentTemplateRepository,
   PromptTemplateFactory,
   PromptTemplateRepository,
   PromptVersionFactory,
@@ -29,17 +18,15 @@ import {
   ResourceType,
   SysEventType,
   SYSTEM_TENANT_ID,
+  WorkflowDefinitionEntity,
+  WorkflowDefinitionFactory,
+  WorkflowDefinitionRepository,
+  WorkflowDefinitionStatus,
 } from '@arcaai/domains';
+import { canonicalJson, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
 import { IAgentPromotionService } from './IAgentPromotionService';
-import { AgentPromotionResponse, PaginatedAgentPromotionResponse, PromoteAgentRequest } from './dto';
+import { AgentPromotionResponse, PaginatedAgentPromotionResponse, PromoteWorkflowRequest } from './dto';
 import { AgentPromotionDtoMapper } from './agentPromotion.dto.mapper';
-import {
-  AgentLoopConfig,
-  buildLoopConfigSnapshot,
-  canonicalAgentConfigJson,
-  subscribedKindsProblems,
-  writeScopeProblems,
-} from '../departmentAgent/constants';
 import { EvalRunService } from '../eval/eval-run.service';
 import { PolicyEngine } from '../../authorization/policy.engine';
 import { isSuperAdmin } from '../../common/tenant-guards';
@@ -55,13 +42,33 @@ export function liveConsultationsWarning(count: number): string {
   return `${count} ${plural} currently running on the previous version and will complete on it.`;
 }
 
+/** The CASL subject this service authorizes against, in both tenants. */
+const PROMOTION_SUBJECT = 'WorkflowDefinition';
+
+/** Node config keys the promotion rewrites or strips. */
+const PROMPT_TEMPLATE_ID_KEY = 'promptTemplateId';
+const PROMPT_VERSION_NUMBER_KEY = 'promptVersionNumber';
+const DOCUMENT_TEMPLATE_ID_KEY = 'documentTemplateId';
+const EVAL_GATE_KEY = 'evalGate';
+
 /**
- * Promote an agent configuration version from one tenant to another.
+ * Promote a workflow-definition version from one tenant to another.
+ *
+ * ## What is promoted (TASK-815 / OD-10)
+ *
+ * The promotable used to be a `DepartmentAgentVersion.configSnapshot`. With
+ * `DepartmentAgent` retired, the thing a platform admin actually wants to move
+ * between tenants is the AUTHORED WORKFLOW: its graph, its node configuration,
+ * and the prompt templates its generation nodes bind. `WorkflowDefinition` rows
+ * ARE versions (one row per `(tenantId, slug, versionNumber)`), so the exact
+ * artifact promoted is one immutable row — the same discipline as before, and
+ * the same discipline the repo's own `promote-*` CI jobs use when they re-tag a
+ * digest rather than rebuild.
  *
  * ## Authorization is the entire control
  *
  * There is no platform environment, tier or tenant-family concept, so "the
- * actor holds `manage` on `DepartmentAgent` in BOTH tenants" is all that
+ * actor holds `manage` on `WorkflowDefinition` in BOTH tenants" is all that
  * constrains which tenants may be promoted between. It is enforced in
  * `assertManagesBothTenants` and it runs BEFORE any read, so a caller who has
  * not proven it cannot use a 403/404 difference as an existence oracle over
@@ -69,40 +76,62 @@ export function liveConsultationsWarning(count: number): string {
  *
  * ## Tenant context
  *
- * `promote` runs under an ELEVATED TENANT-LESS context, exactly as
- * `AgentTemplateResyncService` does. That is a MECHANICAL requirement, not a
- * second authorization control: with a pinned tenant the tenant-scope Prisma
- * extension forces the caller's `tenantId` into every read, which makes a
- * cross-tenant read impossible rather than merely unauthorized. The corollary
- * matters when reading this file — in pass-through mode the extension injects
- * NOTHING, so **every repository call below passes `tenantId` explicitly**. A
- * missing filter here reads across all tenants.
+ * `promote` runs under an ELEVATED TENANT-LESS context. That is a MECHANICAL
+ * requirement, not a second authorization control: with a pinned tenant the
+ * tenant-scope Prisma extension forces the caller's `tenantId` into every read,
+ * which makes a cross-tenant read impossible rather than merely unauthorized.
+ * The corollary matters when reading this file — in pass-through mode the
+ * extension injects NOTHING, so **every repository call below passes `tenantId`
+ * explicitly**. A missing filter here reads across all tenants.
  *
- * `DepartmentAgent` is deliberately NOT added to `SYSTEM_SHARED_READ_MODELS`;
- * that would make every tenant's agents mutually readable platform-wide.
- *
- * ## What is copied
+ * ## What is copied, and what is deliberately not
  *
  * Promotion copies VALUES, never REFERENCES. A reference — a template id, a
- * golden-set id, a department id — is meaningful only inside the tenant that
- * owns it. The promoted artifact is the exact immutable
- * `DepartmentAgentVersion.configSnapshot`, read from the version table and
- * never re-derived from the live source agent, so a mid-promotion edit at the
- * source cannot leak into the target. Bound prompt templates are DEEP-COPIED
- * into the target (except SYSTEM-owned ones, which are genuinely readable
- * cross-tenant). `goldenSetId` is NOT copied — not even the pointer to a
- * corpus of Vault-Transit-encrypted `GoldenCase` PHI crosses a tenant
- * boundary. See for the full table.
+ * golden-set id — is meaningful only inside the tenant that owns it:
  *
- * ## Atomicity (closing )
+ * | Node config | Treatment |
+ * |---|---|
+ * | `promptTemplateId` | DEEP-COPIED into the target and rewritten, unless it is SYSTEM-owned (genuinely readable cross-tenant) |
+ * | `promptVersionNumber` | DROPPED with the copy — the target's fresh template starts at v1, so a source pin numbers a version that does not exist here |
+ * | `evalGate` | STRIPPED. `goldenSetId` names a corpus of Vault-Transit-encrypted `GoldenCase` PHI; not even the pointer crosses a tenant boundary. The target re-binds its own gate |
+ * | `documentTemplateId` | BLOCKS the promotion when tenant-owned. A `DocumentTemplate` is a shape with its own version lineage, and silently promoting a dangling reference would restructure the clinical document the target produces |
+ *
+ * ## The promoted row lands as a DRAFT
+ *
+ * Never PUBLISHED, never `isActive`. A cross-tenant push must not silently
+ * become the workflow that governs another tenant's live consultations — the
+ * same posture the agent promotion had when it pointedly refused to re-point
+ * the target department's default agent. The target's own admin publishes it
+ * through the existing validate/compile/publish path, which is also why this
+ * service does not recompile: `compiledConfig` is server-owned output of that
+ * path, and a second implementation of it would be a second thing to keep in
+ * step with the node registry.
+ *
+ * ## Atomicity
  *
  * Everything promotion writes into the TARGET tenant — the deep-copied prompt
- * templates, the agent (created or advanced), its immutable version row, and
- * the `AgentPromotion` audit record — commits inside ONE `runInTransaction`.
- * The eval re-run and the `evalRunId` write that follows it stay OUTSIDE: the
- * eval is an external, long-running call, and holding a Postgres transaction
- * open across it would be a worse defect than the partial-promotion window
- * being closed (D-7 already makes the eval non-blocking and post-copy).
+ * templates, the definition row, and the `AgentPromotion` audit record —
+ * commits inside ONE `runInTransaction`. The eval re-run and the `evalRunId`
+ * write that follows it stay OUTSIDE: the eval is an external, long-running
+ * call, and holding a Postgres transaction open across it would be a worse
+ * defect than the partial-promotion window being closed.
+ *
+ * ## The column names on `AgentPromotion` are older than what they hold
+ *
+ * The table is WORM and pre-dates this ticket, so its four id columns keep the
+ * names they were created with. What they now carry:
+ *
+ * | Column | Now holds |
+ * |---|---|
+ * | `sourceAgentId` | the source definition's SLUG — its identity across versions |
+ * | `agentVersionId` | the source definition ROW id: the exact version promoted |
+ * | `targetAgentId` | the target definition's SLUG |
+ * | `targetAgentVersionId` | the target definition ROW id this promotion created |
+ *
+ * The API surface (`PromoteWorkflowRequest` / `AgentPromotionResponse`) names
+ * them for what they are; only the physical columns lag, and renaming them is a
+ * migration with no behavioural content that this ticket deliberately did not
+ * take on.
  */
 @Injectable()
 export class AgentPromotionService extends BaseService implements IAgentPromotionService {
@@ -112,24 +141,17 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     private readonly promotionRepository: AgentPromotionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    private readonly agentRepository: DepartmentAgentRepository,
-    private readonly agentVersionRepository: DepartmentAgentVersionRepository,
-    private readonly departmentRepository: DepartmentRepository,
+    private readonly definitionRepository: WorkflowDefinitionRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
+    private readonly documentTemplateRepository: DocumentTemplateRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
-    // Required, NOT optional. 's create/update path degrades to a
-    // structural-only check when these are unwired; a cross-tenant privileged
-    // write must not, so the compatibility gate here is unconditional.
-    private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
-    private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly policyEngine: PolicyEngine,
-    // The DOMAINS `CoreUnitOfWorkService`, not the identically
-    // named unwired class under `services/baseServices`. REQUIRED, not
-    // optional: promotion is a privileged cross-tenant write, and degrading
-    // silently to a non-transactional sequence when the dependency is unwired
-    // would reintroduce exactly the partial-promotion window this closes —
-    // the same reasoning D-6 applies to the context-schema repositories above.
+    // The DOMAINS `CoreUnitOfWorkService`, not the identically named unwired
+    // class under `services/baseServices`. REQUIRED, not optional: promotion is
+    // a privileged cross-tenant write, and degrading silently to a
+    // non-transactional sequence when the dependency is unwired would
+    // reintroduce exactly the partial-promotion window this closes.
     private readonly unitOfWork: CoreUnitOfWorkService,
     @Optional() @Inject(EvalRunService) private readonly evalRunService?: EvalRunService,
   ) {
@@ -140,15 +162,15 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   // Reads — ORDINARY tenant-scoped, by the target tenant that owns the record
   // =========================================================================
 
-  async list(query: PaginatedQuery, targetAgentId?: string): Promise<PaginatedAgentPromotionResponse> {
+  async list(query: PaginatedQuery, targetDefinitionSlug?: string): Promise<PaginatedAgentPromotionResponse> {
     const tenantId = this.requireTenant();
 
     const where: Record<string, unknown> = { tenantId };
-    if (targetAgentId) where.targetAgentId = targetAgentId;
+    if (targetDefinitionSlug) where.targetAgentId = targetDefinitionSlug;
 
     const rows = await this.promotionRepository.findAll({
       ...withFormattedPaginatedProps(query),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DbFilters is a structural record; this is a plain tenant/agent filter the repository accepts as-is (the DepartmentAgentService.list precedent).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DbFilters is a structural record; this is a plain tenant/slug filter the repository accepts as-is.
       where: where as any,
       sort: [{ createdAt: 'desc' }],
     });
@@ -171,7 +193,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     // 404-over-403: a cross-tenant promotion id is "not yours", indistinguishable
     // from "missing".
     if (!promotion || promotion.tenantId !== tenantId) {
-      throw new NotFoundException(`Agent promotion ${id} not found`);
+      throw new NotFoundException(`Workflow promotion ${id} not found`);
     }
     return this.toResponseWithDrift(promotion);
   }
@@ -180,8 +202,8 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   // Promote — ELEVATED TENANT-LESS context
   // =========================================================================
 
-  async promote(dto: PromoteAgentRequest): Promise<AgentPromotionResponse> {
-    const { fromTenantId, toTenantId } = dto;
+  async promote(dto: PromoteWorkflowRequest): Promise<AgentPromotionResponse> {
+    const { fromTenantId, toTenantId, sourceDefinitionSlug } = dto;
 
     // ---- 1. Mechanical precondition (see the class header) ----------------
     this.assertElevatedTenantlessContext();
@@ -192,66 +214,49 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     }
 
     if (fromTenantId === toTenantId) {
-      throw new BadRequestException('A promotion must target a DIFFERENT tenant; use clone to copy within one tenant');
+      throw new BadRequestException('A promotion must target a DIFFERENT tenant; use the definition editor to copy within one tenant');
     }
 
-    // ---- 2. THE authorization control, BEFORE any read (D10) --------------
+    // ---- 2. THE authorization control, BEFORE any read --------------------
     await this.assertManagesBothTenants(userId, fromTenantId, toTenantId);
 
-    // ---- 3. Source agent + the immutable version being promoted -----------
-    const source = await this.agentRepository.findById(dto.sourceAgentId);
-    if (!source || source.tenantId !== fromTenantId) {
-      throw new NotFoundException(`Department agent ${dto.sourceAgentId} not found`);
+    // ---- 3. The exact immutable source version ----------------------------
+    const source = await this.resolveSourceVersion(fromTenantId, sourceDefinitionSlug, dto.definitionVersionNumber);
+    const sourceGraph = readGraph(source.graph);
+    if (!sourceGraph) {
+      throw new BadRequestException(`Workflow '${sourceDefinitionSlug}' version ${source.versionNumber} has no readable graph to promote`);
     }
 
-    const sourceVersion = await this.resolveSourceVersion(source, dto.agentVersionNumber);
-    const snapshot = sourceVersion.configSnapshot as Record<string, unknown>;
-    const loopConfig = snapshotToLoopConfig(snapshot);
+    // ---- 4. Blocking gate -------------------------------------------------
+    await this.assertNoTenantOwnedDocumentTemplates(sourceGraph);
 
-    // ---- 4. Target department — reuse-only, matched by CODE ---------------
-    const targetDepartment = await this.resolveTargetDepartment(source, toTenantId);
+    // ---- 5. Non-blocking alert -------------------------------------------
+    const existingVersions = await this.definitionRepository.findAllVersionsBySlug(toTenantId, sourceDefinitionSlug);
+    const warnings = await this.buildWarnings(toTenantId, existingVersions.length > 0);
 
-    // ---- 5. Blocking gates ------------------------------------------------
-    await this.assertContextKindsDeclaredInTarget(loopConfig, toTenantId, targetDepartment.id);
+    // ---- 6 + 7. The copy and its immutable record — ONE transaction -------
+    // Everything the promotion produces in the TARGET tenant — the deep-copied
+    // prompt templates, the definition row, and the `AgentPromotion` audit
+    // record — commits or rolls back together. A repository caches its database
+    // context at construction, so the CLS propagation inside `runInTransaction`
+    // would NOT reach these singletons on its own: passing `tx` explicitly is
+    // what actually enrols each write.
+    const { targetDefinition, savedPromotion, checksum } = await this.unitOfWork.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
+      const promotedGraph = await this.materializeGraph(sourceGraph, source, toTenantId, userId, tx);
+      const promotedChecksum = graphChecksum(promotedGraph);
 
-    const existing = await this.agentRepository.findBySlug(toTenantId, targetDepartment.id, source.slug);
-    await this.assertPrimaryRoleAvailable(loopConfig, toTenantId, targetDepartment.id, existing?.id);
-
-    // ---- 6. Non-blocking alert -------------------------------------
-    const warnings = await this.buildWarnings(toTenantId, existing);
-
-    const checksum = createHash('sha256').update(canonicalAgentConfigJson(snapshot)).digest('hex');
-
-    // ---- 7 + 8. The copy and its immutable record — ONE transaction -------
-    // , closing. Everything the promotion produces in the
-    // TARGET tenant — the deep-copied prompt templates, the agent (created or
-    // advanced), its version row, and the AgentPromotion audit record — commits
-    // or rolls back together. Before this, the sequence was ordered so the
-    // audit row landed LAST, which guaranteed a record never claimed something
-    // that did not complete; but the reverse window stayed open, leaving a
-    // PARTIALLY-PROMOTED agent with no record saying so. `Repository.update`
-    // now takes a `tx`, so the create-OR-update path (D-10) is wrappable.
-    //
-    // Every write below therefore threads `tx`. A repository caches its
-    // database context at construction, so the CLS propagation inside
-    // `runInTransaction` would NOT reach these singletons on its own — passing
-    // `tx` explicitly is what actually enrols the write.
-    const { targetAgent, savedPromotion } = await this.unitOfWork.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
-      const agent = existing
-        ? await this.advanceTargetAgent(existing, source, loopConfig, toTenantId, targetDepartment.id, userId, tx)
-        : await this.createTargetAgent(source, loopConfig, toTenantId, targetDepartment.id, userId, tx);
-
-      const targetVersion = await this.writeTargetVersion(agent, snapshot, checksum, fromTenantId, sourceVersion, userId, tx);
+      const definition = await this.writeTargetDefinition(source, promotedGraph, promotedChecksum, existingVersions, toTenantId, userId, tx);
 
       const promotion = AgentPromotionFactory.CreateAgentPromotion({
         fromTenantId,
         toTenantId,
-        agentVersionId: sourceVersion.id,
-        sourceAgentId: source.id,
-        targetAgentId: agent.id,
-        targetAgentVersionId: targetVersion?.id ?? null,
-        configSnapshot: snapshot as never,
-        checksum,
+        // See the class header for what these four columns now carry.
+        agentVersionId: source.id,
+        sourceAgentId: source.slug,
+        targetAgentId: definition.slug,
+        targetAgentVersionId: definition.id,
+        configSnapshot: promotedGraph as never,
+        checksum: promotedChecksum,
         sourceEvalRunId: dto.sourceEvalRunId ?? null,
         warnings: warnings as never,
         promotedBy: userId,
@@ -260,7 +265,11 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       } as never);
       promotion.validate();
 
-      return { targetAgent: agent, savedPromotion: await this.promotionRepository.create(promotion, tx) };
+      return {
+        targetDefinition: definition,
+        savedPromotion: await this.promotionRepository.create(promotion, tx),
+        checksum: promotedChecksum,
+      };
     });
 
     // Announced only AFTER the commit — a sys-event for a promotion that rolled
@@ -272,18 +281,18 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       data: {
         // The event's own `tenantId` is CLS-sourced (a BaseService security
         // boundary) and is empty on this elevated path, so BOTH tenants travel
-        // in the payload — the `AgentTemplateResyncService` precedent.
+        // in the payload.
         fromTenantId,
         toTenantId,
-        sourceAgentId: source.id,
-        targetAgentId: targetAgent.id,
-        agentVersionId: sourceVersion.id,
+        sourceDefinitionSlug: source.slug,
+        sourceDefinitionVersionId: source.id,
+        targetDefinitionVersionId: targetDefinition.id,
         checksum,
       },
     });
 
-    // ---- 9. Eval RE-RUNS at the target, against the TARGET's corpus -------
-    const evalRunId = await this.runTargetEval(dto, targetAgent, toTenantId, warnings);
+    // ---- 8. Eval RE-RUNS at the target, against the TARGET's corpus -------
+    const evalRunId = await this.runTargetEval(dto, targetDefinition, toTenantId, warnings);
     if (evalRunId) {
       savedPromotion.evalRunId = evalRunId;
       await this.promotionRepository.update(savedPromotion.id, savedPromotion);
@@ -326,12 +335,12 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
 
   /**
    * THE authorization control. The actor must hold `manage` on
-   * `DepartmentAgent` in BOTH tenants; either side missing is a 403 naming
+   * `WorkflowDefinition` in BOTH tenants; either side missing is a 403 naming
    * which side failed.
    *
    * This is a PRIVILEGE 403, not the 404-over-403 cross-tenant posture — the
    * distinction `05-nestjs-api.md` §"Imperative Privilege Checks" draws. A
-   * cross-tenant agent id still returns 404 (see `promote` step 3), and this
+   * cross-tenant slug still returns 404 (see `resolveSourceVersion`), and this
    * check runs first precisely so that 404 is only ever observable by someone
    * already entitled to observe it.
    */
@@ -341,140 +350,90 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       ['target', toTenantId],
     ] as const) {
       const ability = await this.policyEngine.buildAbility({ userId, tenantId });
-      if (!ability.can('manage', 'DepartmentAgent')) {
+      if (!ability.can('manage', PROMOTION_SUBJECT)) {
         throw new ForbiddenException(
-          `Promotion requires manage rights on BOTH tenants; you do not hold manage:DepartmentAgent on the ${side} tenant.`,
+          `Promotion requires manage rights on BOTH tenants; you do not hold manage:${PROMOTION_SUBJECT} on the ${side} tenant.`,
         );
       }
     }
   }
 
-  /** The exact immutable version to promote — explicit number, else the latest. */
-  private async resolveSourceVersion(source: DepartmentAgentEntity, versionNumber?: number): Promise<DepartmentAgentVersionEntity> {
-    const version =
-      versionNumber !== undefined
-        ? await this.agentVersionRepository.findByAgentAndVersionNumber(source.id, versionNumber)
-        : await this.agentVersionRepository.findLatestForAgent(source.id);
-
-    if (!version) {
-      throw new BadRequestException(
-        versionNumber !== undefined
-          ? `Agent '${source.slug}' has no configuration version ${versionNumber} to promote`
-          : `Agent '${source.slug}' has no immutable configuration version to promote; configure its loop surface first`,
-      );
-    }
-    // Defensive: the version table is tenant-scoped, but this path runs with
-    // the extension in pass-through, so nothing else enforces it here.
-    if (version.tenantId !== source.tenantId) {
-      throw new NotFoundException(`Department agent ${source.id} not found`);
-    }
-    return version;
-  }
-
   /**
-   * REUSE-ONLY, matched by department CODE — the `AgentTemplateResyncService`
-   * rule: promotion reconciles an agent onto a department the
-   * target tenant already runs; it must never provision one.
-   */
-  private async resolveTargetDepartment(source: DepartmentAgentEntity, toTenantId: string) {
-    const sourceDepartment = await this.departmentRepository.findById(source.departmentId);
-    if (!sourceDepartment) {
-      throw new BadRequestException(`Source agent ${source.id} binds a missing department`);
-    }
-    const targetDepartment = await this.departmentRepository.findByCode(toTenantId, sourceDepartment.code);
-    if (!targetDepartment) {
-      throw new BadRequestException(
-        `Promotion blocked: the target tenant has no department with code '${sourceDepartment.code}'. ` +
-          'Promotion reuses an existing department and never provisions one.',
-      );
-    }
-    return targetDepartment;
-  }
-
-  /**
-   * blocked when the target lacks a context kind the promoted agent
-   * subscribes to (or an output kind it writes), with the missing keys NAMED.
+   * The exact immutable version to promote — an explicit `versionNumber`, else
+   * the source tenant's ACTIVE PUBLISHED row for that slug.
    *
-   * Unlike 's create/update path this never degrades to a
-   * structural-only check: an unresolvable kind reference must not be written
-   * into another tenant on a privileged path.
+   * Defaulting to the ACTIVE PUBLISHED row rather than the newest one is
+   * deliberate: the newest row may be an unfinished draft, and promoting an
+   * unvalidated graph into another tenant is how a cross-tenant push becomes a
+   * support ticket. An explicit number promotes exactly what was asked for.
    */
-  private async assertContextKindsDeclaredInTarget(config: AgentLoopConfig, toTenantId: string, targetDepartmentId: string): Promise<void> {
-    const kindKeys = config.subscribedKinds ? subscribedKindsProblems(config.subscribedKinds).kindKeys : [];
-    const outputKeys = config.writeScope ? writeScopeProblems(config.writeScope).outputKeys : [];
-    if (kindKeys.length === 0 && outputKeys.length === 0) return;
-
-    const declared = await this.resolveServableContextDefinition(toTenantId, targetDepartmentId);
-    if (!declared) {
-      throw new BadRequestException(
-        `Promotion blocked: the promoted agent references context ${describeKeys(kindKeys, outputKeys)}, ` +
-          'but the target department has no published context schema to resolve them against.',
-      );
+  private async resolveSourceVersion(fromTenantId: string, slug: string, versionNumber?: number): Promise<WorkflowDefinitionEntity> {
+    if (versionNumber !== undefined) {
+      const versions = await this.definitionRepository.findAllVersionsBySlug(fromTenantId, slug);
+      const match = versions.find((row) => row.versionNumber === versionNumber);
+      if (!match) {
+        throw new NotFoundException(`Workflow '${slug}' has no version ${versionNumber} in the source tenant`);
+      }
+      return match;
     }
 
-    const missingKinds = kindKeys.filter((key) => !declared.kinds.has(key));
-    const missingOutputs = outputKeys.filter((key) => !declared.outputs.has(key));
-    if (missingKinds.length > 0 || missingOutputs.length > 0) {
-      const parts: string[] = [];
-      if (missingKinds.length > 0) parts.push(`kind(s) ${missingKinds.join(', ')}`);
-      if (missingOutputs.length > 0) parts.push(`output(s) ${missingOutputs.join(', ')}`);
+    const published = await this.definitionRepository.findPublishedBySlug(fromTenantId, slug);
+    if (!published) {
       throw new BadRequestException(
-        `Promotion blocked: the target department does not declare ${parts.join(' and ')}. ` +
-          'Publish them on the target’s context schema before promoting.',
+        `Workflow '${slug}' has no ACTIVE PUBLISHED version in the source tenant. ` +
+          'Publish it there, or name an explicit version to promote a draft deliberately.',
       );
+    }
+    return published;
+  }
+
+  /**
+   * BLOCK when a node binds a TENANT-OWNED `DocumentTemplate`.
+   *
+   * A `DocumentTemplate` is a document SHAPE with its own version lineage, and
+   * a node's `documentVersionNumber` pins one of its versions. Copying the
+   * reference would leave the promoted node pointing at a row the target cannot
+   * read; copying the shape is a second deep-copy pipeline this ticket does not
+   * take on. Refusing, with the offending nodes NAMED, is the honest answer —
+   * and it is what stops a promotion silently restructuring the clinical
+   * document the target produces. A SYSTEM-owned shape is genuinely readable
+   * cross-tenant and passes.
+   */
+  private async assertNoTenantOwnedDocumentTemplates(graph: WorkflowGraph): Promise<void> {
+    const offenders: string[] = [];
+    for (const node of graph.nodes) {
+      const documentTemplateId = readStringConfig(node, DOCUMENT_TEMPLATE_ID_KEY);
+      if (!documentTemplateId) continue;
+      const template = await this.safeFindDocumentTemplate(documentTemplateId);
+      // A binding that resolves to nothing is the source tenant's own problem
+      // and blocks for the same reason a tenant-owned one does: the promoted
+      // node would point at a row the target cannot read.
+      if (template && template.tenantId === SYSTEM_TENANT_ID) continue;
+      offenders.push(`${node.id} (${node.type})`);
+    }
+    if (offenders.length > 0) {
+      throw new BadRequestException(
+        `Promotion blocked: node(s) ${offenders.join(', ')} bind a document template that is not SYSTEM-owned, so it cannot be resolved in the target tenant. ` +
+          'Re-bind them to a SYSTEM document template, or remove the binding, before promoting.',
+      );
+    }
+  }
+
+  private async safeFindDocumentTemplate(id: string) {
+    try {
+      return await this.documentTemplateRepository.findById(id);
+    } catch {
+      return null;
     }
   }
 
   /**
-   * The target department's servable context vocabulary — the same
-   * DEPARTMENT → TENANT cascade `ConsultationContextSchemaService` uses, read
-   * with an EXPLICIT `toTenantId` because the extension injects nothing here.
-   */
-  private async resolveServableContextDefinition(
-    tenantId: string,
-    departmentId: string,
-  ): Promise<{ kinds: Set<string>; outputs: Set<string> } | null> {
-    const candidates = [
-      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.DEPARTMENT, departmentId),
-      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.TENANT, null),
-    ];
-
-    for (const schema of candidates) {
-      if (!schema) continue;
-      const servable =
-        schema.pinnedVersionNumber != null &&
-        (schema.status === ConsultationContextSchemaStatus.PUBLISHED || schema.status === ConsultationContextSchemaStatus.APPROVED);
-      if (!servable) continue;
-      const version = await this.contextSchemaVersionRepository.findBySchemaAndVersionNumber(schema.id, schema.pinnedVersionNumber as number);
-      if (version) return extractDeclaredContextKeys(version.definition);
-    }
-    return null;
-  }
-
-  /** At most one ENABLED PRIMARY per department — in the TARGET department. */
-  private async assertPrimaryRoleAvailable(
-    config: AgentLoopConfig,
-    toTenantId: string,
-    targetDepartmentId: string,
-    excludeId?: string,
-  ): Promise<void> {
-    if (config.role !== DepartmentAgentRole.PRIMARY) return;
-    const existingPrimary = await this.agentRepository.findPrimaryForDepartment(toTenantId, targetDepartmentId, excludeId);
-    if (existingPrimary) {
-      throw new BadRequestException(
-        `Promotion blocked: the promoted agent is PRIMARY, but the target department already has a PRIMARY agent ` +
-          `('${existingPrimary.slug}'). Change its role before promoting.`,
-      );
-    }
-  }
-
-  /**
-   * alert, never block. Only meaningful when the target agent already
-   * exists: without a previous version there is nothing for a running
+   * Alert, never block. Only meaningful when the target already has a version
+   * of this workflow: without a previous one there is nothing for a running
    * consultation to "complete on".
    */
-  private async buildWarnings(toTenantId: string, existing: DepartmentAgentEntity | null): Promise<string[]> {
-    if (!existing) return [];
+  private async buildWarnings(toTenantId: string, targetAlreadyHasVersions: boolean): Promise<string[]> {
+    if (!targetAlreadyHasVersions) return [];
     const running = await this.consultationRepository.count({
       filters: { tenantId: toTenantId, status: ConsultationStatus.RECORDING },
     } as never);
@@ -485,124 +444,78 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   // The copy
   // =========================================================================
 
-  private async createTargetAgent(
-    source: DepartmentAgentEntity,
-    config: AgentLoopConfig,
+  /**
+   * The promoted graph: every node's tenant-owned `promptTemplateId` replaced
+   * by a fresh deep copy in the target, its version pin dropped, and its eval
+   * gate stripped. Pure with respect to the input — the source entity's own
+   * graph is never mutated.
+   */
+  private async materializeGraph(
+    graph: WorkflowGraph,
+    source: WorkflowDefinitionEntity,
     toTenantId: string,
-    targetDepartmentId: string,
     userId: string,
     tx: CorePrisma.TransactionClient,
-  ): Promise<DepartmentAgentEntity> {
-    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId, tx);
+  ): Promise<WorkflowGraph> {
+    // Sequential, not `Promise.all`: an interactive Prisma transaction client is
+    // a SINGLE connection, so concurrent writes through one `tx` are not safe to
+    // issue in parallel. Memoized so a template two nodes share is copied once
+    // and both nodes end up pointing at the SAME target row — copying it twice
+    // would silently fork one prompt into two the target must maintain apart.
+    const copied = new Map<string, string>();
+    const nodes: WorkflowGraphNode[] = [];
 
-    const agent = DepartmentAgentFactory.CreateDepartmentAgent({
-      tenantId: toTenantId,
-      departmentId: targetDepartmentId,
-      name: source.name,
-      slug: source.slug,
-      description: source.description ?? null,
-      promptTemplateId: bindings.promptTemplateId,
-      newPatientTemplateId: bindings.newPatientTemplateId,
-      revisitTemplateId: bindings.revisitTemplateId,
-      preSummaryTemplateId: bindings.preSummaryTemplateId,
-      livePromptTemplateId: bindings.livePromptTemplateId,
-      // The target's own fresh template starts at v1; a source pin numbers a
-      // version of a template that does not exist here.
-      pinnedVersionNumber: null,
-      dnaStylePolicy: source.dnaStylePolicy,
-      harnessOverrides: source.harnessOverrides ?? null,
-      toolConfig: source.toolConfig ?? null,
-      llmOverrides: source.llmOverrides ?? null,
-      // goldenSetId is DELIBERATELY absent — see the class header.
-      // isDefault is DELIBERATELY absent — a promotion never silently
-      // re-points the target department's default agent.
-      // templateLocked stays false: the copy is the target tenant's to edit.
-      ...loopConfigProps(config),
-      tags: source.tags ?? [],
-      createdBy: userId,
-    } as never);
+    for (const node of graph.nodes) {
+      const config = { ...nodeConfig(node) };
+      const templateId = readStringConfig(node, PROMPT_TEMPLATE_ID_KEY);
 
-    return this.agentRepository.create(agent, tx);
-  }
+      if (templateId) {
+        let materialized = copied.get(templateId);
+        if (materialized === undefined) {
+          materialized = (await this.materializeTemplate(templateId, source, toTenantId, userId, tx)) ?? templateId;
+          copied.set(templateId, materialized);
+        }
+        config[PROMPT_TEMPLATE_ID_KEY] = materialized;
+        if (materialized !== templateId) {
+          // The target's own fresh template starts at v1, so a source pin
+          // numbers a version that does not exist here. Dropping it means the
+          // node follows the copied template's approved version — which IS v1.
+          delete config[PROMPT_VERSION_NUMBER_KEY];
+        }
+      }
 
-  private async advanceTargetAgent(
-    existing: DepartmentAgentEntity,
-    source: DepartmentAgentEntity,
-    config: AgentLoopConfig,
-    toTenantId: string,
-    targetDepartmentId: string,
-    userId: string,
-    tx: CorePrisma.TransactionClient,
-  ): Promise<DepartmentAgentEntity> {
-    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId, tx);
+      // The gate's `goldenSetId` names a corpus of Vault-Transit-encrypted
+      // `GoldenCase` PHI in the SOURCE tenant. Not even the pointer crosses the
+      // boundary; the target binds its own gate deliberately, which is what
+      // OD-11 made an explicit tenant-admin act.
+      delete config[EVAL_GATE_KEY];
 
-    existing.promptTemplateId = bindings.promptTemplateId;
-    existing.newPatientTemplateId = bindings.newPatientTemplateId;
-    existing.revisitTemplateId = bindings.revisitTemplateId;
-    existing.preSummaryTemplateId = bindings.preSummaryTemplateId;
-    existing.livePromptTemplateId = bindings.livePromptTemplateId;
-    existing.pinnedVersionNumber = null;
-    existing.dnaStylePolicy = source.dnaStylePolicy;
-    existing.harnessOverrides = source.harnessOverrides ?? null;
-    existing.toolConfig = source.toolConfig ?? null;
-    existing.llmOverrides = source.llmOverrides ?? null;
-    existing.role = config.role as DepartmentAgentRole;
-    existing.subscribedKinds = config.subscribedKinds ?? null;
-    existing.writeScope = config.writeScope ?? null;
-    existing.goal = config.goal ?? null;
-    existing.guardrailProfile = config.guardrailProfile ?? null;
-    existing.alwaysActions = config.alwaysActions ?? null;
-    existing.neverActions = config.neverActions ?? null;
-    existing.updatedBy = userId;
+      nodes.push({ ...node, config });
+    }
 
-    // The third argument is the whole point of this ticket: before
-    // it, this line could not join the transaction and the create-OR-update
-    // path could not be wrapped at all.
-    return this.agentRepository.update(existing.id, existing, tx);
+    return { ...graph, nodes };
   }
 
   /**
-   * Deep-copy every bound prompt template into the target tenant.
+   * Deep-copy one bound prompt template into the target tenant.
    *
    * A tenant-owned template id is unreadable in the target and would silently
-   * fall through the resolver; dropping the bindings instead would land a
-   * promoted agent with part of its configuration missing — the exact failure
-   * this ticket exists to fix. A SYSTEM-owned binding keeps its id, because
-   * `PromptTemplate` is in `SYSTEM_SHARED_READ_MODELS` and the reference is
-   * genuinely valid cross-tenant.
+   * fall through the resolver; dropping the binding instead would land a
+   * promoted workflow with part of its configuration missing. A SYSTEM-owned
+   * binding keeps its id, because `PromptTemplate` is in
+   * `SYSTEM_SHARED_READ_MODELS` and the reference is genuinely valid
+   * cross-tenant.
+   *
+   * Returns null when the source template no longer exists, so the caller keeps
+   * the original id rather than writing a null binding onto a generation node.
    */
-  private async materializeBindings(
-    source: DepartmentAgentEntity,
-    toTenantId: string,
-    targetDepartmentId: string,
-    userId: string,
-    tx: CorePrisma.TransactionClient,
-  ) {
-    // Sequential, not `Promise.all`: an interactive Prisma transaction client
-    // is a SINGLE connection, so concurrent writes through one `tx` are not
-    // safe to issue in parallel.
-    const promptTemplateId = await this.materializeTemplate(source.promptTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
-    const newPatientTemplateId = await this.materializeTemplate(source.newPatientTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
-    const revisitTemplateId = await this.materializeTemplate(source.revisitTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
-    const preSummaryTemplateId = await this.materializeTemplate(source.preSummaryTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
-    const livePromptTemplateId = await this.materializeTemplate(source.livePromptTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
-
-    if (!promptTemplateId) {
-      throw new BadRequestException(`Source agent ${source.id} binds a prompt template that no longer exists`);
-    }
-    return { promptTemplateId, newPatientTemplateId, revisitTemplateId, preSummaryTemplateId, livePromptTemplateId };
-  }
-
   private async materializeTemplate(
-    templateId: string | null | undefined,
-    source: DepartmentAgentEntity,
+    templateId: string,
+    source: WorkflowDefinitionEntity,
     toTenantId: string,
-    targetDepartmentId: string,
     userId: string,
     tx: CorePrisma.TransactionClient,
   ): Promise<string | null> {
-    if (!templateId) return null;
-
     const template = await this.promptTemplateRepository.findById(templateId);
     if (!template) return null;
     // A SYSTEM template is readable from every tenant — copying it would fork
@@ -611,23 +524,21 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
 
     const snapshot = PromptTemplateFactory.CreatePromptTemplate({
       tenantId: toTenantId,
-      // Named after the AGENT, not the shared source template: PromptTemplate
-      // is unique on (tenantId, name), and one template can back several
-      // agents — the `AgentTemplateResyncService.cloneGoldenIntoTenant`
-      // reasoning applies verbatim.
-      name: `${source.name} (${template.id === source.promptTemplateId ? 'promoted' : 'promoted binding'})`,
+      // Named after the WORKFLOW, not the shared source template:
+      // `PromptTemplate` is unique on `(tenantId, name)`, and one template can
+      // back several nodes — the id suffix is what keeps two distinct source
+      // templates promoted from the same workflow from colliding.
+      name: `${source.name} (promoted ${templateId.slice(0, 8)})`,
       description: template.description ?? undefined,
       content: template.content ?? undefined,
       category: template.category ?? undefined,
       // APPROVED, not DRAFT: promotion moves a configuration that was already
-      // governed in the source. A DRAFT copy would fall through the resolver
-      // and silently change behaviour, which is precisely what promoting an
-      // immutable version is supposed to prevent. (`clone()` differs on
-      // purpose — it exists so a tenant can CUSTOMIZE, so its copy starts as a
-      // DRAFT awaiting approval.)
+      // governed in the source. A DRAFT copy would fall through the resolver and
+      // silently change behaviour, which is precisely what promoting an
+      // immutable version is supposed to prevent.
       status: 'APPROVED',
+      approvedVersionNumber: 1,
       variables: (template.variables as Record<string, unknown> | null) ?? undefined,
-      departmentId: targetDepartmentId,
       currentVersionNumber: 1,
       tags: template.tags ?? [],
       createdBy: userId,
@@ -640,7 +551,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       versionNumber: 1,
       content: saved.content ?? undefined,
       variables: (saved.variables as Record<string, unknown> | null) ?? undefined,
-      changeReason: `Promoted from tenant ${source.tenantId} (agent '${source.slug}')`,
+      changeReason: `Promoted from tenant ${source.tenantId} (workflow '${source.slug}')`,
       changedBy: userId,
       createdBy: userId,
     });
@@ -649,75 +560,88 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     return saved.id;
   }
 
-  /** The target's own immutable snapshot of the promoted configuration. */
-  private async writeTargetVersion(
-    targetAgent: DepartmentAgentEntity,
-    snapshot: Record<string, unknown>,
+  /**
+   * The target tenant's own row for the promoted version — always a DRAFT, and
+   * never `isActive` (see the class header).
+   *
+   * `versionNumber` continues the TARGET's lineage for that slug rather than
+   * copying the source's, because `(tenantId, slug, versionNumber)` is unique
+   * per tenant and the two lineages are independent. `parentVersionId` is left
+   * null: the provenance edge is the `AgentPromotion` row, and a cross-tenant
+   * parent pointer would put a navigable path from one tenant's row into
+   * another's.
+   */
+  private async writeTargetDefinition(
+    source: WorkflowDefinitionEntity,
+    graph: WorkflowGraph,
     checksum: string,
-    fromTenantId: string,
-    sourceVersion: DepartmentAgentVersionEntity,
+    existingVersions: WorkflowDefinitionEntity[],
+    toTenantId: string,
     userId: string,
     tx: CorePrisma.TransactionClient,
-  ): Promise<DepartmentAgentVersionEntity | null> {
-    // Read, not write, so it stays on the ordinary client: the target agent's
-    // committed version history is what determines the next version number,
-    // and nothing written inside this transaction adds to it.
-    const latest = await this.agentVersionRepository.findLatestForAgent(targetAgent.id);
-    if (latest && latest.checksum === checksum) {
-      // Re-promoting an identical configuration is a no-op for the version
-      // table (the `writeLoopConfigVersionIfNeeded` guard), but it still
-      // records a promotion — "this was promoted again, on this date, by this
-      // actor" is exactly what the audit row is for.
-      return latest;
-    }
+  ): Promise<WorkflowDefinitionEntity> {
+    const nextVersionNumber = existingVersions.reduce((max, row) => Math.max(max, row.versionNumber), 0) + 1;
 
-    const version = DepartmentAgentVersionFactory.CreateDepartmentAgentVersion({
-      tenantId: targetAgent.tenantId,
-      agentId: targetAgent.id,
-      versionNumber: (latest?.versionNumber ?? 0) + 1,
-      configSnapshot: snapshot as never,
-      checksum,
-      changeReason: `Promoted from tenant ${fromTenantId} (version ${sourceVersion.versionNumber})`,
+    const definition = WorkflowDefinitionFactory.CreateDefinition({
+      tenantId: toTenantId,
+      slug: source.slug,
+      name: source.name,
+      description: source.description ?? null,
+      paletteKey: source.paletteKey,
+      versionNumber: nextVersionNumber,
+      parentVersionId: null,
+      status: WorkflowDefinitionStatus.DRAFT,
+      graph: graph as never,
+      graphChecksum: checksum,
+      // Every server-owned publish artifact stays unset: the target's own
+      // validate/compile/publish path produces them, and a compiledConfig
+      // carrying the SOURCE tenant's template ids would be worse than none.
+      isActive: false,
+      needsReview: false,
+      tags: source.tags ?? [],
       createdBy: userId,
-    });
-    return this.agentVersionRepository.create(version, tx);
+    } as never);
+
+    return this.definitionRepository.create(definition, tx);
   }
 
   /**
-   * the eval RE-RUNS at the target, against the TARGET's own corpus.
+   * The eval RE-RUNS at the target, against the TARGET's own corpus.
    *
-   * The source's `goldenSetId` is never used and never copied: `GoldenCase`
-   * rows hold Vault-Transit-encrypted PHI, and no code path moves one across a
-   * tenant boundary. The golden set is therefore the target agent's own, or one
-   * the caller named that must belong to the target tenant (`EvalRunService`
-   * enforces that itself — a foreign id raises `DataNotFoundException`).
+   * The source's golden set is never used and never copied: `GoldenCase` rows
+   * hold Vault-Transit-encrypted PHI, and no code path moves one across a
+   * tenant boundary — which is why `materializeGraph` strips `evalGate`
+   * outright. The golden set is therefore one the caller named, and it must
+   * belong to the target tenant (`EvalRunService` enforces that itself — a
+   * foreign id raises `DataNotFoundException`).
    *
    * This runs AFTER the copy rather than as a pre-write gate because the
    * promoted configuration and the target's corpus only coexist in the target
    * once the copy has happened; blocking afterwards would mean retracting an
-   * immutable audit record. The gate that genuinely blocks is the context-kind
-   * compatibility check. A failure here degrades to a warning — a promotion is
-   * never lost to an eval problem.
+   * immutable audit record. A failure here degrades to a warning — a promotion
+   * is never lost to an eval problem.
    */
   private async runTargetEval(
-    dto: PromoteAgentRequest,
-    targetAgent: DepartmentAgentEntity,
+    dto: PromoteWorkflowRequest,
+    targetDefinition: WorkflowDefinitionEntity,
     toTenantId: string,
     warnings: string[],
   ): Promise<string | null> {
-    const goldenSetId = dto.targetGoldenSetId ?? targetAgent.goldenSetId ?? null;
+    const goldenSetId = dto.targetGoldenSetId ?? null;
     if (!goldenSetId) {
-      warnings.push('No eval was run: the target agent has no golden set. Promotion was recorded without an eval attestation.');
+      warnings.push('No eval was run: no target golden set was named. Promotion was recorded without an eval attestation.');
       return null;
     }
     if (!this.evalRunService) return null;
+
+    const promptTemplateId = firstPromptTemplateId(readGraph(targetDefinition.graph));
 
     try {
       const outcome = await this.evalRunService.runGoldenSet({
         goldenSetId,
         tenantId: toTenantId,
         triggerType: 'PROMOTION',
-        promptTemplateId: targetAgent.promptTemplateId,
+        ...(promptTemplateId ? { promptTemplateId } : {}),
       });
       if (!outcome.passed) {
         warnings.push(`The eval re-run at the target did not pass: ${outcome.failures.join('; ') || 'see the eval run for detail'}.`);
@@ -736,76 +660,64 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   // =========================================================================
 
   /**
-   * "Has the target agent been edited since it was promoted into?" — recomputed
-   * from the agent's CURRENT loop config and compared against the checksum
-   * stored on the record. Both sides go through the SAME shared
-   * canonicalisation (`constants.ts`), which is why that helper was hoisted out
-   * of `departmentAgent.service.ts`: two implementations would make this
-   * comparison wrong by construction.
+   * "Has the target workflow been edited since it was promoted?" — recomputed
+   * from the target row's CURRENT graph and compared against the checksum
+   * stored on the record. Both sides go through the SAME canonicalisation
+   * (`canonicalJson` from `@arcaai/workflow-contract`, which is also what
+   * `WorkflowDefinitionService` stamps into `graphChecksum`), so the comparison
+   * cannot be wrong by construction.
    */
   private async toResponseWithDrift(promotion: AgentPromotionEntity): Promise<AgentPromotionResponse> {
-    const targetAgent = await this.agentRepository.findById(promotion.targetAgentId);
-    if (!targetAgent || targetAgent.tenantId !== promotion.toTenantId) {
+    const target = promotion.targetAgentVersionId ? await this.safeFindDefinition(promotion.targetAgentVersionId) : null;
+    if (!target || target.tenantId !== promotion.toTenantId) {
       return AgentPromotionDtoMapper.toResponse(promotion);
     }
-    const current = createHash('sha256')
-      .update(canonicalAgentConfigJson(buildLoopConfigSnapshot(targetAgent)))
-      .digest('hex');
-    return AgentPromotionDtoMapper.toResponse(promotion, current !== promotion.checksum);
+    const graph = readGraph(target.graph);
+    if (!graph) return AgentPromotionDtoMapper.toResponse(promotion);
+    return AgentPromotionDtoMapper.toResponse(promotion, graphChecksum(graph) !== promotion.checksum);
   }
-}
 
-/** The seven fields, read back off an immutable `configSnapshot`. */
-function snapshotToLoopConfig(snapshot: Record<string, unknown>): AgentLoopConfig {
-  return {
-    role: typeof snapshot.role === 'string' ? snapshot.role : DepartmentAgentRole.SPECIALIST,
-    subscribedKinds: (snapshot.subscribedKinds as Record<string, unknown> | null) ?? null,
-    writeScope: (snapshot.writeScope as Record<string, unknown> | null) ?? null,
-    goal: (snapshot.goal as Record<string, unknown> | null) ?? null,
-    guardrailProfile: (snapshot.guardrailProfile as string | null) ?? null,
-    alwaysActions: (snapshot.alwaysActions as string[] | null) ?? null,
-    neverActions: (snapshot.neverActions as string[] | null) ?? null,
-  };
-}
-
-/** The seven fields as factory props — every one of them, so none is silently dropped. */
-function loopConfigProps(config: AgentLoopConfig): Record<string, unknown> {
-  return {
-    role: config.role,
-    subscribedKinds: config.subscribedKinds ?? null,
-    writeScope: config.writeScope ?? null,
-    goal: config.goal ?? null,
-    guardrailProfile: config.guardrailProfile ?? null,
-    alwaysActions: config.alwaysActions ?? null,
-    neverActions: config.neverActions ?? null,
-  };
-}
-
-function describeKeys(kindKeys: string[], outputKeys: string[]): string {
-  const parts: string[] = [];
-  if (kindKeys.length > 0) parts.push(`kind(s) ${kindKeys.join(', ')}`);
-  if (outputKeys.length > 0) parts.push(`output(s) ${outputKeys.join(', ')}`);
-  return parts.join(' and ');
-}
-
-/** Every declared `kinds[].key` / `outputs[].key` in a schema `definition` document. */
-function extractDeclaredContextKeys(definition: unknown): { kinds: Set<string>; outputs: Set<string> } {
-  const kinds = new Set<string>();
-  const outputs = new Set<string>();
-  if (definition !== null && typeof definition === 'object' && !Array.isArray(definition)) {
-    const def = definition as Record<string, unknown>;
-    if (Array.isArray(def.kinds)) {
-      for (const kind of def.kinds) {
-        const key = (kind as Record<string, unknown> | null)?.key;
-        if (typeof key === 'string') kinds.add(key);
-      }
-    }
-    if (Array.isArray(def.outputs)) {
-      for (const output of def.outputs) {
-        const key = (output as Record<string, unknown> | null)?.key;
-        if (typeof key === 'string') outputs.add(key);
-      }
+  private async safeFindDefinition(id: string): Promise<WorkflowDefinitionEntity | null> {
+    try {
+      return await this.definitionRepository.findById(id);
+    } catch {
+      return null;
     }
   }
-  return { kinds, outputs };
+}
+
+// ===========================================================================
+// Graph helpers — module-local, deliberately
+// ===========================================================================
+
+/** sha256 over the canonical JSON of a graph — the same digest `WorkflowDefinitionService` stamps. */
+function graphChecksum(graph: WorkflowGraph): string {
+  return createHash('sha256').update(canonicalJson(graph)).digest('hex');
+}
+
+/** A graph document read off a `Json` column, or null when it is not one. */
+function readGraph(value: unknown): WorkflowGraph | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as { nodes?: unknown };
+  return Array.isArray(candidate.nodes) ? (value as unknown as WorkflowGraph) : null;
+}
+
+function nodeConfig(node: WorkflowGraphNode): Record<string, unknown> {
+  const config = node.config;
+  return typeof config === 'object' && config !== null && !Array.isArray(config) ? (config as Record<string, unknown>) : {};
+}
+
+function readStringConfig(node: WorkflowGraphNode, key: string): string | null {
+  const value = nodeConfig(node)[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** The first prompt binding in authored order — what an eval run is judged against. */
+function firstPromptTemplateId(graph: WorkflowGraph | null): string | null {
+  if (!graph) return null;
+  for (const node of graph.nodes) {
+    const id = readStringConfig(node, PROMPT_TEMPLATE_ID_KEY);
+    if (id) return id;
+  }
+  return null;
 }
