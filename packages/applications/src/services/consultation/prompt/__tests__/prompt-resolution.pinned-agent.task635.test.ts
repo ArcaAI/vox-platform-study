@@ -1,16 +1,22 @@
 /**
  * `pinnedAgentId` in the summary chain.
  *
- * The finalize prompt must be decided by the agent that actually RAN the live
- * session, not by whatever the department default happens to be at finalize
- * time. These tests lock the four behaviours of pinned-agent resolution:
+ * The finalize prompt must be decided by whatever actually RAN the live
+ * session, not by whatever the tenant's configuration happens to say at
+ * finalize time. That is contract R-N2, and it survives TASK-815 unchanged —
+ * only its SUBJECT moved. The pin used to name a `DepartmentAgent` row; it now
+ * names a NODE in the governing workflow definition's graph. The PARAMETER
+ * keeps its name because `resolve()`'s signature is a frozen v1-compat
+ * contract.
  *
- *   1. a pinned agent BEATS a re-pointed department default;
- *   2. a pinned agent that no longer exists / belongs to another tenant or
- *      department / is not ENABLED falls through WITHOUT error (never a 500);
- *   3. tier-0 doctor-preferred still outranks the pinned agent;
- *   4. NO `pinnedAgentId` ⇒ byte-identical to pre-C5 (`findDefaultForDepartment`
- *      only, `findById` never consulted).
+ * The four behaviours locked here are the same four as before:
+ *
+ *   1. a pinned node BEATS the graph's own first finalize node;
+ *   2. a pin that no longer names a node serving this task falls through
+ *      WITHOUT error (never a 500) — a graph re-authored mid-visit must not
+ *      fail the finalize;
+ *   3. tier-0 doctor-preferred still outranks the pin;
+ *   4. NO `pinnedAgentId` ⇒ the graph's first finalize node, as before.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -23,8 +29,9 @@ const DEPT = 'dept-1';
 
 const mockDepartmentRepository = { findById: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
-const mockDepartmentAgentRepository = { findDefaultForDepartment: vi.fn(), findById: vi.fn() };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
+const mockWorkflowAssignments = { resolve: vi.fn() };
+const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
 
 function department(overrides: Record<string, unknown> = {}): DepartmentEntity {
   return {
@@ -41,20 +48,18 @@ function department(overrides: Record<string, unknown> = {}): DepartmentEntity {
   } as unknown as DepartmentEntity;
 }
 
-function agent(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'agent-session',
-    tenantId: TENANT,
-    departmentId: DEPT,
-    resourceStatus: 'ENABLED',
-    promptTemplateId: 'tpl-session',
-    pinnedVersionNumber: null,
-    newPatientTemplateId: null,
-    revisitTemplateId: null,
-    preSummaryTemplateId: null,
-    livePromptTemplateId: null,
-    ...overrides,
-  };
+/** A finalize generation node bound to `promptTemplateId`. */
+function finalizeNode(id: string, promptTemplateId: string, extraConfig: Record<string, unknown> = {}) {
+  return { id, type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId, ...extraConfig } };
+}
+
+function publishDefinition(nodes: unknown[]) {
+  mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
+    id: 'wfdef-1',
+    slug: 'consultation-default',
+    paletteKey: 'consultation',
+    graph: { version: 1, nodes, edges: [] },
+  });
 }
 
 describe('PromptResolutionService — pinnedAgentId', () => {
@@ -69,64 +74,72 @@ describe('PromptResolutionService — pinnedAgentId', () => {
       versionNumber,
     }));
     mockDepartmentRepository.findById.mockResolvedValue(department());
-    // The department default has been RE-POINTED since the session started.
-    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ id: 'agent-new-default', promptTemplateId: 'tpl-new-default' }));
-    mockDepartmentAgentRepository.findById.mockResolvedValue(agent());
+    mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
+    // The graph has been RE-AUTHORED since the session started: a new finalize
+    // node was added FIRST, so the unpinned selection would now pick it.
+    publishDefinition([finalizeNode('note_new_default', 'tpl-new-default'), finalizeNode('note_session', 'tpl-session')]);
 
     service = new PromptResolutionService(
       mockDepartmentRepository as never,
       mockPromptTemplateRepository as never,
-      mockDepartmentAgentRepository as never,
       mockPromptVersionRepository as never,
+      mockWorkflowAssignments as never,
+      mockWorkflowDefinitionRepository as never,
     );
   });
 
-  it('serves the PINNED agent, not the re-pointed department default', async () => {
-    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'agent-session' });
+  it('serves the PINNED node, not the graph’s new first finalize node', async () => {
+    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'note_session' });
 
     expect(result.promptId).toBe('tpl-session');
     expect(result.resolvedFrom).toBe('agent');
-    expect(result.resolvedAgentId).toBe('agent-session');
-    expect(mockDepartmentAgentRepository.findById).toHaveBeenCalledWith('agent-session');
-    expect(mockDepartmentAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
+    expect(result.resolvedAgentId).toBe('note_session');
   });
 
-  it('honours the pinned agent VISIT-TYPE binding', async () => {
-    mockDepartmentAgentRepository.findById.mockResolvedValue(agent({ revisitTemplateId: 'tpl-session-revisit' }));
+  it('honours the pinned node’s OWN version pin', async () => {
+    publishDefinition([finalizeNode('note_new_default', 'tpl-new-default'), finalizeNode('note_session', 'tpl-session', { promptVersionNumber: 4 })]);
 
-    const result = await service.resolve({ departmentId: DEPT, promptType: 'revisit', pinnedAgentId: 'agent-session' });
+    const result = await service.resolve({ departmentId: DEPT, promptType: 'revisit', pinnedAgentId: 'note_session' });
 
-    expect(result.promptId).toBe('tpl-session-revisit');
+    expect(result.promptId).toBe('tpl-session');
+    expect(result.resolvedVersionNumber).toBe(4);
   });
 
   it.each([
-    ['the agent row is gone', null],
-    ['the agent belongs to another tenant', agent({ tenantId: 'tenant-other' })],
-    ['the agent moved to another department', agent({ departmentId: 'dept-other' })],
-    ['the agent is not ENABLED', agent({ resourceStatus: 'ARCHIVED' })],
-  ])('falls through to the department default (no error) when %s', async (_label, row) => {
-    mockDepartmentAgentRepository.findById.mockResolvedValue(row);
+    ['the node was removed from the graph', [finalizeNode('note_new_default', 'tpl-new-default')]],
+    [
+      'the node still exists but no longer serves finalize',
+      [finalizeNode('note_new_default', 'tpl-new-default'), { id: 'note_session', type: 'consultation.realtimeSummary', config: { promptTemplateId: 'tpl-session' } }],
+    ],
+    [
+      'the node lost its prompt binding entirely',
+      [finalizeNode('note_new_default', 'tpl-new-default'), { id: 'note_session', type: 'generate.text', config: { taskKey: 'text.finalize' } }],
+    ],
+  ])('falls through to the graph’s first finalize node (no error) when %s', async (_label, nodes) => {
+    publishDefinition(nodes);
 
-    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'agent-session' });
+    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'note_session' });
 
     expect(result.promptId).toBe('tpl-new-default');
     expect(result.resolvedFrom).toBe('agent');
-    expect(mockDepartmentAgentRepository.findDefaultForDepartment).toHaveBeenCalled();
+    expect(result.resolvedAgentId).toBe('note_new_default');
   });
 
-  it('never throws when the pinned lookup itself fails', async () => {
-    mockDepartmentAgentRepository.findById.mockRejectedValue(new Error('db-down'));
+  it('never throws when the definition lookup itself fails — the tier is skipped', async () => {
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockRejectedValue(new Error('db-down'));
+    mockDepartmentRepository.findById.mockResolvedValue(department({ newPatientPromptId: 'tpl-dept' }));
 
-    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'agent-session' });
+    const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient', pinnedAgentId: 'note_session' });
 
-    expect(result.promptId).toBe('tpl-new-default');
+    expect(result.promptId).toBe('tpl-dept');
+    expect(result.resolvedFrom).toBe('department');
   });
 
-  it('tier-0 doctor-preferred still outranks the pinned agent', async () => {
+  it('tier-0 doctor-preferred still outranks the pinned node', async () => {
     const result = await service.resolve({
       departmentId: DEPT,
       promptType: 'new-patient',
-      pinnedAgentId: 'agent-session',
+      pinnedAgentId: 'note_session',
       preferredPromptTemplateId: 'tpl-doctor',
     });
 
@@ -134,11 +147,11 @@ describe('PromptResolutionService — pinnedAgentId', () => {
     expect(result.resolvedFrom).toBe('preferred');
   });
 
-  it('REGRESSION LOCK — without pinnedAgentId the agent lookup is unchanged', async () => {
+  it('REGRESSION LOCK — without pinnedAgentId the graph’s first finalize node answers', async () => {
     const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
 
     expect(result.promptId).toBe('tpl-new-default');
-    expect(mockDepartmentAgentRepository.findById).not.toHaveBeenCalled();
-    expect(mockDepartmentAgentRepository.findDefaultForDepartment).toHaveBeenCalledWith(TENANT, DEPT);
+    expect(result.resolvedAgentId).toBe('note_new_default');
+    expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', DEPT);
   });
 });
