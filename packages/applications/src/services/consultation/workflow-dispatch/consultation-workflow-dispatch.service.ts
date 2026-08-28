@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConsultationRepository, generateId, WorkflowDefinitionRepository } from '@arcaai/domains';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
@@ -52,15 +52,52 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     @Optional() private readonly sttPipelineResolver?: SttPipelineResolverService,
   ) {}
 
+  /**
+   * TASK-813 OD-1 point 6 — the selector authorization gate. See
+   * `IConsultationWorkflowDispatchService.assertSelectableForConsultation` for the 404/403 split
+   * and why it is that way round.
+   *
+   * The whole gate is one tenant-scoped read plus one palette comparison, and that is
+   * deliberate: `findPublishedBySlug` already filters `tenantId` + `PUBLISHED` + `isActive` +
+   * `resourceStatus: ENABLED`, so every "the caller may not see this" case collapses into a
+   * single `null` with no branch that could accidentally answer differently for a foreign slug
+   * than for an unknown one.
+   */
+  async assertSelectableForConsultation(tenantId: string, workflowDefinitionSlug: string): Promise<void> {
+    const definition = await this.definitionRepository.findPublishedBySlug(tenantId, workflowDefinitionSlug);
+
+    // Invisible to this tenant: foreign, unknown, unpublished, inactive, or soft-deleted. One
+    // answer for all of them — the message names the slug the caller already sent, and nothing
+    // else, so it discloses nothing about what this or any other tenant has authored.
+    if (!definition) {
+      throw new NotFoundException(`Workflow definition '${workflowDefinitionSlug}' not found`);
+    }
+
+    // Visible, but not a consultation-governing graph. A `summarization` or `stt` definition has
+    // no consultation nodes: dispatching it would bind nothing and quietly leave the document
+    // unwritten, so this is refused up front rather than degraded at dispatch.
+    if (definition.paletteKey !== CONSULTATION_PALETTE_KEY) {
+      throw new ForbiddenException(
+        `Workflow definition '${workflowDefinitionSlug}' is palette '${definition.paletteKey}' and cannot govern a consultation`,
+      );
+    }
+  }
+
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
-    const { consultationId, tenantId, departmentId, userId, externalPatientId } = input;
+    const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug } = input;
 
     // TASK-790 W4 — resolved FIRST, and unconditionally, because the two palettes are separate
     // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
     // after the early return below would silently skip the STT lane for exactly that tenant.
     const sttPipelineId = await this.resolveSttPipelineId(tenantId, departmentId ?? null);
 
-    const resolved = await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null);
+    // TASK-813 OD-1 point 5 — a caller selection REPLACES the consultation-palette cascade.
+    // `assignments.resolve` is not called at all in that case: consulting it and then discarding
+    // the answer would put a second, invisible slug in the logs for an operator to mistake for
+    // the one that ran.
+    const resolved: { workflowDefinitionSlug: string | null; source: ConsultationWorkflowDispatchResult['source'] } = workflowDefinitionSlug
+      ? { workflowDefinitionSlug, source: 'caller-selected' }
+      : await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId ?? null);
 
     // No tier assigned anything -> Substrate A keeps the consultation. This is the DEFAULT and
     // must stay the default: a tenant that has authored nothing sees today's behaviour exactly.

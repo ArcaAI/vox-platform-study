@@ -86,6 +86,18 @@ construction, because the gateway rejects a request carrying two.
 | Issued by | a tenant admin | a **platform** super-admin |
 | Shape | one long-lived secret | `clientId` + `clientSecret`, exchanged for a short-lived token |
 
+> **There is a third credential class this SDK deliberately does not carry: the user JWT.** A
+> gateway JWT is bound to one *user*, for one short session, and is refreshable and revocable; it
+> is what a user-facing frontend should authenticate with, and
+> [`@arcaai/vox`](../agentic-sdk-v2/README.md) is JWT-first for exactly that reason. Both
+> credentials here are *machine* identities with no bound session, which is the right shape for a
+> server and the wrong shape for a browser.
+>
+> The line is credential class, not privilege. Scopes bind the **credential**; abilities bind the
+> bound **human**; the two compose as **AND**, so a machine credential can never exceed the human
+> it acts for — and `/admin/*` is closed to API keys unconditionally (`@ForbidApiKey()`, checked
+> before the scope check), regardless of the scopes the key holds.
+
 ### API key
 
 Sent as `X-API-Key`. The expected path for ordinary server-side work; the

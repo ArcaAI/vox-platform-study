@@ -167,6 +167,50 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 4. `summary.generateSummary(...)` (or `generateSummaryAsync` for job-based generation with SSE progress) — versioning, diffs, and approval flows are exposed on `useArcaSummary`.
 5. `audio.stop()`, then `useArcaSession().close()` (or a status `update`) closes out the visit; `reopen()` reverses it.
 
+### Choosing the workflow that governs a consultation
+
+A consultation is documented by one of two engines. By default the platform's own consultation
+loop does it. If your tenant has published a `consultation`-palette workflow in Workflow Studio,
+the `department → tenant → platform-default` assignment cascade can hand the consultation to that
+instead — and `session.open()` lets you override the cascade for one consultation:
+
+```ts
+await session.open({ patientId, workflowDefinitionSlug: 'discharge_summary' });
+```
+
+The gateway authorizes the slug **before the consultation is written**, against your own tenant's
+published, active `consultation`-palette definitions:
+
+| Outcome | Status | Why |
+| --- | --- | --- |
+| Not visible to your tenant — another tenant's slug, an unknown one, or one that is not published/active | `404` | Answering `403` would confirm the slug exists. All three are deliberately indistinguishable. |
+| Visible to your tenant, but not a `consultation`-palette definition | `403` | You can already see it in `GET /workflows`; hiding it would send you hunting for a row that is plainly there. |
+| Not a well-formed slug (`[a-z0-9_]{2,48}`) | `400` | Refused at the edge — it could never name a real row. |
+
+Omit the field and the cascade decides, exactly as before. It is honoured by `session.open()` only:
+a re-visit dispatches no consultation workflow, so there is nothing there to steer.
+
+**Selecting is not the same as running.** Dispatch is best-effort by design — a clinician must be
+able to open a consultation while the harness is down — so a dispatch failure silently degrades to
+the platform default engine rather than failing the open. Read back what actually governs:
+
+```ts
+const { workflow, isGoverned } = useConsultationWorkflow(); // defaults to the session's consultation
+
+isGoverned              // true  -> a tenant-authored workflow is writing this document
+workflow?.governed      // false -> the platform default engine is
+workflow === null       // unknown — the read has not resolved, or it failed
+```
+
+`useConsultationWorkflow` **fails open**: a failed read resolves to `null` and reports the reason on
+`error`, never a rejection. Treat `null` as "we do not know", never as "the default engine governs" —
+they are distinct states on purpose.
+
+`workflow.inputSchema` is always `null` today. No per-definition input schema is declared anywhere
+in the platform yet; the field exists so that declaring one later is additive rather than something
+you have to discover. Note also that a consultation-governing graph takes no caller input at all —
+the interpreter payload is built server-side.
+
 ### Personalization and models
 
 `PersonalizationManager` (IndexedDB) and `ModelRegistry` (custom STT/VAD/NER model definitions with load progress) persist per `${tenantId}::${userId}` namespace and re-key on auth/tenant switch. `LocalVoiceEmbedder` provides in-browser speaker embeddings (WavLM) for voice enrollment alongside the backend `useVoiceEmbedding`.
@@ -320,7 +364,7 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 
 | Group            | Hooks                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useAudioRecordings`                                                                                   |
+| Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useAudioRecordings`                                |
 | Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
 | Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
 | Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
@@ -337,6 +381,28 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 > The reason is credential class, not privilege: an API key is a long-lived static bearer secret
 > with no MFA, no session expiry, no revocation-on-logout and no impersonation audit trail.
 > Headless administration is unsupported until the platform's service-account credential ships.
+
+### Which credential to use — this SDK is JWT-first
+
+`AgenticClient` accepts `accessToken` (a gateway JWT) and `apiKey` at the same time and sends each
+independently, so both genuinely work on the business plane. An API key **can** open a consultation.
+The recommendation is not a capability limit — it is about what each credential is:
+
+| | JWT (`accessToken`) | API key (`apiKey`) |
+| --- | --- | --- |
+| Bound to | one **user**, for one session | the **tenant**, indefinitely |
+| Lifetime | short, expiring, refreshable | long-lived and static until rotated |
+| Revocation | logout, session end, refresh-token rotation | manual rotation only |
+| Carries the identity abilities compose against | yes | no — a key's scopes bind the *credential*; abilities bind the bound *human*, and the two compose as **AND**, so a key can never exceed its human |
+| Admin plane (`/api/v1/admin/*`) | reachable | **never** — refused unconditionally (policy A2) |
+
+For a **user-facing frontend, use the JWT.** A key shipped to a browser is a static, long-lived,
+shared secret sitting in code every user can read, and nothing about a page load can revoke it.
+
+API keys are the right credential for **server-side and integration** callers — where the secret
+stays on your server, is rotatable, and is not handed to an end user. For those, prefer
+[`@arcaai/vox-node`](../vox-node/README.md), which is built for that shape (no React, no audio, no
+DOM) and also carries the service-account credential the admin plane requires.
 
 
 Full signatures and types: [docs/API-Reference.md](docs/API-Reference.md). Release history: [CHANGELOG.md](CHANGELOG.md).

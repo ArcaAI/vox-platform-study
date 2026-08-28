@@ -52,8 +52,15 @@
 export interface ConsultationWorkflowDispatchResult {
   /** True only when a tenant-authored graph was actually started for this consultation. */
   readonly dispatched: boolean;
-  /** Which cascade tier supplied the definition, or `platform-default` when none did. */
-  readonly source: 'department' | 'tenant' | 'platform-default';
+  /**
+   * Which cascade tier supplied the definition, or `platform-default` when none did.
+   *
+   * TASK-813 adds `caller-selected`: the cascade was not consulted at all because the caller
+   * named a definition at open and it was authorized. Kept as a distinct value rather than
+   * folded into `tenant` so an observer reading a log line or the discovery route can tell a
+   * deliberate selection from an assignment that happened to resolve to the same slug.
+   */
+  readonly source: 'department' | 'tenant' | 'platform-default' | 'caller-selected';
   /** The resolved definition slug, when one resolved. */
   readonly workflowDefinitionSlug: string | null;
   /** The started interpreter run id, when one was started. */
@@ -92,6 +99,19 @@ export interface DispatchForConsultationInput {
   /** The clinician opening the consultation — threaded into the run payload as identity. */
   readonly userId: string;
   readonly externalPatientId?: string | null;
+  /**
+   * TASK-813 OD-1 — the caller's workflow selection, taking precedence over the assignment
+   * cascade for the `consultation` palette (the INDEPENDENT `stt`-palette assignment is
+   * unaffected — the two lanes are separate).
+   *
+   * MUST already have passed {@link IConsultationWorkflowDispatchService.assertSelectableForConsultation}.
+   * This field is not a second authorization seam: dispatch is best-effort by contract and
+   * swallows its own failures, so a gate placed here would turn a refused request into a silent
+   * fallback. It is re-VERIFIED here (published + right palette) for the same reason the cascade
+   * result is — a reference across a service boundary is re-checked, never trusted — but the
+   * refusal the caller sees is raised earlier, before anything is written.
+   */
+  readonly workflowDefinitionSlug?: string | null;
 }
 
 export interface IConsultationWorkflowDispatchService {
@@ -103,6 +123,24 @@ export interface IConsultationWorkflowDispatchService {
    * when no graph governs it. Genuine programming errors (missing tenant) still throw.
    */
   dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult>;
+
+  /**
+   * TASK-813 OD-1 point 6 — authorize a caller-supplied workflow selection BEFORE the
+   * consultation is written. Resolves silently when the selection is allowed; otherwise throws.
+   *
+   * Two failure directions, and they must never be swapped:
+   *
+   *   * `NotFoundException` (404) — the definition is INVISIBLE to `tenantId`. Another tenant's
+   *     slug, an unknown slug, and an unpublished/inactive one are deliberately
+   *     indistinguishable: a 403 for any of them would confirm the slug exists (404-over-403).
+   *   * `ForbiddenException` (403) — the definition is VISIBLE to this tenant (published +
+   *     active, so `GET /workflows` already lists it) but belongs to a palette that cannot
+   *     govern a consultation. Hiding a resource the caller can already see would be theatre,
+   *     and a 404 here would send an author hunting for a row that is plainly there.
+   *
+   * `tenantId` is the caller's resolved tenant, never a request field.
+   */
+  assertSelectableForConsultation(tenantId: string, workflowDefinitionSlug: string): Promise<void>;
 }
 
 export const IConsultationWorkflowDispatchService = Symbol('IConsultationWorkflowDispatchService');
