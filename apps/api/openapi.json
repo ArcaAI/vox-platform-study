@@ -200,16 +200,12 @@
       },
       "AgentPromotionResponse": {
         "properties": {
-          "agentVersionId": {
-            "description": "The exact immutable DepartmentAgentVersion (in the source tenant) that was promoted",
-            "type": "string"
-          },
           "checksum": {
-            "description": "sha256 over the canonical JSON of the promoted snapshot",
+            "description": "sha256 over the canonical JSON of the promoted graph",
             "type": "string"
           },
           "configSnapshot": {
-            "description": "The promoted loop-configuration snapshot, verbatim",
+            "description": "The promoted graph, verbatim — with prompt bindings rewritten into the target and eval gates stripped",
             "type": "object"
           },
           "createdAt": {
@@ -217,11 +213,11 @@
             "type": "string"
           },
           "drifted": {
-            "description": "True when the target agent’s CURRENT loop configuration no longer matches what was promoted — i.e. it has been edited since. Computed at read time; absent when the target agent could not be resolved.",
+            "description": "True when the target definition’s CURRENT graph no longer matches what was promoted — i.e. it has been edited since. Computed at read time; absent when the target row could not be resolved.",
             "type": "boolean"
           },
           "evalRunId": {
-            "description": "The eval run executed AT THE TARGET against the target’s own corpus. Null when the target agent has no golden set.",
+            "description": "The eval run executed AT THE TARGET against the target’s own corpus. Null when no target golden set was named.",
             "nullable": true,
             "type": "string"
           },
@@ -238,8 +234,12 @@
             "nullable": true,
             "type": "string"
           },
-          "sourceAgentId": {
-            "description": "The source agent",
+          "sourceDefinitionSlug": {
+            "description": "The source workflow definition’s slug — its identity across versions",
+            "type": "string"
+          },
+          "sourceDefinitionVersionId": {
+            "description": "The exact immutable WorkflowDefinition version row (in the source tenant) that was promoted",
             "type": "string"
           },
           "sourceEvalRunId": {
@@ -247,12 +247,12 @@
             "nullable": true,
             "type": "string"
           },
-          "targetAgentId": {
-            "description": "The agent row in the target tenant this promotion created or advanced",
+          "targetDefinitionSlug": {
+            "description": "The workflow definition slug this promotion created in the target tenant",
             "type": "string"
           },
-          "targetAgentVersionId": {
-            "description": "The immutable configuration version written in the target",
+          "targetDefinitionVersionId": {
+            "description": "The WorkflowDefinition version row written in the target",
             "nullable": true,
             "type": "string"
           },
@@ -277,9 +277,9 @@
           "id",
           "fromTenantId",
           "toTenantId",
-          "agentVersionId",
-          "sourceAgentId",
-          "targetAgentId",
+          "sourceDefinitionVersionId",
+          "sourceDefinitionSlug",
+          "targetDefinitionSlug",
           "configSnapshot",
           "checksum",
           "warnings",
@@ -2499,25 +2499,6 @@
         ],
         "type": "object"
       },
-      "CloneDepartmentAgentRequest": {
-        "properties": {
-          "name": {
-            "description": "Name for the new editable copy",
-            "example": "Cardiology SOAP (our tuning)",
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly slug for the new copy (unique within the department)",
-            "example": "cardiology-soap-ours",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ],
-        "type": "object"
-      },
       "ClonePipelineRequest": {
         "properties": {
           "name": {
@@ -3878,129 +3859,6 @@
         "required": [
           "slug",
           "name"
-        ],
-        "type": "object"
-      },
-      "CreateDepartmentAgentRequest": {
-        "properties": {
-          "alwaysActions": {
-            "description": "Actions this agent must always take (compliance envelope)",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "departmentId": {
-            "description": "Department this agent belongs to",
-            "type": "string"
-          },
-          "description": {
-            "description": "Agent description",
-            "type": "string"
-          },
-          "dnaStylePolicy": {
-            "description": "DNA writing-style gate",
-            "enum": [
-              "INHERIT",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "goal": {
-            "description": "Constrained goal (NOT a free-text prompt): { version: 1, objective, successCriteria? }",
-            "type": "object"
-          },
-          "goldenSetId": {
-            "description": "Golden set id (consumed by eval gating)",
-            "type": "string"
-          },
-          "guardrailProfile": {
-            "description": "Named guardrail profile from a closed platform catalogue",
-            "type": "string"
-          },
-          "harnessOverrides": {
-            "description": "Tenant-tier HarnessPolicy overrides (thresholds + maxRegen/gateSla/gateEscalation/toolAllowlist only)",
-            "type": "object"
-          },
-          "livePromptTemplateId": {
-            "description": "Live-summarization prompt template. Null ⇒ the SYSTEM live default.",
-            "type": "string"
-          },
-          "llmOverrides": {
-            "description": "Per-task LLM override: { live?: { aiModelSlug }, finalize?: { aiModelSlug } }. Each key falls back independently to the tenant AiTaskDefault.",
-            "type": "object"
-          },
-          "name": {
-            "description": "Agent name",
-            "example": "Cardiology SOAP",
-            "type": "string"
-          },
-          "neverActions": {
-            "description": "Actions this agent must never take (compliance envelope)",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "newPatientTemplateId": {
-            "description": "Summary template served for NEW-PATIENT visits. Null ⇒ fall back to promptTemplateId.",
-            "type": "string"
-          },
-          "pinnedVersionNumber": {
-            "description": "Pin the agent to a specific PromptVersion number. Omit/null to track the latest APPROVED version.",
-            "example": 3,
-            "type": "number"
-          },
-          "preSummaryTemplateId": {
-            "description": "Pre-summary template for NATIVE requests that carry this department. Null ⇒ the tenant default, then the SYSTEM default. Never consulted by the v1-compat path (it sends no departmentId).",
-            "type": "string"
-          },
-          "promptTemplateId": {
-            "description": "Bound PromptTemplate id (tenant-visible)",
-            "type": "string"
-          },
-          "revisitTemplateId": {
-            "description": "Summary template served for REVISIT visits. Null ⇒ fall back to promptTemplateId.",
-            "type": "string"
-          },
-          "role": {
-            "description": "Loop role — at most one ENABLED PRIMARY per department",
-            "enum": [
-              "PRIMARY",
-              "SPECIALIST"
-            ],
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly slug (unique per department)",
-            "example": "cardiology-soap",
-            "type": "string"
-          },
-          "subscribedKinds": {
-            "description": "Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema.",
-            "type": "object"
-          },
-          "tags": {
-            "description": "Tags",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "toolConfig": {
-            "description": "Which live-loop tools run: { version: 1, tools: { ner: { enabled }, vitals: { enabled }, groundedness: { enabled } } }. Null ⇒ platform default.",
-            "type": "object"
-          },
-          "writeScope": {
-            "description": "Output kinds this agent may produce: { version: 1, outputs: [\"soap_note\"] }",
-            "type": "object"
-          }
-        },
-        "required": [
-          "departmentId",
-          "name",
-          "slug",
-          "promptTemplateId"
         ],
         "type": "object"
       },
@@ -5668,233 +5526,6 @@
         "required": [
           "key",
           "deleted"
-        ],
-        "type": "object"
-      },
-      "DepartmentAgentResponse": {
-        "properties": {
-          "alwaysActions": {
-            "description": "Actions this agent must always take",
-            "items": {
-              "type": "string"
-            },
-            "nullable": true,
-            "type": "array"
-          },
-          "createdAt": {
-            "description": "Creation timestamp (ISO)",
-            "type": "string"
-          },
-          "departmentId": {
-            "description": "Department id",
-            "type": "string"
-          },
-          "description": {
-            "description": "Description",
-            "type": "string"
-          },
-          "dnaStylePolicy": {
-            "description": "DNA writing-style gate",
-            "enum": [
-              "INHERIT",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "goal": {
-            "description": "Constrained goal (not a free-text prompt)",
-            "nullable": true,
-            "type": "object"
-          },
-          "goldenSetId": {
-            "description": "Golden set id",
-            "type": "string"
-          },
-          "guardrailProfile": {
-            "description": "Named guardrail profile",
-            "nullable": true,
-            "type": "string"
-          },
-          "harnessOverrides": {
-            "description": "Tenant-tier HarnessPolicy overrides",
-            "type": "object"
-          },
-          "id": {
-            "description": "Agent id",
-            "type": "string"
-          },
-          "isDefault": {
-            "description": "Whether this is the department default agent",
-            "type": "boolean"
-          },
-          "livePromptTemplateId": {
-            "description": "Live-summarization prompt template (null ⇒ SYSTEM live default)",
-            "nullable": true,
-            "type": "string"
-          },
-          "llmOverrides": {
-            "description": "Per-task LLM override, keyed live/finalize (null ⇒ tenant AiTaskDefault)",
-            "nullable": true,
-            "type": "object"
-          },
-          "name": {
-            "description": "Agent name",
-            "type": "string"
-          },
-          "neverActions": {
-            "description": "Actions this agent must never take",
-            "items": {
-              "type": "string"
-            },
-            "nullable": true,
-            "type": "array"
-          },
-          "newPatientTemplateId": {
-            "description": "Summary template for NEW-PATIENT visits (null ⇒ promptTemplateId)",
-            "nullable": true,
-            "type": "string"
-          },
-          "pinnedVersionNumber": {
-            "description": "Pinned PromptVersion number (null ⇒ tracks latest APPROVED)",
-            "nullable": true,
-            "type": "number"
-          },
-          "preSummaryTemplateId": {
-            "description": "Pre-summary template for native department-scoped requests",
-            "nullable": true,
-            "type": "string"
-          },
-          "promptTemplateId": {
-            "description": "Bound PromptTemplate id",
-            "type": "string"
-          },
-          "resourceStatus": {
-            "description": "Resource status",
-            "enum": [
-              "ENABLED",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "revisitTemplateId": {
-            "description": "Summary template for REVISIT visits (null ⇒ promptTemplateId)",
-            "nullable": true,
-            "type": "string"
-          },
-          "role": {
-            "description": "Loop role",
-            "enum": [
-              "PRIMARY",
-              "SPECIALIST"
-            ],
-            "type": "string"
-          },
-          "slug": {
-            "description": "Slug (unique per department)",
-            "type": "string"
-          },
-          "sourceAgentTemplateSlug": {
-            "description": "Template lineage — the agent-template slug this row descends from",
-            "nullable": true,
-            "type": "string"
-          },
-          "subscribedKinds": {
-            "description": "Context kinds this agent listens for",
-            "nullable": true,
-            "type": "object"
-          },
-          "tags": {
-            "description": "Tags",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "templateLocked": {
-            "description": "Whether this is a locked template copy (read-only content; clone to customize)",
-            "type": "boolean"
-          },
-          "toolConfig": {
-            "description": "Live-loop tool plan (null ⇒ platform default)",
-            "nullable": true,
-            "type": "object"
-          },
-          "updatedAt": {
-            "description": "Last update timestamp (ISO)",
-            "type": "string"
-          },
-          "version": {
-            "description": "Row version for optimistic concurrency control. Echo back as `If-Match: \"<version>\"` or `expectedVersion` on PATCH.",
-            "example": 1,
-            "type": "number"
-          },
-          "writeScope": {
-            "description": "Output kinds this agent may produce",
-            "nullable": true,
-            "type": "object"
-          }
-        },
-        "required": [
-          "id",
-          "departmentId",
-          "name",
-          "slug",
-          "promptTemplateId",
-          "dnaStylePolicy",
-          "isDefault",
-          "templateLocked",
-          "role",
-          "createdAt",
-          "updatedAt",
-          "version"
-        ],
-        "type": "object"
-      },
-      "DepartmentAgentVersionResponse": {
-        "properties": {
-          "agentId": {
-            "description": "The DepartmentAgent this snapshot belongs to",
-            "type": "string"
-          },
-          "changeReason": {
-            "description": "Why this version was written, when recorded (e.g. clone lineage)",
-            "nullable": true,
-            "type": "string"
-          },
-          "checksum": {
-            "description": "sha256 over the canonical (key-sorted) JSON of `configSnapshot`",
-            "type": "string"
-          },
-          "configSnapshot": {
-            "additionalProperties": true,
-            "description": "The seven TASK-659 loop-configuration fields, canonical snapshot",
-            "type": "object"
-          },
-          "createdAt": {
-            "description": "Creation timestamp (ISO)",
-            "type": "string"
-          },
-          "createdBy": {
-            "description": "Acting user",
-            "nullable": true,
-            "type": "string"
-          },
-          "id": {
-            "description": "Version row id",
-            "type": "string"
-          },
-          "versionNumber": {
-            "description": "Monotonically increasing per agent, starting at 1",
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "agentId",
-          "versionNumber",
-          "configSnapshot",
-          "checksum",
-          "createdAt"
         ],
         "type": "object"
       },
@@ -8254,10 +7885,6 @@
             "nullable": true,
             "type": "boolean"
           },
-          "overridesSource": {
-            "description": "Per-agent override provenance (present only when an agent overlay was applied).",
-            "type": "object"
-          },
           "phiEnabled": {
             "description": "PHI-detection toggle.",
             "example": true,
@@ -10490,38 +10117,6 @@
         ],
         "type": "object"
       },
-      "PaginatedDepartmentAgentResponse": {
-        "properties": {
-          "count": {
-            "description": "Total number of items",
-            "example": 1234,
-            "type": "number"
-          },
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/DepartmentAgentResponse"
-            },
-            "type": "array"
-          },
-          "limit": {
-            "description": "Number of items per page",
-            "example": 10,
-            "type": "number"
-          },
-          "page": {
-            "description": "Page number",
-            "example": 0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "count",
-          "limit",
-          "page",
-          "data"
-        ],
-        "type": "object"
-      },
       "PaginatedGlobalSettingResponse": {
         "properties": {
           "count": {
@@ -11375,20 +10970,6 @@
         "properties": {
           "versionNumber": {
             "description": "The immutable version number to serve. Must already exist.",
-            "type": "number"
-          }
-        },
-        "required": [
-          "versionNumber"
-        ],
-        "type": "object"
-      },
-      "PinDepartmentAgentRequest": {
-        "properties": {
-          "versionNumber": {
-            "description": "PromptVersion number to pin to, or null to track the latest APPROVED version.",
-            "example": 3,
-            "nullable": true,
             "type": "number"
           }
         },
@@ -12253,46 +11834,6 @@
         ],
         "type": "object"
       },
-      "PromoteAgentRequest": {
-        "properties": {
-          "agentVersionNumber": {
-            "description": "Which immutable DepartmentAgentVersion to promote. Defaults to the source agent’s latest.",
-            "minimum": 1,
-            "type": "number"
-          },
-          "changeReason": {
-            "description": "Free-text note recorded on the promotion record.",
-            "maxLength": 500,
-            "type": "string"
-          },
-          "fromTenantId": {
-            "description": "Tenant the agent is promoted FROM. Required so authorization can run before any read.",
-            "type": "string"
-          },
-          "sourceAgentId": {
-            "description": "The agent to promote, in the SOURCE tenant.",
-            "type": "string"
-          },
-          "sourceEvalRunId": {
-            "description": "An EvalRun in the SOURCE tenant travelling as an attestation. Recorded as evidence only — it is never treated as a result the target inherits; the target re-runs its own.",
-            "type": "string"
-          },
-          "targetGoldenSetId": {
-            "description": "Golden set IN THE TARGET TENANT to re-run the eval against. Defaults to the target agent’s own. A source-tenant golden set is never accepted — the corpus never crosses a tenant boundary.",
-            "type": "string"
-          },
-          "toTenantId": {
-            "description": "Tenant the agent is promoted INTO.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "sourceAgentId",
-          "fromTenantId",
-          "toTenantId"
-        ],
-        "type": "object"
-      },
       "PromoteExemplarRequest": {
         "properties": {
           "goldenSetId": {
@@ -12303,6 +11844,46 @@
         },
         "required": [
           "goldenSetId"
+        ],
+        "type": "object"
+      },
+      "PromoteWorkflowRequest": {
+        "properties": {
+          "changeReason": {
+            "description": "Free-text note recorded on the promotion record.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "definitionVersionNumber": {
+            "description": "Which immutable version to promote. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft. Name a number to promote a draft deliberately.",
+            "minimum": 1,
+            "type": "number"
+          },
+          "fromTenantId": {
+            "description": "Tenant the workflow is promoted FROM. Required so authorization can run before any read.",
+            "type": "string"
+          },
+          "sourceDefinitionSlug": {
+            "description": "The workflow definition to promote, by slug, in the SOURCE tenant.",
+            "type": "string"
+          },
+          "sourceEvalRunId": {
+            "description": "An EvalRun in the SOURCE tenant travelling as an attestation. Recorded as evidence only — it is never treated as a result the target inherits; the target re-runs its own.",
+            "type": "string"
+          },
+          "targetGoldenSetId": {
+            "description": "Golden set IN THE TARGET TENANT to run the eval against. A source-tenant golden set is never accepted — the corpus never crosses a tenant boundary, which is also why the promoted graph’s own `evalGate` bindings are stripped.",
+            "type": "string"
+          },
+          "toTenantId": {
+            "description": "Tenant the workflow is promoted INTO.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceDefinitionSlug",
+          "fromTenantId",
+          "toTenantId"
         ],
         "type": "object"
       },
@@ -13898,15 +13479,6 @@
         "required": [
           "id"
         ],
-        "type": "object"
-      },
-      "ResyncDepartmentAgentsRequest": {
-        "properties": {
-          "tenantId": {
-            "description": "Reconcile only this tenant; omit to sweep every non-SYSTEM tenant.",
-            "type": "string"
-          }
-        },
         "type": "object"
       },
       "RevealGlobalSettingRequest": {
@@ -18083,128 +17655,6 @@
           "payload": {
             "additionalProperties": true,
             "description": "Replacement structured payload for a STRUCTURED context item, re-validated against the SAME schema version the item was created under. Rejected when the item carries no `kindKey`.",
-            "type": "object"
-          }
-        },
-        "required": [
-          "expectedVersion"
-        ],
-        "type": "object"
-      },
-      "UpdateDepartmentAgentRequest": {
-        "properties": {
-          "alwaysActions": {
-            "description": "Actions this agent must always take (compliance envelope)",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "description": {
-            "description": "Agent description",
-            "type": "string"
-          },
-          "dnaStylePolicy": {
-            "description": "DNA writing-style gate",
-            "enum": [
-              "INHERIT",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "expectedVersion": {
-            "description": "Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted.",
-            "example": 1,
-            "type": "number"
-          },
-          "goal": {
-            "description": "Constrained goal (NOT a free-text prompt): { version: 1, objective, successCriteria? }",
-            "type": "object"
-          },
-          "goldenSetId": {
-            "description": "Golden set id (consumed by eval gating)",
-            "type": "string"
-          },
-          "guardrailProfile": {
-            "description": "Named guardrail profile from a closed platform catalogue",
-            "type": "string"
-          },
-          "harnessOverrides": {
-            "description": "Tenant-tier HarnessPolicy overrides (thresholds + maxRegen/gateSla/gateEscalation/toolAllowlist only)",
-            "type": "object"
-          },
-          "livePromptTemplateId": {
-            "description": "Live-summarization prompt template. Null ⇒ the SYSTEM live default.",
-            "type": "string"
-          },
-          "llmOverrides": {
-            "description": "Per-task LLM override: { live?: { aiModelSlug }, finalize?: { aiModelSlug } }. Each key falls back independently to the tenant AiTaskDefault.",
-            "type": "object"
-          },
-          "name": {
-            "description": "Agent name",
-            "type": "string"
-          },
-          "neverActions": {
-            "description": "Actions this agent must never take (compliance envelope)",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "newPatientTemplateId": {
-            "description": "Summary template served for NEW-PATIENT visits. Null ⇒ fall back to promptTemplateId.",
-            "type": "string"
-          },
-          "preSummaryTemplateId": {
-            "description": "Pre-summary template for NATIVE requests that carry this department. Null ⇒ the tenant default, then the SYSTEM default. Never consulted by the v1-compat path (it sends no departmentId).",
-            "type": "string"
-          },
-          "promptTemplateId": {
-            "description": "Bound PromptTemplate id (tenant-visible)",
-            "type": "string"
-          },
-          "resourceStatus": {
-            "description": "Resource status",
-            "enum": [
-              "ENABLED",
-              "DISABLED"
-            ],
-            "type": "string"
-          },
-          "revisitTemplateId": {
-            "description": "Summary template served for REVISIT visits. Null ⇒ fall back to promptTemplateId.",
-            "type": "string"
-          },
-          "role": {
-            "description": "Loop role — at most one ENABLED PRIMARY per department",
-            "enum": [
-              "PRIMARY",
-              "SPECIALIST"
-            ],
-            "type": "string"
-          },
-          "slug": {
-            "description": "URL-friendly slug (unique per department)",
-            "type": "string"
-          },
-          "subscribedKinds": {
-            "description": "Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema.",
-            "type": "object"
-          },
-          "tags": {
-            "description": "Tags",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "toolConfig": {
-            "description": "Which live-loop tools run: { version: 1, tools: { ner: { enabled }, vitals: { enabled }, groundedness: { enabled } } }. Null ⇒ platform default.",
-            "type": "object"
-          },
-          "writeScope": {
-            "description": "Output kinds this agent may produce: { version: 1, outputs: [\"soap_note\"] }",
             "type": "object"
           }
         },
@@ -22451,7 +21901,7 @@
     },
     "/api/v1/admin/agent-promotions": {
       "get": {
-        "description": "The target tenant’s own agent lineage. Each row reports `drifted` — whether the target agent has been edited since it was promoted into.",
+        "description": "The target tenant’s own workflow lineage. Each row reports `drifted` — whether the target definition’s graph has been edited since it was promoted.",
         "operationId": "AgentPromotionController_list",
         "parameters": [
           {
@@ -22517,9 +21967,9 @@
             }
           },
           {
-            "description": "Filter to one target agent",
+            "description": "Filter to one target workflow slug",
             "in": "query",
-            "name": "targetAgentId",
+            "name": "targetDefinitionSlug",
             "required": false,
             "schema": {
               "type": "string"
@@ -22552,14 +22002,14 @@
         ]
       },
       "post": {
-        "description": "Copies the exact immutable DepartmentAgentVersion of a source-tenant agent into the target tenant, creating the target agent or advancing an existing one with the same slug. Requires manage rights on BOTH tenants and an elevated tenant-less context. Bound prompt templates are deep-copied into the target; the golden set is NOT — the eval re-runs at the target against the target’s own corpus, and no GoldenCase (nor the pointer to one) crosses a tenant boundary. Blocked when the target department does not declare a context kind the promoted agent subscribes to. Live consultations on the target are reported as a warning, never a block.",
+        "description": "Copies one immutable WorkflowDefinition version of a source-tenant workflow into the target tenant as a new DRAFT version of the same slug — never published, never active, so a cross-tenant push cannot silently become the workflow governing another tenant’s live consultations. Requires manage rights on BOTH tenants and an elevated tenant-less context. Tenant-owned prompt templates bound by the graph’s nodes are deep-copied into the target and the bindings rewritten; SYSTEM-owned ones are left alone. Every node’s `evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary, so the eval runs at the target against a target golden set the caller names. Blocked when a node binds a document template that is not SYSTEM-owned. Live consultations on the target are reported as a warning, never a block.",
         "operationId": "AgentPromotionController_promote",
         "parameters": [],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PromoteAgentRequest"
+                "$ref": "#/components/schemas/PromoteWorkflowRequest"
               }
             }
           },
@@ -22577,13 +22027,13 @@
             "description": "The immutable promotion record"
           },
           "400": {
-            "description": "Blocked — missing target department, undeclared context kind, incumbent PRIMARY, or no version to promote"
+            "description": "Blocked — a non-SYSTEM document-template binding, no ACTIVE PUBLISHED version to promote, or a same-tenant request"
           },
           "403": {
             "description": "The actor does not hold manage rights on both tenants, or the context is not elevated and tenant-less"
           },
           "404": {
-            "description": "Source agent not found (a cross-tenant id is indistinguishable from a missing one)"
+            "description": "Source version not found (a cross-tenant id is indistinguishable from a missing one)"
           }
         },
         "security": [
@@ -22594,7 +22044,7 @@
             "bearer": []
           }
         ],
-        "summary": "Promote an agent configuration version from one tenant to another",
+        "summary": "Promote a workflow definition version from one tenant to another",
         "tags": [
           "admin-agent-promotions"
         ]
@@ -28339,550 +27789,6 @@
         "summary": "Retrieving a single ConsultationResponse by id",
         "tags": [
           "admin-consultations"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents": {
-      "get": {
-        "operationId": "DepartmentAgentController_list",
-        "parameters": [
-          {
-            "description": "Page number (starting from 0)",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 0,
-              "example": 0,
-              "type": "number"
-            }
-          },
-          {
-            "description": "Number of items per page (10, 20, or 50)",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "example": 10,
-              "type": "number"
-            }
-          },
-          {
-            "description": "Search query",
-            "in": "query",
-            "name": "search",
-            "required": false,
-            "schema": {
-              "default": "",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Search fields (comma separated: name,phoneNumber)",
-            "in": "query",
-            "name": "searchFields",
-            "required": false,
-            "schema": {
-              "default": "",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Filters (comma separated: name:John,phoneNumber:123456)",
-            "in": "query",
-            "name": "filters",
-            "required": false,
-            "schema": {
-              "default": "",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Sort (comma separated: name:asc,phoneNumber:desc)",
-            "in": "query",
-            "name": "sort",
-            "required": false,
-            "schema": {
-              "default": "",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Filter agents by department",
-            "in": "query",
-            "name": "departmentId",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PaginatedDepartmentAgentResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single PaginatedDepartmentAgentResponse"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Retrieving a single PaginatedDepartmentAgentResponse",
-        "tags": [
-          "admin-department-agents"
-        ]
-      },
-      "post": {
-        "operationId": "DepartmentAgentController_create",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDepartmentAgentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": "Creating a DepartmentAgentResponse"
-          },
-          "400": {
-            "description": "Bad request — invalid binding, duplicate slug, or disallowed override key"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Creating a DepartmentAgentResponse",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/resync": {
-      "post": {
-        "description": "Reconciles tenants against the SYSTEM agent golden library: missing golden agents are cloned in as locked copies (with an APPROVED template snapshot), and pristine locked copies are fast-forwarded to the golden template's current content. UNLOCKED agents — customized, and rows the lineage could not prove pristine — are NEVER touched. With `{ tenantId }` reconciles that one tenant; with no body sweeps every non-SYSTEM tenant. Idempotent: re-running returns an all-zero summary.",
-        "operationId": "DepartmentAgentResyncController_resync",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResyncDepartmentAgentsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Reconciliation summary { added, fastForwarded, skipped }"
-          },
-          "400": {
-            "description": "Bad request — the SYSTEM tenant cannot be resynced against itself"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Resync tenant DepartmentAgent catalogs against the SYSTEM golden library",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/{id}": {
-      "delete": {
-        "operationId": "DepartmentAgentController_delete",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": "Deleting a DepartmentAgentResponse by id"
-          },
-          "403": {
-            "description": "Locked template copy — clone to customize"
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Deleting a DepartmentAgentResponse by id",
-        "tags": [
-          "admin-department-agents"
-        ]
-      },
-      "get": {
-        "operationId": "DepartmentAgentController_getById",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": "Retrieving a single DepartmentAgentResponse by id"
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Retrieving a single DepartmentAgentResponse by id",
-        "tags": [
-          "admin-department-agents"
-        ]
-      },
-      "patch": {
-        "description": "Updates one agent row. Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the row's `_version`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.",
-        "operationId": "DepartmentAgentController_update",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "RFC 7232 strong validator carrying the version the client read.",
-            "in": "header",
-            "name": "If-Match",
-            "required": true,
-            "schema": {
-              "example": "\"1\"",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDepartmentAgentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": "Updating a DepartmentAgentResponse by id"
-          },
-          "403": {
-            "description": "Locked template copy — clone to customize"
-          },
-          "404": {
-            "description": "Department agent not found"
-          },
-          "412": {
-            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
-          },
-          "428": {
-            "description": "If-Match header is required for this operation."
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Updating a DepartmentAgentResponse by id",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/{id}/clone": {
-      "post": {
-        "description": "Deep-copies the bound PromptTemplate into an editable DRAFT tenant template and creates a new, UNLOCKED agent bound to it (carrying lineage). The source row is left untouched.",
-        "operationId": "DepartmentAgentController_clone",
-        "parameters": [
-          {
-            "description": "Source department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CloneDepartmentAgentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "description": "Duplicate slug within the department"
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Clone an agent into a new editable copy (clone to customize)",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/{id}/pin": {
-      "post": {
-        "operationId": "DepartmentAgentController_pin",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PinDepartmentAgentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "400": {
-            "description": "Version does not exist or is not an APPROVED snapshot"
-          },
-          "403": {
-            "description": "Locked template copy — clone to customize"
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Pin the agent to a PromptVersion number, or null to track latest APPROVED",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/{id}/set-default": {
-      "post": {
-        "operationId": "DepartmentAgentController_setDefault",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DepartmentAgentResponse"
-                }
-              }
-            },
-            "description": ""
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Mark this agent as the department default (atomic flip)",
-        "tags": [
-          "admin-department-agents"
-        ]
-      }
-    },
-    "/api/v1/admin/department-agents/{id}/versions": {
-      "get": {
-        "description": "Versions are never edited or deleted — a correction is a new version.",
-        "operationId": "DepartmentAgentController_listVersions",
-        "parameters": [
-          {
-            "description": "Department agent id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DepartmentAgentVersionResponse"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": ""
-          },
-          "404": {
-            "description": "Department agent not found"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "List the immutable loop-configuration versions of an agent, newest first",
-        "tags": [
-          "admin-department-agents"
         ]
       }
     },
@@ -54775,10 +53681,6 @@
     {
       "description": "Cross-tenant consultation administration and review.",
       "name": "admin-consultations"
-    },
-    {
-      "description": "Which agents are assigned to which department.",
-      "name": "admin-department-agents"
     },
     {
       "description": "The tenant department tree.",
