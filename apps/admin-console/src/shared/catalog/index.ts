@@ -12,3 +12,12 @@ export {
   type TextProvider,
   type TextProviderModel,
 } from './hooks';
+export {
+  PLATFORM_FALLBACK_SECTION_TITLES,
+  isServableDocumentTemplate,
+  useDocumentTemplateCatalog,
+  useDocumentTemplateVersionCatalog,
+  type CatalogDocumentTemplate,
+  type CatalogDocumentTemplateStatus,
+  type CatalogDocumentTemplateVersion,
+} from './document-templates';
