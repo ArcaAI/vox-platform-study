@@ -122,36 +122,36 @@ const META: Record<HarnessSensorKey, { label: string; description: string }> = {
   },
 };
 
-export const HARNESS_SENSOR_SETTINGS: SettingDescriptor[] = (
-  Object.keys(HARNESS_SENSOR_DEFAULTS) as HarnessSensorKey[]
-).map<SettingDescriptor>((key) => ({
-  key,
-  // D-2: `global-kv` is the one tier with a complete read + write + cascade +
-  // invalidate loop. These are not a row on `AiProviderConnection`/`AiTaskDefault`/
-  // `AiModel`, so `db-config` does not apply and a bespoke table would be the third
-  // home D-2 exists to forbid.
-  tier: 'global-kv',
-  // The ONLY wiring step: this is what puts the key on
-  // `GET /internal/effective-config?service=harness`.
-  consumedBy: ['harness'],
-  dataType: 'number',
-  sensitivity: 'internal',
-  // Platform default only — the tenant lane is `HarnessPolicy`, not an override here.
-  maxScope: 'system',
-  editableBy: 'all',
-  globalOnly: true,
-  // TUNING, so `open-to-default`: an unwritten row must leave harness on its bootstrap
-  // value, exactly as it behaves today. Fail-closed would turn "nobody has configured
-  // this yet" into an effective-config endpoint failure, which is the opposite of the
-  // degradation contract every consumer of this route is built around.
-  failMode: 'open-to-default',
-  // A tenant may only TIGHTEN a gate. Higher is stricter here: a claim has to earn its
-  // pass, so raising the fraction makes the gate harder to satisfy. Declaring the
-  // direction on the descriptor is what lets ONE enforcement point in the write lane
-  // cover every such key, instead of a per-feature floor function with its own key table.
-  floorDirection: 'higher-is-stricter',
-  category: 'Clinical Assurance',
-  label: META[key].label,
-  description: META[key].description,
-  default: HARNESS_SENSOR_DEFAULTS[key],
-}));
+export const HARNESS_SENSOR_SETTINGS: SettingDescriptor[] = (Object.keys(HARNESS_SENSOR_DEFAULTS) as HarnessSensorKey[]).map<SettingDescriptor>(
+  (key) => ({
+    key,
+    // D-2: `global-kv` is the one tier with a complete read + write + cascade +
+    // invalidate loop. These are not a row on `AiProviderConnection`/`AiTaskDefault`/
+    // `AiModel`, so `db-config` does not apply and a bespoke table would be the third
+    // home D-2 exists to forbid.
+    tier: 'global-kv',
+    // The ONLY wiring step: this is what puts the key on
+    // `GET /internal/effective-config?service=harness`.
+    consumedBy: ['harness'],
+    dataType: 'number',
+    sensitivity: 'internal',
+    // Platform default only — the tenant lane is `HarnessPolicy`, not an override here.
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    // TUNING, so `open-to-default`: an unwritten row must leave harness on its bootstrap
+    // value, exactly as it behaves today. Fail-closed would turn "nobody has configured
+    // this yet" into an effective-config endpoint failure, which is the opposite of the
+    // degradation contract every consumer of this route is built around.
+    failMode: 'open-to-default',
+    // A tenant may only TIGHTEN a gate. Higher is stricter here: a claim has to earn its
+    // pass, so raising the fraction makes the gate harder to satisfy. Declaring the
+    // direction on the descriptor is what lets ONE enforcement point in the write lane
+    // cover every such key, instead of a per-feature floor function with its own key table.
+    floorDirection: 'higher-is-stricter',
+    category: 'Clinical Assurance',
+    label: META[key].label,
+    description: META[key].description,
+    default: HARNESS_SENSOR_DEFAULTS[key],
+  }),
+);

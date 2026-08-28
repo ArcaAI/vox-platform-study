@@ -55,14 +55,7 @@ export const PROVIDER_EXTRA_LIMITS = {
  * decrypted ciphertext (`api_key`), a dedicated column (`base_url`, `region`,
  * `api_version`, `deployment_name`), or the row's own tenant id (`funding`).
  */
-export const PROVIDER_EXTRA_RESERVED_KEYS: readonly string[] = [
-  'api_key',
-  'funding',
-  'base_url',
-  'region',
-  'api_version',
-  'deployment_name',
-];
+export const PROVIDER_EXTRA_RESERVED_KEYS: readonly string[] = ['api_key', 'funding', 'base_url', 'region', 'api_version', 'deployment_name'];
 
 /** Keys that would mutate an object's prototype rather than its contents. */
 const UNSAFE_KEYS: readonly string[] = ['__proto__', 'constructor', 'prototype'];

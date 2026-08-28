@@ -25,7 +25,6 @@ export * from './consultation-context-schema';
 // a strict decoding constraint. SOAP is a row here, not a privilege.
 export * from './document-template';
 export * from './department';
-export * from './departmentAgent';
 // Agent promotion between tenants.
 export * from './agentPromotion';
 // Clinical documentation harness (eval storage + WORM audit).

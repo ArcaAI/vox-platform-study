@@ -9,19 +9,20 @@
  *   chain (highest priority first):
  *     Tier-0  (preferred)  — the consulting doctor's preferred prompt template,
  *       from `UserProfile.preferredPromptTemplateId`.
- *     Tier-1a (agent)      — the department's default `DepartmentAgent`, serving
- *       `newPatientTemplateId` / `revisitTemplateId` ?? the base
- *       `promptTemplateId` (the VISIT-TYPE AXIS that closes
- *       F-01; an agent with null bindings resolves exactly as it did before).
- *     Tier-1b (department) — the department's visit-type prompt column.
- *       DEPRECATED fallback (RF-3), retained for departments with no agent.
+ *     Tier-1a (node)       — the GOVERNING WORKFLOW DEFINITION's finalize
+ *       generation node (`taskKey: 'text.finalize'`), serving that node's
+ *       `promptTemplateId` at its own `promptVersionNumber` pin. The definition
+ *       is resolved through the `department -> tenant -> platform default`
+ *       assignment cascade, so the tier keeps the department axis it always had.
+ *     Tier-1b (department) — the department's visit-type prompt column. This is
+ *       where the VISIT-TYPE AXIS now lives on its own: the node substrate has
+ *       none by design (DD-2 — a generation node binds its prompt statically).
  *     Tier-2  (default)    — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
  *
  *   promptType === 'pre-summary' — the PRE-SUMMARY chain:
- *     Tier-1a′(agent)      — the default agent's `preSummaryTemplateId`, and
- *       ONLY when the caller supplied a `departmentId` (RF-5: the compat shim
- *       never does, so it can never reach this tier). No base-binding fallback:
- *       a null binding skips the tier rather than substituting a note prompt.
+ *     (no node tier — the pre-summarisation node type does not exist yet; see
+ *      `resolvePreSummaryPromptId` for why the tier is absent rather than
+ *      pointed at some other node's prompt.)
  *     Tier-1t (tenant)     — the tenant's TENANT_DEFAULT pre-summary template
  *       for the requested SURFACE (RF-2, refined by OD-7(b)): the `'v1'`
  *       surface matches any `pre-summary`-tagged row EXCEPT one also tagged
@@ -42,6 +43,16 @@
  * failures, so the pre-summary chain raises rather than substituting a
  * summary-shaped prompt.
  *
+ * WHY THE TIER IS STILL CALLED `'agent'`. `ResolvedPromptConfig` is reached by
+ * a FROZEN v1-compat wire route (`TextCompatController` ->
+ * `TextCompatTemplateService.resolveGovernedInstruction()`), so its field set —
+ * `resolvedFrom`, `resolvedAgentId`, `content`, `resolvedVersionNumber` — and
+ * the values `resolvedFrom` may take are a published contract. TASK-815 moved
+ * the tier's SOURCE from `DepartmentAgent` onto workflow node config and left
+ * the contract exactly where it was; `resolvedAgentId` now carries the
+ * WORKFLOW NODE ID that supplied the prompt. Renaming either would break a
+ * frozen route for a cosmetic gain.
+ *
  * The chosen tier is reported back on `ResolvedPromptConfig.resolvedFrom`
  * (`'preferred' | 'agent' | 'department' | 'tenant' | 'default'`), and it
  * reflects WHICH TIER PRODUCED THE PROMPT ID — a resolution that fell through
@@ -59,20 +70,22 @@
  * Implements Department-to-Prompt Mapping.
  */
 
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import {
   DepartmentRepository,
   DepartmentEntity,
   PromptTemplateRepository,
-  DepartmentAgentRepository,
-  type DepartmentAgentEntity,
   PromptVersionRepository,
   PromptTemplateScope,
   PromptTemplateStatus,
   ResourceStatusType,
+  WorkflowDefinitionRepository,
   type IFindAllProps,
   type PromptTemplate,
 } from '@arcaai/domains';
+import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
+
+import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 
 // ============================================================================
 // Types
@@ -113,7 +126,16 @@ export interface ResolvedPromptConfig {
   /** The resolved PromptVersion number backing `content`. */
   resolvedVersionNumber?: number | null;
 
-  /** The default DepartmentAgent id when tier-1a resolved. */
+  /**
+   * The identifier of whatever supplied tier-1a, when tier-1a resolved.
+   *
+   * Since TASK-815 that is the WORKFLOW NODE ID of the generation node whose
+   * config carried the prompt binding (it was the `DepartmentAgent` row id
+   * before). The FIELD is part of the frozen v1-compat contract and does not
+   * move; only what it names does. Consumers treat it as an opaque lineage
+   * token — `SummaryMeta.sessionAgentId`, the live snapshot's `agentId`, and
+   * `PromptResolutionParams.pinnedAgentId` all round-trip it without parsing.
+   */
   resolvedAgentId?: string;
 
   /**
@@ -143,9 +165,9 @@ export type PromptResolutionTier = 'preferred' | 'agent' | 'department' | 'tenan
 export interface PromptResolutionTrace {
   /** The doctor's preferred prompt template id, when it resolved (Tier-0) */
   preferredPromptId?: string | null;
-  /** The department default agent id, when tier-1a resolved */
+  /** The workflow NODE id that supplied tier-1a, when tier-1a resolved. */
   agentId?: string | null;
-  /** The resolved PromptVersion number for the agent tier */
+  /** The resolved PromptVersion number for the node tier */
   agentVersionNumber?: number | null;
   departmentTemplate?: string | null;
   departmentPromptId?: string | null;
@@ -202,19 +224,18 @@ export interface PromptResolutionParams {
   preSummaryVariant?: 'v1' | 'dept-free';
 
   /**
-   * Finalize PINS the summary chain's agent tier to the
-   * agent that actually ran the LIVE session, instead of re-resolving
-   * `findDefaultForDepartment` at finalize time.
+   * Finalize PINS the summary chain's node tier to the NODE that actually ran
+   * the LIVE session, instead of re-selecting the graph's first finalize node.
    *
-   * Why: a department default re-pointed mid-visit (or a new default agent
-   * created between `start()` and finalize) would otherwise silently change the
-   * prompt that reviews the very note the live agent produced — exactly the
-   * "same specific agent reviews and finalizes" contract R-N2 exists to close.
+   * Why: a graph re-authored mid-visit (or an assignment re-pointed between
+   * `start()` and finalize) would otherwise silently change the prompt that
+   * reviews the very note the live pass produced — exactly the "same specific
+   * agent reviews and finalizes" contract R-N2 exists to close.
    *
-   * FALLS THROUGH, NEVER THROWS. The pinned row must match the SAME tenant and
-   * department and be ENABLED; a deleted / re-departmented / disabled agent (or
-   * a failed lookup) degrades to the normal `findDefaultForDepartment` chain —
-   * a finalize must never 500 because the session's agent was tidied up.
+   * FALLS THROUGH, NEVER THROWS. The pin must still name a node present in the
+   * governing graph that serves the requested task; a removed / renamed node
+   * (or a failed lookup) degrades to the graph's own first node — a finalize
+   * must never 500 because the graph was tidied up.
    *
    * Tier-0 (doctor-preferred) still outranks it (DR-2): an explicit clinician
    * choice is a stronger signal than the department default that happened to
@@ -313,6 +334,77 @@ interface ResolvedPromptId {
 }
 
 // ============================================================================
+// Tier-1a source: the governing workflow definition's node config (TASK-815)
+// ============================================================================
+
+/** The palette whose assigned definition governs a consultation. */
+const CONSULTATION_PALETTE_KEY = 'consultation';
+
+/**
+ * The generation task a node serves, as declared by its `taskKey` config key.
+ * Only the two clinical ones are selectable here — `text.test` is a Studio
+ * dry-run task and must never be reachable from a clinical resolution.
+ */
+type NodeTaskKey = 'text.finalize' | 'text.live';
+
+/** Node config keys carrying the DD-11 prompt binding (mirrors `node-prompt-binding.ts`). */
+const PROMPT_TEMPLATE_ID_KEY = 'promptTemplateId';
+const PROMPT_VERSION_NUMBER_KEY = 'promptVersionNumber';
+const TASK_KEY = 'taskKey';
+
+function nodeConfig(node: WorkflowGraphNode): Record<string, unknown> {
+  const config = node.config;
+  return typeof config === 'object' && config !== null && !Array.isArray(config) ? (config as Record<string, unknown>) : {};
+}
+
+function readPromptTemplateId(node: WorkflowGraphNode): string | null {
+  const value = nodeConfig(node)[PROMPT_TEMPLATE_ID_KEY];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** The node's OWN pin onto one immutable `PromptVersion`, or null when unpinned. */
+function readPromptVersionPin(node: WorkflowGraphNode): number | null {
+  const value = nodeConfig(node)[PROMPT_VERSION_NUMBER_KEY];
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * The task a node ACTUALLY serves: its authored `taskKey`, or the registry
+ * schema's declared default for that node type when the key is absent.
+ *
+ * The default matters. `consultation.realtimeSummary` declares
+ * `taskKey: { …, default: 'text.live' }`, so a node authored without the key is
+ * still a live node — to the interpreter and therefore to this resolver too.
+ * Reading the default from `WORKFLOW_NODE_REGISTRY` rather than restating it
+ * here is what keeps the two from drifting: a node type whose default changes
+ * changes here in the same commit.
+ */
+function effectiveTaskKey(node: WorkflowGraphNode): string | undefined {
+  const authored = nodeConfig(node)[TASK_KEY];
+  if (typeof authored === 'string' && authored.length > 0) return authored;
+
+  const declared = WORKFLOW_NODE_REGISTRY[node.type]?.configSchema?.properties?.[TASK_KEY];
+  const fallback = typeof declared === 'object' && declared !== null ? (declared as { default?: unknown }).default : undefined;
+  return typeof fallback === 'string' && fallback.length > 0 ? fallback : undefined;
+}
+
+/**
+ * Every node in the graph that carries a prompt binding AND serves `taskKey`,
+ * in AUTHORED ORDER — which is what makes "the first one" a deterministic
+ * choice rather than a Postgres tie-break.
+ *
+ * Keyed off the presence of `promptTemplateId` plus the effective task, never
+ * off a list of node TYPES, for the reason `collectPromptBindings` gives: a
+ * type allow-list silently misses the next generation node someone registers,
+ * and missing one here means resolving a different prompt than the interpreter
+ * would run.
+ */
+function promptBearingNodesForTask(graph: WorkflowGraph | null | undefined, taskKey: NodeTaskKey): WorkflowGraphNode[] {
+  if (!graph || !Array.isArray(graph.nodes)) return [];
+  return graph.nodes.filter((node) => readPromptTemplateId(node) !== null && effectiveTaskKey(node) === taskKey);
+}
+
+// ============================================================================
 // Service
 // ============================================================================
 
@@ -323,9 +415,17 @@ export class PromptResolutionService {
   constructor(
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
-    // Tier-1a: department default agent (movable-pointer resolution).
-    private readonly departmentAgentRepository: DepartmentAgentRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
+    // Tier-1a: the tenant's GOVERNING workflow definition, resolved through the
+    // `department -> tenant -> platform default` assignment cascade. Both are
+    // `@Optional()` for the same reason `LiveDocumentationService`'s copies are:
+    // this service is constructed in background job processors and in a long
+    // tail of unit tests with a positional argument list, and an unwired
+    // resolver must degrade to "no tier-1a" — exactly the shape a department
+    // with no configured agent had before TASK-815 — never to a throw on a
+    // clinical generation path.
+    @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
+    @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {}
 
   /**
@@ -443,36 +543,39 @@ export class PromptResolutionService {
       trace.departmentPromptId = departmentPromptId;
     }
 
-    // Tier-1a: the department's DEFAULT DepartmentAgent, inserted
-    // BEFORE the legacy department prompt-id columns and only when no doctor-
-    // preferred template took tier-0. It serves the IMMUTABLE PromptVersion
-    // snapshot content at `pinnedVersionNumber ?? latest APPROVED`, never the
-    // mutable template row — this is what makes version pinning meaningful. If
-    // the agent's template is not APPROVED (or has no snapshot) at the resolved
-    // version, it falls through to the legacy chain. No default agent ⇒ the
-    // whole branch is skipped and resolution is byte-identical to before.
+    // Tier-1a: the tenant's GOVERNING WORKFLOW NODE for finalize generation,
+    // inserted BEFORE the legacy department prompt-id columns and only when no
+    // doctor-preferred template took tier-0. It serves the IMMUTABLE
+    // PromptVersion snapshot content at the node's own pin (`promptVersionNumber`)
+    // ?? the template's `approvedVersionNumber` ?? latest, never the mutable
+    // template row — this is what makes version pinning meaningful. If the
+    // node's template is not APPROVED (or has no snapshot) at the resolved
+    // version, it falls through to the legacy chain. No governing definition,
+    // or none carrying a finalize node, ⇒ the whole branch is skipped and
+    // resolution is byte-identical to a department with no agent before TASK-815.
+    //
+    // VISIT-TYPE AXIS: the node substrate deliberately has none (DD-2, "no
+    // runtime shape switching" — a generation node binds its prompt and its
+    // document shape STATICALLY). The visit-type distinction therefore lives
+    // exactly where it always also lived, one tier down: the department's
+    // `newPatientPromptId` / `revisitPromptId` columns, which are unchanged.
     if (!preferredPromptId && department && params.departmentId) {
-      const agentResolution = await this.resolveDepartmentAgent(
+      const nodeResolution = await this.resolveNodePrompt(
         department.tenantId,
         params.departmentId,
-        (agent) =>
-          // The agent tier is now VISIT-TYPE AWARE. The
-          // capability binding wins; the base `promptTemplateId` is the
-          // within-tier fallback, which is what makes every previous row
-          // (all six columns null) resolve byte-identically to before.
-          (params.promptType === 'revisit' ? agent.revisitTemplateId : agent.newPatientTemplateId) ?? agent.promptTemplateId,
-        // Finalize pins the SESSION's agent here.
+        'text.finalize',
+        // Finalize pins the SESSION's node here (R-N2).
         params.pinnedAgentId,
       );
-      if (agentResolution) {
-        trace.agentId = agentResolution.agentId;
-        trace.agentVersionNumber = agentResolution.versionNumber;
+      if (nodeResolution) {
+        trace.agentId = nodeResolution.nodeId;
+        trace.agentVersionNumber = nodeResolution.versionNumber;
         return {
-          promptId: agentResolution.templateId,
+          promptId: nodeResolution.templateId,
           tier: 'agent',
-          content: agentResolution.content,
-          versionNumber: agentResolution.versionNumber,
-          agentId: agentResolution.agentId,
+          content: nodeResolution.content,
+          versionNumber: nodeResolution.versionNumber,
+          agentId: nodeResolution.nodeId,
         };
       }
     }
@@ -534,41 +637,23 @@ export class PromptResolutionService {
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
     const variant = params.preSummaryVariant ?? 'v1';
 
-    // Tier-1a′ (scope extension) — the department default
-    // agent's `preSummaryTemplateId`.
+    // TASK-815 — THERE IS NO LONGER A TIER-1a' HERE, and that absence is
+    // deliberate rather than an oversight.
     //
-    // ELIGIBILITY IS SIGNATURE-DERIVED (RF-5), not flag-driven: this tier is
-    // reachable only when the caller supplied a `departmentId`. The v1-compat
-    // shim calls `resolve({ tenantId, promptType: 'pre-summary' })` with no
-    // department, so it can never reach the agent tier — no compat/native flag
-    // exists, and none is needed. A native caller that DOES pass a department
-    // opts its department's agent in.
+    // The tier used to read the department default `DepartmentAgent`'s
+    // `preSummaryTemplateId`. Its successor would be a PRE-SUMMARISATION NODE
+    // (`agent.presummarization`, DD-6), and that node type does not exist yet —
+    // it is in TASK-809's TARGET catalogue, not in `WORKFLOW_NODE_REGISTRY`.
+    // Rather than pick some other node's prompt (which is how a clinical NOTE
+    // prompt gets served for a pre-summary request — the exact defect this
+    // capability split exists to kill), the tier is simply absent until the node
+    // type lands. The tenant tier below and the SYSTEM default behind it are
+    // unchanged, so every pre-summary that resolved through them still does.
     //
-    // Unlike the summary chain there is no visit-type axis here: pre-summary
-    // has exactly one prompt per surface, with department and visit type as
-    // VARIABLES inside it.
-    if (tenantId && params.departmentId) {
-      const agentResolution = await this.resolveDepartmentAgent(
-        tenantId,
-        params.departmentId,
-        // No base-binding fallback: `promptTemplateId` is a clinical NOTE
-        // prompt, and serving it for a pre-summary request is precisely the
-        // defect this capability split exists to kill. A null binding must skip
-        // the tier, not substitute the summary template.
-        (agent) => agent.preSummaryTemplateId ?? null,
-      );
-      if (agentResolution) {
-        trace.agentId = agentResolution.agentId;
-        trace.agentVersionNumber = agentResolution.versionNumber;
-        return {
-          promptId: agentResolution.templateId,
-          tier: 'agent',
-          content: agentResolution.content,
-          versionNumber: agentResolution.versionNumber,
-          agentId: agentResolution.agentId,
-        };
-      }
-    }
+    // The v1-compat shim never reached the agent tier in the first place (it
+    // calls `resolve({ tenantId, promptType: 'pre-summary' })` with no
+    // department), so this changes nothing on the frozen compat route.
+    trace.agentId = null;
 
     if (tenantId) {
       const tenantTemplateId = await this.findTenantPreSummaryTemplateId(tenantId, variant);
@@ -644,22 +729,23 @@ export class PromptResolutionService {
 
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
 
-    // Tier 1a — the department default agent's live binding. Skipped entirely
-    // when the consultation carries no department. NO base-`promptTemplateId`
-    // fallback: that is a clinical NOTE prompt, and serving it as the live
-    // running-note prompt is the same wrong-prompt class the pre-summary split
-    // exists to kill.
+    // Tier 1a — the governing workflow's LIVE generation node (effective
+    // `taskKey: 'text.live'`). Skipped entirely when the consultation carries no
+    // department, or when the graph declares no live generation node. There is
+    // deliberately NO fallback onto a finalize node's prompt: that is a clinical
+    // NOTE prompt, and serving it as the live running-note prompt is the same
+    // wrong-prompt class the pre-summary split exists to kill.
     if (tenantId && params.departmentId) {
-      const agentResolution = await this.resolveDepartmentAgent(tenantId, params.departmentId, (agent) => agent.livePromptTemplateId ?? null);
-      if (agentResolution) {
-        trace.agentId = agentResolution.agentId;
-        trace.agentVersionNumber = agentResolution.versionNumber;
+      const nodeResolution = await this.resolveNodePrompt(tenantId, params.departmentId, 'text.live');
+      if (nodeResolution) {
+        trace.agentId = nodeResolution.nodeId;
+        trace.agentVersionNumber = nodeResolution.versionNumber;
         return {
-          promptId: agentResolution.templateId,
+          promptId: nodeResolution.templateId,
           tier: 'agent',
-          content: agentResolution.content,
-          versionNumber: agentResolution.versionNumber,
-          agentId: agentResolution.agentId,
+          content: nodeResolution.content,
+          versionNumber: nodeResolution.versionNumber,
+          agentId: nodeResolution.nodeId,
         };
       }
     }
@@ -816,52 +902,64 @@ export class PromptResolutionService {
   }
 
   /**
-   * Agent-tier resolution (capability-keyed since): the
-   * department's default DepartmentAgent → the template chosen by
-   * `selectTemplateId` → the immutable PromptVersion snapshot content at
-   * `pinnedVersionNumber ?? template.approvedVersionNumber ?? latest`. Returns
-   * null (fall through to the legacy chain) when there is no default agent, the
-   * bound template is not APPROVED, or the resolved version has no snapshot.
-   * Reads `PromptVersion.content`, never the mutable template row.
+   * Tier-1a resolution, sourced from WORKFLOW NODE CONFIG (TASK-815).
    *
-   * The `approvedVersionNumber` step is the eval-gate integrity fix (F-02): an
-   * UNPINNED default agent serves the version snapshot pinned at the last
-   * approval, NOT whatever content the template was last edited to. So a plain
-   * content edit on an APPROVED template accumulates un-served versions until the
-   * next (eval-gated) re-approval. The bare `latest` tail only fires for
-   * genuinely legacy templates that carry no approval pin.
+   * The tenant's governing `consultation` definition is resolved through the
+   * SAME `department -> tenant -> platform default` assignment cascade the
+   * realtime executor uses, so the DEPARTMENT AXIS the department-default agent
+   * gave this tier is preserved exactly. Within that definition's graph, the
+   * node serving `taskKey` supplies `promptTemplateId` and its own pin
+   * (`promptVersionNumber`, DD-11) — and the approval + snapshot discipline
+   * below is byte-identical to the discipline the agent tier applied.
+   *
+   * Returns null (fall through to the legacy chain) when: the resolvers are not
+   * wired, no tier assigned a definition, the definition has no graph, no node
+   * serves the requested task, the bound template is not APPROVED, or the
+   * resolved version has no snapshot. Reads `PromptVersion.content`, never the
+   * mutable template row.
+   *
+   * The `approvedVersionNumber` step is the eval-gate integrity property: an
+   * UNPINNED node serves the version snapshot pinned at the last approval, NOT
+   * whatever content the template was last edited to. So a plain content edit on
+   * an APPROVED template accumulates un-served versions until the next
+   * (eval-gated) re-approval. The bare `latest` tail only fires for genuinely
+   * legacy templates that carry no approval pin.
+   *
+   * TOTAL BY CONSTRUCTION. Every failure — a rejected assignment read, a missing
+   * definition, a malformed graph — is caught and reported as "no tier-1a".
+   * `resolve()` is on the live and finalize generation paths; it must degrade,
+   * never throw.
    */
-  private async resolveDepartmentAgent(
+  private async resolveNodePrompt(
     tenantId: string,
     departmentId: string,
-    selectTemplateId: (agent: DepartmentAgentEntity) => string | null | undefined,
-    pinnedAgentId?: string,
-  ): Promise<{ templateId: string; content: string; versionNumber: number; agentId: string } | null> {
-    try {
-      // WHICH agent, before WHICH binding. A pinned session
-      // agent replaces the default lookup entirely, but only when it is still
-      // the same tenant's, the same department's, and ENABLED; otherwise the
-      // department default answers as it always did (no error, no 500).
-      const agent =
-        (pinnedAgentId ? await this.resolvePinnedAgent(pinnedAgentId, tenantId, departmentId) : null) ??
-        (await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId));
-      if (!agent) return null;
+    taskKey: NodeTaskKey,
+    pinnedNodeId?: string,
+  ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string } | null> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
 
-      // WHICH of the agent's bindings to serve is the CAPABILITY
-      // chain's decision, passed in as a selector; this method owns only the
-      // shared approval + snapshot discipline. Exactly ONE attempt: if the
-      // selected template fails a check the whole tier returns null and
-      // resolution falls to the next tier. There is deliberately no second,
-      // within-agent retry against another binding — that would make resolution
-      // order-dependent and add reads to the hot path.
-      const selectedTemplateId = selectTemplateId(agent);
+    try {
+      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId);
+      if (!assignment.workflowDefinitionSlug) return null;
+
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
+      const candidates = promptBearingNodesForTask(definition?.graph as unknown as WorkflowGraph | null | undefined, taskKey);
+      if (candidates.length === 0) return null;
+
+      // WHICH node, before WHICH template. A pinned session node replaces the
+      // first-node selection entirely, but only when it is still present in the
+      // governing graph and still serves this task; otherwise the graph's own
+      // first node answers, exactly as an unpinned resolve would. A finalize
+      // must never fail because the graph was re-authored mid-visit.
+      const node = (pinnedNodeId ? candidates.find((candidate) => candidate.id === pinnedNodeId) : undefined) ?? candidates[0];
+      const selectedTemplateId = readPromptTemplateId(node);
       if (!selectedTemplateId) return null;
 
       const template = await this.promptTemplateRepository.findById(selectedTemplateId);
-      // Agent template unapproved ⇒ legacy fallback.
+      // Node template unapproved => legacy fallback.
       if (!template || template.status !== 'APPROVED') return null;
 
-      const targetVersionNumber = agent.pinnedVersionNumber ?? template.approvedVersionNumber ?? null;
+      const targetVersionNumber = readPromptVersionPin(node) ?? template.approvedVersionNumber ?? null;
       const version =
         targetVersionNumber !== null && targetVersionNumber !== undefined
           ? await this.promptVersionRepository.findByVersionNumber(template.id, targetVersionNumber)
@@ -869,43 +967,13 @@ export class PromptResolutionService {
 
       if (!version || version.content === null || version.content === undefined) return null;
 
-      return { templateId: template.id, content: version.content, versionNumber: version.versionNumber, agentId: agent.id };
+      return { templateId: template.id, content: version.content, versionNumber: version.versionNumber, nodeId: node.id };
     } catch (error) {
       this.logger.warn({
-        message: 'Failed to resolve department default agent — skipping agent tier',
+        message: 'Failed to resolve the governing workflow node — skipping the node tier',
         tenantId,
         departmentId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Load the SESSION-pinned agent, or null.
-   *
-   * Total by construction: `Repository.findById` THROWS `DataNotFoundException`
-   * on a missing row, and a re-departmented / cross-tenant / disabled agent is
-   * treated exactly like a missing one. Every outcome that is not "the same
-   * agent, still here, still eligible" returns null, which puts the caller back
-   * on `findDefaultForDepartment` — the pre-C5 behaviour.
-   *
-   * The tenant/department check is defence-in-depth, not the tenancy boundary:
-   * the extended Prisma client already scopes the read to the caller's tenant.
-   */
-  private async resolvePinnedAgent(pinnedAgentId: string, tenantId: string, departmentId: string): Promise<DepartmentAgentEntity | null> {
-    try {
-      const agent = await this.departmentAgentRepository.findById(pinnedAgentId);
-      if (!agent) return null;
-      if (agent.tenantId !== tenantId || agent.departmentId !== departmentId) return null;
-      if (agent.resourceStatus !== ResourceStatusType.ENABLED) return null;
-      return agent;
-    } catch (error) {
-      this.logger.warn({
-        message: 'Session-pinned agent could not be loaded — falling back to the department default agent',
-        pinnedAgentId,
-        tenantId,
-        departmentId,
+        taskKey,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;

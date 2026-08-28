@@ -41,8 +41,7 @@ describe('naming rollout (Family 2/6)', () => {
     expect(source).not.toMatch(/transcription agent/i);
   });
 
-  it('the Agent Catalog admin screen uses the Family 6 vocabulary in its page title', () => {
-    const source = readSrc('features/agents/components/agents-screen.tsx');
-    expect(source).toMatch(/title="Agent Catalog"/);
-  });
+  // The Agent Catalog screen's own vocabulary case lived here until TASK-815
+  // retired `DepartmentAgent` and the screen with it. Every other case in this
+  // file is about a DIFFERENT feature and is untouched.
 });

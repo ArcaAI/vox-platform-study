@@ -11,7 +11,7 @@
 
 import { Logger } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_LIVE_TOOL_PLAN, normalizeToolPlan, type ResolvedToolPlan } from '../live-agent.port';
+import { DEFAULT_LIVE_TOOL_PLAN, type ResolvedToolPlan } from '../live-agent.port';
 import {
   GUARDRAIL_GROUNDEDNESS_TOOL,
   GuardrailGroundednessTool,
@@ -24,6 +24,18 @@ import {
 } from '../live-tool-registry';
 
 const logger = { warn: vi.fn(), log: vi.fn(), error: vi.fn(), debug: vi.fn() } as unknown as Logger;
+
+/**
+ * A `ResolvedToolPlan` with `overrides` applied over the platform default.
+ *
+ * This used to be `normalizeToolPlan(agentToolConfig)` — the parser that turned
+ * `DepartmentAgent.toolConfig` JSONB into a plan. TASK-815 deleted the parser
+ * with the column it read; the REGISTRY's plan handling, which is what this
+ * suite is actually about, is unchanged, so the plans are built directly.
+ */
+function plan(overrides: Partial<ResolvedToolPlan['tools']> = {}): ResolvedToolPlan {
+  return { version: 1, tools: { ...DEFAULT_LIVE_TOOL_PLAN.tools, ...overrides } };
+}
 
 function makeDeps(post = vi.fn()): { deps: LiveToolRegistryDeps; post: ReturnType<typeof vi.fn> } {
   const httpService = { axiosRef: { post } } as never;
@@ -57,42 +69,39 @@ describe('LiveToolRegistry — plan resolution (C4-T1/T2/T3)', () => {
   it('C4-T1: the default plan (null toolConfig) enables ner+vitals and defers groundedness to env', () => {
     const { deps } = makeDeps();
     const registry = new LiveToolRegistry(deps);
-    const plan = normalizeToolPlan(null);
+    const defaultPlan = DEFAULT_LIVE_TOOL_PLAN;
 
-    expect(plan).toEqual(DEFAULT_LIVE_TOOL_PLAN);
-    expect(registry.isEnabled(plan, 'ner')).toBe(true);
-    expect(registry.isEnabled(plan, 'vitals')).toBe(true);
-    expect(registry.isEnabled(plan, 'groundedness')).toBe(false); // env default off
+    expect(registry.isEnabled(defaultPlan, 'ner')).toBe(true);
+    expect(registry.isEnabled(defaultPlan, 'vitals')).toBe(true);
+    expect(registry.isEnabled(defaultPlan, 'groundedness')).toBe(false); // env default off
 
     const envOn = new LiveToolRegistry({ ...deps, envDefaults: { ner: true, vitals: true, groundedness: true } });
-    expect(envOn.isEnabled(plan, 'groundedness')).toBe(true); // enabled:null follows env, both ways
+    expect(envOn.isEnabled(defaultPlan, 'groundedness')).toBe(true); // enabled:null follows env, both ways
   });
 
   it('C4-T2: an explicit false wins over the env default; an explicit true does too', () => {
     const { deps } = makeDeps();
     const registry = new LiveToolRegistry({ ...deps, envDefaults: { ner: true, vitals: true, groundedness: true } });
-    const plan = normalizeToolPlan({
-      version: 1,
-      tools: { ner: { enabled: false }, groundedness: { enabled: false } },
-    });
+    const configured = plan({ ner: { enabled: false }, groundedness: { enabled: false } });
 
-    expect(registry.isEnabled(plan, 'ner')).toBe(false);
-    expect(registry.isEnabled(plan, 'vitals')).toBe(true); // untouched key keeps its default
-    expect(registry.isEnabled(plan, 'groundedness')).toBe(false); // false beats env-on
+    expect(registry.isEnabled(configured, 'ner')).toBe(false);
+    expect(registry.isEnabled(configured, 'vitals')).toBe(true); // untouched key keeps its default
+    expect(registry.isEnabled(configured, 'groundedness')).toBe(false); // false beats env-on
 
-    const forced = normalizeToolPlan({ version: 1, tools: { groundedness: { enabled: true } } });
+    const forced = plan({ groundedness: { enabled: true } });
     const envOff = new LiveToolRegistry(deps);
     expect(envOff.isEnabled(forced, 'groundedness')).toBe(true);
   });
 
-  it('C4-T3: an unknown tool key is ignored at read (warn+ignore mirror of the write-side 400)', () => {
+  // C4-T3's first half — "an unknown tool key is ignored at READ" — tested
+  // `normalizeToolPlan`'s tolerance of a hand-written `DepartmentAgent.toolConfig`
+  // blob. Both the column and the parser went with TASK-815, so there is no
+  // untrusted plan document left to be tolerant of. The REGISTRY's own
+  // tolerance survives and is what the remaining assertion covers.
+  it('C4-T3: a plan missing a tool entirely degrades to the env default, never to a crash', () => {
     const { deps } = makeDeps();
     const registry = new LiveToolRegistry(deps);
-    const plan = normalizeToolPlan({ version: 1, tools: { nonsense: { enabled: true }, ner: { enabled: false } } });
 
-    expect(Object.keys(plan.tools).sort()).toEqual(['groundedness', 'ner', 'vitals']);
-    expect(registry.isEnabled(plan, 'ner')).toBe(false);
-    // A malformed plan object cannot crash dispatch — it degrades to the env default.
     expect(registry.isEnabled({ version: 1, tools: {} } as unknown as ResolvedToolPlan, 'ner')).toBe(true);
   });
 
@@ -118,7 +127,7 @@ describe('LiveToolRegistry — plan resolution (C4-T1/T2/T3)', () => {
     }
     expect(post).not.toHaveBeenCalled();
 
-    const filtered = registry.describeAll(normalizeToolPlan({ version: 1, tools: { vitals: { enabled: false } } }));
+    const filtered = registry.describeAll(plan({ vitals: { enabled: false } }));
     expect(filtered.map((d) => d.key)).toEqual(['ner']); // groundedness off by env in this fixture
   });
 });

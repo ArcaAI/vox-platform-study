@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DEPARTMENTS, ARCAAI_ALL_CLINICAL_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
 import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS } from '../prisma/db_main/seed/07-prompt-template';
-import { GOLDEN_DEPARTMENTS, GOLDEN_PROMPT_TEMPLATES, GOLDEN_AGENTS, GLOBAL_TENANT_AGENTS, ARCAAI_TENANT_AGENTS } from '../prisma/db_main/seed/07a-agent-golden-library';
+import { GOLDEN_DEPARTMENTS, GOLDEN_PROMPT_TEMPLATES } from '../prisma/db_main/seed/07a-agent-golden-library';
 import { ARCAAI_CLINICAL_TEMPLATES } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 
 describe('seed FK closure (whole graph)', () => {
@@ -32,15 +32,6 @@ describe('seed FK closure (whole graph)', () => {
     for (const d of [...DEFAULT_DEPARTMENTS, ...ARCAAI_ALL_CLINICAL_DEPARTMENTS, ...GOLDEN_DEPARTMENTS] as any[]) {
       for (const col of ['preSummaryPromptId', 'newPatientPromptId', 'revisitPromptId']) {
         if (d[col]) expect(tplIds.has(d[col]), `${d.code}.${col} -> ${d[col]}`).toBe(true);
-      }
-    }
-  });
-  it('every agent departmentId + promptTemplateId resolves', () => {
-    for (const a of [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS] as any[]) {
-      expect(deptIds.has(a.departmentId), `agent ${a.slug} dept ${a.departmentId}`).toBe(true);
-      expect(tplIds.has(a.promptTemplateId), `agent ${a.slug} tpl ${a.promptTemplateId}`).toBe(true);
-      for (const col of ['newPatientTemplateId', 'revisitTemplateId', 'preSummaryTemplateId', 'livePromptTemplateId']) {
-        if (a[col]) expect(tplIds.has(a[col]), `agent ${a.slug}.${col} -> ${a[col]}`).toBe(true);
       }
     }
   });

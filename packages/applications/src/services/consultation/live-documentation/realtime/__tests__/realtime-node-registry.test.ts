@@ -13,7 +13,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { NODE_PORTS, portPrimitiveSatisfies, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 import { REALTIME_NODE_HANDLERS, REALTIME_NODE_TYPES, realtimeHandlerFor, type RealtimeCapabilities } from '../realtime-node-registry';
-import { LIVE_TOOL_KEYS } from '../../../../departmentAgent/constants';
+import { LIVE_TOOL_KEYS } from '../../live-tool-keys';
 
 const capabilities = (over: Partial<RealtimeCapabilities> = {}): RealtimeCapabilities => ({
   transcribe: vi.fn().mockResolvedValue({ transcript: 'raw transcript', pipelineId: 'pipeline-7' }),

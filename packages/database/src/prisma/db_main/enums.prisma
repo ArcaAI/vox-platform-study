@@ -446,30 +446,6 @@ enum IdpProtocol {
   @@schema("core")
 }
 
-// DNA writing-style gate for a DepartmentAgent.
-// INHERIT = inherit the department/doctor DNA-style resolution as today;
-// DISABLED = the agent explicitly opts out of the DNA-style gate.
-enum DepartmentAgentDnaPolicy {
-  INHERIT
-  DISABLED
-
-  @@schema("core")
-}
-
-// Loop role for a DepartmentAgent. PRIMARY owns the consultation
-// note and gate exclusively; SPECIALIST participates in the
-// loop scoped to `subscribedKinds`/`writeScope` but never writes the note. At
-// most one ENABLED PRIMARY per department — enforced in
-// `DepartmentAgentService` (mirrors the `isDefault` invariant), not by a
-// partial unique index. Defaults to SPECIALIST so creating an additional
-// agent in a department never silently contests an existing PRIMARY.
-enum DepartmentAgentRole {
-  PRIMARY
-  SPECIALIST
-
-  @@schema("core")
-}
-
 // Human curation verdict on a mined `GateEditExemplar`.
 //
 // The mining loop writes PENDING: a row is a PROPOSAL, never approved corpus.

@@ -121,10 +121,6 @@ export const FACTORY_OMITTED_SCALARS_BY_MODEL: Readonly<Record<string, ReadonlyS
   // The per-tenant "default pipeline" flag is flipped by a dedicated
   // set-default operation; a pipeline is always created `false`.
   AsrPipeline: new Set<string>(['isDefault']),
-  // The per-department "default agent" flag is flipped by a dedicated
-  // set-default operation (`setDefaultForDepartment`); an agent is always
-  // created `false`. Mirrors AsrPipeline.
-  DepartmentAgent: new Set<string>(['isDefault']),
   // Nullable bucket FK assigned when the object is placed in a `TenantBucket`,
   // not at media-record creation.
   Media: new Set<string>(['bucketId']),

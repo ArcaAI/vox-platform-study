@@ -51,7 +51,7 @@ const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [ac
   'svc:admin:tenant:read': [['read', 'Tenant']],
   'svc:admin:audit:read': [['read', 'AuditLog']],
   'svc:admin:department:manage': [['manage', 'Department']],
-  'svc:admin:agent-promotion:manage': [['manage', 'DepartmentAgent']],
+  'svc:admin:agent-promotion:manage': [['manage', 'WorkflowDefinition']],
   'svc:admin:prompt-template:manage': [['manage', 'PromptTemplate']],
   'svc:admin:consultation-context-schema:manage': [['manage', 'ConsultationContextSchema']],
   'svc:admin:document-template:manage': [['manage', 'DocumentTemplate']],
@@ -114,10 +114,6 @@ const PLATFORM_ONLY_SVC_SCOPES: Readonly<Record<string, ReadonlyArray<readonly [
   'svc:admin:billing:manage': [
     ['manage', 'BillingInvoice'],
     ['manage', 'AiPriceBook'],
-  ],
-  'svc:admin:department-agent:manage': [
-    ['manage', 'DepartmentAgent'],
-    ['manage', 'Tenant'],
   ],
 };
 

@@ -242,12 +242,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The structured-context schemas consultations are validated against.',
   },
   { name: 'admin-consultations', displayName: 'Consultations', plane: 'admin', description: 'Cross-tenant consultation administration and review.' },
-  {
-    name: 'admin-department-agents',
-    displayName: 'Department Agents',
-    plane: 'admin',
-    description: 'Which agents are assigned to which department.',
-  },
   { name: 'admin-departments', displayName: 'Departments', plane: 'admin', description: 'The tenant department tree.' },
   {
     name: 'admin-document-templates',

@@ -36,7 +36,7 @@ import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
-import { useAgentEvalRuns, useApproveTemplate, useDepartmentAgents, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
+import { useAgentEvalRuns, useApproveTemplate, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
 import type { PromptTemplate, PromptTemplateStatus } from '../api';
 import { ApprovalPin, TemplateStatusBadge, statusVariant } from './approval-pin';
 import { VersionsPanel } from './versions-panel';
@@ -142,30 +142,29 @@ function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
 }
 
 /**
- * Eval gate panel — a golden-set picker scoped to the department
- * agents bound to this template, the last runs + scores for the picked set,
- * and a manual run-now. This is independent of the promotion gate that runs
- * automatically on Approve (and on a DepartmentAgent pin re-point) — running
- * it here just lets an admin check the gate before approving. Golden-set CRUD
- * and the full eval-runs grid stay on `/harness/observability` (one
- * authoritative editor per resource, rule 13) — this panel only reads +
- * triggers runs.
+ * Eval gate panel — a golden-set picker, the last runs + scores for the picked
+ * set, and a manual run-now. Independent of the promotion gate that runs
+ * automatically on Approve; running it here just lets an admin check the gate
+ * before approving. Golden-set CRUD and the full eval-runs grid stay on
+ * `/harness/observability` (one authoritative editor per resource, rule 13) —
+ * this panel only reads + triggers runs.
+ *
+ * ## What TASK-815 changed here
+ *
+ * The picker used to default to the golden set attached to a `DepartmentAgent`
+ * bound to this template, and it annotated each set with the agents holding it.
+ * OD-11 moved that binding onto the WORKFLOW NODE that references the template
+ * (`config.evalGate`), so there is no per-template agent list to read and the
+ * picker no longer pre-selects. The binding an admin actually edits lives in
+ * the Workflow Studio node inspector, and the gate that fires on Approve reads
+ * it from there — this panel is, and always was, the manual check.
  */
-function EvalPanel({ template }: { template: PromptTemplate }) {
-  const agentsQuery = useDepartmentAgents({ limit: 200 });
+function EvalPanel({ template: _template }: { template: PromptTemplate }) {
   const goldenSetsQuery = useEvalGoldenSets({ limit: 200 });
   const [picked, setPicked] = useState('');
 
-  const boundAgents = (agentsQuery.data?.data ?? []).filter((agent) => agent.promptTemplateId === template.id);
-  const attachedAgentsBySet = new Map<string, string[]>();
-  for (const agent of boundAgents) {
-    if (!agent.goldenSetId) continue;
-    attachedAgentsBySet.set(agent.goldenSetId, [...(attachedAgentsBySet.get(agent.goldenSetId) ?? []), agent.name]);
-  }
-  const defaultGoldenSetId = boundAgents.find((agent) => !!agent.goldenSetId)?.goldenSetId ?? '';
-  const goldenSetId = picked || defaultGoldenSetId;
+  const goldenSetId = picked;
   const goldenSets = goldenSetsQuery.data?.items ?? [];
-  const attachedAgentNames = goldenSetId ? (attachedAgentsBySet.get(goldenSetId) ?? []) : [];
 
   const runsQuery = useAgentEvalRuns(goldenSetId || null, 5);
   const runEval = useRunGoldenSetEval();
@@ -186,22 +185,18 @@ function EvalPanel({ template }: { template: PromptTemplate }) {
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">Eval gate</h3>
         <p className="text-muted-foreground text-xs">
-          Golden-set evaluation for this template&apos;s bound agents. Approving (or re-pointing a pin) runs this automatically when a golden set is
-          attached &mdash; run it manually here to check first.
+          Golden-set evaluation for this template. Approving runs this automatically when a workflow node that binds this template carries an enabled
+          eval gate &mdash; run it manually here to check first.
         </p>
       </div>
 
-      {boundAgents.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No agents are bound to this template yet &mdash; attach one from the Agents tab, then attach a golden set to it to enable the eval gate.
-        </p>
-      ) : goldenSetsQuery.isPending ? (
+      {goldenSetsQuery.isPending ? (
         <Skeleton className="h-8 w-full" />
       ) : goldenSets.length === 0 ? (
         <EmptyState
           icon={IconFlask}
           title="No golden sets yet"
-          description="Create one on the Harness Observability board, then attach it to a bound agent's Settings tab."
+          description="Create one on the Harness Observability board, then bind it to a workflow node's eval gate in Workflow Studio."
         />
       ) : (
         <>
@@ -216,7 +211,6 @@ function EvalPanel({ template }: { template: PromptTemplate }) {
               {goldenSets.map((set) => (
                 <NativeSelectOption key={set.id} value={set.id}>
                   {set.name}
-                  {attachedAgentsBySet.has(set.id) ? ' (attached)' : ''}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -227,9 +221,7 @@ function EvalPanel({ template }: { template: PromptTemplate }) {
           </div>
           {goldenSetId ? (
             <p className="text-muted-foreground text-xs">
-              {attachedAgentNames.length > 0
-                ? `Attached to: ${attachedAgentNames.join(', ')}`
-                : 'Not attached to a bound agent — running here does not gate promotion.'}
+              Running here does not gate promotion &mdash; the gate that blocks an approval is the one bound on a workflow node.
             </p>
           ) : null}
 

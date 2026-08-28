@@ -41,7 +41,6 @@ import {
   IconMicrophone,
   IconPlugConnected,
   IconReportMedical,
-  IconRobot,
   IconSchema,
   IconServerBolt,
   IconServerCog,
@@ -543,16 +542,17 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  {
-    route: '/agents',
-    domain: 'knowledge-agents',
-    label: 'Agents',
-    tier: '30-49',
-    icon: IconRobot,
-    required: [['manage', 'PromptTemplate']],
-    implemented: true,
-  },
-  // Prompt instruction templates got their own route: the
+  // `/agents` — the Agent Catalog — is GONE from the nav (TASK-815). It CRUD-ed
+  // `DepartmentAgent`, which was retired: a prompt template's binding to a
+  // workflow now lives on the node that references it. The route keeps a
+  // one-release `redirect()` to `/prompt-templates` for bookmarks, but a
+  // redirect has no place in a navigation list.
+  //
+  // Its nav gate was `manage:PromptTemplate` while the screen CRUD-ed
+  // `DepartmentAgent` — D-26, a mismatch that predated this ticket. Removing
+  // the entry removes the mismatch rather than papering over it.
+  //
+  // Prompt instruction templates have their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
   // approval, previously buried as tabs 2 and 3 of the Agent Catalog.
   {

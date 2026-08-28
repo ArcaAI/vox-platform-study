@@ -525,38 +525,6 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
-  // Agent golden-library resync sweep — the DepartmentAgent
-  // sibling of the pipeline resync above. Same fail-safe governance: the
-  // descriptor default is OFF (kill-switch), this platform VALUE turns it on,
-  // `defaultValue` stays 'false' for reset, and `locked` keeps the flip
-  // SUPER_ADMIN-only. Runs an hour after the pipeline sweep to avoid DB
-  // contention. Only ever adds missing golden agents and fast-forwards copies
-  // it can prove pristine; unlocked/drifted rows are skipped, never overwritten.
-  {
-    id: SEED_GLOBAL_SETTING_IDS.SYSTEM_AGENT_TEMPLATE_RESYNC_ENABLED,
-    tenantId: SYSTEM_TENANT_ID,
-    namespace: 'departmentAgent',
-    name: 'Enable Agent Template Resync',
-    key: 'departmentAgent.templateResync.enabled',
-    value: 'true',
-    defaultValue: 'false',
-    dataType: ValueType.Boolean,
-    description:
-      "Runs the nightly sweep that reconciles every tenant's DepartmentAgent catalog against the SYSTEM agent golden library (TASK-548). Customized agents are never touched. Locked — only SUPER_ADMIN may change it.",
-    locked: true,
-  },
-  {
-    id: SEED_GLOBAL_SETTING_IDS.SYSTEM_AGENT_TEMPLATE_RESYNC_CRON,
-    tenantId: SYSTEM_TENANT_ID,
-    namespace: 'departmentAgent',
-    name: 'Agent Template Resync Schedule',
-    key: 'departmentAgent.templateResync.cron',
-    value: '0 4 * * *',
-    defaultValue: '0 4 * * *',
-    dataType: ValueType.String,
-    description: 'Cron expression for the nightly SYSTEM agent-library resync sweep (TASK-548). Locked — only SUPER_ADMIN may change it.',
-    locked: true,
-  },
 ];
 
 // =============================================================================

@@ -206,15 +206,6 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // soft-delete EXEMPT (no resourceStatus column) — see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts.
   'GateEditExemplar',
-  // department-agent.prisma — first-class agent entity. A STANDARD
-  // tenant-scoped config model (tenantId + resourceStatus soft-delete +
-  // _version OCC + audit). NOT SYSTEM-shared: a tenant's department agents are
-  // never visible cross-tenant.
-  'DepartmentAgent',
-  // department-agent.prisma — immutable loop-config version snapshots
-  // . Ordinary tenant-owned rows, NOT SYSTEM-shared — same posture
-  // as the parent DepartmentAgent and as ConsultationContextSchemaVersion.
-  'DepartmentAgentVersion',
   // department-agent.prisma — immutable cross-tenant promotion records
   // . `tenantId` IS the TARGET tenant, so the target owns and reads
   // its own agent lineage while the source tenant's id survives only as the

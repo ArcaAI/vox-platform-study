@@ -116,7 +116,6 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['manage', 'Consultation'],
   ['manage', 'ConsultationContextSchema'],
   ['manage', 'Department'],
-  ['manage', 'DepartmentAgent'],
   ['manage', 'DnaWritingStyleReport'],
   ['manage', 'GlobalSetting'],
   ['manage', 'HarnessEval'],

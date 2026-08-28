@@ -10,29 +10,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activateVersion,
   assignDepartment,
-  createDepartmentAgent,
   createTemplate,
-  deleteDepartmentAgent,
   deleteTemplate,
   diffVersions,
-  getDepartmentAgent,
   getTemplate,
   getUsageAnalytics,
   getUsageStats,
   getVersion,
-  listDepartmentAgents,
   listDepartments,
   listTemplates,
   listUsageRecords,
   listVersions,
-  pinDepartmentAgent,
-  setDefaultDepartmentAgent,
   finalizeTemplateTest,
   testTemplate,
-  updateDepartmentAgent,
   updateTemplate,
 } from '../client';
-import { agentKeys, departmentAgentKeys } from '../keys';
+import { agentKeys } from '../keys';
 
 interface RecordedCall {
   url: string;
@@ -153,59 +146,5 @@ describe('agents client', () => {
       'POST /api/hope/admin/prompt-templates/assign-department',
     ]);
     expect(calls[1].body).toEqual({ departmentId: 'd-1', preSummaryPromptId: 'pt-1', expectedVersion: 3 });
-  });
-});
-
-describe('departmentAgentKeys', () => {
-  it('roots at ["department-agents"], separate from the PromptTemplate agentKeys root', () => {
-    expect(departmentAgentKeys.root[0]).toBe('department-agents');
-    expect(departmentAgentKeys.list({ departmentId: 'd-1' })).toEqual(departmentAgentKeys.list({ departmentId: 'd-1' }));
-    expect(departmentAgentKeys.list({ departmentId: 'd-1' })).not.toEqual(departmentAgentKeys.list({ departmentId: 'd-2' }));
-    expect(departmentAgentKeys.detail('da-1')).not.toEqual(departmentAgentKeys.list());
-    expect(departmentAgentKeys.root).not.toEqual(agentKeys.root);
-  });
-});
-
-describe('department-agents client (admin/department-agents)', () => {
-  it('lists (0-based page), creates, reads and soft-deletes agents', async () => {
-    const calls = installFetchMock();
-    await listDepartmentAgents({ departmentId: 'd-1', page: 0, limit: 20 });
-    await createDepartmentAgent({ departmentId: 'd-1', name: 'Cardiology SOAP', slug: 'cardiology-soap', promptTemplateId: 'pt-1' });
-    await getDepartmentAgent('da-1');
-    await deleteDepartmentAgent('da-1');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'GET /api/hope/admin/department-agents?departmentId=d-1&page=0&limit=20',
-      'POST /api/hope/admin/department-agents',
-      'GET /api/hope/admin/department-agents/da-1',
-      'DELETE /api/hope/admin/department-agents/da-1',
-    ]);
-    expect(calls[1].body).toEqual({ departmentId: 'd-1', name: 'Cardiology SOAP', slug: 'cardiology-soap', promptTemplateId: 'pt-1' });
-  });
-
-  it('PATCHes an agent with If-Match and the ETag-derived expectedVersion', async () => {
-    const calls = installFetchMock();
-    await updateDepartmentAgent('da-1', { name: 'Cardiology Notes v2', dnaStylePolicy: 'DISABLED' }, '"4"');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['PATCH /api/hope/admin/department-agents/da-1']);
-    expect(calls[0].headers['if-match']).toBe('"4"');
-    expect(calls[0].body).toEqual({ name: 'Cardiology Notes v2', dnaStylePolicy: 'DISABLED', expectedVersion: 4 });
-  });
-
-  it('flips the department default with POST :id/set-default (no If-Match)', async () => {
-    const calls = installFetchMock();
-    await setDefaultDepartmentAgent('da-1');
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/admin/department-agents/da-1/set-default']);
-    expect(calls[0].headers['if-match']).toBeUndefined();
-  });
-
-  it('pins to a version number, and unpins with null to track latest approved', async () => {
-    const calls = installFetchMock();
-    await pinDepartmentAgent('da-1', 3);
-    await pinDepartmentAgent('da-1', null);
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'POST /api/hope/admin/department-agents/da-1/pin',
-      'POST /api/hope/admin/department-agents/da-1/pin',
-    ]);
-    expect(calls[0].body).toEqual({ versionNumber: 3 });
-    expect(calls[1].body).toEqual({ versionNumber: null });
   });
 });

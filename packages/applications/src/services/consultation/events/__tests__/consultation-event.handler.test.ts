@@ -741,7 +741,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
     decryptFieldsFromEntity: ReturnType<typeof vi.fn>;
   };
   let mockSecretsService: Record<string, unknown>;
-  let mockDepartmentAgentRepository: { findDefaultForDepartment: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -773,9 +772,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
       }),
     };
     mockSecretsService = { getSecretOptional: vi.fn() };
-    mockDepartmentAgentRepository = {
-      findDefaultForDepartment: vi.fn().mockResolvedValue({ dnaStylePolicy: 'INHERIT' }),
-    };
 
     // Harness routed via per-consultation metadata; doctor + department present
     // so the redaction double-gate has a subject to resolve.
@@ -797,7 +793,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
       mockConfigResolver as any,
       mockDnaReportRepository as any,
       mockSecretsService as any,
-      mockDepartmentAgentRepository as any,
     );
 
     // TASK-704 — the consultation metadata sets harnessEnabled=true (above),
@@ -815,7 +810,6 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
       tenantId: 'tenant-abc',
       departmentId: 'dept-card-001',
       doctorId: 'dr-smith-001',
-      departmentAgentDnaDisabled: false,
     });
     expect(mockDnaReportRepository.findLatestForDoctor).toHaveBeenCalledWith('dr-smith-001');
     expect(mockNoteGenerationService.generate).toHaveBeenCalledTimes(1);
@@ -834,15 +828,18 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
     expect(params.redactionRules ?? []).toEqual([]);
   });
 
-  it('passes departmentAgentDnaDisabled=true when the department default agent has dnaStylePolicy DISABLED', async () => {
-    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({ dnaStylePolicy: 'DISABLED' });
-    mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: true });
-
+  // TASK-815: the handler used to resolve the department's default
+  // `DepartmentAgent` and pass `departmentAgentDnaDisabled` as a THIRD gate that
+  // could force redaction OFF. Both the lookup and the flag are gone; what the
+  // handler passes is exactly the subject of the two surviving gates.
+  it('passes only the tenant/department/doctor subject — no third gate is threaded', async () => {
     await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-    expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith(
-      expect.objectContaining({ departmentAgentDnaDisabled: true }),
-    );
+    expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith({
+      tenantId: 'tenant-abc',
+      departmentId: 'dept-card-001',
+      doctorId: 'dr-smith-001',
+    });
   });
 
   it('fails safe (no rules, seam still called) when decryption throws', async () => {

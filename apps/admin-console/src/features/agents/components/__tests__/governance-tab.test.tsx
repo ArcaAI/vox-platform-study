@@ -1,17 +1,23 @@
 /**
- * Governance tab (Eval panel): selecting a template shows the Eval
- * gate panel — a golden-set picker scoped to the department agents bound to
- * that template, the last runs + scores for the picked set, and a manual
+ * Governance tab (Eval panel): selecting a template shows the Eval gate panel —
+ * a golden-set picker, the last runs + scores for the picked set, and a manual
  * run-now (independent of the promotion gate that runs automatically on
  * Approve). Golden-set CRUD and the full eval-runs grid stay on
  * `/harness/observability` (rule 13 "one authoritative editor per resource").
+ *
+ * TASK-815 / OD-11 removed the picker's DEFAULT. It used to pre-select the
+ * golden set attached to a `DepartmentAgent` bound to this template, and to
+ * annotate each option with the agents holding it. That binding moved onto the
+ * workflow NODE that references the template (`config.evalGate`), so there is
+ * no per-template agent list to read here — the admin picks a set explicitly,
+ * and the gate that actually blocks an approval reads the node.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import type { DepartmentAgent, EvalGoldenSetList, PromptTemplate, PromptVersion } from '../../api/types';
+import type { EvalGoldenSetList, PromptTemplate, PromptVersion } from '../../api/types';
 import { GovernanceTab } from '../governance-tab';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -40,25 +46,6 @@ function version(versionNumber: number, overrides: Partial<PromptVersion> = {}):
     content: `Prompt body v${versionNumber}`,
     changedBy: 'dr.lee',
     createdAt: '2026-06-20T10:00:00.000Z',
-    ...overrides,
-  };
-}
-
-function agent(overrides: Partial<DepartmentAgent> = {}): DepartmentAgent {
-  return {
-    id: 'da-1',
-    departmentId: 'd-1',
-    name: 'Cardiology SOAP',
-    slug: 'cardiology-soap',
-    promptTemplateId: 'pt-1',
-    goldenSetId: 'gs-1',
-    dnaStylePolicy: 'INHERIT',
-    isDefault: true,
-    templateLocked: false,
-    resourceStatus: 'ENABLED',
-    createdAt: '2026-06-01T00:00:00.000Z',
-    updatedAt: '2026-07-01T00:00:00.000Z',
-    version: 2,
     ...overrides,
   };
 }
@@ -100,7 +87,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
 
-function defaultHandler(call: RecordedCall, agents: DepartmentAgent[] = [agent()]): Response | undefined {
+function defaultHandler(call: RecordedCall): Response | undefined {
   const path = pathOf(call);
   if (call.method === 'GET' && path === '/api/hope/admin/prompt-templates') {
     return Response.json({ data: [template()], count: 1, limit: 50, page: 1 });
@@ -110,9 +97,6 @@ function defaultHandler(call: RecordedCall, agents: DepartmentAgent[] = [agent()
   }
   if (call.method === 'GET' && path === '/api/hope/admin/prompt-templates/pt-1/versions') {
     return Response.json([version(5)]);
-  }
-  if (call.method === 'GET' && path === '/api/hope/admin/department-agents') {
-    return Response.json({ data: agents, count: agents.length, limit: 200, page: 0 });
   }
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
     return Response.json(GOLDEN_SETS);
@@ -128,28 +112,37 @@ async function selectTemplate() {
   return screen.findByText('Eval gate');
 }
 
+/** The panel starts unselected now, so most cases have to pick a set first. */
+async function pickGoldenSet(value = 'gs-1') {
+  const picker = await screen.findByRole('combobox', { name: 'Golden set' });
+  fireEvent.change(picker, { target: { value } });
+  return picker;
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe('GovernanceTab — Eval panel', () => {
-  it('defaults the golden-set picker to the set attached to a bound agent and shows its last runs', async () => {
-    stubFetch((call) => defaultHandler(call, [agent({ goldenSetId: 'gs-1' })]));
+  it('offers every golden set and pre-selects NONE — the binding lives on the workflow node now', async () => {
+    stubFetch((call) => defaultHandler(call));
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
 
-    const picker = await screen.findByRole('combobox', { name: 'Golden set' });
-    await waitFor(() => expect((picker as HTMLSelectElement).value).toBe('gs-1'));
-    expect(screen.getByText(/Attached to: Cardiology SOAP/)).toBeDefined();
+    const picker = (await screen.findByRole('combobox', { name: 'Golden set' })) as HTMLSelectElement;
+    expect(picker.value).toBe('');
+    expect(screen.getByRole('option', { name: 'GI consultations golden set' })).toBeDefined();
+    expect(screen.getByRole('option', { name: 'Cardiology golden set' })).toBeDefined();
   });
 
-  it('shows a no-agents note and no golden-set default when nothing is bound to the template', async () => {
-    stubFetch((call) => defaultHandler(call, []));
+  it('says plainly that a manual run does not gate promotion', async () => {
+    stubFetch((call) => defaultHandler(call));
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
+    await pickGoldenSet();
 
-    expect(screen.getByText(/No agents are bound to this template yet/)).toBeDefined();
+    expect(screen.getByText(/does not gate promotion/)).toBeDefined();
   });
 
   it('lists the last eval runs for the picked golden set', async () => {
@@ -176,6 +169,7 @@ describe('GovernanceTab — Eval panel', () => {
     });
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
+    await pickGoldenSet();
 
     const runs = await screen.findByRole('list', { name: 'Recent eval runs' });
     expect(within(runs).getByText('COMPLETED')).toBeDefined();
@@ -221,6 +215,7 @@ describe('GovernanceTab — Eval panel', () => {
     });
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
+    await pickGoldenSet();
 
     const runs = await screen.findByRole('list', { name: 'Recent eval runs' });
     expect(within(runs).getByText('PROMOTION')).toBeDefined();
@@ -231,6 +226,7 @@ describe('GovernanceTab — Eval panel', () => {
     const calls = stubFetch((call) => defaultHandler(call));
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
+    await pickGoldenSet();
 
     fireEvent.change(await screen.findByRole('combobox', { name: 'Golden set' }), { target: { value: 'gs-2' } });
 
@@ -247,7 +243,7 @@ describe('GovernanceTab — Eval panel', () => {
     });
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
-    await screen.findByRole('combobox', { name: 'Golden set' });
+    await pickGoldenSet();
 
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
 
@@ -265,7 +261,7 @@ describe('GovernanceTab — Eval panel', () => {
     });
     renderWithProviders(<GovernanceTab />);
     await selectTemplate();
-    await screen.findByRole('combobox', { name: 'Golden set' });
+    await pickGoldenSet();
 
     fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
 
@@ -285,7 +281,7 @@ describe('GovernanceTab — Eval panel', () => {
     stubFetch((call) => defaultHandler(call));
     const { container } = renderWithProviders(<GovernanceTab />);
     await selectTemplate();
-    await screen.findByRole('combobox', { name: 'Golden set' });
+    await pickGoldenSet();
 
     await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
   });

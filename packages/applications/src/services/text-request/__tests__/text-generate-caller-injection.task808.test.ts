@@ -215,7 +215,7 @@ describe('TASK-808 — each TEXT /generate caller posts provider_overrides', () 
       {} as never, // contextItemVersionRepository
       {} as never, // promptAssemblyService
       secretsStub,
-      ...(Array.from({ length: 17 }, () => undefined) as never[]), // optional deps 12..28
+      ...(Array.from({ length: 16 }, () => undefined) as never[]), // optional deps 12..27
       enrichment as never,
     );
 

@@ -9,53 +9,37 @@
  */
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Paginated } from '@/shared/api';
 import {
   activateVersion,
   approveTemplate,
   assignDepartment,
-  createDepartmentAgent,
   createTemplate,
-  deleteDepartmentAgent,
   deleteTemplate,
   diffVersions,
   finalizeTemplateTest,
-  getDepartmentAgent,
-  getResolvedContextSchema,
   getTemplate,
   getUsageAnalytics,
   getUsageStats,
   listAgentEvalRuns,
-  listAgentPromotions,
-  listDepartmentAgents,
-  listDepartmentAgentVersions,
   listDepartments,
   listEvalGoldenCases,
   listEvalGoldenSets,
   listTemplates,
   listUsageRecords,
   listVersions,
-  pinDepartmentAgent,
   runGoldenSetEval,
-  setDefaultDepartmentAgent,
   testTemplate,
-  updateDepartmentAgent,
   updateTemplate,
 } from './client';
-import { agentEvalKeys, agentKeys, agentPromotionKeys, departmentAgentKeys } from './keys';
+import { agentEvalKeys, agentKeys } from './keys';
 import type {
   AssignDepartmentRequest,
-  CreateDepartmentAgentRequest,
   CreateTemplateRequest,
-  DepartmentAgent,
-  ListAgentPromotionsParams,
-  ListDepartmentAgentsParams,
   ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
   ListTemplatesParams,
   ListUsageRecordsParams,
   TestTemplateRequest,
-  UpdateDepartmentAgentRequest,
   UpdateTemplateRequest,
 } from './types';
 
@@ -174,131 +158,6 @@ export function useAssignDepartment() {
 // DepartmentAgent — the Agent Catalog rows. A separate root
 // (['department-agents']) from the PromptTemplate `agentKeys` above, so
 // mutations here never invalidate the unrelated template cache.
-// ---------------------------------------------------------------------------
-
-export function useDepartmentAgents(params?: ListDepartmentAgentsParams) {
-  return useQuery({
-    queryKey: departmentAgentKeys.list(params),
-    queryFn: () => listDepartmentAgents(params),
-    placeholderData: keepPreviousData,
-  });
-}
-
-/** Detail read: `data.data` is the agent, `data.etag` feeds the Settings-tab PATCH. */
-export function useDepartmentAgent(id: string) {
-  return useQuery({ queryKey: departmentAgentKeys.detail(id), queryFn: () => getDepartmentAgent(id), enabled: !!id });
-}
-
-function useInvalidateDepartmentAgents() {
-  const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root });
-}
-
-export function useCreateDepartmentAgent() {
-  const invalidate = useInvalidateDepartmentAgents();
-  return useMutation({ mutationFn: (body: CreateDepartmentAgentRequest) => createDepartmentAgent(body), onSuccess: invalidate });
-}
-
-export function useUpdateDepartmentAgent() {
-  const invalidate = useInvalidateDepartmentAgents();
-  return useMutation({
-    mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateDepartmentAgentRequest; etag: string }) => updateDepartmentAgent(id, patch, etag),
-    onSuccess: invalidate,
-  });
-}
-
-export function useDeleteDepartmentAgent() {
-  const invalidate = useInvalidateDepartmentAgents();
-  return useMutation({ mutationFn: (id: string) => deleteDepartmentAgent(id), onSuccess: invalidate });
-}
-
-/**
- * Atomic default flip. Optimistically flips `isDefault` across every cached
- * department-agents list page for the affected department (so the grouped
- * list shows exactly one Default badge per department immediately), rolls
- * back on error, and always reconciles with a background invalidate.
- */
-export function useSetDefaultDepartmentAgent() {
-  const queryClient = useQueryClient();
-  // Scoped to the LIST queries only (`[...root, 'list']`) — the broader
-  // `root` prefix also matches the detail query, whose cached shape is
-  // `WithEtag<DepartmentAgent>` (a single row), not `Paginated<DepartmentAgent>`;
-  // running the list updater against it would throw inside onMutate and
-  // silently swallow the mutation before the POST ever fires.
-  const listQueryKey = [...departmentAgentKeys.root, 'list'] as const;
-  return useMutation({
-    mutationFn: (id: string) => setDefaultDepartmentAgent(id),
-    onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: listQueryKey });
-      const previous = queryClient.getQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey });
-      queryClient.setQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey }, (data) => {
-        if (!data) return data;
-        const target = data.data.find((row) => row.id === id);
-        if (!target) return data;
-        return { ...data, data: data.data.map((row) => (row.departmentId === target.departmentId ? { ...row, isDefault: row.id === id } : row)) };
-      });
-      return { previous };
-    },
-    onError: (_error, _id, context) => {
-      context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root }),
-  });
-}
-
-/** Pin to a specific PromptVersion, or `null` to track the latest APPROVED. */
-export function usePinDepartmentAgent() {
-  const invalidate = useInvalidateDepartmentAgents();
-  return useMutation({
-    mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number | null }) => pinDepartmentAgent(id, versionNumber),
-    onSuccess: invalidate,
-  });
-}
-
-/**
- * The department's RESOLVED context schema — the closed set of
- * kind/output keys the Loop config tab's `subscribedKinds`/`writeScope`
- * pickers offer. Held off until a department is known.
- */
-export function useResolvedContextSchema(departmentId: string | undefined) {
-  return useQuery({
-    queryKey: departmentAgentKeys.contextSchema(departmentId ?? ''),
-    queryFn: () => getResolvedContextSchema(departmentId),
-    enabled: !!departmentId,
-  });
-}
-
-/**
- * The immutable loop-configuration version history (Lineage tab).
- * Newest first, mirroring `useVersions` for `PromptTemplate` above.
- */
-export function useDepartmentAgentVersions(id: string) {
-  return useQuery({
-    queryKey: departmentAgentKeys.versions(id),
-    queryFn: () => listDepartmentAgentVersions(id),
-    enabled: !!id,
-  });
-}
-
-/**
- * promotions INTO the working tenant, filtered to one target
- * agent (the Lineage tab's "promoted from" section). Held off until an agent
- * id is known; the working tenant's own promotion rows are already scoped
- * server-side by the tenant-scope extension.
- */
-export function useAgentPromotionsForTarget(targetAgentId: string | undefined) {
-  const params: ListAgentPromotionsParams | undefined = targetAgentId ? { targetAgentId, limit: 50 } : undefined;
-  return useQuery({
-    queryKey: agentPromotionKeys.list(params),
-    queryFn: () => listAgentPromotions(params),
-    enabled: !!targetAgentId,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Eval-gated promotion — golden-set picker + run-now for the
-// Governance tab's Eval panel. See client.ts for the rationale on why these
-// duplicate (rather than import) the harness-ops feature's own copies.
 // ---------------------------------------------------------------------------
 
 /**

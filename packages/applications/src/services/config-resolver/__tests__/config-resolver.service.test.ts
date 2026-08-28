@@ -308,17 +308,19 @@ describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (double-gate)', () 
     expect(r.effective).toBe(false);
   });
 
-  it('DepartmentAgent.dnaStylePolicy=DISABLED forces effective OFF even when tenant+doctor allow it', async () => {
+  // TASK-815 removed a THIRD gate that used to sit alongside these two:
+  // `DepartmentAgent.dnaStylePolicy = DISABLED` forced the result OFF for the
+  // department's default agent regardless of what the tenant and the doctor
+  // said. It retired with `DepartmentAgent` and has no successor. The direction
+  // of that loss is the point of this case: a consultation both surviving gates
+  // ENABLE is now redacted, where an agent could previously veto it.
+  it('is decided by the tenant and doctor gates alone — nothing else can force it OFF', async () => {
     pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true })]);
 
-    const r = await resolver.resolveEffectiveDnaRedactionEnabled({
-      tenantId: TENANT,
-      doctorId: DOCTOR,
-      departmentAgentDnaDisabled: true,
-    });
+    const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
 
     expect(r.tenantEnabled).toBe(true);
-    expect(r.effective).toBe(false);
+    expect(r.effective).toBe(true);
   });
 
   it('degrades to effective=false (fail-closed) if the policy lookup throws', async () => {

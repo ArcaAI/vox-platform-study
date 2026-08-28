@@ -72,8 +72,6 @@ export * from './UserSettingsEntity';
 export * from './UserVoiceProfileEntity';
 export * from './WebhookEntity';
 export * from './WebhookRunHistoryEntity';
-export * from './DepartmentAgentEntity';
-export * from './DepartmentAgentVersionEntity';
 export * from './AiPriceBookEntity';
 export * from './AiUsageEventEntity';
 export * from './AiUsageOutboxEntity';

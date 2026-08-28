@@ -906,17 +906,9 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     """
     settings = get_settings()
     started = _now()
-    # Thread the consultation id (when present) so the gateway overlays
-    # the department default agent's tenant-tier harnessOverrides. Omitting the
-    # kwarg when absent keeps the request byte-identical for non-agent runs.
     client = _api_client(settings)
     try:
-        if payload.consultation_id:
-            data = await client.get_policy(
-                payload.tenant_id, consultation_id=payload.consultation_id
-            )
-        else:
-            data = await client.get_policy(payload.tenant_id)
+        data = await client.get_policy(payload.tenant_id)
     except ApiServiceError as exc:
         if _is_policy_auth_failure(exc):
             logger.error(
@@ -937,14 +929,12 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
             ) from exc
         raise
     policy = HarnessPolicy.from_api(data)
-    # Observability — surface the per-agent override provenance on the fetch_policy
-    # trajectory step so a flagged draft can be traced to the agent whose thresholds
-    # governed it. `HarnessPolicy` (extra="ignore") drops the field, so read it off
-    # the raw response dict. Absent ⇒ no overlay was applied.
+    # TASK-815 / OD-12 retired the per-agent `harnessOverrides` overlay, so the
+    # gateway no longer returns an `overridesSource` provenance block and the
+    # consultation id no longer selects anything on this route. What is left is
+    # the policy's own version, which is what a trajectory step needs to answer
+    # "which policy governed this draft".
     stats: dict[str, Any] = {"version": policy.version}
-    overrides_source = data.get("overridesSource")
-    if overrides_source:
-        stats["overrides_source"] = overrides_source
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_PHASE,

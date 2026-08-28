@@ -189,13 +189,15 @@ describe('boot-time /admin/* named-surface audit (TASK-757, collapsed to FORBID)
    * already forbidden). Their absence is exactly why the derived sweep above
    * exists; listing them here closes the transcription gap as well.
    */
-  it('covers all 70 admin-prefixed controllers, including the three the TASK-708 list missed', () => {
+  // 70 -> 68: TASK-815 deleted `DepartmentAgentController` and
+  // `DepartmentAgentResyncController` with the resource they administered.
+  it('covers all 68 admin-prefixed controllers, including the three the TASK-708 list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');
     expect(names).toContain('WorkflowSandboxRunController');
     expect(names).toContain('ConsentGrantController');
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(70);
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(68);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {

@@ -1,5 +1,11 @@
 /**
- * Capability-keyed agent bindings in `PromptResolutionService`.
+ * Capability-keyed tier-1a bindings in `PromptResolutionService`.
+ *
+ * TASK-815 moved tier-1a's SOURCE from `DepartmentAgent`'s five capability
+ * columns onto WORKFLOW NODE CONFIG: the governing definition's node whose
+ * effective `taskKey` names the capability supplies `promptTemplateId` and its
+ * own version pin. The C1/C2 invariants below are re-expressed against that
+ * source; two of them changed shape and say so in place.
  *
  * Covers the C1 rollout invariants that belong to C2:
  *
@@ -28,7 +34,8 @@ const DEPT = 'dept-surg';
 
 const mockDepartmentRepository = { findById: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
-const mockDepartmentAgentRepository = { findDefaultForDepartment: vi.fn() };
+const mockWorkflowAssignments = { resolve: vi.fn() };
+const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 
 function department(overrides: Record<string, unknown> = {}): DepartmentEntity {
@@ -46,18 +53,20 @@ function department(overrides: Record<string, unknown> = {}): DepartmentEntity {
   } as unknown as DepartmentEntity;
 }
 
-/** A minimal agent row; every capability binding defaults to null (the 36 seeded rows). */
-function agent(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 'agent-1',
-    promptTemplateId: 'base-tpl',
-    pinnedVersionNumber: null,
-    newPatientTemplateId: null,
-    revisitTemplateId: null,
-    preSummaryTemplateId: null,
-    livePromptTemplateId: null,
-    ...overrides,
-  };
+/** Publish a governing `consultation` definition carrying `nodes`. */
+function publishGraph(nodes: unknown[]) {
+  mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
+  mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue({
+    id: 'wfdef-1',
+    slug: 'consultation-default',
+    paletteKey: 'consultation',
+    graph: { version: 1, nodes, edges: [] },
+  });
+}
+
+/** The node successor of "a department default agent bound to `promptTemplateId`". */
+function finalizeNode(promptTemplateId: string, extraConfig: Record<string, unknown> = {}) {
+  return { id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId, ...extraConfig } };
 }
 
 describe('PromptResolutionService — capability-keyed bindings', () => {
@@ -71,7 +80,8 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
       approvedVersionNumber: 1,
     }));
     mockPromptTemplateRepository.findAll.mockResolvedValue([]);
-    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
+    mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' });
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
     mockPromptVersionRepository.findByVersionNumber.mockImplementation(async (templateId: string, versionNumber: number) => ({
       content: `content-of-${templateId}-v${versionNumber}`,
       versionNumber,
@@ -81,8 +91,9 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
     service = new PromptResolutionService(
       mockDepartmentRepository as never,
       mockPromptTemplateRepository as never,
-      mockDepartmentAgentRepository as never,
       mockPromptVersionRepository as never,
+      mockWorkflowAssignments as never,
+      mockWorkflowDefinitionRepository as never,
     );
   });
 
@@ -90,14 +101,15 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   // C2-T7 — the 36 existing seeded agents change by zero bytes
   // =========================================================================
 
-  describe('C2-T7 — an agent with NULL visit bindings resolves its base template (DR-1a)', () => {
-    it.each(['new-patient', 'revisit'] as const)('%s falls back to promptTemplateId', async (promptType) => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent());
+  describe('C2-T7 — one finalize node serves BOTH visit types', () => {
+    it.each(['new-patient', 'revisit'] as const)('%s resolves the finalize node’s promptTemplateId', async (promptType) => {
+      publishGraph([finalizeNode('base-tpl')]);
 
       const result = await service.resolve({ departmentId: DEPT, promptType });
 
-      // `selected = visitBinding ?? promptTemplateId` — with both bindings null
-      // this is exactly the previous read, for BOTH visit types.
+      // The node substrate has NO visit-type axis (DD-2: a generation node binds
+      // its prompt statically), so one finalize node answers both visit types —
+      // which is exactly what an agent with both visit bindings null used to do.
       expect(result.promptId).toBe('base-tpl');
       expect(result.resolvedFrom).toBe('agent');
       expect(result.content).toBe('content-of-base-tpl-v1');
@@ -108,62 +120,67 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   // C2-T2 — visit-type-aware agent tier (F-01 closed)
   // =========================================================================
 
-  describe('C2-T2 — the agent tier honours visit type', () => {
-    const bound = () => agent({ newPatientTemplateId: 'new-referral-tpl', revisitTemplateId: 'followup-tpl' });
+  describe('C2-T2 — where the VISIT-TYPE axis lives after TASK-815', () => {
+    it('the node tier serves one finalize prompt for BOTH visit types — it has no visit-type axis', async () => {
+      publishGraph([finalizeNode('one-finalize-tpl')]);
 
-    it('new-patient resolves newPatientTemplateId', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(bound());
-      const result = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
-      expect(result.promptId).toBe('new-referral-tpl');
-      expect(result.content).toBe('content-of-new-referral-tpl-v1');
+      const newPatient = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
+      const revisit = await service.resolve({ departmentId: DEPT, promptType: 'revisit' });
+
+      expect(newPatient.promptId).toBe('one-finalize-tpl');
+      expect(revisit.promptId).toBe('one-finalize-tpl');
+      expect(newPatient.resolvedFrom).toBe('agent');
+      expect(revisit.resolvedFrom).toBe('agent');
     });
 
-    it('revisit resolves revisitTemplateId — NOT the same template as new-patient (F-01)', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(bound());
-      const result = await service.resolve({ departmentId: DEPT, promptType: 'revisit' });
-      expect(result.promptId).toBe('followup-tpl');
-      expect(result.content).toBe('content-of-followup-tpl-v1');
+    it('the DEPARTMENT tier still honours visit type — the axis did not disappear, it moved down one tier', async () => {
+      // This is the one behavioural DELTA of the tier-1a repoint, and it is
+      // deliberate: DD-2 ("no runtime shape switching") means a generation node
+      // binds its prompt statically, so a per-visit-type prompt is expressed by
+      // the department's own columns, which are untouched. A tenant that wants
+      // visit-type differentiation configures it there and authors no finalize
+      // node — the same lever a department with no agent always had.
+      mockDepartmentRepository.findById.mockResolvedValue(department({ newPatientPromptId: 'new-referral-tpl', revisitPromptId: 'followup-tpl' }));
+
+      const newPatient = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
+      const revisit = await service.resolve({ departmentId: DEPT, promptType: 'revisit' });
+
+      expect(newPatient.promptId).toBe('new-referral-tpl');
+      expect(revisit.promptId).toBe('followup-tpl');
+      expect(newPatient.resolvedFrom).toBe('department');
+      expect(revisit.resolvedFrom).toBe('department');
     });
 
     it('resolves the SAME promptId / versionNumber / content as the legacy-column path, flipping only resolvedFrom', async () => {
-      // The RF-3 equality proof, run over both cells of one department. The
-      // ArcaAI seed wires the agent bindings to exactly the ids the legacy
-      // columns name, so the two fixtures below are the two seeded paths.
-      const columnsOnly = department({ newPatientPromptId: 'new-referral-tpl', revisitPromptId: 'followup-tpl' });
+      // The RF-3 equality proof, re-expressed against the node source: a node
+      // bound to the id the legacy column names produces byte-identical output.
+      const columnsOnly = department({ newPatientPromptId: 'new-referral-tpl' });
 
-      for (const [promptType, expectedId] of [
-        ['new-patient', 'new-referral-tpl'],
-        ['revisit', 'followup-tpl'],
-      ] as const) {
-        mockDepartmentRepository.findById.mockResolvedValue(columnsOnly);
-        mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
-        const viaColumns = await service.resolve({ departmentId: DEPT, promptType });
+      mockDepartmentRepository.findById.mockResolvedValue(columnsOnly);
+      const viaColumns = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
 
-        mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(bound());
-        const viaAgent = await service.resolve({ departmentId: DEPT, promptType });
+      publishGraph([finalizeNode('new-referral-tpl')]);
+      const viaNode = await service.resolve({ departmentId: DEPT, promptType: 'new-patient' });
 
-        expect(viaColumns.promptId).toBe(expectedId);
-        expect(viaAgent.promptId).toBe(viaColumns.promptId);
-        expect(viaAgent.resolvedVersionNumber).toBe(viaColumns.resolvedVersionNumber);
-        expect(viaAgent.content).toBe(viaColumns.content);
+      expect(viaColumns.promptId).toBe('new-referral-tpl');
+      expect(viaNode.promptId).toBe(viaColumns.promptId);
+      expect(viaNode.resolvedVersionNumber).toBe(viaColumns.resolvedVersionNumber);
+      expect(viaNode.content).toBe(viaColumns.content);
 
-        // The ONE intended difference. Asserted rather than tolerated: the flip
-        // is provenance-only. Its single behavioural consumer is the compat
-        // shim's `resolvedFrom === 'default'` guard (text-compat-template.service.ts),
-        // which neither value triggers — so compat output is unchanged.
-        expect(viaColumns.resolvedFrom).toBe('department');
-        expect(viaAgent.resolvedFrom).toBe('agent');
-        expect(viaAgent.resolvedFrom).not.toBe('default');
-      }
+      // The ONE intended difference. Asserted rather than tolerated: the flip
+      // is provenance-only. Its single behavioural consumer is the compat
+      // shim's `resolvedFrom === 'default'` guard (text-compat-template.service.ts),
+      // which neither value triggers — so compat output is unchanged.
+      expect(viaColumns.resolvedFrom).toBe('department');
+      expect(viaNode.resolvedFrom).toBe('agent');
+      expect(viaNode.resolvedFrom).not.toBe('default');
     });
 
-    it('falls through to the legacy column tier in ONE attempt when the selected binding is unapproved', async () => {
-      // Deliberate single-attempt shape: no second try against the base binding
-      // inside the agent tier, so resolution stays deterministic and cheap.
+    it('falls through to the legacy column tier in ONE attempt when the node’s template is unapproved', async () => {
+      // Deliberate single-attempt shape: no second try against another node
+      // inside the tier, so resolution stays deterministic and cheap.
       mockDepartmentRepository.findById.mockResolvedValue(department({ revisitPromptId: 'legacy-revisit-tpl' }));
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(
-        agent({ revisitTemplateId: 'draft-tpl', newPatientTemplateId: 'new-referral-tpl' }),
-      );
+      publishGraph([finalizeNode('draft-tpl')]);
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
         id === 'draft-tpl' ? { id, status: 'DRAFT' } : { id, status: 'APPROVED', approvedVersionNumber: 1 },
       );
@@ -174,8 +191,8 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
       expect(result.resolvedFrom).toBe('department');
     });
 
-    it('still lets the doctor-preferred tier outrank the agent binding (tier-0 unchanged)', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(bound());
+    it('still lets the doctor-preferred tier outrank the node binding (tier-0 unchanged)', async () => {
+      publishGraph([finalizeNode('node-tpl')]);
       const result = await service.resolve({
         departmentId: DEPT,
         promptType: 'revisit',
@@ -187,50 +204,40 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   });
 
   // =========================================================================
-  // DR-5 / RF-5 — the native pre-summary agent tier
+  // The pre-summary chain has NO node tier (TASK-815)
   // =========================================================================
 
-  describe('pre-summary agent tier (DR-5)', () => {
-    it('resolves the agent preSummaryTemplateId when a departmentId was supplied (native)', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ preSummaryTemplateId: 'agent-presum-tpl' }));
+  describe('pre-summary — the tier-1a slot is deliberately EMPTY', () => {
+    it('never consults the governing graph at all for a pre-summary request', async () => {
+      // The successor of the old agent `preSummaryTemplateId` tier is a
+      // PRE-SUMMARISATION NODE (`agent.presummarization`, DD-6), which is in the
+      // target catalogue but not in the registry. Rather than serve some other
+      // node's prompt — that is how a clinical NOTE prompt gets served for a
+      // pre-summary request — the tier is absent until the node type lands.
+      publishGraph([finalizeNode('note-tpl')]);
+      mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
       const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
 
-      expect(result.promptId).toBe('agent-presum-tpl');
-      expect(result.resolvedFrom).toBe('agent');
-      expect(result.content).toBe('content-of-agent-presum-tpl-v1');
+      expect(mockWorkflowAssignments.resolve).not.toHaveBeenCalled();
+      expect(result.promptId).toBe('tenant-presum-tpl');
+      expect(result.resolvedFrom).toBe('tenant');
     });
 
-    it('is INELIGIBLE without a departmentId — the compat signature can never reach it (RF-5)', async () => {
+    it('is unchanged for the compat signature — which never reached the tier anyway (RF-5)', async () => {
       // Compat calls resolve({ tenantId, promptType: 'pre-summary' }) with no
-      // department, so eligibility falls out of the call signature — no
-      // compat/native flag exists or is needed.
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent({ preSummaryTemplateId: 'agent-presum-tpl' }));
+      // department, so it could never reach tier-1a before either. This is the
+      // lock that TASK-815 changed nothing on the frozen compat route.
       mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
       const result = await service.resolve({ tenantId: TENANT, promptType: 'pre-summary' });
 
-      expect(mockDepartmentAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
       expect(result.promptId).toBe('tenant-presum-tpl');
       expect(result.resolvedFrom).toBe('tenant');
     });
 
-    it('skips the agent tier when the binding is null and keeps the tenant tier (ArcaAI behaviour is unchanged)', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(agent());
-      mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
-
-      const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
-
-      expect(result.promptId).toBe('tenant-presum-tpl');
-      expect(result.resolvedFrom).toBe('tenant');
-    });
-
-    it('never consults the SUMMARY bindings for a pre-summary request', async () => {
-      // The whole point of the capability split: a note prompt must never be
-      // served for a pre-summary request.
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(
-        agent({ newPatientTemplateId: 'new-referral-tpl', revisitTemplateId: 'followup-tpl' }),
-      );
+    it('falls to the SYSTEM pre-summary default — never CATCHALL_SOAP — when no tenant row exists', async () => {
+      publishGraph([finalizeNode('note-tpl')]);
       mockPromptTemplateRepository.findAll.mockResolvedValue([]);
 
       const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
