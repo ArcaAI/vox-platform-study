@@ -28,7 +28,6 @@ import {
   ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT,
   ARCAAI_ALL_CLINICAL_DEPARTMENTS,
 } from '../prisma/db_main/seed/04-department';
-import { ARCAAI_TENANT_AGENTS } from '../prisma/db_main/seed/07a-agent-golden-library';
 import {
   ARCAAI_CLINICAL_APPROVED_VERSION,
   ARCAAI_CLINICAL_TEMPLATES,
@@ -774,16 +773,11 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     expect(ARCAAI_ALL_CLINICAL_DEPARTMENTS).toEqual([...ARCAAI_CLINICAL_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT]);
   });
 
-  it('should give the four Phase 8b departments NO default DepartmentAgent', () => {
-    // An agent binding is per-department; before it ignored visit
-    // type entirely, and even now an agent is an extra resolution tier these
-    // rows do not need — the visit-type columns below are the v1-faithful path.
-    const agentFreeIds = new Set(ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT.map((d) => d.id));
-    ARCAAI_TENANT_AGENTS.forEach((agent) => {
-      expect(agentFreeIds.has(agent.departmentId as string), `department ${agent.departmentId} must carry no default agent`).toBe(false);
-    });
-    expect(ARCAAI_TENANT_AGENTS).toHaveLength(ARCAAI_CLINICAL_DEPARTMENTS.length);
-  });
+  // TASK-815 removed the case that asserted the four Phase-8b departments carry
+  // no default `DepartmentAgent`. There are no agent rows at all now, so the
+  // property it guarded is vacuous; the SPLIT it guarded — which departments
+  // carry visit-type prompt columns — is asserted by the case above and by
+  // `every department prompt column resolves` in `seed-fk-closure.test.ts`.
 
   it('should repurpose the retained GEN_ARCAAI id as General Medicine', () => {
     const gen = ARCAAI_ALL_CLINICAL_DEPARTMENTS.find((d) => d.id === SEED_DEPARTMENT_IDS.GEN_ARCAAI);

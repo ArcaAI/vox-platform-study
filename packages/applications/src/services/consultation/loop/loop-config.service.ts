@@ -10,34 +10,35 @@ import {
   ConsultationContextSchemaVersionRepository,
   ConsultationEntity,
   ConsultationRepository,
-  DepartmentAgentEntity,
-  DepartmentAgentRepository,
-  DepartmentAgentRole,
-  DepartmentAgentVersionRepository,
   ResourceType,
+  WorkflowDefinitionEntity,
+  WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { ContextPrimitive, findKind } from '../../consultation-context-schema/context-schema-definition';
-import { AgentActionKey, subscribedKindsProblems, writeScopeProblems } from '../../departmentAgent/constants';
+import { ContextPrimitive, type ContextKindDeclaration } from '../../consultation-context-schema/context-schema-definition';
+import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_ENDPOINT_ACTIONS_DEFAULT, CONSULTATION_ENDPOINT_ACTIONS_KEY, resolveEndpointSequence } from './endpoint-sequence';
 import { ILoopConfigService } from './ILoopConfigService';
 import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
-import { LoopAgentDto, LoopConfigResponse, LoopSubscriptionDto } from './dto';
+import { LoopConfigResponse, LoopSubscriptionDto } from './dto';
 
-/** The bounded execution envelope, until per-agent overrides exist. */
+/** The bounded execution envelope. */
 export const LOOP_CONFIG_MAX_DEPTH = 3;
 export const LOOP_CONFIG_MAX_ACTIONS = 200;
 
+/** The palette whose assigned definition governs a consultation. */
+const CONSULTATION_PALETTE_KEY = 'consultation';
+
 /**
- * Per-primitive default action list a subscribed kind resolves to, before the
- * agent's `alwaysActions`/`neverActions` compliance-envelope adjustments
- * `STREAM_AUDIO` deliberately resolves to no per-kind
- * actions — the audio-session lifecycle is driven by `startActions` (see
- * `deriveStartAndEndingActions`), not by a per-context-arrival action.
+ * Per-primitive default action list a subscribed kind resolves to.
+ *
+ * `STREAM_AUDIO` is absent from the SUBSCRIPTION set entirely (see
+ * `buildSubscriptions`), so it has no entry here — an audio session is a
+ * lifecycle, not a context arrival.
  */
-const PRIMITIVE_DEFAULT_ACTIONS: Record<ContextPrimitive, AgentActionKey[]> = {
+const PRIMITIVE_DEFAULT_ACTIONS: Record<ContextPrimitive, string[]> = {
   STREAM_AUDIO: [],
   TEXT: ['client.emit'],
   DOCUMENT: ['document.extract_text', 'client.emit'],
@@ -75,69 +76,63 @@ function disabledResponse(consultationId: string | null, departmentId: string | 
   };
 }
 
-/**
- * The agent's goal OBJECTIVE as a plain sentence, or null.
- *
- * `DepartmentAgent.goal` is a constrained JSONB object
- * (`{ version, objective, successCriteria[] }`). The loop's planner
- * prompt wants the objective sentence, not the envelope, and a malformed blob
- * degrades to "no goal" rather than leaking `[object Object]` into a prompt.
- */
-function parseGoalObjective(goal: Record<string, unknown> | null | undefined): string | null {
-  if (!goal) return null;
-  const objective = goal.objective;
-  return typeof objective === 'string' && objective.trim().length > 0 ? objective.trim() : null;
-}
-
-/**
- * Every write-scope output key, or `[]` when `writeScope` is absent or
- * structurally malformed. Same posture as `parseSubscribedKindKeys`: a bad JSONB
- * blob is treated as "nothing granted", never as a throw and never — critically
- * — as "everything granted".
- */
-function parseWriteScopeKeys(writeScope: Record<string, unknown> | null | undefined): string[] {
-  if (!writeScope) return [];
-  const { problems, outputKeys } = writeScopeProblems(writeScope);
-  return problems.length > 0 ? [] : outputKeys;
-}
-
-/**
- * Every subscribed kind key, or `[]` when `subscribedKinds` is absent or
- * structurally malformed — this resolution path never throws on a bad JSONB
- * blob, it simply treats it as "nothing subscribed".
- */
-function parseSubscribedKindKeys(subscribedKinds: Record<string, unknown> | null | undefined): string[] {
-  if (!subscribedKinds) return [];
-  const { problems, kindKeys } = subscribedKindsProblems(subscribedKinds);
-  return problems.length > 0 ? [] : kindKeys;
-}
-
-/** Append every entry of `toAppend` not already present, preserving order. */
-function appendMissing(actions: string[], toAppend: readonly string[]): string[] {
-  const result = [...actions];
-  for (const action of toAppend) {
-    if (!result.includes(action)) result.push(action);
-  }
-  return result;
+/** Every kind the servable schema version declares, in authored order. */
+function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): ContextKindDeclaration[] {
+  const definition = version?.definition as { kinds?: unknown } | null | undefined;
+  const kinds = definition?.kinds;
+  if (!Array.isArray(kinds)) return [];
+  return kinds.filter((kind): kind is ContextKindDeclaration => typeof kind === 'object' && kind !== null && typeof (kind as { key?: unknown }).key === 'string');
 }
 
 /**
  * Resolves the deterministic, read-only loop configuration for one
- * consultation: which `DepartmentAgent`/config-version/context-schema-version
- * govern it, and the per-kind action subscriptions + start/ending action
- * lists the (future) `ConsultationLoopWorkflow` dispatches.
+ * consultation: which workflow definition / definition-version / context-schema
+ * version govern it, and the per-kind action subscriptions + start/ending action
+ * lists `ConsultationLoopWorkflow` dispatches.
  *
- * Every resolution failure (missing/cross-tenant consultation, no
- * department, no default agent, no servable context schema) degrades to the
- * disabled config — this is a service-token internal read with no user to
- * surface an error to, so it must never throw (see `resolveForConsultation`).
+ * ## What TASK-815 changed
+ *
+ * Every field this service used to read off a `DepartmentAgent` now comes from
+ * the tenant's own configuration:
+ *
+ * | Field | Source |
+ * |---|---|
+ * | `agentId` | the governing `WorkflowDefinition`'s SLUG — its identity across versions |
+ * | `agentConfigVersionId` | that definition's ROW id; rows ARE versions, so the row IS the pin |
+ * | `subscriptions` | the kinds the servable context schema DECLARES, crossed with their primitives |
+ * | `startActions` / `endingActions` | the tenant's ordered `consultation.endpoint.actions` list |
+ * | `agents[]` / `reasoningEnabled` | retired with `DepartmentAgentRole` — `[]` / `false` |
+ *
+ * The two identifier FIELD NAMES are deliberately unchanged. `agent_id` and
+ * `agent_config_version_id` on the Python `ConsultationLoopConfig` thread
+ * through Temporal workflow history and are replay-sensitive, so this replaces
+ * the identifier SOURCE and keeps the wire names — the replay-safe option.
+ *
+ * ## Two levers that left, and why nothing replaced them
+ *
+ * The agent carried `alwaysActions` (EXTEND) and `neverActions` (VETO) over the
+ * endpoint stage. Both are subsumed by the ordered
+ * `consultation.endpoint.actions` list TASK-812 introduced, which can add,
+ * ORDER and omit — strictly more than the two levers could express between
+ * them. `resolveEndpointSequence` still accepts them as optional inputs (they
+ * are its own tested contract); this service simply no longer supplies any.
+ *
+ * The PRIMARY/SPECIALIST roster was expressed entirely in `DepartmentAgentRole`,
+ * an enum this ticket drops, and the graph substrate has no equivalent concept.
+ * The deliberative lane therefore retires with it. Both fields stay on the
+ * response because the contract is a deliverable — and because the Python
+ * model's defaults for them are exactly `[]` / `false`, which is what keeps the
+ * frozen loop replay fixture green.
+ *
+ * Every resolution failure (missing/cross-tenant consultation, no department, no
+ * governing definition, no servable context schema) degrades to the disabled
+ * config — this is a service-token internal read with no user to surface an
+ * error to, so it must never throw.
  */
 @Injectable()
 export class LoopConfigService extends BaseService implements ILoopConfigService {
   constructor(
     private readonly consultationRepository: ConsultationRepository,
-    private readonly departmentAgentRepository: DepartmentAgentRepository,
-    private readonly departmentAgentVersionRepository: DepartmentAgentVersionRepository,
     private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
     private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
@@ -146,6 +141,12 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     // default applies, which is a BOUNDED loop. That is the safe direction — an
     // unwired resolver must not silently restore the unbounded wait.
     @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
+    // The governing definition. Optional + trailing for the same reason the
+    // realtime executor's copies are: an unwired resolver degrades to "no
+    // definition", which is the same shape as a department that never had a
+    // default agent — never to a throw on an internal read.
+    @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
+    @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -182,41 +183,38 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
       return disabledResponse(consultationId, null);
     }
 
-    const agent = await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId);
-    if (!agent) {
-      return disabledResponse(consultationId, departmentId);
-    }
-
-    const latestVersion = await this.departmentAgentVersionRepository.findLatestForAgent(agent.id);
-    const agentConfigVersionId = latestVersion?.id ?? null;
-
+    const definition = await this.resolveGoverningDefinition(tenantId, departmentId);
     const servableVersion = await this.resolveServableContextSchemaVersion(tenantId, departmentId);
     const contextSchemaVersionId = servableVersion?.id ?? null;
 
-    const enabled = agentConfigVersionId !== null || contextSchemaVersionId !== null;
+    // Same shape as before: the loop is on when EITHER source of governance
+    // exists. A tenant with a published graph but no context schema still has a
+    // loop; so does one with a schema and no graph. Neither ⇒ the DISABLED
+    // response, early — a disabled loop completes immediately and never reaches
+    // the idle wait, so it must not be handed a bound that implies one.
+    if (definition === null && contextSchemaVersionId === null) {
+      return disabledResponse(consultationId, departmentId);
+    }
 
-    const kindKeys = parseSubscribedKindKeys(agent.subscribedKinds);
-    const subscriptions = this.buildSubscriptions(kindKeys, servableVersion, agent);
-    const { startActions, endingActions } = this.deriveStartAndEndingActions(tenantId, kindKeys, servableVersion, agent);
-    const agents = await this.buildAgentRoster(tenantId, departmentId, agent);
+    const kinds = declaredKinds(servableVersion);
+    const subscriptions = this.buildSubscriptions(kinds);
+    const { startActions, endingActions } = this.deriveStartAndEndingActions(tenantId);
 
     return {
-      enabled,
+      enabled: true,
       consultationId,
       departmentId,
-      agentId: agent.id,
-      agentConfigVersionId,
+      agentId: definition?.slug ?? null,
+      agentConfigVersionId: definition?.id ?? null,
       contextSchemaVersionId,
       subscriptions,
       budget: { maxDepth: LOOP_CONFIG_MAX_DEPTH, maxActions: LOOP_CONFIG_MAX_ACTIONS },
       startActions,
       endingActions,
-      // The deliberative lane is ON only when there is actually
-      // something to deliberate: a PRIMARY plus at least one SPECIALIST. A
-      // department with one agent gets exactly the original behaviour, which is
-      // also what keeps every existing consultation unchanged.
-      reasoningEnabled: agents.some((a) => a.role === DepartmentAgentRole.PRIMARY) && agents.some((a) => a.role === DepartmentAgentRole.SPECIALIST),
-      agents,
+      // The deliberative lane retired with `DepartmentAgentRole` — see the class
+      // docstring. Reported honestly rather than dropped from the contract.
+      reasoningEnabled: false,
+      agents: [],
       // Pinned here, frozen for the whole consultation.
       idleTimeoutSeconds: this.resolveIdleTimeoutSeconds(),
       // D-12. Always true from this gateway: a timed-out consultation that never finalizes
@@ -227,42 +225,23 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
   }
 
   /**
-   * The department's pinned agent roster.
+   * The ACTIVE PUBLISHED `consultation` definition governing this department,
+   * resolved through the shared `department -> tenant -> platform default`
+   * assignment cascade — the same walk the realtime executor and the tier-1a
+   * prompt chain make, so all three agree on which graph governs.
    *
-   * The PRIMARY is resolved by ROLE, falling back to the department default
-   * agent when no agent carries the PRIMARY role — a department configured
-   * previously has a default but no roles, and the loop must still have
-   * exactly one note owner rather than none.
-   *
-   * Read and write scopes are resolved here and frozen into the pinned config.
-   * That placement is the point: the harness enforces `writeScope` at its
-   * orchestrator, but the SCOPE ITSELF is a tenant configuration decision, and
-   * pinning it means a mid-consultation edit cannot widen what a running
-   * specialist may write.
+   * Total: an unwired resolver, an unassigned palette, a slug whose definition
+   * was deprecated, or a failed read all yield null.
    */
-  private async buildAgentRoster(tenantId: string, departmentId: string, defaultAgent: DepartmentAgentEntity): Promise<LoopAgentDto[]> {
-    const all = await this.departmentAgentRepository.findAllByDepartment(tenantId, departmentId);
-    if (all.length === 0) return [];
-
-    const explicitPrimary = all.find((a) => a.role === DepartmentAgentRole.PRIMARY);
-    const primaryId = explicitPrimary?.id ?? defaultAgent.id;
-
-    const roster = await Promise.all(
-      all.map(async (entity) => {
-        const latest = await this.departmentAgentVersionRepository.findLatestForAgent(entity.id);
-        return {
-          agentId: entity.id,
-          role: entity.id === primaryId ? DepartmentAgentRole.PRIMARY : DepartmentAgentRole.SPECIALIST,
-          slug: entity.slug ?? null,
-          goal: parseGoalObjective(entity.goal),
-          subscribedKinds: parseSubscribedKindKeys(entity.subscribedKinds),
-          writeScope: parseWriteScopeKeys(entity.writeScope),
-          agentConfigVersionId: latest?.id ?? null,
-        };
-      }),
-    );
-
-    return roster;
+  private async resolveGoverningDefinition(tenantId: string, departmentId: string): Promise<WorkflowDefinitionEntity | null> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
+    try {
+      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId);
+      if (!assignment.workflowDefinitionSlug) return null;
+      return await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
+    } catch {
+      return null;
+    }
   }
 
   /** `findById` throws `DataNotFoundException` on a miss (incl. a cross-tenant id, hidden by the tenant-scope extension) — never surfaced as a throw here. */
@@ -277,10 +256,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
 
   /**
    * The department's servable context-schema vocabulary version
-   * (DEPARTMENT-scoped default → TENANT-scoped default → none) — an
-   * independent local copy of `DepartmentAgentService.resolveServableContextDefinition`'s
-   * cascade (deliberately not imported; see that method's own precedent
-   * relative to `ConsultationContextSchemaService`).
+   * (DEPARTMENT-scoped default → TENANT-scoped default → none).
    */
   private async resolveServableContextSchemaVersion(tenantId: string, departmentId: string): Promise<ConsultationContextSchemaVersionEntity | null> {
     const candidates = [
@@ -300,27 +276,34 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     return null;
   }
 
-  /** The declared primitive for `kindKey` in the servable schema version, or undefined when unresolvable. */
-  private resolveKindPrimitive(servableVersion: ConsultationContextSchemaVersionEntity | null, kindKey: string): ContextPrimitive | undefined {
-    if (!servableVersion) return undefined;
-    return findKind(servableVersion.definition, kindKey)?.primitive;
-  }
-
-  private buildSubscriptions(
-    kindKeys: string[],
-    servableVersion: ConsultationContextSchemaVersionEntity | null,
-    agent: DepartmentAgentEntity,
-  ): LoopSubscriptionDto[] {
-    const alwaysActions = agent.alwaysActions ?? [];
-    const neverActions = new Set(agent.neverActions ?? []);
-
-    return kindKeys.map((kindKey) => {
-      const primitive = this.resolveKindPrimitive(servableVersion, kindKey);
-      let actions: string[] = primitive ? [...PRIMITIVE_DEFAULT_ACTIONS[primitive]] : [];
-      actions = appendMissing(actions, alwaysActions);
-      actions = actions.filter((action) => !neverActions.has(action));
-      return { kindKey, actions };
-    });
+  /**
+   * One subscription per DECLARED kind, carrying that primitive's default
+   * action list — EXCEPT `STREAM_AUDIO` kinds, which are not subscribed at all.
+   *
+   * The set used to be the intersection of the agent's `subscribedKinds` and
+   * the schema's declarations. With the agent gone the schema declares the
+   * whole vocabulary on its own, which is what a context schema IS, and there
+   * is no second place for a tenant to narrow it.
+   *
+   * The audio exclusion is not a convenience — it reproduces a deliberate
+   * decision the seeded day-1 agent encoded by omission. An audio stream is a
+   * SESSION, whose lifecycle `consultation.controller.ts` already owns
+   * (`recording/start` -> `LiveDocumentationService.start`, `recording/stop` ->
+   * `.stop`). Subscribing it here would put `livedoc.start`/`livedoc.stop` into
+   * the loop's action lists ON TOP of that — a second start and a second stop
+   * per consultation. Encoding it as a rule rather than leaving it to whoever
+   * authors the schema removes a foot-gun that used to be one checkbox away.
+   *
+   * A kind whose primitive is unrecognised resolves to no actions rather than
+   * being dropped, so it stays visible in the pinned config.
+   */
+  private buildSubscriptions(kinds: ContextKindDeclaration[]): LoopSubscriptionDto[] {
+    return kinds
+      .filter((kind) => kind.primitive !== 'STREAM_AUDIO')
+      .map((kind) => ({
+        kindKey: kind.key,
+        actions: [...(PRIMITIVE_DEFAULT_ACTIONS[kind.primitive as ContextPrimitive] ?? [])],
+      }));
   }
 
   /**
@@ -345,38 +328,25 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
   /**
    * The consultation's start actions and its ENDPOINT SEQUENCE.
    *
-   * The ending half used to be a literal here:
+   * `hasStreamAudio` is FALSE, unconditionally, and that is a decision rather than a stub. The
+   * live-documentation lifecycle is not this loop's to drive: `consultation.controller.ts` owns
+   * it on the legacy path, and the realtime lane owns it for a tenant-authored graph. When it
+   * was agent-derived, a tenant one checkbox away from subscribing an agent to an audio kind got
+   * a SECOND `livedoc.start` and a SECOND `livedoc.stop` per consultation — which is why the
+   * seeded day-1 agent pointedly did not subscribe to `audio_stream` even though the schema
+   * declares it. Removing the lever removes the hazard, and reproduces the seeded behaviour
+   * exactly. `resolveEndpointSequence` still drops `livedoc.stop` on this input, which is the
+   * stage every consultation runs today.
    *
-   * ```ts
-   * const endingActionsBase = hasStreamAudio ? ['livedoc.stop', 'harness.finalize'] : ['harness.finalize'];
-   * ```
-   *
-   * with `neverActions` as its only control — a lever that could SUBTRACT and nothing else
-   * (D-10). It now comes from the persisted, admin-ordered `consultation.endpoint.actions` list,
-   * which an agent may EXTEND through `alwaysActions` and still veto through `neverActions`. The
-   * ordering rules live in `endpoint-sequence.ts` as a pure function, so they are testable
-   * without a settings backend; what stays here is the two impure reads.
-   *
-   * `startActions` is untouched: there is exactly one start action, it is audio-scoped, and
-   * nothing about it was defective.
+   * `alwaysActions` / `neverActions` are no longer supplied — see the class docstring.
    */
-  private deriveStartAndEndingActions(
-    tenantId: string,
-    kindKeys: string[],
-    servableVersion: ConsultationContextSchemaVersionEntity | null,
-    agent: DepartmentAgentEntity,
-  ): { startActions: string[]; endingActions: string[] } {
-    const neverActions = new Set(agent.neverActions ?? []);
-    const hasStreamAudio = kindKeys.some((kindKey) => this.resolveKindPrimitive(servableVersion, kindKey) === 'STREAM_AUDIO');
-
-    const startActions = (hasStreamAudio ? ['livedoc.start'] : []).filter((action) => !neverActions.has(action));
-    const endingActions = resolveEndpointSequence({
-      configured: this.resolveConfiguredEndpointActions(tenantId),
-      hasStreamAudio,
-      alwaysActions: agent.alwaysActions ?? [],
-      neverActions: agent.neverActions ?? [],
-    });
-
-    return { startActions, endingActions };
+  private deriveStartAndEndingActions(tenantId: string): { startActions: string[]; endingActions: string[] } {
+    return {
+      startActions: [],
+      endingActions: resolveEndpointSequence({
+        configured: this.resolveConfiguredEndpointActions(tenantId),
+        hasStreamAudio: false,
+      }),
+    };
   }
 }
