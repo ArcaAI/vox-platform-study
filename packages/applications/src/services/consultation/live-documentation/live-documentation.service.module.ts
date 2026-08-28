@@ -18,6 +18,7 @@ import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-defaul
 import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolution.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
+import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -87,6 +88,13 @@ import { DocumentTemplateServiceModule } from '../../document-template/document-
     // session serves the compiled platform shape, which is behaviour equivalent
     // to the hardcoded four-section format this ticket replaced.
     DocumentTemplateServiceModule,
+    // TASK-811 — resolves the @Optional IWorkflowAssignmentService the realtime
+    // LANE resolution needs (assignment cascade -> definition slug). The
+    // definition repository, the consultation row the SUBSTRATE GATE reads and
+    // the DocumentSectionRepository all come from CoreDatabaseModule above.
+    // Absent ⇒ every session serves PLATFORM_REALTIME_LANE, which encodes
+    // today's behaviour.
+    WorkflowAssignmentServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

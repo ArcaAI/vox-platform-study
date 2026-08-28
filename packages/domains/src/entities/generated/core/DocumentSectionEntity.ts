@@ -56,6 +56,7 @@ export interface IDocumentSectionEntity extends IBaseTenantEntity {
 }
 
 export class DocumentSectionEntity extends BaseTenantEntity {
+  private _metaData?: IDocumentSectionEntity['metaData'];
   private _consultationId: IDocumentSectionEntity['consultationId'];
   private _documentKey: IDocumentSectionEntity['documentKey'];
   private _sectionKey: IDocumentSectionEntity['sectionKey'];
@@ -76,6 +77,7 @@ export class DocumentSectionEntity extends BaseTenantEntity {
 
   constructor(init: IDocumentSectionEntity) {
     super(init);
+    this._metaData = init.metaData;
     this._consultationId = init.consultationId;
     this._documentKey = init.documentKey;
     this._sectionKey = init.sectionKey;
@@ -93,6 +95,20 @@ export class DocumentSectionEntity extends BaseTenantEntity {
     this._confirmedBy = init.confirmedBy;
     this._lockedAt = init.lockedAt;
     this._Consultation = init.Consultation;
+  }
+
+  /**
+   * Row history rather than row shape — e.g. the transcript contradiction that
+   * justified a deletion (§2d). `BaseEntity` declares the field on `IBaseEntity`
+   * but surfaces no accessor, so each entity that persists `_metadata` declares
+   * its own (the `ContextItemEntity` pattern).
+   */
+  get metaData(): IDocumentSectionEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IDocumentSectionEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   get consultationId(): IDocumentSectionEntity['consultationId'] {
