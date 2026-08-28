@@ -9976,6 +9976,152 @@
         ],
         "type": "object"
       },
+      "NodePromptUpdateResponse": {
+        "properties": {
+          "compiledConfig": {
+            "additionalProperties": true,
+            "description": "Server-produced interpreter input contract. Null until PUBLISHED.",
+            "nullable": true,
+            "type": "object"
+          },
+          "compiledConfigChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "currentRegistryChecksum": {
+            "description": "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
+            "type": "string"
+          },
+          "deprecatedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "description": "The canvas graph, exactly as authored.",
+            "type": "object"
+          },
+          "graphChecksum": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isActive": {
+            "description": "The movable pointer: the version the dispatcher resolves for new runs.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "needsReview": {
+            "description": "True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back.",
+            "type": "boolean"
+          },
+          "paletteKey": {
+            "type": "string"
+          },
+          "parentVersionId": {
+            "description": "The published version this draft branched from, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "previousPromptVersionNumber": {
+            "description": "The node’s pin BEFORE the request. Null when the node was unpinned.",
+            "nullable": true,
+            "type": "number"
+          },
+          "promptVersionMinted": {
+            "description": "True when this request created a new immutable PromptVersion. False when the submitted content was byte-identical to the template’s latest version, in which case the node’s pin was simply moved to that existing version and nothing was minted.",
+            "type": "boolean"
+          },
+          "promptVersionNumber": {
+            "description": "The prompt version this node is pinned to AFTER the request.",
+            "type": "number"
+          },
+          "publishedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registryChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "resourceStatus": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED",
+              "PUBLISHED",
+              "DEPRECATED"
+            ],
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "validatedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "validationReport": {
+            "additionalProperties": true,
+            "description": "The last server-side ValidationReport.",
+            "nullable": true,
+            "type": "object"
+          },
+          "version": {
+            "description": "Optimistic-concurrency version (`_version`).",
+            "type": "number"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "slug",
+          "name",
+          "paletteKey",
+          "versionNumber",
+          "status",
+          "graph",
+          "graphChecksum",
+          "currentRegistryChecksum",
+          "needsReview",
+          "isActive",
+          "resourceStatus",
+          "createdAt",
+          "updatedAt",
+          "version",
+          "tags",
+          "promptVersionMinted",
+          "promptVersionNumber"
+        ],
+        "type": "object"
+      },
       "NoiseCancellationConfigDto": {
         "properties": {
           "level": {
@@ -51616,7 +51762,7 @@
     },
     "/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt": {
       "put": {
-        "description": "One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched.\n\nOnly a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) differ from the template’s latest version, both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched.\n\nADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart.\n\nOnly a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is checked on BOTH branches: an unchanged body never buys a stale client a silent 200.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowDefinitionController_updateNodePrompt",
         "parameters": [
           {
@@ -51662,7 +51808,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                  "$ref": "#/components/schemas/NodePromptUpdateResponse"
                 }
               }
             },
@@ -51673,6 +51819,9 @@
           },
           "404": {
             "description": "Definition or template not found (or cross-tenant)."
+          },
+          "412": {
+            "description": "If-Match is stale — the definition changed since the client read it."
           },
           "428": {
             "description": "If-Match header is required."
@@ -51686,7 +51835,7 @@
             "bearer": []
           }
         ],
-        "summary": "Edit a node’s prompt from within the node: mint a new version AND move this node’s pin",
+        "summary": "Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin",
         "tags": [
           "admin-workflow-definitions"
         ],
@@ -54292,6 +54441,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -55480,6 +55636,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -56716,6 +56879,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -56762,6 +56932,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -57002,6 +57179,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
           "404": {
             "description": "Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens"
           }
@@ -57049,6 +57236,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -57095,6 +57289,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -58919,6 +59120,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
