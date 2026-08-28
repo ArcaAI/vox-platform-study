@@ -3,6 +3,12 @@ import { PaginatedResponse } from '../../../common';
 
 /**
  * One immutable promotion record, read from the TARGET tenant.
+ *
+ * TASK-815 moved the promotable from a `DepartmentAgentVersion` to a
+ * `WorkflowDefinition` version. The FIELD NAMES here follow what they now
+ * carry; the physical `AgentPromotion` columns behind them keep their original
+ * names because the table is WORM (see `AgentPromotionService`'s header for the
+ * mapping).
  */
 export class AgentPromotionResponse {
   @ApiProperty({ description: 'Promotion id' })
@@ -14,26 +20,26 @@ export class AgentPromotionResponse {
   @ApiProperty({ description: 'Tenant the agent was promoted INTO (owns this record)' })
   toTenantId!: string;
 
-  @ApiProperty({ description: 'The exact immutable DepartmentAgentVersion (in the source tenant) that was promoted' })
-  agentVersionId!: string;
+  @ApiProperty({ description: 'The exact immutable WorkflowDefinition version row (in the source tenant) that was promoted' })
+  sourceDefinitionVersionId!: string;
 
-  @ApiProperty({ description: 'The source agent' })
-  sourceAgentId!: string;
+  @ApiProperty({ description: 'The source workflow definition’s slug — its identity across versions' })
+  sourceDefinitionSlug!: string;
 
-  @ApiProperty({ description: 'The agent row in the target tenant this promotion created or advanced' })
-  targetAgentId!: string;
+  @ApiProperty({ description: 'The workflow definition slug this promotion created in the target tenant' })
+  targetDefinitionSlug!: string;
 
-  @ApiPropertyOptional({ description: 'The immutable configuration version written in the target', nullable: true })
-  targetAgentVersionId?: string | null;
+  @ApiPropertyOptional({ description: 'The WorkflowDefinition version row written in the target', nullable: true })
+  targetDefinitionVersionId?: string | null;
 
-  @ApiProperty({ description: 'The promoted loop-configuration snapshot, verbatim' })
+  @ApiProperty({ description: 'The promoted graph, verbatim — with prompt bindings rewritten into the target and eval gates stripped' })
   configSnapshot!: Record<string, unknown>;
 
-  @ApiProperty({ description: 'sha256 over the canonical JSON of the promoted snapshot' })
+  @ApiProperty({ description: 'sha256 over the canonical JSON of the promoted graph' })
   checksum!: string;
 
   @ApiPropertyOptional({
-    description: 'The eval run executed AT THE TARGET against the target’s own corpus. Null when the target agent has no golden set.',
+    description: 'The eval run executed AT THE TARGET against the target’s own corpus. Null when no target golden set was named.',
     nullable: true,
   })
   evalRunId?: string | null;
@@ -55,8 +61,8 @@ export class AgentPromotionResponse {
 
   @ApiPropertyOptional({
     description:
-      'True when the target agent’s CURRENT loop configuration no longer matches what was promoted — ' +
-      'i.e. it has been edited since. Computed at read time; absent when the target agent could not be resolved.',
+      'True when the target definition’s CURRENT graph no longer matches what was promoted — ' +
+      'i.e. it has been edited since. Computed at read time; absent when the target row could not be resolved.',
   })
   drifted?: boolean;
 

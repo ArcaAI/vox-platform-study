@@ -1,2 +1,2 @@
-export * from './promote-agent.request';
+export * from './promote-workflow.request';
 export * from './agent-promotion.response';

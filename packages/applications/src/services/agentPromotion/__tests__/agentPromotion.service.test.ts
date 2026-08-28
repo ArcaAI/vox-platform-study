@@ -1,14 +1,20 @@
 /**
- * AgentPromotionService.
+ * AgentPromotionService — promoting a WORKFLOW DEFINITION version (TASK-815 / OD-10).
  *
- * Covers the ticket's TDD list: manage-rights-on-BOTH-tenants (403, and
- * evaluated BEFORE any read so there is no existence oracle); the target
- * context-kind compatibility block; the eval re-running at the TARGET against
- * the TARGET's corpus; the guarantee that no GoldenCase — nor even the pointer
- * to one — crosses a tenant boundary; immutability of the promotion record; the
- * live-consultation alert wording; and that a promoted agent arrives with its
- * loop configuration intact, taken from the immutable VERSION rather than the
- * live source row.
+ * The promotable moved off `DepartmentAgentVersion.configSnapshot` onto a
+ * `WorkflowDefinition` version row. Everything the previous suite protected is
+ * re-expressed against that subject, because none of it was ever about agents:
+ *
+ *  - manage rights on BOTH tenants, evaluated BEFORE any read so a 403/404
+ *    difference cannot be used as an existence oracle;
+ *  - no `GoldenCase` — nor even the POINTER to one — crosses a tenant boundary;
+ *  - the eval re-runs at the TARGET, against the target's own corpus;
+ *  - the promoted artifact is the immutable VERSION, not a live head;
+ *  - bound prompt templates are deep-copied so the target can actually read them;
+ *  - the live-consultation alert wording;
+ *  - one transaction around every target-tenant write.
+ *
+ * The one genuinely new rule: the promoted row lands as a DRAFT, never active.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
@@ -16,42 +22,27 @@ import { AgentPromotionService, liveConsultationsWarning } from '../agentPromoti
 
 const FROM = 'tenant-source';
 const TO = 'tenant-target';
+const SYSTEM = '00000000-0000-0000-0000-000000000000';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 const mockPromotionRepository = { create: vi.fn(), update: vi.fn(), findById: vi.fn(), findAll: vi.fn(), count: vi.fn() };
-const mockAgentRepository = {
-  findById: vi.fn(),
-  findBySlug: vi.fn(),
-  findPrimaryForDepartment: vi.fn(),
-  create: vi.fn(),
-  update: vi.fn(),
-};
-const mockAgentVersionRepository = { findLatestForAgent: vi.fn(), findByAgentAndVersionNumber: vi.fn(), create: vi.fn() };
-const mockDepartmentRepository = { findById: vi.fn(), findByCode: vi.fn() };
+const mockDefinitionRepository = { findPublishedBySlug: vi.fn(), findAllVersionsBySlug: vi.fn(), findById: vi.fn(), create: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn(), create: vi.fn() };
+const mockDocumentTemplateRepository = { findById: vi.fn() };
 const mockPromptVersionRepository = { create: vi.fn() };
-const mockContextSchemaRepository = { findDefaultForScope: vi.fn() };
-const mockContextSchemaVersionRepository = { findBySchemaAndVersionNumber: vi.fn() };
 const mockConsultationRepository = { count: vi.fn() };
 const mockPolicyEngine = { buildAbility: vi.fn() };
 const mockEvalRunService = { runGoldenSet: vi.fn() };
-// The promotion write sequence runs inside one transaction. This
-// fixture executes the work immediately, so every assertion below observes the
-// same writes it did before; the atomicity properties themselves are asserted
-// in `agentPromotion.transaction.task677.test.ts`.
-const mockUnitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({})) };
+const mockUnitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({ TX: true })) };
 
 vi.mock('@arcaai/domains', async () => {
   const actual = await vi.importActual('@arcaai/domains');
   return {
     ...actual,
-    DepartmentAgentFactory: {
-      CreateDepartmentAgent: vi.fn((data: Record<string, unknown>) => ({ ...data, id: 'new-target-agent', createdAt: new Date(), version: 1 })),
-    },
-    DepartmentAgentVersionFactory: {
-      CreateDepartmentAgentVersion: vi.fn((data: Record<string, unknown>) => ({ ...data, id: 'new-target-version' })),
+    WorkflowDefinitionFactory: {
+      CreateDefinition: vi.fn((data: Record<string, unknown>) => ({ ...data, id: 'new-target-definition', createdAt: new Date(), version: 1 })),
     },
     PromptTemplateFactory: {
       CreatePromptTemplate: vi.fn((data: Record<string, unknown>) => ({ ...data, id: `copied-${String(data.name)}` })),
@@ -70,50 +61,29 @@ vi.mock('@arcaai/domains', async () => {
   };
 });
 
-/** The seven-field snapshot a real DepartmentAgentVersion carries. */
-const loopSnapshot = (overrides: Record<string, unknown> = {}) => ({
-  role: 'SPECIALIST',
-  subscribedKinds: null,
-  writeScope: null,
-  goal: null,
-  guardrailProfile: null,
-  alwaysActions: null,
-  neverActions: null,
-  ...overrides,
+function node(id: string, config: Record<string, unknown>, type = 'generate.text') {
+  return { id, type, config };
+}
+
+const sourceGraph = (nodes: unknown[] = [node('note_writer', { taskKey: 'text.finalize', promptTemplateId: 'src-tpl', promptVersionNumber: 4 })]) => ({
+  version: 1,
+  nodes,
+  edges: [],
 });
 
-const sourceAgent = (overrides: Record<string, unknown> = {}) => ({
-  id: 'source-agent',
+const sourceDefinition = (overrides: Record<string, unknown> = {}) => ({
+  id: 'source-definition-v3',
   tenantId: FROM,
-  departmentId: 'src-dept',
-  name: 'Cardiology SOAP',
   slug: 'cardiology-soap',
+  name: 'Cardiology SOAP',
   description: 'desc',
-  promptTemplateId: 'src-tpl',
-  newPatientTemplateId: null,
-  revisitTemplateId: null,
-  preSummaryTemplateId: null,
-  livePromptTemplateId: null,
-  pinnedVersionNumber: 3,
-  dnaStylePolicy: 'INHERIT',
-  harnessOverrides: { maxRegen: 2 },
-  toolConfig: { version: 1, tools: { ner: { enabled: true } } },
-  llmOverrides: null,
-  // The source's OWN corpus pointer. It must never reach the target.
-  goldenSetId: 'source-golden-set',
-  isDefault: true,
-  templateLocked: true,
-  sourceAgentTemplateSlug: 'golden-slug',
+  paletteKey: 'consultation',
+  versionNumber: 3,
+  status: 'PUBLISHED',
+  isActive: true,
+  graph: sourceGraph(),
+  graphChecksum: 'source-checksum',
   tags: ['cardio'],
-  // Live values that DIFFER from the promoted version, so a test can prove the
-  // version is what travels.
-  role: 'PRIMARY',
-  subscribedKinds: { version: 1, kinds: [{ key: 'live_edit_after_versioning' }] },
-  writeScope: null,
-  goal: null,
-  guardrailProfile: null,
-  alwaysActions: null,
-  neverActions: null,
   ...overrides,
 });
 
@@ -122,13 +92,10 @@ function buildService() {
     mockPromotionRepository as never,
     mockEventEmitter as never,
     mockClsService as never,
-    mockAgentRepository as never,
-    mockAgentVersionRepository as never,
-    mockDepartmentRepository as never,
+    mockDefinitionRepository as never,
     mockPromptTemplateRepository as never,
+    mockDocumentTemplateRepository as never,
     mockPromptVersionRepository as never,
-    mockContextSchemaRepository as never,
-    mockContextSchemaVersionRepository as never,
     mockConsultationRepository as never,
     mockPolicyEngine as never,
     mockUnitOfWork as never,
@@ -136,592 +103,373 @@ function buildService() {
   );
 }
 
-/** An elevated, tenant-less CLS context — what `promote` requires. */
-function elevatedTenantlessContext() {
+/** An elevated tenant-less super admin — the only context `promote` accepts. */
+function superAdminTenantless() {
   mockClsService.get.mockImplementation((key: string) => {
-    switch (key) {
-      case 'user':
-        return { id: 'admin-1', roles: ['SUPER_ADMIN'] };
-      case 'tenantId':
-        return '';
-      default:
-        return null;
-    }
+    if (key === 'tenantId') return undefined;
+    if (key === 'user') return { id: 'user-1', roles: ['SUPER_ADMIN'] };
+    return undefined;
   });
 }
 
-const baseDto = { sourceAgentId: 'source-agent', fromTenantId: FROM, toTenantId: TO };
+/** The happy-path wiring, restated so a test can reset mid-case. */
+function wireHappyPath() {
+  superAdminTenantless();
+  mockPolicyEngine.buildAbility.mockResolvedValue({ can: () => true });
+  mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(sourceDefinition());
+  mockDefinitionRepository.findAllVersionsBySlug.mockResolvedValue([]);
+  mockDefinitionRepository.create.mockImplementation(async (entity: unknown) => entity);
+  mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'src-tpl', tenantId: FROM, content: 'BODY', variables: null, tags: [] });
+  mockPromptTemplateRepository.create.mockImplementation(async (entity: unknown) => entity);
+  mockPromptVersionRepository.create.mockImplementation(async (entity: unknown) => entity);
+  mockDocumentTemplateRepository.findById.mockResolvedValue(null);
+  mockConsultationRepository.count.mockResolvedValue(0);
+  mockPromotionRepository.create.mockImplementation(async (entity: unknown) => entity);
+  mockPromotionRepository.update.mockImplementation(async (_id: string, entity: unknown) => entity);
+  mockEvalRunService.runGoldenSet.mockResolvedValue({ run: { id: 'eval-run-1' }, passed: true, failures: [], aggregates: {} });
+  mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work({ TX: true }));
+}
 
-describe('AgentPromotionService', () => {
-  let service: AgentPromotionService;
+const REQUEST = { sourceDefinitionSlug: 'cardiology-soap', fromTenantId: FROM, toTenantId: TO };
 
+/** The graph as it was written into the target. */
+function promotedGraph(): { nodes: { id: string; config: Record<string, unknown> }[] } {
+  const created = mockDefinitionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+  return created.graph as { nodes: { id: string; config: Record<string, unknown> }[] };
+}
+
+describe('AgentPromotionService.promote', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    elevatedTenantlessContext();
+    wireHappyPath();
+  });
 
-    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work({}));
-    mockPolicyEngine.buildAbility.mockResolvedValue({ can: () => true });
-    mockAgentRepository.findById.mockResolvedValue(sourceAgent());
-    mockAgentRepository.findBySlug.mockResolvedValue(null);
-    mockAgentRepository.findPrimaryForDepartment.mockResolvedValue(null);
-    mockAgentRepository.create.mockImplementation(async (e: unknown) => e);
-    mockAgentRepository.update.mockImplementation(async (_id: string, e: unknown) => e);
-    mockAgentVersionRepository.findLatestForAgent.mockImplementation(async (agentId: string) =>
-      agentId === 'source-agent' ? { id: 'src-version', tenantId: FROM, agentId, versionNumber: 4, configSnapshot: loopSnapshot() } : null,
+  // =======================================================================
+  // Authorization
+  // =======================================================================
+
+  it('refuses a pinned working tenant — promotion needs the elevated tenant-less context', async () => {
+    mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'user-1', roles: ['SUPER_ADMIN'] }));
+
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(ForbiddenException);
+    expect(mockDefinitionRepository.findPublishedBySlug).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-super-admin', async () => {
+    mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? undefined : { id: 'user-1', roles: ['TENANT_ADMIN'] }));
+
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('requires manage:WorkflowDefinition in BOTH tenants, and names the side that failed', async () => {
+    mockPolicyEngine.buildAbility.mockImplementation(async ({ tenantId }: { tenantId: string }) => ({ can: () => tenantId === FROM }));
+
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(/target tenant/);
+  });
+
+  it('authorizes BEFORE any read, so a 403/404 difference is not an existence oracle', async () => {
+    mockPolicyEngine.buildAbility.mockResolvedValue({ can: () => false });
+
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(ForbiddenException);
+    expect(mockDefinitionRepository.findPublishedBySlug).not.toHaveBeenCalled();
+    expect(mockDefinitionRepository.findAllVersionsBySlug).not.toHaveBeenCalled();
+  });
+
+  it('refuses a same-tenant promotion', async () => {
+    await expect(buildService().promote({ ...REQUEST, toTenantId: FROM })).rejects.toThrow(BadRequestException);
+  });
+
+  // =======================================================================
+  // Which version travels
+  // =======================================================================
+
+  it('defaults to the source tenant’s ACTIVE PUBLISHED version, never simply the newest', async () => {
+    await buildService().promote(REQUEST);
+
+    expect(mockDefinitionRepository.findPublishedBySlug).toHaveBeenCalledWith(FROM, 'cardiology-soap');
+    const promotion = mockPromotionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(promotion.agentVersionId).toBe('source-definition-v3');
+    expect(promotion.sourceAgentId).toBe('cardiology-soap');
+  });
+
+  it('promotes an explicitly named version, including an unpublished draft', async () => {
+    mockDefinitionRepository.findAllVersionsBySlug.mockImplementation(async (tenantId: string) =>
+      tenantId === FROM ? [sourceDefinition({ id: 'draft-v5', versionNumber: 5, status: 'DRAFT', isActive: false })] : [],
     );
-    mockAgentVersionRepository.create.mockImplementation(async (e: unknown) => e);
-    mockDepartmentRepository.findById.mockResolvedValue({ id: 'src-dept', tenantId: FROM, code: 'CARD' });
-    mockDepartmentRepository.findByCode.mockResolvedValue({ id: 'tgt-dept', tenantId: TO, code: 'CARD' });
-    mockPromptTemplateRepository.findById.mockResolvedValue({
-      id: 'src-tpl',
-      tenantId: FROM,
-      name: 'Src Template',
-      content: 'body',
-      status: 'APPROVED',
-      variables: null,
-      tags: [],
-    });
-    mockPromptTemplateRepository.create.mockImplementation(async (e: unknown) => e);
-    mockPromptVersionRepository.create.mockImplementation(async (e: unknown) => e);
-    mockContextSchemaRepository.findDefaultForScope.mockResolvedValue(null);
-    mockContextSchemaVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue(null);
-    mockConsultationRepository.count.mockResolvedValue(0);
-    mockPromotionRepository.create.mockImplementation(async (e: unknown) => e);
-    mockPromotionRepository.update.mockImplementation(async (_id: string, e: unknown) => e);
-    mockEvalRunService.runGoldenSet.mockResolvedValue({ run: { id: 'target-eval-run' }, passed: true, failures: [], aggregates: {} });
 
-    service = buildService();
+    await buildService().promote({ ...REQUEST, definitionVersionNumber: 5 });
+
+    expect(mockDefinitionRepository.findPublishedBySlug).not.toHaveBeenCalled();
+    const promotion = mockPromotionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(promotion.agentVersionId).toBe('draft-v5');
+  });
+
+  it('404s a version the source tenant does not have', async () => {
+    mockDefinitionRepository.findAllVersionsBySlug.mockResolvedValue([]);
+    await expect(buildService().promote({ ...REQUEST, definitionVersionNumber: 9 })).rejects.toThrow(NotFoundException);
+  });
+
+  it('refuses when the source slug has no ACTIVE PUBLISHED version and none was named', async () => {
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(/no ACTIVE PUBLISHED version/);
   });
 
   // =======================================================================
-  // T1/T2 — authorization
+  // The copy
   // =======================================================================
 
-  describe('manage rights on BOTH tenants (the entire control — D10)', () => {
-    it('rejects with 403 when the actor lacks manage on the SOURCE tenant', async () => {
-      mockPolicyEngine.buildAbility.mockImplementation(async ({ tenantId }: { tenantId: string }) => ({
-        can: () => tenantId !== FROM,
-      }));
+  it('lands in the target as a DRAFT that is never active', async () => {
+    await buildService().promote(REQUEST);
 
-      await expect(service.promote(baseDto)).rejects.toThrow(ForbiddenException);
-      await expect(service.promote(baseDto)).rejects.toThrow(/source tenant/);
-    });
+    const created = mockDefinitionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(created.tenantId).toBe(TO);
+    expect(created.slug).toBe('cardiology-soap');
+    expect(created.status).toBe('DRAFT');
+    expect(created.isActive).toBe(false);
+    // Every server-owned publish artifact stays unset — a compiledConfig
+    // carrying the SOURCE's template ids would be worse than none.
+    expect(created.compiledConfig).toBeUndefined();
+    expect(created.publishedAt).toBeUndefined();
+  });
 
-    it('rejects with 403 when the actor lacks manage on the TARGET tenant', async () => {
-      mockPolicyEngine.buildAbility.mockImplementation(async ({ tenantId }: { tenantId: string }) => ({
-        can: () => tenantId !== TO,
-      }));
+  it('continues the TARGET’s own version lineage rather than copying the source number', async () => {
+    mockDefinitionRepository.findAllVersionsBySlug.mockResolvedValue([
+      sourceDefinition({ id: 't1', tenantId: TO, versionNumber: 1 }),
+      sourceDefinition({ id: 't2', tenantId: TO, versionNumber: 2 }),
+    ]);
 
-      await expect(service.promote(baseDto)).rejects.toThrow(ForbiddenException);
-      await expect(service.promote(baseDto)).rejects.toThrow(/target tenant/);
-    });
+    await buildService().promote(REQUEST);
 
-    it('checks BOTH tenants, not just one', async () => {
-      await service.promote(baseDto);
+    const created = mockDefinitionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    // Source was version 3; the target's lineage was at 2.
+    expect(created.versionNumber).toBe(3);
+    expect(created.parentVersionId).toBeNull();
+  });
 
-      const tenantsChecked = mockPolicyEngine.buildAbility.mock.calls.map((call) => (call[0] as { tenantId: string }).tenantId);
-      expect(tenantsChecked).toEqual([FROM, TO]);
-      expect(mockPolicyEngine.buildAbility).toHaveBeenCalledWith({ userId: 'admin-1', tenantId: FROM });
-      expect(mockPolicyEngine.buildAbility).toHaveBeenCalledWith({ userId: 'admin-1', tenantId: TO });
-    });
+  it('deep-copies a tenant-owned prompt template and rewrites the node binding', async () => {
+    await buildService().promote(REQUEST);
 
-    it('evaluates authorization BEFORE any read — an unauthorized caller gets no existence oracle', async () => {
-      // A source id that does not exist. An authorized caller would get 404;
-      // an unauthorized one must get 403 and must not have caused a read, or
-      // the 403/404 difference itself leaks whether the agent exists.
-      mockAgentRepository.findById.mockResolvedValue(null);
-      mockPolicyEngine.buildAbility.mockResolvedValue({ can: () => false });
+    expect(mockPromptTemplateRepository.create).toHaveBeenCalledTimes(1);
+    const copiedTemplate = mockPromptTemplateRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(copiedTemplate.tenantId).toBe(TO);
+    // APPROVED, not DRAFT: promotion moves a configuration that was already
+    // governed in the source; a DRAFT copy would fall through the resolver.
+    expect(copiedTemplate.status).toBe('APPROVED');
 
-      await expect(service.promote({ ...baseDto, sourceAgentId: 'does-not-exist' })).rejects.toThrow(ForbiddenException);
-      expect(mockAgentRepository.findById).not.toHaveBeenCalled();
-    });
+    const graphNode = promotedGraph().nodes[0]!;
+    expect(graphNode.config.promptTemplateId).toBe(copiedTemplate.id);
+    expect(graphNode.config.promptTemplateId).not.toBe('src-tpl');
+    // The source pin numbers a version of a template that does not exist here;
+    // the copy starts at v1, so the node follows it.
+    expect(graphNode.config.promptVersionNumber).toBeUndefined();
+  });
 
-    it('requires an elevated tenant-less context (a pinned working tenant is refused with a clear reason)', async () => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
+  it('does NOT copy a SYSTEM-owned template — it is readable cross-tenant', async () => {
+    mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'src-tpl', tenantId: SYSTEM, content: 'BODY', variables: null, tags: [] });
 
-      await expect(service.promote(baseDto)).rejects.toThrow(/elevated tenant-less context/);
-      expect(mockPolicyEngine.buildAbility).not.toHaveBeenCalled();
-    });
+    await buildService().promote(REQUEST);
 
-    it('refuses a same-tenant "promotion" — that is what clone is for', async () => {
-      await expect(service.promote({ ...baseDto, toTenantId: FROM })).rejects.toThrow(BadRequestException);
-    });
+    expect(mockPromptTemplateRepository.create).not.toHaveBeenCalled();
+    const graphNode = promotedGraph().nodes[0]!;
+    expect(graphNode.config.promptTemplateId).toBe('src-tpl');
+    // The pin survives: it numbers a version of a template that still exists.
+    expect(graphNode.config.promptVersionNumber).toBe(4);
+  });
 
-    it('surfaces a cross-tenant source agent as 404, never 403 (C5 posture)', async () => {
-      // Authorized on both tenants, but the named agent belongs to neither.
-      mockAgentRepository.findById.mockResolvedValue({ ...sourceAgent(), tenantId: 'some-third-tenant' });
+  it('copies a template shared by two nodes ONCE, and points both at the same target row', async () => {
+    // Copying it twice would silently fork one prompt into two the target has
+    // to maintain apart.
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(
+      sourceDefinition({
+        graph: sourceGraph([
+          node('a', { taskKey: 'text.finalize', promptTemplateId: 'src-tpl' }),
+          node('b', { taskKey: 'text.live', promptTemplateId: 'src-tpl' }),
+        ]),
+      }),
+    );
 
-      await expect(service.promote(baseDto)).rejects.toThrow(NotFoundException);
-    });
+    await buildService().promote(REQUEST);
+
+    expect(mockPromptTemplateRepository.create).toHaveBeenCalledTimes(1);
+    const nodes = promotedGraph().nodes;
+    expect(nodes[0]!.config.promptTemplateId).toBe(nodes[1]!.config.promptTemplateId);
+  });
+
+  it('never mutates the SOURCE definition’s own graph', async () => {
+    const source = sourceDefinition();
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(source);
+
+    await buildService().promote(REQUEST);
+
+    expect((source.graph as { nodes: { config: Record<string, unknown> }[] }).nodes[0]!.config.promptTemplateId).toBe('src-tpl');
   });
 
   // =======================================================================
-  // T4/T5 — the blocking compatibility gate
+  // No corpus crosses a tenant boundary
   // =======================================================================
 
-  describe('target context-kind compatibility (blocked, with a named reason)', () => {
-    const withSubscribedKind = () =>
-      mockAgentVersionRepository.findLatestForAgent.mockResolvedValue({
-        id: 'src-version',
-        tenantId: FROM,
-        agentId: 'source-agent',
-        versionNumber: 4,
-        configSnapshot: loopSnapshot({ subscribedKinds: { version: 1, kinds: [{ key: 'referral_letter' }] } }),
-      });
+  it('STRIPS every evalGate from the promoted graph — not even the goldenSet POINTER travels', async () => {
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(
+      sourceDefinition({
+        graph: sourceGraph([
+          node('note_writer', {
+            taskKey: 'text.finalize',
+            promptTemplateId: 'src-tpl',
+            evalGate: { goldenSetId: 'source-golden-set', enabled: true },
+          }),
+        ]),
+      }),
+    );
 
-    const targetDeclares = (kinds: string[], outputs: string[] = []) => {
-      mockContextSchemaRepository.findDefaultForScope.mockImplementation(async (_tenantId: string, scope: string) =>
-        scope === 'DEPARTMENT' ? { id: 'schema-1', pinnedVersionNumber: 2, status: 'PUBLISHED' } : null,
-      );
-      mockContextSchemaVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue({
-        id: 'schema-v2',
-        definition: { kinds: kinds.map((key) => ({ key })), outputs: outputs.map((key) => ({ key })) },
-      });
-    };
+    await buildService().promote(REQUEST);
 
-    it('blocks when the target department does not declare a subscribed kind, naming it', async () => {
-      withSubscribedKind();
-      targetDeclares(['some_other_kind']);
+    const created = mockDefinitionRepository.create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(promotedGraph().nodes[0]!.config.evalGate).toBeUndefined();
+    expect(JSON.stringify(created.graph)).not.toContain('source-golden-set');
+  });
 
-      await expect(service.promote(baseDto)).rejects.toThrow(/does not declare kind\(s\) referral_letter/);
-      expect(mockAgentRepository.create).not.toHaveBeenCalled();
-    });
+  it('runs the eval at the TARGET, against a golden set the caller named in the TARGET', async () => {
+    await buildService().promote({ ...REQUEST, targetGoldenSetId: 'target-golden-set' });
 
-    it('blocks when the target department has no published context schema at all', async () => {
-      withSubscribedKind();
-      mockContextSchemaRepository.findDefaultForScope.mockResolvedValue(null);
+    expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(
+      expect.objectContaining({ goldenSetId: 'target-golden-set', tenantId: TO, triggerType: 'PROMOTION' }),
+    );
+  });
 
-      await expect(service.promote(baseDto)).rejects.toThrow(/no published context schema/);
-      expect(mockAgentRepository.create).not.toHaveBeenCalled();
-    });
+  it('records a warning, not a failure, when no target golden set was named', async () => {
+    const result = await buildService().promote(REQUEST);
 
-    it('blocks when the target does not declare a writeScope output, naming it', async () => {
-      mockAgentVersionRepository.findLatestForAgent.mockResolvedValue({
-        id: 'src-version',
-        tenantId: FROM,
-        agentId: 'source-agent',
-        versionNumber: 4,
-        configSnapshot: loopSnapshot({ writeScope: { version: 1, outputs: ['discharge_letter'] } }),
-      });
-      targetDeclares([], ['soap_note']);
+    expect(mockEvalRunService.runGoldenSet).not.toHaveBeenCalled();
+    expect(result.warnings.join(' ')).toMatch(/no target golden set was named/i);
+  });
 
-      await expect(service.promote(baseDto)).rejects.toThrow(/does not declare output\(s\) discharge_letter/);
-    });
+  it('never loses a promotion to an eval failure', async () => {
+    mockEvalRunService.runGoldenSet.mockRejectedValue(new Error('eval backend down'));
 
-    it('proceeds when the target declares every referenced kind', async () => {
-      withSubscribedKind();
-      targetDeclares(['referral_letter']);
+    const result = await buildService().promote({ ...REQUEST, targetGoldenSetId: 'target-golden-set' });
 
-      const res = await service.promote(baseDto);
-      expect(res.id).toBe('promotion-1');
-      expect(mockAgentRepository.create).toHaveBeenCalled();
-    });
-
-    it('blocks a PRIMARY promotion when the target department already has a PRIMARY, naming it', async () => {
-      mockAgentVersionRepository.findLatestForAgent.mockResolvedValue({
-        id: 'src-version',
-        tenantId: FROM,
-        agentId: 'source-agent',
-        versionNumber: 4,
-        configSnapshot: loopSnapshot({ role: 'PRIMARY' }),
-      });
-      mockAgentRepository.findPrimaryForDepartment.mockResolvedValue({ id: 'other', slug: 'incumbent-primary' });
-
-      await expect(service.promote(baseDto)).rejects.toThrow(/already has a PRIMARY agent \('incumbent-primary'\)/);
-    });
-
-    it('blocks when the target tenant runs no department with the source department’s code', async () => {
-      mockDepartmentRepository.findByCode.mockResolvedValue(null);
-
-      await expect(service.promote(baseDto)).rejects.toThrow(/no department with code 'CARD'/);
-    });
-
-    it('refuses an agent that has no immutable configuration version to promote', async () => {
-      mockAgentVersionRepository.findLatestForAgent.mockResolvedValue(null);
-
-      await expect(service.promote(baseDto)).rejects.toThrow(/no immutable configuration version/);
-    });
+    expect(result.id).toBe('promotion-1');
+    expect(result.warnings.join(' ')).toMatch(/could not be completed/i);
   });
 
   // =======================================================================
-  // T10/T11 — what actually travels
+  // Gates and alerts
   // =======================================================================
 
-  describe('what promotion carries', () => {
-    it('a promoted agent arrives with its loop configuration INTACT (the gap)', async () => {
-      const promoted = loopSnapshot({
-        role: 'PRIMARY',
-        goal: { version: 1, objective: 'Draft an accurate SOAP note' },
-        guardrailProfile: 'STRICT',
-        alwaysActions: ['harness.finalize'],
-        neverActions: ['client.emit'],
-      });
-      mockAgentVersionRepository.findLatestForAgent.mockImplementation(async (agentId: string) =>
-        agentId === 'source-agent' ? { id: 'src-version', tenantId: FROM, agentId, versionNumber: 4, configSnapshot: promoted } : null,
-      );
+  it('BLOCKS when a node binds a document template that is not SYSTEM-owned', async () => {
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(
+      sourceDefinition({
+        graph: sourceGraph([node('note_writer', { taskKey: 'text.finalize', promptTemplateId: 'src-tpl', documentTemplateId: 'tenant-doc-tpl' })]),
+      }),
+    );
+    mockDocumentTemplateRepository.findById.mockResolvedValue({ id: 'tenant-doc-tpl', tenantId: FROM });
 
-      await service.promote(baseDto);
+    await expect(buildService().promote(REQUEST)).rejects.toThrow(/document template/i);
+    expect(mockDefinitionRepository.create).not.toHaveBeenCalled();
+  });
 
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.role).toBe('PRIMARY');
-      expect(created.goal).toEqual({ version: 1, objective: 'Draft an accurate SOAP note' });
-      expect(created.guardrailProfile).toBe('STRICT');
-      expect(created.alwaysActions).toEqual(['harness.finalize']);
-      expect(created.neverActions).toEqual(['client.emit']);
-      expect(created.subscribedKinds).toBeNull();
-      expect(created.writeScope).toBeNull();
-    });
+  it('allows a SYSTEM-owned document template through', async () => {
+    mockDefinitionRepository.findPublishedBySlug.mockResolvedValue(
+      sourceDefinition({
+        graph: sourceGraph([node('note_writer', { taskKey: 'text.finalize', promptTemplateId: 'src-tpl', documentTemplateId: 'system-doc-tpl' })]),
+      }),
+    );
+    mockDocumentTemplateRepository.findById.mockResolvedValue({ id: 'system-doc-tpl', tenantId: SYSTEM });
 
-    it('copies the IMMUTABLE VERSION, not the live source row', async () => {
-      // The source row's live `subscribedKinds` names a kind the version does
-      // not. A mid-promotion edit at the source must not leak into the target.
-      await service.promote(baseDto);
+    await expect(buildService().promote(REQUEST)).resolves.toBeDefined();
+  });
 
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.subscribedKinds).toBeNull();
-      expect(created.role).toBe('SPECIALIST'); // version says SPECIALIST; live row says PRIMARY
-    });
+  it('alerts on live consultations when the target already has a version of this workflow', async () => {
+    mockConsultationRepository.count.mockResolvedValue(2);
+    mockDefinitionRepository.findAllVersionsBySlug.mockResolvedValue([sourceDefinition({ id: 't1', tenantId: TO, versionNumber: 1 })]);
 
-    it('promotes an explicitly named version number when given one', async () => {
-      mockAgentVersionRepository.findByAgentAndVersionNumber.mockResolvedValue({
-        id: 'src-version-2',
-        tenantId: FROM,
-        agentId: 'source-agent',
-        versionNumber: 2,
-        configSnapshot: loopSnapshot({ guardrailProfile: 'RELAXED' }),
-      });
+    const result = await buildService().promote(REQUEST);
+    expect(result.warnings).toContain(liveConsultationsWarning(2));
+  });
 
-      await service.promote({ ...baseDto, agentVersionNumber: 2 });
+  it('does NOT alert on a FIRST promotion — there is nothing to "complete on"', async () => {
+    mockConsultationRepository.count.mockResolvedValue(2);
+    mockDefinitionRepository.findAllVersionsBySlug.mockResolvedValue([]);
 
-      expect(mockAgentVersionRepository.findByAgentAndVersionNumber).toHaveBeenCalledWith('source-agent', 2);
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.guardrailProfile).toBe('RELAXED');
-    });
-
-    it('deep-copies a tenant-owned bound template into the target rather than referencing it', async () => {
-      await service.promote(baseDto);
-
-      expect(mockPromptTemplateRepository.create).toHaveBeenCalledTimes(1);
-      const copied = mockPromptTemplateRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(copied.tenantId).toBe(TO);
-      expect(copied.departmentId).toBe('tgt-dept');
-      // APPROVED, not DRAFT: promotion moves an already-governed configuration.
-      expect(copied.status).toBe('APPROVED');
-
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.promptTemplateId).not.toBe('src-tpl');
-    });
-
-    it('keeps a SYSTEM-owned binding by reference (SYSTEM templates are readable cross-tenant)', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue({
-        id: 'sys-tpl',
-        tenantId: '00000000-0000-0000-0000-000000000000',
-        name: 'System Template',
-        content: 'body',
-        tags: [],
-      });
-
-      await service.promote(baseDto);
-
-      expect(mockPromptTemplateRepository.create).not.toHaveBeenCalled();
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.promptTemplateId).toBe('src-tpl');
-    });
-
-    it('does NOT carry isDefault, templateLocked, pinnedVersionNumber or golden-library lineage', async () => {
-      await service.promote(baseDto);
-
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.isDefault).toBeUndefined();
-      expect(created.templateLocked).toBeUndefined();
-      expect(created.pinnedVersionNumber).toBeNull();
-      expect(created.sourceAgentTemplateSlug).toBeUndefined();
-    });
-
-    it('carries the plain configuration values that have no cross-tenant meaning', async () => {
-      await service.promote(baseDto);
-
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.harnessOverrides).toEqual({ maxRegen: 2 });
-      expect(created.toolConfig).toEqual({ version: 1, tools: { ner: { enabled: true } } });
-      expect(created.dnaStylePolicy).toBe('INHERIT');
-      expect(created.tags).toEqual(['cardio']);
-    });
-
-    it('writes an immutable configuration version in the TARGET tenant', async () => {
-      await service.promote(baseDto);
-
-      const version = mockAgentVersionRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(version.tenantId).toBe(TO);
-      expect(version.agentId).toBe('new-target-agent');
-      expect(version.versionNumber).toBe(1);
-    });
+    const result = await buildService().promote(REQUEST);
+    expect(result.warnings).not.toContain(liveConsultationsWarning(2));
   });
 
   // =======================================================================
-  // T7 — no PHI, and not even the pointer to it, crosses
+  // Atomicity
   // =======================================================================
 
-  describe('no GoldenCase crosses a tenant boundary', () => {
-    it('never copies the source goldenSetId onto the target agent', async () => {
-      await service.promote(baseDto);
+  it('writes every target-tenant row inside ONE transaction, threading tx explicitly', async () => {
+    await buildService().promote(REQUEST);
 
-      const created = mockAgentRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(created.goldenSetId).toBeUndefined();
-      expect(JSON.stringify(created)).not.toContain('source-golden-set');
-    });
-
-    it('never writes the source goldenSetId onto the promotion record', async () => {
-      await service.promote(baseDto);
-
-      const promotion = mockPromotionRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(JSON.stringify(promotion)).not.toContain('source-golden-set');
-    });
-
-    it('never evaluates against the source golden set', async () => {
-      mockAgentRepository.findBySlug.mockResolvedValue({
-        ...sourceAgent(),
-        id: 'existing-target-agent',
-        tenantId: TO,
-        departmentId: 'tgt-dept',
-        goldenSetId: 'target-golden-set',
-      });
-
-      await service.promote(baseDto);
-
-      expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(
-        expect.objectContaining({ goldenSetId: 'target-golden-set', tenantId: TO }),
-      );
-      expect(mockEvalRunService.runGoldenSet).not.toHaveBeenCalledWith(expect.objectContaining({ goldenSetId: 'source-golden-set' }));
-    });
+    expect(mockUnitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
+    // A repository caches its database context at construction, so CLS
+    // propagation inside `runInTransaction` would NOT reach these singletons —
+    // passing `tx` is what actually enrols each write.
+    for (const repo of [mockPromptTemplateRepository, mockPromptVersionRepository, mockDefinitionRepository, mockPromotionRepository]) {
+      expect(repo.create).toHaveBeenCalledWith(expect.anything(), { TX: true });
+    }
   });
 
-  // =======================================================================
-  // T6 — the eval re-runs at the target
-  // =======================================================================
-
-  describe('eval re-runs at the TARGET tenant', () => {
-    it('runs against the target tenant and records the run id on the promotion', async () => {
-      mockAgentRepository.findBySlug.mockResolvedValue({
-        ...sourceAgent(),
-        id: 'existing-target-agent',
-        tenantId: TO,
-        departmentId: 'tgt-dept',
-        goldenSetId: 'target-golden-set',
-      });
-
-      const res = await service.promote(baseDto);
-
-      expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith({
-        goldenSetId: 'target-golden-set',
-        tenantId: TO,
-        triggerType: 'PROMOTION',
-        promptTemplateId: expect.any(String),
-      });
-      expect(res.evalRunId).toBe('target-eval-run');
+  it('announces the sys-event only AFTER the commit', async () => {
+    const order: string[] = [];
+    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => {
+      const out = await work({ TX: true });
+      order.push('commit');
+      return out;
+    });
+    mockEventEmitter.emit.mockImplementation(() => {
+      order.push('event');
+      return true;
     });
 
-    it('accepts an explicitly named target golden set', async () => {
-      await service.promote({ ...baseDto, targetGoldenSetId: 'chosen-target-set' });
+    await buildService().promote(REQUEST);
 
-      expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(expect.objectContaining({ goldenSetId: 'chosen-target-set', tenantId: TO }));
-    });
-
-    it('records the source EvalRun as an attestation only — never as the target result', async () => {
-      const res = await service.promote({ ...baseDto, sourceEvalRunId: 'source-attestation' });
-
-      expect(res.sourceEvalRunId).toBe('source-attestation');
-      expect(res.evalRunId).not.toBe('source-attestation');
-    });
-
-    it('warns rather than fails when the target agent has no golden set', async () => {
-      const res = await service.promote(baseDto);
-
-      expect(mockEvalRunService.runGoldenSet).not.toHaveBeenCalled();
-      expect(res.warnings.join(' ')).toMatch(/no golden set/);
-      expect(res.id).toBe('promotion-1');
-    });
-
-    it('never loses a promotion to an eval failure', async () => {
-      mockAgentRepository.findBySlug.mockResolvedValue({
-        ...sourceAgent(),
-        id: 'existing-target-agent',
-        tenantId: TO,
-        departmentId: 'tgt-dept',
-        goldenSetId: 'target-golden-set',
-      });
-      mockEvalRunService.runGoldenSet.mockRejectedValue(new Error('harness unreachable'));
-
-      const res = await service.promote(baseDto);
-
-      expect(res.id).toBe('promotion-1');
-      expect(res.warnings.join(' ')).toMatch(/could not be completed: harness unreachable/);
-    });
+    expect(order.indexOf('commit')).toBeLessThan(order.indexOf('event'));
   });
 
-  // =======================================================================
-  // T9 — the live-consultation alert
-  // =======================================================================
+  it('rolls the whole promotion back when the audit record cannot be written', async () => {
+    mockUnitOfWork.runInTransaction.mockRejectedValue(new Error('rolled back'));
 
-  describe('live consultations — alert, never block', () => {
-    beforeEach(() => {
-      mockAgentRepository.findBySlug.mockResolvedValue({
-        ...sourceAgent(),
-        id: 'existing-target-agent',
-        tenantId: TO,
-        departmentId: 'tgt-dept',
-        goldenSetId: null,
-      });
-    });
+    await expect(buildService().promote(REQUEST)).rejects.toThrow('rolled back');
+    expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+  });
+});
 
-    it('names the count and completes the promotion anyway', async () => {
-      mockConsultationRepository.count.mockResolvedValue(3);
-
-      const res = await service.promote(baseDto);
-
-      expect(res.warnings).toContain('3 consultations are currently running on the previous version and will complete on it.');
-      expect(res.id).toBe('promotion-1');
-    });
-
-    it('counts only RECORDING consultations in the TARGET tenant', async () => {
-      mockConsultationRepository.count.mockResolvedValue(1);
-
-      await service.promote(baseDto);
-
-      expect(mockConsultationRepository.count).toHaveBeenCalledWith({ filters: { tenantId: TO, status: 'RECORDING' } });
-    });
-
-    it('uses singular wording for exactly one', async () => {
-      expect(liveConsultationsWarning(1)).toBe('1 consultation is currently running on the previous version and will complete on it.');
-    });
-
-    it('issues no alert for a brand-new target agent — there is no previous version to complete on', async () => {
-      mockAgentRepository.findBySlug.mockResolvedValue(null);
-      mockConsultationRepository.count.mockResolvedValue(7);
-
-      const res = await service.promote(baseDto);
-
-      expect(res.warnings.join(' ')).not.toMatch(/currently running/);
-      expect(mockConsultationRepository.count).not.toHaveBeenCalled();
-    });
-
-    it('leaves the live consultations themselves untouched', async () => {
-      mockConsultationRepository.count.mockResolvedValue(2);
-
-      await service.promote(baseDto);
-
-      // The consultation repository is READ from and never written to — the
-      // promotion cannot disturb a session already in flight.
-      expect(Object.keys(mockConsultationRepository)).toEqual(['count']);
-    });
+describe('AgentPromotionService reads', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'user-1' }));
   });
 
-  // =======================================================================
-  // T8 — immutability
-  // =======================================================================
-
-  describe('the promotion record is immutable', () => {
-    it('is created, never updated, when no eval attestation has to be attached', async () => {
-      await service.promote(baseDto);
-
-      expect(mockPromotionRepository.create).toHaveBeenCalledTimes(1);
-      expect(mockPromotionRepository.update).not.toHaveBeenCalled();
-    });
-
-    it('records a SECOND row rather than mutating the first when the same agent is promoted again', async () => {
-      await service.promote(baseDto);
-      await service.promote(baseDto);
-
-      expect(mockPromotionRepository.create).toHaveBeenCalledTimes(2);
-      const [first, second] = mockPromotionRepository.create.mock.calls.map((c) => c[0] as Record<string, unknown>);
-      expect(first).not.toBe(second);
-    });
-
-    it('records both tenants, the promoted version and the actor', async () => {
-      await service.promote(baseDto);
-
-      const promotion = mockPromotionRepository.create.mock.calls[0][0] as Record<string, unknown>;
-      expect(promotion.fromTenantId).toBe(FROM);
-      expect(promotion.toTenantId).toBe(TO);
-      expect(promotion.tenantId).toBe(TO); // owned by the target
-      expect(promotion.agentVersionId).toBe('src-version');
-      expect(promotion.sourceAgentId).toBe('source-agent');
-      expect(promotion.promotedBy).toBe('admin-1');
-      expect(promotion.checksum).toMatch(/^[0-9a-f]{64}$/);
-    });
-
-    it('broadcasts a ResourceCreated sys-event carrying BOTH tenants (CLS has neither on this path)', async () => {
-      await service.promote(baseDto);
-
-      expect(mockEventEmitter.emit).toHaveBeenCalled();
-      const payloads = mockEventEmitter.emit.mock.calls.map((c) => JSON.stringify(c[1]));
-      expect(payloads.some((p) => p.includes(FROM) && p.includes(TO))).toBe(true);
-    });
+  it('404s a cross-tenant promotion id rather than 403ing it', async () => {
+    mockPromotionRepository.findById.mockResolvedValue({ id: 'p-1', tenantId: 'someone-else' });
+    await expect(buildService().getById('p-1')).rejects.toThrow(NotFoundException);
   });
 
-  // =======================================================================
-  // T16 — drift, and the tenant-scoped reads
-  // =======================================================================
-
-  describe('reads (ordinary tenant scope) and drift detection', () => {
-    beforeEach(() => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
-    });
-
-    const promotionRow = (checksum: string) => ({
-      id: 'promotion-1',
+  it('reports drift when the target definition’s graph no longer matches what was promoted', async () => {
+    mockPromotionRepository.findById.mockResolvedValue({
+      id: 'p-1',
       tenantId: TO,
-      fromTenantId: FROM,
       toTenantId: TO,
-      agentVersionId: 'src-version',
-      sourceAgentId: 'source-agent',
-      targetAgentId: 'target-agent',
-      targetAgentVersionId: 'tgt-version',
-      configSnapshot: loopSnapshot(),
-      checksum,
-      evalRunId: null,
-      sourceEvalRunId: null,
+      fromTenantId: FROM,
+      agentVersionId: 'source-definition-v3',
+      sourceAgentId: 'cardiology-soap',
+      targetAgentId: 'cardiology-soap',
+      targetAgentVersionId: 'target-definition-v1',
+      configSnapshot: {},
+      checksum: 'checksum-at-promotion-time',
       warnings: [],
-      promotedBy: 'admin-1',
       createdAt: new Date(),
       version: 1,
     });
-
-    it('reports drifted=false when the target agent still matches what was promoted', async () => {
-      // Promote first so the checksum is the real one for this snapshot.
-      elevatedTenantlessContext();
-      await service.promote(baseDto);
-      const realChecksum = (mockPromotionRepository.create.mock.calls[0][0] as Record<string, unknown>).checksum as string;
-
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
-      mockPromotionRepository.findById.mockResolvedValue(promotionRow(realChecksum));
-      mockAgentRepository.findById.mockResolvedValue({ ...loopSnapshot(), id: 'target-agent', tenantId: TO });
-
-      const res = await service.getById('promotion-1');
-      expect(res.drifted).toBe(false);
+    mockDefinitionRepository.findById.mockResolvedValue({
+      id: 'target-definition-v1',
+      tenantId: TO,
+      graph: sourceGraph([node('edited', { taskKey: 'text.finalize', promptTemplateId: 'edited-tpl' })]),
     });
 
-    it('reports drifted=true once the target agent has been edited', async () => {
-      mockPromotionRepository.findById.mockResolvedValue(promotionRow('0'.repeat(64)));
-      mockAgentRepository.findById.mockResolvedValue({ ...loopSnapshot({ guardrailProfile: 'STRICT' }), id: 'target-agent', tenantId: TO });
-
-      const res = await service.getById('promotion-1');
-      expect(res.drifted).toBe(true);
-    });
-
-    it('returns 404 for a promotion belonging to another tenant (404-over-403)', async () => {
-      mockPromotionRepository.findById.mockResolvedValue({ ...promotionRow('x'), tenantId: 'someone-else' });
-
-      await expect(service.getById('promotion-1')).rejects.toThrow(NotFoundException);
-    });
-
-    it('scopes the list to the reading tenant', async () => {
-      mockPromotionRepository.findAll.mockResolvedValue([]);
-      mockPromotionRepository.count.mockResolvedValue(0);
-
-      await service.list({ page: 1, limit: 10 } as never);
-
-      expect(mockPromotionRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: TO } }));
-    });
+    const result = await buildService().getById('p-1');
+    expect(result.drifted).toBe(true);
   });
 });
