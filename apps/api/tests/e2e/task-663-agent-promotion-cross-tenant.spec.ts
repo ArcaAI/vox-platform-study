@@ -1,5 +1,11 @@
 /**
- * Cross-tenant probes against the agent-promotion surface.
+ * Cross-tenant probes against the promotion surface.
+ *
+ * TASK-815 / OD-10 changed WHAT is promoted — a `WorkflowDefinition` version
+ * rather than a `DepartmentAgentVersion` — and with it the request body and the
+ * CASL subject the route gates on. Neither hazard below is about the
+ * promotable, so both survive verbatim; only the id being probed changed from
+ * an agent row id to a workflow SLUG.
  *
  * Promotion is the first surface in the product that deliberately CROSSES a
  * tenant boundary, so it is also the first place the house 404-over-403 posture
@@ -7,10 +13,10 @@
  *
  *  1. The promotion route answers 403 when the actor does not hold manage
  *     rights on both tenants. If that 403 could ever fire AFTER the source
- *     agent is read, the 403/404 difference would itself tell a prober whether
- *     a given agent id exists inside another tenant. So the probes assert that
- *     an unauthorized caller gets the SAME answer for a real foreign agent id
- *     and for a synthetic one.
+ *     definition is read, the 403/404 difference would itself tell a prober
+ *     whether a given workflow exists inside another tenant. So the probes
+ *     assert that an unauthorized caller gets the SAME answer for a real
+ *     foreign workflow slug and for a synthetic one.
  *
  *  2. The promotion RECORDS are ordinary tenant-scoped rows owned by the
  *     target. Reading one from a third tenant must be 404, never 403.
@@ -39,6 +45,8 @@ const FOREIGN_TENANT_KEY = 'ARCAAI';
 const ARCAAI_ADMIN_USERNAME = 'arcaai_admin';
 const SEED_PASSWORD = 'password123';
 const SYNTHETIC_ID = '019400aa-0000-7000-8000-00000000dead';
+/** A slug shaped like a real one that no tenant owns. */
+const SYNTHETIC_SLUG = 'task-663-no-such-workflow';
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -52,7 +60,7 @@ test.describe('cross-tenant — promote', () => {
     const response = await request.post('/api/v1/admin/agent-promotions', {
       headers: auth(prober!.token),
       data: {
-        sourceAgentId: SYNTHETIC_ID,
+        sourceDefinitionSlug: SYNTHETIC_SLUG,
         fromTenantId: '00000000-0000-0000-0000-000000000000',
         toTenantId: '50000000-0000-0000-0000-000000000000',
       },
@@ -60,35 +68,35 @@ test.describe('cross-tenant — promote', () => {
 
     // Either the tenant-less-context precondition or the manage-on-both check
     // refuses it. Both are 403 PRIVILEGE answers, and crucially neither reveals
-    // anything about the agent id.
+    // anything about the workflow slug.
     expect(response.status()).toBe(403);
   });
 
-  test('an unauthorized caller cannot distinguish a real foreign agent from a synthetic id', async ({ request }) => {
-    // 1. Resolve a REAL agent id inside the GLOBAL tenant.
+  test('an unauthorized caller cannot distinguish a real foreign workflow from a synthetic slug', async ({ request }) => {
+    // 1. Resolve a REAL workflow slug inside the GLOBAL tenant.
     const owner = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
     expect(owner).not.toBeNull();
 
-    const list = await request.get('/api/v1/admin/department-agents?page=1&limit=1', { headers: auth(owner!.token) });
+    const list = await request.get('/api/v1/admin/workflow-definitions?page=1&limit=1', { headers: auth(owner!.token) });
     expect(list.status()).toBe(200);
-    const agents = (await list.json()) as { data: Array<{ id: string }> };
-    test.skip(agents.data.length === 0, 'no seeded department agent to probe with');
-    const realAgentId = agents.data[0].id;
+    const definitions = (await list.json()) as { data: Array<{ slug: string }> };
+    test.skip(definitions.data.length === 0, 'no seeded workflow definition to probe with');
+    const realSlug = definitions.data[0].slug;
 
-    // 2. Probe BOTH ids from a tenant-scoped token that manages neither side.
+    // 2. Probe BOTH slugs from a tenant-scoped token that manages neither side.
     const prober = await loginUser(request, ARCAAI_ADMIN_USERNAME, SEED_PASSWORD, FOREIGN_TENANT_KEY);
     expect(prober).not.toBeNull();
 
-    const body = (sourceAgentId: string) => ({
-      sourceAgentId,
+    const body = (sourceDefinitionSlug: string) => ({
+      sourceDefinitionSlug,
       fromTenantId: '00000000-0000-0000-0000-000000000000',
       toTenantId: '50000000-0000-0000-0000-000000000000',
     });
 
-    const real = await request.post('/api/v1/admin/agent-promotions', { headers: auth(prober!.token), data: body(realAgentId) });
-    const synthetic = await request.post('/api/v1/admin/agent-promotions', { headers: auth(prober!.token), data: body(SYNTHETIC_ID) });
+    const real = await request.post('/api/v1/admin/agent-promotions', { headers: auth(prober!.token), data: body(realSlug) });
+    const synthetic = await request.post('/api/v1/admin/agent-promotions', { headers: auth(prober!.token), data: body(SYNTHETIC_SLUG) });
 
-    // Identical on the wire — no existence oracle over another tenant's agents.
+    // Identical on the wire — no existence oracle over another tenant's workflows.
     expect(real.status()).toBe(synthetic.status());
     expect(real.status()).toBe(403);
   });
@@ -100,14 +108,14 @@ test.describe('cross-tenant — promote', () => {
     const response = await request.post('/api/v1/admin/agent-promotions', {
       headers: auth(admin!.token),
       data: {
-        sourceAgentId: SYNTHETIC_ID,
+        sourceDefinitionSlug: SYNTHETIC_SLUG,
         fromTenantId: '50000000-0000-0000-0000-000000000000',
         toTenantId: '50000000-0000-0000-0000-000000000000',
       },
     });
 
     // 400 (same tenant) or 403 (context not elevated/tenant-less) — never a
-    // silent success, and never a 404 that would confirm the agent id.
+    // silent success, and never a 404 that would confirm the workflow slug.
     expect([400, 403]).toContain(response.status());
   });
 });
