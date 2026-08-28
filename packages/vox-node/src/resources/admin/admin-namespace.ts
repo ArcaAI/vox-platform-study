@@ -26,7 +26,6 @@ import { AdminChangelogResource } from './changelog';
 import { AdminConsultationAdminResource } from './consultation-admin';
 import { AdminConsultationContextSchemaResource } from './consultation-context-schema';
 import { AdminDepartmentResource } from './department';
-import { AdminDepartmentAgentResource } from './department-agent';
 import { AdminDnaWritingStyleResource } from './dna-writing-style';
 import { AdminDocumentTemplateResource } from './document-template';
 import { AdminEntitlementResource } from './entitlement';
@@ -65,7 +64,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (53 areas, 414 routes).
+ * per `svc:*` scope (52 areas, 404 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -120,8 +119,6 @@ export class AdminNamespace {
   readonly consultationContextSchema: AdminConsultationContextSchemaResource;
   /** `svc:admin:department:manage` — 10 routes. */
   readonly department: AdminDepartmentResource;
-  /** `svc:admin:department-agent:manage` — 10 routes. */
-  readonly departmentAgent: AdminDepartmentAgentResource;
   /** `svc:admin:dna-writing-style:manage` — 9 routes. */
   readonly dnaWritingStyle: AdminDnaWritingStyleResource;
   /** `svc:admin:document-template:manage` — 8 routes. */
@@ -211,7 +208,6 @@ export class AdminNamespace {
     this.consultationAdmin = new AdminConsultationAdminResource(transport);
     this.consultationContextSchema = new AdminConsultationContextSchemaResource(transport);
     this.department = new AdminDepartmentResource(transport);
-    this.departmentAgent = new AdminDepartmentAgentResource(transport);
     this.dnaWritingStyle = new AdminDnaWritingStyleResource(transport);
     this.documentTemplate = new AdminDocumentTemplateResource(transport);
     this.entitlement = new AdminEntitlementResource(transport);

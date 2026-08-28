@@ -16,9 +16,13 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { AgentPromotionController } from '../agent-promotion.controller';
 
 describe('AgentPromotionController — authorization metadata', () => {
-  it('carries a class-level manage:DepartmentAgent gate so the boot audit stays green', () => {
+  // TASK-815 / OD-10 repointed the subject with the promotable: the thing being
+  // promoted between tenants is a `WorkflowDefinition` version, and the service
+  // asks for `manage:WorkflowDefinition` in BOTH tenants. Keeping the old
+  // subject would have left the class gated on one that no longer exists.
+  it('carries a class-level manage:WorkflowDefinition gate so the boot audit stays green', () => {
     const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentPromotionController);
-    expect(meta).toEqual([{ action: 'manage', subject: 'DepartmentAgent' }]);
+    expect(meta).toEqual([{ action: 'manage', subject: 'WorkflowDefinition' }]);
   });
 
   it('carries the AUTH-NOTE marker — the decorator understates the real gate', () => {
