@@ -192,6 +192,24 @@ export interface SettingDescriptor {
    * (`maxScope` deeper than `system`).
    */
   floorDirection?: SettingFloorDirection;
+  /**
+   * A CROSS-FIELD / ORDERING invariant this key must satisfy, checked in the settings write lane
+   * after the value has passed the `dataType` gate. Return a human-readable message to REFUSE the
+   * write (the lane raises it as a 400), or nothing to accept.
+   *
+   * `dataType` classifies a value's SHAPE — "a number", "an array of strings". It cannot express
+   * a relationship BETWEEN entries, and for an ordered list that gap is where the real defect
+   * lives: `consultation.endpoint.actions` passes a `string[]` check in any order, including the
+   * one that locks a consultation's documents before the step that writes the note into them.
+   *
+   * Declared on the descriptor, never branched on in the write lane — the same rule that makes
+   * `globalOnly`, `maxScope` and `floorDirection` work: registering a descriptor stays the ONLY
+   * step needed to govern a key. The message is the admin's whole explanation, so it must say
+   * WHY the value was refused, not merely that it was.
+   *
+   * Absent ⇒ no invariant beyond the type check.
+   */
+  validate?: (value: unknown) => string | void;
   label?: string;
   description?: string;
   /** The code default — the last fallback in the cascade. */

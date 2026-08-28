@@ -103,6 +103,36 @@ export const CONSULTATION_ENDPOINT_ACTIONS_DEFAULT: readonly EndpointActionKey[]
   'feedback.capture',
 ] as const);
 
+/**
+ * The ONE ordering invariant an admin must not be able to save, as a message or nothing.
+ *
+ * `harness.finalize` PRODUCES the clinical note; `summary.finalize` LOCKS every document of the
+ * consultation. Saved in that order the consultation locks an empty record and then has nowhere
+ * to put the note — a settings write that reads as a preference and lands as silent loss of the
+ * consultation record. Membership in `ENDPOINT_ELIGIBLE_ACTIONS` cannot catch it: both entries
+ * are legitimate, it is their ORDER that is wrong.
+ *
+ * CONDITIONAL on both being present, deliberately. An admin who drops `harness.finalize`
+ * entirely is making a legitimate choice — the realtime lane writes its own sections — so only
+ * the inverted both-present case is refused. Nothing else about the order is policed: this is a
+ * safety floor, not a house style.
+ *
+ * Wired to the write lane through `SettingDescriptor.validate` on
+ * `consultation.endpoint.actions`; the Studio editor warns on the same rule BEFORE the save
+ * (`isEndpointOrderInverted` in the console's `workflow-studio/api/endpoint-sequence.ts`), but
+ * that copy is advisory and this one is the enforcement.
+ */
+export function endpointOrderProblem(sequence: unknown): string | undefined {
+  if (!Array.isArray(sequence)) return undefined;
+  const writesTheNote = sequence.indexOf('harness.finalize');
+  const locksDocuments = sequence.indexOf('summary.finalize');
+  if (writesTheNote === -1 || locksDocuments === -1 || writesTheNote < locksDocuments) return undefined;
+  return (
+    '`summary.finalize` LOCKS every document of the consultation and `harness.finalize` is what writes the note into it, ' +
+    'so `harness.finalize` must come first. As ordered, the consultation would lock an empty record and the note would have nowhere to go.'
+  );
+}
+
 export interface ResolveEndpointSequenceInput {
   /** The persisted, admin-ordered list. Anything not a non-empty array falls back to the default. */
   readonly configured?: readonly string[] | null;
