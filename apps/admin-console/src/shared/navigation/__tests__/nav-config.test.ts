@@ -68,14 +68,18 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // tier 30-49 / domain `clinical` up by one.
   // `/settings` was NOT removed — it keeps the legacy raw-row and secret
   // administration and is relabelled "Settings rows & secrets" to say so.
-  it('covers the full 57-route rail map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(57);
+  // TASK-810 added `/document-templates` (the clinical document SHAPE catalog —
+  // the sibling of `/context-schemas`: that screen governs what context may be
+  // SUBMITTED, this one what document comes BACK), taking 57 -> 58 and
+  // tier 30-49 / domain `knowledge-agents` up by one.
+  it('covers the full 58-route rail map across the four tiers (including /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(58);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(59);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -474,6 +478,10 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/agents', '30-49', [['manage', 'PromptTemplate']]],
   ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
   ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
+  // TASK-810 — the clinical document SHAPE catalog. `manage:DocumentTemplate`
+  // is the whole gate (`DocumentTemplateAdminController`'s class-level
+  // `@CanManage`); this resource carries no imperative privilege check.
+  ['/document-templates', '30-49', [['manage', 'DocumentTemplate']]],
   ['/knowledge', '30-49', [['manage', 'KnowledgeDocument']]],
   ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
   // TASK-805 — the consent register.
@@ -570,7 +578,9 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/ai-runtime-profiles',
     ],
   ],
-  ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/knowledge', '/dna-writing-styles']],
+  // `/document-templates` (TASK-810) sits next to `/context-schemas`: the two
+  // halves of one contract — what context may go in, what document comes out.
+  ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles']],
   ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
   [
     'workflow-harness',
@@ -650,7 +660,7 @@ describe('NAV_DOMAINS', () => {
   // 3·6·11·5·4·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
   // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4; clinical
   // 3 -> 4 (/consent, TASK-805).
-  it('partitions the 57 rail routes exactly as the ticket Domain Model does (3·6·11·5·4·7·7·8·6)', () => {
+  it('partitions the 58 rail routes exactly as the ticket Domain Model does (3·6·11·6·4·7·7·8·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -659,7 +669,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(57);
+    expect(NAV_ENTRIES).toHaveLength(58);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

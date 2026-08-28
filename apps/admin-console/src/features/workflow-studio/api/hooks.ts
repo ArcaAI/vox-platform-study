@@ -14,18 +14,26 @@ import {
   deleteWorkflowDefinition,
   getWorkflowDefinition,
   listDepartmentOptions,
+  listNodePromptBindings,
   listPromptTemplateOptions,
+  listPromptTemplateVersions,
   listWorkflowAssignments,
   listWorkflowDefinitionVersions,
   listWorkflowDefinitions,
   listWorkflowNodes,
   publishWorkflowDefinition,
+  updateNodePrompt,
   updateWorkflowAssignment,
   validateWorkflowDefinition,
   type ListWorkflowDefinitionsParams,
 } from './client';
 import { workflowStudioKeys } from './keys';
-import type { CreateWorkflowDefinitionRequest, PublishWorkflowDefinitionRequest, UpsertWorkflowAssignmentRequest } from './types';
+import type {
+  CreateWorkflowDefinitionRequest,
+  PublishWorkflowDefinitionRequest,
+  UpdateNodePromptRequest,
+  UpsertWorkflowAssignmentRequest,
+} from './types';
 
 export function useWorkflowDefinitions(params?: ListWorkflowDefinitionsParams) {
   return useQuery({ queryKey: [...workflowStudioKeys.list(), params ?? {}], queryFn: () => listWorkflowDefinitions(params) });
@@ -127,6 +135,45 @@ export function useDeleteWorkflowAssignment() {
   const invalidate = useInvalidateWorkflowStudio();
   return useMutation({
     mutationFn: ({ id, etag, reason }: { id: string; etag: string; reason?: string }) => deleteWorkflowAssignment(id, etag, reason),
+    onSuccess: invalidate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// DD-11 (TASK-810) — prompt binding.
+// ---------------------------------------------------------------------------
+
+/** Per-node prompt pins for one definition, with the "new version available" flag. */
+export function useNodePromptBindings(definitionId: string) {
+  return useQuery({
+    queryKey: workflowStudioKeys.promptBindings(definitionId),
+    queryFn: () => listNodePromptBindings(definitionId),
+    enabled: !!definitionId,
+  });
+}
+
+/** The immutable versions of one prompt template — only fetched once an editor actually opens. */
+export function usePromptTemplateVersions(promptTemplateId: string | null) {
+  return useQuery({
+    queryKey: workflowStudioKeys.promptTemplateVersions(promptTemplateId ?? ''),
+    queryFn: () => listPromptTemplateVersions(promptTemplateId as string),
+    enabled: !!promptTemplateId,
+  });
+}
+
+/**
+ * DD-11's in-node edit: mint a version AND move this node's pin, atomically.
+ *
+ * Invalidating the whole namespace afterwards is load-bearing here rather than
+ * merely tidy — the definition's own `version`/ETag moves (the graph was
+ * rewritten server-side), so a stale cached detail row would make the NEXT
+ * autosave PATCH 412.
+ */
+export function useUpdateNodePrompt() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({
+    mutationFn: ({ definitionId, nodeId, body, etag }: { definitionId: string; nodeId: string; body: UpdateNodePromptRequest; etag: string }) =>
+      updateNodePrompt(definitionId, nodeId, body, etag),
     onSuccess: invalidate,
   });
 }
