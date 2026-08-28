@@ -659,6 +659,10 @@ export class ConsultationController {
     await this.loopContextSignalService.signalConsultationEnding(id, {
       reason: 'recording_stopped',
       persistSnapshot: request?.persistSnapshot ?? true,
+      // TASK-814 §2b: forward accepted corrections so `feedback.capture` (DD-8) has
+      // something to promote over the raw transcript when the endpoint sequence runs.
+      // Omitted (not an empty array) when the clinician accepted nothing this session.
+      ...(request?.acceptedProposals?.length ? { acceptedProposals: request.acceptedProposals } : {}),
     });
     return {
       consultationId: id,

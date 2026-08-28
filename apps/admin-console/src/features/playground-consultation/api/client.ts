@@ -8,6 +8,7 @@
  */
 
 import { GatewayError, getJson, patchJson, patchWithEtag, postJson } from '@/shared/api';
+import type { CorrectionProposal } from './live-assist';
 import type {
   ApproveSummaryRequest,
   AsyncSummaryJob,
@@ -76,9 +77,37 @@ export function startRecording(consultationId: string, sessionId?: string): Prom
   return postJson(consultationPath(consultationId, 'recording/start'), sessionId ? { sessionId } : {});
 }
 
-/** Stops the live session; the demo persists the final snapshot as a PRE_SUMMARY. */
-export function stopRecording(consultationId: string, persistSnapshot = true): Promise<RecordingState> {
-  return postJson(consultationPath(consultationId, 'recording/stop'), { persistSnapshot });
+/**
+ * TASK-814 §2b — the gateway's `AcceptedCorrectionProposal` DTO shape. The console's own
+ * `CorrectionProposal` (`./live-assist`) carries more fields (`rationale`, `detectedBy`,
+ * `proposedBy` — provenance for the clinician, not needed for promotion), and the global
+ * `ValidationPipe` runs `forbidNonWhitelisted` — sending the extra fields 400s the whole
+ * request, so `toAcceptedProposalPayload` trims to exactly what the DTO declares.
+ */
+function toAcceptedProposalPayload(proposal: CorrectionProposal) {
+  return {
+    proposalId: proposal.proposalId,
+    start: proposal.start,
+    end: proposal.end,
+    original: proposal.original,
+    proposed: proposal.proposed,
+    category: proposal.category,
+    confidence: proposal.confidence,
+    status: proposal.status,
+  };
+}
+
+/**
+ * Stops the live session; the demo persists the final snapshot as a PRE_SUMMARY.
+ * `acceptedProposals` — TASK-814 §2b — threads the clinician's accepted advisory corrections
+ * through to `feedback.capture` (TASK-812 DD-8) so it has something to promote over the raw
+ * transcript. Omitted from the body entirely when empty (the common case).
+ */
+export function stopRecording(consultationId: string, persistSnapshot = true, acceptedProposals: readonly CorrectionProposal[] = []): Promise<RecordingState> {
+  return postJson(consultationPath(consultationId, 'recording/stop'), {
+    persistSnapshot,
+    ...(acceptedProposals.length ? { acceptedProposals: acceptedProposals.map(toAcceptedProposalPayload) } : {}),
+  });
 }
 
 export function generateSummary(consultationId: string, body: GenerateSummaryRequest = {}): Promise<SummaryResult> {

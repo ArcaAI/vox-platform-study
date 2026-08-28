@@ -1,11 +1,14 @@
 /**
- * Playground persona (impersonation) control. Covers the three
- * render states (self / acting-as / tenant-admin degrade), the "under {admin}"
- * line always showing, and the impersonate/revoke flows (BFF POST + query
- * invalidation + router.refresh). fetch is stubbed at the network boundary.
+ * Playground persona (impersonation) control. Covers the render states (self /
+ * acting-as / no-admin-role degrade), that a TENANT_ADMIN gets the picker too
+ * (D-25 — own-tenant impersonation via the legacy gateway route), the
+ * "under {admin}" line always showing, and the impersonate/revoke flows (BFF
+ * POST + query invalidation + router.refresh). fetch is stubbed at the network
+ * boundary.
  */
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { renderWithProviders } from '@/test/render';
@@ -75,7 +78,7 @@ describe('PersonaControl', () => {
     expect(screen.getByText(/under alice-admin/i)).toBeDefined();
   });
 
-  it('tenant admin (not elevated): no picker, degrade reason shown, under-admin still shown', () => {
+  it('D-25: tenant admin (not elevated) still gets the picker — own-tenant impersonation via the legacy gateway route', () => {
     stubFetch();
     renderWithProviders(
       <PersonaControl
@@ -85,10 +88,44 @@ describe('PersonaControl', () => {
         })}
       />,
     );
+    expect(screen.getByRole('button', { name: /acting as yourself/i })).toBeDefined();
+    expect(screen.queryByText(/requires super admin/i)).toBeNull();
+    expect(screen.getByText(/under ted-tenant/i)).toBeDefined();
+  });
+
+  it('neither elevated nor tenant admin: no picker, degrade reason shown, under-admin still shown', () => {
+    stubFetch();
+    renderWithProviders(
+      <PersonaControl
+        session={session({
+          isElevated: false,
+          user: { id: 'd-1', username: 'dana-doctor', email: 'd@hope.test', roles: ['DOCTOR'], tenantId: 'tenant-1' },
+        })}
+      />,
+    );
     expect(screen.queryByRole('button', { name: /acting as/i })).toBeNull();
     expect(screen.getByText(/acting as yourself/i)).toBeDefined();
-    expect(screen.getByText(/requires super admin/i)).toBeDefined();
-    expect(screen.getByText(/under ted-tenant/i)).toBeDefined();
+    expect(screen.getByText(/requires an admin role/i)).toBeDefined();
+    expect(screen.getByText(/under dana-doctor/i)).toBeDefined();
+  });
+
+  it('D-25: a tenant admin can select a user to act as (same flow as an elevated caller)', async () => {
+    const calls = stubFetch();
+    renderWithProviders(
+      <PersonaControl
+        session={session({
+          isElevated: false,
+          user: { id: 't-1', username: 'ted-tenant', email: 't@hope.test', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' },
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+    const option = await screen.findByText('dr-smith');
+    fireEvent.click(option);
+    await waitFor(() => {
+      expect(calls.some((c) => c.url === '/api/auth/impersonate' && c.method === 'POST')).toBe(true);
+    });
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it('impersonate flow: selecting a user POSTs to the BFF and refreshes', async () => {
@@ -113,5 +150,35 @@ describe('PersonaControl', () => {
       expect(calls.some((c) => c.url === '/api/auth/revoke-impersonation' && c.method === 'POST')).toBe(true);
     });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  describe('TASK-814 accessibility — 0 axe violations', () => {
+    it('tenant admin, picker open with results', async () => {
+      stubFetch();
+      const { container } = renderWithProviders(
+        <PersonaControl
+          session={session({
+            isElevated: false,
+            user: { id: 't-1', username: 'ted-tenant', email: 't@hope.test', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' },
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+      await screen.findByText('dr-smith');
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('no-admin-role degrade state', async () => {
+      stubFetch();
+      const { container } = renderWithProviders(
+        <PersonaControl
+          session={session({
+            isElevated: false,
+            user: { id: 'd-1', username: 'dana-doctor', email: 'd@hope.test', roles: ['DOCTOR'], tenantId: 'tenant-1' },
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

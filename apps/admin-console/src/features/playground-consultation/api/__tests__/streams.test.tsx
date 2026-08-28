@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useHarnessAssuranceStream, useHarnessProgressStream, useSummaryJobProgress } from '../hooks';
+import { useDocumentSectionsStream, useHarnessAssuranceStream, useHarnessProgressStream, useLiveAssistStream, useSummaryJobProgress } from '../hooks';
 import type { ConsultationJobStatus } from '../types';
 
 /** Instrumented EventSource double (mirrors the use-event-stream test). */
@@ -259,3 +259,226 @@ describe('useSummaryJobProgress', () => {
     expect(result.current.streamStatus).toBe('idle');
   });
 });
+
+describe('useLiveAssistStream', () => {
+  it('mints a consultation_live_assist ticket and keeps suggestions/corrections in separate branches (TASK-795 RC-2)', async () => {
+    const calls = stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useLiveAssistStream('c-1', true), { wrapper: Wrapper });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(calls.find((call) => call.url === '/api/auth/stream-ticket')?.body).toEqual({ scope: 'consultation_live_assist:c-1' });
+    expect(FakeEventSource.instances[0].url).toContain('/api/v1/consultations/c-1/live-assist/stream?ticket=');
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.corrections).toBeNull();
+
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'suggestions',
+        nodeType: 'nlp.clinical_suggestions',
+        provider: 'lmstudio',
+        model: 'gemma3',
+        suggestions: [{ suggestionId: 's-1', text: 'Consider ordering a chest X-ray', status: 'PROPOSED', proposedBy: 'lmstudio:gemma3' }],
+      }),
+    );
+    expect(result.current.suggestions).toHaveLength(1);
+    expect(result.current.suggestionsNodeType).toBe('nlp.clinical_suggestions');
+    // A suggestions publish must never touch the corrections branch.
+    expect(result.current.corrections).toBeNull();
+
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'corrections',
+        nodeType: 'nlp.correction_proposals',
+        corrections: {
+          proposals: [
+            {
+              proposalId: 'p-1',
+              start: 10,
+              end: 16,
+              original: 'Toprovol',
+              proposed: 'Toprol',
+              category: 'drugName',
+              confidence: 0.92,
+              rationale: 'Common ASR misrecognition of a beta-blocker name',
+              detectedBy: 'nlp.ner',
+              proposedBy: 'lmstudio:gemma3',
+              status: 'PROPOSED',
+            },
+          ],
+          applied: false,
+          appliedCount: 0,
+          textSha256: 'abc123',
+        },
+      }),
+    );
+    expect(result.current.corrections?.proposals).toHaveLength(1);
+    expect(result.current.correctionsNodeType).toBe('nlp.correction_proposals');
+    // A corrections publish must never clobber the suggestions branch.
+    expect(result.current.suggestions).toHaveLength(1);
+  });
+
+  it('resets both branches when the consultation id changes', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result, rerender } = renderHook(({ consultationId }: { consultationId: string | null }) => useLiveAssistStream(consultationId, true), {
+      wrapper: Wrapper,
+      initialProps: { consultationId: 'c-1' as string | null },
+    });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'suggestions',
+        nodeType: 'nlp.clinical_suggestions',
+        suggestions: [{ suggestionId: 's-1', text: 'x', status: 'PROPOSED' }],
+      }),
+    );
+    expect(result.current.suggestions).toHaveLength(1);
+
+    rerender({ consultationId: 'c-2' });
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.corrections).toBeNull();
+  });
+});
+
+describe('useDocumentSectionsStream (TASK-811 DD-3 / TASK-814 DD-3 — N documents)', () => {
+  it('groups section.patch events by documentKey, in idx order within each document', async () => {
+    const calls = stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    // Reuses the SAME scope/path as the legacy live-summary snapshot — section.patch is an
+    // ADDITIVE second event on that stream, not a new one.
+    expect(calls.find((call) => call.url === '/api/auth/stream-ticket')?.body).toEqual({ scope: 'consultation_live_summary:c-1' });
+    expect(FakeEventSource.instances[0].url).toContain('/api/v1/consultations/c-1/live-summary/stream?ticket=');
+
+    const source = FakeEventSource.instances[0];
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 1,
+        revision: 1,
+        state: 'provisional',
+        content: 'Hypertension, well controlled.',
+        updatedAt: 't1',
+      }),
+    );
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'subjective',
+        title: 'Subjective',
+        idx: 0,
+        revision: 1,
+        state: 'confirmed',
+        content: 'Patient reports feeling well.',
+        updatedAt: 't2',
+      }),
+    );
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'discharge_summary',
+        sectionKey: 'plan',
+        title: 'Plan',
+        idx: 0,
+        revision: 1,
+        state: 'empty',
+        content: '',
+        updatedAt: 't3',
+      }),
+    );
+
+    expect(result.current.documents.map((d) => d.documentKey)).toEqual(['soap_note', 'discharge_summary']);
+    const soap = result.current.documents[0];
+    // idx order WITHIN the document, regardless of arrival order.
+    expect(soap.sections.map((s) => s.sectionKey)).toEqual(['subjective', 'assessment']);
+    expect(soap.sections[0].state).toBe('confirmed');
+    expect(soap.sections[1].state).toBe('provisional');
+    expect(result.current.documents[1].sections[0].state).toBe('empty');
+
+    // A full-state live-summary snapshot (the LEGACY, undiscriminated payload) on the SAME
+    // stream must never be mistaken for a section patch.
+    act(() => source.message({ consultationId: 'c-1', runningSummary: 'x', sections: [], entities: [], updatedAt: 't4' }));
+    expect(result.current.documents.map((d) => d.documentKey)).toEqual(['soap_note', 'discharge_summary']);
+  });
+
+  it('discards a patch whose revision is not greater than the one already held (out-of-order delivery)', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useDocumentSectionsStream('c-1', true), { wrapper: Wrapper });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 5,
+        state: 'confirmed',
+        content: 'Latest.',
+        updatedAt: 't2',
+      }),
+    );
+    act(() =>
+      source.message({
+        event: 'section.patch',
+        consultationId: 'c-1',
+        documentKey: 'soap_note',
+        sectionKey: 'assessment',
+        title: 'Assessment',
+        idx: 0,
+        revision: 3,
+        state: 'provisional',
+        content: 'Stale — arrived late.',
+        updatedAt: 't1',
+      }),
+    );
+
+    expect(result.current.documents[0].sections[0]).toMatchObject({ revision: 5, state: 'confirmed', content: 'Latest.' });
+  });
+
+  it('resets when the consultation id changes', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result, rerender } = renderHook(({ consultationId }: { consultationId: string | null }) => useDocumentSectionsStream(consultationId, true), {
+      wrapper: Wrapper,
+      initialProps: { consultationId: 'c-1' as string | null },
+    });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => sendSectionPatch(FakeEventSource.instances[0], 'soap_note', 'assessment'));
+    expect(result.current.documents).toHaveLength(1);
+
+    rerender({ consultationId: 'c-2' });
+    expect(result.current.documents).toEqual([]);
+  });
+});
+
+function sendSectionPatch(source: InstanceType<typeof FakeEventSource>, documentKey: string, sectionKey: string): void {
+  source.message({
+    event: 'section.patch',
+    consultationId: 'c-1',
+    documentKey,
+    sectionKey,
+    title: sectionKey,
+    idx: 0,
+    revision: 1,
+    state: 'provisional',
+    content: 'x',
+    updatedAt: 't',
+  });
+}

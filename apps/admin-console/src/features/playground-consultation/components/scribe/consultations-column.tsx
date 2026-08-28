@@ -113,6 +113,16 @@ export function ConsultationsColumn({
     );
   }, [rows, query]);
 
+  /**
+   * Patient lookup for the "New" form — there is no dedicated Patient registry in this
+   * platform (`patientId` is an opaque string on Consultation), but a doctor's OWN
+   * consultation history IS a real, per-clinician patient list. Suggests those ids
+   * (deduped, sorted) via a native <datalist> so opening a RETURNING patient no longer
+   * depends on retyping their id correctly — while a genuinely new patient can still be
+   * typed freehand, since nothing here constrains the field to the suggestion set.
+   */
+  const patientSuggestions = useMemo(() => Array.from(new Set(rows.map((row) => row.patientId))).sort(), [rows]);
+
   async function handleOpenSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = patientId.trim();
@@ -157,11 +167,22 @@ export function ConsultationsColumn({
                 aria-describedby={patientIdError ? 'scribe-patient-id-error' : undefined}
                 placeholder="e.g. patient-0001"
                 autoFocus
+                list="scribe-patient-id-suggestions"
+                autoComplete="off"
               />
               <Button type="submit" disabled={openPending}>
                 Open
               </Button>
             </div>
+            {/* Patient lookup: ids from this clinician's own consultation history. Native
+                <datalist> — no registry to query, no custom popover to build; the browser's
+                own combobox affordance covers "pick a returning patient" while the input
+                stays a real free-text field for a first-time one. */}
+            <datalist id="scribe-patient-id-suggestions">
+              {patientSuggestions.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
             {patientIdError ? (
               <p id="scribe-patient-id-error" className="text-destructive text-sm">
                 {patientIdError}

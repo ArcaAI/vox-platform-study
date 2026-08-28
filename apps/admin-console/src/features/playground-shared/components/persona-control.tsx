@@ -8,6 +8,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@arcaai/ui/components/shadcn/popover';
 import { getJson, type Paginated } from '@/shared/api';
+import { isTenantAdmin } from '@/shared/auth/ability';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { invalidateGridLayoutCache } from '@/shared/data/grid-persistence';
 
@@ -21,13 +22,17 @@ interface PersonaUser {
 
 /**
  * Playground persona control (artboard 4a). The playground runs
- * end-user planes under the caller's account; a SUPER_ADMIN impersonates a
- * doctor to test features as them. The bearer swap invalidates every query, so
- * a switch/stop must refetch the whole cache and refresh the server layout.
+ * end-user planes under the caller's account; a SUPER_ADMIN impersonates any
+ * non-admin user cross-tenant, and — D-25 — a TENANT_ADMIN impersonates a
+ * clinician within its OWN tenant, so the OD-2 "clinical usage is a tenant
+ * admin impersonating a clinician" premise has a working affordance. Both
+ * routes to the BFF (`POST /api/auth/impersonate`) resolve to the endpoint
+ * that already enforces the right scope server-side — see the route's own
+ * doc comment. The bearer swap invalidates every query, so a switch/stop must
+ * refetch the whole cache and refresh the server layout.
  *
- * Impersonation is SUPER_ADMIN-only at the BFF *and* gateway, so for a
- * TENANT_ADMIN the picker degrades to "yourself" with the reason (no tenant-
- * scoped impersonation endpoint exists yet). "under {admin}" is always shown.
+ * A caller holding neither role degrades to "yourself" with the reason.
+ * "under {admin}" is always shown.
  */
 export function PersonaControl({ session }: { session: SafeSession }) {
   const router = useRouter();
@@ -36,6 +41,7 @@ export function PersonaControl({ session }: { session: SafeSession }) {
   const [search, setSearch] = useState('');
   const [pending, setPending] = useState(false);
 
+  const canImpersonate = session.isElevated || isTenantAdmin(session.user.roles);
   const impersonating = !!session.impersonatingUserId;
   const targetLabel = session.impersonatingUsername ?? session.impersonatingUserId ?? 'yourself';
   const admin = session.user.username;
@@ -68,14 +74,14 @@ export function PersonaControl({ session }: { session: SafeSession }) {
         searchFields: 'username,email',
         limit: 8,
       }),
-    enabled: open && session.isElevated,
+    enabled: open && canImpersonate,
     staleTime: 30_000,
   });
 
   const underAdmin = <span className="text-muted-foreground shrink-0 truncate text-xs">under {admin}</span>;
 
-  // TENANT_ADMIN (and any non-elevated role): impersonation is unavailable.
-  if (!session.isElevated) {
+  // Neither SUPER_ADMIN nor TENANT_ADMIN: impersonation is unavailable.
+  if (!canImpersonate) {
     return (
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex items-center gap-1.5 text-sm">
@@ -84,7 +90,7 @@ export function PersonaControl({ session }: { session: SafeSession }) {
         </span>
         <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:inline-flex">
           <IconInfoCircle className="size-3.5 shrink-0" aria-hidden />
-          Impersonation requires super admin
+          Impersonation requires an admin role
         </span>
         {underAdmin}
       </div>
