@@ -6,6 +6,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ConsultationError from '../consultation/error';
 import DnaWritingStyleError from '../dna-writing-style/error';
@@ -37,5 +38,11 @@ describe.each(CASES)('playground/$name/error.tsx', ({ Component, title }) => {
     render(<Component error={error} reset={reset} />);
     fireEvent.click(screen.getByRole('button', { name: /try again/i }));
     expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it('0 axe violations', async () => {
+    const error = Object.assign(new Error('boom'), { digest: 'dg-1' });
+    const { container } = render(<Component error={error} reset={vi.fn()} />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

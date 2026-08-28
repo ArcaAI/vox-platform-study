@@ -6,6 +6,7 @@
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LiveSessionColumn } from '../live-session-column';
 
@@ -83,6 +84,13 @@ describe('LiveSessionColumn', () => {
     it('disables the control when there is no open consultation', () => {
       render(<LiveSessionColumn {...baseProps({ hasConsultation: false, onAddDetail: vi.fn() })} />);
       expect((screen.getByRole('button', { name: /add detail/i }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('0 axe violations with the Add detail popover open', async () => {
+      const { container } = render(<LiveSessionColumn {...baseProps({ onAddDetail: vi.fn() })} />);
+      fireEvent.click(screen.getByRole('button', { name: /add detail/i }));
+      await screen.findByLabelText(/add a detail to this consultation/i);
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });
