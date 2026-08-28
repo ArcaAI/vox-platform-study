@@ -12118,6 +12118,24 @@
       "apiExcluded": false
     },
     {
+      "controller": "ConsultationController",
+      "handler": "getGoverningWorkflow",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/workflow",
+      "routePath": "/consultations/:id/workflow",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsultationJobController",
       "handler": "getJob",
       "method": "GET",

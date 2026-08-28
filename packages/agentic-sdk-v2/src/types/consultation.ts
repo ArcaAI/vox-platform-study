@@ -121,6 +121,26 @@ export interface OpenSessionInput {
    * lane (`useArcaSessionManager`) keeps compiling; see TASK-793 notes.
    */
   department?: string;
+  /**
+   * TASK-813 OD-1 — pick the tenant-authored workflow that GOVERNS this
+   * consultation, overriding the `department → tenant → platform-default`
+   * assignment cascade.
+   *
+   * Must be one of your own tenant's published, active `consultation`-palette
+   * definition slugs (`[a-z0-9_]{2,48}`). The gateway authorizes it BEFORE the
+   * consultation is written: a slug your tenant cannot see is a 404 (never a
+   * 403 — that would confirm it exists), and one it can see but which cannot
+   * govern a consultation is a 403.
+   *
+   * Omit it and the cascade decides, which is the default and unchanged
+   * behaviour. Honoured by `session.open()` only — a re-visit dispatches no
+   * consultation workflow, so there is nothing there to steer.
+   *
+   * Read back what actually governs with {@link useConsultationWorkflow}:
+   * dispatch is best-effort by design, so a harness outage degrades to the
+   * platform default engine rather than failing the open.
+   */
+  workflowDefinitionSlug?: string;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
 }

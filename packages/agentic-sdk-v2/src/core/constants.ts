@@ -53,6 +53,8 @@ export const CONSULTATION_ENDPOINTS = {
   OPEN: '/consultations/open',
   /** Get consultation by ID with context */
   GET: (id: string) => `/consultations/${encodeURIComponent(id)}`,
+  /** TASK-813 — which engine governs this consultation (+ the governing definition's identity). */
+  WORKFLOW: (id: string) => `/consultations/${encodeURIComponent(id)}/workflow`,
   /** Get patient consultation history (all dates) */
   PATIENT_HISTORY: (patientId: string) => `/consultations/patient/${encodeURIComponent(patientId)}/history`,
   /** Get all consultations for patient on a specific date */

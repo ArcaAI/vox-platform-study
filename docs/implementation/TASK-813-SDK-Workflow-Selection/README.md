@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Review` |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -257,9 +257,105 @@ four credential classes, tests pasted), `DISCOVERY` (route + hook), `DOCS` (cred
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 04, 05, 08. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 7. Implementation Summary
-_Not started._
+
+Branch `lane-813-sdk` (worktree, off `dev-2.2` @ `55555d988`). **Merge pending — the orchestrator
+merges from the primary checkout.**
+
+### The six-point change (OD-1)
+
+| # | Change | File:line |
+|---|---|---|
+| 1 | `OpenSessionInput.workflowDefinitionSlug?: string` — additive; the `@deprecated department` field is byte-identical | `packages/agentic-sdk-v2/src/types/consultation.ts:123-144` |
+| 2 | `OpenConsultationRequest.workflowDefinitionSlug` — `@IsOptional() @IsString() @Matches(WORKFLOW_NODE_ID_PATTERN)` | `packages/applications/src/services/consultation/consultation/dto/open-consultation.request.ts:38-72` |
+| 3 | `ConsultationController.open` → `ConsultationService.getOrCreate` — the DTO is passed whole, so threading happens inside `getOrCreate` | `apps/api/.../consultation.controller.ts:365`, `consultation.service.ts:210-297` |
+| 4 | `DispatchForConsultationInput.workflowDefinitionSlug?: string \| null` | `.../workflow-dispatch/IConsultationWorkflowDispatchService.ts:96-107` |
+| 5 | `dispatchForConsultation` honours the override; the consultation-palette cascade is not consulted at all when it is present | `.../consultation-workflow-dispatch.service.ts:96-102` |
+| 6 | `assertSelectableForConsultation(tenantId, slug)` — the gate | `.../consultation-workflow-dispatch.service.ts:56-83` |
+
+### Authorization model (the whole ticket)
+
+The gate runs in `ConsultationService.getOrCreate`, **before the get-or-create branch and before
+any write** (`consultation.service.ts:216-227`). Order is the security property, twice:
+
+- **Before the write**, because `dispatchForConsultation` is best-effort by contract and swallows
+  its own failures. A gate inside it would turn a refused request into a `201` for a consultation
+  quietly governed by something else.
+- **Before the existing-consultation lookup**, so the answer to "may I select this workflow?" does
+  not depend on whether a row for `(patient, doctor, date)` happens to exist — otherwise the status
+  code itself reports that.
+
+`tenantId` is `BaseService.tenantId` (CLS), never a request field, so the gate is identical for all
+four credential classes. The predicate is one tenant-scoped read plus one palette comparison:
+
+| Case | Result | Why |
+|---|---|---|
+| Another tenant's slug | **404** | `findPublishedBySlug` is tenant-scoped; a foreign slug simply misses |
+| Unknown slug | **404** | indistinguishable from the above, deliberately |
+| Own-tenant DRAFT / inactive / soft-deleted | **404** | the repository filters `PUBLISHED + isActive + ENABLED`; existence is not disclosed |
+| Own-tenant PUBLISHED, wrong palette | **403** | already listed by `GET /workflows`; hiding it would be theatre |
+| Not a well-formed slug | **400** | `@Matches` at the edge — it could never name a real row |
+| Dispatcher not wired + a selection made | **503** | the one non-degrading absent-dependency path: something was *asked for* |
+
+Defense in depth, unchanged from the pre-existing design: `dispatchForConsultation` still
+re-verifies publication AND palette on whatever slug it receives, so the gate is not a single point
+of trust. The tenant-scope Prisma extension is a third, independent layer.
+
+### Discovery (D-20)
+
+`GET /api/v1/consultations/:id/workflow` → `ConsultationWorkflowResponse`. Reads the durable
+`Consultation.metadata.governingEngine` marker through the **same** well-formedness rule
+`LoopContextSignalService` gates on — `tenantWorkflowGoverns` is now defined in terms of the new
+`readGoverningEngineMarker`, so discovery can never disagree with the engine actually writing the
+document. Same access posture as `getById` (`verifyConsultationAccess` first ⇒ 404 for unknown /
+cross-tenant), same manifest shape as `getById` (verified).
+
+Two naming decisions made to avoid lying:
+
+- **`activeVersionNumber`, not `versionNumber`.** The active published version is a movable
+  pointer, and `WorkflowRun` carries no consultation linkage to recover the version that actually
+  ran. The field name says which version it is.
+- **`inputSchema` is declared and permanently `null`.** D-20 is a real absence, not an oversight:
+  `WorkflowDefinition` has no input column, `CompiledWorkflowConfig` has no input section, and a
+  consultation-governing graph takes no caller input at all (the interpreter payload is
+  server-built). The field exists so declaring one later is additive rather than a new field to
+  discover. Nothing was invented.
+
+### SDK
+
+`useConsultationWorkflow(consultationId?)` — owns its fetch (the governing workflow is
+per-consultation and only exists after open, so there is nothing for the provider to pin, unlike the
+session-pinned schema bundle). **Fails open**: a failed read resolves to `null` and reports on
+`error`, never rejects. `null` ("unknown") stays distinct from `governed: false` ("the default
+engine governs"). Proven by mutation check, not just by a passing test.
+
+### Known non-goals, recorded rather than hidden
+
+- A selector supplied to an **already-open** consultation, or to a **re-visit**, is authorized but
+  cannot take effect (consultation-open dispatch fires on CREATE only). Both are logged, and the DTO
+  documents that `open` is the only route that honours the field. Rejecting instead would have added
+  a route-specific error contract this ticket does not own.
+- **There is no clinician-facing route that lists SELECTABLE workflows.** `GET /workflows` exists
+  but is gated `CanList('WorkflowDefinition')` + scope `workflow:definition:read`, which a clinician
+  need not hold, and it lists every palette rather than the selectable subset. A developer must
+  currently learn slugs out of band. The authorized set and the discoverable set should be one
+  predicate with two consumers; that is a follow-on, filed here rather than built outside scope.
+
+### Gates (all run in the worktree, output pasted in the agent report)
+
+`applications build` · `applications test` **603 files / 10489 passed** · `api test` **262 files /
+4034 passed** · `vox build` · `vox test` **271 files / 4235 passed** · `gen:admin:check` no drift ·
+`api:portal:check` no drift · `api:openapi:check` OK (the `missing description` ratchet *improved*
+411 → 410) · `pnpm lint` 40/40.
+
+Five artifacts regenerated. `packages/vox-node/src/resources/admin/**` is unchanged, correctly — the
+new route is business plane, not `/admin/*`.
+
+**Not run:** `pnpm test:e2e` (needs live infra the orchestrator owns). The new route is covered
+automatically by `task-776-route-authz-matrix.spec.ts`, which is manifest-driven; its one hardcoded
+inventory (27 `@Public() /internal/*` routes) is unaffected.
 
 ## 8. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-1 and OD-14. |
+| 2026-08-29 | Implemented on `lane-813-sdk`: six-point change, the 404/403 selector gate, the discovery route + `useConsultationWorkflow()`, OD-14 credential split in both SDK READMEs, five artifacts regenerated. Status → `Review`; merge pending with the orchestrator. |
