@@ -1,6 +1,51 @@
 {
   "components": {
     "schemas": {
+      "AcceptedCorrectionProposal": {
+        "properties": {
+          "category": {
+            "description": "Correction category (spelling | medicalTerm | drugName).",
+            "type": "string"
+          },
+          "confidence": {
+            "description": "Model confidence, 0..1.",
+            "type": "number"
+          },
+          "end": {
+            "description": "End offset (exclusive) of the span in the raw transcript.",
+            "type": "number"
+          },
+          "original": {
+            "description": "The exact text the span is claimed to cover. Re-verified server-side.",
+            "type": "string"
+          },
+          "proposalId": {
+            "description": "Stable id of the proposal, as published by consultation.proposeCorrections.",
+            "type": "string"
+          },
+          "proposed": {
+            "description": "The replacement text.",
+            "type": "string"
+          },
+          "start": {
+            "description": "Start offset of the span in the raw transcript.",
+            "type": "number"
+          },
+          "status": {
+            "description": "Promotion status. Only \"ACCEPTED\" is promotable — a proposal still marked PROPOSED is advisory and stays advisory (DD-8).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "start",
+          "end",
+          "original",
+          "proposed",
+          "status"
+        ],
+        "type": "object"
+      },
       "AcknowledgeChangelogRequest": {
         "properties": {
           "entryIds": {
@@ -15805,6 +15850,13 @@
       },
       "StopRecordingRequest": {
         "properties": {
+          "acceptedProposals": {
+            "description": "Advisory corrections the clinician accepted, to promote over the raw transcript at endpoint time.",
+            "items": {
+              "$ref": "#/components/schemas/AcceptedCorrectionProposal"
+            },
+            "type": "array"
+          },
           "persistSnapshot": {
             "default": false,
             "description": "When true, persist the last running-summary snapshot as a PRE_SUMMARY context item before tearing the session down.",
