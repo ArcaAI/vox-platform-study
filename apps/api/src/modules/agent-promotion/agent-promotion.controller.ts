@@ -80,10 +80,7 @@ export class AgentPromotionController {
   })
   @ApiQuery({ name: 'targetDefinitionSlug', required: false, type: String, description: 'Filter to one target workflow slug' })
   @ApiResponse({ status: 200, type: PaginatedAgentPromotionResponse })
-  async list(
-    @Query() query: PaginatedQuery,
-    @Query('targetDefinitionSlug') targetDefinitionSlug?: string,
-  ): Promise<PaginatedAgentPromotionResponse> {
+  async list(@Query() query: PaginatedQuery, @Query('targetDefinitionSlug') targetDefinitionSlug?: string): Promise<PaginatedAgentPromotionResponse> {
     return this.service.list(query, targetDefinitionSlug);
   }
 

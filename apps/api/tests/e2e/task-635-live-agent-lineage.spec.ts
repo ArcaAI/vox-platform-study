@@ -310,7 +310,9 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       }
     }
     if (!liveBindingApplied) {
-      console.warn('[TASK-635 C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.');
+      console.warn(
+        '[TASK-635 C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.',
+      );
     }
 
     const patientId = `task-635-c6-${Date.now()}`;
@@ -410,7 +412,9 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     // acceptable here: it would mean no governed template resolved.
     expect(
       sseAgent.resolvedFrom,
-      liveBindingApplied ? 'a live-bound node must resolve the tier-1a (reported as `agent`)' : 'without a live binding, the governed SYSTEM live default must resolve',
+      liveBindingApplied
+        ? 'a live-bound node must resolve the tier-1a (reported as `agent`)'
+        : 'without a live binding, the governed SYSTEM live default must resolve',
     ).toBe(liveBindingApplied ? 'agent' : 'default');
 
     // `id` identifies whatever supplied tier-1a — the workflow NODE id since

@@ -464,10 +464,10 @@ const featureModules: any[] = [
   // TASK-810 — the clinical-document SHAPE catalog: which sections a generated
   // document has, and the strict schema compiled from that shape.
   DocumentTemplateModule,
-  // Admin/agent-promotions: promote an immutable agent
-  // configuration version from one tenant to another. Its own module because
-  // AgentPromotion is its own immutable resource, not another verb on the
-  // agent (the DepartmentAgentResyncController precedent).
+  // Admin/agent-promotions: promote an immutable WorkflowDefinition version
+  // from one tenant to another (TASK-815 moved the promotable off
+  // DepartmentAgent). Its own module because AgentPromotion is its own
+  // immutable resource, not another verb on a workflow definition.
   AgentPromotionModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
