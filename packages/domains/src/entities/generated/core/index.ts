@@ -61,6 +61,7 @@ export * from './TenantEntity';
 export * from './TenantPlanHistoryEntity';
 export * from './TenantUsageMeterEntity';
 export * from './TranscriptionJobEntity';
+export * from './DocumentSectionEntity';
 export * from './TranscriptSegmentEntity';
 export * from './UserDepartmentEntity';
 export * from './UserEntity';

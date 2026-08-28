@@ -123,6 +123,7 @@ export * from './TenantRepository';
 export * from './TenantPlanHistoryRepository';
 export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';
+export * from './DocumentSectionRepository';
 export * from './TranscriptSegmentRepository';
 // Sibling that patches TranscriptionJobRepository.prototype.
 export * from './TranscriptionJobRepository.encryption';

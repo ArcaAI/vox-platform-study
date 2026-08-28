@@ -22,6 +22,7 @@ export class ContextItem extends BaseTenantDataModel {
   public dnaWritingStyleId: string | null;
   public kindKey: string | null;
   public contextSchemaVersionId: string | null;
+  public documentKey: string | null;
   public qdrantSynced: boolean;
   public qdrantSyncedAt: Date | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -54,6 +55,7 @@ export class ContextItem extends BaseTenantDataModel {
     this.dnaWritingStyleId = data.dnaWritingStyleId;
     this.kindKey = data.kindKey;
     this.contextSchemaVersionId = data.contextSchemaVersionId;
+    this.documentKey = data.documentKey;
     this.qdrantSynced = data.qdrantSynced ?? false;
     this.qdrantSyncedAt = data.qdrantSyncedAt;
     this.resourceStatus = data.resourceStatus;

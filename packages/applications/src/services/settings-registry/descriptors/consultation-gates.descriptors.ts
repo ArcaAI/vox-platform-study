@@ -31,10 +31,30 @@ import {
   CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
   CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
   HARNESS_LOOP_EMERGENCY_STOP_KEY,
+  CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
 } from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
+  // TASK-811 — the realtime graph executor's PER-TENANT rollout flag.
+  {
+    key: CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    // TENANT, deliberately — see the constant's doc. The two switches below are
+    // platform emergency stops (`maxScope: 'system'`, `globalOnly`); this is a
+    // rollout gate, and a rollout that cannot be scoped to one tenant is not one.
+    maxScope: 'tenant',
+    editableBy: 'GlobalSetting',
+    failMode: 'open-to-default',
+    killSwitch: true,
+    category: 'Feature Flags',
+    label: 'Realtime graph executor',
+    description:
+      "Routes the live-documentation flush through the TASK-811 GRAPH EXECUTOR — a walk over the tenant's compiled realtime lane — instead of the hardcoded sequence. Defaults OFF, so an unflagged tenant runs the legacy engine unchanged; the legacy path stays executable until trajectory parity is demonstrated on the same transcript. Set a row under ONE tenant to roll it out there first. With it ON, a tenant that has authored no consultation-palette graph still serves PLATFORM_REALTIME_LANE, which encodes the legacy sequence as a graph — so enabling it is not the same as changing what the tenant's note looks like.",
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY],
+  },
   // TASK-705 — the loop's OPERATIONAL stop. Its commercial counterpart is the
   // `agenticLoop` subscription entitlement, which is not a setting at all.
   {

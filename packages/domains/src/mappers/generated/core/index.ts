@@ -77,6 +77,7 @@ export * from './TenantEntityMapper';
 export * from './TenantPlanHistoryEntityMapper';
 export * from './TenantUsageMeterEntityMapper';
 export * from './TranscriptionJobEntityMapper';
+export * from './DocumentSectionEntityMapper';
 export * from './TranscriptSegmentEntityMapper';
 export * from './UserDepartmentEntityMapper';
 export * from './UserEntityMapper';

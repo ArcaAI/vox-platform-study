@@ -8,10 +8,13 @@ import {
   AgentSessionKind,
   AgentStepStatus,
   AgentStepType,
+  ConsultationRepository,
   ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
   ContextItemType,
+  DocumentSectionRepository,
+  WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
@@ -68,6 +71,23 @@ import {
   type PersistedLiveAgentLineage,
 } from './live-agent.port';
 import { LiveToolRegistry } from './live-tool-registry';
+// TASK-811 — the realtime graph executor. The flush no longer runs a hardcoded
+// sequence; it walks a LANE, and which lane it walks is data.
+import { GUARDRAIL_GROUNDEDNESS_TOOL } from './live-tool-registry';
+import {
+  DocumentSectionStore,
+  GuardMemo,
+  reanchorAnnotations,
+  PLATFORM_REALTIME_LANE,
+  buildRealtimeLane,
+  runRealtimeLane,
+  type RealtimeCapabilities,
+  type RealtimeLane,
+  type RealtimeRunResult,
+} from './realtime';
+import { tenantWorkflowGoverns } from '../governing-engine';
+import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, CONSULTATION_GATE_DEFAULTS } from '../consultation-gates.constants';
+import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-json-repair';
 import type { LiveSummarySectionDto } from './dto';
 import {
@@ -220,6 +240,29 @@ interface LiveSoapCall {
   latencyMs: number;
 }
 
+/**
+ * TASK-811 — what a GRAPH-MODE flush produces, projected onto exactly the locals
+ * the legacy path produces. Everything downstream is shared, so this projection
+ * is the seam the trajectory-parity diff measures across.
+ */
+interface GraphFlushProjection {
+  sections: LiveSummarySectionDto[];
+  runningSummary: string;
+  textFailed: boolean;
+  textLatencyMs: number;
+  textStats: LiveSummaryStatsDto | null;
+  textRepaired: boolean;
+  repairLatencyMs: number;
+  repairStats: LiveSummaryStatsDto | null;
+  entities: LiveSummaryEntityDto[];
+  vitals?: LiveSummaryVitalsDto;
+  nlpRan: boolean;
+  nlpFailed: boolean;
+  nlpLatencyMs: number;
+  /** The raw run, for the trajectory and for the parity diff. */
+  run: RealtimeRunResult;
+}
+
 /** Parameters to begin a per-consultation watcher session. */
 export interface StartLiveDocumentationParams {
   consultationId: string;
@@ -310,6 +353,46 @@ interface LiveSession {
    */
   templatePromise?: Promise<ResolvedDocumentTemplate>;
   templateSnapshot?: ResolvedDocumentTemplate;
+  /**
+   * TASK-811 task 13 — the SUBSTRATE GATE.
+   *
+   * `startRecording` used to call `start()` after only an ownership and status
+   * check, so the hardcoded loop ran for every recording session regardless of
+   * what the tenant had authored (TASK-806 §2.1 — the root cause). Resolved once
+   * at `start()` with the same discipline as the agent and the template above;
+   * `false` means a tenant-authored graph GOVERNS this consultation and this
+   * engine must stand down entirely.
+   */
+  substratePromise?: Promise<boolean>;
+  substrateAllowed?: boolean;
+  /**
+   * TASK-811 — the session's FROZEN realtime lane, and whether the graph
+   * executor is enabled for this tenant. Frozen for the same reason the agent and
+   * template are: a publish mid-consultation must not change the engine walking
+   * the note already being produced.
+   */
+  lanePromise?: Promise<RealtimeLane | null>;
+  laneSnapshot?: RealtimeLane | null;
+  /**
+   * The transcript the CAPTURE node publishes for the flush currently in flight.
+   *
+   * Set immediately before the lane runs. It exists because the capture node is a
+   * real producer of `transcript` (task 14) rather than a declaration nothing
+   * keeps — the value it publishes is the live ASR stream this session ingested,
+   * and downstream nodes reach it only through the declared port.
+   */
+  pendingGraphTranscript?: string;
+  /**
+   * The `AsrPipeline` this session's capture is bound to, when known.
+   *
+   * `ConsultationWorkflowDispatchService` already resolves it
+   * (`sttPipelineId` on its result) from the tenant's `stt`-palette assignment;
+   * threading it into `POST :id/recording/start` is a request-DTO change this
+   * ticket does not make, so today it is undefined and the capture node reports
+   * `pipelineId: null`. That is observability, not behaviour: the transcript the
+   * node publishes is the pipeline's output either way.
+   */
+  sttPipelineId?: string | null;
 }
 
 /**
@@ -445,6 +528,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * lazily inside it, so a plan that disables a tool never builds one.
    */
   private readonly toolRegistry: LiveToolRegistry;
+  /**
+   * TASK-811 (OD-7) — per-section writes with per-section OCC. Constructed lazily
+   * on first use because its repository dependency is optional.
+   */
+  private sectionStore?: DocumentSectionStore;
 
   constructor(
     private readonly httpService: HttpService,
@@ -501,6 +589,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // serves the compiled PLATFORM shape, i.e. behavior equivalent to the
     // hardcoded four-section format this ticket replaced.
     @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplateService?: IDocumentTemplateServicePort,
+    // TASK-811 — the SUBSTRATE GATE's read half. Carries the durable
+    // governing-engine marker `ConsultationWorkflowDispatchService` writes; the
+    // same row `LoopContextSignalService.standDownForTenantWorkflow` reads before
+    // every loop signal. Optional + trailing so existing positional fixtures keep
+    // their arity; ABSENT ⇒ the gate cannot resolve and FAILS OPEN to this engine,
+    // because a consultation documented by the default engine is a better
+    // clinical outcome than one documented by nobody.
+    @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
+    // TASK-811 — the realtime LANE's two resolution hops: which definition the
+    // tenant assigned, and that definition's compiled config. Both optional and
+    // trailing; ABSENT ⇒ every session serves PLATFORM_REALTIME_LANE, which
+    // encodes today's behaviour.
+    @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
+    @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    // TASK-811 (OD-7) — per-section persistence. Optional + trailing; ABSENT ⇒
+    // section writes report `unavailable` and the whole-document payload still
+    // publishes, so the clinician never loses the feed to a persistence outage.
+    @Optional() @Inject(DocumentSectionRepository) private readonly documentSectionRepository?: DocumentSectionRepository,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -670,6 +776,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // shape at session start so a mid-consultation publish cannot change the
     // note being produced. `flush()` awaits the memoized promise.
     session.templatePromise = this.ensureTemplateResolved(session);
+    // TASK-811 task 13 — the SUBSTRATE GATE, and the lane the flush will walk.
+    // Same fire-and-forget shape as the two above so `start()` stays synchronous
+    // for the recording controller; `flush()` awaits the memoized promises, and
+    // the gate additionally tears this session down when it resolves to "stand
+    // down", so a governed consultation leaves no timers or locks behind.
+    session.substratePromise = this.ensureSubstrateResolved(session);
+    session.lanePromise = this.ensureLaneResolved(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
   }
@@ -820,6 +933,139 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       session.templateSnapshot = PLATFORM_TEMPLATE;
       return PLATFORM_TEMPLATE;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // TASK-811 — the substrate gate and the realtime lane
+  // ------------------------------------------------------------------
+
+  /**
+   * Task 13 — MAY this engine document this consultation?
+   *
+   * `startRecording` called `start()` after only an ownership and status check
+   * (`consultation.controller.ts`), so the hardcoded flush ran for every
+   * recording session no matter what the tenant had authored. That is the root
+   * cause TASK-806 §2.1 names, and this is the gate that closes it.
+   *
+   * The answer is the SAME durable marker the loop plane already consults
+   * (`governing-engine.ts`): a well-formed `governingEngine` on
+   * `Consultation.metadata` means a tenant-authored graph took ownership at
+   * consultation open, and both write the same document — so exactly one of them
+   * may run.
+   *
+   * ── WHY THIS FAILS OPEN ─────────────────────────────────────────────────────
+   * Identical reasoning to `LoopContextSignalService.standDownForTenantWorkflow`,
+   * and it is worth restating rather than cross-referencing: being wrong in the
+   * "stand down" direction leaves the encounter with NO documentation at all,
+   * which is clinically worse than one documented by the default engine. So an
+   * absent marker, a missing row, an unwired repository and a THROWING read are
+   * all "this engine governs". Only a positively-read marker stands it down.
+   */
+  private async ensureSubstrateResolved(session: LiveSession): Promise<boolean> {
+    if (!this.consultationRepository) {
+      session.substrateAllowed = true;
+      return true;
+    }
+
+    let allowed = true;
+    try {
+      const consultation = await this.consultationRepository.findById(session.consultationId);
+      allowed = !tenantWorkflowGoverns(consultation?.metadata);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      session.substrateAllowed = true;
+      return true;
+    }
+
+    session.substrateAllowed = allowed;
+    if (!allowed) {
+      this.logger.log({
+        message: 'Live documentation stood down — a tenant-authored workflow governs this consultation (substrate exclusivity)',
+        consultationId: session.consultationId,
+      });
+      // Release the timers, the STT subscription and the owner lock. Leaving them
+      // would keep a session alive that must never publish again.
+      void this.stop(session.consultationId, { persistSnapshot: false }).catch(() => undefined);
+    }
+    return allowed;
+  }
+
+  /**
+   * The lane this session's flushes walk, frozen once at `start()`.
+   *
+   * Three tiers, and only the first is the tenant's:
+   *   1. the tenant's assigned `consultation` graph, filtered to its realtime
+   *      nodes — this is what makes authoring govern the live plane at all;
+   *   2. {@link PLATFORM_REALTIME_LANE} when that resolves to nothing;
+   *   3. `null` when the graph executor is not enabled for this tenant, which
+   *      routes the flush down the LEGACY path.
+   *
+   * NEVER throws: every failure resolves to the platform lane or to legacy, and a
+   * flush must not fail because a definition could not be read.
+   */
+  private async ensureLaneResolved(session: LiveSession): Promise<RealtimeLane | null> {
+    // The code default is the last fallback in the cascade, and it is `false`:
+    // absence resolves to the LEGACY engine, which is both fail-safe and today's
+    // behaviour.
+    let enabled: boolean = CONSULTATION_GATE_DEFAULTS[CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY];
+    if (this.effectiveSettings) {
+      try {
+        const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, { tenantId: session.tenantId });
+        enabled = resolved.value === true || resolved.value === 'true';
+      } catch (error) {
+        this.logger.warn({
+          message: 'Realtime graph-executor flag could not be resolved — running the legacy flush for this session',
+          consultationId: session.consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        enabled = false;
+      }
+    }
+
+    if (!enabled) {
+      session.laneSnapshot = null;
+      return null;
+    }
+
+    const lane = (await this.resolveTenantLane(session)) ?? PLATFORM_REALTIME_LANE;
+    session.laneSnapshot = lane;
+    this.logger.log({
+      message: 'Froze the realtime lane for this session',
+      consultationId: session.consultationId,
+      laneSource: lane.source,
+      definitionSlug: lane.definitionSlug,
+      stageCount: lane.stages.length,
+    });
+    return lane;
+  }
+
+  /** Assignment cascade -> ACTIVE PUBLISHED definition -> compiled config -> lane. */
+  private async resolveTenantLane(session: LiveSession): Promise<RealtimeLane | null> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
+    try {
+      const assignment = await this.workflowAssignments.resolve(session.tenantId, 'consultation', null);
+      if (!assignment.workflowDefinitionSlug) return null;
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(session.tenantId, assignment.workflowDefinitionSlug);
+      if (!definition?.compiledConfig) return null;
+      return buildRealtimeLane(definition.compiledConfig as never);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Tenant realtime lane could not be resolved — serving the platform lane',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /** Per-section store, constructed on first use (its repository is optional). */
+  private sections(): DocumentSectionStore {
+    this.sectionStore ??= new DocumentSectionStore(this.documentSectionRepository, this.secretsService);
+    return this.sectionStore;
   }
 
   /** The frozen snapshot as mirrored in Redis, or null (absent / unusable / outage). */
@@ -1093,6 +1339,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
+    // TASK-811 (DD-7) — a memo scoped to THIS flush. Not to the session: a guard
+    // verdict is a statement about a specific text at a specific moment, so
+    // carrying it across flushes would serve a verdict computed against an older
+    // note.
+    const guards = new GuardMemo();
+
     // The session's FROZEN agent. Resolved once at `start`;
     // from the second flush on this is a settled promise, i.e. a microtask and
     // ZERO blocking I/O. The very first flush of a session may await the
@@ -1105,6 +1357,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // never rejects (the service's own `resolveForGeneration` fails open to the
     // platform shape), so this can never fail a flush.
     const template = session.templateSnapshot ?? (session.templateSnapshot = await (session.templatePromise ?? this.ensureTemplateResolved(session)));
+
+    // TASK-811 task 13 — the SUBSTRATE GATE. Awaited here rather than checked at
+    // `start()` because `start()` is synchronous for the recording controller;
+    // resolving it is a row read. `false` means a tenant-authored graph governs
+    // this consultation, so this engine publishes NOTHING for it — the fix for
+    // "the hardcoded loop runs regardless of what the tenant authored".
+    const substrateAllowed =
+      session.substrateAllowed ?? (session.substrateAllowed = await (session.substratePromise ?? this.ensureSubstrateResolved(session)));
+    if (!substrateAllowed) return null;
+
+    // TASK-811 — the session's FROZEN realtime lane. `null` routes this flush
+    // down the LEGACY path (the per-tenant flag is off, or its resolution failed).
+    const lane =
+      session.laneSnapshot !== undefined
+        ? session.laneSnapshot
+        : (session.laneSnapshot = await (session.lanePromise ?? this.ensureLaneResolved(session)));
 
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
@@ -1228,56 +1496,97 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let textRepaired = false;
     let repairLatencyMs = 0;
     let repairStats: LiveSummaryStatsDto | null = null;
-    try {
-      // Bounded JSON auto-repair: the strict parser is `parseDocumentJson` (null on
-      // a JSON/shape failure); the tolerant `parseDocumentSections` prose parser is the
-      // final fallback. A retry only runs when `response_format` was actually
-      // sent (structured) — an engine that ignores it returns prose by design, so
-      // a retry could never yield JSON and is skipped. The corrective instruction
-      // is appended (not prepended) to keep the prefix-cache-stable lead-in intact.
-      const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
-        generate: async (corrective) => {
-          const startedAt = Date.now();
-          const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent, template.compiled);
-          return { text, stats, structured, latencyMs: Date.now() - startedAt };
-        },
-        parseStrict: (text) => {
-          const parsed = parseDocumentJson(text, template.compiled);
-          return parsed && parsed.length > 0 ? parsed : null;
-        },
-        parseTolerant: (text) => parseDocumentSections(text, template.compiled),
-        // Retry only a genuine malformed-JSON attempt: structured output was
-        // requested AND the text opens a JSON object. Clean prose (no leading
-        // `{`) is served by the tolerant regex parser with no wasted regen.
-        shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
-      });
-      if (isStale()) return this.dropStale(session);
+    // ── TASK-811 — GRAPH MODE ────────────────────────────────────────────────
+    // The session's frozen LANE decides what runs. A null lane is the LEGACY
+    // path below, which stays executable until trajectory parity is proven on the
+    // same transcript — this ticket does not remove it.
+    //
+    // The two branches produce the SAME locals, which is deliberate: everything
+    // downstream (grounding, groundedness, publish, persist, stats, trajectory) is
+    // shared, so the only thing that varies is HOW the note and the entities were
+    // produced. That is also what makes the parity diff meaningful.
+    // The capture node's output for THIS flush — the same `delta || transcript`
+    // the legacy path feeds NER, which is what makes the platform lane's
+    // behaviour identical rather than merely similar.
+    session.pendingGraphTranscript = delta || transcript;
+    const graph = lane
+      ? await this.runGraphLane(session, lane, {
+          buildPrompt: (sourceText) =>
+            this.buildTextUserPrompt(priorNote, sourceText, notes, elidedParts > 0, this.stablePrefixFor(agent, template), template.compiled.title),
+          agent,
+          template,
+          signal,
+          isStale,
+        })
+      : null;
+    if (graph === 'stale') return this.dropStale(session);
 
-      const [firstCall, repairCall] = outcome.calls;
-      textLatencyMs = firstCall.latencyMs;
-      textStats = firstCall.stats;
-      textRepaired = outcome.repaired;
-      if (repairCall) {
-        repairLatencyMs = repairCall.latencyMs;
-        repairStats = repairCall.stats;
-      }
-
-      const parsed = outcome.value;
-      if (parsed.length > 0) {
-        sections = parsed;
-        runningSummary = buildRunningSummary(parsed);
-        // Advance only over the segments actually sent (C5-04): on a truncated
-        // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
+    if (graph) {
+      if (graph.sections.length > 0) {
+        sections = graph.sections;
+        runningSummary = graph.runningSummary;
         session.flushedTranscriptCount = deltaEnd;
       }
-    } catch (error) {
-      if (isStale()) return this.dropStale(session);
-      textFailed = true;
-      this.logger.warn({
-        message: 'TEXT running-summary call failed',
-        consultationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      textFailed = graph.textFailed;
+      textLatencyMs = graph.textLatencyMs;
+      textStats = graph.textStats;
+      textRepaired = graph.textRepaired;
+      repairLatencyMs = graph.repairLatencyMs;
+      repairStats = graph.repairStats;
+    }
+
+    if (!graph) {
+      try {
+        // Bounded JSON auto-repair: the strict parser is `parseDocumentJson` (null on
+        // a JSON/shape failure); the tolerant `parseDocumentSections` prose parser is the
+        // final fallback. A retry only runs when `response_format` was actually
+        // sent (structured) — an engine that ignores it returns prose by design, so
+        // a retry could never yield JSON and is skipped. The corrective instruction
+        // is appended (not prepended) to keep the prefix-cache-stable lead-in intact.
+        const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
+          generate: async (corrective) => {
+            const startedAt = Date.now();
+            const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent, template.compiled);
+            return { text, stats, structured, latencyMs: Date.now() - startedAt };
+          },
+          parseStrict: (text) => {
+            const parsed = parseDocumentJson(text, template.compiled);
+            return parsed && parsed.length > 0 ? parsed : null;
+          },
+          parseTolerant: (text) => parseDocumentSections(text, template.compiled),
+          // Retry only a genuine malformed-JSON attempt: structured output was
+          // requested AND the text opens a JSON object. Clean prose (no leading
+          // `{`) is served by the tolerant regex parser with no wasted regen.
+          shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
+        });
+        if (isStale()) return this.dropStale(session);
+
+        const [firstCall, repairCall] = outcome.calls;
+        textLatencyMs = firstCall.latencyMs;
+        textStats = firstCall.stats;
+        textRepaired = outcome.repaired;
+        if (repairCall) {
+          repairLatencyMs = repairCall.latencyMs;
+          repairStats = repairCall.stats;
+        }
+
+        const parsed = outcome.value;
+        if (parsed.length > 0) {
+          sections = parsed;
+          runningSummary = buildRunningSummary(parsed);
+          // Advance only over the segments actually sent (C5-04): on a truncated
+          // flush `deltaEnd < flushUpTo`, so the carried-forward tail is re-sent next.
+          session.flushedTranscriptCount = deltaEnd;
+        }
+      } catch (error) {
+        if (isStale()) return this.dropStale(session);
+        textFailed = true;
+        this.logger.warn({
+          message: 'TEXT running-summary call failed',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // Extract-from-source + entity-ground (SPEER). Run NER over the RAW
@@ -1295,28 +1604,41 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // request, and disabling BOTH is what skips the call entirely. The registry
     // context receives `nerSourceText` and nothing else, so the anti-laundering
     // rule above is enforced by the executor's input TYPE, not by convention.
+    // TASK-811 — in GRAPH MODE the entity extraction was performed by the lane's
+    // `consultation.extractEntities` node, bound to its declared `in: transcript`
+    // port. The anti-laundering rule is enforced there by the executor's port-type
+    // check, which refuses `document -> transcript` outright.
     const nerSourceText = delta || transcript;
     const priorEntities = session.lastPayload?.entities ?? [];
-    const nerEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'ner');
-    const vitalsEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'vitals');
     let extracted: LiveSummaryEntityDto[] = [];
     let flushVitals: LiveSummaryVitalsDto | undefined;
     let nlpFailed = false;
     let nlpLatencyMs = 0;
     let nlpRan = false;
-    const nlpStartedAt = Date.now();
-    try {
-      if (nerSourceText && (nerEnabled || vitalsEnabled)) {
-        nlpRan = true;
-        const nlpResult = await this.toolRegistry.extraction().execute({ sourceText: nerSourceText, tenantId: session.tenantId }, signal);
-        extracted = nerEnabled ? nlpResult.entities : [];
-        flushVitals = vitalsEnabled ? nlpResult.vitals : undefined;
-        nlpLatencyMs = Date.now() - nlpStartedAt;
+    if (graph) {
+      extracted = graph.entities;
+      flushVitals = graph.vitals;
+      nlpFailed = graph.nlpFailed;
+      nlpLatencyMs = graph.nlpLatencyMs;
+      nlpRan = graph.nlpRan;
+    }
+    if (!graph) {
+      const nerEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'ner');
+      const vitalsEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'vitals');
+      const nlpStartedAt = Date.now();
+      try {
+        if (nerSourceText && (nerEnabled || vitalsEnabled)) {
+          nlpRan = true;
+          const nlpResult = await this.toolRegistry.extraction().execute({ sourceText: nerSourceText, tenantId: session.tenantId }, signal);
+          extracted = nerEnabled ? nlpResult.entities : [];
+          flushVitals = vitalsEnabled ? nlpResult.vitals : undefined;
+          nlpLatencyMs = Date.now() - nlpStartedAt;
+        }
+      } catch (error) {
+        if (isStale()) return this.dropStale(session);
+        nlpFailed = true;
+        this.logger.warn({ message: 'NLP entity call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
       }
-    } catch (error) {
-      if (isStale()) return this.dropStale(session);
-      nlpFailed = true;
-      this.logger.warn({ message: 'NLP entity call failed', consultationId, error: error instanceof Error ? error.message : String(error) });
     }
 
     if (isStale()) return this.dropStale(session);
@@ -1333,9 +1655,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `LIVE_DOC_GROUNDEDNESS_ENABLED`, exactly as before.
     if (this.toolRegistry.isEnabled(agent.toolPlan, 'groundedness') && runningSummary) {
       const groundednessStartedAt = Date.now();
-      groundedness = await this.toolRegistry
-        .guardrail()
-        .execute({ summary: runningSummary, sourceText: notes ? `${transcript}\n${notes}` : transcript, tenantId: session.tenantId }, signal);
+      const guardSource = notes ? `${transcript}\n${notes}` : transcript;
+      // TASK-811 (DD-7) — through the per-FLUSH guard memo. With one document
+      // this changes nothing (one call, one miss); with several documents drawn
+      // from one transcript the same guard is asked the same question repeatedly,
+      // and this is what stops that becoming N groundedness round-trips per turn.
+      // The key carries the guard's CONFIG, so two thresholds stay two verdicts.
+      const guardConfig = { timeoutMs: this.groundednessTimeoutMs, maxRetries: this.groundednessMaxRetries };
+      groundedness = await guards.resolve(GUARDRAIL_GROUNDEDNESS_TOOL, guardConfig, `${runningSummary}\u0000${guardSource}`, () =>
+        this.toolRegistry.guardrail().execute({ summary: runningSummary, sourceText: guardSource, tenantId: session.tenantId }, signal),
+      );
       groundednessLatencyMs = Date.now() - groundednessStartedAt;
       if (isStale()) return this.dropStale(session);
     }
@@ -1385,6 +1714,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
+    // TASK-811 §2b/OD-7 — the per-SECTION plane, ADDITIVE to the whole-document
+    // payload above so every existing consumer is untouched. Only in graph mode:
+    // the legacy engine's contract is "one document, global offsets", and
+    // emitting section patches from it would claim a granularity it does not have.
+    if (graph) {
+      await this.publishSectionPatches(session, {
+        sections,
+        runningSummary,
+        entities,
+        groundedness,
+        template,
+        generation: myGeneration,
+      });
+    }
 
     session.flushCount += 1;
     // PHI-safe metrics (P2): sizes/latencies/counts only — never transcript or summary text.
@@ -1440,6 +1783,288 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     });
 
     return payload;
+  }
+
+  /**
+   * TASK-811 — run one flush through the GRAPH EXECUTOR and project the result
+   * onto the same locals the legacy path produces.
+   *
+   * The projection is the point. Everything downstream of this method — entity
+   * grounding, the groundedness gate, publish, durable snapshot, stats and the
+   * trajectory — is SHARED between the two engines, so a trajectory diff between
+   * them isolates exactly one variable: how the note and the entities were
+   * produced. If the projection were lossy, the parity evidence would be too.
+   *
+   * Returns `'stale'` when a newer flush superseded this one (the caller drops
+   * the generation), or `null` when the lane could not be walked at all — in
+   * which case the caller falls through to the legacy path rather than
+   * publishing an empty note.
+   */
+  private async runGraphLane(
+    session: LiveSession,
+    lane: RealtimeLane,
+    ctx: {
+      /**
+       * Builds the TEXT prompt from a node's BOUND `sourceText`.
+       *
+       * A function, not a prebuilt string, because the whole point of task 5 is
+       * that a step's input comes from its declared port. On the platform lane
+       * the bound value IS `delta || transcript`, so the bytes are identical to
+       * legacy — but on a tenant lane whose generation node is wired to something
+       * else, the prompt follows the wiring instead of silently ignoring it.
+       */
+      buildPrompt: (sourceText: string) => string;
+      agent: FrozenLiveAgentSnapshot;
+      template: ResolvedDocumentTemplate;
+      signal: AbortSignal;
+      isStale: () => boolean;
+    },
+  ): Promise<GraphFlushProjection | 'stale' | null> {
+    // Honour the session's frozen tool plan on the PLATFORM lane. A tenant graph
+    // governs itself through each node's own `enabled` config; the platform lane
+    // has no author, so the plan is what expresses "this tenant disabled NER" —
+    // and without this overlay, enabling the graph executor would silently
+    // re-enable a tool a tenant had turned off.
+    const effectiveLane = lane.source === 'platform-default' ? this.applyToolPlanToPlatformLane(lane, ctx.agent) : lane;
+
+    let textLatencyMs = 0;
+    let textStats: LiveSummaryStatsDto | null = null;
+    let textRepaired = false;
+    let repairLatencyMs = 0;
+    let repairStats: LiveSummaryStatsDto | null = null;
+    let parsedSections: LiveSummarySectionDto[] = [];
+
+    const capabilities: RealtimeCapabilities = {
+      // TASK-811 task 14 / TASK-809 §2y1 — capture PRODUCES the transcript.
+      // The declared `out: transcript` port was design intent the durable
+      // activity never kept (it emits `{action, consultationId}`), which left the
+      // consultation palette with no producer of `transcript` and made
+      // `extractEntities`' required input unsatisfiable. Here it is real: the
+      // value is the live ASR stream this session ingested.
+      transcribe: async () => ({ transcript: session.pendingGraphTranscript ?? '', pipelineId: session.sttPipelineId ?? null }),
+
+      generateDocument: async (input, signal) => {
+        // Built from the node's BOUND `sourceText`, not from an expression this
+        // method happened to have in scope. On the platform lane that bound value
+        // IS `delta || transcript`, so the prompt bytes are identical to legacy —
+        // parity by construction, not by coincidence.
+        const promptText = ctx.buildPrompt(input.sourceText);
+        const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
+          generate: async (corrective) => {
+            const startedAt = Date.now();
+            const { text, stats, structured } = await this.callText(
+              promptText,
+              session.tenantId,
+              signal,
+              corrective,
+              ctx.agent,
+              ctx.template.compiled,
+            );
+            return { text, stats, structured, latencyMs: Date.now() - startedAt };
+          },
+          parseStrict: (text) => {
+            const parsed = parseDocumentJson(text, ctx.template.compiled);
+            return parsed && parsed.length > 0 ? parsed : null;
+          },
+          parseTolerant: (text) => parseDocumentSections(text, ctx.template.compiled),
+          shouldRepair: (first) => first.structured && looksLikeJsonObject(first.text),
+        });
+
+        const [firstCall, repairCall] = outcome.calls;
+        textLatencyMs = firstCall.latencyMs;
+        textStats = firstCall.stats;
+        textRepaired = outcome.repaired;
+        if (repairCall) {
+          repairLatencyMs = repairCall.latencyMs;
+          repairStats = repairCall.stats;
+        }
+        parsedSections = outcome.value;
+        return { text: buildRunningSummary(outcome.value), sections: outcome.value, stats: firstCall.stats, repaired: outcome.repaired };
+      },
+
+      extractEntities: async (input, signal) => {
+        // ONE executor, ONE HTTP call — `vitals` is a projection of the same
+        // `nlp.classify-tokens` response, exactly as it always was.
+        const result = await this.toolRegistry.extraction().execute({ sourceText: input.sourceText, tenantId: input.tenantId }, signal);
+        const vitalsEnabled = this.toolRegistry.isEnabled(ctx.agent.toolPlan, 'vitals');
+        const nerEnabled = this.toolRegistry.isEnabled(ctx.agent.toolPlan, 'ner');
+        return { entities: nerEnabled ? result.entities : [], vitals: vitalsEnabled ? result.vitals : undefined };
+      },
+    };
+
+    let run: RealtimeRunResult;
+    try {
+      run = await runRealtimeLane({
+        lane: effectiveLane,
+        consultationId: session.consultationId,
+        tenantId: session.tenantId,
+        capabilities,
+        isStale: ctx.isStale,
+        signal: ctx.signal,
+      });
+    } catch (error) {
+      // A BINDING error is a contract violation in the tenant's graph, not a bad
+      // day for a model. It must be LOUD and it must not silently downgrade to a
+      // note produced some other way — which is why the caller falls back to the
+      // legacy engine and this is logged at ERROR.
+      this.logger.error({
+        message: 'Realtime lane could not be wired — falling back to the legacy flush for this session',
+        consultationId: session.consultationId,
+        laneSource: lane.source,
+        definitionSlug: lane.definitionSlug,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+
+    if (ctx.isStale()) return 'stale';
+
+    // Degrade is NEVER silent: every non-success outcome is published to the
+    // clinician's control channel as a typed event. Silent degradation to an
+    // empty note is exactly why the 2026-08-25 outage went unnoticed for hours.
+    if (run.events.length > 0) {
+      await this.publishDegradeEvents(session, run);
+    }
+
+    const summarize = run.outcomes.find((o) => o.type === 'consultation.realtimeSummary');
+    const extract = run.outcomes.find((o) => o.type === 'consultation.extractEntities');
+    const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
+
+    return {
+      sections: summarize?.status === 'succeeded' ? parsedSections : [],
+      runningSummary: summarize?.status === 'succeeded' ? buildRunningSummary(parsedSections) : '',
+      textFailed: summarize !== undefined && summarize.status !== 'succeeded' && summarize.status !== 'skipped',
+      textLatencyMs,
+      textStats,
+      textRepaired,
+      repairLatencyMs,
+      repairStats,
+      entities: (extractOutput?.entities as LiveSummaryEntityDto[] | undefined) ?? [],
+      vitals: extractOutput?.vitals as LiveSummaryVitalsDto | undefined,
+      nlpRan: extract !== undefined && extract.status !== 'skipped',
+      nlpFailed: extract !== undefined && extract.status !== 'succeeded' && extract.status !== 'skipped',
+      nlpLatencyMs: extract?.durationMs ?? 0,
+      run,
+    };
+  }
+
+  /**
+   * TASK-811 §2b/OD-7 — persist and stream this flush's sections.
+   *
+   * Two things happen per section, in this order: the row is written under
+   * per-section OCC (so a CONFIRMED section a clinician touched is never
+   * overwritten), and the accepted patch is published as a `section.patch` event.
+   * A REFUSED write publishes nothing — the clinician's own text is already what
+   * the feed shows, and re-broadcasting the model's rejected version would make
+   * the panel flicker between the two.
+   *
+   * Annotations are RE-ANCHORED to section-local offsets first. That is the whole
+   * §2b fix: the global offsets on the whole-document payload are valid only while
+   * there is exactly one document rebuilt whole each flush, and the moment
+   * sections stream independently an earlier section growing invalidates every
+   * offset after it.
+   *
+   * Never throws. Section persistence is additive to a feed the clinician is
+   * already reading; losing it must not lose the flush.
+   */
+  private async publishSectionPatches(
+    session: LiveSession,
+    ctx: {
+      sections: LiveSummarySectionDto[];
+      runningSummary: string;
+      entities: LiveSummaryEntityDto[];
+      groundedness?: LiveSummaryGroundednessDto;
+      template: ResolvedDocumentTemplate;
+      generation: number;
+    },
+  ): Promise<void> {
+    if (ctx.sections.length === 0) return;
+
+    // The document this lane is producing. One document today; the key is what
+    // makes a second one addressable without reshaping anything.
+    const documentKey = ctx.template.slug;
+    const sectionKeys = ctx.template.compiled.sectionKeys;
+    const perSection = reanchorAnnotations(ctx.sections, ctx.runningSummary, ctx.entities, ctx.groundedness);
+
+    for (const [idx, section] of ctx.sections.entries()) {
+      // Positional: `parseDocumentJson`/`parseDocumentSections` emit sections in
+      // the compiled template's authored order, which IS `sectionKeys`' order.
+      const sectionKey = sectionKeys[idx] ?? section.title.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+      try {
+        const result = await this.sections().applyFlushPatch({
+          consultationId: session.consultationId,
+          tenantId: session.tenantId,
+          documentKey,
+          sectionKey,
+          title: section.title,
+          idx,
+          content: section.content,
+          annotations: perSection[idx],
+          documentTemplateVersionId: ctx.template.documentTemplateVersionId,
+          generation: ctx.generation,
+          userId: session.userId ?? null,
+        });
+
+        if (result.applied === true) {
+          await this.safeChannelPublish(this.channel(session.consultationId), JSON.stringify(result.patch));
+        } else if (result.reason !== 'unavailable') {
+          // PHI-safe: the refusal REASON, never the content that was refused.
+          this.logger.log({
+            message: 'Section patch refused',
+            consultationId: session.consultationId,
+            documentKey,
+            sectionKey,
+            reason: result.reason,
+          });
+        }
+      } catch (error) {
+        this.logger.warn({
+          message: 'Section patch failed (non-fatal — the whole-document payload already published)',
+          consultationId: session.consultationId,
+          sectionKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * Overlay the session's frozen tool plan onto the PLATFORM lane.
+   *
+   * `ner`/`vitals` disabled ⇒ the extraction node is skipped, which is exactly
+   * what the pre-TASK-811 flush did with the same plan. Without this, turning the
+   * graph executor on would quietly re-enable a tool the tenant had turned off —
+   * a behaviour change disguised as an engine change.
+   */
+  private applyToolPlanToPlatformLane(lane: RealtimeLane, agent: FrozenLiveAgentSnapshot): RealtimeLane {
+    const extractionEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'ner') || this.toolRegistry.isEnabled(agent.toolPlan, 'vitals');
+    if (extractionEnabled) return lane;
+    return {
+      ...lane,
+      stages: lane.stages.map((stage) => ({
+        ...stage,
+        nodes: stage.nodes.map((node) => (node.type === 'consultation.extractEntities' ? { ...node, enabled: false } : node)),
+      })),
+    };
+  }
+
+  /**
+   * Publish the lane's degrade events on the session's CONTROL channel.
+   *
+   * The control channel rather than the live-summary channel on purpose: these
+   * are statements about the ENGINE, not about the note, and folding them into
+   * the note payload would make a consumer that ignores them look like a consumer
+   * that saw a healthy flush.
+   */
+  private async publishDegradeEvents(session: LiveSession, run: RealtimeRunResult): Promise<void> {
+    for (const event of run.events) {
+      // PHI-safe: node identity, status and a reason CODE — never clinical text.
+      this.logger.warn({ message: 'Realtime lane node degraded', consultationId: session.consultationId, ...event });
+    }
+    await this.safeChannelPublish(
+      this.controlChannel(session.consultationId),
+      JSON.stringify({ type: 'lane.degraded', consultationId: session.consultationId, events: run.events, at: new Date().toISOString() }),
+    );
   }
 
   /**
@@ -1878,6 +2503,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private async persistDurableSnapshot(session: LiveSession, payload: LiveSummaryEventDto, opts: { force: boolean }): Promise<void> {
     if (!this.contextItemRepository) return;
+    // TASK-811 (OD-6) — WHICH document this snapshot is. `ContextItemType.PRE_SUMMARY`
+    // is overloaded (D-22): the context-derived pre-summary and this running-note
+    // snapshot are the same enum member, and with more than one document per
+    // consultation that ambiguity becomes unresolvable. The key is the session's
+    // frozen template slug; null (every pre-TASK-811 row, and a session whose
+    // template never resolved) keeps its exact legacy meaning.
+    const documentKey = session.templateSnapshot?.slug ?? null;
     if (!opts.force && (this.durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < this.durableSnapshotMs)) return;
 
     const content = payload.runningSummary?.trim();
@@ -1910,6 +2542,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         if (existing) {
           existing.content = content;
           existing.metaData = metaData;
+          if (documentKey) existing.documentKey = documentKey;
           await this.encryptSnapshotContent(existing);
           await this.contextItemRepository.update(existing.id, existing);
           session.snapshotEntity = existing;
@@ -1928,6 +2561,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             session.userId ?? 'system',
           );
           entity.metaData = metaData;
+          if (documentKey) entity.documentKey = documentKey;
           await this.encryptSnapshotContent(entity);
           await this.contextItemRepository.create(entity);
           session.snapshotEntity = entity;
@@ -1937,6 +2571,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       } else {
         session.snapshotEntity.content = content;
         session.snapshotEntity.metaData = metaData;
+        if (documentKey) session.snapshotEntity.documentKey = documentKey;
         await this.encryptSnapshotContent(session.snapshotEntity);
         await this.contextItemRepository.update(session.snapshotEntity.id, session.snapshotEntity);
       }

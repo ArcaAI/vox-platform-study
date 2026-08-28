@@ -30,6 +30,7 @@ export * from './DepartmentModel';
 export * from './DnaUsageRecordModel';
 export * from './DnaWritingStyleReportModel';
 export * from './DnaWritingStyleVersionModel';
+export * from './DocumentSectionModel';
 export * from './DocumentTemplateModel';
 export * from './DocumentTemplateVersionModel';
 export * from './EvalRunModel';
