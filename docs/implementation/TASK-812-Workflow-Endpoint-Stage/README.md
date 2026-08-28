@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-28 — merged to `dev-2.2` (`2bf8b373a`), gates re-verified by the orchestrator. Two owner notes in §7a. |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`2bf8b373a`, ordering invariant `e3e528629`). Both §7a owner notes resolved; DoD evidenced. |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -91,10 +91,10 @@ pnpm --filter @arcaai/vox-node gen:admin:check
 ```
 
 ## 5. Definition of Done
-- [ ] Endpoint sequence admin-ordered and extensible, not a literal
-- [ ] Timeout finalizes; every document locks
-- [ ] Feedback capture exists and is the only promotion path
-- [ ] Replay-compat green
+- [x] Endpoint sequence admin-ordered and extensible, not a literal — `consultation.endpoint.actions` descriptor; `alwaysActions` extends, `neverActions` vetoes; a document-destroying order is now refused (`e3e528629`)
+- [x] Timeout finalizes; every document locks — `test_endpoint_stage.py:157`; `summary.finalize` takes no `documentKey`, so a SOAP-only finalize is not expressible
+- [x] Feedback capture exists and is the only promotion path — inert until TASK-814 §2b builds the clinician acceptance surface
+- [x] Replay-compat green — 19 replay tests, patch era with the config operand evaluated first so `workflow.patched` is never called on old histories
 
 ## Best Practices — apply to every task here
 
@@ -375,3 +375,4 @@ exists.
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. |
 | 2026-08-28 | Implemented on `lane-812-endpoint`: D-10 ordered/extensible endpoint sequence, D-11 feedback capture, D-12 expiry finalizes (patched era), DD-3 lock-every-document, DD-8 single promotion path. All gates green; merge into `dev-2.2` pending (worktree). |
+| 2026-08-29 | Ordering invariant added: a sequence that locks documents before the note exists is refused server-side through a new descriptor-driven `validate` hook, with an advisory Studio warning. Owner note 1 closed. Owner note 2 carried to TASK-814 §2b. DoD checked with evidence. Gates green: applications 10457, api 4031, admin-console 2147, lint 40/40. |
