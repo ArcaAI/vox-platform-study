@@ -8,6 +8,7 @@
  */
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SafeSession } from '@/shared/auth/hooks';
 import { renderWithProviders } from '@/test/render';
@@ -149,5 +150,35 @@ describe('PersonaControl', () => {
       expect(calls.some((c) => c.url === '/api/auth/revoke-impersonation' && c.method === 'POST')).toBe(true);
     });
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  describe('TASK-814 accessibility — 0 axe violations', () => {
+    it('tenant admin, picker open with results', async () => {
+      stubFetch();
+      const { container } = renderWithProviders(
+        <PersonaControl
+          session={session({
+            isElevated: false,
+            user: { id: 't-1', username: 'ted-tenant', email: 't@hope.test', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' },
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /acting as yourself/i }));
+      await screen.findByText('dr-smith');
+      expect(await axe(container)).toHaveNoViolations();
+    });
+
+    it('no-admin-role degrade state', async () => {
+      stubFetch();
+      const { container } = renderWithProviders(
+        <PersonaControl
+          session={session({
+            isElevated: false,
+            user: { id: 'd-1', username: 'dana-doctor', email: 'd@hope.test', roles: ['DOCTOR'], tenantId: 'tenant-1' },
+          })}
+        />,
+      );
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

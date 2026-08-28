@@ -4,6 +4,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AssuranceStrip, CaseNoteColumn } from '../case-note-column';
@@ -445,5 +446,49 @@ describe('CaseNoteColumn — loop activity (realtime summaries)', () => {
   it('renders nothing when the loop has produced no events', () => {
     render(<CaseNoteColumn {...baseProps({ draft: null, loopActivity: [] })} />);
     expect(screen.queryByText(/assistant activity/i)).toBeNull();
+  });
+});
+
+describe('TASK-814 accessibility — 0 axe violations on every new/changed state', () => {
+  it('empty-first-flush failure state', async () => {
+    const { container } = render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          isRecording: true,
+          live: { consultationId: 'c-1', runningSummary: '', sections: [], entities: [], updatedAt: 'now', textFailed: true },
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('connection-error state (liveStatus === error)', async () => {
+    const { container } = render(
+      <CaseNoteColumn {...baseProps({ draft: null, isRecording: true, live: null, liveStatus: 'error', liveError: 'boom' })} />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('N-document view with a mix of empty/provisional/confirmed/locked sections', async () => {
+    const { container } = render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          isRecording: true,
+          documentSections: [
+            {
+              documentKey: 'soap_note',
+              sections: [
+                { sectionKey: 'subjective', title: 'Subjective', idx: 0, revision: 2, state: 'confirmed', content: 'Patient is stable.', annotations: [] },
+                { sectionKey: 'assessment', title: 'Assessment', idx: 1, revision: 1, state: 'provisional', content: 'Likely viral.', annotations: [] },
+              ],
+            },
+            { documentKey: 'discharge_summary', sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 0, state: 'empty', content: '', annotations: [] }] },
+          ],
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

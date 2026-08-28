@@ -5,6 +5,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { render } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConsultationsColumn, type ConsultationListRow } from '../consultations-column';
@@ -93,6 +94,12 @@ describe('ConsultationsColumn', () => {
       fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-first-time' } });
       fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
       await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-first-time', undefined));
+    });
+
+    it('0 axe violations on the New form with the patient-lookup datalist wired up', async () => {
+      const { container } = setup();
+      fireEvent.click(screen.getByRole('button', { name: /new/i }));
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 

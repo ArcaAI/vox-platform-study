@@ -118,7 +118,7 @@ function DocumentSectionsView({ documents }: { documents: DocumentView[] }) {
                     <SectionStateBadge state={section.state} />
                   </div>
                   {section.state === 'empty' ? (
-                    <div className="flex flex-col gap-1.5" aria-label={`Waiting for ${section.title}`}>
+                    <div className="flex flex-col gap-1.5" role="status" aria-label={`Waiting for ${section.title}`}>
                       <Skeleton className="h-4 w-full" />
                       <Skeleton className="h-4 w-2/3" />
                     </div>
@@ -651,7 +651,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             description="The note assistant hasn't produced a running summary for this session yet."
           />
         ) : isRecording ? (
-          <div className="flex flex-col gap-3" aria-label="Waiting for the first live summary">
+          <div className="flex flex-col gap-3" role="status" aria-label="Waiting for the first live summary">
             <Skeleton className="h-4 w-3/4" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-2/3" />
