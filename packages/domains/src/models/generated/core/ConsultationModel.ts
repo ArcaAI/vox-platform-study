@@ -32,6 +32,8 @@ export class Consultation extends BaseTenantDataModel {
   public ContextItems: Models.ContextItem[] | undefined;
   @VirtualDbProperty()
   public Highlights: Models.Highlight[] | undefined;
+  @VirtualDbProperty()
+  public DocumentSections: Models.DocumentSection[] | undefined;
 
   constructor(data: Consultation & BaseTenantDataModel) {
     super(data);
@@ -52,5 +54,6 @@ export class Consultation extends BaseTenantDataModel {
     this.ChildConsultations = data.ChildConsultations;
     this.ContextItems = data.ContextItems;
     this.Highlights = data.Highlights;
+    this.DocumentSections = data.DocumentSections;
   }
 }

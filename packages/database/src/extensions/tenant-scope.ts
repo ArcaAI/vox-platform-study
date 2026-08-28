@@ -195,6 +195,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-scoped and soft-delete EXEMPT (no resourceStatus column; segments
   // live/die with their parent transcript) — see MODELS_WITHOUT_SOFT_DELETE.
   'TranscriptSegment',
+  // TASK-811 — consultation.prisma. Per-section rows of a live-generated
+  // clinical document. Tenant-scoped and soft-delete EXEMPT for the same reason
+  // TranscriptSegment above is: sections live and die with their consultation's
+  // document. Deliberately NOT SYSTEM-shared — a section is PHI.
+  'DocumentSection',
   // harness.prisma — gate-edit mining store. A derived, append-only
   // learning corpus. Tenant-scoped and NOT SYSTEM-shared: one tenant's mined
   // exemplars must never surface in another tenant's few-shot retrieval. It is

@@ -61,6 +61,7 @@ export * from './TenantFactory';
 export * from './TenantPlanHistoryFactory';
 export * from './TenantUsageMeterFactory';
 export * from './TranscriptionJobFactory';
+export * from './DocumentSectionFactory';
 export * from './TranscriptSegmentFactory';
 export * from './UserDepartmentFactory';
 export * from './UserFactory';

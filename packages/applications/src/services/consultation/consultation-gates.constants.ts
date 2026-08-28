@@ -113,6 +113,29 @@ export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sess
 export const CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY = 'consultation.state.sessionTimeoutSweep.cron';
 
 /**
+ * TASK-811 — the PER-TENANT rollout flag for the realtime GRAPH EXECUTOR.
+ *
+ * The live flush historically ran a hardcoded 11-step sequence for every
+ * recording session regardless of what the tenant had authored. TASK-811
+ * replaces that with a walk over a compiled realtime lane — the highest-volume
+ * internal hop in the platform, re-anchoring every annotation offset and
+ * introducing per-section concurrency. So it lands behind a flag, and the legacy
+ * path stays executable until trajectory parity is proven on the same transcript.
+ *
+ * WHY `maxScope: 'tenant'` AND NOT `globalOnly`, unlike the two switches above.
+ * They are platform EMERGENCY STOPS — one operator action for the whole
+ * deployment. This is a ROLLOUT gate, and a rollout that can only be all-or-
+ * nothing is not a rollout: the whole point is to enable one tenant, compare its
+ * trajectories against the legacy engine, and only then widen. A row planted
+ * under a tenant therefore SHOULD govern it, which is exactly what the scope
+ * cascade already does (`system` row OFF, one `tenant` row ON).
+ *
+ * Defaults OFF, so `killSwitch: true` is honest: absence resolves to the legacy
+ * engine, which is both the fail-safe answer and today's behaviour.
+ */
+export const CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY = 'consultation.realtime.graphExecutor.enabled';
+
+/**
  * Code defaults — the last fallback in the cascade, and the single source of
  * truth shared by the descriptors and their consumers. Kill-switches default
  * OFF (fail-safe default; a kill-switch must not require a redeploy).
@@ -124,4 +147,5 @@ export const CONSULTATION_GATE_DEFAULTS = {
   [CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY]: false,
   [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,
   [CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY]: '*/15 * * * *',
+  [CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY]: false,
 } as const;
