@@ -157,11 +157,7 @@ export class ConsultationEndpointService extends BaseService {
    * and rewrites after losing defeats the check it just lost. The next endpoint attempt sees the
    * newer row.
    */
-  async finalizeDocuments(
-    tenantId: string,
-    consultationId: string,
-    request: FinalizeDocumentsRequest,
-  ): Promise<FinalizeDocumentsResponse> {
+  async finalizeDocuments(tenantId: string, consultationId: string, request: FinalizeDocumentsRequest): Promise<FinalizeDocumentsResponse> {
     // THE DD-3 LINE. Consultation-scoped, so every document is in scope by construction.
     const sections = await this.documentSectionRepository.findByConsultation(tenantId, consultationId);
 

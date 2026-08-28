@@ -817,10 +817,7 @@ export class HarnessInternalController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Record the consultation endpoint disposition (loop session.timeout action)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async recordSessionEndpoint(
-    @Param('id') id: string,
-    @Body() dto: RecordSessionEndpointRequest,
-  ): Promise<RecordSessionEndpointResponse> {
+  async recordSessionEndpoint(@Param('id') id: string, @Body() dto: RecordSessionEndpointRequest): Promise<RecordSessionEndpointResponse> {
     return this.cls.run(async () => {
       this.cls.set('tenantId', dto.tenantId);
       return this.consultationEndpointService.recordSessionEndpoint(dto.tenantId, id, dto);

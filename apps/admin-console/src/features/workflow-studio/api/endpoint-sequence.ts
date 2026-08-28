@@ -46,10 +46,12 @@ export const ENDPOINT_ACTION_LABELS: Record<EndpointActionKey, string> = {
 /** One-line rationale per step, shown under the label so an ordering decision is informed. */
 export const ENDPOINT_ACTION_HINTS: Record<EndpointActionKey, string> = {
   'livedoc.stop': 'Closes the audio session. Skipped automatically when the consultation never streamed audio.',
-  'session.timeout': 'Stamps whether the session ended normally or reached its idle bound — a note from a timed-out consultation must be identifiable as one.',
+  'session.timeout':
+    'Stamps whether the session ended normally or reached its idle bound — a note from a timed-out consultation must be identifiable as one.',
   'harness.finalize': 'Runs the note-generation workflow and queues the result for clinician review.',
   'summary.finalize': 'Locks EVERY document of the consultation, not just the SOAP note. Place it after the step that writes the note.',
-  'feedback.capture': 'Records clinician feedback and promotes any correction they accepted. The only path that can. Place it last — a feedback failure must never cost a finalized note.',
+  'feedback.capture':
+    'Records clinician feedback and promotes any correction they accepted. The only path that can. Place it last — a feedback failure must never cost a finalized note.',
 };
 
 /** The gateway's effective-value envelope for one key (subset this editor reads). */

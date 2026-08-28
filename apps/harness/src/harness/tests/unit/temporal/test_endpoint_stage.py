@@ -127,7 +127,12 @@ class _LoopHarness:
 
     def endpoint_calls(self) -> list[str]:
         """The endpoint activities the loop dispatched, in dispatch order."""
-        wanted = {"livedoc_stop", "record_session_endpoint", "finalize_documents", "capture_feedback"}
+        wanted = {
+            "livedoc_stop",
+            "record_session_endpoint",
+            "finalize_documents",
+            "capture_feedback",
+        }
         return [name for name in self.recorder.names() if name in wanted]
 
     def skipped(self) -> list:
@@ -291,7 +296,9 @@ class TestD10OrderedAndExtensible:
         withholding uses.
         """
         config = _endpoint_config()
-        stub = LoopStubConfig(config=config, failing_endpoint_actions={LOOP_ACTION_SUMMARY_FINALIZE})
+        stub = LoopStubConfig(
+            config=config, failing_endpoint_actions={LOOP_ACTION_SUMMARY_FINALIZE}
+        )
         async with _LoopHarness(stub) as h:
             handle = await h.start(_wf_input())
             await handle.signal(
