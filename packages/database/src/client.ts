@@ -132,6 +132,13 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // AudioRecording it has NO `resourceStatus` column — segments live and die
   // with their parent transcript rather than being independently soft-deleted.
   'TranscriptSegment',
+  // TASK-811 — DocumentSection is the per-section child table of a
+  // live-generated clinical document. Same posture as TranscriptSegment above:
+  // no `resourceStatus` column, because sections live and die with their
+  // consultation's document. Emptying a section is a CONTENT update under the
+  // section state machine (and requires a transcript contradiction), never a
+  // row delete — so `softDelete()`/`restore()` throw for this repository.
+  'DocumentSection',
   // AI usage metering plane. The ledger and everything
   // derived from it are APPEND-ONLY FACTS under hard retention (18 months raw,
   // rollups indefinite) rather than the ENABLED/DELETED soft-delete lifecycle,

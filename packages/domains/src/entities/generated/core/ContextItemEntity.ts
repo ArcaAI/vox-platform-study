@@ -30,6 +30,10 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   // caller.
   kindKey?: string | null;
   contextSchemaVersionId?: string | null;
+  // TASK-811 (OD-6) — WHICH clinical document this item belongs to, layered
+  // above `type` exactly as `kindKey` is. Null for every write that names no
+  // document, i.e. every historical caller.
+  documentKey?: string | null;
   qdrantSynced: boolean;
   qdrantSyncedAt?: Date | null;
   Consultation?: Entities.ConsultationEntity | null;
@@ -50,6 +54,7 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   private _kindKey?: IContextItemEntity['kindKey'];
+  private _documentKey?: IContextItemEntity['documentKey'];
   private _contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
   // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
   // ATTACHMENT lab/exam results can carry a `metadata.subType = 'LAB_RESULT'`
@@ -75,6 +80,7 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
     this._kindKey = init.kindKey;
+    this._documentKey = init.documentKey;
     this._contextSchemaVersionId = init.contextSchemaVersionId;
     this._metaData = init.metaData;
     this._qdrantSynced = init.qdrantSynced ?? false;
@@ -172,6 +178,14 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set kindKey(value: IContextItemEntity['kindKey']) {
     this.setProperty('kindKey', value);
+  }
+
+  get documentKey(): IContextItemEntity['documentKey'] {
+    return this._documentKey;
+  }
+
+  set documentKey(value: IContextItemEntity['documentKey']) {
+    this.setProperty('documentKey', value);
   }
 
   get contextSchemaVersionId(): IContextItemEntity['contextSchemaVersionId'] {

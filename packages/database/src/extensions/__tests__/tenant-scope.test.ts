@@ -140,7 +140,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (86): RateLimitRule (TASK-785).
     // +2 (88): DocumentTemplate + DocumentTemplateVersion (TASK-810) — the
     // clinical-document shape catalog, head + immutable version.
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // +1 (89): DocumentSection (TASK-811) — the per-section child table of a
+    // live-generated clinical document.
+    expect(TENANT_SCOPED_MODELS.size).toBe(89);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -88,6 +88,7 @@ import { TenantSttConfigRepository } from '../../../repositories/generated/core/
 import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
+import { DocumentSectionRepository } from '../../../repositories/generated/core/DocumentSectionRepository';
 import { TranscriptSegmentRepository } from '../../../repositories/generated/core/TranscriptSegmentRepository';
 import { UserDepartmentRepository } from '../../../repositories/generated/core/UserDepartmentRepository';
 import { UserMediaRepository } from '../../../repositories/generated/core/UserMediaRepository';
@@ -141,6 +142,8 @@ const repositories = [
   AudioRecordingRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
+  // TASK-811 — per-section rows of a live-generated clinical document
+  DocumentSectionRepository,
   // segment-level transcript structure (per-transcript annotation)
   TranscriptSegmentRepository,
   // Manual doctor highlighting

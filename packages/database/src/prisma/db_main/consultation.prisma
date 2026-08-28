@@ -54,6 +54,10 @@ model Consultation {
   // Manual doctor highlights anchored to this consultation's persisted
   // surfaces (virtual relation; FK lives on Highlight).
   Highlights   Highlight[]
+  // TASK-811 (OD-7) — the per-section rows of every clinical document being
+  // generated for this consultation (virtual relation; FK lives on
+  // DocumentSection).
+  DocumentSections DocumentSection[]
 
   // Indexes (no unique constraint - allows multiple visits same doctor/day)
   @@index([tenantId], name: "Consultation_tenantId_idx")
@@ -125,6 +129,21 @@ model ContextItem {
   kindKey                String?
   contextSchemaVersionId String?
 
+  // TASK-811 (OD-6) — WHICH clinical document this item belongs to, layered
+  // ABOVE `type` exactly as `kindKey` is. `type` keeps its meaning, so every
+  // existing row, query and encryption path is untouched and there is ZERO
+  // backfill: NULL means "the single, unnamed document", which is what every
+  // pre-TASK-811 row is.
+  //
+  // It exists because `ContextItemType.PRE_SUMMARY` is overloaded (D-22): the
+  // context-derived pre-summary and the live running-note snapshot are the same
+  // enum member, and with more than one document streaming per consultation
+  // (`soap`, `discharge`, ...) that ambiguity becomes unresolvable. The key is
+  // the tenant's own `DocumentTemplate.slug`.
+  //
+  // Soft reference (no FK), the same convention `kindKey` above uses.
+  documentKey            String?
+
   // Qdrant sync status (for semantic search). RESERVED, NO WRITER (
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
@@ -174,6 +193,9 @@ model ContextItem {
   // reverse lookup "which items were validated against this schema version"
   // that a schema-retirement check needs.
   @@index([consultationId, kindKey], name: "ContextItem_consultation_kindKey_idx")
+  // TASK-811 (OD-6) — the `documentKey` twin of the index above: "give me every
+  // item of document X for this consultation".
+  @@index([consultationId, documentKey], name: "ContextItem_consultation_documentKey_idx")
   @@index([contextSchemaVersionId], name: "ContextItem_contextSchemaVersionId_idx")
   // Composite for common queries
   @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
@@ -670,5 +692,112 @@ model TranscriptSegment {
   @@index([contextItemId], name: "TranscriptSegment_contextItemId_idx")
   // Tenant-leading composite for per-transcript reads.
   @@index([tenantId, contextItemId], name: "TranscriptSegment_tenant_item_idx")
+  @@schema("core")
+}
+
+// =============================================================================
+// DOCUMENT SECTION (TASK-811, OD-7)
+// =============================================================================
+// One section of one clinical document being generated for a consultation —
+// `(consultationId, documentKey, sectionKey)` is its identity.
+//
+// WHY A CHILD TABLE AND NOT JSON ON `ContextItem.metaData` (the deciding
+// argument is CONCURRENCY, not queryability):
+//
+//   The rule "a CONFIRMED section is never overwritten by a flush" needs
+//   per-section optimistic concurrency. `ContextItem.encryptedContent` is a
+//   single opaque blob behind a single `_version`, so on that shape EVERY flush
+//   contends with EVERY clinician edit, and two documents generating
+//   concurrently contend with each other. One `_version` per section is what
+//   makes the rule hold; there is no way to express it on a blob.
+//
+// SHAPE mirrors `TranscriptSegment` above, which already carries the exact span
+// anchors provenance needs (`idx`, `charStart`/`charEnd`, and time offsets
+// through the transcript segments it cites).
+//
+// PHI POSTURE differs from `TranscriptSegment` deliberately. A section's text is
+// NOT a slice of an already-encrypted parent — it is generated prose that exists
+// nowhere else — so it is stored here, encrypted, following
+// `ContextItem.encryptedContent Bytes?` (Vault-Transit `hope-phi` ciphertext,
+// decrypted on the fly). `annotations` and `provenance` are structural metadata
+// with SECTION-LOCAL offsets and carry no clinical text.
+//
+// Like `TranscriptSegment` it is TENANT-SCOPED but soft-delete EXEMPT: sections
+// live and die with their consultation's document, so there is no
+// `resourceStatus` column and the model is listed in MODELS_WITHOUT_SOFT_DELETE.
+// Emptying a section is a content update under the state machine (and needs a
+// transcript contradiction), never a row delete.
+model DocumentSection {
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  // Per-SECTION optimistic-concurrency token — the whole reason this is a table.
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant
+  tenantId String
+
+  // Parent consultation.
+  consultationId String
+  Consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+  // WHICH document (the tenant's `DocumentTemplate.slug`, e.g. `soap-note`,
+  // `discharge-summary`). Mirrors `ContextItem.documentKey`.
+  documentKey String
+  // WHICH section within that document (the compiled template's section key).
+  sectionKey  String
+  // Human-readable heading as compiled for this section, so a reader needs no
+  // template join to render the note.
+  title       String
+  // 0-based ordinal within the document — the render order.
+  idx         Int
+
+  // The section state machine (see `DocumentSectionState`).
+  state DocumentSectionState @default(EMPTY)
+
+  // Monotonic per-section revision. Advanced by every accepted write; the SSE
+  // `section.patch` carries it so a client can discard an out-of-order patch.
+  revision Int @default(0)
+
+  // Generated section prose. PHI: Vault-Transit ciphertext only, exactly like
+  // `ContextItem.encryptedContent` — there is no plaintext column.
+  encryptedContent  Bytes?
+  contentKeyVersion Int?
+
+  // Section-LOCAL annotation spans: entities, groundedness verdicts and flagged
+  // spans whose `start`/`end` index THIS section's content, never a concatenated
+  // running summary (§2b — a global offset is invalidated the moment any earlier
+  // section grows).
+  annotations Json? @db.JsonB
+  // Provenance anchors back to the transcript (`transcriptSegmentId` /
+  // `[charStart, charEnd)`), so a claim in the note can be traced to the turn it
+  // came from.
+  provenance  Json? @db.JsonB
+
+  // The IMMUTABLE `DocumentTemplateVersion` this section's shape was compiled
+  // from, pinned at write time so a later publish cannot retroactively
+  // restructure a document already produced. Soft reference (no FK), the same
+  // convention `ContextItem.contextSchemaVersionId` uses.
+  documentTemplateVersionId String?
+
+  // Clinician-touch record — set on the PROVISIONAL -> CONFIRMED transition.
+  confirmedAt DateTime?
+  confirmedBy String?
+  // Endpoint finalization — set on the -> LOCKED transition.
+  lockedAt DateTime?
+
+  // Audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (consultation, document, section) — the natural upsert key for a
+  // flush, and what makes a re-run idempotent.
+  @@unique([consultationId, documentKey, sectionKey], name: "DocumentSection_consultation_document_section_unique", map: "DocumentSection_consultation_document_section_key")
+  @@index([tenantId], name: "DocumentSection_tenantId_idx")
+  @@index([consultationId], name: "DocumentSection_consultationId_idx")
+  // Tenant-leading composite for "render document X of this consultation".
+  @@index([tenantId, consultationId, documentKey], name: "DocumentSection_tenant_consultation_document_idx")
   @@schema("core")
 }
