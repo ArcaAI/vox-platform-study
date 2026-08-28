@@ -59,10 +59,7 @@ function makeService(overrides: Record<string, unknown> = {}) {
   const eventEmitter = { emit: vi.fn(), emitAsync: vi.fn().mockResolvedValue([]) };
   const cls = { get: vi.fn().mockReturnValue(undefined), set: vi.fn() };
 
-  Object.assign(
-    { consultationRepository, documentSectionRepository, contextItemRepository, contextItemVersionRepository },
-    overrides,
-  );
+  Object.assign({ consultationRepository, documentSectionRepository, contextItemRepository, contextItemVersionRepository }, overrides);
 
   const service = new ConsultationEndpointService(
     consultationRepository as never,
@@ -108,10 +105,7 @@ describe('finalizeDocuments — DD-3: EVERY document locks, not just the SOAP no
 
   it('locks CONFIRMED sections as well as PROVISIONAL ones — a signed encounter freezes whole', async () => {
     const { service, documentSectionRepository } = makeService();
-    const sections = [
-      section('soap-note', 'subjective', DocumentSectionState.CONFIRMED),
-      section('soap-note', 'plan', DocumentSectionState.EMPTY),
-    ];
+    const sections = [section('soap-note', 'subjective', DocumentSectionState.CONFIRMED), section('soap-note', 'plan', DocumentSectionState.EMPTY)];
     documentSectionRepository.findByConsultation.mockResolvedValue(sections);
 
     await service.finalizeDocuments(TENANT, CONSULTATION, {});
@@ -214,9 +208,7 @@ describe('recordSessionEndpoint — how the session ended', () => {
     const { service, consultationRepository } = makeService();
     consultationRepository.findById.mockResolvedValue({ id: CONSULTATION, tenantId: 'other-tenant', metadata: null, version: 1 });
 
-    await expect(service.recordSessionEndpoint(TENANT, CONSULTATION, { reason: ENDPOINT_REASON_ENDED, sequence: [] })).rejects.toThrow(
-      /not found/i,
-    );
+    await expect(service.recordSessionEndpoint(TENANT, CONSULTATION, { reason: ENDPOINT_REASON_ENDED, sequence: [] })).rejects.toThrow(/not found/i);
   });
 });
 

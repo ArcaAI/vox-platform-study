@@ -46,7 +46,10 @@ function stubFetch(opts: { value?: unknown; version?: number; source?: string } 
         return Response.json({ user: { id: 'u-1', roles: ['SUPER_ADMIN'] }, isElevated: true });
       }
       if (call.method === 'GET' && call.url.startsWith(URL)) {
-        return Response.json({ key: KEY, tier: 'global-kv', value, source, version }, version > 0 ? { headers: { etag: `"${version}"` } } : undefined);
+        return Response.json(
+          { key: KEY, tier: 'global-kv', value, source, version },
+          version > 0 ? { headers: { etag: `"${version}"` } } : undefined,
+        );
       }
       if (call.method === 'PUT') {
         return Response.json({ key: KEY, tier: 'global-kv', value: call.body, scope: 'tenant', version: version + 1 });

@@ -20,11 +20,7 @@
  * silent empty stage.
  */
 import { describe, expect, it } from 'vitest';
-import {
-  CONSULTATION_ENDPOINT_ACTIONS_DEFAULT,
-  ENDPOINT_ELIGIBLE_ACTIONS,
-  resolveEndpointSequence,
-} from '../endpoint-sequence';
+import { CONSULTATION_ENDPOINT_ACTIONS_DEFAULT, ENDPOINT_ELIGIBLE_ACTIONS, resolveEndpointSequence } from '../endpoint-sequence';
 
 describe('resolveEndpointSequence — ORDER (D-10)', () => {
   it('runs the persisted list in the order it was authored', () => {
@@ -124,15 +120,14 @@ describe('resolveEndpointSequence — SUBTRACT (still supported, no longer the o
 
 describe('resolveEndpointSequence — audio scoping and degradation', () => {
   it('drops livedoc.stop when the consultation has no STREAM_AUDIO kind (unchanged behaviour)', () => {
-    expect(
-      resolveEndpointSequence({ configured: ['livedoc.stop', 'harness.finalize'], hasStreamAudio: false }),
-    ).toEqual(['harness.finalize']);
+    expect(resolveEndpointSequence({ configured: ['livedoc.stop', 'harness.finalize'], hasStreamAudio: false })).toEqual(['harness.finalize']);
   });
 
   it('keeps livedoc.stop when the consultation streams audio', () => {
-    expect(
-      resolveEndpointSequence({ configured: ['livedoc.stop', 'harness.finalize'], hasStreamAudio: true }),
-    ).toEqual(['livedoc.stop', 'harness.finalize']);
+    expect(resolveEndpointSequence({ configured: ['livedoc.stop', 'harness.finalize'], hasStreamAudio: true })).toEqual([
+      'livedoc.stop',
+      'harness.finalize',
+    ]);
   });
 
   it('an empty or malformed persisted value falls back to the platform default, never to an empty stage', () => {
@@ -146,9 +141,9 @@ describe('resolveEndpointSequence — audio scoping and degradation', () => {
   });
 
   it('drops an unknown key rather than dispatching it — the loop would only report it as skipped', () => {
-    expect(
-      resolveEndpointSequence({ configured: ['summary.finalize', 'not.an.action', 42 as never], hasStreamAudio: false }),
-    ).toEqual(['summary.finalize']);
+    expect(resolveEndpointSequence({ configured: ['summary.finalize', 'not.an.action', 42 as never], hasStreamAudio: false })).toEqual([
+      'summary.finalize',
+    ]);
   });
 
   it('an admin CAN empty the stage deliberately, by vetoing every entry', () => {

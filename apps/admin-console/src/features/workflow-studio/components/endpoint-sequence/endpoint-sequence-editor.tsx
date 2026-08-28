@@ -36,7 +36,7 @@
  * ETags, and preconditioning a tenant write on the platform row's version is a permanent 412.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
   Badge,
@@ -94,17 +94,26 @@ export function EndpointSequenceEditor({ scope }: EndpointSequenceEditorProps) {
   const save = usePutEndpointSequence();
 
   const stored = useMemo(() => normalize(query.data?.data.value), [query.data]);
-  const [sequence, setSequence] = useState<EndpointActionKey[]>([]);
+  const storedKey = stored.join(' ');
   const [toAdd, setToAdd] = useState('');
 
-  // Sync the draft from the server value whenever a fresh one arrives. Keyed on the SERIALISED
-  // sequence rather than the array identity, so a refetch that returns the same order does not
-  // discard an in-progress edit.
-  const storedKey = stored.join(' ');
-  useEffect(() => {
-    setSequence(stored);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- storedKey is the value identity
-  }, [storedKey]);
+  /**
+   * The draft, reset DURING RENDER when a different server value arrives — React's
+   * "adjusting state when a prop changes" recipe, not a `useEffect`.
+   *
+   * An effect would be the obvious shape and is the wrong one twice over: it renders the stale
+   * order once before correcting it, and `react-hooks/set-state-in-effect` refuses it outright.
+   * Comparing a stored KEY here re-renders immediately with no intermediate paint.
+   *
+   * The key is the SERIALISED sequence rather than the array identity, which is the load-bearing
+   * part: TanStack hands back a fresh array on every refetch, so identity-keyed resync would
+   * discard an admin's in-progress reorder every time the query refocused.
+   */
+  const [draft, setDraft] = useState<{ key: string; sequence: EndpointActionKey[] }>({ key: storedKey, sequence: stored });
+  if (draft.key !== storedKey) setDraft({ key: storedKey, sequence: stored });
+  const sequence = draft.sequence;
+  const setSequence = (next: EndpointActionKey[] | ((current: EndpointActionKey[]) => EndpointActionKey[])) =>
+    setDraft((current) => ({ key: current.key, sequence: typeof next === 'function' ? next(current.sequence) : next }));
 
   const available = ENDPOINT_ACTION_KEYS.filter((key) => !sequence.includes(key));
   const dirty = sequence.join(' ') !== storedKey;

@@ -56,7 +56,11 @@ from typing import Any
 from temporalio import activity
 
 from harness.services.api_client import ApiServiceError
-from harness.temporal.activities import capture_feedback, finalize_documents, record_session_endpoint
+from harness.temporal.activities import (
+    capture_feedback,
+    finalize_documents,
+    record_session_endpoint,
+)
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import bound_value, run_identity
 from harness.temporal.interpreter.nodes._shared import (
@@ -126,9 +130,11 @@ async def interpreter_session_timeout(payload: NodeActivityInput) -> NodeActivit
                 tenant_id=payload.tenant_id,
                 reason=reason,
                 idle_timeout_seconds=_optional_int(config.get("idleTimeoutSeconds")),
-                sequence=[s for s in sequence if isinstance(s, str)]
-                if isinstance(sequence, list)
-                else [],
+                sequence=(
+                    [s for s in sequence if isinstance(s, str)]
+                    if isinstance(sequence, list)
+                    else []
+                ),
                 user_id=identity.user_id,
                 job_id=identity.job_id,
             )
@@ -184,9 +190,7 @@ async def interpreter_summary_finalize(payload: NodeActivityInput) -> NodeActivi
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="finalize_documents_failed"
         )
-        return NodeActivityResult(
-            status="DEGRADED", reason=f"document finalization failed: {exc}"
-        )
+        return NodeActivityResult(status="DEGRADED", reason=f"document finalization failed: {exc}")
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(

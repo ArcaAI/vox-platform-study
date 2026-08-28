@@ -118,8 +118,7 @@ export class AcceptedCorrectionProposal {
   confidence?: number;
 
   @ApiProperty({
-    description:
-      'Promotion status. Only "ACCEPTED" is promotable — a proposal still marked PROPOSED is advisory and stays advisory (DD-8).',
+    description: 'Promotion status. Only "ACCEPTED" is promotable — a proposal still marked PROPOSED is advisory and stays advisory (DD-8).',
   })
   @IsString()
   @MaxLength(32)
@@ -137,7 +136,8 @@ export class CaptureFeedbackRequest {
   contextItemId?: string;
 
   @ApiPropertyOptional({
-    description: 'SHA-256 of the exact text the spans were measured against. A mismatch refuses every promotion rather than splicing into drifted text.',
+    description:
+      'SHA-256 of the exact text the spans were measured against. A mismatch refuses every promotion rather than splicing into drifted text.',
   })
   @IsOptional()
   @IsString()

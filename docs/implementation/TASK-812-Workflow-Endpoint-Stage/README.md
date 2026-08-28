@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Review` (worktree `lane-812-endpoint`, merge pending) |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -224,9 +224,113 @@ and the Studio ordering UI.
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 04, 05, 06. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 6. Implementation Summary
-_Not started._
+
+**Branch:** `lane-812-endpoint` (worktree). Base `dev-2.2` verified as an ancestor of HEAD before
+any work — `git merge-base --is-ancestor $(git rev-parse dev-2.2) HEAD` returned 0, so no reset was
+needed.
+
+### D-10 — the sequence is ORDERED and EXTENSIBLE, not a literal
+
+`endingActionsBase` is gone. The stage now resolves through a pure function,
+`resolveEndpointSequence` (`packages/applications/src/services/consultation/loop/endpoint-sequence.ts`),
+over four levers applied in this order:
+
+| Lever | Who sets it | Effect |
+|---|---|---|
+| `consultation.endpoint.actions` | platform admin, or a tenant override | ORDER + membership |
+| audio scoping | the consultation's own context schema | drops `livedoc.stop` with no STREAM_AUDIO kind |
+| `alwaysActions` | the department agent | **EXTENDS** — appends an endpoint-eligible action the list omits |
+| `neverActions` | the department agent | SUBTRACTS — the compliance veto, unchanged |
+
+The list is a `global-kv` descriptor with `maxScope: 'tenant'`
+(`settings-registry/descriptors/consultation-endpoint.descriptors.ts`) rather than a new
+`DepartmentAgent` column: registering a descriptor is the only step needed to make a key governed
+and writable, so the platform order, the tenant override, the write lane, cache invalidation and
+the settings-catalog surface arrive with it and **no migration is involved**.
+
+`alwaysActions` extends only with ENDPOINT-ELIGIBLE keys. That restriction is what keeps every
+pre-existing agent byte-identical: agents configured before this ticket carry per-kind actions
+there (`client.emit` above all), and appending those to the endpoint stage would silently change
+what happens when their consultations close.
+
+Platform default, in dispatch order — and the order is the argument:
+`livedoc.stop` → `session.timeout` → `harness.finalize` → `summary.finalize` → `feedback.capture`.
+Finalize (which LOCKS) runs before feedback, so a feedback failure can never cost a clinician the
+note that was already produced.
+
+### D-11 / D-12 / DD-3 / DD-8
+
+| # | What landed |
+|---|---|
+| **D-11** | `feedback.capture` exists — node type, `interpreter.feedback_capture` activity, gateway route, service method. It had no counterpart anywhere before. |
+| **D-12** | Expiry RUNS the endpoint sequence. `ConsultationLoopConfig.endpoint_on_timeout` defaults FALSE (so every pre-812 recorded config deserialises with the behaviour off and `workflow.patched` is never called — the frozen replay fixtures reproduce their recorded command sequences); the gateway sends `true`. Patch era `task-812-endpoint-on-timeout`, config operand FIRST, exactly like `task-664-reasoning` and `task-685-idle-timeout`. A CANCEL still abandons — that one is an explicit statement that the output is unwanted. |
+| **DD-3** | `summary.finalize` locks EVERY document. `finalizeDocuments` reads `findByConsultation(tenantId, consultationId)`, and there is no `documentKey` on the payload, the DTO or the route — the scope cannot be narrowed by a caller. `lockConfirmedOnly` narrows by STATE, never by document. |
+| **DD-8** | `captureFeedback` is the only promotion path. An accepted proposal is re-verified against the raw transcript (digest + span) and written as a NEW `ContextItemVersion` (`changeReason: 'correction'`, `changeSource: 'feedback.capture:<digest>'`) layered over it — the raw item is never mutated. `consultation.proposeCorrections` stays `externalWrite: false`; in the port table `feedback.capture` is the only `edits`-consuming node that also writes. |
+
+### Idempotency (all three are `lane: 'durable'`, so Temporal retries them)
+
+| Activity | Convergence |
+|---|---|
+| `record_session_endpoint` | UPSERT of one `metadata.endpoint` block; an unchanged block reports `changed: false` and writes nothing |
+| `finalize_documents` | a state TRANSITION — a section already `LOCKED` is skipped, never re-locked with a fresh `lockedAt` (which would report the encounter as finalized at whatever moment the last retry landed) |
+| `capture_feedback` | a DETERMINISTIC key over the sorted accepted proposal ids; a retry finds its own prior version and promotes nothing |
+
+A failing endpoint action DEGRADES and the sequence continues, reported on the `action.skipped`
+feed under a new `endpoint_action_failed` reason. Letting an exhausted retry fail the workflow
+would mean a feedback-endpoint outage costing a clinician an already-finalized note.
+
+### Files
+
+**New:** `packages/applications/src/services/consultation/endpoint/**` (service, module, DTOs,
+constants, tests) · `.../consultation/loop/endpoint-sequence.ts` (+ tests) ·
+`.../settings-registry/descriptors/consultation-endpoint.descriptors.ts` ·
+`apps/harness/src/harness/temporal/interpreter/nodes/consultation_endpoint.py` ·
+`apps/harness/src/harness/tests/unit/temporal/test_endpoint_stage.py` ·
+`packages/workflow-contract/src/__tests__/endpoint-node-registry.test.ts` ·
+`apps/admin-console/src/features/workflow-studio/api/endpoint-sequence.ts` ·
+`.../components/endpoint-sequence/**` (editor + tests, incl. an axe pass).
+
+**Modified:** `node-registry.ts` / `node-ports.ts` / `node-config-schemas.ts` + the two key lists
+and the parity fixture · harness `registry.py` / `activities.py` / `models.py` / `workflows.py` /
+`api_client.py` / `_loop_stubs.py` · `loop-config.service.ts` + its response DTO ·
+`departmentAgent/constants.ts` (`AGENT_ACTION_KEYS` 7 → 10) · `harness-internal.controller.ts` +
+`consultation.module.ts` · the console's `agent-loop-config-fields.ts` mirror · seeds
+`21-workflow-definition.ts` + `23-arcaai-workflow-authoring.generated.ts` ·
+`apps/api/route-manifest.json`.
+
+### Cross-language parity (both sides moved together)
+
+Three node types added ⇒ `registryChecksum()` moved ⇒ every pinned artifact regenerated:
+`node-registry-parity.test.ts` key list, `test_node_registry_parity.py` key list, and
+`docs/implementation/TASK-734-*/contracts/node-registry.snapshot.json` (33 → 36 entries).
+`node-config-schemas.test.ts`'s exact key list too — `passthrough` remains the only schema-less
+node type.
+
+Seeds regenerated **by script**, never by hand:
+`regen-arcaai-consultation-workflow-seed.ts` (writes) then `regen-workflow-definition-seed.ts`
+(drift detector) until `=== DRIFT: 0 ===`. New `REGISTRY_CHECKSUM`
+`4d90110e06d825ce2e017a9fa042687e54d39d1431b21b3a6dad68a8128d916d`.
+
+### Nothing touched that was fenced
+
+No `packages/database` schema or migration. No `packages/agentic-sdk-v2`. Nothing inside the compat
+fence. `summary.service.ts` and `pre-summary.processor.ts` (OD-9) were not modified at all.
+
+### Evidence
+
+```
+workflow-contract    19 files, 736 tests passed
+applications         599 files, 10450 passed | 4 skipped
+harness (pytest)     1664 passed          (incl. 19 replay-compat, 9 new endpoint-stage)
+api                  261 files, 4031 passed | 4 skipped   (api:build green)
+admin-console        253 files, 2144 passed; build green; lint green (--max-warnings 0)
+database             68 files, 1675 passed
+pnpm lint            40/40 tasks successful
+api:openapi:check    OK    api:portal:check no drift    gen:admin:check no drift
+```
 
 ## 7. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. |
+| 2026-08-28 | Implemented on `lane-812-endpoint`: D-10 ordered/extensible endpoint sequence, D-11 feedback capture, D-12 expiry finalizes (patched era), DD-3 lock-every-document, DD-8 single promotion path. All gates green; merge into `dev-2.2` pending (worktree). |

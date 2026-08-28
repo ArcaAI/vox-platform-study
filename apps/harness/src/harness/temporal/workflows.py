@@ -72,14 +72,14 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.claim_check import ClaimCheckRef
     from harness.temporal.models import (
         DEFAULT_GROUNDEDNESS_THRESHOLD,
+        ENDPOINT_REASON_ENDED,
+        ENDPOINT_REASON_TIMED_OUT,
         HARNESS_DRAFT_PHASE_EARLY,
         HARNESS_PROGRESS_FAILED_LABEL,
         HARNESS_PROGRESS_FAILED_STAGE,
         HARNESS_PROGRESS_STAGES,
         HARNESS_PROGRESS_TERMINAL_LABEL,
         HARNESS_PROGRESS_TERMINAL_STAGE,
-        ENDPOINT_REASON_ENDED,
-        ENDPOINT_REASON_TIMED_OUT,
         LOOP_ACTION_CLIENT_EMIT,
         LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
         LOOP_ACTION_FEEDBACK_CAPTURE,
@@ -108,6 +108,7 @@ with workflow.unsafe.imports_passed_through():
         AssembleInput,
         CallMcpToolInput,
         CancelLoopSignal,
+        CaptureFeedbackInput,
         ConsultationEndingSignal,
         ConsultationLoopConfig,
         ConsultationLoopState,
@@ -123,13 +124,12 @@ with workflow.unsafe.imports_passed_through():
         FetchLoopConfigInput,
         FetchPolicyInput,
         FinalizeAssuranceInput,
+        FinalizeDocumentsInput,
         GenerateInput,
         HarnessDocWorkflowInput,
         HarnessDocWorkflowResult,
         HarnessGateConfig,
         HarnessPolicy,
-        CaptureFeedbackInput,
-        FinalizeDocumentsInput,
         LiveDocControlInput,
         LoopFinalizeRequest,
         McpServerConfig,
@@ -2196,9 +2196,7 @@ class ConsultationLoopWorkflow:
                     # `endpoint_on_timeout=False`, so `workflow.patched` is never
                     # CALLED, no marker is looked for, and the frozen replay
                     # fixtures reproduce their recorded command sequence.
-                    if config.endpoint_on_timeout and workflow.patched(
-                        _PATCH_ENDPOINT_ON_TIMEOUT
-                    ):
+                    if config.endpoint_on_timeout and workflow.patched(_PATCH_ENDPOINT_ON_TIMEOUT):
                         # The phase stays TIMED_OUT throughout. Running the
                         # sequence must not disguise an expiry as a normal
                         # ending, or the bound becomes invisible to every

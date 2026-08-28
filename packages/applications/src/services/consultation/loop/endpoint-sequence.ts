@@ -67,13 +67,7 @@ export const CONSULTATION_ENDPOINT_ACTIONS_KEY = 'consultation.endpoint.actions'
  * strings as the `trigger: 'on-end'` node keys in `@arcaai/workflow-contract` — one vocabulary
  * whether the consultation runs on the legacy loop or on an authored graph.
  */
-export const ENDPOINT_ELIGIBLE_ACTIONS = [
-  'livedoc.stop',
-  'harness.finalize',
-  'session.timeout',
-  'summary.finalize',
-  'feedback.capture',
-] as const;
+export const ENDPOINT_ELIGIBLE_ACTIONS = ['livedoc.stop', 'harness.finalize', 'session.timeout', 'summary.finalize', 'feedback.capture'] as const;
 
 export type EndpointActionKey = (typeof ENDPOINT_ELIGIBLE_ACTIONS)[number];
 
@@ -140,8 +134,7 @@ function eligibleInOrder(values: readonly unknown[]): string[] {
  * in `LoopConfigService` (which already resolves the idle bound the same way) rather than here.
  */
 export function resolveEndpointSequence(input: ResolveEndpointSequenceInput): string[] {
-  const source =
-    Array.isArray(input.configured) && input.configured.length > 0 ? input.configured : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
+  const source = Array.isArray(input.configured) && input.configured.length > 0 ? input.configured : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
 
   let sequence = eligibleInOrder(source);
   // A configured list of nothing but junk is indistinguishable, to a consultation, from no list
