@@ -662,8 +662,8 @@ README with scope boundary, TDD test list, verification commands, per-layer chec
 | 811 | [Multi-Document Realtime Runtime](../TASK-811-Multi-Document-Realtime-Runtime/README.md) | **`Completed`** |
 | 812 | [Workflow Endpoint Stage](../TASK-812-Workflow-Endpoint-Stage/README.md) | **`Completed`** |
 | 813 | [SDK Workflow Selection](../TASK-813-SDK-Workflow-Selection/README.md) | `Review` — merged; one open follow-on: **selectable-set discovery** (813 §8), owner decision needed |
-| 814 | [Playground Clinical Surface](../TASK-814-Playground-Clinical-Surface/README.md) | `Pending` — D-25 lane can start now |
-| 815 | [`DepartmentAgent` Retirement](../TASK-815-DepartmentAgent-Retirement/README.md) | `Pending` — unblocked; gated on 809 + 811 landing |
+| 814 | [Playground Clinical Surface](../TASK-814-Playground-Clinical-Surface/README.md) | **`Completed`** |
+| 815 | [`DepartmentAgent` Retirement](../TASK-815-DepartmentAgent-Retirement/README.md) | **`Completed`** |
 | 816 | [Legacy Config Retirement](../TASK-816-Legacy-Config-Retirement/README.md) | `Pending` |
 
 ### 7.2 Sequencing
