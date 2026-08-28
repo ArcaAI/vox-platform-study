@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Review` — gates green on `lane-811-runtime`; merge into `dev-2.2` pending (worktree) |
 | **Type** | `refactor` + `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -310,9 +310,77 @@ call, stop and report rather than choosing.
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 02, 03, 04, 05. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 7. Implementation Summary
-_Not started._
+
+### What landed
+
+| # | Task | Where |
+|---|---|---|
+| 1 | `DocumentSection` + `DocumentSectionState` enum + hand-authored trio | `packages/database/src/prisma/db_main/{consultation,enums}.prisma`, `packages/domains/src/{entities,factories,mappers,repositories}/generated/core/DocumentSection*` |
+| 2 | `ContextItem.documentKey` + index, stamped on the durable snapshot (closes D-22) | same schema file; writer in `persistDurableSnapshot` |
+| 3 | Executor walks the lane in declared order; stage members run concurrently | `realtime/realtime-lane.ts`, `realtime/realtime-executor.ts` |
+| 4 | Disabled node skipped; per-node degrade with a TYPED event | `realtime-executor.ts` |
+| 5 | Inputs resolve by declared port (`outputKey`), retiring `delta \|\| transcript` | `resolveBoundInputs` |
+| 6 | **Anti-laundering** enforced by a port-type check on every edge | `resolveBoundInputs` + `__tests__/realtime-executor.test.ts` |
+| 7 | `LIVE_TOOL_KEYS` → node dispatch (`vitals` stays a projection) | `realtime/realtime-node-registry.ts` |
+| 8 | Per-section state + per-section OCC | `realtime/section-store.ts` |
+| 9 | Deletion requires a transcript contradiction | `section-store.ts` |
+| 10 | Per-node budget / retry / staleness | `realtime-executor.ts` |
+| 11 | Guard memo on `(guard, config, inputHash)` | `realtime/guard-memo.ts` |
+| 12 | `section.patch` payload + offset re-anchoring | `realtime/dto/section-patch.dto.ts`, `realtime/reanchor-annotations.ts` |
+| 13 | **Substrate gate on `start()`** — the root cause | `ensureSubstrateResolved` in `live-documentation.service.ts` |
+| 14 | `consultation.captureBinding` becomes a real producer of `transcript` | `CaptureBindingHandler` |
+| 15 | Trajectory parity legacy ↔ graph | `__tests__/live-documentation.substrate-gate.test.ts` |
+
+### Decisions taken, with their reasons
+
+- **Lane membership is `REALTIME_NODE_TYPES`, NOT `WorkflowNodeDescriptor.lane`.** Flipping
+  `lane: 'realtime'` on the three consultation nodes is *refused by the contract package's own
+  rule*: `nodeDescriptorContractProblems` declares a realtime node MUST NOT be
+  `externalWrite: true`, and both `consultation.realtimeSummary` and
+  `consultation.extractEntities` are. Independently, nothing reads `lane` yet — the durable
+  interpreter that would have to SKIP a realtime node is `apps/harness/**`, out of this lane's
+  boundary. Flipping the flag without that half would declare a split no runtime enforces, and for
+  `realtimeSummary` (`externalWrite: true`) that means two engines writing one document.
+  **Consequence: `registryChecksum()` did NOT move and no seed was regenerated.**
+  Reconciling `descriptor.lane` with reality is a coordinated `workflow-contract` + `apps/harness`
+  change and needs an owner decision.
+- **No sys-events on section writes, so no `ResourceType` addition.** The entire live plane
+  already persists through repositories without broadcasting (`persistDurableSnapshot` writes
+  `ContextItem` directly). Per-section-per-flush audit rows on the highest-volume hop in the
+  platform would flood the audit log. Recorded as a deliberate call, not an oversight.
+- **`DocumentSection` is soft-delete EXEMT**, mirroring `TranscriptSegment`: sections live and die
+  with their consultation's document, and emptying one is a content update under the state machine
+  (which additionally requires a transcript contradiction), never a row delete.
+- **The per-tenant flag is `maxScope: 'tenant'`, not `globalOnly`.** The two existing consultation
+  kill-switches are platform emergency stops; this is a ROLLOUT gate, and a rollout that can only
+  be all-or-nothing is not one.
+- **A flush that loses the compare-and-set LOSES.** It does not re-read and rewrite — that would
+  defeat the check it just lost, which is how an OCC guard becomes decorative.
+
+### Known follow-ups (not defects introduced here)
+
+1. `descriptor.lane` reconciliation + the harness-side skip (owner call — see above).
+2. `sttPipelineId` is resolved upstream by `ConsultationWorkflowDispatchService` but not threaded
+   into `POST :id/recording/start`; the capture node therefore reports `pipelineId: null`. That is
+   observability only — the transcript it publishes is the pipeline's output either way. Threading
+   it is a request-DTO change (and the five regenerated artifacts).
+3. `DocumentSection` has no REST surface. Clinician edits go through
+   `DocumentSectionStore.applyClinicianEdit`, unit-tested; the editing route belongs with the
+   endpoint-actions ticket (TASK-812) or the console lane.
+
+### Evidence
+
+```
+packages/database   68 files / 1675 tests passed
+packages/domains   156 files / 1873 passed (build: tsc clean)
+packages/applications 597 files / 10397 passed (build: tsc clean)
+apps/api           261 files / 4031 passed (pnpm api:build: 12/12 tasks)
+pnpm lint          40/40 tasks successful
+gen:model/entity/factory :check — no drift, schema coverage OK
+```
 
 ## 8. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-6, OD-7, DD-3, DD-4, DD-7. |
+| 2026-08-28 | Implemented on `lane-811-runtime`. All 15 tasks landed; substrate gate closes the root cause; trajectory parity demonstrated. Two owner-call items recorded rather than worked around (registry `lane`, section REST surface). Dev-DB sync PENDING — orchestrator-owned. |
