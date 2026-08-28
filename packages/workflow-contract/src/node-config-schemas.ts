@@ -198,7 +198,8 @@ const EVAL_GATE_PROPERTY = Object.freeze({
     },
     enabled: {
       type: 'boolean',
-      description: 'OD-11 — the tenant-admin toggle. Disabled means an approval proceeds with a recorded warning, exactly as "no golden set" always did.',
+      description:
+        'OD-11 — the tenant-admin toggle. Disabled means an approval proceeds with a recorded warning, exactly as "no golden set" always did.',
     },
   },
   description: 'OD-11 — the eval gate on this node’s bound prompt template.',
