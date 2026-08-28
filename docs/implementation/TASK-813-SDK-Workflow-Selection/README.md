@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`56f98622f`). Declared scope delivered; one follow-on in §8 needs an owner decision (selectable-set discovery). |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -393,3 +393,5 @@ effect — dispatch is create-only. Both cases are logged and the DTO documents 
 not to add a route-specific rejection this ticket does not own; that is the right call, but it
 means a caller can send a selector, receive `200`, and be governed by something else. If that
 matters to an integrator it needs a deliberate 409, not a silent no-op.
+
+| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4034, vox 4235, gen:admin no drift (53 areas/414 routes/379 schemas), portal no drift (admin 618 / business 181 ops), lint 40/40. Authorization gate verified by the orchestrator to run before both the existence lookup and the write; 404 hides existence, 403 only where `GET /workflows` already discloses. `inputSchema` absence independently confirmed against the `WorkflowDefinition` columns. |
