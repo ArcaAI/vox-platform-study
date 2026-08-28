@@ -660,8 +660,8 @@ README with scope boundary, TDD test list, verification commands, per-layer chec
 | 809 | [Workflow Node Contract](../TASK-809-Workflow-Node-Contract/README.md) | **`Completed`** |
 | 810 | [Template / Shape Catalog](../TASK-810-Template-Shape-Catalog/README.md) | **`Completed`** |
 | 811 | [Multi-Document Realtime Runtime](../TASK-811-Multi-Document-Realtime-Runtime/README.md) | **`Completed`** |
-| 812 | [Workflow Endpoint Stage](../TASK-812-Workflow-Endpoint-Stage/README.md) | `In Progress` — next |
-| 813 | [SDK Workflow Selection](../TASK-813-SDK-Workflow-Selection/README.md) | `Pending` |
+| 812 | [Workflow Endpoint Stage](../TASK-812-Workflow-Endpoint-Stage/README.md) | **`Completed`** |
+| 813 | [SDK Workflow Selection](../TASK-813-SDK-Workflow-Selection/README.md) | `Pending` — next |
 | 814 | [Playground Clinical Surface](../TASK-814-Playground-Clinical-Surface/README.md) | `Pending` — D-25 lane can start now |
 | 815 | [`DepartmentAgent` Retirement](../TASK-815-DepartmentAgent-Retirement/README.md) | `Pending` — unblocked; gated on 809 + 811 landing |
 | 816 | [Legacy Config Retirement](../TASK-816-Legacy-Config-Retirement/README.md) | `Pending` |
