@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — implemented on worktree branch `lane-814-playground`, gates green, merge into `dev-2.2` pending (orchestrator) |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`daba7c13f`), contract artifacts regenerated (`1079767aa`). Three runtime verifications remain outstanding — see §9. |
 | **Type** | `feature` + `bugfix` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -332,3 +332,25 @@ separate out-of-scope task rather than fixed here.
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Re-scoped by OD-2; D-16 withdrawn as a defect. |
 | 2026-08-29 | Implemented on `lane-814-playground` (worktree off `dev-2.2`@`55555d988`): D-25 impersonation wiring (827a1e1c1), D-17/D-18/§2b promotion chain across TS+Python (f0fd2a09e), error.tsx×5 + patient lookup (3760505fd), DD-3 N-document rendering (0aaee03a5), axe accessibility scans (1b8429f63). All gates green: `@arcaai/admin-console` typecheck/lint/build/test (272 playground tests + full suite 2165), `@arcaai/applications` build/test (10457 tests), `apps/api` build + `pnpm test:unit` (21363 tests), harness `ruff`/`mypy`/pytest (1664 tests) + replay-compat (19 tests). Merge into `dev-2.2` pending — left in the worktree per the close-out protocol. |
+
+## 9. Outstanding verification — recorded, NOT waived
+
+Three checks this ticket's own Definition of Done calls for were not performed, each for a stated
+reason. They are listed here so nobody reads "Completed" as "fully proven at runtime".
+
+| Not done | Why | What would close it |
+|---|---|---|
+| Live Playwright e2e | Needs `test:up:api` plus a destructive-by-default test-DB reset against shared test infra that a sibling lane was using at the time | `pnpm setup:test` → `pnpm test:up:api` → `pnpm test:e2e` on a quiet tree |
+| Browser click-through of the playground | `preview_start` launched `nest start` from the PRIMARY checkout, not the lane's worktree — it would have verified the wrong code and risked a schema-mismatched write to shared dev Postgres. The agent stopped rather than retry with a hand-started server. `next-dev-loop`'s `agent-browser` floor is also not installed here | A `next dev` pass against the merged tree now that the lanes are done |
+| Both-themes visual check | Verified **by construction** — every new element uses only semantic tokens already proven to exist in light and dark (`bg-ai`, `text-success`, `border-destructive`). No browser was opened | A visual pass in both themes alongside the click-through |
+
+The axe scans WERE run (0 violations on every new/changed state, with two real
+`aria-prohibited-attr` violations found and fixed). Five further pre-existing
+`aria-label`-on-bare-`<div>` instances in `case-note-column.tsx` sit in untouched code paths and
+were deliberately left rather than folded into this diff.
+
+**Judgement:** the agent declining to verify against the wrong checkout was correct — a green
+result from the primary checkout would have been worse than no result, because it would have looked
+like evidence. Recording the gap is the honest close.
+
+| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4036, admin-console 2198, harness 1668 (94% cov), lint 40/40; portal/openapi/gen:admin all no-drift after regeneration. D-25 premise independently verified by the orchestrator — the gateway own-tenant guard at `auth.controller.ts:712-719` was NOT modified, only routed to. Three runtime verifications outstanding (§9). |
