@@ -41,6 +41,7 @@ with workflow.unsafe.imports_passed_through():
         apply_redaction,
         assemble_prompt,
         call_mcp_tool,
+        capture_feedback,
         document_extract_text,
         emit_loop_event,
         escalate_gate,
@@ -48,6 +49,7 @@ with workflow.unsafe.imports_passed_through():
         fetch_loop_config,
         fetch_policy,
         finalize_assurance,
+        finalize_documents,
         generate,
         livedoc_start,
         livedoc_stop,
@@ -58,6 +60,7 @@ with workflow.unsafe.imports_passed_through():
         plan_reasoning,
         record_adjudication,
         record_gate_decision,
+        record_session_endpoint,
         report_progress,
         retract_draft,
         retrieve_context,
@@ -75,12 +78,17 @@ with workflow.unsafe.imports_passed_through():
         HARNESS_PROGRESS_STAGES,
         HARNESS_PROGRESS_TERMINAL_LABEL,
         HARNESS_PROGRESS_TERMINAL_STAGE,
+        ENDPOINT_REASON_ENDED,
+        ENDPOINT_REASON_TIMED_OUT,
         LOOP_ACTION_CLIENT_EMIT,
         LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
+        LOOP_ACTION_FEEDBACK_CAPTURE,
         LOOP_ACTION_HARNESS_FINALIZE,
         LOOP_ACTION_LIVEDOC_START,
         LOOP_ACTION_LIVEDOC_STOP,
         LOOP_ACTION_NLP_EXTRACT_ENTITIES,
+        LOOP_ACTION_SESSION_TIMEOUT,
+        LOOP_ACTION_SUMMARY_FINALIZE,
         LOOP_ACTION_VISION_EXTRACT_TEXT,
         LOOP_EVENT_ACTION_DISPATCHED,
         LOOP_EVENT_ACTION_SKIPPED,
@@ -91,6 +99,7 @@ with workflow.unsafe.imports_passed_through():
         LOOP_SKIP_BUDGET_EXHAUSTED,
         LOOP_SKIP_CYCLE_DETECTED,
         LOOP_SKIP_DEPTH_CAP,
+        LOOP_SKIP_ENDPOINT_ACTION_FAILED,
         LOOP_SKIP_SPECIALIST_BUDGET,
         LOOP_SKIP_UNSUPPORTED_ACTION,
         PRIMARY_ONLY_OUTPUT_KINDS,
@@ -119,6 +128,8 @@ with workflow.unsafe.imports_passed_through():
         HarnessDocWorkflowResult,
         HarnessGateConfig,
         HarnessPolicy,
+        CaptureFeedbackInput,
+        FinalizeDocumentsInput,
         LiveDocControlInput,
         LoopFinalizeRequest,
         McpServerConfig,
@@ -128,6 +139,7 @@ with workflow.unsafe.imports_passed_through():
         PlanLoopInput,
         RecordAdjudicationInput,
         RecordGateInput,
+        RecordSessionEndpointInput,
         RegenFeedback,
         ReportProgressInput,
         RetractDraftInput,
@@ -1716,7 +1728,34 @@ LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
     LOOP_ACTION_NLP_EXTRACT_ENTITIES: LoopActionSpec(
         key=LOOP_ACTION_NLP_EXTRACT_ENTITIES, implemented=True, derives_context=True
     ),
+    # TASK-812 — the ENDPOINT STAGE. All three are `lifecycle=True`: they are driven by the
+    # consultation's END, never by a context subscription, so they are counted against the
+    # action budget but never BLOCKED by it. Finalizing a note and capturing the clinician's
+    # feedback must happen even on a run that overspent — the same argument that already
+    # exempted `livedoc.stop` and `harness.finalize`.
+    #
+    # These keys did not exist in any recorded history before this ticket, which is what makes
+    # the `_run_action` branch below safe WITHOUT a patch era: replaying an old loop history can
+    # never reach it, because no old `ending_actions` list contains one of these strings. The
+    # thing that DOES need an era is running the ending actions on a TIMEOUT (D-12) — see
+    # `_PATCH_ENDPOINT_ON_TIMEOUT`.
+    LOOP_ACTION_SESSION_TIMEOUT: LoopActionSpec(
+        key=LOOP_ACTION_SESSION_TIMEOUT, implemented=True, lifecycle=True
+    ),
+    LOOP_ACTION_SUMMARY_FINALIZE: LoopActionSpec(
+        key=LOOP_ACTION_SUMMARY_FINALIZE, implemented=True, lifecycle=True
+    ),
+    LOOP_ACTION_FEEDBACK_CAPTURE: LoopActionSpec(
+        key=LOOP_ACTION_FEEDBACK_CAPTURE, implemented=True, lifecycle=True
+    ),
 }
+
+# The ENDPOINT STAGE's three action keys, as a set for the dispatch branch. Kept next to the
+# registry rather than derived from `LoopActionSpec` so the dispatch surface is greppable: these
+# are exactly the keys `_run_endpoint_action` serves.
+_ENDPOINT_ACTIONS = frozenset(
+    {LOOP_ACTION_SESSION_TIMEOUT, LOOP_ACTION_SUMMARY_FINALIZE, LOOP_ACTION_FEEDBACK_CAPTURE}
+)
 
 # Activity budgets for the loop. All three side effects are best-effort by
 # contract (the activities swallow their own errors), so retries only cover
@@ -1789,6 +1828,34 @@ _PATCH_REASONING = "task-664-reasoning"
 # no `if bounded: ... else: ...` fork that could drift between the two.
 # ---------------------------------------------------------------------------
 _PATCH_IDLE_TIMEOUT = "task-685-idle-timeout"
+
+# ---------------------------------------------------------------------------
+# D-12 — the ENDPOINT STAGE runs on EXPIRY
+#
+# Before this ticket the idle bound ABANDONED the run: on expiry the loop set
+# `TIMED_OUT`, published `loop.timed_out`, and deliberately did NOT run the
+# ending actions. The stated reason was that `harness.finalize` "would fabricate
+# a clinical note from a truncated transcript and queue it for a clinician".
+#
+# That reasoning trades a DEFINITE loss against a HYPOTHETICAL one. A
+# consultation that times out has real recorded clinical work in it; abandoning
+# the run means that work is never finalized, never locked, and never reaches a
+# clinician at all. The note a truncated transcript produces goes to the same
+# human gate every other note goes to, where it can be rejected in seconds. One
+# failure mode is recoverable by a person; the other is silent.
+#
+# So expiry now runs the sequence — and that is a COMMAND-SEQUENCE CHANGE, which
+# needs its own era, built exactly like the two above:
+#
+#   1. `endpoint_on_timeout` defaults to False on `ConsultationLoopConfig`, so
+#      an old recorded config deserialises with the behaviour OFF.
+#   2. The config operand comes FIRST in the gate, so on those histories
+#      `workflow.patched` is never CALLED and no marker is looked for.
+#
+# Reversing those operands would still be correct for a fresh run and would
+# still fail every frozen replay fixture. Order matters.
+# ---------------------------------------------------------------------------
+_PATCH_ENDPOINT_ON_TIMEOUT = "task-812-endpoint-on-timeout"
 
 # Which activity backs each derived-context action. A MAP rather than a chain of
 # `elif`s, so adding a fourth deriver is a registry entry plus a line here and
@@ -2104,16 +2171,40 @@ class ConsultationLoopWorkflow:
                 # the same asymmetry used to refuse wiring
                 # `signalLoopCancel` to `close()`.
                 if not (self._pending or self._ending or self._cancelled):
-                    # ABANDONMENT, not a degraded end-of-consultation: the ending
-                    # actions are NOT run. `harness.finalize` would generate,
-                    # persist and WORM-audit a clinical note out of a truncated
-                    # transcript and queue it for a clinician — inventing work
-                    # nobody asked for. Nothing is skipped either: the finalize
-                    # path is a reflex to an explicit `consultation-ending`, and
-                    # that signal never arrived.
+                    # D-12 (TASK-812). This branch used to ABANDON the run: it
+                    # published `loop.timed_out` and deliberately skipped the
+                    # ending actions, on the argument that `harness.finalize`
+                    # would fabricate a clinical note out of a truncated
+                    # transcript.
+                    #
+                    # That argument weighed a hypothetical loss against a
+                    # DEFINITE one. A consultation that goes quiet has real
+                    # recorded clinical work in it; abandoning the run means that
+                    # work is never finalized, never locked, and never reaches a
+                    # clinician at all — while the note a truncated transcript
+                    # produces goes to the same human gate every other note goes
+                    # to, where it costs seconds to reject. One failure mode a
+                    # person can recover from; the other is silent.
+                    #
+                    # A CANCEL still abandons (see below) — that one IS an
+                    # explicit statement that the output is unwanted.
                     self._timed_out = True
                     self._phase = "TIMED_OUT"
                     await self._emit_event(LOOP_EVENT_LOOP_TIMED_OUT)
+                    # The config operand FIRST, exactly as the two eras above are
+                    # written: an old recorded config deserialises with
+                    # `endpoint_on_timeout=False`, so `workflow.patched` is never
+                    # CALLED, no marker is looked for, and the frozen replay
+                    # fixtures reproduce their recorded command sequence.
+                    if config.endpoint_on_timeout and workflow.patched(
+                        _PATCH_ENDPOINT_ON_TIMEOUT
+                    ):
+                        # The phase stays TIMED_OUT throughout. Running the
+                        # sequence must not disguise an expiry as a normal
+                        # ending, or the bound becomes invisible to every
+                        # dashboard already reading it — and `session.timeout`
+                        # reads this exact flag to stamp the disposition.
+                        await self._run_lifecycle_actions(config.ending_actions)
                     break
             await self._drain()
 
@@ -2277,6 +2368,9 @@ class ConsultationLoopWorkflow:
             await self._emit_event(LOOP_EVENT_ACTION_DISPATCHED, signal=signal, action=spec.key)
         elif spec.key == LOOP_ACTION_HARNESS_FINALIZE:
             await self._start_finalize_child(spec)
+        elif spec.key in _ENDPOINT_ACTIONS:
+            if not await self._run_endpoint_action(spec):
+                return
         elif spec.derives_context:
             # The three keys declared but left unbacked.
             # Gated on the patch era: an old history recorded them as
@@ -2294,6 +2388,105 @@ class ConsultationLoopWorkflow:
         else:  # pragma: no cover - registry guarantees the branches above
             return
         self._actions_dispatched += 1
+
+    # -- the endpoint stage (TASK-812) --------------------------------------
+
+    async def _run_endpoint_action(self, spec: LoopActionSpec) -> bool:
+        """Dispatch one endpoint action. True when it ran, False when it was skipped.
+
+        ## Why this is the only lifecycle branch that catches
+
+        `livedoc_start`/`livedoc_stop` swallow their own exceptions, so the loop never had to.
+        The endpoint activities deliberately do NOT — a swallowed finalize is a note that never
+        locked, reported as success — which leaves the question of what an EXHAUSTED retry should
+        do here. Letting it propagate would fail the loop workflow and, with it, every endpoint
+        action after the failing one. Since the platform default sequence is deliberately ordered
+        `livedoc.stop -> session.timeout -> summary.finalize -> feedback.capture`, that would mean
+        a feedback-endpoint outage costing a clinician the finalized note that had already been
+        produced.
+
+        So a failure DEGRADES the run and continues, and it is never silent: it lands on the same
+        `action.skipped` feed every other withholding uses, under its own
+        `endpoint_action_failed` reason so an operator can tell "not implemented" from "could not
+        reach the gateway".
+
+        ## No patch era, and why none is needed
+
+        None of the three keys this branch serves existed before TASK-812, so no recorded
+        `ending_actions` list contains one and replay of an old history can never reach this
+        code. The change that DOES alter an old command sequence — running the sequence on
+        expiry — is gated on `_PATCH_ENDPOINT_ON_TIMEOUT`.
+        """
+        try:
+            if spec.key == LOOP_ACTION_SESSION_TIMEOUT:
+                await workflow.execute_activity(
+                    record_session_endpoint,
+                    RecordSessionEndpointInput(
+                        consultation_id=self._input.consultation_id,
+                        tenant_id=self._input.tenant_id,
+                        reason=self._endpoint_reason(),
+                        idle_timeout_seconds=self._pinned_idle_bound(),
+                        sequence=list(self._config.ending_actions) if self._config else [],
+                        user_id=self._input.user_id,
+                    ),
+                    start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
+                    retry_policy=_LOOP_ACTION_RETRY,
+                )
+            elif spec.key == LOOP_ACTION_SUMMARY_FINALIZE:
+                # DD-3. No document selector is threaded, and there is none to thread:
+                # `FinalizeDocumentsInput` cannot name a document, so this dispatch cannot be
+                # narrowed to the SOAP note and leave a discharge summary editable.
+                await workflow.execute_activity(
+                    finalize_documents,
+                    FinalizeDocumentsInput(
+                        consultation_id=self._input.consultation_id,
+                        tenant_id=self._input.tenant_id,
+                        user_id=self._input.user_id,
+                    ),
+                    start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
+                    retry_policy=_LOOP_ACTION_RETRY,
+                )
+            else:  # LOOP_ACTION_FEEDBACK_CAPTURE
+                # DD-8. The loop carries NO accepted proposals: acceptance is a clinician act
+                # that reaches the gateway through the console, never something an orchestrator
+                # can infer. What this dispatch does is CAPTURE — it records that the endpoint
+                # was reached and lets the gateway promote whatever the clinician had accepted.
+                await workflow.execute_activity(
+                    capture_feedback,
+                    CaptureFeedbackInput(
+                        consultation_id=self._input.consultation_id,
+                        tenant_id=self._input.tenant_id,
+                        user_id=self._input.user_id,
+                    ),
+                    start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
+                    retry_policy=_LOOP_ACTION_RETRY,
+                )
+        except ActivityError:
+            self._degraded = True
+            await self._emit_event(
+                LOOP_EVENT_ACTION_SKIPPED,
+                action=spec.key,
+                reason=LOOP_SKIP_ENDPOINT_ACTION_FAILED,
+            )
+            return False
+        return True
+
+    def _endpoint_reason(self) -> str:
+        """HOW this session reached its endpoint — an observed fact, never configuration.
+
+        Recorded so a clinician reviewing a note produced on expiry knows the transcript may be
+        truncated. Erasing the distinction would trade one defect for another.
+        """
+        if self._timed_out:
+            return ENDPOINT_REASON_TIMED_OUT
+        return ENDPOINT_REASON_ENDED
+
+    def _pinned_idle_bound(self) -> int | None:
+        """The idle bound this run PINNED, as an integer, or None when unbounded."""
+        config = self._config
+        if config is None or not config.idle_timeout_seconds:
+            return None
+        return int(config.idle_timeout_seconds)
 
     # -- derived-context cascade --------------------------------
 

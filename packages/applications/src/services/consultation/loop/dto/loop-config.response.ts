@@ -114,8 +114,32 @@ export class LoopConfigResponse {
    * determinism (C1).
    */
   @ApiPropertyOptional({
-    description: 'Seconds of total silence (no context item, no ending, no cancel) after which the loop abandons the run. Null = unbounded.',
+    description:
+      'Seconds of total silence (no context item, no ending, no cancel) after which the loop reaches its endpoint. Null = unbounded. What happens on expiry is `endpointOnTimeout`.',
     nullable: true,
   })
   idleTimeoutSeconds: number | null;
+
+  /**
+   * TASK-812 (D-12) — whether expiry RUNS the endpoint sequence.
+   *
+   * The gateway sends `true`, because a timed-out consultation that never finalizes silently
+   * loses the encounter: real recorded clinical work is left unfinalized, unlocked and never
+   * queued for review. The prior behaviour — abandon on expiry, on the argument that finalizing
+   * would "fabricate a clinical note from a truncated transcript" — weighed a hypothetical loss
+   * against a definite one, and the note it produces reaches the same clinician gate every other
+   * note does.
+   *
+   * Added ADDITIVELY, and the harness-side default is FALSE rather than true. That asymmetry is
+   * deliberate and load-bearing: `ConsultationLoopConfig.endpoint_on_timeout` defaults false so
+   * every config recorded before this ticket deserialises with the behaviour OFF, which is what
+   * lets the workflow's era gate short-circuit before `workflow.patched` is ever called and
+   * keeps every frozen replay fixture green. Same construction as `reasoningEnabled` and
+   * `idleTimeoutSeconds` before it.
+   */
+  @ApiProperty({
+    description:
+      'Whether reaching the idle bound runs the endpoint sequence (finalize + lock + capture) instead of abandoning the run. True from this gateway; a harness that predates TASK-812 ignores it.',
+  })
+  endpointOnTimeout: boolean;
 }

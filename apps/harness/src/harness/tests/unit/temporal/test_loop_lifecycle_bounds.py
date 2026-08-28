@@ -7,11 +7,21 @@ already refuses to do that, in as many words: *"an idle workflow parked forever
 would be a resource leak that changes nothing about the consultation"*
 (``workflows.py``, the ``config is None or not config.enabled`` branch).
 
-What is asserted here is the bound and its SEMANTICS. A timeout is an
-ABANDONMENT, not a degraded end-of-consultation: it terminates in its own
-queryable phase and it does NOT run ``ending_actions``, because
-``harness.finalize`` would fabricate a clinical note — persisted, WORM-audited,
-queued for a clinician — out of a consultation nobody said had ended.
+What is asserted here is the BOUND, and the pre-TASK-812 semantics of what
+happens when it fires: the run terminates in its own queryable phase and runs no
+``ending_actions``.
+
+⚠ That second half is now the LEGACY shape, not the current one. TASK-812 (D-12)
+found the abandonment reasoning backwards — a timed-out consultation that never
+finalizes loses real recorded clinical work, while the note a truncated
+transcript produces goes to the same clinician gate every other note does — so
+expiry now RUNS the endpoint sequence. The current behaviour is asserted in
+``test_endpoint_stage.py``.
+
+These tests still hold, and still matter, because the configs they build leave
+``endpoint_on_timeout`` at its default False: that is exactly the shape every
+config recorded before TASK-812 deserialises to, so what they pin is the
+replay-compatible legacy path.
 
 Every test runs the REAL workflow definition against stub activities in
 Temporal's time-skipping environment. Replay compatibility for the patch era
@@ -235,16 +245,18 @@ class TestNoFalseTermination:
 
 class TestAbandonmentNotDegradedEnding:
     @pytest.mark.asyncio
-    async def test_the_ending_actions_do_not_run_on_a_timeout(self):
-        """TDD-7 — the semantics decision, asserted.
+    async def test_the_ending_actions_do_not_run_on_a_timeout_without_the_flag(self):
+        """The LEGACY expiry path, pinned — the replay-compatibility guarantee.
 
-        ``ending_actions`` is ``['livedoc.stop', 'harness.finalize']`` in every
-        real configuration, and ``harness.finalize`` starts a child that
-        generates, persists and WORM-audits a clinical note and opens a clinician
-        gate. Running it because nobody TOLD us the consultation ended would
-        fabricate a clinical document from a truncated transcript. The timeout
-        therefore abandons; only ``livedoc.stop`` is configured here so the test
-        needs no child workflow registered to prove it.
+        ``_bounded_config`` leaves ``endpoint_on_timeout`` at its default False, which is the
+        shape every loop config recorded before TASK-812 deserialises to. On that shape the era
+        gate short-circuits before ``workflow.patched`` is called and expiry must issue exactly
+        the commands it always did: publish ``loop.timed_out`` and nothing else.
+
+        The CURRENT behaviour — expiry runs the endpoint sequence, because a timed-out
+        consultation that never finalizes silently loses the encounter (D-12) — is asserted in
+        ``test_endpoint_stage.py``. Only ``livedoc.stop`` is configured here so the test needs no
+        child workflow registered.
         """
         config = _bounded_config(ending_actions=[LOOP_ACTION_LIVEDOC_STOP])
         async with _LoopHarness(LoopStubConfig(config=config)) as h:

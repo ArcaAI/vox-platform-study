@@ -39,6 +39,11 @@ from harness.temporal.interpreter.nodes.consultation_compose import (
     interpreter_consultation_retrieve_evidence,
     interpreter_consultation_synthesize,
 )
+from harness.temporal.interpreter.nodes.consultation_endpoint import (
+    interpreter_feedback_capture,
+    interpreter_session_timeout,
+    interpreter_summary_finalize,
+)
 from harness.temporal.interpreter.nodes.consultation_nlp import (
     interpreter_consultation_bind_terminology,
     interpreter_consultation_extract_entities,
@@ -210,6 +215,13 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_consultation_realtime_summary,
     interpreter_consultation_suggestions,
     interpreter_consultation_propose_corrections,
+    # The endpoint stage (TASK-812) — nodes/consultation_endpoint.py. Same two-list discipline
+    # as the three above: `registry.py` decides what the interpreter DISPATCHES, this decides
+    # what the worker SERVES, and a node in the first but not the second passes every static
+    # check and then fails at runtime with an unregistered-activity error.
+    interpreter_session_timeout,
+    interpreter_summary_finalize,
+    interpreter_feedback_capture,
 ]
 
 # ---------------------------------------------------------------------------

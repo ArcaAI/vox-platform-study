@@ -13,7 +13,15 @@
 
 import type { DepartmentAgentRole, GuardrailProfile } from '../api/types';
 
-/** Mirrors `AGENT_ACTION_KEYS` — the seven action-registry names the loop dispatches. */
+/**
+ * Mirrors `AGENT_ACTION_KEYS` — the action-registry names the loop dispatches.
+ *
+ * TASK-812 added the last three (the ENDPOINT STAGE). They are what gives an agent an EXTEND
+ * lever it never had: naming one in `alwaysActions` APPENDS it to the tenant's endpoint sequence,
+ * where previously `neverActions` could only subtract from a hardcoded literal. Non-endpoint keys
+ * are unaffected — the resolver only accepts endpoint-eligible ones there — so an agent carrying
+ * `alwaysActions: ['client.emit']` behaves exactly as it did.
+ */
 export const AGENT_ACTION_KEYS = [
   'livedoc.start',
   'livedoc.stop',
@@ -22,6 +30,9 @@ export const AGENT_ACTION_KEYS = [
   'nlp.extract_entities',
   'harness.finalize',
   'client.emit',
+  'session.timeout',
+  'summary.finalize',
+  'feedback.capture',
 ] as const;
 
 export const AGENT_ACTION_LABELS: Record<(typeof AGENT_ACTION_KEYS)[number], string> = {
@@ -32,6 +43,9 @@ export const AGENT_ACTION_LABELS: Record<(typeof AGENT_ACTION_KEYS)[number], str
   'nlp.extract_entities': 'Extract clinical entities',
   'harness.finalize': 'Finalize the clinical note',
   'client.emit': 'Emit a client event',
+  'session.timeout': 'Record how the session ended',
+  'summary.finalize': 'Lock every document',
+  'feedback.capture': 'Capture clinician feedback',
 };
 
 /**
@@ -40,7 +54,13 @@ export const AGENT_ACTION_LABELS: Record<(typeof AGENT_ACTION_KEYS)[number], str
  * clinical check on this agent's note. `client.emit`/`livedoc.*` are plumbing,
  * not a check.
  */
-export const CLINICAL_CHECK_ACTIONS: readonly (typeof AGENT_ACTION_KEYS)[number][] = ['nlp.extract_entities', 'harness.finalize'];
+export const CLINICAL_CHECK_ACTIONS: readonly (typeof AGENT_ACTION_KEYS)[number][] = [
+  'nlp.extract_entities',
+  'harness.finalize',
+  // TASK-812 — locking every document at the endpoint is a clinical-safety step, not plumbing:
+  // forbidding it leaves a signed encounter's documents editable afterwards.
+  'summary.finalize',
+];
 
 /** Mirrors `GUARDRAIL_PROFILE_KEYS` — the closed catalogue `guardrailProfile` selects from. */
 export const GUARDRAIL_PROFILE_KEYS = ['STANDARD', 'STRICT', 'RELAXED'] as const;

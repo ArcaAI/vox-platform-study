@@ -17,12 +17,16 @@ from typing import Any
 from temporalio import activity
 
 from harness.temporal.models import (
+    CaptureFeedbackInput,
+    CaptureFeedbackResponse,
     ConsultationLoopConfig,
     DeriveContextInput,
     DeriveContextResult,
     EmitLoopEventInput,
     EmitLoopEventResult,
     FetchLoopConfigInput,
+    FinalizeDocumentsInput,
+    FinalizeDocumentsResponse,
     LiveDocControlInput,
     LiveDocControlResult,
     LoopAgentSpec,
@@ -32,6 +36,8 @@ from harness.temporal.models import (
     PlanLoopInput,
     PlannedSpecialist,
     RecordAdjudicationInput,
+    RecordSessionEndpointInput,
+    RecordSessionEndpointResponse,
     SpecialistAnalysisInput,
     SpecialistFinding,
     SpecialistResult,
@@ -77,6 +83,18 @@ class LoopStubConfig:
     failing_specialists: set[str] = field(default_factory=set)
     # Force a degraded planner answer (dispatches nothing).
     plan_degrades: bool = False
+
+    # -- endpoint stage (TASK-812) ------------------------------------------
+    # Endpoint action names whose stub RAISES, so a test can prove the loop
+    # reports a failed endpoint action as an OBSERVABLE skip and still runs the
+    # rest of the sequence.
+    failing_endpoint_actions: set[str] = field(default_factory=set)
+    # Document keys the finalize stub reports it locked. Defaults to TWO keys on
+    # purpose: DD-3 is that finalize locks EVERY document, and a single-document
+    # default would let a SOAP-only implementation pass.
+    finalize_document_keys: list[str] = field(
+        default_factory=lambda: ["soap-note", "discharge-summary"]
+    )
 
 
 def default_loop_config(**overrides: Any) -> ConsultationLoopConfig:
@@ -171,6 +189,39 @@ def make_loop_stub_activities(
         await _delay()
         return LiveDocControlResult(ok=True)
 
+    # -- endpoint stage (TASK-812) ------------------------------------------
+
+    @activity.defn(name="record_session_endpoint")
+    async def record_session_endpoint_stub(
+        payload: RecordSessionEndpointInput,
+    ) -> RecordSessionEndpointResponse:
+        recorder.record("record_session_endpoint", payload)
+        await _delay()
+        if "session.timeout" in config.failing_endpoint_actions:
+            raise RuntimeError("endpoint disposition endpoint unavailable")
+        return RecordSessionEndpointResponse(recorded=True, changed=True, reason=payload.reason)
+
+    @activity.defn(name="finalize_documents")
+    async def finalize_documents_stub(
+        payload: FinalizeDocumentsInput,
+    ) -> FinalizeDocumentsResponse:
+        recorder.record("finalize_documents", payload)
+        await _delay()
+        if "summary.finalize" in config.failing_endpoint_actions:
+            raise RuntimeError("finalize endpoint unavailable")
+        return FinalizeDocumentsResponse(
+            document_keys=list(config.finalize_document_keys),
+            locked_sections=len(config.finalize_document_keys),
+        )
+
+    @activity.defn(name="capture_feedback")
+    async def capture_feedback_stub(payload: CaptureFeedbackInput) -> CaptureFeedbackResponse:
+        recorder.record("capture_feedback", payload)
+        await _delay()
+        if "feedback.capture" in config.failing_endpoint_actions:
+            raise RuntimeError("feedback endpoint unavailable")
+        return CaptureFeedbackResponse(captured=True)
+
     @activity.defn(name="emit_loop_event")
     async def emit_loop_event_stub(payload: EmitLoopEventInput) -> EmitLoopEventResult:
         recorder.record("emit_loop_event", payload)
@@ -246,6 +297,9 @@ def make_loop_stub_activities(
         fetch_loop_config_stub,
         livedoc_start_stub,
         livedoc_stop_stub,
+        record_session_endpoint_stub,
+        finalize_documents_stub,
+        capture_feedback_stub,
         emit_loop_event_stub,
         plan_reasoning_stub,
         run_specialist_stub,

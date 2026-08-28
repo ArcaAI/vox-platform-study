@@ -1158,6 +1158,16 @@ LOOP_ACTION_NLP_EXTRACT_ENTITIES = "nlp.extract_entities"
 LOOP_ACTION_HARNESS_FINALIZE = "harness.finalize"
 LOOP_ACTION_CLIENT_EMIT = "client.emit"
 
+# TASK-812 — the ENDPOINT STAGE's three action keys. These are the SAME strings as the three
+# `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts`, and that
+# is the point: the endpoint sequence an admin orders is a list of these keys, whether the
+# consultation runs on the legacy loop (which dispatches them here) or on an authored graph
+# (which dispatches them through the interpreter). Two vocabularies for one stage is how the
+# hardcoded `endingActionsBase` literal survived as long as it did.
+LOOP_ACTION_SESSION_TIMEOUT = "session.timeout"
+LOOP_ACTION_SUMMARY_FINALIZE = "summary.finalize"
+LOOP_ACTION_FEEDBACK_CAPTURE = "feedback.capture"
+
 LOOP_ACTION_KEYS: tuple[str, ...] = (
     LOOP_ACTION_LIVEDOC_START,
     LOOP_ACTION_LIVEDOC_STOP,
@@ -1166,6 +1176,9 @@ LOOP_ACTION_KEYS: tuple[str, ...] = (
     LOOP_ACTION_NLP_EXTRACT_ENTITIES,
     LOOP_ACTION_HARNESS_FINALIZE,
     LOOP_ACTION_CLIENT_EMIT,
+    LOOP_ACTION_SESSION_TIMEOUT,
+    LOOP_ACTION_SUMMARY_FINALIZE,
+    LOOP_ACTION_FEEDBACK_CAPTURE,
 )
 
 # Loop-event types published on ``consultation:loop:{id}`` (the SSE plane).
@@ -1176,6 +1189,12 @@ LOOP_EVENT_ACTION_SKIPPED = "action.skipped"
 LOOP_SKIP_DEPTH_CAP = "depth_cap"
 LOOP_SKIP_BUDGET_EXHAUSTED = "budget_exhausted"
 LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
+
+# TASK-812 — an ENDPOINT action whose bounded retries were exhausted. Its own reason rather than
+# a reuse of `unsupported_action`: an action the platform does not implement and an action that
+# implements fine but could not reach its endpoint are different operational facts, and the
+# second is the one that means "go look at the gateway".
+LOOP_SKIP_ENDPOINT_ACTION_FAILED = "endpoint_action_failed"
 
 # Reasoning-lane skip reasons. Same rule as above: never a silent no-op.
 LOOP_SKIP_CYCLE_DETECTED = "cycle_detected"
@@ -1324,6 +1343,21 @@ class ConsultationLoopConfig(BaseModel):
     # ``harness.loop.idleTimeoutSeconds`` mid-run cannot reach a loop already
     # running. Resolved gateway-side from `global-kv`.
     idle_timeout_seconds: float | None = None
+
+    # D-12. When the idle bound expires, RUN the endpoint sequence instead of abandoning the
+    # run. Defaults False for exactly one reason, and it is not a policy preference: an old
+    # recorded config deserialises with it OFF, so the workflow's era gate short-circuits before
+    # ``workflow.patched`` is ever called and every frozen replay fixture reproduces its recorded
+    # command sequence byte for byte. The GATEWAY sends ``true`` — see
+    # ``LoopConfigService.resolveForConsultation`` — so every consultation that starts after this
+    # ticket finalizes on expiry. Same construction as ``reasoning_enabled`` above, for the same
+    # reason, and the operand ORDER at the gate matters as much as the default does.
+    #
+    # Why the behaviour changed at all: a timed-out consultation that never finalizes silently
+    # loses the encounter. The prior reasoning — that ``harness.finalize`` would "fabricate a
+    # clinical note from a truncated transcript" — traded a definite loss of real clinical work
+    # against a hypothetical one, and the note it produces goes to a clinician gate either way.
+    endpoint_on_timeout: bool = False
 
     def actions_for_kind(self, kind_key: str | None) -> list[str]:
         """Actions subscribed to ``kind_key`` (deterministic; pure lookup)."""
@@ -1910,3 +1944,135 @@ class ConsultationLoopWorkflowResult(BaseModel):
     specialist_failures: int = 0
     cycles_suppressed: int = 0
     derived_context: int = 0
+
+
+# ---------------------------------------------------------------------------
+# TASK-812 — the ENDPOINT STAGE
+#
+# The ordered sequence that runs before a consultation session closes. Three
+# payloads, one per endpoint node type, all crossing the same
+# ``/internal/harness/consultations/{id}/endpoint/*`` boundary.
+#
+# Every one of them is IDEMPOTENT BY CONSTRUCTION rather than by an idempotency
+# header, because Temporal retries activities and the endpoint stage is the last
+# thing standing between a consultation and its permanent record:
+#
+#   * the session disposition CONVERGES — writing the same reason twice leaves
+#     the same row, and the gateway reports `changed: False` the second time;
+#   * finalize is a state TRANSITION to LOCKED — a section already LOCKED is
+#     skipped, never re-locked with a fresh timestamp;
+#   * a promoted correction carries a DETERMINISTIC promotion key derived from
+#     the accepted proposal ids, so a retry finds its own prior write and stops.
+# ---------------------------------------------------------------------------
+
+#: How a consultation session reached its endpoint. ``TIMED_OUT`` is the D-12
+#: case: the loop hit its idle bound with no ``consultation-ending`` signal.
+#: Before this ticket that outcome ABANDONED the run without finalizing, which
+#: silently lost the encounter.
+ENDPOINT_REASON_ENDED = "ENDED"
+ENDPOINT_REASON_TIMED_OUT = "TIMED_OUT"
+ENDPOINT_REASON_CANCELLED = "CANCELLED"
+
+
+class RecordSessionEndpointInput(BaseModel):
+    """Inputs for ``interpreter.session_timeout`` — stamp HOW the session ended.
+
+    ``sequence`` is the endpoint action list the loop is about to run (or has just
+    run), recorded alongside the disposition so an operator reading a finished
+    consultation can see the ordering that applied to it rather than inferring
+    today's configuration.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    reason: str = ENDPOINT_REASON_ENDED
+    idle_timeout_seconds: int | None = None
+    sequence: list[str] = Field(default_factory=list)
+    user_id: str | None = None
+    job_id: str | None = None
+
+
+class RecordSessionEndpointResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recorded: bool = False
+    #: False on a retry that found the same disposition already stamped — the
+    #: observable half of the idempotency contract.
+    changed: bool = False
+    reason: str = ENDPOINT_REASON_ENDED
+
+
+class FinalizeDocumentsInput(BaseModel):
+    """Inputs for ``interpreter.summary_finalize`` — DD-3, lock EVERY document.
+
+    There is deliberately NO ``document_key`` field. A finalize that locks only
+    the SOAP note leaves a discharge summary editable after signature, and the
+    only way to make that impossible is for the payload to be unable to express
+    it. The scope is the CONSULTATION.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    #: When true, PROVISIONAL sections are left writable and only CONFIRMED ones
+    #: lock. Defaults false: a signed encounter freezes whole.
+    lock_confirmed_only: bool = False
+    user_id: str | None = None
+    job_id: str | None = None
+
+
+class FinalizeDocumentsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: EVERY document key of the consultation that was visited — the evidence
+    #: DD-3 is about, and what a test asserts against.
+    document_keys: list[str] = Field(default_factory=list)
+    locked_sections: int = 0
+    #: Sections found already LOCKED. On a retry this is the whole population and
+    #: ``locked_sections`` is 0, which is what "idempotent" looks like from here.
+    already_locked: int = 0
+    skipped_sections: int = 0
+
+
+class CaptureFeedbackInput(BaseModel):
+    """Inputs for ``interpreter.feedback_capture`` — DD-8.
+
+    ``accepted_proposals`` carries advisory transcript corrections a CLINICIAN
+    accepted. This is the ONLY payload in the platform that can promote one over
+    the raw channel: ``consultation.proposeCorrections`` returns its source text
+    byte-identical with ``applied: False`` and has ``external_write=False``, so
+    nothing on the proposal side can write. A proposal that is still ``PROPOSED``
+    is not promotable and never reaches this list.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    #: The TRANSCRIPT context item the corrections were measured against. Absent
+    #: ⇒ the gateway resolves the consultation's transcript itself.
+    context_item_id: str | None = None
+    #: SHA-256 of the exact text the spans were measured against. The gateway
+    #: refuses a promotion whose digest no longer matches the raw channel — a
+    #: correction spliced into drifted text lands on the wrong characters.
+    text_sha256: str | None = None
+    accepted_proposals: list[dict[str, Any]] = Field(default_factory=list)
+    rating: int | None = None
+    comment: str | None = None
+    user_id: str | None = None
+    job_id: str | None = None
+
+
+class CaptureFeedbackResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    captured: bool = False
+    promoted_count: int = 0
+    rejected_count: int = 0
+    #: Deterministic key derived from the accepted proposal ids. A retry
+    #: recomputes the same key, finds its own prior version, and promotes nothing.
+    promotion_key: str | None = None
+    already_promoted: bool = False

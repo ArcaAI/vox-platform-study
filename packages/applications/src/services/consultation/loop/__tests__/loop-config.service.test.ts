@@ -93,6 +93,8 @@ describe('LoopConfigService.resolveForConsultation', () => {
       // No bound on a disabled config: that branch completes
       // immediately and never reaches the wait the bound applies to.
       idleTimeoutSeconds: null,
+      // …and therefore no endpoint stage on expiry either: a disabled loop can never expire.
+      endpointOnTimeout: false,
     });
     expect(mockAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
   });
@@ -154,7 +156,7 @@ describe('LoopConfigService.resolveForConsultation', () => {
     expect(mockContextSchemaRepository.findDefaultForScope).toHaveBeenNthCalledWith(1, 'tenant-1', 'DEPARTMENT', 'dept-1');
   });
 
-  it('a STREAM_AUDIO subscribed kind produces startActions [livedoc.start] and endingActions [livedoc.stop, harness.finalize]', async () => {
+  it('a STREAM_AUDIO subscribed kind produces startActions [livedoc.start] and the full ordered endpoint stage', async () => {
     mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: 'dept-1' });
     mockAgentRepository.findDefaultForDepartment.mockResolvedValue({
       id: 'agent-1',
@@ -172,12 +174,17 @@ describe('LoopConfigService.resolveForConsultation', () => {
     const result = await service.resolveForConsultation('tenant-1', 'consult-1');
 
     expect(result.startActions).toEqual(['livedoc.start']);
-    expect(result.endingActions).toEqual(['livedoc.stop', 'harness.finalize']);
+    // TASK-812 (D-10): the ending half is no longer the literal `['livedoc.stop',
+    // 'harness.finalize']`. With no `consultation.endpoint.actions` row configured it resolves to
+    // the platform default sequence, in the platform's order — which still opens with
+    // `livedoc.stop` and still finalizes, and now also stamps the disposition, locks every
+    // document and captures feedback.
+    expect(result.endingActions).toEqual(['livedoc.stop', 'session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
     // STREAM_AUDIO's own default action list is empty.
     expect(result.subscriptions).toEqual([{ kindKey: 'transcript', actions: [] }]);
   });
 
-  it('a non-STREAM_AUDIO-only subscription set produces startActions [] and endingActions [harness.finalize]', async () => {
+  it('a non-STREAM_AUDIO-only subscription set produces startActions [] and an endpoint stage without livedoc.stop', async () => {
     mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: 'dept-1' });
     mockAgentRepository.findDefaultForDepartment.mockResolvedValue({
       id: 'agent-1',
@@ -195,7 +202,9 @@ describe('LoopConfigService.resolveForConsultation', () => {
     const result = await service.resolveForConsultation('tenant-1', 'consult-1');
 
     expect(result.startActions).toEqual([]);
-    expect(result.endingActions).toEqual(['harness.finalize']);
+    // Audio scoping is the one rule carried over verbatim from `endingActionsBase`: a
+    // consultation that never streamed audio has no live-documentation session to stop.
+    expect(result.endingActions).toEqual(['session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
     expect(result.subscriptions).toEqual([{ kindKey: 'referral_letter', actions: ['document.extract_text', 'client.emit'] }]);
   });
 
@@ -216,7 +225,35 @@ describe('LoopConfigService.resolveForConsultation', () => {
 
     const result = await service.resolveForConsultation('tenant-1', 'consult-1');
 
-    expect(result.endingActions).toEqual(['livedoc.stop']);
+    // The veto still works — it is simply no longer the ONLY lever (D-10).
+    expect(result.endingActions).toEqual(['livedoc.stop', 'session.timeout', 'summary.finalize', 'feedback.capture']);
+  });
+
+  it('alwaysActions EXTENDS the endpoint stage — the lever neverActions never had (D-10)', async () => {
+    // An agent that names an endpoint-eligible action in `alwaysActions` gets it appended to the
+    // stage. Before TASK-812 there was no way for an agent to ADD an endpoint step at all: the
+    // sequence was a literal and `alwaysActions` only fed per-kind subscriptions.
+    mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: 'dept-1' });
+    mockAgentRepository.findDefaultForDepartment.mockResolvedValue({
+      id: 'agent-1',
+      subscribedKinds: { version: 1, kinds: [{ key: 'referral_letter' }] },
+      // `client.emit` is deliberately in the list too: it is NOT endpoint-eligible, so it must
+      // not leak into the stage. That restriction is what keeps every pre-TASK-812 agent — which
+      // almost always carries `client.emit` here — behaving exactly as it did.
+      alwaysActions: ['client.emit'],
+      neverActions: ['summary.finalize', 'feedback.capture', 'session.timeout'],
+    });
+    mockAgentVersionRepository.findLatestForAgent.mockResolvedValue(null);
+    mockContextSchemaRepository.findDefaultForScope.mockResolvedValueOnce(SCHEMA_ROW).mockResolvedValueOnce(null);
+    mockContextSchemaVersionRepository.findBySchemaAndVersionNumber.mockResolvedValue({
+      id: 'schema-version-1',
+      definition: definitionWithKind('referral_letter', 'DOCUMENT'),
+    });
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.endingActions).toEqual(['harness.finalize']);
+    expect(result.subscriptions).toEqual([{ kindKey: 'referral_letter', actions: ['document.extract_text', 'client.emit'] }]);
   });
 
   it('alwaysActions: [client.emit] appears on a kind whose primitive maps to [] (STREAM_AUDIO)', async () => {
@@ -254,7 +291,10 @@ describe('LoopConfigService.resolveForConsultation', () => {
 
     expect(result.subscriptions).toEqual([]);
     expect(result.startActions).toEqual([]);
-    expect(result.endingActions).toEqual(['harness.finalize']);
+    // No resolvable kind ⇒ no STREAM_AUDIO ⇒ the audio-scoped step drops, and the rest of the
+    // platform endpoint stage still runs. A consultation whose schema could not be resolved must
+    // still finalize; that is the same degradation posture the rest of this resolver takes.
+    expect(result.endingActions).toEqual(['session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
   });
 
   it('a null subscribedKinds payload yields [] subscriptions', async () => {

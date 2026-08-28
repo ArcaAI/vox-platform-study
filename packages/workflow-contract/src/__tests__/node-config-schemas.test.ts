@@ -41,12 +41,15 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'consultation.synthesize',
         'core.end',
         'core.start',
+        // TASK-812 — the endpoint stage.
+        'feedback.capture',
         'generate.text',
         'guardrail.check',
         'input.context_binding',
         'noop',
         'output.deliver',
         'prompt.template_ref',
+        'session.timeout',
         'stt.asrEngine',
         'stt.audioInput',
         'stt.diarization',
@@ -55,6 +58,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'stt.phiHop',
         'stt.transcriptOutput',
         'stt.vad',
+        'summary.finalize',
       ].sort(),
     );
   });

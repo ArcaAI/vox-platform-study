@@ -30,7 +30,7 @@ import {
 } from '../agent-loop-config-fields';
 
 describe('agent-loop-config-fields', () => {
-  it('exposes the exact seven action keys the server allow-lists (order-independent)', () => {
+  it('exposes the exact action keys the server allow-lists (order-independent)', () => {
     expect([...AGENT_ACTION_KEYS].sort()).toEqual(
       [
         'livedoc.start',
@@ -40,6 +40,11 @@ describe('agent-loop-config-fields', () => {
         'nlp.extract_entities',
         'harness.finalize',
         'client.emit',
+        // TASK-812 — the endpoint stage. Naming one of these in `alwaysActions` EXTENDS the
+        // tenant's endpoint sequence, which is the lever D-10 says `neverActions` never had.
+        'session.timeout',
+        'summary.finalize',
+        'feedback.capture',
       ].sort(),
     );
   });

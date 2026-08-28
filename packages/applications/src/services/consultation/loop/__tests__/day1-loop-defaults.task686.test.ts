@@ -281,11 +281,15 @@ describe('LoopConfigService against the seeded rows', () => {
     expect(result.subscriptions.every((s) => s.actions.length > 0)).toBe(true);
   });
 
-  it('leaves the LiveDoc lifecycle alone and finalizes at consultation end', async () => {
+  it('leaves the LiveDoc lifecycle alone and runs the platform endpoint stage at consultation end', async () => {
     const result = await service.resolveForConsultation(TENANT_ID, CONSULTATION_ID);
 
     expect(result.startActions).toEqual([]);
-    expect(result.endingActions).toEqual(['harness.finalize']);
+    // TASK-812 (D-10): the day-1 tenant has no `consultation.endpoint.actions` row, so the stage
+    // resolves to the platform default — minus `livedoc.stop`, because these seeded kinds carry
+    // no STREAM_AUDIO primitive. `harness.finalize` is still there and still in the same
+    // relative position; what is new is the stage AROUND it.
+    expect(result.endingActions).toEqual(['session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
   });
 
   it('keeps the deliberative lane OFF — one PRIMARY, no SPECIALIST', async () => {
@@ -321,7 +325,7 @@ describe('LoopConfigService against the seeded rows', () => {
     // it is inert: `ConsultationLoopWorkflow.run` short-circuits on
     // `config.enabled` before it dispatches anything at all.
     expect(result.subscriptions.every((s) => s.actions.length === 0)).toBe(true);
-    expect(result.endingActions).toEqual(['harness.finalize']);
+    expect(result.endingActions).toEqual(['session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture']);
   });
 
   it('K7 — a department with no default agent stays disabled even with the schema seeded', async () => {

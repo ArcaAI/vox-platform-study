@@ -7,7 +7,7 @@
  * the same program, already built against a real `admin/workflow-*` endpoint.
  */
 import { useState } from 'react';
-import { IconLayoutGrid, IconListTree, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconLayoutGrid, IconListNumbers, IconListTree, IconPlus, IconRefresh } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,9 +19,11 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
+import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { workflowStudioKeys, useWorkflowDefinitions } from '../api';
 import type { WorkflowDefinition } from '../api/types';
+import { EndpointSequenceEditor } from './endpoint-sequence';
 
 const PAGE_SIZE = 25;
 
@@ -36,6 +38,10 @@ function DefinitionsListBody() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [page, setPage] = useState(0);
+  // TASK-812 (D-10) — the endpoint sequence opens in the console-wide detail surface rather than
+  // taking a slot on this page: the screen is `contentMode="fill"` (the grid owns the height), so
+  // an inline panel would either nest a second scroll container or squeeze the grid.
+  const [endpointOpen, setEndpointOpen] = useState(false);
 
   const definitionsQuery = useWorkflowDefinitions({ page, limit: PAGE_SIZE });
   const rows = definitionsQuery.data?.data ?? [];
@@ -106,6 +112,10 @@ function DefinitionsListBody() {
                   Assignments
                 </Link>
               </Button>
+              <Button variant="outline" onClick={() => setEndpointOpen(true)}>
+                <IconListNumbers aria-hidden />
+                Endpoint sequence
+              </Button>
               <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root })}>
                 <IconRefresh aria-hidden />
                 Refresh
@@ -170,6 +180,19 @@ function DefinitionsListBody() {
         }
         onRowClick={(row) => router.push(`/workflow-studio/${encodeURIComponent(row.id)}`)}
       />
+      <DetailDrawer
+        open={endpointOpen}
+        onOpenChange={setEndpointOpen}
+        title="Consultation endpoint sequence"
+        size="lg"
+        meta={
+          <span>
+            The ordered steps that run before a consultation session closes — including when it reaches its idle bound. Saved for this tenant.
+          </span>
+        }
+      >
+        <EndpointSequenceEditor scope="tenant" />
+      </DetailDrawer>
     </ScreenTemplate>
   );
 }

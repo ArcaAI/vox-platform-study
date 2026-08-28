@@ -21,6 +21,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { ContextPrimitive, findKind } from '../../consultation-context-schema/context-schema-definition';
 import { AgentActionKey, subscribedKindsProblems, writeScopeProblems } from '../../departmentAgent/constants';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CONSULTATION_ENDPOINT_ACTIONS_DEFAULT, CONSULTATION_ENDPOINT_ACTIONS_KEY, resolveEndpointSequence } from './endpoint-sequence';
 import { ILoopConfigService } from './ILoopConfigService';
 import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
 import { LoopAgentDto, LoopConfigResponse, LoopSubscriptionDto } from './dto';
@@ -67,6 +68,10 @@ function disabledResponse(consultationId: string | null, departmentId: string | 
     reasoningEnabled: false,
     agents: [],
     idleTimeoutSeconds: null,
+    // A disabled loop takes the workflow's DISABLED branch and completes immediately, so it never
+    // reaches the wait, never expires, and never runs an endpoint stage. `false` is the honest
+    // value; `true` would advertise a behaviour that cannot occur.
+    endpointOnTimeout: false,
   };
 }
 
@@ -192,7 +197,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
 
     const kindKeys = parseSubscribedKindKeys(agent.subscribedKinds);
     const subscriptions = this.buildSubscriptions(kindKeys, servableVersion, agent);
-    const { startActions, endingActions } = this.deriveStartAndEndingActions(kindKeys, servableVersion, agent);
+    const { startActions, endingActions } = this.deriveStartAndEndingActions(tenantId, kindKeys, servableVersion, agent);
     const agents = await this.buildAgentRoster(tenantId, departmentId, agent);
 
     return {
@@ -214,6 +219,10 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
       agents,
       // Pinned here, frozen for the whole consultation.
       idleTimeoutSeconds: this.resolveIdleTimeoutSeconds(),
+      // D-12. Always true from this gateway: a timed-out consultation that never finalizes
+      // silently loses the encounter. The harness-side default is FALSE, which is what keeps the
+      // frozen replay fixtures green — see the field's doc on `LoopConfigResponse`.
+      endpointOnTimeout: true,
     };
   }
 
@@ -314,7 +323,45 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     });
   }
 
+  /**
+   * The tenant's ORDERED endpoint sequence (D-10).
+   *
+   * Read here, once per consultation, for the same reason the idle bound is: this is the
+   * resolution the workflow PINS at start, so a mid-consultation edit cannot reorder the stage of
+   * a run already underway. `resolve` (not `resolvePlatform`) because the key is
+   * `maxScope: 'tenant'` — the endpoint stage is where a tenant's own compliance posture shows
+   * up, and the read path enforces the same clamp the write path does.
+   *
+   * Anything other than an array of strings degrades to the platform default rather than to an
+   * empty stage. A malformed `GlobalSetting` row must never mean "close consultations without
+   * finalizing them"; `resolveEndpointSequence` applies the same rule to the entries themselves.
+   */
+  private resolveConfiguredEndpointActions(tenantId: string): readonly string[] {
+    if (!this.tenantSettings) return CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
+    const resolved = this.tenantSettings.resolve<unknown>(CONSULTATION_ENDPOINT_ACTIONS_KEY, tenantId).value;
+    return Array.isArray(resolved) ? (resolved as readonly string[]) : CONSULTATION_ENDPOINT_ACTIONS_DEFAULT;
+  }
+
+  /**
+   * The consultation's start actions and its ENDPOINT SEQUENCE.
+   *
+   * The ending half used to be a literal here:
+   *
+   * ```ts
+   * const endingActionsBase = hasStreamAudio ? ['livedoc.stop', 'harness.finalize'] : ['harness.finalize'];
+   * ```
+   *
+   * with `neverActions` as its only control — a lever that could SUBTRACT and nothing else
+   * (D-10). It now comes from the persisted, admin-ordered `consultation.endpoint.actions` list,
+   * which an agent may EXTEND through `alwaysActions` and still veto through `neverActions`. The
+   * ordering rules live in `endpoint-sequence.ts` as a pure function, so they are testable
+   * without a settings backend; what stays here is the two impure reads.
+   *
+   * `startActions` is untouched: there is exactly one start action, it is audio-scoped, and
+   * nothing about it was defective.
+   */
   private deriveStartAndEndingActions(
+    tenantId: string,
     kindKeys: string[],
     servableVersion: ConsultationContextSchemaVersionEntity | null,
     agent: DepartmentAgentEntity,
@@ -323,8 +370,12 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     const hasStreamAudio = kindKeys.some((kindKey) => this.resolveKindPrimitive(servableVersion, kindKey) === 'STREAM_AUDIO');
 
     const startActions = (hasStreamAudio ? ['livedoc.start'] : []).filter((action) => !neverActions.has(action));
-    const endingActionsBase = hasStreamAudio ? ['livedoc.stop', 'harness.finalize'] : ['harness.finalize'];
-    const endingActions = endingActionsBase.filter((action) => !neverActions.has(action));
+    const endingActions = resolveEndpointSequence({
+      configured: this.resolveConfiguredEndpointActions(tenantId),
+      hasStreamAudio,
+      alwaysActions: agent.alwaysActions ?? [],
+      neverActions: agent.neverActions ?? [],
+    });
 
     return { startActions, endingActions };
   }

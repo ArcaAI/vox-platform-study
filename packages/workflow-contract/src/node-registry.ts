@@ -796,6 +796,89 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     idempotent: true,
     schemaVersion: 1,
   }),
+  // -------------------------------------------------------------------------------------------
+  // The ENDPOINT STAGE (TASK-812) — the ordered sequence that runs before a consultation session
+  // closes. Three node types, closing three defects that were all the same defect wearing
+  // different clothes: the stage was a hardcoded literal an admin could only SUBTRACT from
+  // (D-10), it had no feedback-capture node at all (D-11), and an idle timeout deliberately
+  // skipped it, so a timed-out consultation never finalized (D-12).
+  //
+  // All three are `trigger: 'on-end'`, `lane: 'durable'` and therefore `idempotent: true` —
+  // `nodeDescriptorContractProblems` refuses a durable non-idempotent node, and it is right to:
+  // Temporal retries activities, and a retry that double-finalizes or double-promotes a
+  // correction does so invisibly. Each activity converges rather than accumulating (see
+  // `nodes/consultation_endpoint.py`).
+  //
+  // None is `critical`. CR-14 keeps `consentGate`/`hitlGate` the only critical consultation
+  // nodes, and the endpoint stage must not inherit criticality by association: a feedback
+  // capture that fails must not fail a consultation whose note is already finalized. What DOES
+  // protect the clinical work is that finalize runs FIRST in the default sequence, before
+  // anything that may legitimately degrade.
+  //
+  // They carry `paletteKey: 'consultation'` (so the Studio's palette rail offers them alongside
+  // the pipeline they close) but NOT a `consultation.` key prefix, because they are stage
+  // vocabulary rather than pipeline steps — `session`, `summary`, `feedback` name what the node
+  // acts on, exactly as `input.`/`prompt.`/`generate.`/`guardrail.`/`output.` do in the
+  // summarization palette.
+  // -------------------------------------------------------------------------------------------
+  'session.timeout': Object.freeze({
+    key: 'session.timeout',
+    implemented: true,
+    activityName: 'interpreter.session_timeout',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // Stamps the consultation's endpoint disposition (how the session ended, and under which
+    // idle bound). A real write, so a SANDBOX run must not perform it.
+    externalWrite: true,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'summary.finalize': Object.freeze({
+    key: 'summary.finalize',
+    implemented: true,
+    activityName: 'interpreter.summary_finalize',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // DD-3: locks EVERY document of the consultation, not just the SOAP note.
+    externalWrite: true,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'feedback.capture': Object.freeze({
+    key: 'feedback.capture',
+    implemented: true,
+    activityName: 'interpreter.feedback_capture',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // DD-8. `consultation.proposeCorrections` is `externalWrite: false` precisely because a
+    // system that silently rewrites a drug name is a patient-safety defect; this node is where a
+    // clinician's ACCEPTANCE turns one of those proposals into a real correction over the raw
+    // channel, and it is the only node in the registry that both consumes `edits` and writes.
+    externalWrite: true,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
 });
 
 /**

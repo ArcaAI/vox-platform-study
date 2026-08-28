@@ -309,6 +309,22 @@ export const AGENT_ACTION_KEYS = [
   'nlp.extract_entities',
   'harness.finalize',
   'client.emit',
+  // TASK-812 — the ENDPOINT STAGE. Added to this vocabulary, and not merely to the endpoint
+  // sequence setting, because that is what gives an agent the EXTEND lever the compliance
+  // envelope never had: naming one of these in `alwaysActions` appends it to the endpoint stage
+  // (`resolveEndpointSequence`), and naming it in `neverActions` still vetoes it. Before this,
+  // `neverActions` could only subtract from a literal — which is defect D-10.
+  //
+  // Adding them here is safe for every existing agent precisely because the ENDPOINT resolver
+  // only accepts endpoint-eligible keys: an agent carrying `alwaysActions: ['client.emit']`
+  // gains nothing at the endpoint, exactly as before.
+  //
+  // Mirrored by `LOOP_ACTION_KEYS` in `apps/harness/.../temporal/models.py` (asserted equal to
+  // `LOOP_ACTION_REGISTRY` there) and by the console's own copy in
+  // `apps/admin-console/src/features/agents/components/agent-loop-config-fields.ts`.
+  'session.timeout',
+  'summary.finalize',
+  'feedback.capture',
 ] as const;
 
 export type AgentActionKey = (typeof AGENT_ACTION_KEYS)[number];
