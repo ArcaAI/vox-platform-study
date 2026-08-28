@@ -4,6 +4,7 @@ import { ClsModule } from 'nestjs-cls';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 import { LoopConfigService } from './loop-config.service';
 import { ILoopConfigService } from './ILoopConfigService';
 
@@ -11,10 +12,15 @@ import { ILoopConfigService } from './ILoopConfigService';
  * LoopConfigService DI module —.
  *
  * Domain-repository wiring (no HTTP, no Redis): `CoreDatabaseModule`
- * supplies `ConsultationRepository`, `DepartmentAgentRepository`,
- * `DepartmentAgentVersionRepository`, `ConsultationContextSchemaRepository`
- * and `ConsultationContextSchemaVersionRepository`, all already registered
- * there.
+ * supplies `ConsultationRepository`, `ConsultationContextSchemaRepository`,
+ * `ConsultationContextSchemaVersionRepository` and
+ * `WorkflowDefinitionRepository`, all already registered there.
+ *
+ * `WorkflowAssignmentServiceModule` resolves the `@Optional()`
+ * `IWorkflowAssignmentService` the loop config uses to find the GOVERNING
+ * definition (TASK-815). Both injections are optional on the service so it can
+ * be constructed positionally in tests; wiring the module HERE is what makes
+ * the resolution actually happen in the running gateway.
  *
  * Adds the `global-kv` read for the loop's idle bound.
  * `CommonServiceModule` already exports `IAppSettingsService` (the cached read
@@ -25,7 +31,7 @@ import { ILoopConfigService } from './ILoopConfigService';
  * `RateLimitServiceModule`.
  */
 @Module({
-  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, CommonServiceModule],
+  imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, CommonServiceModule, WorkflowAssignmentServiceModule],
   providers: [
     TenantSettingsService,
     LoopConfigService,
