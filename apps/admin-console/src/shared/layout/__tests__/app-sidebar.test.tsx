@@ -102,12 +102,13 @@ describe('AppSidebar — scoped to the active domain', () => {
   });
 
   it('shows a narrowly-permissioned caller only the routes they hold (AC-3)', async () => {
-    usePathnameMock.mockReturnValue('/agents');
+    // `/agents` (the Agent Catalog) left the rail with TASK-815; the first
+    // visible entry of this domain for this fixture is now `/prompt-templates`.
+    usePathnameMock.mockReturnValue('/prompt-templates');
     renderInShell(<AppSidebar />, NARROW_TENANT_FIXTURE);
-    await screen.findByRole('link', { name: 'Agents' });
+    await screen.findByRole('link', { name: 'Prompt templates' });
 
     expect(within(scopedNav('Knowledge & Agents')).getAllByRole('link').map((link) => link.textContent)).toEqual([
-      'Agents',
       'Prompt templates',
       'Knowledge Base',
     ]);
