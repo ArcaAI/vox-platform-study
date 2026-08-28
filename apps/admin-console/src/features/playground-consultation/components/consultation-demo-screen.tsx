@@ -48,6 +48,7 @@ import {
   useGenerateSummaryAsync,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
+  useDocumentSectionsStream,
   useLiveAssistStream,
   useLatestSummary,
   useNamedEntities,
@@ -267,6 +268,10 @@ function ScribeWorkspace() {
   // while recording. The gateway route was TASK-795's; nothing in the console consumed it
   // until this hook.
   const liveAssist = useLiveAssistStream(consultationId, isRecording);
+  // TASK-811 DD-3 / TASK-814 DD-3 — N documents from the section.patch plane. A SEPARATE
+  // connection from `live` (useArcaLiveSummary) — that SDK hook only ever parses the legacy
+  // undiscriminated payload on the same channel.
+  const documentSections = useDocumentSectionsStream(consultationId, isRecording);
   // §2b — corrections the clinician ACCEPTED, accumulated for `feedback.capture` (DD-8) to
   // promote over the raw transcript when the endpoint sequence runs at recording-stop.
   // Reset per consultation, same as every other derived-state reset on this screen.
@@ -440,6 +445,7 @@ function ScribeWorkspace() {
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
       live.stop();
       liveAssist.close();
+      documentSections.close();
       toast.success('Recording stopped — final snapshot persisted');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not stop recording'));
@@ -672,6 +678,7 @@ function ScribeWorkspace() {
               onCorrectionsStale={liveAssist.reopen}
               suggestions={liveAssist.suggestions}
               suggestionsNodeType={liveAssist.suggestionsNodeType ?? undefined}
+              documentSections={documentSections.documents}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

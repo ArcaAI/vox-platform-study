@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import { foldLoopActivity, type LoopActivityEntry, type LoopEvent } from '../hooks/use-loop-activity';
+import type { DocumentSectionView, DocumentView, SectionPatch } from './document-sections';
 import { liveAssistScopeFor, liveAssistStreamPath, type ClinicalSuggestion, type CorrectionProposal, type CorrectionsEnvelope, type LiveAssistEnvelope } from './live-assist';
 import {
   approveSummary,
@@ -19,6 +20,7 @@ import {
   harnessProgressStreamPath,
   listAudioPipelines,
   listDnaStyleOptions,
+  liveSummaryStreamPath,
   loopStreamPath,
   listScopingDepartments,
   startRecording,
@@ -359,6 +361,83 @@ export function useLiveAssistStream(consultationId: string | null, enabled = tru
   });
 
   return { suggestions, suggestionsNodeType, corrections, correctionsNodeType, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
+}
+
+/**
+ * TASK-811 DD-3 / TASK-814 DD-3 — N documents, folded from the `section.patch` plane on the
+ * SAME `live-summary/stream` channel `useArcaLiveSummary` already opens for the legacy
+ * whole-document view. That SDK hook only ever parses the undiscriminated legacy payload, so
+ * this is a SEPARATE connection (Redis pub/sub — more than one subscriber is normal), filtered
+ * to `event === 'section.patch'` and folded per `(documentKey, sectionKey)`.
+ */
+export interface DocumentSectionsStreamHandle {
+  /** Documents in FIRST-SEEN order; each document's sections sorted by `idx`. */
+  documents: DocumentView[];
+  status: StreamStatus;
+  error: string | null;
+  close: () => void;
+  reopen: () => void;
+}
+
+export function useDocumentSectionsStream(consultationId: string | null, enabled = true): DocumentSectionsStreamHandle {
+  // Keyed `${documentKey}::${sectionKey}` -> the folded section (revision-gated on write).
+  const [sections, setSections] = useState<Record<string, DocumentSectionView & { documentKey: string }>>({});
+  // First-seen document order, tracked separately — an object's key order is an implementation
+  // detail this component should not lean on for something the UI renders positionally.
+  const [documentOrder, setDocumentOrder] = useState<string[]>([]);
+
+  const [trackedId, setTrackedId] = useState(consultationId);
+  if (consultationId !== trackedId) {
+    setTrackedId(consultationId);
+    setSections({});
+    setDocumentOrder([]);
+  }
+
+  const handleEvent = useCallback((_type: string, data: string) => {
+    const patch = parseJson<SectionPatch>(data);
+    if (!patch || patch.event !== 'section.patch') return; // the legacy full-snapshot payload — not ours
+    const key = `${patch.documentKey}::${patch.sectionKey}`;
+    setSections((current) => {
+      const existing = current[key];
+      // TASK-811 §3: a patch whose revision is not greater than the one already held MUST be
+      // discarded — the SSE plane makes no ordering guarantee.
+      if (existing && patch.revision <= existing.revision) return current;
+      return {
+        ...current,
+        [key]: {
+          documentKey: patch.documentKey,
+          sectionKey: patch.sectionKey,
+          title: patch.title,
+          idx: patch.idx,
+          revision: patch.revision,
+          state: patch.state,
+          content: patch.content,
+          annotations: patch.annotations ?? [],
+        },
+      };
+    });
+    setDocumentOrder((current) => (current.includes(patch.documentKey) ? current : [...current, patch.documentKey]));
+  }, []);
+
+  const stream = useEventStream({
+    path: consultationId ? liveSummaryStreamPath(consultationId) : null,
+    scope: consultationId ? `consultation_live_summary:${consultationId}` : null,
+    onEvent: handleEvent,
+    enabled: enabled && !!consultationId,
+  });
+
+  const documents = useMemo<DocumentView[]>(() => {
+    const bySections = Object.values(sections);
+    return documentOrder.map((documentKey) => ({
+      documentKey,
+      sections: bySections
+        .filter((section) => section.documentKey === documentKey)
+        .sort((a, b) => a.idx - b.idx)
+        .map(({ documentKey: _drop, ...section }) => section),
+    }));
+  }, [sections, documentOrder]);
+
+  return { documents, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
 }
 
 // ─── Async summary job progress (the useDnaJobProgress pattern) ───
