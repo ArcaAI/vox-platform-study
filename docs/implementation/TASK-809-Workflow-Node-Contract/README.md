@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — **all 14 tasks complete and merged to `dev-2.2`** (`720fc8278`). One open owner item: §2y1. |
+| **Status** | **`Completed`** 2026-08-28 — all 14 tasks merged to `dev-2.2`; §2y1 closed by TASK-811. |
 | **Type** | `feature` (contract) |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -57,7 +57,7 @@ Verified current registry: **14 nodes, all `implemented: true`** — palettes `n
 are in different palettes, so AC-1.2 is structurally impossible until 811 lands lanes.
 
 
-## 2y1. ⚠ OPEN OWNER ITEM — `consultation.captureBinding` descriptor vs activity
+## 2y1. ✅ CLOSED by TASK-811 — `consultation.captureBinding` now produces a transcript
 
 `node-ports.ts:205` declares `out: transcript {outputKey:'transcript'}`, but the activity emits
 `{action, consultationId}` — it never produces a transcript. This is the **third** descriptor-vs-code
@@ -73,8 +73,14 @@ Live consequence today: a `captureBinding`-wired edge binds nothing at runtime (
 do now** rather than failing — the resolver treats a declared-but-absent key as "nothing bound",
 reserving its raise for a genuine contract violation. So this is not urgent, but it is unresolved.
 
-**Owner decision needed:** either the activity starts publishing a transcript, or the palette gains
-a real transcript producer and `captureBinding` retypes to `control`.
+**Resolved 2026-08-28 without an owner decision being needed.** TASK-811's realtime lane took the
+first branch: capture publishes the session's ingested ASR stream, so the declared
+`out: transcript {outputKey:'transcript'}` is now kept rather than aspirational. The consultation
+palette has a real transcript producer, and `extractEntities`' required input is satisfiable.
+
+Verified on `dev-2.2` (`realtime-node-registry.test.ts:98,106`):
+`portPrimitiveSatisfies(capture.out, extractEntities.in) === true`, while
+`realtimeSummary.out → extractEntities.in` remains `false` — the anti-laundering rule is untouched.
 
 ## 2y. ✅ RESOLVED — OD-15: two incompatible port vocabularies
 

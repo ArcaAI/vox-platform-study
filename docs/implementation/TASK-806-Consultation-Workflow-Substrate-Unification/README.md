@@ -656,11 +656,11 @@ README with scope boundary, TDD test list, verification commands, per-layer chec
 
 | # | Ticket | Status |
 |---|---|---|
-| 808 | [Unblock TEXT Generation](../TASK-808-Unblock-TEXT-Generation/README.md) | `Pending` — start now |
-| 809 | [Workflow Node Contract](../TASK-809-Workflow-Node-Contract/README.md) | `Pending` |
-| 810 | [Template / Shape Catalog](../TASK-810-Template-Shape-Catalog/README.md) | `Pending` |
-| 811 | [Multi-Document Realtime Runtime](../TASK-811-Multi-Document-Realtime-Runtime/README.md) | `Pending` |
-| 812 | [Workflow Endpoint Stage](../TASK-812-Workflow-Endpoint-Stage/README.md) | `Pending` |
+| 808 | [Unblock TEXT Generation](../TASK-808-Unblock-TEXT-Generation/README.md) | **`Completed`** |
+| 809 | [Workflow Node Contract](../TASK-809-Workflow-Node-Contract/README.md) | **`Completed`** |
+| 810 | [Template / Shape Catalog](../TASK-810-Template-Shape-Catalog/README.md) | **`Completed`** |
+| 811 | [Multi-Document Realtime Runtime](../TASK-811-Multi-Document-Realtime-Runtime/README.md) | **`Completed`** |
+| 812 | [Workflow Endpoint Stage](../TASK-812-Workflow-Endpoint-Stage/README.md) | `In Progress` — next |
 | 813 | [SDK Workflow Selection](../TASK-813-SDK-Workflow-Selection/README.md) | `Pending` |
 | 814 | [Playground Clinical Surface](../TASK-814-Playground-Clinical-Surface/README.md) | `Pending` — D-25 lane can start now |
 | 815 | [`DepartmentAgent` Retirement](../TASK-815-DepartmentAgent-Retirement/README.md) | `Pending` — unblocked; gated on 809 + 811 landing |
@@ -740,6 +740,7 @@ _Not started — awaiting owner answers on OD-7…OD-14, then sub-ticket authori
 | Date | Change |
 |---|---|
 | 2026-08-25 | Ticket opened. Five-lens read-only architecture review completed; 20 defects recorded with re-verified evidence; target architecture and 9-phase plan drafted. Status `Pending` pending owner approval and OD-1..OD-4. |
+| 2026-08-28 | **TASK-808, 809, 810 and 811 all `Completed` and merged to `dev-2.2`.** The root cause in §2.1 is closed: `startRecording` is gated on the governing-engine marker, and the realtime lane is graph-driven behind a per-tenant flag with trajectory parity. 809 §2y1 closed by 811. Three follow-ons carried on 811 §9a — `descriptor.lane` reconciliation (needs a lane owning `apps/harness`), a `DocumentSection` REST surface, and `pipelineId` observability. |
 | 2026-08-25 | **OD-11 revised** — the eval gate SURVIVES; `goldenSetId` binds to the node that references it, with a tenant-admin enable/disable. The earlier "remove it along with goldenSet" reading is withdrawn; the `GoldenSet`/`GoldenCase`/`EvalRun` subsystem is untouched. D-27 closed by repointing. **TASK-815 unblocked.** All findings, best practices, standing instructions, destructive-tooling warnings, the full compat fence and a copy-verbatim agent brief pushed down into all nine sub-tickets. |
 | 2026-08-25 | **Sub-tickets authored** — TASK-808…816 created (renumbered from 807…815; TASK-807 was claimed by an unrelated Vault-session fix, `fe7fc77c1`). Second-round decisions OD-7…OD-14 recorded in §5.0-R, plus **DD-11** (prompt binding + two-path versioning). OD-11 applied under a narrow reading with the scope confirmation flagged as blocking on TASK-815. |
 | 2026-08-25 | **Promoted to MASTER ticket.** OD-1…OD-6 answered and recorded (§5.A). Five parallel read-only inventories run (DepartmentAgent deletion surface, playground/console, Prisma+DDD, both SDKs, compat boundary) — findings in §2.8, with seven new defects **D-23…D-28** and one explorer claim **rejected on re-verification (D-29)**. Eight new decisions raised as **OD-7…OD-14** (§5.0); four block sub-tickets. Sub-ticket map TASK-808…815 authored with layer coverage, sequencing constraints, agent + model-tier alignment and brief requirements (§7). Header, AC-3.1 and the problem statement corrected to match OD-2 (no clinical app; D-16 is not a defect). |
