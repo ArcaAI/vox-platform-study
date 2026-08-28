@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — gates green on `lane-811-runtime`; merge into `dev-2.2` pending (worktree) |
+| **Status** | **`Completed`** 2026-08-28 — all 15 tasks merged to `dev-2.2` (`0977256f0`), verified by the orchestrator. Two follow-ons in §9a; neither blocks. |
 | **Type** | `refactor` + `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
