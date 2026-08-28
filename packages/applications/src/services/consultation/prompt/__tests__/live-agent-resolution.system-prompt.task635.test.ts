@@ -1,11 +1,11 @@
 /**
  * CLOSED. Custom per-agent live system prompt.
  *
- * `LiveAgentResolutionService#systemPromptFor` now reads the resolved live
+ * `LiveAgentResolutionService#systemPromptFor` reads the resolved live
  * template's `metaData.promptConfig.systemPrompt` (surfaced via a
  * hand-authored accessor on `PromptTemplateEntity`, mirroring the
- * `DepartmentAgentEntity` / `AiModelEntity` precedent — `IBaseEntity.metaData`
- * is declared but not wired on the abstract base) and falls back to the
+ * `AiModelEntity` precedent — `IBaseEntity.metaData` is declared but not wired
+ * on the abstract base) and falls back to the
  * in-code `LIVE_DOCUMENT_SYSTEM_PROMPT` constant when the value is absent or
  * malformed. `metaData` is untrusted JSON: these tests lock the defensive
  * parsing AND the resolver's totality contract (never throws — step 4).
@@ -34,26 +34,20 @@ function baseResolved(overrides: Record<string, unknown> = {}) {
 describe('LiveAgentResolutionService — custom per-agent system prompt', () => {
   let consultationRepository: { findById: ReturnType<typeof vi.fn> };
   let promptResolutionService: { resolve: ReturnType<typeof vi.fn> };
-  let departmentAgentRepository: { findById: ReturnType<typeof vi.fn> };
   let promptVersionRepository: { findByVersionNumber: ReturnType<typeof vi.fn> };
-  let aiModelRepository: { findAll: ReturnType<typeof vi.fn> };
   let promptTemplateRepository: { findById: ReturnType<typeof vi.fn> };
   let service: LiveAgentResolutionService;
 
   beforeEach(() => {
     consultationRepository = { findById: vi.fn().mockResolvedValue({ id: CONSULTATION, tenantId: TENANT, departmentId: null }) };
     promptResolutionService = { resolve: vi.fn().mockResolvedValue(baseResolved()) };
-    departmentAgentRepository = { findById: vi.fn() };
     promptVersionRepository = { findByVersionNumber: vi.fn() };
-    aiModelRepository = { findAll: vi.fn() };
     promptTemplateRepository = { findById: vi.fn() };
 
     service = new LiveAgentResolutionService(
       consultationRepository as never,
       promptResolutionService as never,
-      departmentAgentRepository as never,
       promptVersionRepository as never,
-      aiModelRepository as never,
       promptTemplateRepository as never,
     );
   });

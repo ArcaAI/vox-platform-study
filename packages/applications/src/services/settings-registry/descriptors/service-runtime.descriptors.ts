@@ -268,8 +268,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   },
   'nlp.inference.queueMaxWaitSeconds': {
     label: 'NLP bulk queue wait ceiling (s)',
-    description:
-      'An item that has waited longer than this is rejected rather than served stale.',
+    description: 'An item that has waited longer than this is rejected rather than served stale.',
   },
   'nlp.inference.maxInflightBatches': {
     label: 'NLP concurrent forward passes per model',
@@ -282,7 +281,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.interactiveInference.batchMaxSize': {
     label: 'NLP interactive batch size',
     description:
-      'Batch size for the INTERACTIVE lane — the synchronous inline gate on a clinician\'s turn. ' +
+      "Batch size for the INTERACTIVE lane — the synchronous inline gate on a clinician's turn. " +
       'Deliberately smaller than the bulk lane: the cost of a wider gate batch is paid by the ' +
       'request waiting for the verdict.',
   },
@@ -297,7 +296,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.interactiveInference.queueMaxWaitSeconds': {
     label: 'NLP interactive queue wait ceiling (s)',
     description:
-      'The interactive lane\'s declared SLO. Past it the verdict would arrive too late to gate ' +
+      "The interactive lane's declared SLO. Past it the verdict would arrive too late to gate " +
       'anything, so a 503 the caller can fail closed on beats a stale 200 already acted upon.',
   },
 
@@ -331,8 +330,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.logging.consoleJsonFormat': {
     label: 'NLP console logs as JSON',
     description:
-      'Default OFF — a console is human-read during local development. See the file switch above ' +
-      'for why the two defaults differ on purpose.',
+      'Default OFF — a console is human-read during local development. See the file switch above ' + 'for why the two defaults differ on purpose.',
   },
   'nlp.logging.rotationWhen': {
     label: 'NLP log rotation trigger',
@@ -344,7 +342,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   },
   'nlp.logging.rotationBackupCount': {
     label: 'NLP log retention (files)',
-    description: 'How many rotated log files to keep — the service\'s local log retention window.',
+    description: "How many rotated log files to keep — the service's local log retention window.",
   },
   'nlp.logging.useDailyRotation': {
     label: 'NLP daily log rotation',
@@ -364,8 +362,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   },
   'guardrail.groundedness.batchSize': {
     label: 'Groundedness batch size (segments)',
-    description:
-      'Summary segments per delegated scoring call to apps/nlp — the throughput lever for the gate.',
+    description: 'Summary segments per delegated scoring call to apps/nlp — the throughput lever for the gate.',
   },
   'guardrail.groundedness.maxSegments': {
     label: 'Groundedness max scored segments',

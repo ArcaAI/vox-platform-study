@@ -144,10 +144,12 @@ class TestFetchPolicyActivity:
         assert result.text_provider == "azure"
 
     @pytest.mark.asyncio
-    async def test_fetch_policy_forwards_consultation_id(self, env, monkeypatch):
-        # The activity threads the workflow's consultation_id onto the
-        # policy GET so the department default agent's tenant-tier harnessOverrides
-        # overlay onto the effective policy. Response shape is unchanged.
+    async def test_fetch_policy_never_forwards_consultation_id(self, env, monkeypatch):
+        # TASK-815 / OD-12 retired the per-agent `harnessOverrides` overlay, which
+        # was the only reason this activity threaded the consultation id onto the
+        # policy GET. The gateway route still accepts the query param, so sending
+        # it would not fail — it would just claim an overlay that no longer runs.
+        # The effective policy is tenant-scoped now, full stop.
         fake = _FakeApi()
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
 
@@ -157,13 +159,11 @@ class TestFetchPolicyActivity:
         )
 
         assert fake.calls == ["t-1"]
-        assert fake.consultation_ids == ["c-9"]
+        assert fake.consultation_ids == [None]
         assert isinstance(result, HarnessPolicy)
 
     @pytest.mark.asyncio
     async def test_fetch_policy_omits_consultation_id_when_absent(self, env, monkeypatch):
-        # No consultation on the workflow input ⇒ the activity forwards None
-        # (byte-identical prior fetch).
         fake = _FakeApi()
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
 

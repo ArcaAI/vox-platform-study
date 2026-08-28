@@ -172,10 +172,7 @@ export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];
  * folding the key list in here is what makes one edit reach all of them.
  */
 export function isSuperAdminOnlyTaskKey(taskKey: string): boolean {
-  return (
-    SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) ||
-    (SUPER_ADMIN_ONLY_TASK_KEYS as readonly string[]).includes(taskKey)
-  );
+  return SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) || (SUPER_ADMIN_ONLY_TASK_KEYS as readonly string[]).includes(taskKey);
 }
 
 /**

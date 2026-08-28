@@ -195,9 +195,22 @@ enum ResourceType {
   // Gate-edit mining store; the mining job broadcasts
   // ResourceCreated per persisted exemplar.
   GateEditExemplar
-  // First-class department agent entity: binds a department to a
-  // prompt template at a pinned/tracked version. Emitted as audit
-  // `resourceType` by DepartmentAgentService.broadcastSysEvent.
+  // RETAINED, DELIBERATELY, though nothing writes it any more. `DepartmentAgent`
+  // was retired by TASK-815 and no service broadcasts this `resourceType`
+  // today — but historical `AuditLog` rows do carry it, and audit history is
+  // immutable on a PHI platform, so the value has to stay readable.
+  //
+  // It is also not removable at any sensible price: PostgreSQL has no
+  // `ALTER TYPE … DROP VALUE`, so dropping one member means creating a
+  // replacement type, rewriting every column that uses it, and dropping the
+  // old — a full rewrite of `AuditLog` for no benefit. No migration in this
+  // repo has ever dropped an enum value.
+  //
+  // It must stay in LOCKSTEP with `packages/domains/src/enums/generated/ResourceType.ts`:
+  // `resourceType.enum-parity.test.ts` asserts the two agree in BOTH
+  // directions, so removing it from either file alone turns that guard red.
+  //
+  // In short: this is not a dangling member to tidy up. Leave it.
   DepartmentAgent
   // Eval run: the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun.

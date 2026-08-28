@@ -173,7 +173,6 @@ const build = (m: ReturnType<typeof makeMocks>, docTemplates?: unknown) =>
     undefined, // usageLedger
     undefined, // unitOfWork
     undefined, // billing
-    undefined, // departmentAgentRepository
     undefined, // aiModelRepository
     undefined, // noteGenerationService
     undefined, // phiRedactor

@@ -155,9 +155,60 @@ const PROMPT_VERSION_NUMBER_PROPERTY = Object.freeze({
     "DD-11 — this node's own pin onto one immutable version of that template. Absent means the node follows the template's approved version.",
 });
 
+/**
+ * OD-11's EVAL GATE, as one config key on the node that references the template.
+ *
+ * The gate runs a golden-set eval when a bound prompt template is approved (or
+ * its pin re-pointed) and, in `block` mode, refuses the promotion on failure.
+ * It used to be discovered through `DepartmentAgent.goldenSetId`; TASK-815 binds
+ * it to the NODE that references the template instead, which is the only place
+ * the binding is still meaningful once the agent row is gone.
+ *
+ * It lives in node CONFIG rather than on `WorkflowNodeDescriptor` (which also
+ * declares an `evalGate`, added by TASK-809) because the two answer different
+ * questions. A descriptor is one code-owned constant shared by every tenant: it
+ * can say "this node TYPE ships with a platform default gate" and nothing more.
+ * `goldenSetId` names a row in ONE tenant's data, and OD-11 requires a per-tenant
+ * enable/disable — neither of which a shared constant can hold. So the descriptor
+ * field is the type-level default and this is the instance-level binding that
+ * overrides it; `EvalPromotionGateService` reads instance-first.
+ *
+ * BOTH sub-fields are `required` on purpose. A gate with no `goldenSetId` gates
+ * nothing (the same rule `nodeDescriptorContractProblems` enforces on the
+ * descriptor), and a gate with no `enabled` would make a safety control's state
+ * a matter of interpretation — disabling it must be an explicit act, which is
+ * exactly what OD-11 says.
+ *
+ * Declared as one shared frozen object, and attached wherever the prompt binding
+ * is, for the reason `PROMPT_BINDING_PROPERTIES` gives: every schema here is
+ * `additionalProperties: false` and the Studio inspector renders a field per
+ * DECLARED property, so an undeclared key is stripped twice over and a node
+ * round-tripped through the authoring UI would come back with its gate silently
+ * removed.
+ */
+const EVAL_GATE_PROPERTY = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['goldenSetId', 'enabled'],
+  properties: {
+    goldenSetId: {
+      type: 'string',
+      minLength: 1,
+      description: 'OD-11 — the golden set this node’s prompt promotions are evaluated against.',
+    },
+    enabled: {
+      type: 'boolean',
+      description:
+        'OD-11 — the tenant-admin toggle. Disabled means an approval proceeds with a recorded warning, exactly as "no golden set" always did.',
+    },
+  },
+  description: 'OD-11 — the eval gate on this node’s bound prompt template.',
+});
+
 const PROMPT_BINDING_PROPERTIES = Object.freeze({
   promptTemplateId: PROMPT_TEMPLATE_ID_PROPERTY,
   promptVersionNumber: PROMPT_VERSION_NUMBER_PROPERTY,
+  evalGate: EVAL_GATE_PROPERTY,
 });
 
 /**

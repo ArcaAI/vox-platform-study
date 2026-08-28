@@ -55,6 +55,12 @@ export enum ResourceType {
   // Gate-edit mining store (parity with audit.prisma; see
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
+  // RETAINED after TASK-815 retired `DepartmentAgent` itself. Nothing
+  // broadcasts this `resourceType` any more, but historical `AuditLog` rows
+  // carry it and audit history is immutable on a PHI platform — and PostgreSQL
+  // cannot drop an enum value without rewriting the table that uses it. Kept in
+  // LOCKSTEP with `audit.prisma`, which `resourceType.enum-parity.test.ts`
+  // asserts in both directions. Not a dangling member to tidy up.
   DepartmentAgent = 'DepartmentAgent',
   // Eval run: the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun. Parity with audit.prisma.

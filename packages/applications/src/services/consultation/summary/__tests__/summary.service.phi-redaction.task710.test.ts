@@ -85,7 +85,6 @@ describe('TASK-710 — SummaryService.extractEntities redacts before calling NLP
       undefined, // usageLedger
       undefined, // unitOfWork
       undefined, // billing
-      undefined, // departmentAgentRepository
       undefined, // aiModelRepository
       undefined, // noteGenerationService
       phiRedactor as never, // phiRedactor

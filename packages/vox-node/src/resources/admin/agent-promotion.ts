@@ -11,7 +11,7 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, PaginatedPage } from './admin-resource';
-import type { AgentPromotionResponse, PromoteAgentRequest } from './schemas';
+import type { AgentPromotionResponse, PromoteWorkflowRequest } from './schemas';
 
 /**
  * `hope.admin.agentPromotion` — the `svc:admin:agent-promotion:manage` administration area.
@@ -31,39 +31,41 @@ export class AdminAgentPromotionResource extends AdminResource {
   /**
    * List promotions INTO the working tenant
    *
-   * The target tenant’s own agent lineage. Each row reports `drifted` — whether the target agent has been edited since it was promoted into.
+   * The target tenant’s own workflow lineage. Each row reports `drifted` — whether the target definition’s graph has been edited since it was promoted.
    *
    * `GET /api/v1/admin/agent-promotions` — `AgentPromotionController.list`.
    *
    * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link listIterate} to walk every page.
    */
-  list(options: AdminListOptions & { query?: AdminListQuery & { targetAgentId?: string } } = {}): Promise<PaginatedPage<AgentPromotionResponse>> {
+  list(
+    options: AdminListOptions & { query?: AdminListQuery & { targetDefinitionSlug?: string } } = {},
+  ): Promise<PaginatedPage<AgentPromotionResponse>> {
     return this.listPage<AgentPromotionResponse>('admin/agent-promotions', options);
   }
 
   /**
    * List promotions INTO the working tenant
    *
-   * The target tenant’s own agent lineage. Each row reports `drifted` — whether the target agent has been edited since it was promoted into.
+   * The target tenant’s own workflow lineage. Each row reports `drifted` — whether the target definition’s graph has been edited since it was promoted.
    *
    * `GET /api/v1/admin/agent-promotions` — `AgentPromotionController.list`.
    *
    * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
    */
   listIterate(
-    options: AdminListOptions & { query?: AdminListQuery & { targetAgentId?: string } } = {},
+    options: AdminListOptions & { query?: AdminListQuery & { targetDefinitionSlug?: string } } = {},
   ): AsyncGenerator<AgentPromotionResponse, void, undefined> {
     return this.listAll<AgentPromotionResponse>('admin/agent-promotions', options);
   }
 
   /**
-   * Promote an agent configuration version from one tenant to another
+   * Promote a workflow definition version from one tenant to another
    *
-   * Copies the exact immutable DepartmentAgentVersion of a source-tenant agent into the target tenant, creating the target agent or advancing an existing one with the same slug. Requires manage rights on BOTH tenants and an elevated tenant-less context. Bound prompt templates are deep-copied into the target; the golden set is NOT — the eval re-runs at the target against the target’s own corpus, and no GoldenCase (nor the pointer to one) crosses a tenant boundary. Blocked when the target department does not declare a context kind the promoted agent subscribes to. Live consultations on the target are reported as a warning, never a block.
+   * Copies one immutable WorkflowDefinition version of a source-tenant workflow into the target tenant as a new DRAFT version of the same slug — never published, never active, so a cross-tenant push cannot silently become the workflow governing another tenant’s live consultations. Requires manage rights on BOTH tenants and an elevated tenant-less context. Tenant-owned prompt templates bound by the graph’s nodes are deep-copied into the target and the bindings rewritten; SYSTEM-owned ones are left alone. Every node’s `evalGate` is STRIPPED — a golden set is a corpus of encrypted PHI and not even the pointer crosses a tenant boundary, so the eval runs at the target against a target golden set the caller names. Blocked when a node binds a document template that is not SYSTEM-owned. Live consultations on the target are reported as a warning, never a block.
    *
    * `POST /api/v1/admin/agent-promotions` — `AgentPromotionController.promote`.
    */
-  promote(body: PromoteAgentRequest, options: AdminRequestOptions = {}): Promise<AgentPromotionResponse> {
+  promote(body: PromoteWorkflowRequest, options: AdminRequestOptions = {}): Promise<AgentPromotionResponse> {
     return this.request<AgentPromotionResponse>({
       method: 'POST',
       path: 'admin/agent-promotions',

@@ -248,9 +248,13 @@ describe('API Key Scope Registry', () => {
     // clinical-document SHAPE catalog). Reserved like every other `admin:*`
     // scope; the vocabulary exists here only so
     // SERVICE_ACCOUNT_SCOPE_REGISTRY can DERIVE its `svc:admin:` twin.
-    it('marks all 57 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
+    // 57 -> 56: TASK-815 removes `admin:department-agent:manage` with the
+    // routes it gated. `admin:agent-promotion:manage` STAYS — the promotion
+    // surface survives, now over workflow definitions, so only its `implies`
+    // moved (to `manage:WorkflowDefinition`).
+    it('marks all 56 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
       const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
-      expect(admin.length).toBe(57);
+      expect(admin.length).toBe(56);
       // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
       // Enumerating by line range instead of by KEY would leave the single most
       // dangerous string in the family grantable.
@@ -278,8 +282,8 @@ describe('API Key Scope Registry', () => {
         .filter((s) => s.startsWith('admin:') || s.startsWith('webhook:'))
         .sort();
       expect(reservedKeys().sort()).toEqual(derived);
-      // 59 -> 60 for the same TASK-810 addition (57 admin + 3 webhook).
-      expect(reservedKeys().length).toBe(60);
+      // 60 -> 59: TASK-815 removes one admin scope (56 admin + 3 webhook).
+      expect(reservedKeys().length).toBe(59);
     });
 
     it('isReservedScope answers for members and is false for unknown strings', () => {

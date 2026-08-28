@@ -32,7 +32,10 @@ const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd
  * DELIBERATE-CHANGE guard, not a ceiling — a new admin controller is expected to move it, in
  * the same commit that adds the controller.
  */
-const EXPECTED_ROW_COUNT = 65;
+// 65 -> 63: TASK-815 deleted `DepartmentAgentController` and
+// `DepartmentAgentResyncController`, whose rows both carried
+// `admin:department-agent:manage` — a scope that went with them.
+const EXPECTED_ROW_COUNT = 63;
 
 describe('TASK_773_ADMIN_SCOPE_MAP', () => {
   it('has not silently grown or shrunk', () => {

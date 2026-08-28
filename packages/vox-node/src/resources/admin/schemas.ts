@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 379 component schemas the generated surface transitively
+ * Only the 371 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -30,17 +30,15 @@ export interface AddAdjustmentRequest {
 }
 
 export interface AgentPromotionResponse {
-  /** The exact immutable DepartmentAgentVersion (in the source tenant) that was promoted */
-  agentVersionId: string;
-  /** sha256 over the canonical JSON of the promoted snapshot */
+  /** sha256 over the canonical JSON of the promoted graph */
   checksum: string;
-  /** The promoted loop-configuration snapshot, verbatim */
+  /** The promoted graph, verbatim — with prompt bindings rewritten into the target and eval gates stripped */
   configSnapshot: Record<string, unknown>;
   /** Promotion timestamp (ISO) */
   createdAt: string;
-  /** True when the target agent’s CURRENT loop configuration no longer matches what was promoted — i.e. it has been edited since. Computed at read time; absent when the target agent could not be resolved. */
+  /** True when the target definition’s CURRENT graph no longer matches what was promoted — i.e. it has been edited since. Computed at read time; absent when the target row could not be resolved. */
   drifted?: boolean;
-  /** The eval run executed AT THE TARGET against the target’s own corpus. Null when the target agent has no golden set. */
+  /** The eval run executed AT THE TARGET against the target’s own corpus. Null when no target golden set was named. */
   evalRunId?: string | null;
   /** Tenant the agent was promoted FROM */
   fromTenantId: string;
@@ -48,14 +46,16 @@ export interface AgentPromotionResponse {
   id: string;
   /** The acting user */
   promotedBy?: string | null;
-  /** The source agent */
-  sourceAgentId: string;
+  /** The source workflow definition’s slug — its identity across versions */
+  sourceDefinitionSlug: string;
+  /** The exact immutable WorkflowDefinition version row (in the source tenant) that was promoted */
+  sourceDefinitionVersionId: string;
   /** A source-tenant eval run that travelled as an attestation only — never a result the target inherits. */
   sourceEvalRunId?: string | null;
-  /** The agent row in the target tenant this promotion created or advanced */
-  targetAgentId: string;
-  /** The immutable configuration version written in the target */
-  targetAgentVersionId?: string | null;
+  /** The workflow definition slug this promotion created in the target tenant */
+  targetDefinitionSlug: string;
+  /** The WorkflowDefinition version row written in the target */
+  targetDefinitionVersionId?: string | null;
   /** Tenant the agent was promoted INTO (owns this record) */
   toTenantId: string;
   /** Row version */
@@ -592,13 +592,6 @@ export interface CleanQueueResponse {
   removedJobIds: string[];
 }
 
-export interface CloneDepartmentAgentRequest {
-  /** Name for the new editable copy */
-  name: string;
-  /** URL-friendly slug for the new copy (unique within the department) */
-  slug: string;
-}
-
 export interface ClonePipelineRequest {
   /** Name for the new copy */
   name: string;
@@ -908,55 +901,6 @@ export interface CreateConsultationContextSchemaRequest {
   sourceTemplateSlug?: string;
   /** Whether a golden-library resync may overwrite this schema. */
   templateLocked?: boolean;
-}
-
-export interface CreateDepartmentAgentRequest {
-  /** Actions this agent must always take (compliance envelope) */
-  alwaysActions?: string[];
-  /** Department this agent belongs to */
-  departmentId: string;
-  /** Agent description */
-  description?: string;
-  /** DNA writing-style gate */
-  dnaStylePolicy?: 'INHERIT' | 'DISABLED';
-  /** Constrained goal (NOT a free-text prompt): { version: 1, objective, successCriteria? } */
-  goal?: Record<string, unknown>;
-  /** Golden set id (consumed by eval gating) */
-  goldenSetId?: string;
-  /** Named guardrail profile from a closed platform catalogue */
-  guardrailProfile?: string;
-  /** Tenant-tier HarnessPolicy overrides (thresholds + maxRegen/gateSla/gateEscalation/toolAllowlist only) */
-  harnessOverrides?: Record<string, unknown>;
-  /** Live-summarization prompt template. Null ⇒ the SYSTEM live default. */
-  livePromptTemplateId?: string;
-  /** Per-task LLM override: { live?: { aiModelSlug }, finalize?: { aiModelSlug } }. Each key falls back independently to the tenant AiTaskDefault. */
-  llmOverrides?: Record<string, unknown>;
-  /** Agent name */
-  name: string;
-  /** Actions this agent must never take (compliance envelope) */
-  neverActions?: string[];
-  /** Summary template served for NEW-PATIENT visits. Null ⇒ fall back to promptTemplateId. */
-  newPatientTemplateId?: string;
-  /** Pin the agent to a specific PromptVersion number. Omit/null to track the latest APPROVED version. */
-  pinnedVersionNumber?: number;
-  /** Pre-summary template for NATIVE requests that carry this department. Null ⇒ the tenant default, then the SYSTEM default. Never consulted by the v1-compat path (it sends no departmentId). */
-  preSummaryTemplateId?: string;
-  /** Bound PromptTemplate id (tenant-visible) */
-  promptTemplateId: string;
-  /** Summary template served for REVISIT visits. Null ⇒ fall back to promptTemplateId. */
-  revisitTemplateId?: string;
-  /** Loop role — at most one ENABLED PRIMARY per department */
-  role?: 'PRIMARY' | 'SPECIALIST';
-  /** URL-friendly slug (unique per department) */
-  slug: string;
-  /** Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema. */
-  subscribedKinds?: Record<string, unknown>;
-  /** Tags */
-  tags?: string[];
-  /** Which live-loop tools run: { version: 1, tools: { ner: { enabled }, vitals: { enabled }, groundedness: { enabled } } }. Null ⇒ platform default. */
-  toolConfig?: Record<string, unknown>;
-  /** Output kinds this agent may produce: { version: 1, outputs: ["soap_note"] } */
-  writeScope?: Record<string, unknown>;
 }
 
 export interface CreateDepartmentRequest {
@@ -1457,90 +1401,6 @@ export interface DeleteTenantBucketObjectResponse {
   deleted: boolean;
   /** The object key that was removed */
   key: string;
-}
-
-export interface DepartmentAgentResponse {
-  /** Actions this agent must always take */
-  alwaysActions?: string[] | null;
-  /** Creation timestamp (ISO) */
-  createdAt: string;
-  /** Department id */
-  departmentId: string;
-  /** Description */
-  description?: string;
-  /** DNA writing-style gate */
-  dnaStylePolicy: 'INHERIT' | 'DISABLED';
-  /** Constrained goal (not a free-text prompt) */
-  goal?: Record<string, unknown> | null;
-  /** Golden set id */
-  goldenSetId?: string;
-  /** Named guardrail profile */
-  guardrailProfile?: string | null;
-  /** Tenant-tier HarnessPolicy overrides */
-  harnessOverrides?: Record<string, unknown>;
-  /** Agent id */
-  id: string;
-  /** Whether this is the department default agent */
-  isDefault: boolean;
-  /** Live-summarization prompt template (null ⇒ SYSTEM live default) */
-  livePromptTemplateId?: string | null;
-  /** Per-task LLM override, keyed live/finalize (null ⇒ tenant AiTaskDefault) */
-  llmOverrides?: Record<string, unknown> | null;
-  /** Agent name */
-  name: string;
-  /** Actions this agent must never take */
-  neverActions?: string[] | null;
-  /** Summary template for NEW-PATIENT visits (null ⇒ promptTemplateId) */
-  newPatientTemplateId?: string | null;
-  /** Pinned PromptVersion number (null ⇒ tracks latest APPROVED) */
-  pinnedVersionNumber?: number | null;
-  /** Pre-summary template for native department-scoped requests */
-  preSummaryTemplateId?: string | null;
-  /** Bound PromptTemplate id */
-  promptTemplateId: string;
-  /** Resource status */
-  resourceStatus?: 'ENABLED' | 'DISABLED';
-  /** Summary template for REVISIT visits (null ⇒ promptTemplateId) */
-  revisitTemplateId?: string | null;
-  /** Loop role */
-  role: 'PRIMARY' | 'SPECIALIST';
-  /** Slug (unique per department) */
-  slug: string;
-  /** Template lineage — the agent-template slug this row descends from */
-  sourceAgentTemplateSlug?: string | null;
-  /** Context kinds this agent listens for */
-  subscribedKinds?: Record<string, unknown> | null;
-  /** Tags */
-  tags?: string[];
-  /** Whether this is a locked template copy (read-only content; clone to customize) */
-  templateLocked: boolean;
-  /** Live-loop tool plan (null ⇒ platform default) */
-  toolConfig?: Record<string, unknown> | null;
-  /** Last update timestamp (ISO) */
-  updatedAt: string;
-  /** Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH. */
-  version: number;
-  /** Output kinds this agent may produce */
-  writeScope?: Record<string, unknown> | null;
-}
-
-export interface DepartmentAgentVersionResponse {
-  /** The DepartmentAgent this snapshot belongs to */
-  agentId: string;
-  /** Why this version was written, when recorded (e.g. clone lineage) */
-  changeReason?: string | null;
-  /** sha256 over the canonical (key-sorted) JSON of `configSnapshot` */
-  checksum: string;
-  /** The seven TASK-659 loop-configuration fields, canonical snapshot */
-  configSnapshot: Record<string, unknown>;
-  /** Creation timestamp (ISO) */
-  createdAt: string;
-  /** Acting user */
-  createdBy?: string | null;
-  /** Version row id */
-  id: string;
-  /** Monotonically increasing per agent, starting at 1 */
-  versionNumber: number;
 }
 
 export interface DepartmentInfo {
@@ -2309,8 +2169,6 @@ export interface HarnessPolicyResponse {
   numericDoseThreshold: number;
   /** Optimistic-delivery loop toggle (null = harness env default). */
   optimisticDeliveryEnabled?: boolean | null;
-  /** Per-agent override provenance (present only when an agent overlay was applied). */
-  overridesSource?: Record<string, unknown>;
   /** PHI-detection toggle. */
   phiEnabled: boolean;
   /** PHI fail-closed behaviour. */
@@ -2837,16 +2695,6 @@ export interface PaginatedApiKeyResponse {
   page: number;
 }
 
-export interface PaginatedDepartmentAgentResponse {
-  /** Total number of items */
-  count: number;
-  data: DepartmentAgentResponse[];
-  /** Number of items per page */
-  limit: number;
-  /** Page number */
-  page: number;
-}
-
 export interface PaginatedGlobalSettingResponse {
   /** Total number of items */
   count: number;
@@ -3083,11 +2931,6 @@ export interface PasswordPolicyResponse {
 export interface PinConsultationContextSchemaVersionRequest {
   /** The immutable version number to serve. Must already exist. */
   versionNumber: number;
-}
-
-export interface PinDepartmentAgentRequest {
-  /** PromptVersion number to pin to, or null to track the latest APPROVED version. */
-  versionNumber: number | null;
 }
 
 export interface PinDocumentTemplateVersionRequest {
@@ -3355,26 +3198,26 @@ export interface PrismaStudioStatusResponse {
   enabled: boolean;
 }
 
-export interface PromoteAgentRequest {
-  /** Which immutable DepartmentAgentVersion to promote. Defaults to the source agent’s latest. */
-  agentVersionNumber?: number;
-  /** Free-text note recorded on the promotion record. */
-  changeReason?: string;
-  /** Tenant the agent is promoted FROM. Required so authorization can run before any read. */
-  fromTenantId: string;
-  /** The agent to promote, in the SOURCE tenant. */
-  sourceAgentId: string;
-  /** An EvalRun in the SOURCE tenant travelling as an attestation. Recorded as evidence only — it is never treated as a result the target inherits; the target re-runs its own. */
-  sourceEvalRunId?: string;
-  /** Golden set IN THE TARGET TENANT to re-run the eval against. Defaults to the target agent’s own. A source-tenant golden set is never accepted — the corpus never crosses a tenant boundary. */
-  targetGoldenSetId?: string;
-  /** Tenant the agent is promoted INTO. */
-  toTenantId: string;
-}
-
 export interface PromoteExemplarRequest {
   /** The golden set to add the promoted case to. Must belong to the same tenant as the exemplar. */
   goldenSetId: string;
+}
+
+export interface PromoteWorkflowRequest {
+  /** Free-text note recorded on the promotion record. */
+  changeReason?: string;
+  /** Which immutable version to promote. Defaults to the source tenant’s ACTIVE PUBLISHED version — never simply the newest, which may be an unfinished draft. Name a number to promote a draft deliberately. */
+  definitionVersionNumber?: number;
+  /** Tenant the workflow is promoted FROM. Required so authorization can run before any read. */
+  fromTenantId: string;
+  /** The workflow definition to promote, by slug, in the SOURCE tenant. */
+  sourceDefinitionSlug: string;
+  /** An EvalRun in the SOURCE tenant travelling as an attestation. Recorded as evidence only — it is never treated as a result the target inherits; the target re-runs its own. */
+  sourceEvalRunId?: string;
+  /** Golden set IN THE TARGET TENANT to run the eval against. A source-tenant golden set is never accepted — the corpus never crosses a tenant boundary, which is also why the promoted graph’s own `evalGate` bindings are stripped. */
+  targetGoldenSetId?: string;
+  /** Tenant the workflow is promoted INTO. */
+  toTenantId: string;
 }
 
 export interface PromptDiffChangeDto {
@@ -3852,11 +3695,6 @@ export interface ResponsibleUserResponse {
   email?: string;
   /** The acting user id. */
   id: string;
-}
-
-export interface ResyncDepartmentAgentsRequest {
-  /** Reconcile only this tenant; omit to sweep every non-SYSTEM tenant. */
-  tenantId?: string;
 }
 
 export interface RevealGlobalSettingRequest {
@@ -4993,55 +4831,6 @@ export interface UpdateConsultationContextSchemaRequest {
   /** Governance status. Moving to APPROVED records a sign-off; moving back to DRAFT makes the schema unservable without discarding its published versions. */
   status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
   templateLocked?: boolean;
-}
-
-export interface UpdateDepartmentAgentRequest {
-  /** Actions this agent must always take (compliance envelope) */
-  alwaysActions?: string[];
-  /** Agent description */
-  description?: string;
-  /** DNA writing-style gate */
-  dnaStylePolicy?: 'INHERIT' | 'DISABLED';
-  /** Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. */
-  expectedVersion: number;
-  /** Constrained goal (NOT a free-text prompt): { version: 1, objective, successCriteria? } */
-  goal?: Record<string, unknown>;
-  /** Golden set id (consumed by eval gating) */
-  goldenSetId?: string;
-  /** Named guardrail profile from a closed platform catalogue */
-  guardrailProfile?: string;
-  /** Tenant-tier HarnessPolicy overrides (thresholds + maxRegen/gateSla/gateEscalation/toolAllowlist only) */
-  harnessOverrides?: Record<string, unknown>;
-  /** Live-summarization prompt template. Null ⇒ the SYSTEM live default. */
-  livePromptTemplateId?: string;
-  /** Per-task LLM override: { live?: { aiModelSlug }, finalize?: { aiModelSlug } }. Each key falls back independently to the tenant AiTaskDefault. */
-  llmOverrides?: Record<string, unknown>;
-  /** Agent name */
-  name?: string;
-  /** Actions this agent must never take (compliance envelope) */
-  neverActions?: string[];
-  /** Summary template served for NEW-PATIENT visits. Null ⇒ fall back to promptTemplateId. */
-  newPatientTemplateId?: string;
-  /** Pre-summary template for NATIVE requests that carry this department. Null ⇒ the tenant default, then the SYSTEM default. Never consulted by the v1-compat path (it sends no departmentId). */
-  preSummaryTemplateId?: string;
-  /** Bound PromptTemplate id (tenant-visible) */
-  promptTemplateId?: string;
-  /** Resource status */
-  resourceStatus?: 'ENABLED' | 'DISABLED';
-  /** Summary template served for REVISIT visits. Null ⇒ fall back to promptTemplateId. */
-  revisitTemplateId?: string;
-  /** Loop role — at most one ENABLED PRIMARY per department */
-  role?: 'PRIMARY' | 'SPECIALIST';
-  /** URL-friendly slug (unique per department) */
-  slug?: string;
-  /** Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema. */
-  subscribedKinds?: Record<string, unknown>;
-  /** Tags */
-  tags?: string[];
-  /** Which live-loop tools run: { version: 1, tools: { ner: { enabled }, vitals: { enabled }, groundedness: { enabled } } }. Null ⇒ platform default. */
-  toolConfig?: Record<string, unknown>;
-  /** Output kinds this agent may produce: { version: 1, outputs: ["soap_note"] } */
-  writeScope?: Record<string, unknown>;
 }
 
 export interface UpdateDepartmentPromptConfigRequest {

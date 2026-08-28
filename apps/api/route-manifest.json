@@ -116,7 +116,7 @@
       "requiredPermissions": [
         [
           "manage",
-          "DepartmentAgent"
+          "WorkflowDefinition"
         ]
       ],
       "isPublic": false,
@@ -139,7 +139,7 @@
       "requiredPermissions": [
         [
           "manage",
-          "DepartmentAgent"
+          "WorkflowDefinition"
         ]
       ],
       "isPublic": false,
@@ -162,7 +162,7 @@
       "requiredPermissions": [
         [
           "manage",
-          "DepartmentAgent"
+          "WorkflowDefinition"
         ]
       ],
       "isPublic": false,
@@ -2323,236 +2323,6 @@
         [
           "manage",
           "Consultation"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "list",
-      "method": "GET",
-      "path": "/api/v1/admin/department-agents",
-      "routePath": "/admin/department-agents",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "create",
-      "method": "POST",
-      "path": "/api/v1/admin/department-agents",
-      "routePath": "/admin/department-agents",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "delete",
-      "method": "DELETE",
-      "path": "/api/v1/admin/department-agents/{id}",
-      "routePath": "/admin/department-agents/:id",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "getById",
-      "method": "GET",
-      "path": "/api/v1/admin/department-agents/{id}",
-      "routePath": "/admin/department-agents/:id",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "update",
-      "method": "PATCH",
-      "path": "/api/v1/admin/department-agents/{id}",
-      "routePath": "/admin/department-agents/:id",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "clone",
-      "method": "POST",
-      "path": "/api/v1/admin/department-agents/{id}/clone",
-      "routePath": "/admin/department-agents/:id/clone",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "pin",
-      "method": "POST",
-      "path": "/api/v1/admin/department-agents/{id}/pin",
-      "routePath": "/admin/department-agents/:id/pin",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "setDefault",
-      "method": "POST",
-      "path": "/api/v1/admin/department-agents/{id}/set-default",
-      "routePath": "/admin/department-agents/:id/set-default",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentController",
-      "handler": "listVersions",
-      "method": "GET",
-      "path": "/api/v1/admin/department-agents/{id}/versions",
-      "routePath": "/admin/department-agents/:id/versions",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "DepartmentAgent"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "DepartmentAgentResyncController",
-      "handler": "resync",
-      "method": "POST",
-      "path": "/api/v1/admin/department-agents/resync",
-      "routePath": "/admin/department-agents/resync",
-      "svcScopes": [
-        "svc:admin:department-agent:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "Tenant"
         ]
       ],
       "isPublic": false,

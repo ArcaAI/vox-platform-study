@@ -13,7 +13,20 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { LiveDocumentationService } from '../live-documentation.service';
-import { DEFAULT_LIVE_TOOL_PLAN, normalizeToolPlan, type FrozenLiveAgentSnapshot, type ILiveAgentResolver } from '../live-agent.port';
+import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot, type ILiveAgentResolver, type ResolvedToolPlan } from '../live-agent.port';
+
+/**
+ * A `ResolvedToolPlan` with `overrides` applied over the platform default.
+ *
+ * This used to be `normalizeToolPlan(agentToolConfig)` — the parser that turned
+ * `DepartmentAgent.toolConfig` JSONB into a plan. TASK-815 deleted the parser
+ * with the column it read. What this suite is about — that the FLUSH honours
+ * whatever plan the frozen snapshot carries — is unchanged, so the plans are
+ * built directly.
+ */
+function toolPlan(overrides: Partial<ResolvedToolPlan['tools']> = {}): ResolvedToolPlan {
+  return { version: 1, tools: { ...DEFAULT_LIVE_TOOL_PLAN.tools, ...overrides } };
+}
 
 const CID = 'consultation-c4-001';
 const TENANT = 'tenant-c4-001';
@@ -148,7 +161,7 @@ describe('C4-T1 — null/absent toolConfig ⇒ behavior byte-identical to pre-C4
 describe('C4-T2 — a configured plan changes what runs, and only that', () => {
   it('ner+vitals disabled ⇒ NO NLP call, no entities, no vitals', async () => {
     const { http, post } = httpMock();
-    const plan = normalizeToolPlan({ version: 1, tools: { ner: { enabled: false }, vitals: { enabled: false } } });
+    const plan = toolPlan({ ner: { enabled: false }, vitals: { enabled: false } });
     const payload = await flushOnce(buildService({ http, resolver: resolverFor(plan) }));
 
     expect(urls(post).some((u) => u.includes('/classify/tokens'))).toBe(false);
@@ -158,7 +171,7 @@ describe('C4-T2 — a configured plan changes what runs, and only that', () => {
 
   it('vitals disabled alone ⇒ still ONE NLP call (entities kept), vitals filtered off', async () => {
     const { http, post } = httpMock();
-    const plan = normalizeToolPlan({ version: 1, tools: { vitals: { enabled: false } } });
+    const plan = toolPlan({ vitals: { enabled: false } });
     const payload = await flushOnce(buildService({ http, resolver: resolverFor(plan) }));
 
     expect(urls(post).filter((u) => u.includes('/classify/tokens'))).toHaveLength(1);
@@ -168,7 +181,7 @@ describe('C4-T2 — a configured plan changes what runs, and only that', () => {
 
   it('groundedness forced ON by config runs even when the env default is off', async () => {
     const { http, post } = httpMock();
-    const plan = normalizeToolPlan({ version: 1, tools: { groundedness: { enabled: true } } });
+    const plan = toolPlan({ groundedness: { enabled: true } });
     const payload = await flushOnce(buildService({ http, resolver: resolverFor(plan) }));
 
     expect(urls(post).filter((u) => u.includes('/guardrail/ground'))).toHaveLength(1);
@@ -177,7 +190,7 @@ describe('C4-T2 — a configured plan changes what runs, and only that', () => {
 
   it('groundedness forced OFF by config does not run even when the env default is on', async () => {
     const { http, post } = httpMock();
-    const plan = normalizeToolPlan({ version: 1, tools: { groundedness: { enabled: false } } });
+    const plan = toolPlan({ groundedness: { enabled: false } });
     const payload = await flushOnce(buildService({ http, env: { LIVE_DOC_GROUNDEDNESS_ENABLED: 'true' }, resolver: resolverFor(plan) }));
 
     expect(urls(post).some((u) => u.includes('/guardrail/ground'))).toBe(false);

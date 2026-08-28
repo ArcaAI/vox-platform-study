@@ -93,7 +93,6 @@ model PromptTemplate {
 
   // Relations
   Versions         PromptVersion[]
-  DepartmentAgents DepartmentAgent[]
 
   // Constraints
   @@unique([tenantId, name])

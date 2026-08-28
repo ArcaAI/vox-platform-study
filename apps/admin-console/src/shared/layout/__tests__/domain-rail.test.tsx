@@ -92,7 +92,7 @@ describe('DomainRail', () => {
     expect(clinical.getAttribute('href')).toBe('/consultations');
     // A multi-route domain uses the same rule — its first visible entry — so
     // there is no dead click at any domain size.
-    expect(screen.getByRole('link', { name: 'Knowledge & Agents' }).getAttribute('href')).toBe('/agents');
+    expect(screen.getByRole('link', { name: 'Knowledge & Agents' }).getAttribute('href')).toBe('/prompt-templates');
   });
 
   it('is a single tab stop with arrow traversal (AC-8)', async () => {

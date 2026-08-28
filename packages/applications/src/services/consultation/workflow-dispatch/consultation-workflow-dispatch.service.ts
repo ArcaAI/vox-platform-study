@@ -19,8 +19,6 @@ const CONSULTATION_PALETTE_KEY = 'consultation';
 /** The palette whose assignment resolves to an `AsrPipeline` rather than an interpreter run. */
 const STT_PALETTE_KEY = 'stt';
 
-
-
 /** Mirrors `interpreterSessionId` in the exposure plane. */
 function interpreterSessionId(runId: string): string {
   return `wf-${runId}`;
