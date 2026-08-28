@@ -70,8 +70,6 @@ import { ChangelogAdminController } from '../modules/changelog/changelog-admin.c
 import { ConsultationContextSchemaAdminController } from '../modules/consultation-context-schema/consultation-context-schema.controller';
 import { AdminConsultationController } from '../modules/consultation/admin-consultation.controller';
 import { ConsentGrantController } from '../modules/consent/consent.controller';
-import { DepartmentAgentResyncController } from '../modules/department-agent/department-agent-resync.controller';
-import { DepartmentAgentController } from '../modules/department-agent/department-agent.controller';
 import { DepartmentController } from '../modules/department/department.controller';
 import { DnaWritingStyleAdminController } from '../modules/dna-writing-style/dna-writing-style-admin.controller';
 import { EntitlementsAdminController } from '../modules/entitlements/entitlements-admin.controller';
@@ -171,8 +169,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: ChangelogAdminController, expect: 'FORBID' },
   { controller: ConsentGrantController, expect: 'FORBID' },
   { controller: ConsultationContextSchemaAdminController, expect: 'FORBID' },
-  { controller: DepartmentAgentController, expect: 'FORBID' },
-  { controller: DepartmentAgentResyncController, expect: 'FORBID' },
   { controller: DepartmentController, expect: 'FORBID' },
   { controller: DnaWritingStyleAdminController, expect: 'FORBID' },
   { controller: EntitlementsAdminController, expect: 'FORBID' },

@@ -80,7 +80,6 @@ import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenan
 import { ConsultationContextSchemaModule } from './modules/consultation-context-schema/consultation-context-schema.module';
 import { DocumentTemplateModule } from './modules/document-template/document-template.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
-import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
@@ -465,7 +464,6 @@ const featureModules: any[] = [
   // TASK-810 — the clinical-document SHAPE catalog: which sections a generated
   // document has, and the strict schema compiled from that shape.
   DocumentTemplateModule,
-  DepartmentAgentModule,
   // Admin/agent-promotions: promote an immutable agent
   // configuration version from one tenant to another. Its own module because
   // AgentPromotion is its own immutable resource, not another verb on the

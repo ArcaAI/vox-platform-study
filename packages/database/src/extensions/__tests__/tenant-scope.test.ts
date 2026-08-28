@@ -142,7 +142,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // clinical-document shape catalog, head + immutable version.
     // +1 (89): DocumentSection (TASK-811) — the per-section child table of a
     // live-generated clinical document.
-    expect(TENANT_SCOPED_MODELS.size).toBe(89);
+    // -2 (87): DepartmentAgent + DepartmentAgentVersion (TASK-815) — both models
+    // dropped. `AgentPromotion` STAYS: the promotable moved to a
+    // `WorkflowDefinition` version, but the WORM record is still the target
+    // tenant's own row.
+    expect(TENANT_SCOPED_MODELS.size).toBe(87);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

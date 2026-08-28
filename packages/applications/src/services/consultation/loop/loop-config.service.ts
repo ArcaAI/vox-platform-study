@@ -81,7 +81,9 @@ function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): 
   const definition = version?.definition as { kinds?: unknown } | null | undefined;
   const kinds = definition?.kinds;
   if (!Array.isArray(kinds)) return [];
-  return kinds.filter((kind): kind is ContextKindDeclaration => typeof kind === 'object' && kind !== null && typeof (kind as { key?: unknown }).key === 'string');
+  return kinds.filter(
+    (kind): kind is ContextKindDeclaration => typeof kind === 'object' && kind !== null && typeof (kind as { key?: unknown }).key === 'string',
+  );
 }
 
 /**

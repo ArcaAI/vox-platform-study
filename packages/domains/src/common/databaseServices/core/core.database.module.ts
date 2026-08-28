@@ -39,8 +39,6 @@ import { DocumentTemplateRepository } from '../../../repositories/generated/core
 import { DocumentTemplateVersionRepository } from '../../../repositories/generated/core/DocumentTemplateVersionRepository';
 import { ContextItemRepository } from '../../../repositories/generated/core/ContextItemRepository';
 import { ContextItemVersionRepository } from '../../../repositories/generated/core/ContextItemVersionRepository';
-import { DepartmentAgentRepository } from '../../../repositories/generated/core/DepartmentAgentRepository';
-import { DepartmentAgentVersionRepository } from '../../../repositories/generated/core/DepartmentAgentVersionRepository';
 import { DepartmentRepository } from '../../../repositories/generated/core/DepartmentRepository';
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
@@ -198,11 +196,7 @@ const repositories = [
   // peer-service token.
   ServiceAccountRepository,
   DepartmentRepository,
-  // First-class department agent entity
-  DepartmentAgentRepository,
-  // Immutable loop-configuration snapshots of a DepartmentAgent
-  DepartmentAgentVersionRepository,
-  // Immutable, WORM records of agent promotions between tenants
+  // Immutable, WORM records of cross-tenant workflow promotions
   AgentPromotionRepository,
   // Prompt & DNA domain
   PromptTemplateRepository,

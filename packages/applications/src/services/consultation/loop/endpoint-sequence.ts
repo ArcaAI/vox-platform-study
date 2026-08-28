@@ -50,7 +50,7 @@
  * empty stage says so through `neverActions`, which is an explicit act.
  */
 
-import { AgentActionKey } from '../../departmentAgent/constants';
+import { LoopActionKey as AgentActionKey } from './loop-action-keys';
 
 /** The `global-kv` key holding the ordered endpoint sequence. */
 export const CONSULTATION_ENDPOINT_ACTIONS_KEY = 'consultation.endpoint.actions';

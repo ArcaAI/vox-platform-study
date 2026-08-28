@@ -36,8 +36,6 @@ export * from './ContextItemVersionRepository';
 // Sibling that patches ContextItemVersionRepository.prototype
 // with encryptFieldsIntoEntity / decryptFieldsFromEntity / findByIdWithDecryptedFields.
 export * from './ContextItemVersionRepository.encryption';
-export * from './DepartmentAgentRepository';
-export * from './DepartmentAgentVersionRepository';
 export * from './DepartmentRepository';
 export * from './DnaUsageRecordRepository';
 export * from './DnaWritingStyleReportRepository';

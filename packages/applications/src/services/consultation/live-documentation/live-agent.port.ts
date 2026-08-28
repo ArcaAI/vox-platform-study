@@ -22,7 +22,7 @@
  * byte-identical to the seeded SYSTEM default (paired sha256 guards).
  */
 
-import type { LiveToolKey } from '../../departmentAgent/constants';
+import type { LiveToolKey } from './live-tool-keys';
 
 /** DI token for {@link ILiveAgentResolver}. */
 export const ILiveAgentResolver = Symbol('ILiveAgentResolver');
@@ -39,10 +39,16 @@ export interface ResolvedToolSetting {
  * The normalized live tool plan. Always fully populated on the snapshot, so the
  * flush path never has to reason about absent config.
  *
- * NOTE FOR C4: the executor REGISTRY (and its richer `resolveToolPlan`) is C4's
- * territory; C3 only normalizes the agent's `toolConfig` JSONB into this shape
- * so the seam exists and the frozen snapshot can carry it. C4 may widen this
- * type additively (it must keep `version` as the schema-evolution anchor).
+ * SINCE TASK-815 there is exactly one value it ever takes on a fresh resolve —
+ * {@link DEFAULT_LIVE_TOOL_PLAN}. The per-session variation used to come from
+ * `DepartmentAgent.toolConfig`; its successor is not another JSONB blob but the
+ * GRAPH: in the workflow substrate "is NER on for this session" is answered by
+ * whether the tenant's realtime lane contains an entity-extraction node, which
+ * `LiveDocumentationService.ensureLaneResolved` resolves on its own. The plan
+ * stays on the snapshot because the LEGACY flush path still reads it, and
+ * `DEFAULT_LIVE_TOOL_PLAN` is exactly what a tenant with no `toolConfig` always
+ * got. The type may be widened additively (keep `version` as the
+ * schema-evolution anchor).
  */
 export interface ResolvedToolPlan {
   version: 1;
@@ -58,42 +64,6 @@ export const DEFAULT_LIVE_TOOL_PLAN: ResolvedToolPlan = Object.freeze({
     groundedness: Object.freeze({ enabled: null }),
   }),
 }) as ResolvedToolPlan;
-
-/**
- * Normalize an agent's `toolConfig` JSONB into a {@link ResolvedToolPlan}.
- *
- * Null / absent / malformed ⇒ {@link DEFAULT_LIVE_TOOL_PLAN} — i.e. exactly
- * today's behavior. Unknown tool keys are IGNORED here (they are already
- * rejected with a 400 at write time by `toolConfigProblems`); read-side
- * tolerance is the defense-in-depth half of that pair.
- *
- * Named `normalizeToolPlan` rather than `resolveToolPlan` so C4's registry can
- * introduce the latter without a name collision during the parallel lanes.
- */
-export function normalizeToolPlan(toolConfig: unknown): ResolvedToolPlan {
-  if (!toolConfig || typeof toolConfig !== 'object' || Array.isArray(toolConfig)) return DEFAULT_LIVE_TOOL_PLAN;
-  const tools = (toolConfig as { tools?: unknown }).tools;
-  if (!tools || typeof tools !== 'object' || Array.isArray(tools)) return DEFAULT_LIVE_TOOL_PLAN;
-
-  const source = tools as Record<string, unknown>;
-  const read = (key: LiveToolKey, fallback: boolean | null): ResolvedToolSetting => {
-    const entry = source[key];
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return { enabled: fallback };
-    const enabled = (entry as { enabled?: unknown }).enabled;
-    if (enabled === null) return { enabled: null };
-    if (typeof enabled === 'boolean') return { enabled };
-    return { enabled: fallback };
-  };
-
-  return {
-    version: 1,
-    tools: {
-      ner: read('ner', true),
-      vitals: read('vitals', true),
-      groundedness: read('groundedness', null),
-    },
-  };
-}
 
 /**
  * The immutable identity a live session serves for its WHOLE lifetime.

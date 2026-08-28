@@ -19,13 +19,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import {
-  ConsultationRepository,
-  ContextItemRepository,
-  DnaWritingStyleReportRepository,
-  DepartmentAgentRepository,
-  DepartmentAgentDnaPolicy,
-} from '@arcaai/domains';
+import { ConsultationRepository, ContextItemRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
 import { ConfigResolver } from '../../config-resolver';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
@@ -71,13 +65,11 @@ export class ConsultationEventHandler {
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // The last-mile DNA-redaction resolution deps (harness path only).
     // The rules live encrypted-at-rest on the doctor's latest DNA report; the
-    // repository reads + the SecretsService decrypts. The DepartmentAgent repo
-    // supplies the department default-agent DNA-policy gate. All optional +
-    // trailing so legacy positional fixtures/DI keep compiling — when any is
-    // absent the harness starts with NO redaction rules (safe no-op).
+    // repository reads + the SecretsService decrypts. Both optional + trailing
+    // so legacy positional fixtures/DI keep compiling — when either is absent
+    // the harness starts with NO redaction rules (safe no-op).
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -454,29 +446,16 @@ export class ConsultationEventHandler {
       const doctorId = consultation?.doctorId ?? null;
       const departmentId = consultation?.departmentId ?? null;
 
-      // Department default-agent gate: DISABLED forces redaction OFF for the
-      // whole department. Best-effort — a lookup miss leaves the tenant/doctor
-      // gates authoritative.
-      let departmentAgentDnaDisabled = false;
-      if (departmentId && this.departmentAgentRepository) {
-        try {
-          const defaultAgent = await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId);
-          departmentAgentDnaDisabled = defaultAgent?.dnaStylePolicy === DepartmentAgentDnaPolicy.DISABLED;
-        } catch (agentError) {
-          this.logger.warn({
-            message: 'Default department-agent lookup failed for DNA redaction gate (best-effort)',
-            consultationId,
-            departmentId,
-            error: agentError instanceof Error ? agentError.message : String(agentError),
-          });
-        }
-      }
-
+      // A THIRD gate used to sit here: the department's default
+      // `DepartmentAgent.dnaStylePolicy = DISABLED` forced redaction OFF for the
+      // whole department. It retired with `DepartmentAgent` (TASK-815) and has
+      // no successor in the workflow substrate; the tenant and doctor gates
+      // below are what remain. See `ConfigResolver.resolveEffectiveDnaRedactionEnabled`
+      // for why the direction of that loss is called out rather than buried.
       const { effective } = await this.configResolver.resolveEffectiveDnaRedactionEnabled({
         tenantId,
         departmentId,
         doctorId,
-        departmentAgentDnaDisabled,
       });
       if (!effective || !doctorId) return [];
 

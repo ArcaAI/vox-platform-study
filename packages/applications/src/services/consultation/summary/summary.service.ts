@@ -29,7 +29,6 @@ import {
   AgentStepStatus,
   AgentStepType,
   TranscriptSegmentRepository,
-  DepartmentAgentRepository,
   AiModelRepository,
   generateId,
 } from '@arcaai/domains';
@@ -63,7 +62,6 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
-import { resolveAgentFinalizeSelection } from '../prompt/agent-finalize-llm';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
@@ -74,7 +72,10 @@ import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultServi
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { IPhiRedactor } from '../../gate-edit-mining/IPhiRedactor';
 import { IGateEditMiningQueue } from '../../gate-edit-mining/IGateEditMiningQueue';
-import { IDocumentTemplateService, type IDocumentTemplateService as IDocumentTemplateServicePort } from '../../document-template/IDocumentTemplateService';
+import {
+  IDocumentTemplateService,
+  type IDocumentTemplateService as IDocumentTemplateServicePort,
+} from '../../document-template/IDocumentTemplateService';
 import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
 
 /**
@@ -244,7 +245,6 @@ export class SummaryService extends BaseService implements ISummaryService {
     // row it names. Optional + trailing so existing positional test fixtures
     // compile; unwired ⇒ no override is ever applied and the tenant
     // `text.finalize` AiTaskDefault decides exactly as before.
-    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
     // TASK-704 seam. `generatePreSummary` calls `noteGenerationService.generate`
     // (PRE_SUMMARY has no harness equivalent — always a side-effect-free
@@ -654,13 +654,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
-      // Agent `llmOverrides.finalize` outranks the tenant
-      // `text.finalize` AiTaskDefault. Fail-CLOSED: a named-but-unusable model
-      // raises rather than silently finalizing on the tenant default.
-      agentLlm: await resolveAgentFinalizeSelection(
-        { departmentAgentRepository: this.departmentAgentRepository, aiModelRepository: this.aiModelRepository, logger: this.logger },
-        warmStart.lineage?.agentId,
-      ),
+      // TASK-815: there is no per-agent finalize model override any more. It
+      // was `DepartmentAgent.llmOverrides.finalize`, resolved fail-CLOSED so a
+      // named-but-unusable model raised rather than silently finalizing on the
+      // tenant default. Its successor is a per-node `llmBinding` (TASK-816),
+      // which has not landed — so finalize resolves the tenant `text.finalize`
+      // `AiTaskDefault` (tenant → SYSTEM), which is what every consultation
+      // whose agent named no override already used. Nothing is being failed
+      // open here: there is no longer a selection that can fail.
+      agentLlm: null,
       context: {
         dnaStyleId: effectiveDnaStyleId,
         template: request.template,
