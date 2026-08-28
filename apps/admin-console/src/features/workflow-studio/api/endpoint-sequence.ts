@@ -54,6 +54,26 @@ export const ENDPOINT_ACTION_HINTS: Record<EndpointActionKey, string> = {
     'Records clinician feedback and promotes any correction they accepted. The only path that can. Place it last — a feedback failure must never cost a finalized note.',
 };
 
+/**
+ * True when the sequence would LOCK the consultation's documents before the step that writes the
+ * note into them — `summary.finalize` ahead of `harness.finalize`.
+ *
+ * The twin of `endpointOrderProblem` in
+ * `packages/applications/src/services/consultation/loop/endpoint-sequence.ts`, which the settings
+ * write lane enforces through the descriptor's `validate`. Duplicated by hand for the same reason
+ * `ENDPOINT_ACTION_KEYS` above is: the console never imports a server package, and a rule this
+ * small is better copied than dragged across that boundary. This copy is ADVISORY — it warns
+ * before the admin saves; the server is what refuses. Change one, change the other.
+ *
+ * Conditional on both being present, exactly as the server rule is: an admin who drops
+ * `harness.finalize` entirely is making a legitimate choice, not a mistake to warn about.
+ */
+export function isEndpointOrderInverted(sequence: readonly string[]): boolean {
+  const writesTheNote = sequence.indexOf('harness.finalize');
+  const locksDocuments = sequence.indexOf('summary.finalize');
+  return writesTheNote !== -1 && locksDocuments !== -1 && locksDocuments < writesTheNote;
+}
+
 /** The gateway's effective-value envelope for one key (subset this editor reads). */
 export interface EndpointSequenceSetting {
   key: string;
