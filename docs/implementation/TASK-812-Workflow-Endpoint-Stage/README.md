@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` (worktree `lane-812-endpoint`, merge pending) |
+| **Status** | **`Completed`** 2026-08-28 — merged to `dev-2.2` (`2bf8b373a`), gates re-verified by the orchestrator. Two owner notes in §7a. |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -222,6 +222,18 @@ and the Studio ordering UI.
 `LOCK` (multi-document lock test), `REPLAY` (replay-compat output pasted), `ARTIFACTS`.
 
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 04, 05, 06. A subagent inherits NONE of the orchestrator's context — read them.
+
+## 7a. Owner notes (neither blocks closure)
+
+**1. Sequence order is admin-editable, and a bad order is expressible.** The platform default puts
+`harness.finalize` **before** `summary.finalize` so the lock lands on a written note. Reversing them
+locks an empty document, and nothing structurally prevents an admin from doing so. Worth either a
+publish-time rule or a Studio warning — deliberately not invented here.
+
+**2. `feedback.capture` from the legacy loop carries no accepted proposals.** Acceptance is a
+clinician act that reaches the gateway from the console, so promotion only happens once the console
+has recorded one. Not a defect; it does mean the promotion path is inert until the console surface
+exists.
 
 ## 6. Implementation Summary
 
