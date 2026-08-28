@@ -17,6 +17,7 @@ import type {
   CreateWorkflowDefinitionRequest,
   DepartmentOption,
   NodePromptBinding,
+  NodePromptUpdateResult,
   PromptTemplateOption,
   PromptTemplateVersion,
   PublishWorkflowDefinitionRequest,
@@ -172,15 +173,22 @@ export function listNodePromptBindings(id: string): Promise<NodePromptBinding[]>
 /**
  * DD-11's in-node edit — the ONLY path that moves a pin. If-Match GATED (428
  * without it), unlike `validate`/`publish` above: this one IS a client CAS,
- * because it rewrites the graph the client is holding.
+ * because it rewrites the graph the client is holding, and a STALE validator is
+ * rejected with 412 on BOTH branches below.
  *
- * One PUT, two writes, one transaction: a new immutable `PromptVersion` is
- * minted from `content` and THIS node's `promptVersionNumber` moves to it.
- * Other nodes bound to the same template are untouched — that is the whole
- * point. Only a DRAFT/VALIDATED definition may be edited; a PUBLISHED graph is
+ * Two branches, one route (§7b item 1). Content that differs from the
+ * template's LATEST version is an AUTHORING act: a new immutable
+ * `PromptVersion` is minted and THIS node's pin moves to it, in one
+ * transaction. Content byte-identical to that latest version is an ADOPTION:
+ * the pin moves and NOTHING is minted — and if the node is already pinned
+ * there, nothing is written at all. Either way, other nodes bound to the same
+ * template are untouched, which is the whole point. Which branch ran is stated
+ * by `promptVersionMinted` on the response; do not infer it.
+ *
+ * Only a DRAFT/VALIDATED definition may be edited; a PUBLISHED graph is
  * immutable and answers 400.
  */
-export function updateNodePrompt(id: string, nodeId: string, body: UpdateNodePromptRequest, etag: string): Promise<WithEtag<WorkflowDefinition>> {
+export function updateNodePrompt(id: string, nodeId: string, body: UpdateNodePromptRequest, etag: string): Promise<WithEtag<NodePromptUpdateResult>> {
   return putWithEtag(`${definitionPath(id)}/nodes/${encodeURIComponent(nodeId)}/prompt`, { ...body, expectedVersion: versionFromEtag(etag) }, etag);
 }
 

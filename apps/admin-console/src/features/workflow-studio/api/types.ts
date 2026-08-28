@@ -273,10 +273,9 @@ export interface NodePromptBinding {
  * moves a pin.
  *
  * Deliberately not a "set the pin" request: `content` is required because the
- * server mints a new immutable `PromptVersion` from it and re-pins this node to
- * that version inside ONE transaction. `promptVersionNumber` is absent by
- * design — it is server-stamped as `max(existing) + 1` inside that transaction,
- * and the gateway's `forbidNonWhitelisted` pipe would reject a submitted one.
+ * server decides from it whether this is an AUTHORING act or an ADOPTION.
+ * `promptVersionNumber` is absent by design — it is server-stamped, and the
+ * gateway's `forbidNonWhitelisted` pipe would reject a submitted one.
  */
 export interface UpdateNodePromptRequest {
   content: string;
@@ -284,6 +283,30 @@ export interface UpdateNodePromptRequest {
   variables?: Record<string, unknown>;
   /** OCC version of the WORKFLOW DEFINITION; the `If-Match` header overrides it. */
   expectedVersion?: number;
+}
+
+/**
+ * The answer to that PUT — a SUPERSET of `WorkflowDefinition`, not a wrapper around it
+ * (`NodePromptUpdateResponse` in `@arcaai/applications`), so the definition is still read
+ * straight off the body.
+ *
+ * The three extra fields exist because the call is no longer always a mint (§7b item 1).
+ * Content byte-identical to the template's LATEST version moves the pin and creates nothing;
+ * a node already pinned there is a true no-op — no graph write, no `_version` bump, no
+ * sys-event. Since DD-11 PATH 2 deliberately leaves node pins alone when a template is edited
+ * out of band, adoption is the COMMON path through the in-node editor, so a client that
+ * reported "minted v6" on every save would be wrong most of the time — and specifically wrong
+ * about whether an immutable clinical artifact was created. Read the outcome here; never
+ * predict it from `latestVersionNumber + 1`.
+ */
+export interface NodePromptUpdateResult extends WorkflowDefinition {
+  /** False when the submitted content matched the latest version and the pin was simply moved. */
+  promptVersionMinted: boolean;
+  /** The version this node is pinned to AFTER the request. */
+  promptVersionNumber: number;
+  /** The pin BEFORE the request; `null` when the node was unpinned. Equal to
+   *  `promptVersionNumber` when the request changed nothing at all. */
+  previousPromptVersionNumber: number | null;
 }
 
 /** One immutable version of a prompt template (`admin/prompt-templates/:id/versions`). */

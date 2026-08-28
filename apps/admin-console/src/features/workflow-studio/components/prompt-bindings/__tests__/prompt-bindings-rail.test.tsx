@@ -127,7 +127,10 @@ describe('PromptBindingsRail (DD-11)', () => {
   it('re-pins ONE node through PUT :id/nodes/:nodeId/prompt, If-Match gated, opening on the template’s latest content', async () => {
     const calls = stubRail([binding()], (call) => {
       if (pathOf(call) === '/api/hope/admin/workflow-definitions/def-1/nodes/generate_note/prompt' && call.method === 'PUT') {
-        return Response.json({ id: 'def-1', version: 8 }, { headers: { etag: '"8"' } });
+        return Response.json(
+          { id: 'def-1', version: 8, promptVersionMinted: false, promptVersionNumber: 5, previousPromptVersionNumber: 4 },
+          { headers: { etag: '"8"' } },
+        );
       }
       return undefined;
     });
@@ -139,7 +142,9 @@ describe('PromptBindingsRail (DD-11)', () => {
     // The admin sees what they would adopt BEFORE adopting it.
     await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).toBe('Reviewed wording from the library.'));
 
-    fireEvent.click(within(dialog).getByRole('button', { name: /Save as v6 and pin this node/ }));
+    // Saving that content UNCHANGED is the ADOPT path since §7b item 1 — the label says so,
+    // rather than promising a v6 the server will not mint.
+    fireEvent.click(within(dialog).getByRole('button', { name: /Adopt v5 for this node/ }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
     const put = calls.find((call) => call.method === 'PUT');
@@ -152,7 +157,12 @@ describe('PromptBindingsRail (DD-11)', () => {
 
   it('touches only the targeted node — the PUT names one nodeId and carries no other binding', async () => {
     const calls = stubRail([binding({ nodeId: 'first' }), binding({ nodeId: 'second' })], (call) => {
-      if (call.method === 'PUT') return Response.json({ id: 'def-1', version: 8 }, { headers: { etag: '"8"' } });
+      if (call.method === 'PUT') {
+        return Response.json(
+          { id: 'def-1', version: 8, promptVersionMinted: false, promptVersionNumber: 5, previousPromptVersionNumber: 4 },
+          { headers: { etag: '"8"' } },
+        );
+      }
       return undefined;
     });
     renderWithProviders(<PromptBindingsRail definitionId="def-1" etag='"7"' />);
@@ -161,7 +171,7 @@ describe('PromptBindingsRail (DD-11)', () => {
     fireEvent.click(rows[1]);
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).not.toBe(''));
-    fireEvent.click(within(dialog).getByRole('button', { name: /Save as v6/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Adopt v5 for this node/ }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
     const put = calls.find((call) => call.method === 'PUT');
