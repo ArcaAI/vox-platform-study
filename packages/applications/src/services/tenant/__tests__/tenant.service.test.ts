@@ -96,14 +96,6 @@ const mockAiModelRepository = {
   create: vi.fn(),
 };
 
-// Mock DepartmentAgentRepository — the agent golden library clone
-//  writes tenant DepartmentAgent copies and atomically flips the
-// per-department default.
-const mockDepartmentAgentRepository = {
-  isSlugUnique: vi.fn(),
-  create: vi.fn(),
-  setDefaultForDepartment: vi.fn(),
-};
 
 // Mock PromptVersionRepository — the agent clone writes a v1 snapshot of
 // each cloned tenant template.
@@ -416,9 +408,6 @@ describe('TenantService', () => {
     mockBaseClient.departmentAgent.findMany.mockResolvedValue([]);
     mockBaseClient.department.findMany.mockResolvedValue([]);
     mockBaseClient.promptTemplate.findMany.mockResolvedValue([]);
-    mockDepartmentAgentRepository.isSlugUnique.mockResolvedValue(true);
-    mockDepartmentAgentRepository.create.mockImplementation(async (entity: any) => entity);
-    mockDepartmentAgentRepository.setDefaultForDepartment.mockResolvedValue(undefined);
     mockPromptVersionRepository.create.mockImplementation(async (entity: any) => entity);
     mockPromptTemplateRepository.create = vi.fn().mockImplementation(async (entity: any) => entity);
     mockDepartmentRepository.findByCode = vi.fn().mockResolvedValue(null);
@@ -436,7 +425,6 @@ describe('TenantService', () => {
       mockClsService as any,
       mockAiModelRepository as any,
       mockAsrPipelineVersionRepository as any,
-      mockDepartmentAgentRepository as any,
       mockPromptVersionRepository as any,
     );
   });
@@ -803,10 +791,14 @@ describe('TenantService', () => {
 
     // Clone the SYSTEM agent golden library into the new tenant:
     // a tenant Department copy + APPROVED template snapshot + locked
-    // DepartmentAgent clone per golden agent, atomic per-department default.
-    describe('create — provisionTenantAgentCatalog (agent golden library)', () => {
-      const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
-
+    // Golden DEPARTMENT catalog. TASK-815 retired the `DepartmentAgent` half of
+    // this provisioning step (the agent clone, its APPROVED template snapshot,
+    // the lock/lineage stamp and the per-department default flip) with the model
+    // itself. What HAD to change for the department half to survive is the
+    // DRIVER: it used to iterate golden AGENTS and provision each one's
+    // department, so leaving it alone would have silently reduced every new
+    // tenant to the bare `GEN` department from `provisionDefaultDepartment`.
+    describe('create — provisionTenantDepartmentCatalog (golden department catalog)', () => {
       const GOLDEN_GEN_DEPT = {
         id: 'sys-dept-gen',
         code: 'GEN',
@@ -823,185 +815,72 @@ describe('TenantService', () => {
         defaultSummaryTemplate: 'SOAP',
         promptConfig: { abbreviationDensity: 'medium' },
       };
-      const GOLDEN_GEN_TPL = {
-        id: 'sys-tpl-gen',
-        name: 'Catch-all SOAP',
-        description: 'd',
-        content: 'GEN CONTENT',
-        category: 'SUMMARY',
-        status: 'APPROVED',
-        variables: { a: 1 },
-        currentVersionNumber: 1,
-        tags: ['golden-library'],
-      };
-      const GOLDEN_CARD_TPL = {
-        id: 'sys-tpl-card',
-        name: 'Cardiology Prompt',
-        description: 'd',
-        content: 'CARD CONTENT',
-        category: 'CUSTOM',
-        status: 'APPROVED',
-        variables: null,
-        currentVersionNumber: 1,
-        tags: [],
-      };
-      const GOLDEN_GEN_AGENT = {
-        id: 'sys-agent-gen',
-        tenantId: SYSTEM_TENANT_ID,
-        departmentId: 'sys-dept-gen',
-        name: 'General Practice Default Agent',
-        slug: 'gen-default',
-        description: 'd',
-        promptTemplateId: 'sys-tpl-gen',
-        isDefault: true,
-        tags: ['golden-library'],
-      };
-      const GOLDEN_CARD_AGENT = {
-        id: 'sys-agent-card',
-        tenantId: SYSTEM_TENANT_ID,
-        departmentId: 'sys-dept-card',
-        name: 'Cardiology Default Agent',
-        slug: 'card-default',
-        description: 'd',
-        promptTemplateId: 'sys-tpl-card',
-        isDefault: true,
-        tags: ['golden-library'],
-      };
 
       const wireGoldenLibrary = () => {
-        mockBaseClient.departmentAgent.findMany.mockResolvedValue([GOLDEN_GEN_AGENT, GOLDEN_CARD_AGENT]);
         mockBaseClient.department.findMany.mockResolvedValue([GOLDEN_GEN_DEPT, GOLDEN_CARD_DEPT]);
-        mockBaseClient.promptTemplate.findMany.mockResolvedValue([GOLDEN_GEN_TPL, GOLDEN_CARD_TPL]);
         // No same-code department pre-exists → every golden dept is created.
         mockDepartmentRepository.findByCode.mockResolvedValue(null);
         mockDepartmentRepository.create.mockImplementation(async (entity: any) => ({ ...entity, id: `tenant-${entity.code}` }));
-        mockPromptTemplateRepository.create.mockImplementation(async (entity: any) => ({ ...entity, id: `tpl-${entity.name}` }));
-        mockDepartmentAgentRepository.create.mockImplementation(async (entity: any) => ({ ...entity, id: `agent-${entity.slug}` }));
       };
 
-      it('clones every golden agent into the new tenant with an APPROVED template snapshot + v1 version', async () => {
+      it('clones every golden department into the new tenant', async () => {
         const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
         mockTenantRepository.create.mockResolvedValue(newTenant);
         wireGoldenLibrary();
 
         await service.create({ key: 'NEW', name: 'New' });
 
-        // Reads the SYSTEM-owned golden library through the unscoped client.
-        expect(mockBaseClient.departmentAgent.findMany).toHaveBeenCalledWith(
-          expect.objectContaining({ where: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }) }),
-        );
-        // Two golden agents → two agent clones + two template snapshots + two v1 versions.
-        expect(mockDepartmentAgentRepository.create).toHaveBeenCalledTimes(2);
-        expect(mockPromptVersionRepository.create).toHaveBeenCalledTimes(2);
-        const snapshots = mockPromptTemplateRepository.create.mock.calls.map((c) => c[0]);
-        snapshots.forEach((tpl) => {
-          expect(tpl.tenantId).toBe('new-tenant-id');
-          expect(tpl.status).toBe('APPROVED');
-        });
-        const clones = mockDepartmentAgentRepository.create.mock.calls.map((c) => c[0]);
-        expect(new Set(clones.map((a) => a.slug))).toEqual(new Set(['gen-default', 'card-default']));
-        clones.forEach((agent) => expect(agent.tenantId).toBe('new-tenant-id'));
+        const created = mockDepartmentRepository.create.mock.calls.map((c) => c[0]);
+        // The bare `GEN` from `provisionDefaultDepartment` plus the two golden
+        // departments — minus nothing: `findByCode` answers null throughout.
+        expect(created.filter((d: any) => d.code === 'CARD')).toHaveLength(1);
+        expect(created.some((d: any) => d.code === 'GEN')).toBe(true);
       });
 
-      it('stamps lock + lineage + pristine version anchor on every clone', async () => {
+      it('copies the golden department shape verbatim into the tenant copy', async () => {
         const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
         mockTenantRepository.create.mockResolvedValue(newTenant);
         wireGoldenLibrary();
 
         await service.create({ key: 'NEW', name: 'New' });
 
-        const clones = mockDepartmentAgentRepository.create.mock.calls.map((c) => c[0]);
-        clones.forEach((agent) => {
-          expect(agent.templateLocked).toBe(true);
-          expect(agent.sourceAgentTemplateSlug).toBe(agent.slug);
-          expect(agent.metaData).toEqual({ sourceTemplateVersionNumber: 1 });
-        });
-      });
-
-      it('flips the tenant department default for each golden default agent', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        wireGoldenLibrary();
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        // One flip per golden default agent (both are defaults here).
-        expect(mockDepartmentAgentRepository.setDefaultForDepartment).toHaveBeenCalledTimes(2);
-        mockDepartmentAgentRepository.setDefaultForDepartment.mock.calls.forEach(([tenantId]) => {
-          expect(tenantId).toBe('new-tenant-id');
-        });
+        const card = mockDepartmentRepository.create.mock.calls.map((c) => c[0]).find((d: any) => d.code === 'CARD');
+        expect(card.name).toBe('Cardiology');
+        expect(card.defaultSummaryTemplate).toBe('SOAP');
+        expect(card.tenantId).toBe('new-tenant-id');
       });
 
       it('reuses an existing same-code department (bare GEN) rather than creating a duplicate', async () => {
         const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
         mockTenantRepository.create.mockResolvedValue(newTenant);
         wireGoldenLibrary();
-        // The bare GEN from provisionDefaultDepartment already exists.
         mockDepartmentRepository.findByCode.mockImplementation(async (_t: string, code: string) =>
-          code === 'GEN' ? { id: 'existing-gen', code: 'GEN' } : null,
+          code === 'GEN' ? { id: 'existing-gen', code: 'GEN', tenantId: 'new-tenant-id' } : null,
         );
 
         await service.create({ key: 'NEW', name: 'New' });
 
-        const createdCodes = mockDepartmentRepository.create.mock.calls.map((c) => c[0].code);
-        // The agent catalog reuses the pre-existing GEN — it must NOT
-        // create a second one. GEN is created exactly once (by
-        // provisionDefaultDepartment, which always runs first); CARD is
-        // created by the agent catalog.
-        expect(createdCodes.filter((c) => c === 'GEN')).toHaveLength(1);
-        expect(createdCodes).toContain('CARD');
-        // The GEN agent binds the reused department, not a fresh copy.
-        const genClone = mockDepartmentAgentRepository.create.mock.calls.map((c) => c[0]).find((a) => a.slug === 'gen-default');
-        expect(genClone.departmentId).toBe('existing-gen');
+        const created = mockDepartmentRepository.create.mock.calls.map((c) => c[0]);
+        // `provisionDefaultDepartment` creates the bare `GEN` on its own; the
+        // golden catalog must then REUSE it rather than adding a second.
+        expect(created.filter((d: any) => d.code === 'GEN')).toHaveLength(1);
+        expect(created.filter((d: any) => d.code === 'CARD')).toHaveLength(1);
       });
 
-      it('is idempotent per (department, slug) — skips agents the tenant already owns', async () => {
+      it('empty golden catalog → a safe no-op (bare-GEN fallback stands)', async () => {
         const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
         mockTenantRepository.create.mockResolvedValue(newTenant);
-        wireGoldenLibrary();
-        mockDepartmentAgentRepository.isSlugUnique.mockImplementation(async (_t: string, _d: string, slug: string) => slug !== 'card-default');
-
-        await service.create({ key: 'NEW', name: 'New' });
-
-        const createdSlugs = mockDepartmentAgentRepository.create.mock.calls.map((c) => c[0].slug);
-        expect(createdSlugs).toContain('gen-default');
-        expect(createdSlugs).not.toContain('card-default');
-      });
-
-      it('empty golden library → agent clone is a safe no-op (bare-GEN fallback stands)', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockBaseClient.departmentAgent.findMany.mockResolvedValue([]);
-
-        const result = await service.create({ key: 'NEW', name: 'New' });
-
-        expect(mockDepartmentAgentRepository.create).not.toHaveBeenCalled();
-        expect(mockDepartmentAgentRepository.setDefaultForDepartment).not.toHaveBeenCalled();
-        expect(result.id).toBe('new-tenant-id');
-      });
-
-      it('one golden agent clone failing does not abort the others (per-row isolation)', async () => {
-        const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
-        mockTenantRepository.create.mockResolvedValue(newTenant);
-        wireGoldenLibrary();
-        mockDepartmentAgentRepository.create.mockImplementation(async (entity: any) => {
-          if (entity.slug === 'card-default') throw new Error('unique violation');
-          return { ...entity, id: `agent-${entity.slug}` };
-        });
+        mockBaseClient.department.findMany.mockResolvedValue([]);
 
         const result = await service.create({ key: 'NEW', name: 'New' });
 
         expect(result.id).toBe('new-tenant-id');
-        const createdSlugs = mockDepartmentAgentRepository.create.mock.calls.map((c) => c[0].slug);
-        expect(createdSlugs).toContain('gen-default');
-        // The surviving GEN default still got flipped despite the CARD failure.
-        expect(mockDepartmentAgentRepository.setDefaultForDepartment).toHaveBeenCalledTimes(1);
       });
 
-      it('agent-clone failure does not abort tenant creation', async () => {
+      it('a golden-catalog read failure does not abort tenant creation', async () => {
         const newTenant = createMockTenantEntity({ id: 'new-tenant-id' });
         mockTenantRepository.create.mockResolvedValue(newTenant);
-        mockBaseClient.departmentAgent.findMany.mockRejectedValue(new Error('db down'));
+        mockBaseClient.department.findMany.mockRejectedValue(new Error('db down'));
 
         const result = await service.create({ key: 'NEW', name: 'New' });
 

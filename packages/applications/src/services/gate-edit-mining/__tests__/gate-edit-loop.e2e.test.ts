@@ -136,7 +136,7 @@ describe('TASK-792 — clinician edit -> mined exemplar -> assembled prompt', ()
       undefined, undefined,
       { append: vi.fn().mockResolvedValue({ id: 'a-1' }) } as never,
       undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined,
       miningQueue as never,
     );
 

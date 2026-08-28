@@ -164,15 +164,15 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
   });
 
   // ── RF-4 — finalize LLM precedence, end to end through callTextService ──
-  describe('finalize LLM precedence (RF-4)', () => {
+  describe('finalize LLM precedence', () => {
     const httpService = createMockHttpService();
     const resolveTextSelection = vi.fn().mockResolvedValue({ provider: 'tenant-provider', model: 'tenant-model' });
 
     /**
      * The full positional constructor: everything before `harnessPolicyService`
-     * (index 14) and the two trailing repositories (23, 24).
+     * (index 14) and the trailing repository.
      */
-    function buildService(agent: unknown) {
+    function buildService() {
       // Positional indices 10…22: secretsService(10) … billing(22).
       const tail: unknown[] = new Array(13).fill(undefined);
       tail[0] = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') }; // secretsService
@@ -189,25 +189,32 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
         { create: vi.fn(), findById: vi.fn(), getVersionsByChangeReason: vi.fn().mockResolvedValue([]), encryptFieldsIntoEntity: vi.fn() } as never,
         promptAssemblyService as never,
         ...(tail as never[]),
-        { findById: vi.fn().mockResolvedValue(agent) } as never, // departmentAgentRepository (23)
         { findAll: vi.fn().mockResolvedValue([{ provider: 'openai', sourceUri: 'gpt-4.1', taskType: ModelTaskType.TEXT_GENERATION }]) } as never,
       );
     }
 
     const textOptions = () => httpService.axiosRef.post.mock.calls.at(-1)![1] as Record<string, unknown>;
 
-    it("the session agent's finalize override outranks the tenant text.finalize default", async () => {
+    /**
+     * RF-4 gave the session's `DepartmentAgent` an `llmOverrides.finalize` that
+     * OUTRANKED the tenant `text.finalize` AiTaskDefault, resolved fail-CLOSED.
+     * TASK-815 retired it with the agent; its successor is a per-node
+     * `llmBinding` (TASK-816), which has not landed. So the tenant selection is
+     * what decides for EVERY consultation — including one that carries live
+     * lineage, which is the case that used to differ.
+     */
+    it('the tenant text.finalize selection decides, even for a consultation carrying live lineage', async () => {
       withSnapshot({ subType: 'LIVE_SOAP_SNAPSHOT', agent: LINEAGE });
-      const svc = buildService({ llmOverrides: { finalize: { aiModelSlug: 'gpt-4-1' } } });
+      const svc = buildService();
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
-      expect(textOptions().llm_provider ?? textOptions().provider).toBeDefined();
-      expect(JSON.stringify(textOptions())).toContain('gpt-4.1');
+      expect(resolveTextSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(JSON.stringify(textOptions())).toContain('tenant-model');
     });
 
     it('REGRESSION LOCK — no lineage ⇒ the tenant selection decides, exactly as before', async () => {
-      const svc = buildService({ llmOverrides: { finalize: { aiModelSlug: 'gpt-4-1' } } });
+      const svc = buildService();
 
       await svc.generateSummary('c-1', {} as never, 'user-1');
 
