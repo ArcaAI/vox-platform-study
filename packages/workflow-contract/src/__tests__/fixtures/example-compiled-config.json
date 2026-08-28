@@ -98,6 +98,7 @@
     "guardrailProfile": "STANDARD",
     "redactionRuleSetId": null,
     "promptTemplateRefs": [],
+    "documentTemplateRefs": [],
     "contextSchemaVersionId": null,
     "entitlementKeys": []
   },
@@ -106,5 +107,5 @@
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "84f94ce4d0b2f5ecd5ba88a308cbd28c377210b738e12f733a2aad0d185270c5"
+  "checksum": "dc3e088adff522cfdbac86379df35e1ac41cb79f23e1030c2d1971f5e61bb688"
 }

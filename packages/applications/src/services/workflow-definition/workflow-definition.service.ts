@@ -80,6 +80,14 @@ const NON_DERIVABLE_POLICY_BINDINGS = {
   redactionRuleSetId: null,
 };
 
+/** TASK-810 DD-2 — the two config keys a generation node carries its DOCUMENT-SHAPE binding in.
+ *  Declared as schema properties by `DOCUMENT_BINDING_PROPERTIES` in `@arcaai/workflow-contract`'s
+ *  `node-config-schemas.ts`; named here for the same reason `PROMPT_TEMPLATE_ID_KEY` is named in
+ *  `node-prompt-binding.ts` — the derivation below reads raw node config, and a re-typed string
+ *  literal is how the two sides drift apart. */
+const DOCUMENT_TEMPLATE_ID_KEY = 'documentTemplateId';
+const DOCUMENT_VERSION_NUMBER_KEY = 'documentVersionNumber';
+
 /** TASK-724: the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
  *  enum in this package (`paletteKey` is a free string on the entity) — a single named constant
  *  so the publish-time entitlement check below and any future STT-specific branch share one
@@ -742,7 +750,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * added to the registry later is picked up here for free, instead of being silently omitted
    * from the compiled artifact.
    *
-   * UNPINNED bindings are dropped, not defaulted. The compiled shape requires
+   * `documentTemplateRefs` (TASK-810 DD-2) is the same derivation over the SHAPE binding a
+   * generation node carries in its own config (`documentTemplateId` + `documentVersionNumber`,
+   * declared by `DOCUMENT_BINDING_PROPERTIES` in `node-config-schemas.ts`). It is read off ANY
+   * node carrying the key, for the same reason `collectPromptBindings` is: a node-TYPE allow-list
+   * silently misses the next generation node someone registers.
+   *
+   * UNPINNED bindings are dropped, not defaulted — for BOTH ref lists. The compiled shape requires
    * `versionNumber: integer >= 1` (the normative `compiled-config.schema.json` and both pydantic
    * models agree), so emitting `0` for "no pin" would hand the interpreter a pin onto a version
    * that cannot exist. Absent is the truthful encoding of "this node follows the template's
@@ -756,6 +770,24 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const promptTemplateRefs = collectPromptBindings(graph)
       .filter((binding) => binding.pinnedVersionNumber !== null)
       .map((binding) => ({ nodeId: binding.nodeId, templateId: binding.promptTemplateId, versionNumber: binding.pinnedVersionNumber as number }));
+
+    // SORTED by nodeId, unlike `promptTemplateRefs` above, which predates this and follows
+    // authoring order. `compiledConfig` is checksummed over its canonical JSON (array order
+    // PRESERVED), and `fuzz.test.ts` asserts "shuffling node/edge arrays never changes the
+    // checksum" — so a list that followed `graph.nodes` order would let a purely cosmetic
+    // reorder in the authoring UI mint a different compiled checksum for the same workflow.
+    // `nodeId` is unique within a graph, so the sort is total and deterministic.
+    const documentTemplateRefs = (Array.isArray(graph.nodes) ? graph.nodes : [])
+      .map((node) => {
+        const config = (node.config ?? {}) as Record<string, unknown>;
+        const templateId = config[DOCUMENT_TEMPLATE_ID_KEY];
+        const pinned = config[DOCUMENT_VERSION_NUMBER_KEY];
+        if (typeof templateId !== 'string' || templateId.length === 0) return null;
+        if (typeof pinned !== 'number' || !Number.isInteger(pinned) || pinned < 1) return null;
+        return { nodeId: node.id, templateId, versionNumber: pinned };
+      })
+      .filter((ref): ref is { nodeId: string; templateId: string; versionNumber: number } => ref !== null)
+      .sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
     // Distinct + SORTED: `compiledConfig` is checksummed over its canonical JSON, so an
     // order that followed node authoring order would make the same graph compile to two
@@ -778,7 +810,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       registryChecksum: registryChecksum(),
       ruleSetVersion: RULE_SET_VERSION,
       caps: DEFAULT_CAPS,
-      policyBindings: { ...NON_DERIVABLE_POLICY_BINDINGS, promptTemplateRefs, contextSchemaVersionId, entitlementKeys },
+      policyBindings: { ...NON_DERIVABLE_POLICY_BINDINGS, promptTemplateRefs, documentTemplateRefs, contextSchemaVersionId, entitlementKeys },
       nodeInfo: registryNodeInfo,
     };
   }

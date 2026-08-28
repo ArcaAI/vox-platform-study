@@ -56,6 +56,7 @@ const DEFAULT_POLICY_BINDINGS = {
   guardrailProfile: 'STANDARD',
   redactionRuleSetId: null,
   promptTemplateRefs: [],
+  documentTemplateRefs: [],
   contextSchemaVersionId: null,
   entitlementKeys: [],
 };

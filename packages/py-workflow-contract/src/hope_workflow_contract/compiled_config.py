@@ -153,12 +153,30 @@ class CompiledPromptTemplateRef(_CompiledModel):
     version_number: int = Field(ge=1)
 
 
+class CompiledDocumentTemplateRef(_CompiledModel):
+    """TASK-810 DD-2 — WHICH ``DocumentTemplate`` version one generation node decodes into.
+
+    Structurally identical to :class:`CompiledPromptTemplateRef` and a DIFFERENT pin:
+    that one pins what the model is TOLD, this one pins the SHAPE its output is decoded
+    into. Kept a separate model rather than an alias so the two can never be passed for
+    one another, and so a future divergence is a change here rather than a silent
+    widening of both.
+    """
+
+    node_id: str
+    template_id: str
+    version_number: int = Field(ge=1)
+
+
 class CompiledPolicyBindings(_CompiledModel):
     #: GUARDRAIL_PROFILE_KEYS — placement, not permission; the actual clinical-safety
     #: enforcement runs at a boundary this field only SELECTS.
     guardrail_profile: Literal["STANDARD", "STRICT", "RELAXED"]
     redaction_rule_set_id: str | None
     prompt_template_refs: list[CompiledPromptTemplateRef]
+    #: SORTED by ``nodeId`` and UNPINNED bindings omitted, by the emitter — an absent ref
+    #: means "this node follows the template's own pin", never ``versionNumber: 0``.
+    document_template_refs: list[CompiledDocumentTemplateRef]
     context_schema_version_id: str | None
     entitlement_keys: list[str]
 

@@ -160,6 +160,47 @@ const PROMPT_BINDING_PROPERTIES = Object.freeze({
   promptVersionNumber: PROMPT_VERSION_NUMBER_PROPERTY,
 });
 
+/**
+ * DD-2's DOCUMENT-SHAPE binding, as two config keys on the generation node that carries it.
+ *
+ * DD-2 is "no runtime shape switching": a generation node binds ONE document shape STATICALLY,
+ * here, and it is frozen for the session — there is no selector node, no runtime classification
+ * and no eligibility set. `documentTemplateId` says WHICH `DocumentTemplate`;
+ * `documentVersionNumber` is that node's own movable PIN onto one IMMUTABLE version of it.
+ *
+ * The pin is the same mechanism DD-11 uses for prompts, protecting a DIFFERENT thing: the prompt
+ * pin stops a shared template silently re-prompting every workflow; this one stops a republished
+ * `DocumentTemplate` silently RESTRUCTURING the clinical document a published workflow already
+ * produces. Both bounds match the compiled artifact's `versionNumber` (`minimum: 1` on the
+ * normative `compiled-config.schema.json`, `ge=1` on both pydantic models) — a pin authorable
+ * here that those reject would be a pin the interpreter cannot honour.
+ *
+ * Declared as one shared frozen object for the same reason `PROMPT_BINDING_PROPERTIES` is: every
+ * schema in this module is `additionalProperties: false` AND the Studio inspector builds its form
+ * from `Object.entries(schema.properties)` alone, so an UNDECLARED key is stripped twice over and
+ * a node round-tripped through the authoring UI comes back with no shape bound at all.
+ *
+ * Deliberately NOT in any schema's `required`, exactly like the prompt binding: making it
+ * required here would invalidate every graph already published without one.
+ */
+const DOCUMENT_TEMPLATE_ID_PROPERTY = Object.freeze({
+  type: 'string',
+  pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  description: 'DD-2 — the document template whose compiled shape this node produces.',
+});
+
+const DOCUMENT_VERSION_NUMBER_PROPERTY = Object.freeze({
+  type: 'integer',
+  minimum: 1,
+  description:
+    "DD-2 — this node's own pin onto one immutable version of that document template. Absent means the node follows the template's current pin.",
+});
+
+const DOCUMENT_BINDING_PROPERTIES = Object.freeze({
+  documentTemplateId: DOCUMENT_TEMPLATE_ID_PROPERTY,
+  documentVersionNumber: DOCUMENT_VERSION_NUMBER_PROPERTY,
+});
+
 const PROMPT_TEMPLATE_REF_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/workflow-nodes/prompt.template_ref.schema.json',
@@ -183,6 +224,7 @@ const GENERATE_TEXT_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
     ...PROMPT_BINDING_PROPERTIES,
+    ...DOCUMENT_BINDING_PROPERTIES,
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },
@@ -585,6 +627,7 @@ const CONSULTATION_SYNTHESIZE_SCHEMA: NodeConfigSchema = Object.freeze({
     },
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'] },
     ...PROMPT_BINDING_PROPERTIES,
+    ...DOCUMENT_BINDING_PROPERTIES,
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },
@@ -669,6 +712,7 @@ const CONSULTATION_REALTIME_SUMMARY_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
     ...PROMPT_BINDING_PROPERTIES,
+    ...DOCUMENT_BINDING_PROPERTIES,
     windowChars: { type: 'integer', minimum: 1, description: 'How much of the tail of the running transcript each interim summary reads.' },
     systemPrompt: { type: 'string', maxLength: 50000 },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
@@ -686,6 +730,7 @@ const CONSULTATION_SUGGESTIONS_SCHEMA: NodeConfigSchema = Object.freeze({
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
     ...PROMPT_BINDING_PROPERTIES,
+    ...DOCUMENT_BINDING_PROPERTIES,
     maxSuggestions: {
       type: 'integer',
       minimum: 0,
@@ -706,6 +751,7 @@ const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze(
   properties: {
     taskKey: { type: 'string', enum: ['text.finalize', 'text.live', 'text.test'], default: 'text.live' },
     ...PROMPT_BINDING_PROPERTIES,
+    ...DOCUMENT_BINDING_PROPERTIES,
     language: { type: 'string', minLength: 2, maxLength: 16, default: 'en' },
     temperature: { type: 'number', minimum: 0, maximum: 2 },
     maxTokens: { type: 'integer', minimum: 1 },

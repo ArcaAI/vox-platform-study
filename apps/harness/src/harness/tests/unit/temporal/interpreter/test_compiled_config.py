@@ -188,6 +188,53 @@ class TestMalformed:
         assert exc.value.code == "malformed_json"
 
 
+class TestDocumentTemplateRefs:
+    """TASK-810 DD-2 — the compiled artifact pins WHICH document shape each generation
+    node produces, the same way ``promptTemplateRefs`` pins its prompt.
+
+    This model is ``extra='forbid'`` throughout, so it is not enough that the
+    TypeScript compiler emits the field: an interpreter that does not KNOW it rejects
+    every compiled config the moment the emitter ships. That is why all four sides of
+    this contract move in one commit.
+    """
+
+    def test_document_template_refs_are_parsed(self):
+        refs = [
+            {
+                "nodeId": "n_synth",
+                "templateId": "b2c9a1d4-7e36-4f80-8a15-3c6d9e2f0b47",
+                "versionNumber": 2,
+            }
+        ]
+        bindings = {**_sample_body()["policyBindings"], "documentTemplateRefs": refs}
+        config = parse_and_verify(_signed_document(policyBindings=bindings))
+        assert len(config.policy_bindings.document_template_refs) == 1
+        assert config.policy_bindings.document_template_refs[0].node_id == "n_synth"
+        assert config.policy_bindings.document_template_refs[0].version_number == 2
+
+    def test_an_unknown_key_inside_a_ref_is_still_refused(self):
+        # `extra='forbid'` reaches into the new ref model too — the emitter and this
+        # consumer agree on THREE keys or the document is refused, never best-effort read.
+        refs = [
+            {
+                "nodeId": "n_synth",
+                "templateId": "b2c9a1d4-7e36-4f80-8a15-3c6d9e2f0b47",
+                "versionNumber": 2,
+                "shapeKey": "soap",
+            }
+        ]
+        bindings = {**_sample_body()["policyBindings"], "documentTemplateRefs": refs}
+        with pytest.raises(InterpreterConfigError):
+            parse_and_verify(_signed_document(policyBindings=bindings))
+
+    def test_a_config_without_the_field_still_parses(self):
+        # Same posture as `promptTemplateRefs`/`entitlementKeys` on this model: a
+        # default_factory, so an artifact compiled before the field existed is still
+        # readable. Absence means "binds no shape", never "unknown".
+        config = parse_and_verify(_signed_document())
+        assert config.policy_bindings.document_template_refs == []
+
+
 class TestCanonicalJsonParityFixture:
     """Cross-language checksum parity guard (TASK-734 Task 4) — the byte-for-byte proof
     TASK-718's README named as a known gap: "not verified byte-for-byte against a live

@@ -46,6 +46,7 @@ const ctx: CompilerContext = {
     guardrailProfile: 'STANDARD',
     redactionRuleSetId: null,
     promptTemplateRefs: [],
+    documentTemplateRefs: [],
     contextSchemaVersionId: null,
     entitlementKeys: [],
   },

@@ -64,6 +64,9 @@ const DEFAULT_POLICY_BINDINGS = {
   guardrailProfile: 'STANDARD',
   redactionRuleSetId: null,
   promptTemplateRefs: [],
+  // TASK-810 DD-2 — derived per compile like its siblings; `[]` for these graphs, whose
+  // generation nodes bind no document template yet.
+  documentTemplateRefs: [],
   contextSchemaVersionId: null,
   entitlementKeys: [],
 };
