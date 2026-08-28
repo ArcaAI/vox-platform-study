@@ -18,6 +18,7 @@ function baseCtx(overrides: Partial<CompilerContext> = {}): CompilerContext {
       guardrailProfile: 'STANDARD',
       redactionRuleSetId: null,
       promptTemplateRefs: [],
+      documentTemplateRefs: [],
       contextSchemaVersionId: null,
       entitlementKeys: [],
     },

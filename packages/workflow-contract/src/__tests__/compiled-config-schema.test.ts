@@ -11,7 +11,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import { compile } from '../compiler';
-import type { CompilerContext } from '../compiler';
+import type { CompiledWorkflowConfig, CompilerContext } from '../compiler';
 import type { WorkflowGraph } from '../graph-model';
 
 const SCHEMA_PATH = path.resolve(
@@ -55,6 +55,7 @@ const ctx: CompilerContext = {
     guardrailProfile: 'STANDARD',
     redactionRuleSetId: null,
     promptTemplateRefs: [],
+    documentTemplateRefs: [],
     contextSchemaVersionId: null,
     entitlementKeys: [],
   },
@@ -87,5 +88,27 @@ describe('compiled config vs the normative schema', () => {
     const result = compile(graph, ctx) as { config: { gates: Array<{ onTimeout: string }> } };
     const tampered = { ...result.config, gates: [{ ...result.config.gates[0]!, onTimeout: 'APPROVED' }] };
     expect(validate(tampered)).toBe(false);
+  });
+
+  /**
+   * TASK-810 — `documentTemplateRefs` is a REQUIRED policy binding, on the same footing as
+   * `promptTemplateRefs`. It is asserted here rather than only in the applications layer because
+   * this file is the TypeScript half of the three-sided contract: the normative schema, this
+   * compiler, and the two pydantic models must gain the field together or the interpreter
+   * rejects every compiled config (`extra="forbid"` on both models).
+   */
+  it('carries documentTemplateRefs, and the normative schema requires it', () => {
+    const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
+    expect(schema.$defs.policyBindings.required).toContain('documentTemplateRefs');
+
+    const result = compile(graph, ctx) as { config: CompiledWorkflowConfig };
+    expect(result.config.policyBindings.documentTemplateRefs).toEqual([]);
+  });
+
+  it('rejects a compiled config whose policyBindings omits documentTemplateRefs', () => {
+    const validate = loadValidator();
+    const result = compile(graph, ctx) as { config: CompiledWorkflowConfig };
+    const { documentTemplateRefs: _dropped, ...withoutRefs } = result.config.policyBindings;
+    expect(validate({ ...result.config, policyBindings: withoutRefs })).toBe(false);
   });
 });

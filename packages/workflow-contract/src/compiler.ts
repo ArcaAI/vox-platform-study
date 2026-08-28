@@ -60,6 +60,17 @@ export interface CompiledPolicyBindings {
   guardrailProfile: CompiledGuardrailProfile;
   redactionRuleSetId: string | null;
   promptTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
+  /**
+   * TASK-810 DD-2 — WHICH `DocumentTemplate` version each generation node decodes its output
+   * into, pinned at publish. Structurally identical to `promptTemplateRefs` and a DIFFERENT
+   * guarantee: that one pins what the model is TOLD, this one pins the SHAPE it is decoded
+   * into, so a tenant publishing a new template version cannot restructure a document a
+   * published clinical workflow is already producing.
+   *
+   * SORTED by `nodeId` and UNPINNED bindings omitted — see `buildCompilerContext` in
+   * `@arcaai/applications`' `workflow-definition.service.ts`, which derives it.
+   */
+  documentTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
   contextSchemaVersionId: string | null;
   entitlementKeys: string[];
 }

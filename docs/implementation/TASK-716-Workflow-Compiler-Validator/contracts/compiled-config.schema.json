@@ -136,7 +136,14 @@
     "policyBindings": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["guardrailProfile", "redactionRuleSetId", "promptTemplateRefs", "contextSchemaVersionId", "entitlementKeys"],
+      "required": [
+        "guardrailProfile",
+        "redactionRuleSetId",
+        "promptTemplateRefs",
+        "documentTemplateRefs",
+        "contextSchemaVersionId",
+        "entitlementKeys"
+      ],
       "properties": {
         "guardrailProfile": {
           "type": "string",
@@ -146,6 +153,20 @@
         "redactionRuleSetId": { "type": ["string", "null"] },
         "promptTemplateRefs": {
           "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nodeId", "templateId", "versionNumber"],
+            "properties": {
+              "nodeId": { "type": "string" },
+              "templateId": { "type": "string" },
+              "versionNumber": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "documentTemplateRefs": {
+          "type": "array",
+          "description": "TASK-810 DD-2 — WHICH DocumentTemplate version each generation node decodes its output into, pinned at publish. Structurally identical to promptTemplateRefs and a different guarantee: that one pins what the model is TOLD, this one pins the SHAPE it is decoded into, so a tenant publishing a new template version cannot restructure a document a published workflow is already producing. SORTED by nodeId — the artifact is checksummed, so authoring order must not mint a new checksum for a semantically identical graph. An UNPINNED binding is absent, never versionNumber 0.",
           "items": {
             "type": "object",
             "additionalProperties": false,

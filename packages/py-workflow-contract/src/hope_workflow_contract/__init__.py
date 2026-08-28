@@ -10,6 +10,7 @@ four normative rules every consumer is bound by.
 from hope_workflow_contract.compiled_config import (
     COMPILED_CONFIG_FORMAT_VERSION,
     CompiledCaps,
+    CompiledDocumentTemplateRef,
     CompiledGate,
     CompiledInputBinding,
     CompiledNode,
@@ -27,6 +28,7 @@ from hope_workflow_contract.compiled_config import (
 __all__ = [
     "COMPILED_CONFIG_FORMAT_VERSION",
     "CompiledCaps",
+    "CompiledDocumentTemplateRef",
     "CompiledGate",
     "CompiledInputBinding",
     "CompiledNode",

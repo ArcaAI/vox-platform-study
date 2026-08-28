@@ -153,6 +153,20 @@ class CompiledPromptTemplateRef(BaseModel):
     version_number: int = Field(alias="versionNumber")
 
 
+class CompiledDocumentTemplateRef(BaseModel):
+    """TASK-810 DD-2 — WHICH ``DocumentTemplate`` version one generation node decodes into.
+
+    Same three keys as :class:`CompiledPromptTemplateRef`, a different pin: that one pins
+    what the model is TOLD, this one pins the SHAPE its output is decoded into.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(alias="nodeId")
+    template_id: str = Field(alias="templateId")
+    version_number: int = Field(alias="versionNumber")
+
+
 class CompiledPolicyBindings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -160,6 +174,12 @@ class CompiledPolicyBindings(BaseModel):
     redaction_rule_set_id: str | None = Field(alias="redactionRuleSetId")
     prompt_template_refs: list[CompiledPromptTemplateRef] = Field(
         default_factory=list, alias="promptTemplateRefs"
+    )
+    #: Sorted by ``nodeId`` and unpinned bindings omitted, by the emitter. Defaulted like
+    #: its siblings on this model so an artifact compiled before the field existed still
+    #: parses — absence means "binds no shape", never "unknown".
+    document_template_refs: list[CompiledDocumentTemplateRef] = Field(
+        default_factory=list, alias="documentTemplateRefs"
     )
     context_schema_version_id: str | None = Field(alias="contextSchemaVersionId")
     entitlement_keys: list[str] = Field(default_factory=list, alias="entitlementKeys")

@@ -49,6 +49,7 @@ function compiledConfig(nodes: Array<{ type: string; config: Record<string, unkn
       guardrailProfile: 'STANDARD',
       redactionRuleSetId: null,
       promptTemplateRefs: [],
+      documentTemplateRefs: [],
       contextSchemaVersionId: null,
       entitlementKeys: [],
     },

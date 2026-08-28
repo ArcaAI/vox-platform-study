@@ -29,7 +29,17 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
-/** Two nodes share ONE template; only `n_gen` carries a pin. `n_out` carries no binding. */
+/** TASK-810 DD-2 — the two document templates the graph below binds. `DOC_LIVE` sorts BEFORE
+ *  `DOC_SYNTH` by node id (`n_live` < `n_synth`) while being authored AFTER it, so a derivation
+ *  that followed authoring order is distinguishable from one that sorts. */
+const DOC_SYNTH = 'b2c9a1d4-7e36-4f80-8a15-3c6d9e2f0b47';
+const DOC_LIVE = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';
+
+/**
+ * Two nodes share ONE prompt template; only `n_gen` carries a prompt pin, and `n_out` carries no
+ * binding at all. `n_synth`/`n_live` carry PINNED document-template bindings in an authoring
+ * order that is not their sorted order, and `n_suggest` carries an UNPINNED one.
+ */
 const GRAPH = {
   version: 1,
   nodes: [
@@ -39,6 +49,17 @@ const GRAPH = {
       type: 'generate.text',
       config: { taskKey: 'text.finalize', promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41', promptVersionNumber: 4 },
     },
+    {
+      id: 'n_synth',
+      type: 'consultation.synthesize',
+      config: { producesCode: false, onError: 'fail', documentTemplateId: DOC_SYNTH, documentVersionNumber: 2 },
+    },
+    {
+      id: 'n_live',
+      type: 'consultation.realtimeSummary',
+      config: { onError: 'degrade', documentTemplateId: DOC_LIVE, documentVersionNumber: 7 },
+    },
+    { id: 'n_suggest', type: 'consultation.suggestions', config: { onError: 'degrade', documentTemplateId: DOC_LIVE } },
     { id: 'n_out', type: 'output.deliver', config: { outputs: [{ key: 'note', primitive: 'TEXT' }] } },
   ],
   edges: [],
@@ -173,6 +194,32 @@ describe('D-7 — publish populates policyBindings from what the graph and tenan
     expect(publishedBindings(entity).promptTemplateRefs).toEqual([
       { nodeId: 'n_gen', templateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41', versionNumber: 4 },
     ]);
+  });
+
+  it('carries every PINNED document binding in the graph into documentTemplateRefs', async () => {
+    await service.publish('def-1', {});
+
+    const [, entity] = mockWorkflowDefinitionRepository.update.mock.calls[0];
+    // SORTED by nodeId, not authored order. `compiledConfig` is checksummed over its canonical
+    // JSON (array order preserved), and `fuzz.test.ts` asserts "shuffling node/edge arrays never
+    // changes the checksum" — so a derivation that followed `graph.nodes` order would let a
+    // purely cosmetic reorder in the authoring UI mint a different compiled checksum for a
+    // semantically identical workflow.
+    expect(publishedBindings(entity).documentTemplateRefs).toEqual([
+      { nodeId: 'n_live', templateId: DOC_LIVE, versionNumber: 7 },
+      { nodeId: 'n_synth', templateId: DOC_SYNTH, versionNumber: 2 },
+    ]);
+  });
+
+  it('omits an UNPINNED document binding rather than defaulting it to version 0', async () => {
+    await service.publish('def-1', {});
+
+    const [, entity] = mockWorkflowDefinitionRepository.update.mock.calls[0];
+    // Same posture as `promptTemplateRefs`: the compiled shape requires
+    // `versionNumber: integer >= 1` on the normative schema AND both pydantic models, so `0`
+    // would name a version that cannot exist. `n_suggest` names a template but pins nothing.
+    const refs = publishedBindings(entity).documentTemplateRefs as Array<{ nodeId: string }>;
+    expect(refs.map((ref) => ref.nodeId)).not.toContain('n_suggest');
   });
 
   it('derives entitlementKeys from the registry rather than hardcoding an empty list', async () => {

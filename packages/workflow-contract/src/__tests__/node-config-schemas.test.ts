@@ -351,3 +351,101 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
     expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).not.toEqual([]);
   });
 });
+
+/**
+ * TASK-810 DD-2 — a generation node's DOCUMENT-TEMPLATE binding must survive the same round-trip
+ * DD-11's prompt pin does.
+ *
+ * DD-2 ("no runtime shape switching") states that a generation node binds ONE document shape
+ * STATICALLY in its config. That binding is deliberately the SAME two-key shape DD-11 uses for
+ * prompts — `documentTemplateId` (WHICH template) and `documentVersionNumber` (WHICH IMMUTABLE
+ * VERSION, this node's own movable pin) — because it guards against the same failure one layer
+ * over: a tenant publishing a new `DocumentTemplate` version must not silently change the
+ * structure every already-published clinical workflow produces.
+ *
+ * The DECLARATION is load-bearing for the two reasons the prompt binding's is: every schema in
+ * `node-config-schemas.ts` is `additionalProperties: false`, and the Studio inspector renders a
+ * field only for a DECLARED property. An undeclared key is stripped twice over, so a node
+ * round-tripped through the authoring UI comes back with no template bound — and
+ * `compiledConfig.policyBindings.documentTemplateRefs` would then read as "this workflow binds
+ * no shape" rather than "the binding was dropped".
+ */
+describe('DD-2 document-template binding survives a config-schema round-trip', () => {
+  /** Node types that PRODUCE a document — i.e. exactly the registry's `generation` class. */
+  const DOCUMENT_CARRYING_KEYS = [
+    'generate.text',
+    'consultation.synthesize',
+    'consultation.realtimeSummary',
+    'consultation.suggestions',
+    'consultation.proposeCorrections',
+  ] as const;
+
+  /** Minimal configs satisfying each schema's own `required`, so the assertions below fail on
+   *  the BINDING and never on an unrelated missing field. */
+  const DOCUMENT_BASE_CONFIG: Record<(typeof DOCUMENT_CARRYING_KEYS)[number], Record<string, unknown>> = {
+    'generate.text': { taskKey: 'text.finalize' },
+    'consultation.synthesize': { producesCode: false, onError: 'fail' },
+    'consultation.realtimeSummary': { onError: 'degrade' },
+    'consultation.suggestions': { onError: 'degrade' },
+    'consultation.proposeCorrections': { onError: 'degrade' },
+  };
+
+  const DOCUMENT_TEMPLATE_ID = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';
+  const DOCUMENT_PINNED_VERSION = 2;
+
+  function roundTripThroughGeneratedForm(schema: NodeConfigSchema, config: Record<string, unknown>): Record<string, unknown> {
+    const declared = Object.keys((schema.properties ?? {}) as Record<string, unknown>);
+    return Object.fromEntries(Object.entries(config).filter(([key]) => declared.includes(key)));
+  }
+
+  it('covers exactly the generation-classed node types in the registry', () => {
+    // Keyed off the REGISTRY, not a hand-kept list, for the same reason the DD-11 block above is:
+    // the next generation node someone registers must not be able to ship WITHOUT a document
+    // binding and have nothing say so.
+    const generationKeys = Object.values(WORKFLOW_NODE_REGISTRY)
+      .filter((descriptor) => descriptor.classes.includes('generation'))
+      .map((descriptor) => descriptor.key)
+      .sort();
+    expect(generationKeys).toEqual([...DOCUMENT_CARRYING_KEYS].sort());
+  });
+
+  it.each(DOCUMENT_CARRYING_KEYS)('%s declares both DD-2 binding keys', (key) => {
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, unknown>;
+    expect(Object.hasOwn(properties, 'documentTemplateId')).toBe(true);
+    expect(Object.hasOwn(properties, 'documentVersionNumber')).toBe(true);
+  });
+
+  it.each(DOCUMENT_CARRYING_KEYS)('%s: the value evaluator accepts a config carrying a document pin', (key) => {
+    const config = {
+      ...DOCUMENT_BASE_CONFIG[key],
+      documentTemplateId: DOCUMENT_TEMPLATE_ID,
+      documentVersionNumber: DOCUMENT_PINNED_VERSION,
+    };
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).toEqual([]);
+  });
+
+  it.each(DOCUMENT_CARRYING_KEYS)('%s: the document pin survives a generated-form round-trip', (key) => {
+    const config = {
+      ...DOCUMENT_BASE_CONFIG[key],
+      documentTemplateId: DOCUMENT_TEMPLATE_ID,
+      documentVersionNumber: DOCUMENT_PINNED_VERSION,
+    };
+    const roundTripped = roundTripThroughGeneratedForm(NODE_CONFIG_SCHEMAS[key], config);
+    expect(roundTripped.documentTemplateId).toBe(DOCUMENT_TEMPLATE_ID);
+    expect(roundTripped.documentVersionNumber).toBe(DOCUMENT_PINNED_VERSION);
+  });
+
+  it.each(DOCUMENT_CARRYING_KEYS)('%s types the document pin exactly as the compiled artifact does', (key) => {
+    // Same bound as `versionNumber` on the normative `compiled-config.schema.json` and both
+    // pydantic models (`ge=1`). A pin authorable here that those reject would be a pin the
+    // interpreter cannot honour.
+    const properties = NODE_CONFIG_SCHEMAS[key].properties as Record<string, { type?: string; minimum?: number }>;
+    expect(properties.documentVersionNumber.type).toBe('integer');
+    expect(properties.documentVersionNumber.minimum).toBe(1);
+  });
+
+  it.each(DOCUMENT_CARRYING_KEYS)('%s still rejects a non-positive document pin', (key) => {
+    const config = { ...DOCUMENT_BASE_CONFIG[key], documentTemplateId: DOCUMENT_TEMPLATE_ID, documentVersionNumber: 0 };
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], config)).not.toEqual([]);
+  });
+});

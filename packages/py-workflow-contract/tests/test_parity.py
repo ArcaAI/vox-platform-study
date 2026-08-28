@@ -41,6 +41,7 @@ import hope_workflow_contract
 from hope_workflow_contract import (
     COMPILED_CONFIG_FORMAT_VERSION,
     CompiledCaps,
+    CompiledDocumentTemplateRef,
     CompiledGate,
     CompiledInputBinding,
     CompiledNode,
@@ -80,7 +81,7 @@ FIXTURE: dict[str, Any] = json.loads(FIXTURE_PATH.read_text())
 #: The digest the TypeScript compiler actually produced for the shared fixture.
 #: Pinned as a literal so a canonicalizer regression cannot be masked by
 #: recomputing both sides of the comparison with the same broken function.
-TS_PRODUCED_CHECKSUM = "84f94ce4d0b2f5ecd5ba88a308cbd28c377210b738e12f733a2aad0d185270c5"
+TS_PRODUCED_CHECKSUM = "dc3e088adff522cfdbac86379df35e1ac41cb79f23e1030c2d1971f5e61bb688"
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +110,12 @@ def test_the_module_under_test_is_the_one_next_to_this_test() -> None:
 PROMPT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"]["promptTemplateRefs"][
     "items"
 ]
+#: TASK-810 DD-2 — the document-shape binding, structurally identical to the prompt
+#: ref but a DIFFERENT pin: `promptTemplateRefs` pins WHAT the model is told,
+#: `documentTemplateRefs` pins WHAT SHAPE it is decoded into.
+DOCUMENT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"][
+    "documentTemplateRefs"
+]["items"]
 
 #: (label, pydantic model, normative schema node). Every object in the normative
 #: schema appears exactly once — a new `$defs` entry with no model here is itself
@@ -123,6 +130,7 @@ PAIRS: list[tuple[str, type[BaseModel], dict[str, Any]]] = [
     ("policyBindings", CompiledPolicyBindings, SCHEMA["$defs"]["policyBindings"]),
     ("caps", CompiledCaps, SCHEMA["$defs"]["caps"]),
     ("promptTemplateRef", CompiledPromptTemplateRef, PROMPT_TEMPLATE_REF_SCHEMA),
+    ("documentTemplateRef", CompiledDocumentTemplateRef, DOCUMENT_TEMPLATE_REF_SCHEMA),
 ]
 
 
