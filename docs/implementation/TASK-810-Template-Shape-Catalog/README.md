@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — tasks 1–13 + 15 complete; task 14 (authoring UI) is a separate lane |
+| **Status** | `Review` — **all 15 tasks complete and merged to `dev-2.2`**. Both §7a carry-overs closed. Two owner items remain: §7b. |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -147,6 +147,80 @@ pnpm --filter @arcaai/applications build test
 pnpm --filter @arcaai/admin-console build lint test
 pnpm --filter @arcaai/vox-node gen:admin:check
 ```
+
+## 7a. Carry-overs and environment state (2026-08-26)
+
+### Verified by the orchestrator on merged `dev-2.2`
+`@arcaai/database` 1668 · `@arcaai/domains` 1863 · `@arcaai/applications` 10305 — all green.
+The OD-13 trigger test is a **real Postgres test** (installs the committed DDL, attempts real
+UPDATE/DELETE, asserts `restrict_violation`), watched RED before GREEN.
+
+### D-21 was solved better than this ticket specified
+The ticket said "sections nullable **or** a not-discussed sentinel". Dropping keys from `required`
+would have been wrong: strict structured-output modes reject a schema whose `required` is not the
+full property set, which **silently disables strict decoding** — the opposite of the intent. The
+implementation keeps every key required and compiles an optional section to `type: ['string','null']`
+(`['object','null']` for STRUCTURED), keeping `null` distinguishable from `""`.
+
+### ⚠ Carry-over 1 — D-7 is still open (out of the backend lane's boundary)
+Two changes live in `packages/workflow-contract`, which that lane did not own:
+- `promptVersionNumber` on `PROMPT_TEMPLATE_REF_SCHEMA` — without it the Studio's
+  `additionalProperties:false` form generation **may strip a node's prompt pin on a UI round-trip**,
+  silently undoing DD-11.
+- `documentTemplateRefs` on `CompiledPolicyBindings`.
+
+Until both land, `DEFAULT_POLICY_BINDINGS`' hardcoded `contextSchemaVersionId: null` /
+`promptTemplateRefs: []` (D-7) remains. **The first item should land before the UI lane (task 14)**,
+or the UI can destroy pins it round-trips.
+
+### ⚠ Carry-over 2 — remaining SOAP couplings, deliberately untouched
+- `services/consultation/summary/content-diff.util.ts` — its own private 4-key `SOAP_SECTIONS` on a
+  **separate call graph** reached from `summary.service.ts` (OD-9 compat-designated). Not forced by
+  this work, so nothing was changed.
+- `packages/agentic-sdk-v2/src/types/citations.ts` — `SoapSection = 'S'|'O'|'A'|'P'` is a **closed
+  type union**, the deepest structural commitment to exactly four sections. Needs a type-level
+  change in a lane that owns the SDK.
+
+### ⚠ Environment — local dev DB cannot be synced without a full wipe
+`pnpm db:push` **refused**: `Role.tenantId` was added as required and 7 rows exist, so Prisma
+demands `--force-reset` (**all data lost**). The preview shows the dev DB is **99 statements**
+behind the schema — a backlog across many tickets, not just this one — with only 2 destructive
+statements (`HarnessPolicy DROP COLUMN smrModel, smrProvider`, vestigial from the SMR→text rename)
+and no `DROP TABLE`.
+
+**Awaiting an owner decision** on wiping and reseeding the local dev DB. Nothing in this ticket's
+code depends on it — the suites run against their own test database.
+
+## 7b. Owner items surfaced by the final lanes (2026-08-28)
+
+### 1. Adopting an unchanged prompt version mints a new one
+`PUT /admin/workflow-definitions/:id/nodes/:nodeId/prompt` **always** creates a new `PromptVersion` —
+it is not a "move the pin" request. So adopting v5 unchanged produces v6 with identical content.
+There is no idempotent-republish guard, unlike the context-schema publish path, which short-circuits
+on an identical checksum.
+
+The UI states this plainly rather than hiding it ("Save as v6 and pin this node"), but whether an
+identical-content adopt should instead be a **pure pin move** is a backend decision. Recommended:
+add the same checksum short-circuit the context-schema publish already has.
+
+### 2. DD-2 document binding now exists on generation nodes
+`documentTemplateId` + `documentVersionNumber` were added to the five `generation`-classed node
+schemas, because `documentTemplateRefs` needed a source in the graph or it would have been dead
+code. Both keys are optional, so no published graph is invalidated. That is DD-2 working as
+intended — but it means the Studio inspector now shows two new fields on every generation node.
+
+### A correction to this ticket's own framing of D-7
+§7a said an undeclared `promptVersionNumber` meant the Studio "may strip a node's pin on a UI
+round-trip". The UI lane **measured** it: rendering the inspector against a schema with the pin
+removed still emitted `promptVersionNumber` — the console's serialization spreads and copies
+verbatim, and never dropped it. What the contract declaration actually buys is (a) the server
+accepting the key under `additionalProperties: false` and (b) the pin being visible and editable
+rather than an invisible passenger. The fix was right; the stated mechanism was not.
+
+### Outstanding verification
+The authoring screen has **not** been exercised logged-in against a live gateway. Its component tree
+is covered by jsdom tests driving real interactions (open drawer, reorder, publish, pin, adopt), and
+`next build` + the proxy gate are verified, but a browser pass against a running API remains.
 
 ## 6. Definition of Done
 - [ ] Head/version/pin triple with checksum + DB trigger
