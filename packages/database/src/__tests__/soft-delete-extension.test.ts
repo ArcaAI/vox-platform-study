@@ -227,6 +227,12 @@ describe('modelHasSoftDelete', () => {
       // `DocumentTemplate` is deliberately NOT here — it keeps the standard
       // lifecycle. A DB trigger enforces the same thing one layer down (OD-13).
       'DocumentTemplateVersion',
+      // DocumentSection (TASK-811) — per-section rows of a live-generated
+      // clinical document. Same posture as TranscriptSegment / NamedEntity:
+      // no `resourceStatus` column, because sections live and die with their
+      // consultation's document. Emptying a section is a CONTENT update under
+      // the section state machine, never a row delete.
+      'DocumentSection',
     ];
 
     expected.forEach((model) => {
@@ -255,6 +261,7 @@ describe('modelHasSoftDelete', () => {
       'harnessAuditEvent',
       'agentTrajectoryStep',
       'gateEditExemplar',
+      'documentSection',
     ];
 
     camelCaseModels.forEach((model) => {

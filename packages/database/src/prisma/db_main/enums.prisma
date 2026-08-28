@@ -754,3 +754,33 @@ enum DocumentTemplateStatus {
 
   @@schema("core")
 }
+
+// TASK-811 — the per-section state machine of a live-generated clinical
+// document. The states are ordered by how much clinical authority the content
+// carries, and the ONLY transition a machine may perform on its own is
+// EMPTY -> PROVISIONAL -> PROVISIONAL.
+//
+//   EMPTY       nothing extracted yet. Renders as a skeleton, NOT an error — an
+//               unpopulated section of an in-progress note is a normal state.
+//   PROVISIONAL model-written. A later flush may freely replace it.
+//   CONFIRMED   a clinician has touched it. A flush may APPEND to it but must
+//               never overwrite it; that rule is what makes the running note
+//               safe to edit while it is still being generated.
+//   LOCKED      finalized at the endpoint. Every write is rejected.
+//
+// NOT the same thing as the TASK-810 COMPILED section-state machine
+// (`CompiledSectionStateMachine.states` = PENDING | NOT_DISCUSSED | DRAFTED |
+// CONFIRMED, in `document-template-compiler.ts`). That one is the TEMPLATE's
+// declaration of how a section may legitimately be filled in — it is authored
+// data. This one is the PERSISTED runtime state of an actual section row, and
+// it is what per-section OCC protects. The two share the member `CONFIRMED`
+// and nothing else; TypeScript refuses any accidental cross-assignment because
+// no other member overlaps.
+enum DocumentSectionState {
+  EMPTY
+  PROVISIONAL
+  CONFIRMED
+  LOCKED
+
+  @@schema("core")
+}
