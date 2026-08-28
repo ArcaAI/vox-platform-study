@@ -37,10 +37,10 @@ export class SectionAnnotationDto {
   @ApiProperty({ description: 'What this annotation is', enum: SECTION_ANNOTATION_KINDS })
   kind: SectionAnnotationKind;
 
-  @ApiProperty({ description: 'Character offset start within THIS SECTION\'s `content` (never a concatenated document)' })
+  @ApiProperty({ description: "Character offset start within THIS SECTION's `content` (never a concatenated document)" })
   start: number;
 
-  @ApiProperty({ description: 'Character offset end within THIS SECTION\'s `content`' })
+  @ApiProperty({ description: "Character offset end within THIS SECTION's `content`" })
   end: number;
 
   @ApiPropertyOptional({ description: 'For `entity`: the entity class (MEDICATION, CONDITION, …)' })
@@ -79,7 +79,7 @@ export class SectionProvenanceDto {
  * every other document.
  */
 export class SectionPatchDto {
-  @ApiProperty({ description: "Event discriminator — always `section.patch`", example: 'section.patch' })
+  @ApiProperty({ description: 'Event discriminator — always `section.patch`', example: 'section.patch' })
   event: 'section.patch';
 
   @ApiProperty({ description: 'Consultation this section belongs to' })
