@@ -37,8 +37,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
   Empty,
@@ -59,6 +62,7 @@ import {
   ENDPOINT_ACTION_HINTS,
   ENDPOINT_ACTION_KEYS,
   ENDPOINT_ACTION_LABELS,
+  isEndpointOrderInverted,
   useEndpointSequence,
   usePutEndpointSequence,
   type EndpointActionKey,
@@ -149,6 +153,28 @@ export function EndpointSequenceEditor({ scope }: EndpointSequenceEditorProps) {
           </Badge>
         ) : null}
       </div>
+
+      {/*
+        The ORDERING invariant, warned about BEFORE the save. Advisory by design: the enforcement
+        is the descriptor's `validate` in the settings write lane, which refuses this order with a
+        400 — a client that were the only guard would be no guard at all (the same key is
+        writable from the generic settings-registry editor and from the API). Read off the DRAFT,
+        not the stored value, so it tracks the order the admin is building.
+      */}
+      {isEndpointOrderInverted(sequence) ? (
+        <Alert variant="destructive">
+          <IconAlertTriangle aria-hidden="true" />
+          <AlertTitle>Documents are locked before the note is written</AlertTitle>
+          <AlertDescription>
+            <p>
+              “{ENDPOINT_ACTION_LABELS['summary.finalize']}” locks EVERY document of the consultation, and “
+              {ENDPOINT_ACTION_LABELS['harness.finalize']}” is what writes the note into it. In this order a consultation would close on an empty
+              record. Move “{ENDPOINT_ACTION_LABELS['harness.finalize']}” above “{ENDPOINT_ACTION_LABELS['summary.finalize']}” — saving this order is
+              refused.
+            </p>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {sequence.length === 0 ? (
         <Empty>

@@ -22,7 +22,11 @@
 // `DepartmentAgent.endpointActions` column would have bought a third cascade
 // level nobody asked for at the price of a schema change.
 
-import { CONSULTATION_ENDPOINT_ACTIONS_DEFAULT, CONSULTATION_ENDPOINT_ACTIONS_KEY } from '../../consultation/loop/endpoint-sequence';
+import {
+  CONSULTATION_ENDPOINT_ACTIONS_DEFAULT,
+  CONSULTATION_ENDPOINT_ACTIONS_KEY,
+  endpointOrderProblem,
+} from '../../consultation/loop/endpoint-sequence';
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_ENDPOINT_SETTINGS: SettingDescriptor[] = [
@@ -54,5 +58,15 @@ export const CONSULTATION_ENDPOINT_SETTINGS: SettingDescriptor[] = [
     description:
       'The ORDERED list of actions ConsultationLoopWorkflow runs before a consultation closes. Order is the value: `livedoc.stop` closes the audio session first, `session.timeout` stamps HOW the session ended, `harness.finalize` produces the note, `summary.finalize` LOCKS every document of the consultation (not just the SOAP note), and `feedback.capture` runs last so a feedback failure can never cost a clinician their finalized note. Only these five keys are accepted. A department agent may EXTEND this list through `alwaysActions` and still veto an entry through `neverActions`; the list itself is what sets the order. Resolved when the loop config is PINNED at workflow start and frozen for the whole consultation, so a change applies to consultations that start after it.',
     default: [...CONSULTATION_ENDPOINT_ACTIONS_DEFAULT],
+    // The one ORDER an admin may not save. `dataType: 'string[]'` accepts the five keys in any
+    // arrangement, including `summary.finalize` before `harness.finalize` — which locks every
+    // document of the consultation and only then tries to write the note into it, i.e. closes the
+    // consultation on an empty record. That is not a preference an admin can be assumed to have
+    // meant, so the write lane refuses it and says why.
+    //
+    // Conditional, not a fixed template: removing `harness.finalize` altogether stays legal
+    // (see `endpointOrderProblem`), because a tenant relying on the realtime lane's section
+    // writes is entitled to that shape.
+    validate: endpointOrderProblem,
   },
 ];
