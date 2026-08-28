@@ -5,11 +5,25 @@
  *
  * It opens on the template's LATEST version content, which is the whole design:
  * an admin told "this node is behind" needs to SEE what they would be adopting
- * before adopting it. Saving unchanged content adopts it as-is; editing first
- * adopts an edited variant. Either way the server mints a new immutable
- * `PromptVersion` and moves THIS node's pin to it in one transaction — so the
- * dialog says that plainly rather than offering a bare "update" that hides
- * which of the two DD-11 paths is being taken.
+ * before adopting it.
+ *
+ * Since §7b item 1, saving that content UNCHANGED is an ADOPTION: the server
+ * moves this node's pin to the existing latest version and mints nothing (and
+ * writes nothing at all if the node is already pinned there). Editing it first
+ * is an AUTHORING act and still mints. Because DD-11 PATH 2 deliberately leaves
+ * node pins alone when a template is edited out of band, adoption is the COMMON
+ * path through this dialog — so the action label tracks which one saving would
+ * perform, and the success message reports which one the SERVER actually
+ * performed (`promptVersionMinted` / `promptVersionNumber` off the response),
+ * never `latest + 1`. A toast that claims an immutable clinical artifact was
+ * created when none was is the kind of lie that survives review because it
+ * looks harmless.
+ *
+ * The label is a prediction from the content in the box; the toast is the fact.
+ * They can only disagree if the server's checksum sees something the editor
+ * cannot (it also hashes the template's `variables`, which this dialog does not
+ * edit) — and in that case the toast, not the label, is what the admin is left
+ * holding.
  *
  * A dialog, not a `DetailDrawer`: this is a single focused decision on one
  * field, not a record with tabs (rule 11 §1 — `DetailDrawer` owns RECORD
@@ -29,11 +43,27 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { usePromptTemplateVersions, useUpdateNodePrompt } from '../../api';
-import type { NodePromptBinding } from '../../api/types';
+import type { NodePromptBinding, NodePromptUpdateResult } from '../../api/types';
 
 function latestContent(versions: { versionNumber: number; content: string }[]): string {
   if (versions.length === 0) return '';
   return [...versions].sort((a, b) => b.versionNumber - a.versionNumber)[0].content;
+}
+
+/**
+ * What the server did, in the server's own words — three outcomes, never conflated.
+ *
+ * `promptVersionMinted` is the only thing that can distinguish "a new immutable version now
+ * exists" from "an existing one was adopted", and `previousPromptVersionNumber === promptVersionNumber`
+ * is the only thing that distinguishes an adoption that moved a pin from one that changed
+ * nothing whatsoever.
+ */
+function outcomeMessage(nodeId: string, result: NodePromptUpdateResult): string {
+  if (result.promptVersionMinted) return `Minted v${result.promptVersionNumber} and pinned ${nodeId} to it`;
+  if (result.previousPromptVersionNumber === result.promptVersionNumber) {
+    return `${nodeId} was already pinned to v${result.promptVersionNumber} — nothing changed`;
+  }
+  return `Pinned ${nodeId} to the existing v${result.promptVersionNumber} — no new version was created`;
 }
 
 export function NodePromptEditor({
@@ -68,15 +98,19 @@ export function NodePromptEditor({
     setContent(latestContent(versions));
   }
 
-  const nextVersionNumber = (binding?.latestVersionNumber ?? 0) + 1;
+  const latestVersionNumber = binding?.latestVersionNumber ?? null;
+  const nextVersionNumber = (latestVersionNumber ?? 0) + 1;
+  // Which branch saving WOULD take, from the content in the box. `content === null` means the
+  // template's versions have not loaded yet, so there is nothing to compare and nothing to save.
+  const wouldAdopt = latestVersionNumber != null && content !== null && content === latestContent(versions);
 
   function handleSave() {
     if (!binding || !etag || content === null) return;
     updatePrompt.mutate(
       { definitionId, nodeId: binding.nodeId, body: { content, changeReason: changeReason.trim() || undefined }, etag },
       {
-        onSuccess: () => {
-          toast.success(`Minted v${nextVersionNumber} and pinned ${binding.nodeId} to it`);
+        onSuccess: ({ data }) => {
+          toast.success(outcomeMessage(binding.nodeId, data));
           setChangeReason('');
           setSeededFor(null);
           onSaved();
@@ -95,8 +129,11 @@ export function NodePromptEditor({
         <DialogHeader>
           <DialogTitle>Edit prompt for {binding?.nodeId ?? 'node'}</DialogTitle>
           <DialogDescription>
-            Saving mints a new immutable version of “{binding?.promptTemplateName ?? binding?.promptTemplateId}” and pins THIS node to it, in one
-            transaction. Other nodes using the same template are not moved.
+            This edits the prompt of “{binding?.promptTemplateName ?? binding?.promptTemplateId}” for THIS node only — other nodes using the same
+            template are never moved.
+            {latestVersionNumber != null
+              ? ` Saving unchanged content adopts v${latestVersionNumber} and creates nothing; any edit mints v${nextVersionNumber} and pins this node to it.`
+              : ''}
           </DialogDescription>
         </DialogHeader>
 
@@ -108,8 +145,8 @@ export function NodePromptEditor({
                 This node is pinned to v{binding.pinnedVersionNumber}; the template is on v{binding.latestVersionNumber}
               </AlertTitle>
               <AlertDescription>
-                The editor below is showing v{binding.latestVersionNumber} — the current template text. Review it, edit if you need to, then save to
-                adopt it as v{nextVersionNumber} for this node.
+                The editor below is showing v{binding.latestVersionNumber} — the current template text. Review it and save to adopt that version as
+                it stands, or edit it first to mint v{nextVersionNumber} instead.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -153,7 +190,7 @@ export function NodePromptEditor({
           </Button>
           <Button type="button" onClick={handleSave} disabled={!etag || content === null || updatePrompt.isPending}>
             {updatePrompt.isPending ? <Spinner /> : null}
-            Save as v{nextVersionNumber} and pin this node
+            {wouldAdopt ? `Adopt v${latestVersionNumber} for this node` : `Save as v${nextVersionNumber} and pin this node`}
           </Button>
         </DialogFooter>
       </DialogContent>
