@@ -1370,7 +1370,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-811 — the session's FROZEN realtime lane. `null` routes this flush
     // down the LEGACY path (the per-tenant flag is off, or its resolution failed).
     const lane =
-      session.laneSnapshot !== undefined ? session.laneSnapshot : (session.laneSnapshot = await (session.lanePromise ?? this.ensureLaneResolved(session)));
+      session.laneSnapshot !== undefined
+        ? session.laneSnapshot
+        : (session.laneSnapshot = await (session.lanePromise ?? this.ensureLaneResolved(session)));
 
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
@@ -1850,7 +1852,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
           generate: async (corrective) => {
             const startedAt = Date.now();
-            const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, ctx.agent, ctx.template.compiled);
+            const { text, stats, structured } = await this.callText(
+              promptText,
+              session.tenantId,
+              signal,
+              corrective,
+              ctx.agent,
+              ctx.template.compiled,
+            );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
           parseStrict: (text) => {

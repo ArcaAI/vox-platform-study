@@ -70,12 +70,7 @@ export interface SectionWriteInput {
 }
 
 export type SectionWriteRefusal =
-  | 'locked'
-  | 'confirmed-no-overwrite'
-  | 'deletion-without-contradiction'
-  | 'stale-generation'
-  | 'occ-conflict'
-  | 'unavailable';
+  'locked' | 'confirmed-no-overwrite' | 'deletion-without-contradiction' | 'stale-generation' | 'occ-conflict' | 'unavailable';
 
 export type SectionWriteResult =
   | { readonly applied: true; readonly patch: SectionPatchDto; readonly section: DocumentSectionEntity }
@@ -279,7 +274,10 @@ export class DocumentSectionStore {
     if (!contradiction) return;
     // Recorded on `_metadata` rather than a column: it explains ONE transition, so
     // it belongs with the row's history, not in its shape.
-    section.metaData = { ...((section.metaData as Record<string, unknown> | null) ?? {}), lastDeletion: { ...contradiction, at: new Date().toISOString() } };
+    section.metaData = {
+      ...((section.metaData as Record<string, unknown> | null) ?? {}),
+      lastDeletion: { ...contradiction, at: new Date().toISOString() },
+    };
   }
 
   /**

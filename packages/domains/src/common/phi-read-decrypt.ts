@@ -107,6 +107,10 @@ export const PHI_MODEL_CIPHERTEXT: Readonly<Record<string, readonly string[]>> =
   contextItemVersion: ['encryptedChangeSummary', 'encryptedContent', 'encryptedContentDiff', 'encryptedFieldChanges'],
   dnaWritingStyleReport: ['encryptedReportData', 'encryptedStyleText'],
   dnaWritingStyleVersion: ['encryptedReportData', 'encryptedStyleText'],
+  // TASK-811 — a live-generated document's section prose. Unlike its sibling
+  // `TranscriptSegment` (structural metadata only) a section CARRIES PHI: the
+  // text is generated and exists nowhere else to slice from.
+  documentSection: ['encryptedContent'],
   evalRun: ['encryptedNotes'],
   evalScore: ['encryptedDetails', 'encryptedRationale'],
   goldenCase: ['encryptedReferenceNote', 'encryptedTranscript'],
@@ -140,6 +144,7 @@ export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string
     ContextItems: 'contextItem',
     Department: 'department',
     Doctor: 'user',
+    DocumentSections: 'documentSection',
     Highlights: 'highlight',
     ParentConsultation: 'consultation',
   },
@@ -166,6 +171,7 @@ export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string
   },
   departmentAgent: { Department: 'department', PromptTemplate: 'promptTemplate', Versions: 'departmentAgentVersion' },
   departmentAgentVersion: { Agent: 'departmentAgent' },
+  documentSection: { Consultation: 'consultation' },
   dnaWritingStyleReport: { Doctor: 'user', Versions: 'dnaWritingStyleVersion' },
   dnaWritingStyleVersion: { DnaWritingStyleReport: 'dnaWritingStyleReport' },
   evalRun: { EvalScores: 'evalScore', GoldenSet: 'goldenSet' },
