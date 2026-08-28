@@ -223,18 +223,6 @@ and the Studio ordering UI.
 
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 04, 05, 06. A subagent inherits NONE of the orchestrator's context — read them.
 
-## 7a. Owner notes (neither blocks closure)
-
-**1. Sequence order is admin-editable, and a bad order is expressible.** The platform default puts
-`harness.finalize` **before** `summary.finalize` so the lock lands on a written note. Reversing them
-locks an empty document, and nothing structurally prevents an admin from doing so. Worth either a
-publish-time rule or a Studio warning — deliberately not invented here.
-
-**2. `feedback.capture` from the legacy loop carries no accepted proposals.** Acceptance is a
-clinician act that reaches the gateway from the console, so promotion only happens once the console
-has recorded one. Not a defect; it does mean the promotion path is inert until the console surface
-exists.
-
 ## 6. Implementation Summary
 
 **Branch:** `lane-812-endpoint` (worktree). Base `dev-2.2` verified as an ancestor of HEAD before
@@ -340,6 +328,18 @@ database             68 files, 1675 passed
 pnpm lint            40/40 tasks successful
 api:openapi:check    OK    api:portal:check no drift    gen:admin:check no drift
 ```
+
+## 7a. Owner notes (neither blocks closure)
+
+**1. Sequence order is admin-editable, and a bad order is expressible.** The platform default puts
+`harness.finalize` **before** `summary.finalize` so the lock lands on a written note. Reversing them
+locks an empty document, and nothing structurally prevents an admin from doing so. Worth either a
+publish-time rule or a Studio warning — deliberately not invented here.
+
+**2. `feedback.capture` from the legacy loop carries no accepted proposals.** Acceptance is a
+clinician act that reaches the gateway from the console, so promotion only happens once the console
+has recorded one. Not a defect; it does mean the promotion path is inert until the console surface
+exists.
 
 ## 7. Change History
 | Date | Change |
