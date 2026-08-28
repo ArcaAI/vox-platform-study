@@ -1,7 +1,11 @@
 /**
  * The LIVE capability chain.
  *
- * Tier 1a  agent `livePromptTemplateId` (APPROVED + pinned PromptVersion snapshot)
+ * Tier 1a  the governing workflow definition's LIVE generation node — the node
+ *          whose effective `taskKey` is `text.live` (APPROVED template + the
+ *          node's own pinned PromptVersion snapshot). TASK-815 moved this tier
+ *          off `DepartmentAgent.livePromptTemplateId`; the tier's REPORTED name
+ *          (`resolvedFrom: 'agent'`) is a frozen v1-compat contract and stays.
  * Tier 2   `SYSTEM_DEFAULTS.livePromptId` — the seeded SYSTEM live-default row
  * Tier 3   in-code constants, reported as `'code-default'` — the DOCUMENTED
  *          FAIL-OPEN: a live consultation must never be failed by a
@@ -18,19 +22,47 @@ import { PromptResolutionService, SYSTEM_DEFAULTS } from '../prompt-resolution.s
 
 const mockDepartmentRepository = { findById: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
-const mockDepartmentAgentRepository = { findDefaultForDepartment: vi.fn() };
+const mockWorkflowAssignments = { resolve: vi.fn() };
+const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn() };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 
 const TENANT = 'tenant-live-001';
 const DEPT = 'dept-live-001';
 const AGENT_TEMPLATE = '71000000-0000-0000-0009-000000000001';
 
+/** A published `consultation` definition whose graph carries `nodes`. */
+function definitionWithNodes(nodes: unknown[]) {
+  return { id: 'wfdef-1', slug: 'consultation-default', paletteKey: 'consultation', graph: { version: 1, nodes, edges: [] } };
+}
+
+/** The graph shape that used to be "a department default agent with a live binding". */
+function graphWithLiveNode(promptTemplateId: string | null, promptVersionNumber?: number) {
+  mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'consultation-default', source: 'department' });
+  mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(
+    definitionWithNodes([
+      // The finalize node is always present, and never eligible for the live
+      // chain — the regression lock for "a note prompt must not be served live".
+      { id: 'note_writer', type: 'generate.text', config: { taskKey: 'text.finalize', promptTemplateId: 'base-note-template' } },
+      ...(promptTemplateId
+        ? [
+            {
+              id: 'running_note',
+              type: 'consultation.realtimeSummary',
+              config: { promptTemplateId, ...(promptVersionNumber ? { promptVersionNumber } : {}) },
+            },
+          ]
+        : []),
+    ]),
+  );
+}
+
 function buildService(): PromptResolutionService {
   return new PromptResolutionService(
     mockDepartmentRepository as never,
     mockPromptTemplateRepository as never,
-    mockDepartmentAgentRepository as never,
     mockPromptVersionRepository as never,
+    mockWorkflowAssignments as never,
+    mockWorkflowDefinitionRepository as never,
   );
 }
 
@@ -43,20 +75,16 @@ describe('Live prompt chain', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDepartmentRepository.findById.mockResolvedValue({ id: DEPT, tenantId: TENANT, defaultSummaryTemplate: null, promptConfig: null });
-    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
+    mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' });
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
     mockPromptTemplateRepository.findById.mockResolvedValue(null);
     mockPromptVersionRepository.findByVersionNumber.mockResolvedValue(null);
     mockPromptVersionRepository.findLatestVersion.mockResolvedValue(null);
   });
 
-  describe('tier 1a — agent livePromptTemplateId', () => {
-    it('serves the agent binding’s immutable PromptVersion snapshot', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
-        id: 'agent-1',
-        livePromptTemplateId: AGENT_TEMPLATE,
-        promptTemplateId: 'base-note-template',
-        pinnedVersionNumber: null,
-      });
+  describe('tier 1a — the graph’s live generation node', () => {
+    it('serves the node binding’s immutable PromptVersion snapshot', async () => {
+      graphWithLiveNode(AGENT_TEMPLATE);
       mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(AGENT_TEMPLATE, 3));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'AGENT LIVE PROMPT v3' });
 
@@ -66,20 +94,15 @@ describe('Live prompt chain', () => {
       expect(result.promptId).toBe(AGENT_TEMPLATE);
       expect(result.content).toBe('AGENT LIVE PROMPT v3');
       expect(result.resolvedVersionNumber).toBe(3);
-      expect(result.resolvedAgentId).toBe('agent-1');
+      expect(result.resolvedAgentId).toBe('running_note');
       expect(result.resolvedCapability).toBe('live');
     });
 
-    it('NEVER falls back to the agent’s base promptTemplateId — a null live binding skips the tier', async () => {
-      // The base binding is a clinical NOTE prompt; serving it as the live
+    it('NEVER falls back to a finalize node’s prompt — a graph with no live node skips the tier', async () => {
+      // A finalize binding is a clinical NOTE prompt; serving it as the live
       // running-note prompt is the same wrong-prompt class the pre-summary chain
       // exists to prevent.
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
-        id: 'agent-1',
-        livePromptTemplateId: null,
-        promptTemplateId: 'base-note-template',
-        pinnedVersionNumber: null,
-      });
+      graphWithLiveNode(null);
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
         id === SYSTEM_DEFAULTS.livePromptId ? approvedTemplate(SYSTEM_DEFAULTS.livePromptId) : null,
       );
@@ -93,12 +116,7 @@ describe('Live prompt chain', () => {
     });
 
     it('falls through to the SYSTEM default when the bound live template is not APPROVED', async () => {
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
-        id: 'agent-1',
-        livePromptTemplateId: AGENT_TEMPLATE,
-        promptTemplateId: 'base-note-template',
-        pinnedVersionNumber: null,
-      });
+      graphWithLiveNode(AGENT_TEMPLATE);
       mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
         id === AGENT_TEMPLATE ? { id, status: 'DRAFT', approvedVersionNumber: null } : approvedTemplate(SYSTEM_DEFAULTS.livePromptId),
       );
@@ -109,14 +127,14 @@ describe('Live prompt chain', () => {
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.livePromptId);
     });
 
-    it('skips the agent tier entirely when the consultation has no department', async () => {
+    it('skips the node tier entirely when the consultation has no department', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(SYSTEM_DEFAULTS.livePromptId));
       mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 1, content: 'SYSTEM LIVE DEFAULT' });
 
       const result = await buildService().resolve({ tenantId: TENANT, promptType: 'live' });
 
       expect(result.resolvedFrom).toBe('default');
-      expect(mockDepartmentAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
+      expect(mockWorkflowAssignments.resolve).not.toHaveBeenCalled();
     });
   });
 
@@ -132,7 +150,7 @@ describe('Live prompt chain', () => {
 
     it('NEVER throws even when every repository read blows up (a live consultation must not be failed)', async () => {
       mockDepartmentRepository.findById.mockRejectedValue(new Error('db down'));
-      mockDepartmentAgentRepository.findDefaultForDepartment.mockRejectedValue(new Error('db down'));
+      mockWorkflowAssignments.resolve.mockRejectedValue(new Error('db down'));
       mockPromptTemplateRepository.findById.mockRejectedValue(new Error('db down'));
 
       const result = await buildService().resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'live' });

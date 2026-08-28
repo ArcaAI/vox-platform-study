@@ -98,7 +98,6 @@ describe('R-T1 / R-T2 — the prompt-template test route accepts the full test-b
 describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded SYSTEM fork (D2)", () => {
   const mockDepartmentRepository = { findById: vi.fn() };
   const mockPromptTemplateRepository = { findById: vi.fn(), findAll: vi.fn() };
-  const mockDepartmentAgentRepository = { findDefaultForDepartment: vi.fn() };
   const mockPromptVersionRepository = { findByVersionNumber: vi.fn(), findLatestVersion: vi.fn() };
 
   // A stand-in for the D2 fork's actual seeded body — this file asserts the
@@ -118,16 +117,16 @@ describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded 
       approvedVersionNumber: 1,
     }));
     mockPromptTemplateRepository.findAll.mockResolvedValue([]);
-    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
     mockPromptVersionRepository.findByVersionNumber.mockImplementation(async (templateId: string, versionNumber: number) => ({
       content: templateId === SYSTEM_DEFAULTS.deptFreePreSummaryPromptId ? DEPT_FREE_STAND_IN_BODY : `content-of-${templateId}`,
       versionNumber,
     }));
 
+    // TASK-815: no tier-1a resolvers are wired here on purpose — this suite is
+    // about the pre-summary SYSTEM defaults, which the node tier never touches.
     return new PromptResolutionService(
       mockDepartmentRepository as never,
       mockPromptTemplateRepository as never,
-      mockDepartmentAgentRepository as never,
       mockPromptVersionRepository as never,
     );
   }
