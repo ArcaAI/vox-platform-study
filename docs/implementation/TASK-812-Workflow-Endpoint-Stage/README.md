@@ -329,6 +329,35 @@ pnpm lint            40/40 tasks successful
 api:openapi:check    OK    api:portal:check no drift    gen:admin:check no drift
 ```
 
+### The ordering invariant (follow-on, merged `e3e528629`)
+
+`SettingDescriptor` gained an optional `validate?: (value: unknown) => string | void` — the place
+for cross-field/ordering invariants that `dataType` cannot express, since `dataType` classifies a
+value's SHAPE and never a relationship between its entries. `SettingsRegistryWriteService` calls it
+as step **6b**, after the type gate and before the tighten-only floor, throwing
+`ArgumentInvalidException` (→ 400). **No key is named in that file** — the "no per-key allow-list"
+property it documents about itself is preserved.
+
+`endpointOrderProblem()` (`consultation/loop/endpoint-sequence.ts`) is deliberately CONDITIONAL:
+it returns a message only when both `harness.finalize` and `summary.finalize` are present and
+inverted. Removing `harness.finalize` entirely stays legal — that is an admin relying on the
+realtime lane's section writes, not a mistake.
+
+Three decisions taken by the implementing agent, all accepted:
+
+| Decision | Why |
+|---|---|
+| `Alert` inline notice, **not** the `Empty` family | The empty-sequence warning uses `Empty`, which REPLACES the list. An inverted order has a populated list, so `Empty` cannot host it. `Alert` is this feature's existing inline-notice idiom (4 prior instances in `workflow-studio`). |
+| Predicate duplicated client-side, not shared | `workflow-studio/api/endpoint-sequence.ts` already documents this boundary — the console never imports a server package, and `ENDPOINT_ACTION_KEYS` is duplicated on the same basis. Importing `@arcaai/applications` into a client component to share four lines would drag server-adjacent code across the BFF boundary (rule 13 anti-pattern). Both copies name each other in comments. The server returns the MESSAGE (it is the admin's whole 400); the client returns a BOOLEAN (UI copy belongs in the component). |
+| Save is **not** disabled when inverted | The Alert warns; Save surfaces the server's 400 through the existing `toast.error`. Disabling can trap an admin mid-reorder in a transient invalid state, and enforcement already lives server-side. |
+
+**Recorded cost — the catalog cannot advertise an invariant.** `GET admin/settings-catalog` maps
+descriptor fields explicitly and a function is not serialisable, so no console screen can generically
+discover that a key carries an ordering rule. That is precisely WHY the predicate is duplicated
+above. If generic client-side pre-validation is ever wanted, the catalog needs a serialisable
+`invariant: { description }` on the descriptor. Deliberately not built here — one invariant does not
+justify a catalog contract change, but the second one will.
+
 ## 7a. Owner notes (neither blocks closure)
 
 **1. Sequence order is admin-editable, and a bad order is expressible.** The platform default puts
