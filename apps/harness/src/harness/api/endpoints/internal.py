@@ -214,6 +214,11 @@ class LoopEndingRequest(BaseModel):
     template: str | None = Field(default=None)
     text_provider: str | None = Field(default=None, alias="textProvider")
     text_model: str | None = Field(default=None, alias="textModel")
+    #: TASK-814 §2b — advisory transcript corrections the clinician accepted
+    #: (`StopRecordingRequest.acceptedProposals`), forwarded verbatim onto the
+    #: `ConsultationEndingSignal` so `feedback.capture` (TASK-812 DD-8) has something to
+    #: promote over the raw transcript.
+    accepted_proposals: list[dict[str, Any]] = Field(default_factory=list, alias="acceptedProposals")
 
 
 class LoopCancelRequest(BaseModel):
@@ -520,6 +525,7 @@ async def signal_consultation_ending(
         ConsultationEndingSignal(
             reason=body.reason,
             persist_snapshot=body.persist_snapshot,
+            accepted_proposals=body.accepted_proposals,
             finalize=LoopFinalizeRequest(
                 transcript_text=body.transcript_text,
                 context_item_id=body.context_item_id,

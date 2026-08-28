@@ -48,6 +48,8 @@ import {
   useGenerateSummaryAsync,
   useHarnessAssuranceStream,
   useHarnessProgressStream,
+  useDocumentSectionsStream,
+  useLiveAssistStream,
   useLatestSummary,
   useNamedEntities,
   useScopingDepartments,
@@ -59,6 +61,7 @@ import {
   useUpdateSummary,
   type CitedSegment,
 } from '../api';
+import type { CorrectionProposal } from '../api/live-assist';
 import { useColumnLayout } from '../hooks/use-column-layout';
 import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
@@ -205,7 +208,9 @@ function SdkBoundary() {
 // ─── the workspace (inside the provider) ───
 
 function ScribeWorkspace() {
-  const { session: sdkSession, audio } = useArca();
+  // D-17: `context` was never destructured, so `addCaseNote`/`addAttachment` had zero call
+  // sites — a clinician had no way to hand the loop a supplementary detail mid-consultation.
+  const { session: sdkSession, audio, context } = useArca();
   const storeApi = useStoreApi();
 
   const layout = useColumnLayout();
@@ -259,6 +264,18 @@ function ScribeWorkspace() {
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
   // W4 — the agentic loop's live activity feed (realtime summaries etc).
   const loop = useConsultationLoopStream(consultationId, !!consultationId);
+  // TASK-795 RC-2 / TASK-814 §2b — interpreter suggestions + PROPOSED corrections, live
+  // while recording. The gateway route was TASK-795's; nothing in the console consumed it
+  // until this hook.
+  const liveAssist = useLiveAssistStream(consultationId, isRecording);
+  // TASK-811 DD-3 / TASK-814 DD-3 — N documents from the section.patch plane. A SEPARATE
+  // connection from `live` (useArcaLiveSummary) — that SDK hook only ever parses the legacy
+  // undiscriminated payload on the same channel.
+  const documentSections = useDocumentSectionsStream(consultationId, isRecording);
+  // §2b — corrections the clinician ACCEPTED, accumulated for `feedback.capture` (DD-8) to
+  // promote over the raw transcript when the endpoint sequence runs at recording-stop.
+  // Reset per consultation, same as every other derived-state reset on this screen.
+  const [acceptedProposals, setAcceptedProposals] = useState<CorrectionProposal[]>([]);
 
   // the evidence panel + its transcript-review highlight
   // only apply once a persisted draft exists (the reviewable artifact); both
@@ -339,6 +356,7 @@ function ScribeWorkspace() {
     setConsultation(next);
     setApproved(false);
     setSelectedCitationId(null);
+    setAcceptedProposals([]);
     metrics.reset();
     // Live SOAP only streams while recording; a terminal consultation shows
     // its persisted draft instead.
@@ -421,9 +439,13 @@ function ScribeWorkspace() {
     setCaptureBusy(true);
     try {
       await audio.stop();
-      const state = await recordingStop.mutateAsync({ consultationId: consultation.id });
+      // §2b — every correction the clinician accepted this session rides the stop call, so
+      // `feedback.capture` has something to promote over the raw transcript.
+      const state = await recordingStop.mutateAsync({ consultationId: consultation.id, acceptedProposals });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
       live.stop();
+      liveAssist.close();
+      documentSections.close();
       toast.success('Recording stopped — final snapshot persisted');
     } catch (error) {
       toast.error(errorMessage(error, 'Could not stop recording'));
@@ -439,6 +461,19 @@ function ScribeWorkspace() {
     } catch (error) {
       toast.error(errorMessage(error, 'Could not switch to the fallback provider'));
     }
+  }
+
+  // D-17 — the add-details-during-consultation affordance. Errors surface through the
+  // control's own toast (AddDetailControl); rethrow so it can show pending state correctly.
+  async function handleAddDetail(content: string) {
+    await context.addCaseNote(content);
+  }
+
+  // §2b — records a clinician's acceptance for promotion over the raw transcript. Keyed by
+  // proposalId (TASK-796 rule 3) — the same envelope re-delivered after a retry must not
+  // double the accumulator.
+  function handleProposalAccepted(proposal: CorrectionProposal) {
+    setAcceptedProposals((current) => (current.some((p) => p.proposalId === proposal.proposalId) ? current : [...current, proposal]));
   }
 
   const summaryJob = useSummaryJobProgress(summaryJobId, {
@@ -609,6 +644,7 @@ function ScribeWorkspace() {
               onSwitchToFallback={handleSwitchToFallback}
               consentBlockedReason={consentBlockedReason}
               onRecordConsent={() => setConsentDialogOpen(true)}
+              onAddDetail={handleAddDetail}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />
@@ -617,6 +653,8 @@ function ScribeWorkspace() {
               hasConsultation={!!consultation}
               isRecording={isRecording}
               live={live.snapshot}
+              liveStatus={live.status}
+              liveError={live.error?.message ?? null}
               draft={draft.data ?? null}
               draftLoading={draft.isLoading}
               progress={progress.snapshot}
@@ -635,6 +673,12 @@ function ScribeWorkspace() {
               editor={noteEditor}
               loopActivity={loop.feed}
               namedEntities={namedEntities.data ?? null}
+              correctionProposals={liveAssist.corrections}
+              onProposalAccepted={handleProposalAccepted}
+              onCorrectionsStale={liveAssist.reopen}
+              suggestions={liveAssist.suggestions}
+              suggestionsNodeType={liveAssist.suggestionsNodeType ?? undefined}
+              documentSections={documentSections.documents}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

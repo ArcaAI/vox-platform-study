@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Review` — implemented on worktree branch `lane-814-playground`, gates green, merge into `dev-2.2` pending (orchestrator) |
 | **Type** | `feature` + `bugfix` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -239,9 +239,96 @@ and `src/app/api/auth/impersonate/route.ts`.
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 07, 10, 11, 13. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 6. Implementation Summary
-_Not started._
+
+Branch `lane-814-playground` off `dev-2.2`@`55555d988`. Five commits, all gates green (evidence
+in §7 Change History). `dev-2.2` has since moved to `77a6130a5` (sibling lanes 813/815 landed) —
+merge + gate re-run from the primary checkout is pending, per the worktree close-out protocol.
+
+**D-25 (Lane A).** Confirmed the premise myself against `auth.controller.ts`: `POST
+/auth/impersonate` already lets a `TENANT_ADMIN` impersonate within its own tenant (imperative
+check inside the handler); the BFF simply never routed there. `apps/admin-console/src/app/api/auth/impersonate/route.ts`
+now branches on the caller's role — `SUPER_ADMIN` keeps the time-boxed `admin/users/:id/impersonate`
+path unchanged, `TENANT_ADMIN` goes through the legacy route with `targetUserId` in the body — and
+does **not** re-implement the own-tenant check; a gateway 403 passes straight through.
+`PersonaControl` widens its gate to `isElevated || isTenantAdmin`, fixes the stale "no
+tenant-scoped endpoint exists" comment, and shows an admin-role-agnostic degrade copy for anyone
+holding neither role.
+
+**D-17.** `context` was never destructured from `useArca()`. Added a self-contained
+`AddDetailControl` (popover + textarea) wired to `context.addCaseNote`, rendered in
+`LiveSessionColumn`'s header, disabled without an open consultation.
+
+**D-18 + the empty-first-flush contradiction.** `useArcaLiveSummary()`'s `status`/`error` are now
+threaded into `CaseNoteColumn` as `liveStatus`/`liveError`, rendering a connection-error badge
+distinct from a generation failure (`live.textFailed`). The header no longer claims "showing last
+update" when `runningSummary` is empty, and the body no longer falls back to the
+"waiting for the first live summary" skeleton on a `textFailed` first flush — it renders an
+honest empty state instead.
+
+**TASK-795 RC-2 transport was live but unconsumed.** The gateway's `live-assist/stream` route
+existed with nothing in the console subscribing to it. New `useLiveAssistStream` hook feeds real
+`suggestions`/`corrections` into `ClinicalSuggestionsPanel`/`CorrectionProposalsPanel` for the
+first time.
+
+**§2b — the promotion chain, end to end.** `CorrectionProposalsPanel` gained `onProposalAccepted`,
+firing on the SAME accept click as the existing note-buffer write (no second control). The screen
+accumulates accepted proposals and threads them through `useStopRecording` → `POST
+recording/stop` (`StopRecordingRequest.acceptedProposals`, reusing the gateway's
+`AcceptedCorrectionProposal` DTO) → `signalConsultationEnding` → the harness's
+`consultation-ending` Temporal signal (`ConsultationEndingSignal.accepted_proposals`, additive/
+optional field) → `_run_endpoint_action`'s `LOOP_ACTION_FEEDBACK_CAPTURE` branch → `CaptureFeedbackInput.accepted_proposals`
+→ `capture_feedback` (DD-8's existing promotion, now finally fed). Proven with a real Temporal
+time-skipping test (`test_endpoint_stage.py`) asserting the recorded activity input, plus the
+harness's 19-test replay-compat suite staying green (the field is additive/optional — old recorded
+histories deserialize unchanged).
+
+**DD-3 — N documents.** `useArcaLiveSummary` (the SDK) only ever parses the legacy undiscriminated
+`LiveSummaryEventDto`; TASK-811's `section.patch` payload arrives as an ADDITIVE second event on
+the SAME `live-summary/stream` channel and nothing consumed it. New `useDocumentSectionsStream`
+opens its own subscription (Redis pub/sub relay — a second subscriber is normal), filters to
+`event === 'section.patch'`, and folds per `(documentKey, sectionKey)` with the required
+revision-monotonic discard. `CaseNoteColumn` renders every document with a live state badge
+(`empty`/`provisional`/`confirmed`/`locked` — `empty` renders as a skeleton, never an error),
+taking priority over the legacy single-section view the moment any patch has arrived. Per-section
+clinician EDITING is deliberately not wired — no section-level mutation endpoint exists yet, so
+this stays read-only live state rather than an unpersisted second writer.
+
+**error.tsx × 5** for consultation / dna-writing-style / live-transcription / llm /
+voice-profiles (only `workbench` had one), mirroring the existing pattern exactly.
+
+**Patient lookup.** No `Patient` registry exists in this platform (`patientId` is an opaque string
+on `Consultation`). The "New" form's free-text field gained a native `<datalist>` suggesting ids
+already seen in the clinician's own loaded consultation rows (deduped, sorted) — zero new backend
+surface — while staying a real free-text field for a first-time patient.
+
+**Accessibility.** `vitest-axe` scans (0 violations) added for every new/changed state:
+empty-first-flush, connection-error, the N-document view, the Add-detail popover, the
+tenant-admin picker + no-admin-role degrade, the patient-lookup form, and all five `error.tsx`
+boundaries. Caught and fixed two real `aria-prohibited-attr` violations (`aria-label` on a bare
+`<div>` with no role) — one pre-existing, one new — with `role="status"`. Several other
+pre-existing instances of the same pattern elsewhere in `case-note-column.tsx` are flagged as a
+separate out-of-scope task rather than fixed here.
+
+**Not done / explicitly out of scope:**
+- Full Playwright e2e run — not executed. Requires `pnpm test:up:api` + a destructive-by-default
+  test-DB reset (`RESET_DB=false` needed) against SHARED test infra two sibling lanes may be
+  using concurrently; the worktree rules reserve Docker/infra and DB resets for the orchestrator.
+  Runtime verification instead relied on component-level tests (real DOM, real event handlers,
+  real state machines via Testing Library/jsdom) plus a real Temporal time-skipping test for the
+  harness signal chain.
+- Live browser click-through — attempted via `preview_start`, but `.claude/launch.json`'s `api`
+  configuration resolved against the **primary checkout**, not this worktree (confirmed from the
+  `nest start` log's cwd), so it would have verified the wrong code and risked colliding with
+  sibling lanes' processes/ports. Stopped immediately once observed; did not retry with a
+  manually-started, differently-ported server, given the additional risk of writing to the
+  shared dev Postgres from an unmigrated schema. The `next-dev-loop` skill's floor (`agent-browser`
+  CLI) was also not met in this environment.
+- Both-themes visual verification was reasoned about (only semantic tokens were used throughout —
+  `bg-ai`, `text-success`, `border-destructive`, etc. — no hardcoded colors), not screenshotted in
+  a running browser, for the same reason as above.
 
 ## 7. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Re-scoped by OD-2; D-16 withdrawn as a defect. |
+| 2026-08-29 | Implemented on `lane-814-playground` (worktree off `dev-2.2`@`55555d988`): D-25 impersonation wiring (827a1e1c1), D-17/D-18/§2b promotion chain across TS+Python (f0fd2a09e), error.tsx×5 + patient lookup (3760505fd), DD-3 N-document rendering (0aaee03a5), axe accessibility scans (1b8429f63). All gates green: `@arcaai/admin-console` typecheck/lint/build/test (272 playground tests + full suite 2165), `@arcaai/applications` build/test (10457 tests), `apps/api` build + `pnpm test:unit` (21363 tests), harness `ruff`/`mypy`/pytest (1664 tests) + replay-compat (19 tests). Merge into `dev-2.2` pending — left in the worktree per the close-out protocol. |

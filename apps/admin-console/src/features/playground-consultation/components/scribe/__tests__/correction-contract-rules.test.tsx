@@ -80,6 +80,36 @@ describe('Rule 2 — the SHA-256 gate', () => {
   });
 });
 
+describe('TASK-814 §2b — onProposalAccepted (promotion over the raw transcript, DD-8)', () => {
+  it('fires alongside onAccept, with the proposal marked ACCEPTED, when the digest gate passes', async () => {
+    const onAccept = vi.fn();
+    const onProposalAccepted = vi.fn();
+    render(<CorrectionProposalsPanel corrections={await envelope([proposal()])} text={TEXT} onAccept={onAccept} onProposalAccepted={onProposalAccepted} />);
+    fireEvent.click(screen.getByRole('button', { name: /accept correction/i }));
+
+    await waitFor(() => expect(onAccept).toHaveBeenCalled());
+    expect(onProposalAccepted).toHaveBeenCalledWith(expect.objectContaining({ proposalId: 'def456', status: 'ACCEPTED' }));
+  });
+
+  it('does NOT fire on a digest mismatch — a refused accept promotes nothing', async () => {
+    const onProposalAccepted = vi.fn();
+    const stale = await envelope([proposal()], 'Some entirely different note.');
+    render(<CorrectionProposalsPanel corrections={stale} text={TEXT} onAccept={vi.fn()} onProposalAccepted={onProposalAccepted} />);
+    fireEvent.click(screen.getByRole('button', { name: /accept correction/i }));
+
+    await waitFor(() => expect(screen.getByText(/note has changed|no longer match/i)).toBeTruthy());
+    expect(onProposalAccepted).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire on Reject — a decline never promotes', async () => {
+    const onProposalAccepted = vi.fn();
+    render(<CorrectionProposalsPanel corrections={await envelope([proposal()])} text={TEXT} onAccept={vi.fn()} onProposalAccepted={onProposalAccepted} />);
+    fireEvent.click(screen.getByRole('button', { name: /reject correction/i }));
+
+    expect(onProposalAccepted).not.toHaveBeenCalled();
+  });
+});
+
 describe('Rule 3 — identity is the id, never the array index', () => {
   it('keeps two byte-identical proposals distinct by id', async () => {
     const twin = proposal({ proposalId: 'twin', start: 16, end: 26 });

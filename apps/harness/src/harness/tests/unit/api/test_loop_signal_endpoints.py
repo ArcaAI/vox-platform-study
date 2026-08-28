@@ -233,6 +233,43 @@ class TestEndingAndCancelSignals:
         assert payload.finalize.template == "SOAP"
 
     @pytest.mark.asyncio
+    async def test_ending_signal_forwards_accepted_proposals_task814(self, harness):
+        """TASK-814 §2b — corrections the clinician accepted must reach the signal payload
+        unchanged, so the endpoint stage's `feedback.capture` node has something to promote."""
+        http, client, handle, _settings = harness
+        proposal = {
+            "proposalId": "p-1",
+            "start": 10,
+            "end": 16,
+            "original": "Toprovol",
+            "proposed": "Toprol",
+            "category": "drugName",
+            "confidence": 0.92,
+            "status": "ACCEPTED",
+        }
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/consultation-ending",
+            headers=_HEADERS,
+            json={"reason": "recording_stopped", "acceptedProposals": [proposal]},
+        )
+        assert resp.status_code == 200
+        client.get_workflow_handle.assert_called_once_with("consultation-loop-c-1")
+
+        _method, payload = handle.signal.call_args.args
+        assert payload.accepted_proposals == [proposal]
+
+    @pytest.mark.asyncio
+    async def test_ending_signal_omits_accepted_proposals_when_absent_task814(self, harness):
+        http, client, handle, _settings = harness
+        await http.post(
+            "/api/v1/internal/workflows/c-1/signal/consultation-ending",
+            headers=_HEADERS,
+            json={"reason": "recording_stopped"},
+        )
+        _method, payload = handle.signal.call_args.args
+        assert payload.accepted_proposals == []
+
+    @pytest.mark.asyncio
     async def test_ending_is_a_plain_signal_not_a_signal_with_start(self, harness):
         """Nothing to end when no loop runs — starting one just to end it would
         emit a spurious finalize."""

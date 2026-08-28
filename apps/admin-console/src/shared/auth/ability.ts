@@ -21,6 +21,16 @@ export function isElevated(roles: readonly string[] | null | undefined): boolean
   return !!roles?.some((role) => (ELEVATED_ROLES as readonly string[]).includes(role));
 }
 
+/**
+ * TENANT_ADMIN — the own-tenant admin role. Distinct from {@link isElevated}: a tenant admin is
+ * NOT cross-tenant elevated, but the gateway's legacy `POST /auth/impersonate` route (D-25) does
+ * grant it own-tenant impersonation, so callers that gate on impersonation availability need both
+ * checks, not just `isElevated`.
+ */
+export function isTenantAdmin(roles: readonly string[] | null | undefined): boolean {
+  return !!roles?.includes('TENANT_ADMIN');
+}
+
 function ruleActions(rule: PermissionRule): string[] {
   return rule.action
     .split(',')

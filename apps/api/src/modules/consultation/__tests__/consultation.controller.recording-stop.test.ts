@@ -64,6 +64,37 @@ describe('ConsultationController.stopRecording — loop-ending signal', () => {
     );
   });
 
+  it('TASK-814 §2b: threads acceptedProposals from the request into the ending signal', async () => {
+    const { controller, loopContextSignalService } = buildController();
+    const proposal = {
+      proposalId: 'p-1',
+      start: 10,
+      end: 16,
+      original: 'Toprovol',
+      proposed: 'Toprol',
+      category: 'drugName',
+      confidence: 0.92,
+      status: 'ACCEPTED',
+    };
+
+    await controller.stopRecording('consult-1', { persistSnapshot: true, acceptedProposals: [proposal] } as never);
+
+    expect(loopContextSignalService.signalConsultationEnding).toHaveBeenCalledWith('consult-1', {
+      reason: 'recording_stopped',
+      persistSnapshot: true,
+      acceptedProposals: [proposal],
+    });
+  });
+
+  it('TASK-814 §2b: omits acceptedProposals from the signal when the request carries none', async () => {
+    const { controller, loopContextSignalService } = buildController();
+
+    await controller.stopRecording('consult-1', { persistSnapshot: true });
+
+    const [, payload] = loopContextSignalService.signalConsultationEnding.mock.calls[0] as [string, Record<string, unknown>];
+    expect(payload.acceptedProposals).toBeUndefined();
+  });
+
   it('still tears down the LiveDoc session and flips the consultation status, alongside the new signal', async () => {
     const { controller, liveDocumentationService, consultationService } = buildController();
 

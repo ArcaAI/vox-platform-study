@@ -5,6 +5,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { render } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConsultationsColumn, type ConsultationListRow } from '../consultations-column';
@@ -65,6 +66,41 @@ describe('ConsultationsColumn', () => {
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
     expect(screen.getByText(/patient id is required/i)).toBeTruthy();
     expect(props.onOpenPatient).not.toHaveBeenCalled();
+  });
+
+  describe('patient lookup (replaces pure free-text entry)', () => {
+    it('offers the patient ids already seen in this clinician\'s consultation list as suggestions', () => {
+      setup();
+      fireEvent.click(screen.getByRole('button', { name: /new/i }));
+      const input = screen.getByLabelText(/patient id/i) as HTMLInputElement;
+      const datalist = document.getElementById(input.getAttribute('list') ?? '');
+      expect(datalist).toBeTruthy();
+      const options = Array.from(datalist?.querySelectorAll('option') ?? []).map((option) => option.getAttribute('value'));
+      expect(options).toEqual(['P-448', 'P-702']);
+    });
+
+    it('dedupes patient ids across multiple consultations for the same patient', () => {
+      setup({ rows: [...ROWS, { id: 'c-3', patientId: 'P-448', status: 'CLOSED', createdAt: '2026-07-01T00:00:00.000Z' }] });
+      fireEvent.click(screen.getByRole('button', { name: /new/i }));
+      const input = screen.getByLabelText(/patient id/i) as HTMLInputElement;
+      const datalist = document.getElementById(input.getAttribute('list') ?? '');
+      const options = Array.from(datalist?.querySelectorAll('option') ?? []).map((option) => option.getAttribute('value'));
+      expect(options).toEqual(['P-448', 'P-702']);
+    });
+
+    it('still accepts a brand-new patient id typed freehand (no registry to constrain it to)', async () => {
+      const { props } = setup();
+      fireEvent.click(screen.getByRole('button', { name: /new/i }));
+      fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-first-time' } });
+      fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+      await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-first-time', undefined));
+    });
+
+    it('0 axe violations on the New form with the patient-lookup datalist wired up', async () => {
+      const { container } = setup();
+      fireEvent.click(screen.getByRole('button', { name: /new/i }));
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 
   it('shows an empty state when there are no consultations', () => {

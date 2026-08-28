@@ -29,6 +29,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
+import { AddDetailControl } from './add-detail-control';
 
 const WAVE_BARS = 80;
 const WAVE_FLOOR = 0.08;
@@ -144,6 +145,11 @@ export interface LiveSessionColumnProps {
   consentBlockedReason?: string | null;
   /** Opens the attestation dialog. Absent ⇒ the gate explains but offers no action. */
   onRecordConsent?: () => void;
+  /**
+   * D-17 — writes a clinician-entered detail via the SDK's `context.addCaseNote`.
+   * Absent ⇒ the affordance does not render at all (mirrors `onSwitchToFallback`).
+   */
+  onAddDetail?: (content: string) => Promise<void>;
 }
 
 export function LiveSessionColumn({
@@ -164,6 +170,7 @@ export function LiveSessionColumn({
   onSwitchToFallback,
   consentBlockedReason = null,
   onRecordConsent,
+  onAddDetail,
 }: LiveSessionColumnProps) {
   // Rolling amplitude buffer + elapsed seconds. State is written ONLY inside
   // the interval callbacks (never synchronously in the effect body, and no
@@ -216,6 +223,10 @@ export function LiveSessionColumn({
         <div aria-hidden className="text-foreground min-w-0 flex-1">
           <Waveform data={displayWave} active={isCapturing} height={40} />
         </div>
+        {/* D-17 — add-details-during-consultation. Available whenever a
+            consultation is open, not gated on active capture: a clinician may
+            want to add a detail before recording starts or between segments. */}
+        {onAddDetail ? <AddDetailControl disabled={!hasConsultation} onAdd={onAddDetail} /> : null}
         {/* On-the-fly switch to the tenant fallback pipeline. */}
         {isCapturing && onSwitchToFallback && !onFallback ? (
           <Button variant="outline" onClick={onSwitchToFallback} disabled={captureBusy} className="shrink-0">

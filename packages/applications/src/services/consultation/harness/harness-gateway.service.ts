@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import type { AcceptedCorrectionProposal } from '../endpoint/dto/endpoint.request';
 
 /**
  * Context for starting a durable harness document workflow. `tenantId` is
@@ -128,6 +129,13 @@ export interface HarnessContextAddedSignal {
 export interface HarnessConsultationEndingSignal {
   reason?: string;
   persistSnapshot?: boolean;
+  /**
+   * TASK-814 §2b — advisory transcript corrections the clinician accepted (forwarded from
+   * `StopRecordingRequest.acceptedProposals`), so the endpoint stage's `feedback.capture` node
+   * (TASK-812 DD-8) has something to promote over the raw transcript. Absent/empty is the
+   * common case — most stops accept nothing.
+   */
+  acceptedProposals?: AcceptedCorrectionProposal[];
   transcriptText?: string;
   contextItemId?: string;
   jobId?: string;

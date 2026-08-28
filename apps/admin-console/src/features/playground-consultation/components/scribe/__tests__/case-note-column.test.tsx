@@ -4,6 +4,7 @@
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AssuranceStrip, CaseNoteColumn } from '../case-note-column';
@@ -177,6 +178,185 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText(/pt on amlodipine for htn/i)).toBeTruthy();
   });
 
+  describe('D-18 — empty-first-flush contradiction and live-stream status/error', () => {
+    it('never shows "showing last update" together with the loading skeleton on a first-flush failure', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: '',
+              sections: [],
+              entities: [],
+              updatedAt: 'now',
+              textFailed: true,
+            },
+          })}
+        />,
+      );
+      // The header must not claim a stale update exists when there is none.
+      expect(screen.queryByText(/showing last update/i)).toBeNull();
+      // The body must not present this as an in-progress load — that hides the failure.
+      expect(screen.queryByLabelText(/waiting for the first live summary/i)).toBeNull();
+      expect(screen.getByText(/note assistant unavailable/i)).toBeTruthy();
+    });
+
+    it('keeps "showing last update" when textFailed is true but prior content survived', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: 'Pt on amlodipine for HTN.',
+              sections: [],
+              entities: [],
+              updatedAt: 'now',
+              textFailed: true,
+            },
+          })}
+        />,
+      );
+      expect(screen.getByText(/showing last update/i)).toBeTruthy();
+    });
+
+    it('surfaces a distinct connection-error state from liveStatus/liveError (separate from a generation failure)', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: null,
+            liveStatus: 'error',
+            liveError: 'Live-summary SSE connection error',
+          })}
+        />,
+      );
+      expect(screen.getByText(/live update connection lost/i)).toBeTruthy();
+      // Not the generation-failure copy — this is a transport problem, not a model failure.
+      expect(screen.queryByText(/note assistant unavailable/i)).toBeNull();
+    });
+  });
+
+  describe('DD-3 — N documents from the section.patch plane', () => {
+    it('renders every document, each with a heading and its sections in order', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [
+              {
+                documentKey: 'soap_note',
+                sections: [
+                  { sectionKey: 'subjective', title: 'Subjective', idx: 0, revision: 1, state: 'confirmed', content: 'Patient reports feeling well.', annotations: [] },
+                  { sectionKey: 'assessment', title: 'Assessment', idx: 1, revision: 1, state: 'provisional', content: 'Hypertension, well controlled.', annotations: [] },
+                ],
+              },
+              {
+                documentKey: 'discharge_summary',
+                sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 1, state: 'empty', content: '', annotations: [] }],
+              },
+            ],
+          })}
+        />,
+      );
+      expect(screen.getByText(/soap note/i)).toBeTruthy();
+      expect(screen.getByText(/discharge summary/i)).toBeTruthy();
+      expect(screen.getByText('Subjective')).toBeTruthy();
+      expect(screen.getByText(/patient reports feeling well/i)).toBeTruthy();
+      expect(screen.getByText('Assessment')).toBeTruthy();
+      expect(screen.getByText(/hypertension, well controlled/i)).toBeTruthy();
+      expect(screen.getByText('Plan')).toBeTruthy();
+    });
+
+    it('shows a distinct state badge per section — provisional vs confirmed vs locked', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [
+              {
+                documentKey: 'soap_note',
+                sections: [
+                  { sectionKey: 'subjective', title: 'Subjective', idx: 0, revision: 2, state: 'confirmed', content: 'Patient is stable.', annotations: [] },
+                  { sectionKey: 'assessment', title: 'Assessment', idx: 1, revision: 1, state: 'provisional', content: 'Likely viral.', annotations: [] },
+                  { sectionKey: 'plan', title: 'Plan', idx: 2, revision: 1, state: 'locked', content: 'Discharge home.', annotations: [] },
+                ],
+              },
+            ],
+          })}
+        />,
+      );
+      expect(screen.getByText(/^confirmed$/i)).toBeTruthy();
+      expect(screen.getByText(/^provisional$/i)).toBeTruthy();
+      expect(screen.getByText(/^locked$/i)).toBeTruthy();
+    });
+
+    it('renders an empty section as a skeleton, never an error (TASK-811 §2d)', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            documentSections: [
+              { documentKey: 'soap_note', sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 0, state: 'empty', content: '', annotations: [] }] },
+            ],
+          })}
+        />,
+      );
+      expect(screen.queryByText(/error/i)).toBeNull();
+      expect(document.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+    });
+
+    it('takes priority over the legacy single-section live view when both are present', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: 'legacy running summary text',
+              sections: [{ title: 'Legacy Section', content: 'legacy content' }],
+              entities: [],
+              updatedAt: 'now',
+            },
+            documentSections: [
+              { documentKey: 'soap_note', sections: [{ sectionKey: 'subjective', title: 'Subjective', idx: 0, revision: 1, state: 'provisional', content: 'multi-doc content', annotations: [] }] },
+            ],
+          })}
+        />,
+      );
+      expect(screen.getByText(/multi-doc content/i)).toBeTruthy();
+      expect(screen.queryByText('Legacy Section')).toBeNull();
+    });
+
+    it('falls back to the legacy single-section view when no document-section data has arrived', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: 'legacy running summary text',
+              sections: [{ title: 'Legacy Section', content: 'legacy content' }],
+              entities: [],
+              updatedAt: 'now',
+            },
+            documentSections: [],
+          })}
+        />,
+      );
+      expect(screen.getByText('Legacy Section')).toBeTruthy();
+    });
+  });
+
   // click-to-source evidence panel at sign-off.
   describe('citation evidence panel', () => {
     const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];
@@ -266,5 +446,49 @@ describe('CaseNoteColumn — loop activity (realtime summaries)', () => {
   it('renders nothing when the loop has produced no events', () => {
     render(<CaseNoteColumn {...baseProps({ draft: null, loopActivity: [] })} />);
     expect(screen.queryByText(/assistant activity/i)).toBeNull();
+  });
+});
+
+describe('TASK-814 accessibility — 0 axe violations on every new/changed state', () => {
+  it('empty-first-flush failure state', async () => {
+    const { container } = render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          isRecording: true,
+          live: { consultationId: 'c-1', runningSummary: '', sections: [], entities: [], updatedAt: 'now', textFailed: true },
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('connection-error state (liveStatus === error)', async () => {
+    const { container } = render(
+      <CaseNoteColumn {...baseProps({ draft: null, isRecording: true, live: null, liveStatus: 'error', liveError: 'boom' })} />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('N-document view with a mix of empty/provisional/confirmed/locked sections', async () => {
+    const { container } = render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          isRecording: true,
+          documentSections: [
+            {
+              documentKey: 'soap_note',
+              sections: [
+                { sectionKey: 'subjective', title: 'Subjective', idx: 0, revision: 2, state: 'confirmed', content: 'Patient is stable.', annotations: [] },
+                { sectionKey: 'assessment', title: 'Assessment', idx: 1, revision: 1, state: 'provisional', content: 'Likely viral.', annotations: [] },
+              ],
+            },
+            { documentKey: 'discharge_summary', sections: [{ sectionKey: 'plan', title: 'Plan', idx: 0, revision: 0, state: 'empty', content: '', annotations: [] }] },
+          ],
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
   });
 });
