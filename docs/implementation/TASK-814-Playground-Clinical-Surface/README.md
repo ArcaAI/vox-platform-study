@@ -42,6 +42,22 @@ packages/agentic-sdk-v2/src/types/context.ts:172-179        (AddContextInput.str
 ```
 
 
+## 2b. Inherited from TASK-812 §7a — the promotion path is inert until you build this
+
+TASK-812 shipped `feedback.capture` as the ONLY path that promotes an advisory correction over the
+raw transcript (DD-8). Its agent measured that when the endpoint stage runs, **it carries no accepted
+proposals**: acceptance is a *clinician act* that reaches the gateway from the console, and no
+console surface records one today. So the mechanism is built, wired, tested — and inert.
+
+**Acceptance item for this ticket:** the impersonated-clinician surface must be able to accept (and
+decline) an advisory correction proposal, and that acceptance must reach the gateway so
+`feedback.capture` has something to promote at endpoint time. Prove it end to end: accept a
+proposal in the playground, close the consultation, assert the promotion landed. Without this,
+TASK-812's DD-8 path stays dead code.
+
+Read TASK-812 §6 "D-11 / D-12 / DD-3 / DD-8" for the shape the gateway expects before designing the
+affordance — do not invent a second acceptance channel.
+
 ## 2. Current State Evaluation
 
 | Defect | Evidence |
