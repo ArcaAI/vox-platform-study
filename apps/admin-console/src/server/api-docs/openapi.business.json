@@ -9976,6 +9976,152 @@
         ],
         "type": "object"
       },
+      "NodePromptUpdateResponse": {
+        "properties": {
+          "compiledConfig": {
+            "additionalProperties": true,
+            "description": "Server-produced interpreter input contract. Null until PUBLISHED.",
+            "nullable": true,
+            "type": "object"
+          },
+          "compiledConfigChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "currentRegistryChecksum": {
+            "description": "The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did.",
+            "type": "string"
+          },
+          "deprecatedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "description": "The canvas graph, exactly as authored.",
+            "type": "object"
+          },
+          "graphChecksum": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isActive": {
+            "description": "The movable pointer: the version the dispatcher resolves for new runs.",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "needsReview": {
+            "description": "True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back.",
+            "type": "boolean"
+          },
+          "paletteKey": {
+            "type": "string"
+          },
+          "parentVersionId": {
+            "description": "The published version this draft branched from, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "previousPromptVersionNumber": {
+            "description": "The node’s pin BEFORE the request. Null when the node was unpinned.",
+            "nullable": true,
+            "type": "number"
+          },
+          "promptVersionMinted": {
+            "description": "True when this request created a new immutable PromptVersion. False when the submitted content was byte-identical to the template’s latest version, in which case the node’s pin was simply moved to that existing version and nothing was minted.",
+            "type": "boolean"
+          },
+          "promptVersionNumber": {
+            "description": "The prompt version this node is pinned to AFTER the request.",
+            "type": "number"
+          },
+          "publishedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "registryChecksum": {
+            "nullable": true,
+            "type": "string"
+          },
+          "resourceStatus": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATED",
+              "PUBLISHED",
+              "DEPRECATED"
+            ],
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "validatedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "validationReport": {
+            "additionalProperties": true,
+            "description": "The last server-side ValidationReport.",
+            "nullable": true,
+            "type": "object"
+          },
+          "version": {
+            "description": "Optimistic-concurrency version (`_version`).",
+            "type": "number"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "slug",
+          "name",
+          "paletteKey",
+          "versionNumber",
+          "status",
+          "graph",
+          "graphChecksum",
+          "currentRegistryChecksum",
+          "needsReview",
+          "isActive",
+          "resourceStatus",
+          "createdAt",
+          "updatedAt",
+          "version",
+          "tags",
+          "promptVersionMinted",
+          "promptVersionNumber"
+        ],
+        "type": "object"
+      },
       "NoiseCancellationConfigDto": {
         "properties": {
           "level": {
@@ -23567,6 +23713,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -24755,6 +24908,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -25991,6 +26151,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -26037,6 +26204,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -26277,6 +26451,16 @@
           }
         ],
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
           "404": {
             "description": "Consultation not found — also the answer for a cross-tenant id (404-over-403), resolved BEFORE the stream opens"
           }
@@ -26324,6 +26508,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -26370,6 +26561,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },
@@ -28194,6 +28392,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
             "description": ""
           }
         },

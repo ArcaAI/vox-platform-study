@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { WorkflowDefinitionResponse } from './workflow-definition.response';
 
 /**
  * DD-11 — edit a node's prompt FROM WITHIN THE NODE.
@@ -55,4 +56,32 @@ export class NodePromptBindingResponse {
       'each referencing node is re-pinned separately and visibly.',
   })
   hasNewVersion: boolean;
+}
+
+/**
+ * The result of an in-node prompt update — the workflow definition as it now
+ * stands, PLUS what the request actually did to the prompt plane.
+ *
+ * A superset of `WorkflowDefinitionResponse`, not a wrapper around it,
+ * deliberately: existing callers (the Studio's `WithEtag<WorkflowDefinition>`,
+ * the generated Node SDK) keep reading the definition straight off the body,
+ * while a caller that cares can now tell the two outcomes apart. Wrapping it
+ * would have been a breaking change for a purely additive fact.
+ *
+ * The distinction is the whole point of §7b item 1: adopting a version
+ * unchanged moves the pin and mints NOTHING, so a client that reports
+ * "minted v10" on every save would now be lying on the common path.
+ */
+export class NodePromptUpdateResponse extends WorkflowDefinitionResponse {
+  @ApiProperty({
+    description:
+      'True when this request created a new immutable PromptVersion. False when the submitted content was byte-identical to the template’s latest version, in which case the node’s pin was simply moved to that existing version and nothing was minted.',
+  })
+  promptVersionMinted: boolean;
+
+  @ApiProperty({ description: 'The prompt version this node is pinned to AFTER the request.' })
+  promptVersionNumber: number;
+
+  @ApiPropertyOptional({ nullable: true, description: 'The node’s pin BEFORE the request. Null when the node was unpinned.' })
+  previousPromptVersionNumber: number | null;
 }

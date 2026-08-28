@@ -16,6 +16,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { WorkflowDefinitionStatus } from '@arcaai/domains';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 import { collectPromptBindings, withMovedPin } from '../node-prompt-binding';
@@ -57,6 +58,7 @@ const mockPromptTemplateRepository = {
 const mockPromptVersionRepository = {
   create: vi.fn(),
   findMaxVersionNumber: vi.fn(),
+  findLatestVersion: vi.fn(),
 };
 
 const mockDatabaseService = {
@@ -150,9 +152,11 @@ describe('DD-11 PATH 1 — edit from within the node', () => {
     mockDatabaseService.baseClient.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({ tx: true }));
     mockWorkflowDefinitionRepository.findById.mockResolvedValue(definitionEntity());
     mockWorkflowDefinitionRepository.update.mockImplementation(async (_id, entity) => entity);
+    mockWorkflowDefinitionRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
     mockPromptTemplateRepository.findById.mockResolvedValue(templateEntity());
     mockPromptTemplateRepository.update.mockImplementation(async (_id, entity) => entity);
     mockPromptVersionRepository.findMaxVersionNumber.mockResolvedValue(7);
+    mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ versionNumber: 7, content: 'old body', variables: null });
     mockPromptVersionRepository.create.mockImplementation(async (entity) => entity);
 
     service = new WorkflowDefinitionService(
@@ -196,7 +200,11 @@ describe('DD-11 PATH 1 — edit from within the node', () => {
     expect(mockPromptVersionRepository.findMaxVersionNumber).toHaveBeenCalledWith('tpl-1', tx);
     expect(mockPromptVersionRepository.create).toHaveBeenCalledWith(expect.anything(), tx);
     expect(mockPromptTemplateRepository.update).toHaveBeenCalledWith('tpl-1', expect.anything(), tx);
-    expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-1', expect.anything(), tx);
+    // CAS, not a bare update: the route is `@RequiresIfMatch()`-gated, so the
+    // definition write is a compare-and-set that also advances `_version` (and
+    // therefore the ETag) — a graph rewrite that left the validator unchanged
+    // would let a client blind-write the same ETag again.
+    expect(mockWorkflowDefinitionRepository.updateWithVersion).toHaveBeenCalledWith('def-1', expect.anything(), 1, tx);
   });
 
   it('rolls the whole thing back when the pin move fails — no orphan version row', async () => {
@@ -206,7 +214,7 @@ describe('DD-11 PATH 1 — edit from within the node', () => {
       await callback({ tx: true });
       throw new Error('unreachable');
     });
-    mockWorkflowDefinitionRepository.update.mockRejectedValue(new Error('write conflict'));
+    mockWorkflowDefinitionRepository.updateWithVersion.mockRejectedValue(new Error('write conflict'));
 
     await expect(service.updateNodePrompt('def-1', 'n_gen', { content: 'x' })).rejects.toThrow('write conflict');
     expect(mockEventEmitter.emit).not.toHaveBeenCalled();
@@ -365,5 +373,184 @@ describe('DD-11 PATH 2 — REGRESSION: an out-of-band edit moves NO node pin', (
     expect(bindings.map((b) => b.pinnedVersionNumber)).toEqual([4, 4]);
     expect(bindings.map((b) => b.latestVersionNumber)).toEqual([5, 5]);
     expect(bindings.map((b) => b.hasNewVersion)).toEqual([true, true]);
+  });
+});
+
+/**
+ * §7b item 1 — ADOPTING AN UNCHANGED VERSION IS A PIN MOVE, NOT AN AUTHORING ACT.
+ *
+ * DD-11's PATH 2 deliberately leaves node pins where they are when a template is
+ * edited out of band, so adoption is the COMMON path, not the rare one. Before
+ * this guard every adoption minted a byte-identical version row — so the very
+ * list an admin opens to understand what changed was the list this design filled
+ * with noise.
+ *
+ * The comparison is against the template's LATEST version, deliberately:
+ *   - the request carries only `content`; it never names a version, and the only
+ *     version identity the server has is `max(versionNumber)`;
+ *   - `PromptTemplate.content` (the shared head) tracks the latest version's
+ *     content by invariant, and a pure pin move must NOT rewrite the head — so
+ *     only "identical to latest" leaves head and pin in a state the mint path
+ *     could also have produced. Pinning to an older matching row would either
+ *     strand the head ahead of the pin or silently rewrite a SHARED template,
+ *     which is precisely what DD-11 forbids;
+ *   - both in-repo precedents compare against latest only
+ *     (`ConsultationContextSchemaService.publish`, and `approve`'s
+ *     `latestMatchesLiveContent` in `PromptManagementService`).
+ *
+ * The corollary is intended: submitting an OLDER version's body while the
+ * template sits on a newer one is a REVERT — a new authorial decision about a
+ * shared template — and still mints.
+ */
+describe('DD-11 §7b — an unchanged adopt must not mint a new version', () => {
+  let service: WorkflowDefinitionService;
+
+  /** The template's latest immutable snapshot: v9, which the node (pinned at v4) is behind. */
+  const LATEST = { versionNumber: 9, content: 'the current template text', variables: { tone: 'clinical' } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockClsService.get.mockImplementation((key: string) => {
+      if (key === 'tenantId') return 'tenant-1';
+      if (key === 'user') return { id: 'admin-1', roles: ['TENANT_ADMIN'] };
+      return undefined;
+    });
+    mockDatabaseService.baseClient.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({ tx: true }));
+    // A FRESH entity per read, as a real repository hands back: this block calls
+    // `updateNodePrompt` twice in one test, and the pin move writes onto the
+    // entity it was given.
+    mockWorkflowDefinitionRepository.findById.mockImplementation(async () => definitionEntity());
+    mockWorkflowDefinitionRepository.update.mockImplementation(async (_id, entity) => entity);
+    mockWorkflowDefinitionRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+    // The head tracks the latest snapshot — the invariant every mint path keeps.
+    mockPromptTemplateRepository.findById.mockResolvedValue(templateEntity({ content: LATEST.content, variables: LATEST.variables }));
+    mockPromptTemplateRepository.update.mockImplementation(async (_id, entity) => entity);
+    mockPromptVersionRepository.findMaxVersionNumber.mockResolvedValue(LATEST.versionNumber);
+    mockPromptVersionRepository.findLatestVersion.mockResolvedValue(LATEST);
+    mockPromptVersionRepository.create.mockImplementation(async (entity) => entity);
+
+    service = new WorkflowDefinitionService(
+      mockWorkflowDefinitionRepository as never,
+      mockEventEmitter as never,
+      mockClsService as never,
+      mockDatabaseService as never,
+      undefined,
+      undefined,
+      undefined,
+      mockPromptTemplateRepository as never,
+      mockPromptVersionRepository as never,
+    );
+  });
+
+  it('mints NOTHING and moves the pin to the version that already carries that content', async () => {
+    const result = await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).not.toHaveBeenCalled();
+    // The SHARED template head is not rewritten either — a pin move must not be
+    // a back-door edit of a template every other node also reads.
+    expect(mockPromptTemplateRepository.update).not.toHaveBeenCalled();
+
+    const graph = (result as unknown as { graph: typeof GRAPH_WITH_PROMPTS }).graph;
+    expect(graph.nodes[1].config.promptVersionNumber).toBe(9);
+    // The sibling node on the same template is still on its own pin.
+    expect(graph.nodes[0].config.promptVersionNumber).toBe(4);
+  });
+
+  it('reports minted:false so a caller can tell "adopted" from "new version created"', async () => {
+    const adopted = await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+    expect(adopted).toMatchObject({ promptVersionMinted: false, promptVersionNumber: 9, previousPromptVersionNumber: 4 });
+
+    const minted = await service.updateNodePrompt('def-1', 'n_gen', { content: 'an edited variant', expectedVersion: 1 });
+    expect(minted).toMatchObject({ promptVersionMinted: true, promptVersionNumber: 10, previousPromptVersionNumber: 4 });
+  });
+
+  it('records the adopt as a pin move in the audit stream, not as an edit', async () => {
+    await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+
+    const payload = mockEventEmitter.emit.mock.calls.at(-1)?.[1];
+    expect(payload.data).toMatchObject({ action: 'node-prompt-adopt', nodeId: 'n_gen', previousVersionNumber: 4, versionNumber: 9, minted: false });
+  });
+
+  it('writes NOTHING AT ALL when the node is already pinned to that version — idempotent', async () => {
+    mockWorkflowDefinitionRepository.findById.mockResolvedValue(
+      definitionEntity({
+        graph: { version: 1, nodes: [{ id: 'n_gen', type: 'generate.text', config: { promptTemplateId: 'tpl-1', promptVersionNumber: 9 } }], edges: [] },
+      }),
+    );
+
+    const result = await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).not.toHaveBeenCalled();
+    expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+    expect(mockWorkflowDefinitionRepository.updateWithVersion).not.toHaveBeenCalled();
+    // No write happened, so no ResourceUpdated: a phantom audit row per repeated
+    // save is exactly the noise this ticket is removing from the version list.
+    expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ promptVersionMinted: false, promptVersionNumber: 9, previousPromptVersionNumber: 9 });
+  });
+
+  it('does NOT need a transaction for the no-mint path — there is only one write to be atomic with', async () => {
+    await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+    expect(mockDatabaseService.baseClient.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('treats a VARIABLES-only change as a change and still mints', async () => {
+    await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, variables: { tone: 'plain' }, expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).toHaveBeenCalledTimes(1);
+    expect(mockPromptVersionRepository.create.mock.calls[0][0].versionNumber).toBe(10);
+  });
+
+  it('is insensitive to VARIABLE KEY ORDER — canonical bytes, not JSON.stringify order', async () => {
+    mockPromptVersionRepository.findLatestVersion.mockResolvedValue({ ...LATEST, variables: { a: 1, b: 2 } });
+
+    await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, variables: { b: 2, a: 1 }, expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('still MINTS a revert — submitting an older body while the template is ahead is an authorial act', async () => {
+    await service.updateNodePrompt('def-1', 'n_gen', { content: 'the body v4 had', expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).toHaveBeenCalledTimes(1);
+    expect(mockPromptVersionRepository.create.mock.calls[0][0].content).toBe('the body v4 had');
+  });
+
+  it('mints when the template has NO version history at all', async () => {
+    mockPromptVersionRepository.findLatestVersion.mockResolvedValue(null);
+    mockPromptVersionRepository.findMaxVersionNumber.mockResolvedValue(0);
+
+    await service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 });
+
+    expect(mockPromptVersionRepository.create).toHaveBeenCalledTimes(1);
+    expect(mockPromptVersionRepository.create.mock.calls[0][0].versionNumber).toBe(1);
+  });
+
+  it('412s on a STALE If-Match even though the content is identical — never a silent 200', async () => {
+    // RFC 7232 §13.1: the precondition is a property of the REQUEST against the
+    // CURRENT state, evaluated whether or not the payload would change anything.
+    // Without this, the no-mint short-circuit would hand a stale client a 200
+    // and quietly move a pin it never saw.
+    await expect(service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 99 })).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+
+    expect(mockWorkflowDefinitionRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(mockPromptVersionRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('412s on a stale If-Match on the MINT path too — both branches share one precondition', async () => {
+    await expect(service.updateNodePrompt('def-1', 'n_gen', { content: 'an edited variant', expectedVersion: 99 })).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
+
+    expect(mockPromptVersionRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('still 404s cross-tenant BEFORE the checksum is ever computed', async () => {
+    mockPromptTemplateRepository.findById.mockResolvedValue(templateEntity({ tenantId: 'tenant-2', content: LATEST.content }));
+
+    await expect(service.updateNodePrompt('def-1', 'n_gen', { content: LATEST.content, expectedVersion: 1 })).rejects.toBeInstanceOf(NotFoundException);
+    expect(mockPromptVersionRepository.findLatestVersion).not.toHaveBeenCalled();
   });
 });

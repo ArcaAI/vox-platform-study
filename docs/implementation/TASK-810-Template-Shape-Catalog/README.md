@@ -193,15 +193,51 @@ code depends on it — the suites run against their own test database.
 
 ## 7b. Owner items surfaced by the final lanes (2026-08-28)
 
-### 1. Adopting an unchanged prompt version mints a new one
-`PUT /admin/workflow-definitions/:id/nodes/:nodeId/prompt` **always** creates a new `PromptVersion` —
-it is not a "move the pin" request. So adopting v5 unchanged produces v6 with identical content.
-There is no idempotent-republish guard, unlike the context-schema publish path, which short-circuits
-on an identical checksum.
+### 1. Adopting an unchanged prompt version mints a new one — CLOSED (2026-08-28)
+`PUT /admin/workflow-definitions/:id/nodes/:nodeId/prompt` used to **always** create a new
+`PromptVersion` — it was not a "move the pin" request — so adopting v5 unchanged produced v6 with
+identical content. Because DD-11 PATH 2 deliberately moves no pin, adoption is the COMMON path, and
+every adoption inflated the version list precisely where an admin goes to read what changed.
 
-The UI states this plainly rather than hiding it ("Save as v6 and pin this node"), but whether an
-identical-content adopt should instead be a **pure pin move** is a backend decision. Recommended:
-add the same checksum short-circuit the context-schema publish already has.
+**Fixed** by the checksum short-circuit the context-schema publish already had
+(`promptContentChecksum` in `node-prompt-binding.ts`; sha256 over `canonicalJson({content,
+variables})`, the same primitive as `graphChecksum`):
+
+| Submitted content vs the template's **latest** version | Result |
+|---|---|
+| identical (and the node is behind) | **nothing minted**; the node's pin moves to that existing version; the shared template head is untouched |
+| identical **and already pinned there** | nothing written at all — no graph write, no `_version` bump, no audit row |
+| different | mints a new `PromptVersion` and pins it, exactly as before |
+
+**Compared against LATEST, not against the version being adopted** (they differ when a node is 2+
+versions behind). The request carries only `content` — it never names a version — so the only version
+identity the server has is `max(versionNumber)`; and `PromptTemplate.content` (the SHARED head)
+tracks the latest version by invariant, so only "identical to latest" leaves head and pin in a state
+the mint path could also have produced. Pinning to an older matching row would either strand the head
+ahead of the pin or silently rewrite a template every other node reads. Both in-repo precedents
+compare against latest only (`ConsultationContextSchemaService.publish`, and `approve`'s
+`latestMatchesLiveContent`). Corollary, intended: submitting an OLDER body while the template sits on
+a newer one is a REVERT and still mints.
+
+Two things came with it, because the short-circuit is unsafe without them:
+
+- **`If-Match` is now actually checked.** The route was `@RequiresIfMatch()`-gated (428 on a MISSING
+  header) but the service never compared `expectedVersion` and wrote through the non-CAS
+  `repository.update` — so a STALE validator was silently accepted and `_version` never advanced.
+  `assertExpectedVersion` now runs BEFORE the mint/adopt decision (RFC 7232 §13.1 — a precondition is
+  a property of the request, not of the payload), and both branches write through
+  `updateWithVersion`. Without this, an unchanged body would have bought a stale client a silent 200
+  plus a pin move it never saw.
+- **The response distinguishes the outcomes.** `NodePromptUpdateResponse` is a SUPERSET of
+  `WorkflowDefinitionResponse` (additive, so `WithEtag<WorkflowDefinition>` callers and the generated
+  Node SDK keep working) carrying `promptVersionMinted`, `promptVersionNumber`,
+  `previousPromptVersionNumber`. Sys-events split too: `node-prompt-edit` (`minted: true`) vs
+  `node-prompt-adopt` (`minted: false`).
+
+**Follow-up for the admin-console lane (not done here — that app is owned by concurrent lanes):**
+`node-prompt-editor.tsx` toasts `Minted v${latest + 1} and pinned …` unconditionally on success. On
+the adopt path that is now wrong on both counts — read `promptVersionMinted` / `promptVersionNumber`
+off the response instead.
 
 ### 2. DD-2 document binding now exists on generation nodes
 `documentTemplateId` + `documentVersionNumber` were added to the five `generation`-classed node

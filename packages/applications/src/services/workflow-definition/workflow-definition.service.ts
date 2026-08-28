@@ -37,6 +37,7 @@ import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
+  NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
@@ -45,7 +46,7 @@ import {
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
 } from './dto';
-import { collectPromptBindings, withMovedPin } from './node-prompt-binding';
+import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
@@ -496,7 +497,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * @throws BadRequestException — the definition is PUBLISHED/DEPRECATED, or the
    *   node carries no `promptTemplateId` to edit
    */
-  async updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<WorkflowDefinitionResponse> {
+  async updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<NodePromptUpdateResponse> {
     if (!this.promptTemplateRepository || !this.promptVersionRepository) {
       throw new BadRequestException('The prompt plane is not available in this deployment.');
     }
@@ -504,6 +505,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const entity = await this.workflowDefinitionRepository.findById(id);
     assertEqualTenants(entity, { tenantId: this.tenantId });
     this.assertMutable(entity);
+
+    // RFC 7232 §13.1 — the precondition is a property of the REQUEST against the
+    // CURRENT state, so it is evaluated BEFORE either branch below and
+    // regardless of what the payload would change. Without it HERE, a stale
+    // client submitting identical content would fall into the no-mint path,
+    // receive a 200, and move a pin on a definition it has not seen.
+    // `@RequiresIfMatch()` on the route turns a MISSING header into 428; this
+    // turns a STALE one into 412.
+    this.assertExpectedVersion(entity, dto.expectedVersion);
 
     const graph = entity.graph as unknown as WorkflowGraph;
     const binding = collectPromptBindings(graph).find((candidate) => candidate.nodeId === nodeId);
@@ -522,6 +532,83 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const userId = this.requestUserId ?? null;
     const previousVersionNumber = binding.pinnedVersionNumber;
+
+    // §7b item 1 — ADOPT vs AUTHOR.
+    //
+    // DD-11 PATH 2 leaves node pins alone when a template is edited out of band,
+    // which makes ADOPTION the common path, not the rare one. Minting a
+    // byte-identical version on every adopt therefore filled the very version
+    // list an admin opens to understand what changed. Identical content is a pin
+    // move; different content is an authoring act.
+    //
+    // Compared against the template's LATEST version, deliberately — not against
+    // the version the node happens to be pinned to, which differs whenever a node
+    // is two or more versions behind:
+    //   * the request carries only `content`. It never names a version, so the
+    //     only version identity the server has is `max(versionNumber)`;
+    //   * `PromptTemplate.content` (the SHARED head) tracks the latest version's
+    //     content by invariant — every mint path writes both. A pure pin move must
+    //     not rewrite that head, so only "identical to latest" leaves head and pin
+    //     in a state the mint path could also have produced. Pinning to an older
+    //     matching row would either strand the head ahead of the pin or silently
+    //     rewrite a template every other node reads — exactly what DD-11 forbids;
+    //   * both in-repo precedents compare against latest only
+    //     (`ConsultationContextSchemaService.publish`, and `approve`'s
+    //     `latestMatchesLiveContent` in `PromptManagementService`).
+    // The corollary is intended: submitting an OLDER body while the template sits
+    // on a newer one is a REVERT — a fresh decision about a shared template — and
+    // still mints.
+    const latest = await this.promptVersionRepository.findLatestVersion(template.id);
+    const incomingChecksum = promptContentChecksum(dto.content, dto.variables ?? template.variables);
+
+    if (latest && promptContentChecksum(latest.content, latest.variables) === incomingChecksum) {
+      const adoptedVersionNumber = latest.versionNumber;
+
+      // Already pinned there: write NOTHING — not the graph, not `_version`, not
+      // an audit row. A repeated save has to be a true no-op, or it re-creates
+      // the noise this guard removes, one row down.
+      if (previousVersionNumber === adoptedVersionNumber) {
+        return {
+          ...WorkflowDefinitionDtoMapper.toResponse(entity),
+          promptVersionMinted: false,
+          promptVersionNumber: adoptedVersionNumber,
+          previousPromptVersionNumber: previousVersionNumber,
+        };
+      }
+
+      const moved = withMovedPin(graph, nodeId, adoptedVersionNumber);
+      if (!moved) {
+        // Unreachable given the binding lookup above.
+        throw new BadRequestException(`Node '${nodeId}' could not be re-pinned.`);
+      }
+      entity.graph = moved as unknown as JsonValue;
+      entity.updatedBy = userId ?? undefined;
+
+      // ONE write, so no `$transaction`: there is no second write for it to be
+      // atomic with. `changeReason` is deliberately dropped on this path — the
+      // version it would annotate already exists and is immutable, and the
+      // response says `promptVersionMinted: false` so the caller is not misled.
+      const adopted = await this.workflowDefinitionRepository.updateWithVersion(id, entity, dto.expectedVersion ?? entity.version);
+
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: id,
+        data: {
+          action: 'node-prompt-adopt',
+          nodeId,
+          promptTemplateId: template.id,
+          previousVersionNumber,
+          versionNumber: adoptedVersionNumber,
+          minted: false,
+        },
+      });
+
+      return {
+        ...WorkflowDefinitionDtoMapper.toResponse(adopted),
+        promptVersionMinted: false,
+        promptVersionNumber: adoptedVersionNumber,
+        previousPromptVersionNumber: previousVersionNumber,
+      };
+    }
 
     const { updated, versionNumber } = await this.databaseService.baseClient.$transaction(async (tx) => {
       // `max(existing) + 1` read inside the transaction, NOT
@@ -559,7 +646,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       entity.graph = moved as unknown as JsonValue;
       entity.updatedBy = userId ?? undefined;
 
-      const saved = await this.workflowDefinitionRepository.update(id, entity, tx);
+      // CAS, not a bare `update`: the route is `@RequiresIfMatch()`-gated, so the
+      // definition write must both re-check the version and ADVANCE it — a graph
+      // rewrite that left `_version` (and therefore the ETag) untouched would let
+      // a client blind-write the same validator again. Throwing from inside the
+      // callback aborts the transaction, so a losing CAS rolls the version row
+      // back rather than orphaning it.
+      const saved = await this.workflowDefinitionRepository.updateWithVersion(id, entity, dto.expectedVersion ?? entity.version, tx);
       return { updated: saved, versionNumber: nextVersionNumber };
     });
 
@@ -571,10 +664,16 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         promptTemplateId: template.id,
         previousVersionNumber,
         versionNumber,
+        minted: true,
       },
     });
 
-    return WorkflowDefinitionDtoMapper.toResponse(updated);
+    return {
+      ...WorkflowDefinitionDtoMapper.toResponse(updated),
+      promptVersionMinted: true,
+      promptVersionNumber: versionNumber,
+      previousPromptVersionNumber: previousVersionNumber,
+    };
   }
 
   /**

@@ -2,6 +2,7 @@ import {
   CreateWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
   NodePromptBindingResponse,
+  NodePromptUpdateResponse,
   PaginatedQuery,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
@@ -177,28 +178,36 @@ export class WorkflowDefinitionController {
   @Put(':id/nodes/:nodeId/prompt')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Edit a node’s prompt from within the node: mint a new version AND move this node’s pin',
+    summary: 'Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin',
     description:
-      'One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single ' +
-      'transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to ' +
-      'it. Splitting them would leave either a version nothing points at, or a pin naming a version that was ' +
-      'never created. Other nodes bound to the same template are untouched.\n\n' +
+      'One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) ' +
+      'differ from the template’s latest version, both writes happen in a single transaction: a new immutable ' +
+      '`PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would ' +
+      'leave either a version nothing points at, or a pin naming a version that was never created. Other nodes ' +
+      'bound to the same template are untouched.\n\n' +
+      'ADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest ' +
+      'version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head ' +
+      'is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON ' +
+      'path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes ' +
+      'to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart.\n\n' +
       'Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a ' +
-      'published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.',
+      'published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is ' +
+      'checked on BOTH branches: an unchanged body never buys a stale client a silent 200.',
   })
   @ApiHeader({ name: 'If-Match', description: 'Strong validator carrying the workflow definition version the client read.', required: true })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
   @ApiParam({ name: 'nodeId', description: 'Graph node id. Must carry `promptTemplateId`.' })
-  @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 200, type: NodePromptUpdateResponse })
   @ApiResponse({ status: 400, description: 'Row is PUBLISHED/DEPRECATED, or the node references no prompt template.' })
   @ApiResponse({ status: 404, description: 'Definition or template not found (or cross-tenant).' })
+  @ApiResponse({ status: 412, description: 'If-Match is stale — the definition changed since the client read it.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required.' })
   async updateNodePrompt(
     @Param('id') id: string,
     @Param('nodeId') nodeId: string,
     @Body() request: UpdateNodePromptRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
-  ): Promise<WorkflowDefinitionResponse> {
+  ): Promise<NodePromptUpdateResponse> {
     // Header takes precedence over the body when both are present — the house
     // precedence (`department.controller.ts#update`).
     const effective = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
