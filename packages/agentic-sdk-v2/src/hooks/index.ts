@@ -96,6 +96,8 @@ export { useConsultationChain, type UseConsultationChainReturn } from './useCons
 
 // Consultation context schema discovery
 export { useConsultationSchema, type UseConsultationSchemaReturn } from './useConsultationSchema';
+// TASK-813 — which engine governs a consultation (the read side of OpenSessionInput.workflowDefinitionSlug).
+export { useConsultationWorkflow, type UseConsultationWorkflowReturn } from './useConsultationWorkflow';
 
 // Consultation-loop workflow event SSE stream
 export { useConsultationEvents, type UseConsultationEventsReturn, type ConsultationEventsStreamStatus } from './useConsultationEvents';

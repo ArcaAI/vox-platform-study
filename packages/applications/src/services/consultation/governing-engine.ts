@@ -76,12 +76,36 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * direction is "Substrate A governs", never "nobody governs".
  */
 export function tenantWorkflowGoverns(metadata: unknown): boolean {
-  if (!isPlainObject(metadata)) return false;
+  return readGoverningEngineMarker(metadata) !== null;
+}
+
+/**
+ * TASK-813 — the marker's CONTENTS, for the discovery route, or `null` when no
+ * well-formed marker is present.
+ *
+ * `tenantWorkflowGoverns` is defined in terms of this rather than beside it on
+ * purpose: discovery reporting "the default engine governs" while the loop gate
+ * stands Substrate A down (or the reverse) would be a lie in the one place a
+ * caller looks to find out which engine is writing their document. One
+ * well-formedness rule, one place, two readers.
+ *
+ * A partial marker reads as ABSENT, matching the gate's fail-safe direction:
+ * "Substrate A governs", never "nobody governs".
+ */
+export function readGoverningEngineMarker(metadata: unknown): GoverningEngineMarker | null {
+  if (!isPlainObject(metadata)) return null;
 
   const marker = metadata[GOVERNING_ENGINE_METADATA_KEY];
-  if (!isPlainObject(marker)) return false;
+  if (!isPlainObject(marker)) return null;
 
-  return marker.engine === TENANT_WORKFLOW_GOVERNS_MARKER && typeof marker.workflowRunId === 'string' && marker.workflowRunId.length > 0;
+  if (marker.engine !== TENANT_WORKFLOW_GOVERNS_MARKER) return null;
+  if (typeof marker.workflowRunId !== 'string' || marker.workflowRunId.length === 0) return null;
+
+  return {
+    workflowRunId: marker.workflowRunId,
+    workflowDefinitionSlug: typeof marker.workflowDefinitionSlug === 'string' ? marker.workflowDefinitionSlug : '',
+    decidedAt: typeof marker.decidedAt === 'string' ? marker.decidedAt : undefined,
+  };
 }
 
 /**

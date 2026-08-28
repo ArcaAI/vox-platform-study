@@ -4,6 +4,7 @@ import {
   UpdateConsultationRequest,
   ConsultationResponse,
   ConsultationAggregateResponse,
+  ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
 } from './dto';
 
@@ -29,6 +30,13 @@ export abstract class IConsultationService {
    * Get consultation by ID with context
    */
   abstract getById(id: string): Promise<ConsultationResponse | null>;
+
+  /**
+   * TASK-813 — which engine governs this consultation, and the identity of the
+   * tenant-authored graph when one does. `NotFoundException` for an unknown or
+   * cross-tenant id (404-over-403).
+   */
+  abstract getGoverningWorkflow(consultationId: string): Promise<ConsultationWorkflowResponse>;
 
   /**
    * Get consultation by ID with all relations (Doctor, Department, Context)

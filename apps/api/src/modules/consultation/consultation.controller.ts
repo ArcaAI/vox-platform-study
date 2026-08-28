@@ -7,6 +7,7 @@ import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
   ConsultationResponse,
+  ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
   AddContextRequest,
   AddAudioRecordingRequest,
@@ -379,6 +380,34 @@ export class ConsultationController {
     const result = await this.consultationService.getByIdWithRelations(id);
     if (!result) throw new NotFoundException(`Consultation ${id} not found`);
     return result;
+  }
+
+  /**
+   * TASK-813 — the discovery half of workflow selection.
+   *
+   * The governing-engine decision was already durable (written to
+   * `Consultation.metadata` at open, read by `LoopContextSignalService` before every
+   * loop signal) but nothing returned it, so a client that selected a workflow had no
+   * way to learn whether the selection took effect — dispatch degrades to the default
+   * engine on a harness outage, by design and silently.
+   *
+   * Same access posture as `getById`: `verifyConsultationAccess` first, so an unknown
+   * or cross-tenant id is a 404 rather than a disclosure.
+   */
+  @Get(':id/workflow')
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:session:read')
+  @ApiOperation({
+    summary: 'Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.',
+    description:
+      '`governed: false` means the platform default consultation loop governs — the outcome for every consultation with no workflow assignment and no selection at open, and also the fallback when dispatch of a selected workflow could not proceed. `inputSchema` is always null: no per-definition input schema is declared anywhere in the substrate yet, and the field is present so declaring one later is additive rather than a new field to discover.',
+  })
+  @ApiResponse({ status: 200, type: ConsultationWorkflowResponse })
+  @ApiResponse({ status: 403, description: 'The caller may not read this consultation.' })
+  @ApiResponse({ status: 404, description: 'Unknown or cross-tenant consultation id.' })
+  async getGoverningWorkflow(@Param('id') id: string): Promise<ConsultationWorkflowResponse> {
+    await this.verifyConsultationAccess(id);
+    return this.consultationService.getGoverningWorkflow(id);
   }
 
   @ApiEndpoint({
