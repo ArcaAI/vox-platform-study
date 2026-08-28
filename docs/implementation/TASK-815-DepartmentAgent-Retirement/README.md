@@ -35,6 +35,37 @@ loop is gated only after TASK-811 lands its substrate gate.
 > `resolvedVersionNumber`) while its internal Tier-1a source moves onto node config. Hold that and
 > the compat file needs **zero** edits. Break it and a frozen wire route breaks.
 
+## 2c. The enum value SURVIVES the model (orchestrator finding, 2026-08-29 — verified, not inferred)
+
+**`ResourceType.DepartmentAgent` must NOT be deleted.** It is declared in two places —
+`packages/database/src/prisma/db_main/audit.prisma:201` and
+`packages/domains/src/enums/generated/ResourceType.ts:58` — and both must keep it.
+
+Three independent reasons, each sufficient on its own:
+
+1. **PostgreSQL cannot drop an enum value.** There is no `ALTER TYPE … DROP VALUE`. Removing one
+   means creating a replacement type, rewriting every column that uses it, and dropping the old
+   type — a rewrite of `AuditLog` for zero benefit. Verified: **no migration in this repo has ever
+   dropped an enum value** (`grep -rl "DROP VALUE" packages/database/src/prisma/migrations` → 0).
+2. **Audit history is immutable, and this is a PHI platform.** Historical `AuditLog` rows record
+   `resourceType = 'DepartmentAgent'` for every mutation the service ever broadcast. Those rows
+   describe events that really happened. Deleting the type value destroys the readability of the
+   compliance record. (Local dev currently shows 0 such rows only because the DB was reset on
+   2026-08-28 — do not mistake an empty dev table for "unused".)
+3. **The parity guard is bidirectional.** `resourceType.enum-parity.test.ts` asserts *both*
+   "every domain value exists in the database enum" *and* "every database value exists in the
+   domain enum". Keeping the value in both files keeps it green; removing it from one turns the
+   guard red immediately.
+
+**What to do instead:** leave both declarations in place and replace the comment above the Prisma
+member (`audit.prisma:200`, which today reads that it is written by
+`DepartmentAgentService.broadcastSysEvent`) with one stating the service is retired and the value
+is retained solely so historical audit rows remain interpretable. That comment is the deliverable —
+a future reader must not "clean up" what looks like a dangling enum member.
+
+This is the one place in this ticket where the correct action is **to not delete something**.
+Everything else in the DELETE inventory goes.
+
 ## 2a. Requirement Analysis & Scope
 
 ### In scope
