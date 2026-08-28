@@ -20,6 +20,7 @@ import {
   IconDna2,
   IconEngine,
   IconFileCheck,
+  IconFileDescription,
   IconFileText,
   IconFingerprint,
   IconFlask,
@@ -571,6 +572,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     tier: '30-49',
     icon: IconSchema,
     required: [['manage', 'ConsultationContextSchema']],
+    implemented: true,
+  },
+  {
+    // TASK-810 — tenant-defined clinical document SHAPES. The deliberate
+    // sibling of Context Schemas: that screen governs what context may be
+    // SUBMITTED, this one governs what document comes BACK. `manage` mirrors
+    // `DocumentTemplateAdminController`'s class-level
+    // `@CanManage('DocumentTemplate')` gate, which is the whole gate — this
+    // resource carries no imperative privilege check.
+    route: '/document-templates',
+    domain: 'knowledge-agents',
+    label: 'Document Templates',
+    tier: '30-49',
+    icon: IconFileDescription,
+    required: [['manage', 'DocumentTemplate']],
     implemented: true,
   },
   // TASK-728: institutional-RAG knowledge documents — the only real

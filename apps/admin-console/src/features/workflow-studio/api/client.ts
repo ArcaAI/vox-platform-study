@@ -11,13 +11,16 @@
  * `If-Match` on either would be a client bug, not a safety net.
  */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   CreateWorkflowDefinitionRequest,
   DepartmentOption,
+  NodePromptBinding,
   PromptTemplateOption,
+  PromptTemplateVersion,
   PublishWorkflowDefinitionRequest,
+  UpdateNodePromptRequest,
   UpdateWorkflowDefinitionRequest,
   UpsertWorkflowAssignmentRequest,
   WorkflowAssignment,
@@ -149,4 +152,43 @@ export function deleteWorkflowAssignment(id: string, etag: string, reason?: stri
  */
 export function listDepartmentOptions(): Promise<DepartmentOption[]> {
   return getJson(DEPARTMENTS_PATH, { includeDisabled: false });
+}
+
+// ---------------------------------------------------------------------------
+// DD-11 (TASK-810) — prompt binding.
+// ---------------------------------------------------------------------------
+
+/**
+ * Which prompt version each node is pinned to, and whether a newer one exists.
+ * This is the read half of DD-11's guarantee: because an out-of-band edit on
+ * the Prompt-management screen deliberately moves NO node's pin, "this node is
+ * behind" has to be made visible somewhere or the two-path design silently
+ * becomes "nothing ever updates".
+ */
+export function listNodePromptBindings(id: string): Promise<NodePromptBinding[]> {
+  return getJson(`${definitionPath(id)}/prompt-bindings`);
+}
+
+/**
+ * DD-11's in-node edit — the ONLY path that moves a pin. If-Match GATED (428
+ * without it), unlike `validate`/`publish` above: this one IS a client CAS,
+ * because it rewrites the graph the client is holding.
+ *
+ * One PUT, two writes, one transaction: a new immutable `PromptVersion` is
+ * minted from `content` and THIS node's `promptVersionNumber` moves to it.
+ * Other nodes bound to the same template are untouched — that is the whole
+ * point. Only a DRAFT/VALIDATED definition may be edited; a PUBLISHED graph is
+ * immutable and answers 400.
+ */
+export function updateNodePrompt(id: string, nodeId: string, body: UpdateNodePromptRequest, etag: string): Promise<WithEtag<WorkflowDefinition>> {
+  return putWithEtag(`${definitionPath(id)}/nodes/${encodeURIComponent(nodeId)}/prompt`, { ...body, expectedVersion: versionFromEtag(etag) }, etag);
+}
+
+/**
+ * The immutable versions of one prompt template. Read so the in-node editor can
+ * OPEN on the template's latest content — an admin re-pinning a stale node needs
+ * to see what they are adopting before they adopt it, not afterwards.
+ */
+export function listPromptTemplateVersions(promptTemplateId: string): Promise<PromptTemplateVersion[]> {
+  return getJson(`${PROMPT_TEMPLATES_PATH}/${encodeURIComponent(promptTemplateId)}/versions`);
 }

@@ -51,6 +51,7 @@ import {
 import type { WorkflowStudioViewMode } from '../store/types';
 import type { WorkflowDefinition, WorkflowFinding, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
 import { InspectorPanel } from './inspector';
+import { PromptBindingsRail } from './prompt-bindings';
 import { PaletteRail } from './palette';
 import { GraphListEditor } from './list-editor';
 import { ValidationRail, publishBlockedReason, useFocusNode } from './validation';
@@ -440,6 +441,11 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             readOnly={readOnly}
           />
           <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
+          {/* DD-11 (TASK-810) — the "new version available" affordance, in the
+              editor an admin already has open. An out-of-band prompt edit moves
+              no node's pin by design; without this rail that guarantee is
+              invisible and the two-path design decays into "nothing updates". */}
+          <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
         </aside>
       </div>
       <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} onConfirm={(activate) => void handlePublish(activate)} confirming={publishing} />
