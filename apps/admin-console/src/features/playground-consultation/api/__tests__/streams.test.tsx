@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useHarnessAssuranceStream, useHarnessProgressStream, useSummaryJobProgress } from '../hooks';
+import { useHarnessAssuranceStream, useHarnessProgressStream, useLiveAssistStream, useSummaryJobProgress } from '../hooks';
 import type { ConsultationJobStatus } from '../types';
 
 /** Instrumented EventSource double (mirrors the use-event-stream test). */
@@ -257,5 +257,88 @@ describe('useSummaryJobProgress', () => {
     rerender({ jobId: null });
     expect(result.current.job).toBeNull();
     expect(result.current.streamStatus).toBe('idle');
+  });
+});
+
+describe('useLiveAssistStream', () => {
+  it('mints a consultation_live_assist ticket and keeps suggestions/corrections in separate branches (TASK-795 RC-2)', async () => {
+    const calls = stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useLiveAssistStream('c-1', true), { wrapper: Wrapper });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(calls.find((call) => call.url === '/api/auth/stream-ticket')?.body).toEqual({ scope: 'consultation_live_assist:c-1' });
+    expect(FakeEventSource.instances[0].url).toContain('/api/v1/consultations/c-1/live-assist/stream?ticket=');
+
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.corrections).toBeNull();
+
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'suggestions',
+        nodeType: 'nlp.clinical_suggestions',
+        provider: 'lmstudio',
+        model: 'gemma3',
+        suggestions: [{ suggestionId: 's-1', text: 'Consider ordering a chest X-ray', status: 'PROPOSED', proposedBy: 'lmstudio:gemma3' }],
+      }),
+    );
+    expect(result.current.suggestions).toHaveLength(1);
+    expect(result.current.suggestionsNodeType).toBe('nlp.clinical_suggestions');
+    // A suggestions publish must never touch the corrections branch.
+    expect(result.current.corrections).toBeNull();
+
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'corrections',
+        nodeType: 'nlp.correction_proposals',
+        corrections: {
+          proposals: [
+            {
+              proposalId: 'p-1',
+              start: 10,
+              end: 16,
+              original: 'Toprovol',
+              proposed: 'Toprol',
+              category: 'drugName',
+              confidence: 0.92,
+              rationale: 'Common ASR misrecognition of a beta-blocker name',
+              detectedBy: 'nlp.ner',
+              proposedBy: 'lmstudio:gemma3',
+              status: 'PROPOSED',
+            },
+          ],
+          applied: false,
+          appliedCount: 0,
+          textSha256: 'abc123',
+        },
+      }),
+    );
+    expect(result.current.corrections?.proposals).toHaveLength(1);
+    expect(result.current.correctionsNodeType).toBe('nlp.correction_proposals');
+    // A corrections publish must never clobber the suggestions branch.
+    expect(result.current.suggestions).toHaveLength(1);
+  });
+
+  it('resets both branches when the consultation id changes', async () => {
+    stubNetwork();
+    const { Wrapper } = createWrapper();
+    const { result, rerender } = renderHook(({ consultationId }: { consultationId: string | null }) => useLiveAssistStream(consultationId, true), {
+      wrapper: Wrapper,
+      initialProps: { consultationId: 'c-1' as string | null },
+    });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() =>
+      FakeEventSource.instances[0].message({
+        kind: 'suggestions',
+        nodeType: 'nlp.clinical_suggestions',
+        suggestions: [{ suggestionId: 's-1', text: 'x', status: 'PROPOSED' }],
+      }),
+    );
+    expect(result.current.suggestions).toHaveLength(1);
+
+    rerender({ consultationId: 'c-2' });
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.corrections).toBeNull();
   });
 });

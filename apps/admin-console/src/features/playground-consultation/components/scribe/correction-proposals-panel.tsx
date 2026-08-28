@@ -49,11 +49,19 @@ export interface CorrectionProposalsPanelProps {
   onAccept: (nextText: string) => void;
   /** Re-request the proposals for the current text (796 rule 2's "and re-request"). */
   onStale?: () => void;
+  /**
+   * TASK-814 §2b — fires alongside `onAccept`, once the digest gate passes, with the proposal
+   * marked `status: 'ACCEPTED'`. Accepting a correction here already IS the clinician's
+   * judgement that it is right, so there is deliberately no second "promote" control — the
+   * caller threads this into the promotion-over-the-raw-transcript path (TASK-812 DD-8)
+   * independently of the note-buffer write `onAccept` performs.
+   */
+  onProposalAccepted?: (proposal: CorrectionProposal) => void;
   /** When set, both actions are disabled and this reason is shown (rule 11 §5). */
   disabledReason?: string | null;
 }
 
-export function CorrectionProposalsPanel({ corrections, text, onAccept, onStale, disabledReason = null }: CorrectionProposalsPanelProps) {
+export function CorrectionProposalsPanel({ corrections, text, onAccept, onStale, onProposalAccepted, disabledReason = null }: CorrectionProposalsPanelProps) {
   /** Ids the clinician has decided on. Ids, not indexes — 796 rule 3. */
   const [decided, setDecided] = useState<readonly string[]>([]);
   /** Set once the digest gate has failed: the whole envelope is stale, not just one proposal. */
@@ -85,6 +93,7 @@ export function CorrectionProposalsPanel({ corrections, text, onAccept, onStale,
     const { text: next } = applyProposal(text, proposal, offered);
     decide(proposal);
     onAccept(next);
+    onProposalAccepted?.({ ...proposal, status: 'ACCEPTED' });
   }
 
   return (

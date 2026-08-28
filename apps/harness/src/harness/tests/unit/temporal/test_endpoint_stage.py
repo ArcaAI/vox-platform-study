@@ -327,6 +327,56 @@ class TestD10OrderedAndExtensible:
         assert h.endpoint_calls() == []
 
 
+class TestTask814S2bAcceptedProposalsReachFeedbackCapture:
+    """TASK-814 §2b — the promotion path (TASK-812 DD-8) is inert until the loop actually
+    threads what the console recorded into ``capture_feedback``.
+
+    Before this, ``ConsultationEndingSignal`` had no field to carry a clinician's accepted
+    corrections at all, so ``_run_endpoint_action``'s feedback branch always dispatched
+    ``CaptureFeedbackInput`` with ``accepted_proposals`` at its empty default — DD-8's filter had
+    nothing to promote no matter what a console recorded.
+    """
+
+    @pytest.mark.asyncio
+    async def test_accepted_proposals_on_the_ending_signal_reach_capture_feedback(self):
+        proposal = {
+            "proposalId": "p-1",
+            "start": 10,
+            "end": 16,
+            "original": "Toprovol",
+            "proposed": "Toprol",
+            "category": "drugName",
+            "confidence": 0.92,
+            "status": "ACCEPTED",
+        }
+        async with _LoopHarness(LoopStubConfig(config=_endpoint_config())) as h:
+            handle = await h.start(_wf_input())
+            await handle.signal(
+                ConsultationLoopWorkflow.consultation_ending,
+                ConsultationEndingSignal(accepted_proposals=[proposal]),
+            )
+            await handle.result()
+
+        calls = h.recorder.payloads("capture_feedback")
+        assert len(calls) == 1
+        assert calls[0].accepted_proposals == [proposal]
+
+    @pytest.mark.asyncio
+    async def test_omits_nothing_extra_when_the_signal_carries_no_accepted_proposals(self):
+        """The common case — most stops accept nothing — must not regress to a non-empty
+        default or a crash on the absent field."""
+        async with _LoopHarness(LoopStubConfig(config=_endpoint_config())) as h:
+            handle = await h.start(_wf_input())
+            await handle.signal(
+                ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
+            )
+            await handle.result()
+
+        calls = h.recorder.payloads("capture_feedback")
+        assert len(calls) == 1
+        assert calls[0].accepted_proposals == []
+
+
 class TestDD3FinalizeLocksEveryDocument:
     @pytest.mark.asyncio
     async def test_finalize_is_dispatched_with_no_document_selector(self):
