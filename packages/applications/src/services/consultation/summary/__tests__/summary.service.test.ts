@@ -316,7 +316,6 @@ describe('SummaryService', () => {
       undefined, // usageLedger (@Optional)
       undefined, // unitOfWork (@Optional)
       undefined, // billing (@Optional)
-      undefined, // departmentAgentRepository (@Optional)
       undefined, // aiModelRepository (@Optional)
       undefined, // noteGenerationService (@Optional)
       // TASK-710 (re-opened): `IPhiRedactor` is REQUIRED — `extractEntities`
@@ -893,7 +892,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -931,7 +929,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -982,7 +979,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1060,7 +1056,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1129,7 +1124,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1211,7 +1205,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1268,7 +1261,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1344,7 +1336,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1388,7 +1379,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1663,7 +1653,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -1724,7 +1713,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
@@ -2803,7 +2791,6 @@ describe('SummaryService', () => {
         usageLedger as any,
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         undefined, // noteGenerationService
         // TASK-710 — REQUIRED redactor; pass-through keeps these usage-ledger
@@ -2929,7 +2916,6 @@ describe('SummaryService', () => {
         undefined, // usageLedger
         undefined, // unitOfWork
         undefined, // billing
-        undefined, // departmentAgentRepository
         undefined, // aiModelRepository
         noteGenerationService as any,
       );

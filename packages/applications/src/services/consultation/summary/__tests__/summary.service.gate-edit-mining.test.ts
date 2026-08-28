@@ -126,7 +126,6 @@ const build = (m: ReturnType<typeof makeMocks>, miningQueue?: unknown) =>
     undefined, // usageLedger
     undefined, // unitOfWork
     undefined, // billing
-    undefined, // departmentAgentRepository
     undefined, // aiModelRepository
     undefined, // noteGenerationService
     undefined, // phiRedactor
