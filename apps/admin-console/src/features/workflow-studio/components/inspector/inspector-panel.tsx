@@ -14,6 +14,15 @@
  * Task 8's own discipline: the compiler only decides how to RENDER, never whether a value is
  * valid).
  *
+ * TASK-810 §7b item 2 does the mirror-image swap for DD-2's DOCUMENT binding: where the schema
+ * DOES declare `documentTemplateId`, its two generated fields (a free-text UUID box and a bare
+ * number box) are withheld and one `DocumentBindingField` renders in their place — a picker over
+ * the tenant's servable templates plus a version pin that reports its own staleness. It is keyed
+ * on the schema DECLARING the binding rather than on a node-type allow-list, so the next
+ * generation node someone registers gets the control for free; and it is never offered on the
+ * no-schema fallback, because a node type with no schema (`passthrough`) has no document shape to
+ * bind.
+ *
  * Task 19 adds a standalone `PromptTemplatePicker` section (`config.promptTemplateId`) — shown
  * whenever the schema does NOT already declare a field at that path (the real registry state
  * today: no delivered node type has a config schema at all, so `promptTemplateId` is otherwise
@@ -27,11 +36,16 @@ import { useState } from 'react';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
+import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer } from './field-renderers';
 import { PromptTemplatePicker } from './prompt-template-picker';
 import { NO_SCHEMA_REASON } from './raw-json-field';
 
 const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
+const DOCUMENT_TEMPLATE_PATH = 'documentTemplateId';
+const DOCUMENT_VERSION_PATH = 'documentVersionNumber';
+/** The two schema-declared keys `DocumentBindingField` renders as ONE control. */
+const DOCUMENT_BINDING_PATHS = new Set<string>([DOCUMENT_TEMPLATE_PATH, DOCUMENT_VERSION_PATH]);
 
 export interface InspectorPanelProps {
   node: GraphStoreNode | null;
@@ -146,8 +160,13 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
     );
   }
 
-  const descriptors = toFieldDescriptors(configSchema);
-  const knownPaths = new Set(flattenPaths(descriptors));
+  const allDescriptors = toFieldDescriptors(configSchema);
+  // The document binding's own two descriptors are withheld from the generic renderer, not
+  // dropped: `DocumentBindingField` renders both keys, and their paths stay in `knownPaths` so a
+  // server finding at either one is still routed to a field rather than to the graph-level list.
+  const descriptors = allDescriptors.filter((descriptor) => !DOCUMENT_BINDING_PATHS.has(descriptor.path));
+  const hasDocumentBinding = descriptors.length !== allDescriptors.length;
+  const knownPaths = new Set(flattenPaths(allDescriptors));
   const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
 
   return (
@@ -162,6 +181,15 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
           idPrefix={node.id}
         />
       ))}
+      {hasDocumentBinding ? (
+        <DocumentBindingField
+          idPrefix={node.id}
+          config={node.config}
+          onConfigChange={onConfigChange}
+          templateErrors={errorsForPath(problems, DOCUMENT_TEMPLATE_PATH)}
+          versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
+        />
+      ) : null}
       {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
         <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
       ) : null}
