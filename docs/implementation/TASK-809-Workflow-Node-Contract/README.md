@@ -195,7 +195,17 @@ unclearable — it omitted `compiledAt`, so `compile()` hashed a wall-clock valu
 config carried the pinned constant. Fixed; its drift verdict now reads 0, which also closed the
 three TASK-790 W6 drifts on that row.
 
-`registryChecksum()` is now `d53a775b79b2d303c4b60bb1970b633244e29e67cca98ac03389dfb4c3a6c3d1`.
+`registryChecksum()` hashes every descriptor in the node registry, INCLUDING its `configSchema`, so
+its value moves whenever any ticket adds or edits a node. It is therefore not a constant worth
+pinning in prose — a literal written here is stale as soon as the next node lands, and one written
+here did go stale (TASK-810's DD-11 prompt pin added `promptTemplateId`/`promptVersionNumber` to
+seven config schemas and moved it).
+
+For the current value, read `REGISTRY_CHECKSUM` in
+`packages/database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts`. That file is
+engine output, and both `regen-arcaai-consultation-workflow-seed.ts` and
+`regen-workflow-definition-seed.ts` reproduce it with a drift verdict of 0 — which is what makes it
+the source of truth rather than a transcription of one.
 
 ## 2z. Progress — verified 2026-08-26
 
