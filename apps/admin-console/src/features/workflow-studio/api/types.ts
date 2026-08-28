@@ -233,3 +233,64 @@ export interface DepartmentOption {
   code?: string;
   resourceStatus?: 'ENABLED' | 'DISABLED';
 }
+
+// ---------------------------------------------------------------------------
+// DD-11 (TASK-810) — prompt binding.
+//
+// A node references a prompt TEMPLATE (`promptTemplateId`) and, optionally,
+// pins one immutable VERSION of it (`promptVersionNumber`). Two update paths
+// exist and they behave differently ON PURPOSE:
+//
+//   in-node edit  -> mint a new PromptVersion AND move THIS node's pin, atomically
+//   Prompt screen -> mint a new PromptVersion and move NO node's pin
+//
+// The second is what stops one shared template silently re-prompting every
+// workflow that references it — including published clinical ones. Its cost is
+// that a node can fall behind invisibly, which is what `hasNewVersion` exists
+// to surface.
+// ---------------------------------------------------------------------------
+
+/** One node's prompt binding, plus whether a newer version of its template exists. */
+export interface NodePromptBinding {
+  nodeId: string;
+  nodeType: string;
+  promptTemplateId: string;
+  promptTemplateName: string | null;
+  /** The node's OWN pin. Null = unpinned: the node follows the template, which is a legitimate choice. */
+  pinnedVersionNumber: number | null;
+  /** The highest version number the template currently has. */
+  latestVersionNumber: number | null;
+  /**
+   * True only when the node IS pinned and the template has moved past that pin.
+   * An unpinned node is never reported as behind — reporting it would train
+   * admins to ignore the signal.
+   */
+  hasNewVersion: boolean;
+}
+
+/**
+ * `PUT :id/nodes/:nodeId/prompt` — DD-11's in-node edit, the ONLY path that
+ * moves a pin.
+ *
+ * Deliberately not a "set the pin" request: `content` is required because the
+ * server mints a new immutable `PromptVersion` from it and re-pins this node to
+ * that version inside ONE transaction. `promptVersionNumber` is absent by
+ * design — it is server-stamped as `max(existing) + 1` inside that transaction,
+ * and the gateway's `forbidNonWhitelisted` pipe would reject a submitted one.
+ */
+export interface UpdateNodePromptRequest {
+  content: string;
+  changeReason?: string;
+  variables?: Record<string, unknown>;
+  /** OCC version of the WORKFLOW DEFINITION; the `If-Match` header overrides it. */
+  expectedVersion?: number;
+}
+
+/** One immutable version of a prompt template (`admin/prompt-templates/:id/versions`). */
+export interface PromptTemplateVersion {
+  id: string;
+  versionNumber: number;
+  content: string;
+  changeReason?: string | null;
+  createdAt?: string;
+}

@@ -76,6 +76,11 @@ function installFetchMock(responder?: (call: RecordedCall) => Response): Recorde
         headers: Object.fromEntries(new Headers(init?.headers).entries()),
       };
       calls.push(call);
+      // DD-11 (TASK-810): the editor's right rail reads `:id/prompt-bindings`,
+      // which answers an ARRAY. The catch-all definition-row default below
+      // would hand it an object and the rail would fail to render — so route
+      // that one path explicitly, ahead of any per-test responder's fallback.
+      if (call.url.includes('/prompt-bindings')) return Response.json([]);
       return responder ? responder(call) : Response.json({ id: 'd-1', version: 2 }, { headers: { etag: '"2"' } });
     }),
   );
