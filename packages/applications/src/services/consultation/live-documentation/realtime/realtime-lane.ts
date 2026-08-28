@@ -1,0 +1,228 @@
+/**
+ * TASK-811 — the REALTIME LANE: what the live flush actually executes.
+ *
+ * ## What this replaces
+ *
+ * `LiveDocumentationService.flush()` ran a hardcoded sequence — TEXT, then NER
+ * over the raw delta, then the groundedness gate — for every recording session,
+ * regardless of what the tenant had authored (TASK-806 §2.1, the root cause this
+ * ticket exists to close). A lane is that sequence expressed as DATA: an ordered
+ * list of stages whose nodes carry their own bindings, budgets and failure
+ * policy, so the executor walks a structure instead of running a script.
+ *
+ * ## Where a lane comes from
+ *
+ * Either the tenant's published `consultation`-palette graph (its
+ * `compiledConfig`, filtered to the nodes the realtime runtime can execute) or
+ * {@link PLATFORM_REALTIME_LANE}, which encodes today's behaviour exactly. A
+ * tenant that has authored nothing therefore gets byte-identical behaviour —
+ * that is the parity claim the cutover rests on, and it is a property of this
+ * constant, not of a code path that happens to agree.
+ *
+ * ## Why lane membership is decided HERE and not by `WorkflowNodeDescriptor.lane`
+ *
+ * `lane: 'realtime' | 'durable'` exists in `@arcaai/workflow-contract`, and every
+ * one of the 33 registered node types is `durable` today. Flipping the three
+ * consultation nodes this runtime implements is NOT a change this ticket can
+ * make, for two independent reasons:
+ *
+ *  1. `nodeDescriptorContractProblems` (`port-validation.ts`) declares that a
+ *     `realtime` node MUST NOT be `externalWrite: true` — and both
+ *     `consultation.realtimeSummary` and `consultation.extractEntities` ARE
+ *     `externalWrite: true` (they publish to the live feed and persist entities).
+ *     The flip is refused by the contract package's own rule.
+ *  2. Nothing reads `lane` yet. The DURABLE interpreter that would have to SKIP a
+ *     realtime node lives in `apps/harness/**`. Flipping the flag without that
+ *     half would declare a split no runtime enforces — and for
+ *     `consultation.realtimeSummary` (`externalWrite: true`) that means two
+ *     engines writing one consultation's document.
+ *
+ * So membership is `REALTIME_NODE_TYPES` in `realtime-node-registry.ts`: the set
+ * of node types this runtime can actually execute. That is a claim this package
+ * can back. Reconciling it with `descriptor.lane` is a coordinated change across
+ * `workflow-contract` + `apps/harness` and needs an owner decision.
+ */
+import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
+import { REALTIME_NODE_TYPES } from './realtime-node-registry';
+
+/** One executable node of the realtime lane, derived from a `CompiledNode`. */
+export interface RealtimeNode {
+  readonly nodeId: string;
+  /** Registered node type, e.g. `consultation.realtimeSummary`. */
+  readonly type: string;
+  readonly config: Readonly<Record<string, unknown>>;
+  /**
+   * PER-NODE budget (DD-4). Not per flush: one slow model must never stall the
+   * other, so each node races its own timer.
+   */
+  readonly timeoutMs: number;
+  /** PER-NODE retry ceiling, from the compiled `retry.maximumAttempts`. */
+  readonly maxAttempts: number;
+  /** Declared port bindings — `fromPort`/`toPort`, resolved by the executor. */
+  readonly inputs: readonly CompiledInputBinding[];
+  /** `degrade` contributes nothing and emits a typed event; `fail` fails the lane. */
+  readonly onError: 'fail' | 'degrade';
+  /** `config.enabled === false` — authored OFF, so the executor skips it. */
+  readonly enabled: boolean;
+}
+
+/** Nodes in one topological level. Every node in a stage runs CONCURRENTLY (DD-4). */
+export interface RealtimeStage {
+  readonly stageIndex: number;
+  readonly nodes: readonly RealtimeNode[];
+}
+
+export interface RealtimeLane {
+  /** WHERE the lane came from — reported on every trajectory and every degrade event. */
+  readonly source: 'platform-default' | 'tenant-graph';
+  readonly definitionSlug: string | null;
+  readonly definitionVersionNumber: number | null;
+  readonly stages: readonly RealtimeStage[];
+}
+
+/** Node ids of the platform-default lane — stable, because trajectories cite them. */
+export const PLATFORM_LANE_NODE_IDS = Object.freeze({
+  capture: 'capture',
+  extract: 'extract',
+  summarize: 'summarize',
+});
+
+const DEFAULT_TEXT_TIMEOUT_MS = 20_000;
+const DEFAULT_NLP_TIMEOUT_MS = 30_000;
+const DEFAULT_CAPTURE_TIMEOUT_MS = 1_000;
+
+/**
+ * The PLATFORM lane — today's flush, as a graph.
+ *
+ * ```
+ * stage 0   capture                      -> transcript
+ * stage 1   extract      (in: transcript) -> entities      ┐ concurrent (DD-4)
+ *           summarize    (in: transcript) -> document      ┘
+ * ```
+ *
+ * `extract` and `summarize` BOTH read the transcript and neither reads the
+ * other, so they are one topological level and run concurrently. That is not an
+ * optimisation bolted onto the old order — it is what the dependency graph
+ * actually says, and the old serial order was an artifact of the hardcoded
+ * script.
+ *
+ * `summarize.entities` is deliberately LEFT UNWIRED even though the port exists.
+ * Wiring it would make the note wait for NER, serialising the two calls and
+ * changing what the model is told — neither of which today's behaviour does.
+ *
+ * There is no groundedness NODE because the registry has no groundedness node
+ * type; the gate is a GUARD attached to the generation node (see `guard-memo.ts`).
+ */
+export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
+  source: 'platform-default',
+  definitionSlug: null,
+  definitionVersionNumber: null,
+  stages: Object.freeze([
+    Object.freeze({
+      stageIndex: 0,
+      nodes: Object.freeze([
+        Object.freeze({
+          nodeId: PLATFORM_LANE_NODE_IDS.capture,
+          type: 'consultation.captureBinding',
+          config: Object.freeze({}),
+          timeoutMs: DEFAULT_CAPTURE_TIMEOUT_MS,
+          maxAttempts: 1,
+          inputs: Object.freeze([]),
+          onError: 'fail',
+          enabled: true,
+        } as RealtimeNode),
+      ]),
+    } as RealtimeStage),
+    Object.freeze({
+      stageIndex: 1,
+      nodes: Object.freeze([
+        Object.freeze({
+          nodeId: PLATFORM_LANE_NODE_IDS.extract,
+          type: 'consultation.extractEntities',
+          config: Object.freeze({}),
+          timeoutMs: DEFAULT_NLP_TIMEOUT_MS,
+          maxAttempts: 1,
+          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'out', toPort: 'in' }]),
+          // Entity extraction failing has never stopped the note being published.
+          onError: 'degrade',
+          enabled: true,
+        } as RealtimeNode),
+        Object.freeze({
+          nodeId: PLATFORM_LANE_NODE_IDS.summarize,
+          type: 'consultation.realtimeSummary',
+          config: Object.freeze({}),
+          timeoutMs: DEFAULT_TEXT_TIMEOUT_MS,
+          maxAttempts: 1,
+          inputs: Object.freeze([{ fromNodeId: PLATFORM_LANE_NODE_IDS.capture, fromPort: 'out', toPort: 'in' }]),
+          // A TEXT failure retains the last-good note and sets `textFailed` — it
+          // has never failed the flush, and must not start to.
+          onError: 'degrade',
+          enabled: true,
+        } as RealtimeNode),
+      ]),
+    } as RealtimeStage),
+  ]),
+});
+
+function toMs(seconds: unknown, fallbackMs: number): number {
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : fallbackMs;
+}
+
+/**
+ * Derive the realtime lane from a tenant's compiled graph.
+ *
+ * Filters each compiled stage to the node types this runtime implements, drops
+ * empty stages, and RENUMBERS `stageIndex` densely — the same treatment
+ * `compile()` gives its own stages, so the lane's ordering contract does not
+ * depend on which durable nodes happened to sit between two realtime ones.
+ *
+ * Bindings whose producer was filtered out are dropped WITH the binding, not
+ * silently retained: a binding pointing at a node that will never run in this
+ * lane would look like an unresolved contract violation to the executor, which
+ * is a different (and much louder) thing than "that value comes from the durable
+ * lane". Such a node keeps its remaining bindings and resolves the missing input
+ * from the run context, exactly as the platform lane's own nodes do.
+ *
+ * Returns `null` when the graph contributes no realtime nodes at all — the
+ * caller then serves {@link PLATFORM_REALTIME_LANE}, because a consultation with
+ * no documentation is a worse clinical outcome than one documented by the
+ * default lane.
+ */
+export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | undefined): RealtimeLane | null {
+  if (!compiled || !Array.isArray(compiled.stages)) return null;
+
+  const admitted = new Set<string>();
+  for (const stage of compiled.stages) {
+    for (const node of stage.nodes ?? []) {
+      if (REALTIME_NODE_TYPES.has(node.type)) admitted.add(node.nodeId);
+    }
+  }
+  if (admitted.size === 0) return null;
+
+  const stages: RealtimeStage[] = [];
+  for (const stage of compiled.stages) {
+    const nodes = (stage.nodes ?? [])
+      .filter((node) => admitted.has(node.nodeId))
+      .map<RealtimeNode>((node) => ({
+        nodeId: node.nodeId,
+        type: node.type,
+        config: node.config ?? {},
+        timeoutMs: toMs(node.timeoutSeconds, DEFAULT_TEXT_TIMEOUT_MS),
+        maxAttempts: Math.max(1, node.retry?.maximumAttempts ?? 1),
+        inputs: (node.inputs ?? []).filter((binding) => admitted.has(binding.fromNodeId)),
+        onError: node.onError === 'fail' ? 'fail' : 'degrade',
+        enabled: node.config?.enabled !== false,
+      }));
+    if (nodes.length === 0) continue;
+    stages.push({ stageIndex: stages.length, nodes });
+  }
+
+  if (stages.length === 0) return null;
+
+  return {
+    source: 'tenant-graph',
+    definitionSlug: compiled.slug ?? null,
+    definitionVersionNumber: compiled.versionNumber ?? null,
+    stages,
+  };
+}
