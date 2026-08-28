@@ -5,7 +5,7 @@
  * auto-scrolled cited span) instead of the SDK's live segment view.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LiveSessionColumn } from '../live-session-column';
 
@@ -59,5 +59,30 @@ describe('LiveSessionColumn', () => {
     render(<LiveSessionColumn {...baseProps({ reviewTranscriptText: text, reviewHighlight: { charStart: 5, charEnd: 999 } })} />);
     expect(document.querySelector('mark')).toBeNull();
     expect(screen.getByText(text)).toBeTruthy();
+  });
+
+  describe('D-17 — add-details-during-consultation affordance', () => {
+    it('is absent when no onAddDetail handler is supplied', () => {
+      render(<LiveSessionColumn {...baseProps()} />);
+      expect(screen.queryByRole('button', { name: /add detail/i })).toBeNull();
+    });
+
+    it('submits the typed detail through onAddDetail and clears the field', async () => {
+      const onAddDetail = vi.fn().mockResolvedValue(undefined);
+      render(<LiveSessionColumn {...baseProps({ hasConsultation: true, onAddDetail })} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /add detail/i }));
+      const textbox = await screen.findByLabelText(/add a detail to this consultation/i);
+      fireEvent.change(textbox, { target: { value: 'Patient reports a new penicillin allergy' } });
+      fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+      await waitFor(() => expect(onAddDetail).toHaveBeenCalledWith('Patient reports a new penicillin allergy'));
+      await waitFor(() => expect(screen.queryByLabelText(/add a detail to this consultation/i)).toBeNull());
+    });
+
+    it('disables the control when there is no open consultation', () => {
+      render(<LiveSessionColumn {...baseProps({ hasConsultation: false, onAddDetail: vi.fn() })} />);
+      expect((screen.getByRole('button', { name: /add detail/i }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 });

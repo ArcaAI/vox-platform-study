@@ -2445,16 +2445,23 @@ class ConsultationLoopWorkflow:
                     retry_policy=_LOOP_ACTION_RETRY,
                 )
             else:  # LOOP_ACTION_FEEDBACK_CAPTURE
-                # DD-8. The loop carries NO accepted proposals: acceptance is a clinician act
-                # that reaches the gateway through the console, never something an orchestrator
-                # can infer. What this dispatch does is CAPTURE — it records that the endpoint
-                # was reached and lets the gateway promote whatever the clinician had accepted.
+                # DD-8. Acceptance is a clinician act that reaches the gateway through the
+                # console (TASK-814 §2b) — never something an orchestrator can infer — and
+                # arrives here on the `consultationEnding` signal's `accepted_proposals`
+                # (forwarded from `StopRecordingRequest.acceptedProposals`). Absent a signal
+                # (e.g. this endpoint sequence ran on IDLE EXPIRY, D-12, where nobody ever sent
+                # one) this dispatch still CAPTURES that the endpoint was reached, with nothing
+                # to promote.
+                accepted_proposals = (
+                    self._ending_signal.accepted_proposals if self._ending_signal else []
+                )
                 await workflow.execute_activity(
                     capture_feedback,
                     CaptureFeedbackInput(
                         consultation_id=self._input.consultation_id,
                         tenant_id=self._input.tenant_id,
                         user_id=self._input.user_id,
+                        accepted_proposals=accepted_proposals,
                     ),
                     start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
                     retry_policy=_LOOP_ACTION_RETRY,

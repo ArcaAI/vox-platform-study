@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import { foldLoopActivity, type LoopActivityEntry, type LoopEvent } from '../hooks/use-loop-activity';
+import { liveAssistScopeFor, liveAssistStreamPath, type ClinicalSuggestion, type CorrectionProposal, type CorrectionsEnvelope, type LiveAssistEnvelope } from './live-assist';
 import {
   approveSummary,
   cancelConsultationJob,
@@ -138,8 +139,16 @@ export function useStartRecording() {
 
 export function useStopRecording() {
   return useMutation({
-    mutationFn: ({ consultationId, persistSnapshot }: { consultationId: string; persistSnapshot?: boolean }) =>
-      stopRecording(consultationId, persistSnapshot ?? true),
+    mutationFn: ({
+      consultationId,
+      persistSnapshot,
+      acceptedProposals,
+    }: {
+      consultationId: string;
+      persistSnapshot?: boolean;
+      /** TASK-814 §2b — corrections the clinician accepted, to promote over the raw transcript. */
+      acceptedProposals?: readonly CorrectionProposal[];
+    }) => stopRecording(consultationId, persistSnapshot ?? true, acceptedProposals ?? []),
   });
 }
 
@@ -290,6 +299,66 @@ export function useConsultationLoopStream(consultationId: string | null, enabled
   });
 
   return { feed, status: stream.status, error: stream.error };
+}
+
+/**
+ * TASK-795 RC-2 / TASK-814 §2b — the `live-assist` plane: interpreter
+ * suggestions and PROPOSED corrections, live while recording. One SSE
+ * connection carries BOTH branches, discriminated by `kind` (a suggestions
+ * publish never touches `corrections` and vice versa — see
+ * `LiveAssistEnvelope`'s doc comment). Each publish is a full-state replace of
+ * its own branch, same posture as the other snapshot streams on this
+ * consultation. The feed has no terminal event (unlike live-summary /
+ * harness-progress) — the caller closes it, typically when recording stops.
+ */
+export interface LiveAssistStreamHandle {
+  suggestions: ClinicalSuggestion[];
+  suggestionsNodeType: string | null;
+  corrections: CorrectionsEnvelope | null;
+  correctionsNodeType: string | null;
+  status: StreamStatus;
+  error: string | null;
+  close: () => void;
+  reopen: () => void;
+}
+
+export function useLiveAssistStream(consultationId: string | null, enabled = true): LiveAssistStreamHandle {
+  const [suggestions, setSuggestions] = useState<ClinicalSuggestion[]>([]);
+  const [suggestionsNodeType, setSuggestionsNodeType] = useState<string | null>(null);
+  const [corrections, setCorrections] = useState<CorrectionsEnvelope | null>(null);
+  const [correctionsNodeType, setCorrectionsNodeType] = useState<string | null>(null);
+
+  // Render-time derived-state reset: a new consultation starts with no
+  // suggestions/corrections carried over from the previous one.
+  const [trackedId, setTrackedId] = useState(consultationId);
+  if (consultationId !== trackedId) {
+    setTrackedId(consultationId);
+    setSuggestions([]);
+    setSuggestionsNodeType(null);
+    setCorrections(null);
+    setCorrectionsNodeType(null);
+  }
+
+  const handleEvent = useCallback((_type: string, data: string) => {
+    const parsed = parseJson<LiveAssistEnvelope>(data);
+    if (!parsed?.kind) return;
+    if (parsed.kind === 'suggestions') {
+      setSuggestions(parsed.suggestions ?? []);
+      setSuggestionsNodeType(parsed.nodeType ?? null);
+    } else if (parsed.kind === 'corrections' && parsed.corrections) {
+      setCorrections(parsed.corrections);
+      setCorrectionsNodeType(parsed.nodeType ?? null);
+    }
+  }, []);
+
+  const stream = useEventStream({
+    path: consultationId ? liveAssistStreamPath(consultationId) : null,
+    scope: consultationId ? liveAssistScopeFor(consultationId) : null,
+    onEvent: handleEvent,
+    enabled: enabled && !!consultationId,
+  });
+
+  return { suggestions, suggestionsNodeType, corrections, correctionsNodeType, status: stream.status, error: stream.error, close: stream.close, reopen: stream.reopen };
 }
 
 // ─── Async summary job progress (the useDnaJobProgress pattern) ───

@@ -132,6 +132,47 @@ describe('playground consultation client', () => {
     expect(state.recording).toBe(false);
   });
 
+  it('TASK-814 §2b: forwards accepted proposals, trimmed to the gateway DTO shape (no extra fields — the ValidationPipe forbids them)', async () => {
+    const calls = installFetchMock(() =>
+      Response.json({
+        consultationId: 'c-1',
+        status: 'OPEN',
+        recording: false,
+        sseUrl: '/consultations/c-1/live-summary/stream',
+        updatedAt: '2026-07-06T14:05:00.000Z',
+      }),
+    );
+    await stopRecording('c-1', true, [
+      {
+        proposalId: 'p-1',
+        start: 10,
+        end: 16,
+        original: 'Toprovol',
+        proposed: 'Toprol',
+        category: 'drugName',
+        confidence: 0.92,
+        rationale: 'Common ASR misrecognition of a beta-blocker name',
+        detectedBy: 'nlp.ner',
+        proposedBy: 'lmstudio:gemma3',
+        status: 'ACCEPTED',
+      },
+    ]);
+    expect(calls[0].body).toEqual({
+      persistSnapshot: true,
+      acceptedProposals: [
+        { proposalId: 'p-1', start: 10, end: 16, original: 'Toprovol', proposed: 'Toprol', category: 'drugName', confidence: 0.92, status: 'ACCEPTED' },
+      ],
+    });
+  });
+
+  it('omits acceptedProposals from the body when none were accepted', async () => {
+    const calls = installFetchMock(() =>
+      Response.json({ consultationId: 'c-1', status: 'OPEN', recording: false, sseUrl: '/x', updatedAt: 't' }),
+    );
+    await stopRecording('c-1', true, []);
+    expect(calls[0].body).toEqual({ persistSnapshot: true });
+  });
+
   it('generates a summary synchronously', async () => {
     const calls = installFetchMock(() => Response.json({ id: 'ctx-9', consultationId: 'c-1', type: 'summary', content: 'S …' }));
     const summary = await generateSummary('c-1');

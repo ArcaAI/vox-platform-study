@@ -177,6 +177,69 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText(/pt on amlodipine for htn/i)).toBeTruthy();
   });
 
+  describe('D-18 — empty-first-flush contradiction and live-stream status/error', () => {
+    it('never shows "showing last update" together with the loading skeleton on a first-flush failure', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: '',
+              sections: [],
+              entities: [],
+              updatedAt: 'now',
+              textFailed: true,
+            },
+          })}
+        />,
+      );
+      // The header must not claim a stale update exists when there is none.
+      expect(screen.queryByText(/showing last update/i)).toBeNull();
+      // The body must not present this as an in-progress load — that hides the failure.
+      expect(screen.queryByLabelText(/waiting for the first live summary/i)).toBeNull();
+      expect(screen.getByText(/note assistant unavailable/i)).toBeTruthy();
+    });
+
+    it('keeps "showing last update" when textFailed is true but prior content survived', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: {
+              consultationId: 'c-1',
+              runningSummary: 'Pt on amlodipine for HTN.',
+              sections: [],
+              entities: [],
+              updatedAt: 'now',
+              textFailed: true,
+            },
+          })}
+        />,
+      );
+      expect(screen.getByText(/showing last update/i)).toBeTruthy();
+    });
+
+    it('surfaces a distinct connection-error state from liveStatus/liveError (separate from a generation failure)', () => {
+      render(
+        <CaseNoteColumn
+          {...baseProps({
+            draft: null,
+            isRecording: true,
+            live: null,
+            liveStatus: 'error',
+            liveError: 'Live-summary SSE connection error',
+          })}
+        />,
+      );
+      expect(screen.getByText(/live update connection lost/i)).toBeTruthy();
+      // Not the generation-failure copy — this is a transport problem, not a model failure.
+      expect(screen.queryByText(/note assistant unavailable/i)).toBeNull();
+    });
+  });
+
   // click-to-source evidence panel at sign-off.
   describe('citation evidence panel', () => {
     const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];

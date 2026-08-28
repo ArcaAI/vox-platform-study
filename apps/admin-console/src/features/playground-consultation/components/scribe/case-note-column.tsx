@@ -59,7 +59,7 @@ import { HighlightedNoteText } from './highlighted-note-text';
 import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
 import { CorrectionProposalsPanel } from './correction-proposals-panel';
 import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
-import type { ClinicalSuggestion, CorrectionsEnvelope } from '../../api/live-assist';
+import type { ClinicalSuggestion, CorrectionProposal, CorrectionsEnvelope } from '../../api/live-assist';
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -189,10 +189,22 @@ export function AssuranceStrip({ progress, assurance }: AssuranceStripProps) {
 
 // ─── the column ───
 
+/**
+ * D-18 — mirrors the SDK's `LiveSummaryStreamStatus` (`useArcaLiveSummary`), which is not
+ * itself re-exported from `@arcaai/vox/core` (only the hook is). A narrow local copy of the
+ * runtime values is simpler than widening the SDK's public surface for one prop type.
+ */
+export type LiveStreamStatus = 'idle' | 'connecting' | 'open' | 'error' | 'closed';
+
 export interface CaseNoteColumnProps {
   hasConsultation: boolean;
   isRecording: boolean;
   live: LiveSummarySnapshot | null;
+  /** D-18 — the live-summary SSE connection's own status (distinct from `live.textFailed`,
+   *  which is a GENERATION failure over an otherwise-healthy connection). */
+  liveStatus?: LiveStreamStatus;
+  /** D-18 — the live-summary SSE connection's last error, when `liveStatus === 'error'`. */
+  liveError?: string | null;
   draft: SummaryResult | null;
   draftLoading: boolean;
   progress: HarnessProgressSnapshot | null;
@@ -242,17 +254,25 @@ export interface CaseNoteColumnProps {
   namedEntities?: NamedEntitiesAggregate | null;
   /**
    * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS, off the `live-assist`
-   * stream (TASK-796's brokered contract; shapes in `api/live-assist.ts`).
-   *
-   * ⚠ TRANSPORT PENDING: the gateway routes that carry this are TASK-795's, and do not exist
-   * yet, so nothing feeds this prop in a running system today.
+   * stream (TASK-796's brokered contract; shapes in `api/live-assist.ts`). Fed live by
+   * `useLiveAssistStream` (TASK-814 §2b) — the gateway route (TASK-795 RC-2) is up.
    *
    * An accepted proposal is written through `editor.change` — the clinician's OWN buffer — so
    * it is a clinician edit, never a machine write, and the R5 two-writer contract in
-   * `use-note-editor.ts` is untouched.
+   * `use-note-editor.ts` is untouched. That edit corrects the NOTE; promoting the SAME
+   * correction over the raw TRANSCRIPT (TASK-812 DD-8's `feedback.capture`) is a separate,
+   * explicit step — see `onAcceptCorrectionForPromotion`.
    */
   correctionProposals?: CorrectionsEnvelope | null;
-  /** W2/R3 — intelligent suggestions, same stream and the same transport caveat. */
+  /**
+   * TASK-814 §2b — fires alongside `onAccept` the moment the clinician accepts a proposal
+   * (the SAME click — there is deliberately no second "promote" control; accepting a
+   * correction already IS the clinician's judgement that it is right). The parent accumulates
+   * these and threads them into `stopRecording` so `feedback.capture` (TASK-812 DD-8) has
+   * something to promote over the raw transcript when the endpoint sequence runs.
+   */
+  onProposalAccepted?: (proposal: CorrectionProposal) => void;
+  /** W2/R3 — intelligent suggestions, same stream. */
   suggestions?: readonly ClinicalSuggestion[] | null;
   /** The interpreter node that produced the suggestions, for provenance. */
   suggestionsNodeType?: string;
@@ -265,6 +285,8 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     hasConsultation,
     isRecording,
     live,
+    liveStatus = 'idle',
+    liveError = null,
     draft,
     draftLoading,
     progress,
@@ -284,6 +306,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     loopActivity = [],
     namedEntities = null,
     correctionProposals = null,
+    onProposalAccepted,
     suggestions = null,
     suggestionsNodeType,
     onCorrectionsStale,
@@ -302,6 +325,9 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
   const liveSections = live?.sections ?? [];
   const liveEntities: LiveSummaryEntity[] = live?.entities ?? [];
   const vitals = live?.vitals ? vitalCells(live.vitals) : [];
+  // D-18 — whether a live snapshot has ANY renderable content, so the failure copy never
+  // claims a "last update" exists when the very first flush is what failed.
+  const liveHasContent = !!live?.runningSummary || liveSections.length > 0;
 
   // Stable, non-empty groups only — an empty aggregate renders nothing rather than a
   // labelled empty box (rule 11 §4: never a blank area presented as content).
@@ -369,10 +395,17 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 : 'Drafts appear here after a session'}
           </p>
         </div>
-        {showLive && live?.textFailed ? (
+        {showLive && liveStatus === 'error' ? (
+          // D-18 — a CONNECTION failure (the SSE stream itself dropped), distinct from a
+          // generation failure below: the note assistant may be healthy, the transport is not.
+          <Badge variant="destructive" className="shrink-0 gap-1.5" aria-live="polite">
+            <IconAlertTriangle aria-hidden className="size-3.5" />
+            Live update connection lost{liveError ? ` — ${liveError}` : ''}
+          </Badge>
+        ) : showLive && live?.textFailed ? (
           <Badge variant="destructive" className="shrink-0 gap-1.5" aria-live="polite">
             <IconShieldExclamation aria-hidden className="size-3.5" />
-            Note assistant unavailable — showing last update
+            {liveHasContent ? 'Note assistant unavailable — showing last update' : 'Note assistant unavailable — no update yet'}
           </Badge>
         ) : showLive && isRecording ? (
           <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium" aria-live="polite">
@@ -522,6 +555,15 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           // `runningSummary`, so the sections branch above deliberately stays plain rather
           // than splicing marks on offsets that do not belong to it.
           <HighlightedNoteText text={live.runningSummary} entities={liveEntities} label="Live running summary" />
+        ) : showLive && live?.textFailed ? (
+          // D-18 — the empty-first-flush case: the header ALREADY says the assistant is
+          // unavailable, so a loading skeleton here would contradict it (implying "in
+          // progress" when generation has failed). An honest empty state instead.
+          <EmptyState
+            icon={IconShieldExclamation}
+            title="No update yet"
+            description="The note assistant hasn't produced a running summary for this session yet."
+          />
         ) : isRecording ? (
           <div className="flex flex-col gap-3" aria-label="Waiting for the first live summary">
             <Skeleton className="h-4 w-3/4" />
@@ -625,6 +667,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         <CorrectionProposalsPanel
           corrections={correctionProposals}
           onStale={onCorrectionsStale}
+          onProposalAccepted={onProposalAccepted}
           // Checked against what the clinician is actually looking at: the buffer while
           // editing, the persisted draft otherwise. A proposal whose offsets stop matching
           // simply stops being offered.

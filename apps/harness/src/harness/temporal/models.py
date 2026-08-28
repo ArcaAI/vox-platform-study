@@ -1457,6 +1457,13 @@ class ConsultationEndingSignal(BaseModel):
     reason: str | None = None
     persist_snapshot: bool = True
     finalize: LoopFinalizeRequest | None = None
+    #: TASK-814 §2b — advisory transcript corrections the CLINICIAN accepted (from
+    #: ``StopRecordingRequest.acceptedProposals``, forwarded verbatim). Threaded into
+    #: ``CaptureFeedbackInput.accepted_proposals`` when the endpoint sequence's
+    #: ``feedback.capture`` action dispatches (``_run_endpoint_action`` in ``workflows.py``), so
+    #: DD-8's promotion filter has something to promote. Additive/optional: an old recorded
+    #: history with no such field on this signal deserializes to the empty default unchanged.
+    accepted_proposals: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CancelLoopSignal(BaseModel):
