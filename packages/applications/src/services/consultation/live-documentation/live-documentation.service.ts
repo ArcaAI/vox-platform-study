@@ -2503,6 +2503,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private async persistDurableSnapshot(session: LiveSession, payload: LiveSummaryEventDto, opts: { force: boolean }): Promise<void> {
     if (!this.contextItemRepository) return;
+    // TASK-811 (OD-6) — WHICH document this snapshot is. `ContextItemType.PRE_SUMMARY`
+    // is overloaded (D-22): the context-derived pre-summary and this running-note
+    // snapshot are the same enum member, and with more than one document per
+    // consultation that ambiguity becomes unresolvable. The key is the session's
+    // frozen template slug; null (every pre-TASK-811 row, and a session whose
+    // template never resolved) keeps its exact legacy meaning.
+    const documentKey = session.templateSnapshot?.slug ?? null;
     if (!opts.force && (this.durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < this.durableSnapshotMs)) return;
 
     const content = payload.runningSummary?.trim();
@@ -2535,6 +2542,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         if (existing) {
           existing.content = content;
           existing.metaData = metaData;
+          if (documentKey) existing.documentKey = documentKey;
           await this.encryptSnapshotContent(existing);
           await this.contextItemRepository.update(existing.id, existing);
           session.snapshotEntity = existing;
@@ -2553,6 +2561,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
             session.userId ?? 'system',
           );
           entity.metaData = metaData;
+          if (documentKey) entity.documentKey = documentKey;
           await this.encryptSnapshotContent(entity);
           await this.contextItemRepository.create(entity);
           session.snapshotEntity = entity;
@@ -2562,6 +2571,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       } else {
         session.snapshotEntity.content = content;
         session.snapshotEntity.metaData = metaData;
+        if (documentKey) session.snapshotEntity.documentKey = documentKey;
         await this.encryptSnapshotContent(session.snapshotEntity);
         await this.contextItemRepository.update(session.snapshotEntity.id, session.snapshotEntity);
       }
