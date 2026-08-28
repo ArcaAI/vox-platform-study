@@ -11,4 +11,9 @@ export const workflowStudioKeys = {
   // TASK-733 half (a) — assignment matrix.
   assignments: (paletteKey: string) => [...workflowStudioKeys.root, 'assignments', paletteKey] as const,
   departmentOptions: () => [...workflowStudioKeys.root, 'department-options'] as const,
+  // DD-11 (TASK-810) — per-definition prompt bindings, and the version list of
+  // one template (keyed by template id, not by definition: the same template is
+  // legitimately referenced from several definitions).
+  promptBindings: (definitionId: string) => [...workflowStudioKeys.root, 'prompt-bindings', definitionId] as const,
+  promptTemplateVersions: (promptTemplateId: string) => [...workflowStudioKeys.root, 'prompt-template-versions', promptTemplateId] as const,
 };
