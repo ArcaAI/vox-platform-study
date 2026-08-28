@@ -4,7 +4,7 @@
  * Proves the whole chain over real HTTP against a running stack:
  *
  *   POST :id/recording/start          → the live loop resolves and FREEZES the
- *                                       session's DepartmentAgent (R-N1)
+ *                                       session's governing node (R-N1)
  *   GET  :id/live-summary/stream      → every SSE event carries
  *                                       `metadata.agent` = { id, promptTemplateId,
  *                                       promptVersionNumber, resolvedFrom:'agent' }
@@ -45,14 +45,14 @@
  *
  * PRECONDITIONS (this spec cannot create them itself):
  *   1. C2's two migrations applied (`SummaryMeta.sessionAgentId`,
- *      `SummaryMeta.sessionAgentPromptVersion`, `DepartmentAgent` live-binding
+ *      `SummaryMeta.sessionAgentPromptVersion`, the node's live binding
  *      columns) — `pnpm db:migrate`.
  *   2. Seed run (`pnpm test:db:seed`) — seeded departments, prompt templates,
  *      `SEEDED_USERS`.
  *   3. API on 8868 (`pnpm test:up:api`), TEXT on 8862, NLP on 8864.
  *   4. The live-documentation engine ENABLED for the tenant
  *      (`GET/PUT admin/harness/live/config`).
- *   5. A DepartmentAgent bound to the consultation's department with a live
+ *   5. A workflow node on the department's governing definition with a live
  *      prompt binding. The spec creates one when the tenant has none and
  *      deletes it in `afterAll`; if creation is refused it SKIPS rather than
  *      asserting against the code-default tier (which legitimately reports no
@@ -249,7 +249,6 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
   let token: string;
   let departmentId: string;
   let consultationId: string;
-  let createdAgentId: string | null = null;
   let sseAgent: SseAgent | null = null;
   /** True once the live loop actually GENERATED a note (so a snapshot exists to carry lineage). */
   let liveGenerated = false;
@@ -277,74 +276,41 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect(deptList.length, 'the tenant must have at least one seeded department').toBeGreaterThan(0);
     departmentId = deptList[0].id;
 
-    // Ensure the department has a default agent — without one the live loop
-    // resolves the code-default tier, which reports NO agent, and R-N2's
-    // "same agent" claim has nothing to bind to.
-    const agents = await request.get(`/api/v1/admin/department-agents?departmentId=${departmentId}&take=1`, { headers: bearer(token) });
-    const agentList = agents.ok() ? listOf<{ id: string }>(await agents.json()) : [];
-    const templates = await request.get('/api/v1/prompt-templates/available?category=SUMMARY', { headers: bearer(token) });
-    const templateList = templates.ok() ? listOf<{ id: string }>(await templates.json()) : [];
-
-    void agentList;
-
-    // Create a DEDICATED default agent carrying a LIVE binding, rather than
-    // patching whatever is seeded. Two reasons:
-    //   1. Seeded agents carry summary bindings only, so the live chain would
-    //      fall through to the SYSTEM live default and report tier `default` —
-    //      that proves the FALLBACK, not R-N1's "the agent tier governs the
-    //      live loop" claim (observed exactly that on 2026-08-08).
-    //   2. The Global tenant's seeded agents are `templateLocked` clones of the
-    //      golden library, so PATCHing one is refused (403 "clone to
-    //      customize") by design.
-    // Creating our own sidesteps both and is cleaned up in afterAll.
-    // A bound template must be tenant-visible (own tenant or SYSTEM) AND
-    // department-compatible — `departmentId` null, or equal to this department
-    // (departmentAgent.service.ts assertTemplateBindable). Picking blindly off
-    // the available list binds a DEPARTMENT_DEFAULT row from some OTHER
-    // department and is rejected with a 400 (observed 2026-08-08). The SYSTEM
-    // live-default seeded by is `departmentId: null` and
-    // SYSTEM-owned, so it satisfies both rules and is the semantically right
-    // thing for a live binding.
-    const SYSTEM_LIVE_DEFAULT_TEMPLATE_ID = '71000000-0000-0000-0004-000000000001';
-    // Bind a DIFFERENT template for the summary slot than for the live slot, so
-    // "live and finalize are distinct prompts" is actually observable. Binding
-    // one template to both made finalize resolve the live template and the
-    // distinctness assertion vacuous. CATCHALL_SOAP is the platform summary
-    // default: department-unbound and owned by this tenant, so it is bindable.
-    const CATCHALL_SOAP_TEMPLATE_ID = '71000000-0000-0000-0000-000000000036';
-    if (templateList.length) {
-      // `slug` is REQUIRED and `isDefault` is NOT a create field (the global
-      // pipe runs forbidNonWhitelisted, so sending it is a hard 400 — that is
-      // why this creation silently failed before). Default status is set by its
-      // own route below.
-      // randomUUID, not a timestamp: two workers starting in the same
-      // millisecond produced identical slugs and collided (409).
-      const stamp = randomUUID().slice(0, 8);
-      const created = await request.post('/api/v1/admin/department-agents', {
-        headers: bearer(token),
-        data: {
-          departmentId,
-          name: `task-635-c6-${stamp}`,
-          slug: `task-635-c6-${stamp}`,
-          promptTemplateId: CATCHALL_SOAP_TEMPLATE_ID,
-          livePromptTemplateId: SYSTEM_LIVE_DEFAULT_TEMPLATE_ID,
-        },
-      });
-      if ([200, 201].includes(created.status())) {
-        createdAgentId = ((await created.json()) as { id: string }).id;
-        agentId = createdAgentId;
-        const madeDefault = await request.post(`/api/v1/admin/department-agents/${createdAgentId}/set-default`, { headers: bearer(token) });
-        liveBindingApplied = madeDefault.ok();
-        if (!liveBindingApplied) {
-          console.warn(
-            `[TASK-635 C6] agent created but set-default failed (status ${madeDefault.status()}) — R-N1 will assert the fallback tier instead.`,
-          );
-        }
-      } else {
-        console.warn(
-          `[TASK-635 C6] could not create a live-bound agent (status ${created.status()}): ${(await created.text()).slice(0, 300)} — R-N1 will assert the fallback tier instead.`,
+    // The live tier's source is a WORKFLOW NODE (TASK-815), not a
+    // `DepartmentAgent`. This block used to CREATE a dedicated default agent
+    // carrying a `livePromptTemplateId`, because the seeded agents bound
+    // summary templates only and the Global tenant's were `templateLocked`
+    // clones that refused a PATCH. Neither problem — nor the row — exists any
+    // more: the binding lives on the tenant's governing `consultation`
+    // definition, which an admin authors in Workflow Studio.
+    //
+    // So this DISCOVERS rather than provisions. Authoring a whole published
+    // definition from an e2e fixture would be a second implementation of the
+    // publish path, and a wrong one; what the spec needs is to know which
+    // branch of its own two-branch assertion applies. If the tenant's active
+    // published graph carries a prompt-bound node whose effective `taskKey` is
+    // `text.live`, tier-1a is reachable and `resolvedFrom` must be `'agent'`
+    // (the tier keeps its wire name — it is a frozen v1-compat contract, see
+    // `PromptResolutionService`). If it does not, the governed SYSTEM live
+    // default is the correct answer and the spec asserts THAT.
+    const definitions = await request.get('/api/v1/admin/workflow-definitions?paletteKey=consultation&limit=50', { headers: bearer(token) });
+    const definitionList = definitions.ok() ? listOf<{ id: string; status?: string; isActive?: boolean }>(await definitions.json()) : [];
+    const active = definitionList.find((definition) => definition.status === 'PUBLISHED' && definition.isActive);
+    if (active) {
+      const detail = await request.get(`/api/v1/admin/workflow-definitions/${active.id}`, { headers: bearer(token) });
+      if (detail.ok()) {
+        const graph = ((await detail.json()) as { graph?: { nodes?: { id: string; config?: Record<string, unknown> }[] } }).graph;
+        const liveNode = (graph?.nodes ?? []).find(
+          (node) => typeof node.config?.promptTemplateId === 'string' && node.config?.taskKey === 'text.live',
         );
+        if (liveNode) {
+          agentId = liveNode.id;
+          liveBindingApplied = true;
+        }
       }
+    }
+    if (!liveBindingApplied) {
+      console.warn('[TASK-635 C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.');
     }
 
     const patientId = `task-635-c6-${Date.now()}`;
@@ -368,9 +334,8 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
   });
 
   test.afterAll(async ({ request }) => {
-    if (createdAgentId) {
-      await request.delete(`/api/v1/admin/department-agents/${createdAgentId}`, { headers: bearer(token) }).catch(() => undefined);
-    }
+    // Nothing to tear down on the binding side any more: the spec DISCOVERS a
+    // live-bound node rather than creating a row it has to clean up.
     await request.delete(`/api/v1/consultations/${consultationId}`, { headers: bearer(token) }).catch(() => undefined);
     await dbClient?.$disconnect().catch(() => undefined);
   });
@@ -439,19 +404,20 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       return;
     }
 
-    // With a live binding present the loop MUST resolve tier-1a. Without one
-    // (binding refused), the governed SYSTEM live-default is the correct answer
-    // — assert that instead of pretending the agent tier ran. `code-default`
-    // is never acceptable here: it would mean no governed template resolved.
+    // With a live-bound node present the loop MUST resolve tier-1a. Without one,
+    // the governed SYSTEM live-default is the correct answer — assert that
+    // instead of pretending the node tier ran. `code-default` is never
+    // acceptable here: it would mean no governed template resolved.
     expect(
       sseAgent.resolvedFrom,
-      liveBindingApplied ? 'a live-bound agent must resolve the AGENT tier' : 'without a live binding, the governed SYSTEM live default must resolve',
+      liveBindingApplied ? 'a live-bound node must resolve the tier-1a (reported as `agent`)' : 'without a live binding, the governed SYSTEM live default must resolve',
     ).toBe(liveBindingApplied ? 'agent' : 'default');
 
-    // `id` identifies the DepartmentAgent, so it exists only on the agent tier;
-    // on the SYSTEM-default tier it is legitimately null. The governed template
-    // and its pinned version must be present either way — that is what makes
-    // the live prompt version-pinned rather than "whatever the row says today".
+    // `id` identifies whatever supplied tier-1a — the workflow NODE id since
+    // TASK-815 — so it exists only on that tier; on the SYSTEM-default tier it
+    // is legitimately null. The governed template and its pinned version must be
+    // present either way — that is what makes the live prompt version-pinned
+    // rather than "whatever the row says today".
     if (liveBindingApplied) {
       expect(sseAgent.id, 'agent id').toBe(agentId);
     }
