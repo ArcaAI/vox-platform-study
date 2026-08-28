@@ -59,7 +59,81 @@ import { HighlightedNoteText } from './highlighted-note-text';
 import { ClinicalSuggestionsPanel } from './clinical-suggestions-panel';
 import { CorrectionProposalsPanel } from './correction-proposals-panel';
 import { composeAutofill, formatSoapSections } from '../../lib/soap-autofill';
+import type { DocumentView, SectionState } from '../../api/document-sections';
 import type { ClinicalSuggestion, CorrectionProposal, CorrectionsEnvelope } from '../../api/live-assist';
+
+/** Humanizes a `DocumentTemplate.slug` (`soap_note` → "Soap Note") — no join to the template needed. */
+function humanizeDocumentKey(documentKey: string): string {
+  return documentKey
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+const SECTION_STATE_META: Record<SectionState, { label: string; icon: typeof IconCheck; className: string }> = {
+  empty: { label: 'Empty', icon: IconSparkles, className: 'text-muted-foreground' },
+  provisional: { label: 'Provisional', icon: IconSparkles, className: 'bg-ai/10 text-ai border-ai/40' },
+  confirmed: { label: 'Confirmed', icon: IconCheck, className: 'bg-success/10 text-success border-success/40' },
+  locked: { label: 'Locked', icon: IconShieldCheck, className: 'bg-muted text-muted-foreground' },
+};
+
+/** TASK-811 §2d state badge — never conveys the state by color alone (rule 11 §10: icon + text). */
+function SectionStateBadge({ state }: { state: SectionState }) {
+  const meta = SECTION_STATE_META[state];
+  const Icon = meta.icon;
+  return (
+    <Badge variant="outline" className={cn('shrink-0 gap-1', meta.className)}>
+      <Icon aria-hidden className="size-3" />
+      {meta.label}
+    </Badge>
+  );
+}
+
+/**
+ * TASK-811 DD-3 / TASK-814 DD-3 — N documents, each rendering its OWN sections in `idx` order
+ * with a live per-section state (`empty` renders as a skeleton, never an error — TASK-811 §2d).
+ * Per-section CLINICIAN EDITING is not wired here: no console-facing mutation endpoint exists
+ * yet for a single section (only the whole persisted draft is editable, via `editor` below), so
+ * this view is read-only live state, not a second writer.
+ */
+function DocumentSectionsView({ documents }: { documents: DocumentView[] }) {
+  return (
+    <div className="flex flex-col gap-5" aria-label="Live documents">
+      {documents.map((document) => (
+        <div key={document.documentKey} className="flex flex-col gap-3">
+          <h3 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">{humanizeDocumentKey(document.documentKey)}</h3>
+          <div className="flex flex-col gap-4">
+            {document.sections.map((section) => (
+              <div key={section.sectionKey} className="flex gap-2.5">
+                <span
+                  aria-hidden
+                  className={cn('flex size-5.5 shrink-0 items-center justify-center rounded-md text-xs font-medium', sectionAccent(section.title))}
+                >
+                  {section.title.trim().charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <h4 className="text-xs font-medium tracking-wide uppercase">{section.title}</h4>
+                    <SectionStateBadge state={section.state} />
+                  </div>
+                  {section.state === 'empty' ? (
+                    <div className="flex flex-col gap-1.5" aria-label={`Waiting for ${section.title}`}>
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-2/3" />
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Ordered vitals for the Objective grid — only present values render. */
 function vitalCells(vitals: LiveSummaryVitals): Array<{ label: string; value: string }> {
@@ -205,6 +279,13 @@ export interface CaseNoteColumnProps {
   liveStatus?: LiveStreamStatus;
   /** D-18 — the live-summary SSE connection's last error, when `liveStatus === 'error'`. */
   liveError?: string | null;
+  /**
+   * TASK-811 DD-3 / TASK-814 DD-3 — N documents from the `section.patch` plane
+   * (`useDocumentSectionsStream`). Non-empty ⇒ takes priority over the legacy single-section
+   * `live.sections` view below (richer: per-section state, multiple documents). Empty ⇒
+   * nothing has arrived on that plane yet and the legacy view renders unchanged.
+   */
+  documentSections?: DocumentView[];
   draft: SummaryResult | null;
   draftLoading: boolean;
   progress: HarnessProgressSnapshot | null;
@@ -287,6 +368,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     live,
     liveStatus = 'idle',
     liveError = null,
+    documentSections = [],
     draft,
     draftLoading,
     progress,
@@ -532,6 +614,10 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
               </article>
             )}
           </div>
+        ) : showLive && documentSections.length > 0 ? (
+          // DD-3 — richer than the legacy single-section view below (per-section state,
+          // multiple documents), so it takes priority the moment any section.patch has arrived.
+          <DocumentSectionsView documents={documentSections} />
         ) : showLive && liveSections.length > 0 ? (
           <div className="flex flex-col gap-4" aria-label="Live running summary">
             {liveSections.map((section) => (
