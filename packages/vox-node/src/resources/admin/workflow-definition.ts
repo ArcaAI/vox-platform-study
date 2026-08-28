@@ -14,6 +14,7 @@ import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrec
 import type {
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
+  NodePromptUpdateResponse,
   PublishWorkflowDefinitionRequest,
   SandboxRunCancelResponse,
   SandboxRunResponse,
@@ -284,9 +285,9 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
-   * Edit a node’s prompt from within the node: mint a new version AND move this node’s pin
+   * Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin
    *
-   * One of DD-11’s TWO update paths, and the only one that moves a pin. Both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched. Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED.
+   * One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) differ from the template’s latest version, both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched. ADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart. Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is checked on BOTH branches: an unchanged body never buys a stale client a silent 200.
    *
    * `PUT /api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt` — `WorkflowDefinitionController.updateNodePrompt`.
    *
@@ -297,8 +298,8 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
     nodeId: string,
     body: UpdateNodePromptRequest,
     options: AdminRequestOptions & { ifMatch: IfMatchPrecondition },
-  ): Promise<WorkflowDefinitionResponse> {
-    return this.requestWithPrecondition<WorkflowDefinitionResponse>({
+  ): Promise<NodePromptUpdateResponse> {
+    return this.requestWithPrecondition<NodePromptUpdateResponse>({
       method: 'PUT',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/nodes/${encodePathSegment(String(nodeId))}/prompt`,
       body,
