@@ -22,7 +22,13 @@
  */
 import { Logger } from '@nestjs/common';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { DocumentSectionFactory, DocumentSectionState, type DocumentSectionEntity, type DocumentSectionRepository } from '@arcaai/domains';
+import {
+  DocumentSectionFactory,
+  DocumentSectionState,
+  type DocumentSectionEntity,
+  type DocumentSectionRepository,
+  type JsonValue,
+} from '@arcaai/domains';
 import type { SectionAnnotationDto, SectionPatchDto, SectionProvenanceDto } from './dto/section-patch.dto';
 
 /** Minimal structural view of the PHI encryptor — mirrors `SecretsServiceLike`. */
@@ -166,7 +172,7 @@ export class DocumentSectionStore {
           documentTemplateVersionId: input.documentTemplateVersionId ?? null,
           createdBy: input.userId ?? null,
         });
-        created.applyMachineContent(input.content, this.asJson(input.annotations), this.asJson(input.provenance));
+        created.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
         this.stampContradiction(created, input.contradiction);
         await this.encrypt(created);
         await this.repository.create(created);
@@ -178,7 +184,7 @@ export class DocumentSectionStore {
       section.title = input.title;
       section.idx = input.idx;
       if (input.documentTemplateVersionId !== undefined) section.documentTemplateVersionId = input.documentTemplateVersionId;
-      section.applyMachineContent(input.content, this.asJson(input.annotations), this.asJson(input.provenance));
+      section.applyMachineContent(input.content, this.asJson(input.annotations) ?? null, this.asJson(input.provenance) ?? null);
       this.stampContradiction(section, input.contradiction);
       await this.encrypt(section);
       await this.repository.updateWithVersion(section.id, section, expectedVersion);
@@ -276,8 +282,12 @@ export class DocumentSectionStore {
     section.metaData = { ...((section.metaData as Record<string, unknown> | null) ?? {}), lastDeletion: { ...contradiction, at: new Date().toISOString() } };
   }
 
-  private asJson(value: unknown): unknown {
-    return value === undefined ? undefined : (value as unknown);
+  /**
+   * The DTO arrays are structurally JSON already; this is the single, named
+   * place the cast happens rather than sprinkling `as never` at each call site.
+   */
+  private asJson(value: SectionAnnotationDto[] | SectionProvenanceDto[] | undefined): JsonValue | undefined {
+    return value === undefined ? undefined : (value as unknown as JsonValue);
   }
 
   private async encrypt(section: DocumentSectionEntity): Promise<void> {
