@@ -181,36 +181,6 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     default: '0 3 * * *',
   },
   // ── Agent golden-library template resync ────
-  {
-    key: 'departmentAgent.templateResync.enabled',
-    tier: 'global-kv',
-    dataType: 'boolean',
-    sensitivity: 'internal',
-    maxScope: 'system',
-    editableBy: 'all',
-    globalOnly: true,
-    failMode: 'open-to-default',
-    category: 'Platform Operations',
-    killSwitch: true,
-    label: 'Agent template resync enabled',
-    description:
-      "Enables the nightly sweep that reconciles every tenant's DepartmentAgent catalog against the SYSTEM agent golden library: missing golden agents are cloned in (with an APPROVED template snapshot), and locked copies that are still pristine are fast-forwarded to the golden template's current content. Customized (unlocked) agents are never touched. Fail-safe: the DEFAULT is OFF, because the sweep writes tenant data unattended — deployments turn it on with a platform value.",
-    default: false,
-  },
-  {
-    key: 'departmentAgent.templateResync.cron',
-    tier: 'global-kv',
-    dataType: 'string',
-    sensitivity: 'internal',
-    maxScope: 'system',
-    editableBy: 'all',
-    globalOnly: true,
-    failMode: 'open-to-default',
-    category: 'Platform Operations',
-    label: 'Agent template resync schedule',
-    description: 'Cron expression for the nightly SYSTEM agent-library resync sweep.',
-    default: '0 4 * * *',
-  },
   // ── Origin (CORS) enforcement ────────────────────────────────────────────
   //
   // The ONE switch that decides whether any of the origin machinery

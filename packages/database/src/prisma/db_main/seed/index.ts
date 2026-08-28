@@ -176,9 +176,8 @@ export const seed = async () => {
     // clinical departments' per-visit-type summary templates + a shared
     // pre-summary, all APPROVED and owned by the ArcaAI tenant. The ArcaAI
     // departments (04-department) reference these via their legacy prompt-id
-    // columns AND (since / RF-3) by per-visit-type DepartmentAgent
-    // bindings that point at exactly the same 14 templates — behaviour-identical
-    // by construction, proven by arcaai-agent-column-equality.test.ts.
+    // columns. (A parallel set of per-visit-type `DepartmentAgent` bindings
+    // pointed at exactly the same 14 templates until TASK-815 retired them.)
     await seedArcaaiClinicalTemplates(client);
     console.log('');
     // SYSTEM live-summarization default: one SYSTEM-tenant
@@ -197,19 +196,19 @@ export const seed = async () => {
     // surface never requests this variant (RF-1 wire contract).
     await seedDeptFreePreSummaryDefault(client);
     console.log('');
-    // Agent Golden Library: SYSTEM golden departments +
-    // APPROVED prompt templates + one default agent per department, plus the
-    // two fixture tenants expressed as locked clones. FKs:
-    // DepartmentAgent → Department (golden, above) + PromptTemplate (golden,
-    // created here). Idempotent upsert-by-id.
+    // Golden Prompt Library: SYSTEM golden departments + APPROVED prompt
+    // templates + their v1 version snapshots. (It also seeded one default agent
+    // per department and two fixture tenants' locked clones until TASK-815
+    // retired `DepartmentAgent`.) Idempotent upsert-by-id.
     await seedAgentGoldenLibrary(client);
     console.log('');
     // Day-1 consultation context schema: one servable TENANT-scoped
-    // default per seeded tenant. Together with the loop configuration
-    // seedAgentGoldenLibrary just wrote onto the default agents, this is what
-    // makes `LoopConfigService` resolve `enabled: true` — turned the
-    // SIGNALLING gate on, but the workflow's own gate is DERIVED from these two
-    // rows and neither existed on a fresh install. CREATE-ONLY.
+    // default per seeded tenant. This is what makes `LoopConfigService` resolve
+    // `enabled: true` on a fresh install — the SIGNALLING gate is on, but the
+    // workflow's own gate is DERIVED, and before this row nothing satisfied it.
+    // (Its other source used to be the loop configuration on a seeded default
+    // agent; since TASK-815 it is the tenant's governing WorkflowDefinition,
+    // which a fresh install does not have.) CREATE-ONLY.
     await seedConsultationLoopDefaults(client);
     console.log('');
     // Department-scoped consultation vocabularies for the two ArcaAI clinical

@@ -26,7 +26,6 @@ import { WorkflowExposureDtoMapper } from './workflow-exposure.dto.mapper';
 /** Default self-hosted MinIO bucket for the compiled-config claim-check — mirrors the harness's
  *  own `ClaimCheckConfig.bucket` default (`apps/harness/src/harness/core/config.py`). */
 
-
 /** Terminal statuses `RecordRunFinishedInput.status` accepts — anything else (e.g. `RUNNING`,
  *  or an interpreter-internal stage label) is left alone; the read-model sync is opportunistic. */
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);

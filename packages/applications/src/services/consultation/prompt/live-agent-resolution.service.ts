@@ -2,9 +2,26 @@
  * `ILiveAgentResolver` implementation.
  *
  * Composes the pieces the live loop must NOT know about: the consultation's
- * department, the capability-keyed prompt chain, and the agent row's
- * `toolConfig` / `llmOverrides`. What comes back is one immutable
- * {@link FrozenLiveAgentSnapshot} that governs a whole session.
+ * department and the capability-keyed prompt chain. What comes back is one
+ * immutable {@link FrozenLiveAgentSnapshot} that governs a whole session.
+ *
+ * ## Two fields that used to come off a `DepartmentAgent` row (TASK-815)
+ *
+ * `toolPlan` was `DepartmentAgent.toolConfig`, normalised. Its successor is not
+ * another config blob but the GRAPH: in the workflow substrate "is NER on for
+ * this session" is answered by whether the tenant's realtime lane contains an
+ * entity-extraction node, and `LiveDocumentationService.ensureLaneResolved`
+ * resolves that lane independently of this snapshot. The snapshot therefore
+ * carries `DEFAULT_LIVE_TOOL_PLAN` — exactly what a tenant with no `toolConfig`
+ * always got — for the LEGACY flush path that still reads it.
+ *
+ * `liveLlm` was `DepartmentAgent.llmOverrides.live`, frozen to a
+ * `{provider, model}` pair. Its successor is a per-node `llmBinding`
+ * (TASK-816), which has not landed. `null` here is not a gap: it puts the
+ * session on the per-flush tenant `text.live` `AiTaskDefault`, which is the
+ * tenant → SYSTEM cascade and was already the behaviour for every session whose
+ * agent carried no override. The fail-OPEN posture that made the override safe
+ * on the live path is preserved by construction — there is nothing left to fail.
  *
  * TOTALITY IS THE CONTRACT. Neither method may throw. A live consultation must
  * never be failed by a prompt-resolution error, so every failure path lands on
@@ -15,19 +32,10 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  AiModelRepository,
-  ConsultationRepository,
-  DepartmentAgentRepository,
-  ModelTaskType,
-  PromptTemplateRepository,
-  PromptVersionRepository,
-  ResourceStatusType,
-} from '@arcaai/domains';
+import { ConsultationRepository, PromptTemplateRepository, PromptVersionRepository } from '@arcaai/domains';
 
 import {
   DEFAULT_LIVE_TOOL_PLAN,
-  normalizeToolPlan,
   type FrozenLiveAgentSnapshot,
   type ILiveAgentResolver,
   type PersistedLiveAgentLineage,
@@ -42,9 +50,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
   constructor(
     private readonly consultationRepository: ConsultationRepository,
     private readonly promptResolutionService: PromptResolutionService,
-    private readonly departmentAgentRepository: DepartmentAgentRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
-    private readonly aiModelRepository: AiModelRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
   ) {}
 
@@ -64,20 +70,20 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         return this.codeDefault();
       }
 
-      // The agent row is read ONLY when the agent tier actually resolved, so a
-      // default-tier session costs no extra query.
-      const agent = resolved.resolvedAgentId ? await this.safeFindAgent(resolved.resolvedAgentId) : null;
-
       return {
         resolvedFrom: resolved.resolvedFrom === 'agent' ? 'agent' : 'default',
-        agentId: agent?.id ?? null,
-        agentName: agent?.name ?? null,
+        // The workflow NODE id that supplied the prompt, when the node tier
+        // resolved. `agentName` has no successor — a node has an id and a type,
+        // and inventing a display name for it would be a second thing to keep
+        // in step with the graph.
+        agentId: resolved.resolvedAgentId ?? null,
+        agentName: null,
         promptTemplateId: resolved.promptId,
         promptVersionNumber: resolved.resolvedVersionNumber ?? null,
         stableUserPrefix: resolved.content,
         systemPrompt: await this.systemPromptFor(resolved.promptId),
-        toolPlan: normalizeToolPlan(agent?.toolConfig ?? null),
-        liveLlm: await this.resolveLiveLlm(agent?.llmOverrides ?? null),
+        toolPlan: DEFAULT_LIVE_TOOL_PLAN,
+        liveLlm: null,
         frozenAt: new Date().toISOString(),
       };
     } catch (error) {
@@ -108,20 +114,19 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
       const version = await this.promptVersionRepository.findByVersionNumber(lineage.promptTemplateId, lineage.promptVersionNumber);
       if (!version?.content) return null;
 
-      const agent = lineage.agentId ? await this.safeFindAgent(lineage.agentId) : null;
-
       return {
         resolvedFrom: lineage.resolvedFrom === 'agent' ? 'agent' : 'default',
         agentId: lineage.agentId,
-        agentName: lineage.agentName ?? agent?.name ?? null,
+        agentName: lineage.agentName ?? null,
         promptTemplateId: lineage.promptTemplateId,
         promptVersionNumber: version.versionNumber,
         stableUserPrefix: version.content,
         systemPrompt: await this.systemPromptFor(lineage.promptTemplateId),
-        toolPlan: normalizeToolPlan(agent?.toolConfig ?? null),
+        toolPlan: DEFAULT_LIVE_TOOL_PLAN,
         // The model pair was FROZEN at the original session start; re-using the
-        // recorded pair keeps the recovered session on the same model rather
-        // than re-deriving one that may since have changed.
+        // recorded pair keeps a recovered session on the same model rather than
+        // re-deriving one that may since have changed. Written by sessions that
+        // predate TASK-815; null for every new one.
         liveLlm: lineage.liveLlm ?? null,
         frozenAt: lineage.frozenAt ?? new Date().toISOString(),
       };
@@ -174,14 +179,6 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
     }
   }
 
-  private async safeFindAgent(agentId: string) {
-    try {
-      return await this.departmentAgentRepository.findById(agentId);
-    } catch {
-      return null;
-    }
-  }
-
   /**
    * The system-role string served for this session (step 4).
    *
@@ -228,42 +225,5 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
     if (typeof systemPrompt !== 'string' || systemPrompt.trim().length === 0) return null;
 
     return systemPrompt;
-  }
-
-  /**
-   * Freeze the agent's `llmOverrides.live` into a concrete `{provider, model}`.
-   *
-   * FAIL-OPEN (live posture): an unknown, disabled, or wrong-task slug logs and
-   * degrades to null, which puts the session back on the per-flush tenant
-   * `text.live` AiTaskDefault — today's behavior. Contrast the finalize side,
-   * where model SELECTION is fail-closed.
-   */
-  private async resolveLiveLlm(llmOverrides: unknown): Promise<{ provider: string; model: string } | null> {
-    const slug = (llmOverrides as { live?: { aiModelSlug?: unknown } } | null | undefined)?.live?.aiModelSlug;
-    if (typeof slug !== 'string' || slug.trim().length === 0) return null;
-
-    try {
-      const models = await this.aiModelRepository.findAll({ filters: { slug, resourceStatus: ResourceStatusType.ENABLED } });
-      const model = models[0];
-      if (!model || model.taskType !== ModelTaskType.TEXT_GENERATION || !model.sourceUri) {
-        this.logger.warn({
-          message: 'Agent llmOverrides.live names an unusable model — falling back to the tenant text.live default',
-          slug,
-        });
-        return null;
-      }
-      // The catalog seeds `azure`; TEXT registers it as `azure-openai`
-      // (mirrors HarnessPolicyService.resolveTextSelection).
-      const provider = model.provider === 'azure' ? 'azure-openai' : (model.provider ?? '');
-      if (!provider) return null;
-      return { provider, model: model.sourceUri };
-    } catch (error) {
-      this.logger.warn({
-        message: 'Failed to resolve the agent live-LLM override — falling back to the tenant text.live default',
-        slug,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
   }
 }

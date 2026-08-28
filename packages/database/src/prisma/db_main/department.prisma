@@ -42,7 +42,6 @@ model Department {
   Consultations    Consultation[]
   PromptTemplates  PromptTemplate[]
   UserDepartments  UserDepartment[]
-  DepartmentAgents DepartmentAgent[]
   // DEPARTMENT-scoped consultation context schemas.
   ConsultationContextSchemas ConsultationContextSchema[]
 

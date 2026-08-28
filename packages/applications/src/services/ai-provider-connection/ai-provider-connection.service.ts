@@ -529,8 +529,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // plaintext key material is produced for a caller that may not use it.
     const systemRows = await this.readTier(service, SYSTEM_TENANT_ID, provider);
     const entitlementSuppressed = gateApplies && !systemEntitled;
-    const platformDefault =
-      vetoed.size > 0 || entitlementSuppressed ? { entitlementSuppressed, vetoed: [...vetoed] } : undefined;
+    const platformDefault = vetoed.size > 0 || entitlementSuppressed ? { entitlementSuppressed, vetoed: [...vetoed] } : undefined;
     return { tenantRows, systemRows, vetoed, platformDefault, systemEntitled };
   }
 

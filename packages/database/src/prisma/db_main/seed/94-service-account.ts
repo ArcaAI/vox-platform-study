@@ -166,7 +166,7 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:audit:read', // → read:AuditLog
   // Clinical configuration
   'svc:admin:department:manage', // → manage:Department
-  'svc:admin:agent-promotion:manage', // → manage:DepartmentAgent
+  'svc:admin:agent-promotion:manage', // → manage:WorkflowDefinition (cross-tenant workflow promotion)
   'svc:admin:prompt-template:manage', // → manage:PromptTemplate
   'svc:admin:consultation-context-schema:manage', // → manage:ConsultationContextSchema
   'svc:admin:document-template:manage', // → manage:DocumentTemplate

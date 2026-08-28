@@ -26,14 +26,6 @@ export interface ConfigResolutionContext {
   tenantId: string;
   departmentId?: string | null;
   doctorId?: string | null;
-  /**
-   * The consultation's default DepartmentAgent gate. When its
-   * `dnaStylePolicy` is `DISABLED`, DNA redaction is forced OFF for that agent
-   * regardless of the tenant/doctor gates. Resolved by the caller (which already
-   * knows the department's default agent) and passed in as a plain flag so the
-   * resolver stays free of a DepartmentAgent dependency.
-   */
-  departmentAgentDnaDisabled?: boolean;
 }
 
 export interface ResolvedPipelineToggles {
@@ -204,7 +196,7 @@ export class ConfigResolver {
   /**
    * Resolve the effective DNA REDACTION decision for a
    * consultation context. Mirrors {@link resolveEffectiveDnaStyleEnabled} as a
-   * DOUBLE gate, plus the DepartmentAgent gate:
+   * DOUBLE gate:
    *
    *  - `tenantEnabled` is the `dnaRedactionEnabled` cascade resolution (maxScope
    *    TENANT ⇒ tenant → SYSTEM default → code default=false; department/doctor
@@ -212,8 +204,15 @@ export class ConfigResolver {
    *  - `doctorToggle` is the doctor's DNA opt-in (their DOCTOR-scope
    *    `dnaStyleEnabled` row): redaction is a facet of the DNA feature, so a
    *    doctor who has turned DNA OFF gets no redaction. Unset ⇒ implicit opt-in.
-   *  - `DepartmentAgent.dnaStylePolicy=DISABLED` (passed as
-   *    `ctx.departmentAgentDnaDisabled`) forces the result OFF regardless.
+   *
+   * A THIRD gate used to sit alongside them: `DepartmentAgent.dnaStylePolicy =
+   * DISABLED` forced the result OFF for the department's default agent
+   * regardless of the other two. It retired with `DepartmentAgent` (TASK-815).
+   * The direction matters — dropping a gate that could only force redaction OFF
+   * means a consultation the tenant AND the doctor both enabled is now redacted
+   * where an agent could previously veto it. That veto had no successor in the
+   * workflow substrate, and the two gates that remain are the ones a tenant and
+   * a clinician actually set.
    *
    * Fail-CLOSED: any lookup failure ⇒ redaction OFF (a note the doctor expected
    * redacted must never slip through on a degraded config read).
@@ -254,10 +253,8 @@ export class ConfigResolver {
     }).value;
 
     // Doctor opt-in reuses the doctor's DNA toggle (redaction is part of DNA).
-    // The DepartmentAgent DISABLED gate is authoritative and forces the result
-    // OFF, but does not change what the tenant/doctor gates independently say.
     const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
-    const effective = tenantEnabled && (doctorToggle ?? true) && !ctx.departmentAgentDnaDisabled;
+    const effective = tenantEnabled && (doctorToggle ?? true);
 
     return { effective, tenantEnabled, doctorToggle };
   }

@@ -37,7 +37,7 @@ import type { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefault
 import type { IActiveUserContext } from '../../../interfaces';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
-import { LIVE_TOOL_KEYS, type LiveToolKey } from '../../departmentAgent/constants';
+import { LIVE_TOOL_KEYS, type LiveToolKey } from './live-tool-keys';
 import type { ResolvedToolPlan } from './live-agent.port';
 import type { LiveSummaryEntityDto, LiveSummaryGroundednessDto, LiveSummaryGroundednessSegmentDto, LiveSummaryVitalsDto } from './dto';
 

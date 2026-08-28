@@ -436,15 +436,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'Consultation' }],
     reserved: true,
   },
-  'admin:department-agent:manage': {
-    description: 'Manage department agents and their resync',
-    category: 'Admin',
-    implies: [
-      { action: 'manage', subject: 'DepartmentAgent' },
-      { action: 'manage', subject: 'Tenant' },
-    ],
-    reserved: true,
-  },
   'admin:department:manage': {
     description: 'Manage departments',
     category: 'Admin',

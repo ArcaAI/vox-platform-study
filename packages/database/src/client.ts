@@ -193,15 +193,6 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `DocumentTemplate` is deliberately NOT here — it keeps the standard
   // ENABLED/DELETED lifecycle.
   'DocumentTemplateVersion',
-  // DepartmentAgentVersion is an immutable snapshot of a
-  // DepartmentAgent's loop-configuration surface — the exact shape of
-  // PromptVersion / AsrPipelineVersion / ConsultationContextSchemaVersion
-  // above, and with no `resourceStatus` column for the same reason. A
-  // consultation loop pinned to version N (C1) must be able to resolve
-  // version N forever, and promotion copies an immutable version
-  // verbatim. The MUTABLE head `DepartmentAgent` is deliberately NOT here —
-  // it keeps the standard ENABLED/DELETED lifecycle.
-  'DepartmentAgentVersion',
   // A WORM record of one agent promotion from a source tenant into
   // a target tenant. Written once and never updated (re-promoting writes a NEW
   // row), so the table is an audit history: retraction would defeat its whole
