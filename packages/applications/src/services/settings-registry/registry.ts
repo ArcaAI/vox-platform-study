@@ -12,6 +12,7 @@ import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descript
 import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
+import { CONSULTATION_ENDPOINT_SETTINGS } from './descriptors/consultation-endpoint.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
@@ -131,6 +132,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
+  // TASK-812 — the ordered endpoint stage that runs before a consultation closes.
+  ...CONSULTATION_ENDPOINT_SETTINGS,
 
   // ── Consultation-loop lifecycle bounds ───────────────────────────────────
   // The loop's IDLE bound. A tuning knob rather than a kill-switch, and PINNED

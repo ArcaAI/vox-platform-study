@@ -110,7 +110,11 @@ from harness.temporal.models import (
     ApplyRedactionResult,
     AssembleInput,
     CallMcpToolInput,
+    CaptureFeedbackInput,
+    CaptureFeedbackResponse,
     ConsultationLoopConfig,
+    RecordSessionEndpointInput,
+    RecordSessionEndpointResponse,
     DeriveContextInput,
     DeriveContextResult,
     DispatchBatchTranscriptionInput,
@@ -127,6 +131,8 @@ from harness.temporal.models import (
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
+    FinalizeDocumentsInput,
+    FinalizeDocumentsResponse,
     LiveDocControlInput,
     LiveDocControlResult,
     LoopAgentSpec,
@@ -3264,6 +3270,87 @@ async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResu
     )
 
 
+# ---------------------------------------------------------------------------
+# TASK-812 — the ENDPOINT STAGE activities
+#
+# These three DO NOT follow ``livedoc_start``/``livedoc_stop``'s swallow-every-
+# exception posture, and the difference is the whole point of the ticket. Live
+# documentation is a UI convenience: a failed stop costs a stale panel. The
+# endpoint stage is the last thing standing between a consultation and its
+# permanent record — a swallowed finalize is a note that is never locked and a
+# correction that is never promoted, reported as success. So each of these
+# RAISES, Temporal retries it under a bounded policy, and the loop's own
+# ``_run_lifecycle_actions`` turns an exhausted retry into a VISIBLE
+# ``action.skipped`` rather than a silent one.
+#
+# Idempotency lives on the gateway side of each call (see the payload models):
+# the disposition converges, finalize is a transition a LOCKED section no longer
+# accepts, and a promotion carries a deterministic key. That is what makes them
+# safe to retry at all.
+# ---------------------------------------------------------------------------
+
+
+@activity.defn
+async def record_session_endpoint(
+    payload: RecordSessionEndpointInput,
+) -> RecordSessionEndpointResponse:
+    """Stamp HOW the consultation session ended (``session.timeout``).
+
+    On a retry the gateway finds the same disposition already stamped and reports
+    ``changed=False``; nothing accumulates.
+    """
+    settings = get_settings()
+    return await _api_client(settings).record_session_endpoint(
+        payload.consultation_id,
+        tenant_id=_required_tenant(payload.tenant_id, "record_session_endpoint"),
+        reason=payload.reason,
+        idle_timeout_seconds=payload.idle_timeout_seconds,
+        sequence=payload.sequence,
+        user_id=payload.user_id,
+        job_id=payload.job_id,
+    )
+
+
+@activity.defn
+async def finalize_documents(payload: FinalizeDocumentsInput) -> FinalizeDocumentsResponse:
+    """DD-3 — lock EVERY document of the consultation (``summary.finalize``).
+
+    Not "the SOAP note": a finalize that locks one document leaves a discharge
+    summary editable after signature. The payload cannot name a document, so this
+    activity cannot be narrowed by a caller.
+    """
+    settings = get_settings()
+    return await _api_client(settings).finalize_documents(
+        payload.consultation_id,
+        tenant_id=_required_tenant(payload.tenant_id, "finalize_documents"),
+        lock_confirmed_only=payload.lock_confirmed_only,
+        user_id=payload.user_id,
+        job_id=payload.job_id,
+    )
+
+
+@activity.defn
+async def capture_feedback(payload: CaptureFeedbackInput) -> CaptureFeedbackResponse:
+    """DD-8 — capture endpoint feedback and promote accepted corrections.
+
+    The ONLY path by which an advisory transcript correction reaches the raw
+    channel. A retry recomputes the same deterministic promotion key, finds its
+    own prior write, and promotes nothing further.
+    """
+    settings = get_settings()
+    return await _api_client(settings).capture_feedback(
+        payload.consultation_id,
+        tenant_id=_required_tenant(payload.tenant_id, "capture_feedback"),
+        accepted_proposals=payload.accepted_proposals,
+        context_item_id=payload.context_item_id,
+        text_sha256=payload.text_sha256,
+        rating=payload.rating,
+        comment=payload.comment,
+        user_id=payload.user_id,
+        job_id=payload.job_id,
+    )
+
+
 # Registered on the worker alongside ``DOCUMENT_ACTIVITIES``. Kept a SEPARATE
 # list so the loop's surface is legible and so nothing here can be mistaken for
 # part of the frozen document loop.
@@ -3272,6 +3359,10 @@ LOOP_ACTIVITIES: list[Callable[..., Any]] = [
     livedoc_start,
     livedoc_stop,
     emit_loop_event,
+    # TASK-812 — the endpoint stage.
+    record_session_endpoint,
+    finalize_documents,
+    capture_feedback,
 ]
 
 # A THIRD list, for the same reason `LOOP_ACTIVITIES` is a second one:

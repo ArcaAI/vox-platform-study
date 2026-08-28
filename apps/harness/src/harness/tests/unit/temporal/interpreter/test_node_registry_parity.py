@@ -83,6 +83,8 @@ class TestNodeRegistryParity:
             "consultation.synthesize",
             "core.end",
             "core.start",
+            # TASK-812 — the endpoint stage.
+            "feedback.capture",
             "generate.text",
             "guardrail.check",
             "input.context_binding",
@@ -90,6 +92,7 @@ class TestNodeRegistryParity:
             "output.deliver",
             "passthrough",
             "prompt.template_ref",
+            "session.timeout",
             "stt.asrEngine",
             "stt.audioInput",
             "stt.diarization",
@@ -98,4 +101,5 @@ class TestNodeRegistryParity:
             "stt.phiHop",
             "stt.transcriptOutput",
             "stt.vad",
+            "summary.finalize",
         ]

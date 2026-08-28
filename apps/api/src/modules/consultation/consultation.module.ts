@@ -10,6 +10,7 @@ import {
   TagServiceModule,
   HarnessInternalServiceModule,
   HarnessPolicyServiceModule,
+  ConsultationEndpointServiceModule,
   LiveDocumentationServiceModule,
   HighlightServiceModule,
   HarnessProgressServiceModule,
@@ -62,6 +63,7 @@ import { ConsentInternalController } from './consent-internal.controller';
     // Effective-policy read for the worker's fetch_policy.
     HarnessPolicyServiceModule,
     // Clinical Workflow Playground (WS1/WS2) — live-summary watcher + recording lifecycle.
+    ConsultationEndpointServiceModule,
     LiveDocumentationServiceModule,
     // Manual doctor highlighting.
     HighlightServiceModule,

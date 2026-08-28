@@ -15,6 +15,9 @@ export * from './harness';
 export * from './timeout-sweep';
 // Per-consultation realtime live-summary watcher.
 export * from './live-documentation';
+// TASK-812 — the ENDPOINT STAGE: the three operations that run before a consultation session
+// closes (stamp the disposition, lock EVERY document, capture feedback + promote corrections).
+export * from './endpoint';
 // Loop event plane — publishes ConsultationLoopWorkflow output for
 // the `consultation:loop:{id}` SSE relay.
 export * from './loop';

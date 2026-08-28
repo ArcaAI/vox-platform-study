@@ -760,6 +760,79 @@ const CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA: NodeConfigSchema = Object.freeze(
   },
 });
 
+// ---------------------------------------------------------------------------------------------
+// The ENDPOINT STAGE (TASK-812) — the three `trigger: 'on-end'` node types.
+//
+// Each schema is deliberately SMALL. The endpoint stage's ORDER is not authored here: it lives
+// in the persisted endpoint sequence (`consultation.endpoint.actions`, resolved by
+// `LoopConfigService`), because the order is a property of the sequence and not of any one node.
+// What a node's config carries is only what THAT node does when its turn comes.
+// ---------------------------------------------------------------------------------------------
+
+const SESSION_TIMEOUT_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'session.timeout node config (TASK-812 — the endpoint stage owns the idle bound)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    idleTimeoutSeconds: {
+      type: 'integer',
+      minimum: 0,
+      description:
+        'Idle SILENCE the loop tolerates before the endpoint sequence runs, in seconds. 0 disables the bound. Absent ⇒ the platform value (`harness.loop.idleTimeoutSeconds`). Every arriving context item restarts it, so this measures silence, not consultation length.',
+    },
+    runEndpointOnExpiry: {
+      type: 'boolean',
+      default: true,
+      description:
+        'Whether expiry runs the rest of the endpoint sequence. Defaults TRUE and should stay true: a timed-out consultation that never finalizes silently loses the encounter (D-12). Set false only to reproduce the pre-TASK-812 abandon-on-expiry behaviour.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const SUMMARY_FINALIZE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'summary.finalize node config (TASK-812 / DD-3 — locks EVERY document, not just the SOAP note)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    // There is deliberately NO `documentKey` / `documentKeys` property. DD-3 is that finalize
+    // locks every document of the consultation; a per-node document selector would be the exact
+    // defect it closes — a finalize that locks only the SOAP note leaves a discharge summary
+    // editable after signature.
+    lockConfirmedOnly: {
+      type: 'boolean',
+      default: false,
+      description:
+        'When true, only CONFIRMED sections are locked and PROVISIONAL ones are left writable. Defaults FALSE: a signed encounter freezes whole, including the machine-written sections nobody edited.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+const FEEDBACK_CAPTURE_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'feedback.capture node config (TASK-812 / DD-8 — the ONLY advisory-correction promotion path)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    promoteCorrections: {
+      type: 'boolean',
+      default: true,
+      description:
+        'Whether an ACCEPTED advisory correction is promoted onto the transcript. This node is the only path that can (DD-8); turning it off does not move the promotion elsewhere, it removes it.',
+    },
+    minConfidence: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'Proposals below this confidence are never offered for promotion, even if the payload names them.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
 /**
  * Node-type key -> config JSON Schema. A key ABSENT from this map means no schema has been
  * authored for that node type yet (`WORKFLOW_NODE_REGISTRY[key].configSchema` stays
@@ -801,4 +874,8 @@ export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = O
   'consultation.realtimeSummary': CONSULTATION_REALTIME_SUMMARY_SCHEMA,
   'consultation.suggestions': CONSULTATION_SUGGESTIONS_SCHEMA,
   'consultation.proposeCorrections': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
+  // The endpoint stage (TASK-812), in the order the default sequence runs them.
+  'session.timeout': SESSION_TIMEOUT_SCHEMA,
+  'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
+  'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
 });

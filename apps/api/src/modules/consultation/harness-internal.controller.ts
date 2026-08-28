@@ -1,6 +1,11 @@
 import {
+  CaptureFeedbackRequest,
+  CaptureFeedbackResponse,
+  ConsultationEndpointService,
   ConsultationLoopEventService,
   CreateAgentTrajectoryStepInput,
+  FinalizeDocumentsRequest,
+  FinalizeDocumentsResponse,
   HarnessAssembleRequest,
   HarnessAssuranceAck,
   HarnessAssuranceEventRequest,
@@ -34,6 +39,8 @@ import {
   IPromptManagementService,
   LiveDocumentationService,
   LoopConfigResponse,
+  RecordSessionEndpointRequest,
+  RecordSessionEndpointResponse,
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
@@ -332,6 +339,10 @@ export class HarnessInternalController {
     // proposals). Ephemeral Redis publish; DECLARED PHI-carrying, which is why it
     // is its OWN channel and not a rider on the loop event plane.
     private readonly harnessLiveAssistService: HarnessLiveAssistService,
+    // TASK-812 — the ENDPOINT STAGE. The loop's `session.timeout` / `summary.finalize` /
+    // `feedback.capture` actions call through the three routes below rather than importing
+    // service internals, exactly as `livedoc.start`/`livedoc.stop` already do.
+    private readonly consultationEndpointService: ConsultationEndpointService,
     // TASK-724 Task 5 — batch-trigger binding. `@Optional()` so existing
     // positional test construction keeps its arity and a stack without the
     // STT batch modules wired still boots; the two new routes below throw a
@@ -784,6 +795,68 @@ export class HarnessInternalController {
       this.cls.set('tenantId', dto.tenantId);
       await this.liveDocumentationService.stop(id, { persistSnapshot: dto.persistSnapshot });
       return { ok: true };
+    });
+  }
+
+  // =========================================================================
+  // TASK-812 — the ENDPOINT STAGE (three routes, one per `trigger: 'on-end'` node type)
+  //
+  // None of the three takes an `Idempotency-Key`, and that is deliberate. Each is idempotent by
+  // CONSTRUCTION in the service (a converging upsert, a state transition, a deterministic
+  // promotion key), which is what keeps it correct under a Temporal retry whose key the caller
+  // cannot reproduce. An idempotency header here would make a domain property look like a
+  // transport one, and would quietly stop working the day the harness retried from a fresh
+  // activity attempt.
+  //
+  // Each re-establishes CLS from the body `tenantId`, exactly like the live-documentation pair
+  // above: the harness runs outside the API edge's ClsModule middleware.
+  // =========================================================================
+
+  /** The loop's `session.timeout` action — stamp HOW the consultation session ended. */
+  @Post('consultations/:id/endpoint/session')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Record the consultation endpoint disposition (loop session.timeout action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async recordSessionEndpoint(
+    @Param('id') id: string,
+    @Body() dto: RecordSessionEndpointRequest,
+  ): Promise<RecordSessionEndpointResponse> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+      return this.consultationEndpointService.recordSessionEndpoint(dto.tenantId, id, dto);
+    });
+  }
+
+  /**
+   * The loop's `summary.finalize` action — DD-3, lock EVERY document of the consultation.
+   *
+   * The route carries no document identifier in its path or its body, which is the point: a
+   * finalize that can be narrowed to the SOAP note leaves a discharge summary editable after
+   * signature.
+   */
+  @Post('consultations/:id/endpoint/finalize')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Lock every document of a consultation (loop summary.finalize action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async finalizeDocuments(@Param('id') id: string, @Body() dto: FinalizeDocumentsRequest): Promise<FinalizeDocumentsResponse> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+      return this.consultationEndpointService.finalizeDocuments(dto.tenantId, id, dto);
+    });
+  }
+
+  /**
+   * The loop's `feedback.capture` action — DD-8, the ONLY path that promotes an advisory
+   * transcript correction over the raw channel.
+   */
+  @Post('consultations/:id/endpoint/feedback')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Capture consultation endpoint feedback and promote accepted corrections (loop feedback.capture action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async captureFeedback(@Param('id') id: string, @Body() dto: CaptureFeedbackRequest): Promise<CaptureFeedbackResponse> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+      return this.consultationEndpointService.captureFeedback(dto.tenantId, id, dto);
     });
   }
 

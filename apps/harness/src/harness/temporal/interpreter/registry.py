@@ -41,6 +41,11 @@ with workflow.unsafe.imports_passed_through():
         interpreter_consultation_retrieve_evidence,
         interpreter_consultation_synthesize,
     )
+    from harness.temporal.interpreter.nodes.consultation_endpoint import (
+        interpreter_feedback_capture,
+        interpreter_session_timeout,
+        interpreter_summary_finalize,
+    )
     from harness.temporal.interpreter.nodes.consultation_nlp import (
         interpreter_consultation_bind_terminology,
         interpreter_consultation_extract_entities,
@@ -512,5 +517,54 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=150,
         default_max_attempts=2,
         output_keys={"out": "proposals", "next": None},
+    ),
+    # -----------------------------------------------------------------------------------------
+    # The ENDPOINT STAGE (TASK-812) — the ordered sequence that runs before a consultation
+    # session closes. Mirrors node-registry.ts's matching three entries and the committed parity
+    # fixture exactly.
+    #
+    # All three are `external_write=True`, which is load-bearing in this registry specifically:
+    # `workflow.py` SKIPS any external_write node on a sandboxed run before the activity is ever
+    # scheduled, so a Workbench run of a consultation graph can never lock a real clinician's
+    # note or promote a correction onto a real transcript.
+    #
+    # None is `critical` (CR-14 keeps consentGate/hitlGate the only critical nodes): a feedback
+    # capture that fails must not fail a consultation whose note is already finalized. What
+    # protects the clinical work is ORDER — the default sequence runs finalize before anything
+    # that may legitimately degrade — not criticality.
+    #
+    # `max_attempts=3` on all three because they are idempotent by construction (converging
+    # upsert / state transition / deterministic promotion key), which is exactly the property
+    # that makes a retry safe rather than a second write.
+    # -----------------------------------------------------------------------------------------
+    "session.timeout": NodeSpec(
+        key="session.timeout",
+        implemented=True,
+        activity=interpreter_session_timeout,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    "summary.finalize": NodeSpec(
+        key="summary.finalize",
+        implemented=True,
+        activity=interpreter_summary_finalize,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    "feedback.capture": NodeSpec(
+        key="feedback.capture",
+        implemented=True,
+        activity=interpreter_feedback_capture,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
     ),
 }

@@ -23,7 +23,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from harness.core.provider_credentials import ProviderCredential
 from harness.sensors.base import NEREntity, normalize_text
 from harness.temporal.claim_check import ClaimCheckRef
-from harness.temporal.models import SegmentCitationRef
+from harness.temporal.models import (
+    CaptureFeedbackResponse,
+    FinalizeDocumentsResponse,
+    RecordSessionEndpointResponse,
+    SegmentCitationRef,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -1070,6 +1075,116 @@ class ApiClient:
         )
         data = await self._post(f"/consultations/{consultation_id}/loop-event", body)
         return bool(data.get("ok", False))
+
+    # ---------------------------------------------------------------------
+    # TASK-812 — the ENDPOINT STAGE (three routes, one per endpoint node type)
+    #
+    # None of the three sends an ``Idempotency-Key``, and that is deliberate:
+    # each is idempotent by CONSTRUCTION on the gateway side (converging write /
+    # state transition / deterministic promotion key), so it stays correct under
+    # a Temporal retry whose key the caller cannot reproduce. An idempotency
+    # header would make the safety look like a transport property when it is a
+    # domain property.
+    # ---------------------------------------------------------------------
+
+    async def record_session_endpoint(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        reason: str,
+        idle_timeout_seconds: int | None = None,
+        sequence: list[str] | None = None,
+        user_id: str | None = None,
+        job_id: str | None = None,
+    ) -> RecordSessionEndpointResponse:
+        """Stamp the consultation's endpoint DISPOSITION (how the session ended).
+
+        ``reason`` is ``ENDED`` / ``TIMED_OUT`` / ``CANCELLED``. The gateway upserts one
+        disposition per consultation, so a retry converges and reports ``changed: False``.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "reason": reason,
+                "idleTimeoutSeconds": idle_timeout_seconds,
+                "sequence": sequence or None,
+                "userId": user_id,
+                "jobId": job_id,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/endpoint/session", body)
+        return RecordSessionEndpointResponse(
+            recorded=bool(data.get("recorded", False)),
+            changed=bool(data.get("changed", False)),
+            reason=str(data.get("reason", reason)),
+        )
+
+    async def finalize_documents(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        lock_confirmed_only: bool = False,
+        user_id: str | None = None,
+        job_id: str | None = None,
+    ) -> FinalizeDocumentsResponse:
+        """DD-3 — lock EVERY document of the consultation, not just the SOAP note."""
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "lockConfirmedOnly": lock_confirmed_only or None,
+                "userId": user_id,
+                "jobId": job_id,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/endpoint/finalize", body)
+        keys = data.get("documentKeys")
+        return FinalizeDocumentsResponse(
+            document_keys=[k for k in keys if isinstance(k, str)] if isinstance(keys, list) else [],
+            locked_sections=int(data.get("lockedSections", 0) or 0),
+            already_locked=int(data.get("alreadyLocked", 0) or 0),
+            skipped_sections=int(data.get("skippedSections", 0) or 0),
+        )
+
+    async def capture_feedback(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        accepted_proposals: list[dict[str, Any]] | None = None,
+        context_item_id: str | None = None,
+        text_sha256: str | None = None,
+        rating: int | None = None,
+        comment: str | None = None,
+        user_id: str | None = None,
+        job_id: str | None = None,
+    ) -> CaptureFeedbackResponse:
+        """DD-8 — capture endpoint feedback and PROMOTE any accepted advisory correction.
+
+        This is the only client method that can turn a ``consultation.proposeCorrections``
+        proposal into a real correction over the raw channel.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "contextItemId": context_item_id,
+                "textSha256": text_sha256,
+                "acceptedProposals": accepted_proposals or None,
+                "rating": rating,
+                "comment": comment,
+                "userId": user_id,
+                "jobId": job_id,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/endpoint/feedback", body)
+        return CaptureFeedbackResponse(
+            captured=bool(data.get("captured", False)),
+            promoted_count=int(data.get("promotedCount", 0) or 0),
+            rejected_count=int(data.get("rejectedCount", 0) or 0),
+            promotion_key=data.get("promotionKey") or None,
+            already_promoted=bool(data.get("alreadyPromoted", False)),
+        )
 
     async def report_assurance_event(
         self,

@@ -79,7 +79,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed + boundary + summarization-palette + stt-palette + consultation-palette keys, no more, no less', () => {
+  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
       'consultation.assemblePrompt',
       'consultation.bindTerminology',
@@ -99,6 +99,9 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'consultation.synthesize',
       'core.end',
       'core.start',
+      // TASK-812 — the endpoint stage. Sorted position, not pipeline position; the list is
+      // asserted sorted so a future addition never looks like a reorder.
+      'feedback.capture',
       'generate.text',
       'guardrail.check',
       'input.context_binding',
@@ -106,6 +109,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'output.deliver',
       'passthrough',
       'prompt.template_ref',
+      'session.timeout',
       'stt.asrEngine',
       'stt.audioInput',
       'stt.diarization',
@@ -114,6 +118,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'stt.phiHop',
       'stt.transcriptOutput',
       'stt.vad',
+      'summary.finalize',
     ]);
   });
 });

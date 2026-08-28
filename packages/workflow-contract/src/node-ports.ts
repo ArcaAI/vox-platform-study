@@ -306,6 +306,33 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
     [port('in', 'text', true, false), port('entities', 'entities', false, true), AFTER],
     [port('out', 'edits', true, true, { outputKey: 'proposals' }), NEXT],
   ),
+
+  // -------------------------------------------------------------------------------------------
+  // The ENDPOINT STAGE (TASK-812). Three `trigger: 'on-end'` nodes — the ordered sequence that
+  // runs before a consultation session closes.
+  //
+  // All three declare CONTROL ports only on the output side, and that is a deliberate,
+  // load-bearing choice rather than an unfinished table. Each one's product is a STATE CHANGE,
+  // not a value: a stamped endpoint disposition, a set of LOCKED sections, a promoted
+  // correction. `output.deliver` sets the precedent — the palette's other terminal writer also
+  // declares `[NEXT]` and nothing else. Inventing a data output would mean picking a port type
+  // for it, and every candidate in the closed vocabulary would be a lie: an endpoint disposition
+  // is not a `verdict`, and "the documents I locked" is not a `document`.
+  //
+  // `feedback.capture.in: edits` is the exception, and it is the whole of DD-8. It is the ONLY
+  // `edits`-consuming node in the registry that also declares `externalWrite`, which is what
+  // makes "the only path that promotes an advisory transcript correction over the raw channel"
+  // a structural property of the port table rather than a convention someone has to remember.
+  // `consultation.proposeCorrections` produces `edits` and writes nothing; this node is where
+  // those `edits` can become real, and there is nowhere else for them to go.
+  // -------------------------------------------------------------------------------------------
+  'session.timeout': ports([AFTER], [NEXT]),
+  // `in: document` (optional, multiple): finalize legitimately runs after any number of document
+  // producers, and DD-3 is that it locks EVERY document of the consultation — not merely the
+  // ones wired into it. The port expresses ordering intent; the activity's scope is the
+  // consultation, which is why the edge is optional.
+  'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
+  'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the
