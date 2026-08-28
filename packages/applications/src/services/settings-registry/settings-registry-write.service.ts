@@ -116,6 +116,7 @@ export interface WriteRegistrySettingResult {
  *   4. `assertWithinMaxScope`     → 400 on a too-deep scope
  *   5. tier dispatch              → 400 for anything but `global-kv`
  *   6. value validated against `dataType`
+ *   6b. descriptor-declared `validate` invariant (ordering / cross-field) → 400
  *   7. upsert the backing row, broadcast a sys-event, refresh the read cache
  */
 @Injectable()
@@ -186,7 +187,24 @@ export class SettingsRegistryWriteService extends BaseService {
     // 6. Type validation against the declared dataType.
     const { serialized, valueType } = this.serialize(descriptor, value);
 
-    // 6b. The tighten-only floor, for keys that DECLARE one
+    // 6b. The descriptor's own INVARIANT, for keys that DECLARE one
+    //     (`descriptor.validate`). Runs here and not earlier because an invariant may only be
+    //     handed a value already known to be well-typed — step 6 is what establishes that.
+    //
+    //     WHY THIS IS NOT AN `if (key === …)`. `dataType` classifies a value's SHAPE and cannot
+    //     express a relationship between its entries, which is exactly where the consultation
+    //     endpoint sequence goes wrong: five valid keys in an order that locks the consultation's
+    //     documents before the step that writes the note into them. The rule belongs to the KEY,
+    //     so it is declared on the key's descriptor and enforced generically here — registering a
+    //     descriptor stays the only thing needed to govern a setting.
+    //
+    //     The descriptor's message IS the admin's explanation; it is passed through verbatim.
+    const invariantProblem = descriptor.validate?.(value);
+    if (invariantProblem) {
+      throw new ArgumentInvalidException(`Setting '${key}' was refused: ${invariantProblem}`);
+    }
+
+    // 6c. The tighten-only floor, for keys that DECLARE one
     //     (`descriptor.floorDirection`). A tenant-scope write may move such a
     //     key towards more safety and nowhere else; a loosening write is
     //     REJECTED (403), never silently clamped, so an admin is told rather

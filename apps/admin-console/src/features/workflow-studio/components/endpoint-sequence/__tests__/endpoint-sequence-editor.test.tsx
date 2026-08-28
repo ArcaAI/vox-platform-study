@@ -178,6 +178,39 @@ describe('EndpointSequenceEditor', () => {
     expect(screen.getByText(/without finalizing or locking any document/)).toBeDefined();
   });
 
+  // The ORDERING invariant (§7a owner note 1). `harness.finalize` writes the note;
+  // `summary.finalize` locks every document of the consultation. Inverted, a consultation closes
+  // on an empty record — so the server refuses that write and this warning says so first. The
+  // warning is ADVISORY; the enforcement is `endpointOrderProblem` on the descriptor.
+  it('warns when the documents would be locked before the note is written', async () => {
+    stubFetch({ value: ['summary.finalize', 'harness.finalize'] });
+    renderWithProviders(<EndpointSequenceEditor scope="tenant" />);
+
+    await screen.findByText('Lock every document');
+    expect(screen.getByText('Documents are locked before the note is written')).toBeDefined();
+  });
+
+  it('does not warn for the platform default order', async () => {
+    stubFetch({ value: ['livedoc.stop', 'session.timeout', 'harness.finalize', 'summary.finalize', 'feedback.capture'] });
+    renderWithProviders(<EndpointSequenceEditor scope="tenant" />);
+
+    await screen.findByText('Lock every document');
+    expect(screen.queryByText('Documents are locked before the note is written')).toBeNull();
+  });
+
+  // Advisory means LIVE: it has to track the draft the admin is building, not the stored value,
+  // or it would only ever appear for an order that was already saved.
+  it('clears the warning as soon as the order is corrected', async () => {
+    stubFetch({ value: ['summary.finalize', 'harness.finalize'] });
+    renderWithProviders(<EndpointSequenceEditor scope="tenant" />);
+
+    await screen.findByText('Documents are locked before the note is written');
+    fireEvent.click(screen.getByRole('button', { name: 'Move Lock every document later' }));
+
+    expect(renderedOrder()).toEqual(['harness.finalize', 'summary.finalize']);
+    expect(screen.queryByText('Documents are locked before the note is written')).toBeNull();
+  });
+
   it('has no axe violations', async () => {
     stubFetch();
     const { container } = renderWithProviders(<EndpointSequenceEditor scope="tenant" />);
