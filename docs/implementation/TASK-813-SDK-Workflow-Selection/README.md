@@ -359,3 +359,37 @@ inventory (27 `@Public() /internal/*` routes) is unaffected.
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-1 and OD-14. |
 | 2026-08-29 | Implemented on `lane-813-sdk`: six-point change, the 404/403 selector gate, the discovery route + `useConsultationWorkflow()`, OD-14 credential split in both SDK READMEs, five artifacts regenerated. Status → `Review`; merge pending with the orchestrator. |
+
+## 8. Recorded gap — selection shipped without in-band discovery of the SELECTABLE set
+
+Raised by the implementing agent, verified by the orchestrator, **not built here.**
+
+A developer can now pass `workflowDefinitionSlug` at session-open, and the gate
+(`assertSelectableForConsultation`) decides whether it is allowed. But there is **no route that
+returns the set of slugs that would pass that gate.** `GET /workflows` is not it: it is gated
+`CanList('WorkflowDefinition')` + scope `workflow:definition:read` — which a clinician-facing
+integration need not hold — and it lists every palette rather than the consultation-selectable
+subset.
+
+So the API is currently "guess a slug, get a 404/403". That is a usable contract but a poor one,
+and it is the missing half of this ticket's own name.
+
+**The design that fixes it, and why that shape specifically:** the authorized set and the
+discoverable set must be **one predicate with two consumers** — the gate answers it for a single
+slug, a discovery route answers it for the whole tenant. Implemented that way they are incapable
+of drifting apart. Implemented as two independent queries they will drift, and the failure is
+silent: a slug the list advertises but the gate refuses, or worse, one the gate allows but the
+list hides.
+
+Deliberately deferred rather than bolted on — a discovery route is a new authorization surface
+(who may enumerate a tenant's consultation workflows?) and deserves its own decision, not a
+by-product of this ticket. **Owner decision needed** on whether it belongs to a follow-on ticket
+or to TASK-816.
+
+### Also recorded (behaviour, documented not changed)
+
+A selector sent to an ALREADY-OPEN consultation, or on a re-visit, is authorized but cannot take
+effect — dispatch is create-only. Both cases are logged and the DTO documents it. The agent chose
+not to add a route-specific rejection this ticket does not own; that is the right call, but it
+means a caller can send a selector, receive `200`, and be governed by something else. If that
+matters to an integrator it needs a deliberate 409, not a silent no-op.
