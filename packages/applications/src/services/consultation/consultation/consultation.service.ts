@@ -1,4 +1,13 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException, Inject, Logger, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  ServiceUnavailableException,
+  Inject,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BusinessException } from '@arcaai/exceptions';
@@ -14,6 +23,7 @@ import {
   UserDepartmentRepository,
   UserRepository,
   UserRoleAssignmentRepository,
+  WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { IConsultationService } from './IConsultationService';
 import {
@@ -21,6 +31,7 @@ import {
   UpdateConsultationRequest,
   ConsultationResponse,
   ConsultationAggregateResponse,
+  ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
@@ -30,6 +41,7 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessAuditService } from '../../harness-audit';
 import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
+import { readGoverningEngineMarker } from '../governing-engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
@@ -78,6 +90,13 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // is written and the ABAC gate will refuse recording, which is why
     // `getOrCreate` logs loudly rather than silently when it is unwired.
     @Optional() @Inject(IConsentGrantService) private readonly consentGrantService?: IConsentGrantService,
+    // TASK-813 — optional + trailing (append-only DI, like every dependency above it). READ-ONLY,
+    // and used for discovery alone: `getGoverningWorkflow` decorates the durable marker with the
+    // definition's human-readable identity. Absent ⇒ the route still answers, with that identity
+    // degraded to null — never an error, because "which engine governs" must stay answerable.
+    // The SELECTION gate deliberately does NOT use this: authorizing a selection is dispatch
+    // policy and lives with the dispatcher, which owns the palette rule.
+    @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -120,6 +139,81 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
+   * TASK-813 OD-1 point 6 — no-op when the caller made no selection; otherwise delegate to the
+   * dispatcher's gate, which raises 404 for an invisible definition and 403 for a visible one
+   * that cannot govern a consultation.
+   *
+   * The unwired branch is a 503 on purpose. Every other absent-dependency path in this service
+   * degrades (the audit trail no-ops, the kill-switch reads OFF, the cascade is simply not
+   * consulted) because nothing was ASKED for. Here something was: the caller named a workflow,
+   * and a deployment that cannot honour it would otherwise return 201 for a consultation
+   * governed by the default engine. Refusing is retryable and legible; the silent substitution
+   * is neither.
+   */
+  private async assertWorkflowSelectionAllowed(tenantId: string, workflowDefinitionSlug?: string): Promise<void> {
+    if (!workflowDefinitionSlug) return;
+
+    if (!this.workflowDispatchService) {
+      this.logger.error({
+        message:
+          'A workflow was selected but consultation workflow dispatch is NOT WIRED — refusing rather than silently opening under the default engine',
+        requestedWorkflowDefinitionSlug: workflowDefinitionSlug,
+      });
+      throw new ServiceUnavailableException('Workflow selection is not available on this deployment');
+    }
+
+    await this.workflowDispatchService.assertSelectableForConsultation(tenantId, workflowDefinitionSlug);
+  }
+
+  /**
+   * TASK-813 — WHICH engine governs a consultation (see `ConsultationWorkflowResponse`).
+   *
+   * Reads the durable marker `ConsultationWorkflowDispatchService` wrote at open, through the
+   * SAME well-formedness rule `LoopContextSignalService` gates on, so discovery can never
+   * disagree with the engine that is actually writing the document.
+   *
+   * Decoration with the definition's identity is best-effort: a slug that has since been
+   * unpublished still answers, with `name`/`activeVersionNumber` null. "Which engine governs" is
+   * exactly the question a client asks when something looks wrong, so it must not itself fail
+   * when something is wrong.
+   */
+  async getGoverningWorkflow(consultationId: string): Promise<ConsultationWorkflowResponse> {
+    const consultation = await this.consultationRepository.findById(consultationId);
+    if (!consultation) {
+      throw new NotFoundException(`Consultation ${consultationId} not found`);
+    }
+
+    const marker = readGoverningEngineMarker(consultation.metadata);
+
+    const base: ConsultationWorkflowResponse = {
+      consultationId,
+      governed: marker !== null,
+      workflowDefinitionSlug: marker?.workflowDefinitionSlug || null,
+      workflowRunId: marker?.workflowRunId ?? null,
+      decidedAt: marker?.decidedAt ?? null,
+      name: null,
+      description: null,
+      paletteKey: null,
+      activeVersionNumber: null,
+      // No per-definition input schema is declared anywhere in the substrate. See the DTO.
+      inputSchema: null,
+    };
+
+    if (!base.workflowDefinitionSlug || !this.workflowDefinitionRepository) return base;
+
+    const definition = await this.workflowDefinitionRepository.findPublishedBySlug(consultation.tenantId, base.workflowDefinitionSlug);
+    if (!definition) return base;
+
+    return {
+      ...base,
+      name: definition.name,
+      description: definition.description ?? null,
+      paletteKey: definition.paletteKey,
+      activeVersionNumber: definition.versionNumber,
+    };
+  }
+
+  /**
    * Get or create consultation for (patientId, doctorId, appointmentDate)
    *
    * - If consultation exists: returns existing
@@ -139,6 +233,19 @@ export class ConsultationService extends BaseService implements IConsultationSer
       parentConsultationId: request.parentConsultationId,
     });
 
+    // TASK-813 OD-1 point 6 — authorize the caller's workflow SELECTION here, before the
+    // get-or-create branch and before any write.
+    //
+    // Order is the security property, twice over:
+    //
+    //   * BEFORE the write, because `dispatchForConsultation` is best-effort by contract and
+    //     swallows its own failures. A gate placed inside it would turn a refused request into a
+    //     201 whose consultation is quietly governed by something else.
+    //   * BEFORE the existing-consultation lookup, because the answer to "may I select this
+    //     workflow?" must not depend on whether a consultation for (patient, doctor, date)
+    //     happens to already exist. Otherwise the status code itself reports that.
+    await this.assertWorkflowSelectionAllowed(tenantId, request.workflowDefinitionSlug);
+
     // Use today's date if not provided
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]); // Today, no time
 
@@ -146,6 +253,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const existing = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, doctorId);
 
     if (existing) {
+      // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
+      // so there is no dispatch left to steer. Say so rather than let the caller believe their
+      // pick took effect — `GET /consultations/:id/workflow` reports what actually governs.
+      if (request.workflowDefinitionSlug) {
+        this.logger.log({
+          message: 'Workflow selection ignored — this consultation is already open and its governing engine was decided at its own open',
+          consultationId: existing.id,
+          requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+        });
+      }
+
       this.broadcastSysEvent(SysEventType.ResourceViewed, {
         resourceId: existing.id,
         data: { action: 'getOrCreate', found: true },
@@ -230,6 +348,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
         departmentId: saved.departmentId,
         userId: userId ?? doctorId,
         externalPatientId: saved.patientId,
+        // Already authorized above; the dispatcher re-verifies rather than trusts.
+        workflowDefinitionSlug: request.workflowDefinitionSlug,
       });
       this.logger.log({
         message: dispatch.dispatched
@@ -269,6 +389,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
       departmentId: request.departmentId,
       parentConsultationId,
     });
+
+    // TASK-813 — a re-visit does not dispatch a consultation workflow at all (only `getOrCreate`
+    // stamps `trigger: 'consultation open'`), so a selector here has nothing to steer. Logged
+    // rather than silently dropped; the DTO field documents that `open` is the only route that
+    // honours it.
+    if (request.workflowDefinitionSlug) {
+      this.logger.log({
+        message: 'Workflow selection ignored — a re-visit dispatches no consultation workflow',
+        parentConsultationId,
+        requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+      });
+    }
 
     const appointmentDate = request.appointmentDate ? new Date(request.appointmentDate) : new Date(new Date().toISOString().split('T')[0]);
 

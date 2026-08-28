@@ -125,6 +125,9 @@ export {
   UNCONFIGURED_CONSULTATION_SCHEMA_BUNDLE,
 } from './consultationSchema';
 
+// TASK-813 — consultation workflow DISCOVERY (which engine governs a consultation).
+export type { ConsultationWorkflow } from './consultationWorkflow';
+
 // Consultation-loop workflow event types
 export type { LoopEvent } from './loopEvent';
 

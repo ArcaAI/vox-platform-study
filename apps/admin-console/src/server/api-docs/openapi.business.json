@@ -3208,6 +3208,64 @@
         ],
         "type": "object"
       },
+      "ConsultationWorkflowResponse": {
+        "properties": {
+          "activeVersionNumber": {
+            "description": "The slug's CURRENTLY active published version — not necessarily the version that ran, if the tenant has republished since.",
+            "nullable": true,
+            "type": "number"
+          },
+          "consultationId": {
+            "description": "The consultation this answer is about.",
+            "type": "string"
+          },
+          "decidedAt": {
+            "description": "When the governing decision was taken, ISO-8601.",
+            "nullable": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Free-text description of the governing definition.",
+            "nullable": true,
+            "type": "string"
+          },
+          "governed": {
+            "description": "True when a tenant-authored `consultation`-palette workflow governs this consultation (Substrate B). False means the default consultation loop governs (Substrate A) — the platform default, and what every consultation with no assignment and no selection gets.",
+            "type": "boolean"
+          },
+          "inputSchema": {
+            "additionalProperties": true,
+            "description": "Always null: no per-definition input schema is declared anywhere in the substrate yet. See the class doc.",
+            "nullable": true,
+            "type": "object"
+          },
+          "name": {
+            "description": "Human-readable name of the governing definition; null if it is no longer published.",
+            "nullable": true,
+            "type": "string"
+          },
+          "paletteKey": {
+            "description": "The governing definition's palette — `consultation` for anything that can govern.",
+            "nullable": true,
+            "type": "string"
+          },
+          "workflowDefinitionSlug": {
+            "description": "Slug of the governing definition; null when the default loop governs.",
+            "nullable": true,
+            "type": "string"
+          },
+          "workflowRunId": {
+            "description": "The interpreter run that took ownership of this consultation.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "consultationId",
+          "governed"
+        ],
+        "type": "object"
+      },
       "ConsumptionConsultations": {
         "properties": {
           "today": {
@@ -10327,6 +10385,11 @@
           },
           "patientId": {
             "description": "Patient identifier",
+            "type": "string"
+          },
+          "workflowDefinitionSlug": {
+            "description": "Workflow definition slug to govern this consultation, overriding the assignment cascade. Must be one of the tenant's own published, active `consultation`-palette definitions: an invisible slug is 404, a visible-but-unselectable one 403. Honoured on `open` only.",
+            "example": "discharge_summary",
             "type": "string"
           }
         },
@@ -28417,6 +28480,65 @@
         "x-hope-abilities": [],
         "x-hope-api-key-scopes": [
           "consultation:session:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/consultations/{id}/workflow": {
+      "get": {
+        "description": "`governed: false` means the platform default consultation loop governs — the outcome for every consultation with no workflow assignment and no selection at open, and also the fallback when dispatch of a selected workflow could not proceed. `inputSchema` is always null: no per-definition input schema is declared anywhere in the substrate yet, and the field is present so declaring one later is additive rather than a new field to discover.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationController_getGoverningWorkflow",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationWorkflowResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Unknown or cross-tenant consultation id."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Which engine governs this consultation, and the identity of the tenant-authored workflow when one does.",
+        "tags": [
+          "consultations"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "consultation:session:read"
         ],
         "x-hope-credentials": [
           "user-jwt",
