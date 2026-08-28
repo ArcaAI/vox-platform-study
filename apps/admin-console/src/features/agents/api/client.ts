@@ -13,19 +13,13 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   AgentEvalRunList,
-  AgentPromotion,
   AssignDepartmentRequest,
-  CreateDepartmentAgentRequest,
   CreateTemplateRequest,
   Department,
-  DepartmentAgent,
-  DepartmentAgentVersion,
   EvalGoldenCaseList,
   EvalGoldenSetList,
   EvalRunTrigger,
   ListAgentEvalRunsParams,
-  ListAgentPromotionsParams,
-  ListDepartmentAgentsParams,
   ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
   ListTemplatesParams,
@@ -38,9 +32,7 @@ import type {
   PromptUsageStats,
   PromptVersion,
   PromptVersionDiff,
-  ResolvedContextSchemaBundle,
   TestTemplateRequest,
-  UpdateDepartmentAgentRequest,
   UpdateTemplateRequest,
 } from './types';
 
@@ -168,73 +160,6 @@ export function listDepartments(): Promise<Department[]> {
   return getJson('admin/departments');
 }
 
-/**
- * `DepartmentAgent` CRUD (`admin/department-agents`) — the Agent
- * Catalog's first-class rows. ZERO-based `page`, the platform standard (this
- * endpoint does NOT share the ONE-based deviation of `admin/prompt-templates`
- * above).
- */
-const DEPARTMENT_AGENTS_BASE = 'admin/department-agents';
-
-const departmentAgentPath = (id: string) => `${DEPARTMENT_AGENTS_BASE}/${encodeURIComponent(id)}`;
-
-export function listDepartmentAgents(params?: ListDepartmentAgentsParams): Promise<Paginated<DepartmentAgent>> {
-  return getJson(DEPARTMENT_AGENTS_BASE, params);
-}
-
-/** Detail read keeping the ETag for the later PATCH. */
-export function getDepartmentAgent(id: string): Promise<WithEtag<DepartmentAgent>> {
-  return getWithEtag(departmentAgentPath(id));
-}
-
-export function createDepartmentAgent(body: CreateDepartmentAgentRequest): Promise<DepartmentAgent> {
-  return postJson(DEPARTMENT_AGENTS_BASE, body);
-}
-
-/** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
-export function updateDepartmentAgent(id: string, patch: UpdateDepartmentAgentRequest, etag: string): Promise<WithEtag<DepartmentAgent>> {
-  return patchWithEtag(departmentAgentPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
-}
-
-/** Soft delete (the platform never hard-deletes). 403s on a locked template copy. */
-export function deleteDepartmentAgent(id: string): Promise<DepartmentAgent> {
-  return deleteJson(departmentAgentPath(id));
-}
-
-/** Atomic default flip within the row's department — NOT If-Match gated. */
-export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> {
-  return postJson(`${departmentAgentPath(id)}/set-default`);
-}
-
-/**
- * Pin (or, with `null`, track latest APPROVED). Content-affecting but NOT
- * If-Match gated — the server validates the target version server-side
- * (400 if it isn't an existing APPROVED snapshot; 403 on a locked template).
- */
-export function pinDepartmentAgent(id: string, versionNumber: number | null): Promise<DepartmentAgent> {
-  return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
-}
-
-/**
- * The immutable loop-configuration version history, newest
- * first — a plain array like `listVersions` on the PromptTemplate surface
- * above, never a paginated envelope.
- */
-export function listDepartmentAgentVersions(id: string): Promise<DepartmentAgentVersion[]> {
-  return getJson(`${departmentAgentPath(id)}/versions`);
-}
-
-/**
- * The RESOLVED consultation context schema a department's loop
- * config must pick `subscribedKinds`/`writeScope` from — `GET
- * tenants/me/context-schema`, the client-discovery sibling of `/tenants/me/config`
- * (never the admin CRUD surface, which is its own feature). A tenant
- * with nothing configured gets a 200 with null fields, not a 404.
- */
-export function getResolvedContextSchema(departmentId?: string): Promise<ResolvedContextSchemaBundle> {
-  return getJson('tenants/me/context-schema', departmentId ? { departmentId } : undefined);
-}
-
 // ---------------------------------------------------------------------------
 // Eval-gated promotion — golden-set picker + scoped eval-run read
 // + run-now for the Governance tab's Eval panel. Golden-set CRUD and the full
@@ -274,9 +199,3 @@ export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
 // ticket's scope; only the audit trail it writes is surfaced here.
 // ---------------------------------------------------------------------------
 
-const AGENT_PROMOTIONS_BASE = 'admin/agent-promotions';
-
-/** ZERO-based `page`, the platform standard (matches `listDepartmentAgents` above). */
-export function listAgentPromotions(params?: ListAgentPromotionsParams): Promise<Paginated<AgentPromotion>> {
-  return getJson(AGENT_PROMOTIONS_BASE, params);
-}

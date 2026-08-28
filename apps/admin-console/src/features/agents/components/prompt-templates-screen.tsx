@@ -7,11 +7,11 @@
  *
  * Why its own route rather than a tab of `/agents`: the templates and the
  * governance surface were buried two tabs deep inside a screen titled "Agent
- * Catalog", which is why the pre-summary/summary distinction (the actual
- * subject of ) had nowhere to live. `/agents` now owns exactly one
- * resource — the `DepartmentAgent` catalog — and this screen owns
- * `PromptTemplate` end to end, keeping one authoritative editor per backend
- * resource (rule 13).
+ * Catalog", which is why the pre-summary/summary distinction had nowhere to
+ * live. That screen owned the `DepartmentAgent` catalog and is now gone
+ * entirely (TASK-815 retired the resource; `/agents` keeps a one-release
+ * redirect HERE). This screen owns `PromptTemplate` end to end, keeping one
+ * authoritative editor per backend resource (rule 13).
  *
  * Tabs:
  *   Fallbacks — the resolution map: which template is the tenant-wide
