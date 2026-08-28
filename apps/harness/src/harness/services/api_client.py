@@ -348,12 +348,11 @@ class ApiClient:
         :class:`ApiServiceError` on any transport/HTTP error so the workflow can fall
                 back to the code defaults.
 
-                when ``consultation_id`` is supplied it is threaded onto the query
-                so the gateway overlays the consultation's department default
-                ``DepartmentAgent`` tenant-tier ``harnessOverrides`` (most specific wins). The
-                response SHAPE is unchanged (same keys, different values, plus an additive
-                ``overridesSource`` provenance field). Omitted ⇒ byte-identical prior
-                request, so other gateway callers are unaffected.
+                ``consultation_id`` is threaded onto the query when supplied, but as of
+                TASK-815 / OD-12 the gateway no longer overlays anything on it: the
+                per-agent ``harnessOverrides`` tier was retired with ``DepartmentAgent``,
+                and the ``overridesSource`` provenance field is gone from the response.
+                The parameter is kept because the gateway route still accepts it.
 
                 TASK-740 D-1: when ``task_key`` is supplied the gateway resolves
                 ``textProvider``/``textModel`` from the ``AiTaskDefault`` row for THAT key

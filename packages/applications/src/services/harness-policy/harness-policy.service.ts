@@ -3,9 +3,7 @@ import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { assertExpectedVersion } from '../../common/assertExpectedVersion';
 import { ClsService } from 'nestjs-cls';
 import {
-  ConsultationRepository,
   CoreDatabaseService,
-  DepartmentAgentRepository,
   HARNESS_POLICY_DEFAULTS,
   HarnessPolicyChangeFactory,
   HarnessPolicyChangeRepository,
@@ -17,14 +15,13 @@ import {
   SYSTEM_TENANT_ID,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../interfaces';
-import { TENANT_TIER_HARNESS_OVERRIDE_KEYS } from '../departmentAgent/constants';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { McpServerDtoMapper } from '../mcp-server/mcp-server.dto.mapper';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { AGENTIC_CONTEXT_KEY_PREFIX } from '../settings-registry/descriptors/agentic-context.descriptors';
 import type { McpServerResponse } from '../mcp-server/dto';
-import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
+import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
  * the TEXT routing tasks the loop discriminates on:
@@ -179,15 +176,6 @@ const SUPER_ADMIN_ONLY_POLICY_KEYS = [
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
-/**
- * Read-time allow-list for per-agent `harnessOverrides`. Reuses the
- * EXACT set validates on write (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`) so
- * the read and write sides can never diverge. Any override key NOT in here is a
- * super-admin-only knob (OD-2) and is dropped defense-in-depth before it can
- * reach the harness — mirroring the SYSTEM overlay of `SUPER_ADMIN_ONLY_POLICY_KEYS`.
- */
-const TENANT_TIER_OVERRIDE_KEY_SET: ReadonlySet<string> = new Set(TENANT_TIER_HARNESS_OVERRIDE_KEYS);
-
 /** Read the knob values off a hydrated entity (getters are not enumerable). */
 function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
   return {
@@ -283,12 +271,6 @@ export class HarnessPolicyService {
     // Settings-registry read facade for the per-run token budget.
     // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
-    // Per-department-agent harness overrides. Both optional + trailing
-    // so existing fixtures keep their construction arity; absent ⇒ the overlay is
-    // a no-op (the effective policy resolves exactly as before). Consultation →
-    // departmentId → department default DepartmentAgent → tenant-tier overrides.
-    @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
-    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
   ) {}
 
   /**
@@ -374,13 +356,19 @@ export class HarnessPolicyService {
    * `tenantId` defaults to the CLS tenant; the worker-facing internal endpoint
    * passes it explicitly.
    *
-   * When `opts.consultationId` is supplied, the consultation's
-   * department default `DepartmentAgent.harnessOverrides` is layered on top of
-   * the resolved policy (tenant-tier keys ONLY; global-only keys dropped +
-   * warned defense-in-depth). Resolution order becomes: code default → SYSTEM →
-   * tenant → department-agent overrides (most specific wins). The overlay is
-   * best-effort and never sinks the policy read; with no consultationId the
-   * result is byte-identical to the prior behaviour.
+   * `opts.consultationId` NO LONGER SELECTS ANYTHING (TASK-815 / OD-12). It used
+   * to layer the consultation's department default `DepartmentAgent.harnessOverrides`
+   * on top of the resolved policy — an overlay that ran on EVERY return path.
+   * The owner decision was to RETIRE that tier outright rather than repoint it:
+   * a per-agent override tier has no successor in the workflow substrate, where
+   * a node's safety envelope is the node's own config and the tenant's harness
+   * policy is the tenant's. Resolution is therefore back to
+   * `code default → SYSTEM → tenant`, and `overridesSource` is gone with it.
+   *
+   * The PARAMETER is retained because `harness-internal.controller.ts` threads it
+   * from a wire route the Temporal worker calls, and that controller is not this
+   * ticket's to edit. Removing the query param is a follow-on for whoever owns
+   * that module; nothing reads it here.
    *
    * When `opts.taskKey` is supplied (TASK-740 D-1) the `AiTaskDefault` row for
    * that key — resolved tenant → SYSTEM by `AiTaskDefaultService.getEffective` —
@@ -392,7 +380,6 @@ export class HarnessPolicyService {
   async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string; taskKey?: string }): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
-    const consultationId = opts?.consultationId;
     // D-1: the task key SELECTS the model. Resolved once and overlaid on every
     // return path below, exactly like `judge` — null ⇒ keep the policy columns.
     const taskSelection = opts?.taskKey ? await this.resolveTextSelectionForKey(opts.taskKey, tid) : null;
@@ -432,7 +419,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
+      return applyTaskSelection(resp);
     }
 
     const sys = await this.policyRepository.findSystemDefault();
@@ -442,7 +429,7 @@ export class HarnessPolicyService {
       resp.judgeModel = judge.judgeModel;
       resp.mcpServers = mcpServers;
       resp.tokenBudgetPerRun = tokenBudgetPerRun;
-      return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
+      return applyTaskSelection(resp);
     }
 
     const resp = codeDefaultResponse(tid);
@@ -450,73 +437,7 @@ export class HarnessPolicyService {
     resp.judgeModel = judge.judgeModel;
     resp.mcpServers = mcpServers;
     resp.tokenBudgetPerRun = tokenBudgetPerRun;
-    return this.applyAgentOverrides(applyTaskSelection(resp), tid, consultationId);
-  }
-
-  /**
-   * Layer the consultation's department default `DepartmentAgent`
-   * tenant-tier overrides on top of the resolved policy. Called on EVERY
-   * `getEffectivePolicy` return path (most specific wins); a no-op when there is
-   * no consultationId, no wired repositories, no consultation/department/default
-   * agent, or the agent carries no overrides.
-   *
-   * Read-time defense-in-depth (OD-2): only keys in the tenant-tier allow-list
-   * flow; any super-admin-only key that somehow got stored in the JSONB is
-   * DROPPED + warned, never served — matching the SYSTEM overlay that neutralises
-   * `SUPER_ADMIN_ONLY_POLICY_KEYS`.
-   *
-   * Cross-tenant safety: the consultation read is tenant-scoped, and an explicit
-   * `tenantId` guard refuses any consultation the caller does not own (no leak),
-   * so a foreign consultationId yields the base policy unchanged.
-   *
-   * Best-effort by contract: any error degrades to the base policy (never sinks
-   * the read that the worker's `fetch_policy` depends on) — mirrors
-   * `resolveMcpServers`/`resolveJudgeSelection`.
-   */
-  private async applyAgentOverrides(resp: HarnessPolicyResponse, tenantId: string, consultationId?: string): Promise<HarnessPolicyResponse> {
-    if (!consultationId || !this.consultationRepository || !this.departmentAgentRepository) return resp;
-    try {
-      const consultation = await this.consultationRepository.findById(consultationId);
-      // A missing or foreign consultation ⇒ no overlay (404-over-403 posture: the
-      // tenant-scoped read already hides foreign rows; the explicit check is D-i-D).
-      if (!consultation || consultation.tenantId !== tenantId) return resp;
-      const departmentId = consultation.departmentId;
-      if (!departmentId) return resp;
-
-      const agent = await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId);
-      const overrides = agent?.harnessOverrides as Record<string, unknown> | null | undefined;
-      if (!agent || !overrides) return resp;
-
-      const appliedKeys: string[] = [];
-      const dropped: string[] = [];
-      for (const [key, value] of Object.entries(overrides)) {
-        if (value === undefined) continue;
-        if (!TENANT_TIER_OVERRIDE_KEY_SET.has(key)) {
-          dropped.push(key);
-          continue;
-        }
-        (resp as unknown as Record<string, unknown>)[key] = value;
-        appliedKeys.push(key);
-      }
-
-      if (dropped.length > 0) {
-        this.logger.warn({
-          message: `DepartmentAgent ${agent.id} harnessOverrides carried super-admin-only key(s) [${dropped.join(', ')}] — dropped at read time (OD-2)`,
-          agentId: agent.id,
-        });
-      }
-      if (appliedKeys.length > 0) {
-        const provenance: HarnessOverridesSource = { agentId: agent.id, agentSlug: agent.slug, keys: appliedKeys };
-        resp.overridesSource = provenance;
-      }
-      return resp;
-    } catch (error) {
-      this.logger.warn({
-        message: `per-agent harnessOverrides overlay failed for consultation ${consultationId} — serving the base effective policy`,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return resp;
-    }
+    return applyTaskSelection(resp);
   }
 
   /**
