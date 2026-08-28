@@ -2,6 +2,7 @@ import { PaginatedQuery } from '../../common';
 import {
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
+  NodePromptUpdateResponse,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
@@ -88,6 +89,13 @@ export interface IWorkflowDefinitionService {
    * DD-11 PATH 1 — edit a node's prompt FROM WITHIN THE NODE: mint a new
    * `PromptVersion` and move THAT node's pin to it, atomically.
    *
+   * ADOPTING is not authoring (§7b item 1). When `content` (+ `variables`) is
+   * byte-identical to the template's LATEST version, NOTHING is minted: the
+   * node's pin simply moves to that existing version. `promptVersionMinted` on
+   * the response is how a caller tells the two outcomes apart — adoption is the
+   * common path under DD-11, and minting a duplicate on each one made the
+   * version list unreadable exactly where an admin goes to read it.
+   *
    * The sibling path — editing the same template from the Prompt management
    * screen (`IPromptManagementService.updatePromptTemplate`) — creates a
    * version and moves NO node's pin. That asymmetry is the feature: it is what
@@ -97,8 +105,11 @@ export interface IWorkflowDefinitionService {
    * @throws NotFoundException — unknown/cross-tenant definition or template
    * @throws BadRequestException — PUBLISHED/DEPRECATED row, or a node with no
    *   `promptTemplateId`
+   * @throws OptimisticConcurrencyException — stale `expectedVersion`/`If-Match`,
+   *   on BOTH branches: the precondition is evaluated before the mint/adopt
+   *   decision, so an unchanged body never buys a stale client a silent 200
    */
-  updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<WorkflowDefinitionResponse>;
+  updateNodePrompt(id: string, nodeId: string, dto: UpdateNodePromptRequest): Promise<NodePromptUpdateResponse>;
 
   /**
    * DD-11 — every node's prompt binding plus whether its template has a newer

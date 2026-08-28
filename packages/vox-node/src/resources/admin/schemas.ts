@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 378 component schemas the generated surface transitively
+ * Only the 379 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2712,6 +2712,49 @@ export interface NodePromptBindingResponse {
   pinnedVersionNumber?: number | null;
   promptTemplateId: string;
   promptTemplateName?: string | null;
+}
+
+export interface NodePromptUpdateResponse {
+  /** Server-produced interpreter input contract. Null until PUBLISHED. */
+  compiledConfig?: Record<string, unknown> | null;
+  compiledConfigChecksum?: string | null;
+  createdAt: string;
+  /** The node registry checksum of the RUNNING server, for comparison against `registryChecksum` (the value stamped at publish). Present on every response so a client seeing `needsReview: true` can tell WHAT drifted, rather than only that something did. */
+  currentRegistryChecksum: string;
+  deprecatedAt?: string | null;
+  description?: string | null;
+  /** The canvas graph, exactly as authored. */
+  graph: Record<string, unknown>;
+  graphChecksum: string;
+  id: string;
+  /** The movable pointer: the version the dispatcher resolves for new runs. */
+  isActive: boolean;
+  name: string;
+  /** True when a published row is out of sync with the running node registry (checksum drift), or when the row was explicitly flagged. Derived on read — a published definition is immutable, so drift is never written back. */
+  needsReview: boolean;
+  paletteKey: string;
+  /** The published version this draft branched from, if any. */
+  parentVersionId?: string | null;
+  /** The node’s pin BEFORE the request. Null when the node was unpinned. */
+  previousPromptVersionNumber?: number | null;
+  /** True when this request created a new immutable PromptVersion. False when the submitted content was byte-identical to the template’s latest version, in which case the node’s pin was simply moved to that existing version and nothing was minted. */
+  promptVersionMinted: boolean;
+  /** The prompt version this node is pinned to AFTER the request. */
+  promptVersionNumber: number;
+  publishedAt?: string | null;
+  registryChecksum?: string | null;
+  resourceStatus: string;
+  slug: string;
+  status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
+  tags: string[];
+  tenantId: string;
+  updatedAt: string;
+  validatedAt?: string | null;
+  /** The last server-side ValidationReport. */
+  validationReport?: Record<string, unknown> | null;
+  /** Optimistic-concurrency version (`_version`). */
+  version: number;
+  versionNumber: number;
 }
 
 export interface NotificationResponse {
