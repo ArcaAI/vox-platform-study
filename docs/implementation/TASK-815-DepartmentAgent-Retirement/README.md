@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — **unblocked** (OD-11 revised). Gated only on TASK-809 + TASK-811 landing. |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2`. 205 files, 21,092 deletions. Migration authored + drift-proven but **NOT applied to the shared dev/test DB** — see §10. |
 | **Type** | `refactor` (deletion) |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -405,3 +405,43 @@ _Not started._
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-10, OD-11, OD-12. |
 | 2026-08-25 | **OD-11 revised — unblocked.** Eval gate survives; `goldenSetId` binds to the node; tenant-admin enable/disable added. Full DELETE/EDIT/COUPLING inventory inlined (§5a) so the ticket is self-contained. |
+
+## 10. Two things awaiting the owner
+
+### 10a. The migration is NOT applied to the shared dev/test databases
+
+`20260828195605_task_815_retire_department_agent` was authored against a throwaway shadow DB
+(`hope_shadow_815`) with the full ledger replayed, and proven drift-free
+(`prisma migrate diff` → `-- This is an empty migration.`). It was deliberately **not** run against
+local dev or test.
+
+Reason: it DROPs two tables and two enums. `02-database-prisma.md` requires explicit owner approval
+for `DROP`/`DELETE`/`TRUNCATE`, and that approval covers the act of destroying data, not merely the
+ticket that made the tables unnecessary. Local dev is `db push`-managed, so the sync is
+`pnpm db:push` — which will report data loss on those tables and needs the owner to accept it.
+
+Nothing is broken in the meantime: no code references the tables, so their continued presence in a
+local DB is inert drift, not a fault.
+
+### 10b. Four capability deltas — each documented at the code, none silent
+
+| Delta | Direction |
+|---|---|
+| Visit-type axis leaves tier-1a for the department tier (DD-2) | Narrower resolution axis |
+| Pre-summary loses tier-1a until an `agent.presummarization` node exists | Falls back to the tenant tier |
+| **DNA-redaction agent veto removed** | **More redaction, not less.** The dropped gate could ONLY force redaction OFF, so a consultation the tenant AND the doctor both enabled is now actually redacted. Honouring two explicit opt-ins over a third party's override reads as closing a latent bug, not a regression — but it IS a behaviour change a tenant could notice |
+| PRIMARY/SPECIALIST deliberative lane retires with `DepartmentAgentRole` | Capability removed with no successor — deliberate |
+
+### 10c. Also found and fixed in passing
+
+Tenant provisioning iterated golden **agents**, not golden departments. Left alone, every newly
+provisioned tenant would have been quietly reduced to a bare `GEN` department. A mechanical deletion
+would have shipped that.
+
+### 10d. Pre-existing, out of scope
+
+`apps/api/src/modules/consultation/__tests__/harness-internal.controller.test.ts` fails `tsc --noEmit`
+(12 constructor args, 13-15 expected). Identical at base `55555d988`, untouched by this ticket, and
+Vitest passes — only a standalone typecheck sees it.
+
+| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: database 1641, domains 1848, applications 10303, api 4019, admin-console 2130 (two consecutive clean runs after a load flake in the first sweep), harness 1668, gen:check no drift x3 + schema coverage OK, gen:admin/portal/openapi no drift (52 areas, 404 routes, 371 schemas; admin 608 ops), lint 40/40. Orchestrator independently verified both hard invariants and rebuilt domains+applications before trusting any artifact (stale-dist trap). |
