@@ -13,6 +13,7 @@ import {
   ConsultationEndpointServiceModule,
   LiveDocumentationServiceModule,
   HighlightServiceModule,
+  DocumentSectionServiceModule,
   HarnessProgressServiceModule,
   HarnessAssuranceServiceModule,
   HarnessLiveAssistServiceModule,
@@ -67,6 +68,9 @@ import { ConsentInternalController } from './consent-internal.controller';
     LiveDocumentationServiceModule,
     // Manual doctor highlighting.
     HighlightServiceModule,
+    // Lane D — the clinician write path for DocumentSection (the flush writer
+    // lives in LiveDocumentationServiceModule above).
+    DocumentSectionServiceModule,
     // Harness progress publish (internal POST) + SSE relay (stream route).
     HarnessProgressServiceModule,
     // Assurance per-claim publish (internal POST) + SSE relay.

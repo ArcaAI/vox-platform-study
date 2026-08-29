@@ -56,6 +56,7 @@ function buildController(overrides: { userId?: string | null; consultation?: unk
     empty, // harnessLiveAssistService
     empty, // redisSubscriber
     empty, // loopContextSignalService
+    empty, // documentSectionService
   );
 
   return { controller, consultationService, highlightService };

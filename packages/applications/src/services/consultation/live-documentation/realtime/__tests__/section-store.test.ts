@@ -273,3 +273,66 @@ describe('task 12 — the section.patch payload contract (§2b)', () => {
     await expect(store.applyFlushPatch(write())).resolves.toEqual({ applied: false, reason: 'unavailable' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Lane D — the CALLER-SUPPLIED compare-and-set operand
+// ---------------------------------------------------------------------------
+
+/**
+ * `applyClinicianEdit` was written when its only caller was a test: it read the
+ * row and then compare-and-set against the version IT had just read, which is a
+ * read-modify-write, not a precondition. That is sound for an in-process writer
+ * with no opinion about what it is overwriting, and WRONG the moment the writer
+ * is an HTTP client holding an `If-Match` from an earlier read — the store would
+ * re-read past the client's stale view and overwrite a flush the client never saw.
+ *
+ * So the operand becomes an INPUT when the caller has one. Absent (every existing
+ * caller) the behaviour is byte-identical to before.
+ */
+describe('lane D — a clinician edit compare-and-sets against the CALLER’s version', () => {
+  it('LOSES when the caller’s expectedVersion is stale — a flush landed after the client read', async () => {
+    const repo = repositoryDouble();
+    const store = storeWith(repo);
+
+    await store.applyFlushPatch(write());
+    const readVersion = repo.rows.get('soap_note::assessment')!.version;
+    // A flush lands between the clinician's read and their submit.
+    await store.applyFlushPatch(write({ content: 'Flush wrote this after the client read.', generation: 2 }));
+
+    const stale = await store.applyClinicianEdit(write({ content: 'Clinician text.', userId: 'doctor-7', expectedVersion: readVersion }));
+
+    expect(stale).toEqual({ applied: false, reason: 'occ-conflict' });
+    // The operand actually issued to the CAS is the CALLER's stale version, not the
+    // one the store just re-read. Asserted on the call rather than on the double's
+    // row because `findSection` hands back the stored object BY REFERENCE, so an
+    // in-place mutation shows up there even when the write was rejected — an
+    // artifact of the fixture, not of the store.
+    const [, , issuedVersion] = repo.updateWithVersion.mock.calls.at(-1)!;
+    expect(issuedVersion).toBe(readVersion);
+  });
+
+  it('APPLIES when the caller’s expectedVersion is current', async () => {
+    const repo = repositoryDouble();
+    const store = storeWith(repo);
+    await store.applyFlushPatch(write());
+
+    const current = repo.rows.get('soap_note::assessment')!.version;
+    const applied = await store.applyClinicianEdit(write({ content: 'Clinician text.', userId: 'doctor-7', expectedVersion: current }));
+
+    expect(applied.applied).toBe(true);
+    expect(repo.rows.get('soap_note::assessment')?.content).toBe('Clinician text.');
+    expect(repo.rows.get('soap_note::assessment')?.state).toBe(DocumentSectionState.CONFIRMED);
+  });
+
+  it('with NO expectedVersion behaves exactly as before — read-modify-write', async () => {
+    const repo = repositoryDouble();
+    const store = storeWith(repo);
+    await store.applyFlushPatch(write());
+    await store.applyFlushPatch(write({ content: 'Flush 2.', generation: 2 }));
+
+    const applied = await store.applyClinicianEdit(write({ content: 'Clinician text.', userId: 'doctor-7' }));
+
+    expect(applied.applied).toBe(true);
+    expect(repo.rows.get('soap_note::assessment')?.content).toBe('Clinician text.');
+  });
+});
