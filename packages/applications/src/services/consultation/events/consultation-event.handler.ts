@@ -423,11 +423,14 @@ export class ConsultationEventHandler {
   /**
    * Resolve the doctor's DNA redaction/rewrite rules for a harness start.
    *
-   * Double-gated exactly like the DNA-style feature — tenant permission AND the
-   * doctor's DNA opt-in — plus the department default-agent DNA policy
-   * (`dnaStylePolicy=DISABLED` forces OFF). When effective, the rules are read
-   * from the doctor's latest DNA report and decrypted via the SecretsService,
-   * then validated to the persisted `{ rules: [...] }` shape.
+   * Double-gated: the TENANT gate is now the presence of an ACTIVE
+   * `agent.dna_redaction` node in the tenant's governing consultation graph
+   * (TASK-806 lane A item 2 — the owner's rider on the TASK-815 delta), and the
+   * DOCTOR gate is the clinician's own DNA opt-in. The department default-agent
+   * `dnaStylePolicy=DISABLED` veto that used to sit alongside them is gone and
+   * stays gone. When effective, the rules are read from the doctor's latest DNA
+   * report and decrypted via the SecretsService, then validated to the persisted
+   * `{ rules: [...] }` shape.
    *
    * FAIL-SAFE (deliberate, per the ticket): any gate/lookup/decrypt/validation
    * failure — or missing DI (legacy fixtures) — yields an EMPTY rule set. Empty
@@ -448,10 +451,11 @@ export class ConsultationEventHandler {
 
       // A THIRD gate used to sit here: the department's default
       // `DepartmentAgent.dnaStylePolicy = DISABLED` forced redaction OFF for the
-      // whole department. It retired with `DepartmentAgent` (TASK-815) and has
-      // no successor in the workflow substrate; the tenant and doctor gates
-      // below are what remain. See `ConfigResolver.resolveEffectiveDnaRedactionEnabled`
-      // for why the direction of that loss is called out rather than buried.
+      // whole department. It retired with `DepartmentAgent` (TASK-815) and stays
+      // retired by owner ruling. What DID get a successor is the tenant gate: it
+      // is no longer a `dnaRedactionEnabled` boolean but the presence of an ACTIVE
+      // `agent.dna_redaction` node in this tenant's governing consultation graph.
+      // See `ConfigResolver.resolveEffectiveDnaRedactionEnabled`.
       const { effective } = await this.configResolver.resolveEffectiveDnaRedactionEnabled({
         tenantId,
         departmentId,

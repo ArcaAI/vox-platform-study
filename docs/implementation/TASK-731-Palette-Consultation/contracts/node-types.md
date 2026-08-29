@@ -114,13 +114,28 @@ invented per-node vocabulary:
 | `consultation.bindTerminology` | `STRUCTURED` (entities) | `STRUCTURED` (coded terms + `unmapped`) |
 | `consultation.phiHop` | `TEXT`/`STRUCTURED` | same shape, sanitized |
 | `consultation.retrieveEvidence` | `STRUCTURED` (query terms) | `TEXT` (evidence chunks + citations) |
-| `consultation.assemblePrompt` | `TEXT`+`STRUCTURED` (evidence + entities) | `TEXT` (prompt) |
+| `consultation.assemblePrompt` | `STRUCTURED` (retrieved evidence, as `context<schemaRef>`) | `TEXT` (prompt) |
 | `consultation.synthesize` | `TEXT` (prompt) | `TEXT` (draft note) |
 | `consultation.sensors` | `TEXT` (draft) | `STRUCTURED` (sensor verdicts) |
 | `consultation.inferentialSensors` | `TEXT` (draft) | `STRUCTURED` (sensor verdicts) |
 | `consultation.persistDraft` | `TEXT` (draft) | — (`external_write`) |
 | `consultation.finalizeAssurance` | `STRUCTURED` (verdicts) | — (`external_write`) |
 | `consultation.hitlGate` | — | `gate:decision` (not dispatchable yet — implemented:false) |
+
+> **Corrected 2026-08-29 (TASK-806 lane A, item 18).** This row said `TEXT`+`STRUCTURED`
+> ("evidence + entities") while `interpreter_consultation_assemble_prompt` read NO `bound_inputs`
+> at all — a doc-vs-code divergence TASK-809 §2z recorded and left open. It was hiding a real
+> loss: `consultation.retrieveEvidence` publishes the StrictCitations block it retrieved, both
+> seeded graphs wire it into this node, and nothing consumed it, so on the interpreter path the
+> evidence was fetched and then dropped. The activity now folds the bound context into the prompt
+> through `assemble_generation_prompt` (`temporal/prompt_cache.py`) — the same pure helper the
+> legacy `HarnessDocWorkflow` already uses for exactly this.
+>
+> The `TEXT` half of the row is REMOVED rather than kept: the gateway's `assemble` builds the
+> prompt from the consultation's own persisted transcript, so a second transcript arriving over a
+> port could only duplicate it inside the prompt. Ordering after the PHI hop is expressed by the
+> `after` socket. The authoritative port declaration is `NODE_PORTS` in
+> `packages/workflow-contract/src/node-ports.ts`; this table is documentation of it.
 
 ## Registry-level assertions (Phase C, Task 7-equivalent)
 

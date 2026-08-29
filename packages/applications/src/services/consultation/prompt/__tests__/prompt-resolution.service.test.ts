@@ -671,12 +671,14 @@ describe('PromptResolutionService', () => {
       expect(result.resolvedFrom).toBe('tenant');
       expect(result.content).toBe('TENANT pre-summary body');
       expect(result.resolvedAgentId).toBeUndefined();
-      // TASK-815 restored the ORIGINAL shape of this assertion: the pre-summary
-      // chain does not consult tier-1a at all. C2's dedicated agent
-      // `preSummaryTemplateId` binding made it consult the tier (reading ONLY
-      // that binding); its successor node type does not exist yet, so the tier
-      // is absent again rather than pointed at a clinical NOTE node.
-      expect(mockWorkflowAssignments.resolve).not.toHaveBeenCalled();
+      // TASK-806 lane A item 1 — the pre-summary chain DOES consult tier-1a again, now that
+      // `agent.presummarization` exists (DD-6). What this case pins is the property that
+      // survives every rewrite of that tier: a graph carrying only a clinical NOTE node yields
+      // NO pre-summary candidate, so the chain falls through to the tenant template instead of
+      // serving a note prompt for a pre-summary request. The cascade is consulted with a NULL
+      // department, because pre-summary has no department axis.
+      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(expect.any(String), 'consultation', null);
+      expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
       // …and the department visit-type columns are not read.
       expect(result.promptId).not.toBe('dept-presummary-col');
       expect(result.resolutionTrace.departmentPromptId).toBeNull();

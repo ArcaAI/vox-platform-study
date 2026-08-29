@@ -14,16 +14,16 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-arcaai-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "19eec607c997fef4626c5772fa306def48a546f80b6696e907b7554ab669dbe9" as const;
+export const REGISTRY_CHECKSUM: string = "65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c" as const;
 
-export const GEN_GRAPH_CHECKSUM: string = "faf669b86aa4a6596e2c0daa1158a806d51fc5590fdd163af3cc2eb8f1a5374f" as const;
+export const GEN_GRAPH_CHECKSUM: string = "095c9a6ded454fcd78f3337879aba5f7f5dc12c55a52f6d6f605e553b30cdcbb" as const;
 
 export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "19eec607c997fef4626c5772fa306def48a546f80b6696e907b7554ab669dbe9",
+  "registryChecksum": "65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "19eec607c997fef4626c5772fa306def48a546f80b6696e907b7554ab669dbe9",
+  "registryChecksum": "65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -182,7 +182,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.bindTerminology",
           "activity": "interpreter.consultation_bind_terminology",
           "config": {
-            "purposeScope": "terminology.validate",
+            "purposeScope": "EXTERNAL_TOOL_LOOKUP",
             "unmappedOutputKey": "unmappedTerms",
             "onError": "degrade"
           },
@@ -287,14 +287,14 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           },
           "inputs": [
             {
+              "fromNodeId": "n_phi",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
               "fromNodeId": "n_evidence",
               "fromPort": "out",
               "toPort": "in"
-            },
-            {
-              "fromNodeId": "n_phi",
-              "fromPort": "out",
-              "toPort": "transcript"
             }
           ],
           "onError": "degrade",
@@ -547,17 +547,17 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "f3fd2529be614dc0ba1ca89b579397ab53ae4bb162d37dabd9e13336fa4582f4"
+  "checksum": "07f1df394d081999d83f25be29f782047712611ac65263347e1e51eb2735bc72"
 } as const;
 
-export const RHEUM_GRAPH_CHECKSUM: string = "2098e47009fe816fed744f659164b1ec2dbadf5ca150274745badc84d5ecf116" as const;
+export const RHEUM_GRAPH_CHECKSUM: string = "744f78d2d585489331326aa4b726a99e3b6b3c05b74d58a9e82b3e50c0091d26" as const;
 
 export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "19eec607c997fef4626c5772fa306def48a546f80b6696e907b7554ab669dbe9",
+  "registryChecksum": "65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -570,7 +570,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "19eec607c997fef4626c5772fa306def48a546f80b6696e907b7554ab669dbe9",
+  "registryChecksum": "65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -716,7 +716,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.bindTerminology",
           "activity": "interpreter.consultation_bind_terminology",
           "config": {
-            "purposeScope": "terminology.validate",
+            "purposeScope": "EXTERNAL_TOOL_LOOKUP",
             "unmappedOutputKey": "unmappedTerms",
             "onError": "degrade"
           },
@@ -822,14 +822,14 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           },
           "inputs": [
             {
+              "fromNodeId": "n_phi",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
               "fromNodeId": "n_evidence",
               "fromPort": "out",
               "toPort": "in"
-            },
-            {
-              "fromNodeId": "n_phi",
-              "fromPort": "out",
-              "toPort": "transcript"
             }
           ],
           "onError": "degrade",
@@ -1125,5 +1125,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "85607c25167de79d1ad49bbc76fed63ec3ab3dbcd162c97f7d74a469f9b988e4"
+  "checksum": "c3708a0459f900c32c3b32304bce38b4522f0232b9c28ce9b7ce73ad5e6913a2"
 } as const;
