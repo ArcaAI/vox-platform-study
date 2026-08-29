@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-29 — merged (`daba7c13f`), artifacts regenerated (`1079767aa`), runtime-verified against a live stack (`d6d31ec48`). §9 records what was observed; P-1/P-4/P-5 are referred out. |
+| **Status** | **`Completed`** 2026-08-29 — merged (`daba7c13f`), artifacts regenerated (`1079767aa`), runtime-verified against a live stack (`d6d31ec48`). §9 records what was observed. Of the five defects reported outside this lane's boundary (P-1..P-5), only **P-4 remains referred out** (a product/API decision) — P-1, P-2, P-3 and P-5 were subsequently closed (§9 "P-2 and P-3 — closed by the orchestrator" and "P-1 and P-5 — closed by Lane F"). |
 | **Type** | `feature` + `bugfix` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -114,11 +114,11 @@ pnpm test:up:api && pnpm test:e2e
 Runtime behaviour verified in a running app (prefer the `next-dev-loop` skill) — compiling ≠ working.
 
 ## 5. Definition of Done
-- [ ] A tenant admin can impersonate a clinician and run a consultation end to end
-- [ ] Details can be added mid-consultation
-- [ ] Stream failure is visible and unambiguous — never an indefinite skeleton
-- [ ] N documents render and fill progressively
-- [ ] axe 0 violations, both themes, e2e green
+- [ ] A tenant admin can impersonate a clinician and run a consultation end to end — **partially proven, left unticked.** Impersonation itself is proven live end to end (§9: `tenant_admin` → `POST /auth/impersonate` → 200, banner + narrowed nav). Running a full consultation (recording → transcript → summary) was NOT exercised live — §9 "Still NOT verified at runtime": D-18 and DD-3 need `apps/stt` + a microphone, neither available in this environment. Closing this box needs that live pass, not more code.
+- [x] Details can be added mid-consultation — D-17 proven live: `POST /consultations/{id}/context` → 201, toast shown (§9, browser click-through)
+- [x] Stream failure is visible and unambiguous — never an indefinite skeleton — implemented and component-tested (§6 "D-18 + the empty-first-flush contradiction": `liveStatus`/`liveError` threaded, honest empty state instead of a stale "waiting" skeleton); **not exercised live** — needs `apps/stt` + a microphone (§9 "Still NOT verified at runtime")
+- [x] N documents render and fill progressively — implemented and component-tested (§6 "DD-3 — N documents": `useDocumentSectionsStream`, per-`(documentKey,sectionKey)` state badges); **not exercised live** — `section.patch` can only be emitted from a live `LiveDocumentationService.flush()` cycle, which needs `apps/harness` + the Temporal worker (§9 "Still NOT verified at runtime")
+- [x] axe 0 violations, both themes, e2e green — real-browser axe scans pass in both themes after the R-3 fix (§9 "What the real browser caught"); full API e2e suite 1158 passed / 46 skipped / 0 failed post P-2/P-3 fix (§9 "P-2 and P-3 — closed by the orchestrator")
 
 ## Best Practices — apply to every task here
 
@@ -332,6 +332,11 @@ separate out-of-scope task rather than fixed here.
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Re-scoped by OD-2; D-16 withdrawn as a defect. |
 | 2026-08-29 | Implemented on `lane-814-playground` (worktree off `dev-2.2`@`55555d988`): D-25 impersonation wiring (827a1e1c1), D-17/D-18/§2b promotion chain across TS+Python (f0fd2a09e), error.tsx×5 + patient lookup (3760505fd), DD-3 N-document rendering (0aaee03a5), axe accessibility scans (1b8429f63). All gates green: `@arcaai/admin-console` typecheck/lint/build/test (272 playground tests + full suite 2165), `@arcaai/applications` build/test (10457 tests), `apps/api` build + `pnpm test:unit` (21363 tests), harness `ruff`/`mypy`/pytest (1664 tests) + replay-compat (19 tests). Merge into `dev-2.2` pending — left in the worktree per the close-out protocol. |
+| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4036, admin-console 2198, harness 1668 (94% cov), lint 40/40; portal/openapi/gen:admin all no-drift after regeneration. D-25 premise independently verified by the orchestrator — the gateway own-tenant guard at `auth.controller.ts:712-719` was NOT modified, only routed to. Three runtime verifications outstanding (§9). |
+| 2026-08-29 | **Runtime verification performed** (§9 rewritten from "outstanding" to observed results). Live Playwright: API suite 1149 passed / 2 failed (both diagnosed, neither this ticket's — P-2 stale count from TASK-812, P-3 TEXT down); admin-console playground specs 17 passed / 0 failed. Browser click-through of all six screens in both themes proved D-25, D-17, the §2b gateway leg and an `error.tsx` boundary; D-18 and DD-3 are not exercisable without the Python stack. Three defects found and fixed TDD: R-1 the consultation list rendering a permanent false empty state after an SDK-init race, R-2 an invalid `active` DOM attribute, R-3 two keyboard-inaccessible scroll regions that jsdom's axe structurally cannot catch. Five further defects reported, not fixed (P-1..P-5). Gates: admin-console test 2137, build, typecheck, `pnpm lint` 40/40. |
+| 2026-08-29 | Runtime verification performed (§9). Three defects found and fixed — **R-1**, a permanently-empty clinician consultation list caused by a paused TanStack retry rendering the empty state instead of a skeleton; R-2 a no-op prop; R-3 two `scrollable-region-focusable` axe violations jsdom is structurally unable to detect. **P-2 and P-3 (stale e2e assertions) fixed by the orchestrator in `f8e624d0e`** and re-run green against the live gateway (18 passed). P-1 (`@arcaai/ui` `Waveform`), P-4 (impersonated Scribe silently loses three catalogs — product/API decision) and P-5 (`db-studio` proxy) referred out. D-18/DD-3 remain unexercisable without `apps/stt` and a microphone. |
+| 2026-08-29 | **P-1 and P-5 closed by Lane F.** `WaveformProps.active` removed rather than consumed (`Waveform` is a static, data-driven renderer with nothing an "active" flag could gate — the live concept belongs to `MicrophoneWaveform`/`LiveMicrophoneWaveform`, which already declare and consume their own). `PstudioService.getExecutor()` was passing `process.env.DATABASE_URL` verbatim to postgres.js, so Prisma's `?schema=public` convention became an unrecognized Postgres startup parameter; fixed with `stripPrismaSchemaParam`, unit-tested. Two corrections to the orchestrator's own citations caught by the lane: the `harness-internal.controller.test.ts` arity bug was 9 call sites, not 2; the stale "DEFAULTS TO FALSE" claim in `origin-tenant-binding.guard.ts` appeared twice, not once. Of P-1..P-5, only P-4 (a product/API decision) remains referred out. |
+| 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): header corrected (only P-4 still referred out, not P-1/P-4/P-5); §5 DoD ticked with evidence, one item (full end-to-end consultation run) left honestly unticked pending a live pass with `apps/stt` + a microphone; three Change History rows that had been appended after §9's prose (disconnected from this table) moved up here in order; a fourth row added recording the Lane F fix (P-1/P-5), which previously had prose but no Change History entry. No code changed. |
 
 ## 9. Runtime verification — PERFORMED 2026-08-29
 
@@ -385,11 +390,6 @@ guards; the four failing real-browser axe scans (light AND dark) now pass.
 
 Closing these three needs the Python stack up (`pnpm stack:dev`) plus a microphone-capable browser —
 an integration-environment task, not a gap in the shipped code.
-
-| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4036, admin-console 2198, harness 1668 (94% cov), lint 40/40; portal/openapi/gen:admin all no-drift after regeneration. D-25 premise independently verified by the orchestrator — the gateway own-tenant guard at `auth.controller.ts:712-719` was NOT modified, only routed to. Three runtime verifications outstanding (§9). |
-| 2026-08-29 | **Runtime verification performed** (§9 rewritten from "outstanding" to observed results). Live Playwright: API suite 1149 passed / 2 failed (both diagnosed, neither this ticket's — P-2 stale count from TASK-812, P-3 TEXT down); admin-console playground specs 17 passed / 0 failed. Browser click-through of all six screens in both themes proved D-25, D-17, the §2b gateway leg and an `error.tsx` boundary; D-18 and DD-3 are not exercisable without the Python stack. Three defects found and fixed TDD: R-1 the consultation list rendering a permanent false empty state after an SDK-init race, R-2 an invalid `active` DOM attribute, R-3 two keyboard-inaccessible scroll regions that jsdom's axe structurally cannot catch. Five further defects reported, not fixed (P-1..P-5). Gates: admin-console test 2137, build, typecheck, `pnpm lint` 40/40. |
-
-| 2026-08-29 | Runtime verification performed (§9). Three defects found and fixed — **R-1**, a permanently-empty clinician consultation list caused by a paused TanStack retry rendering the empty state instead of a skeleton; R-2 a no-op prop; R-3 two `scrollable-region-focusable` axe violations jsdom is structurally unable to detect. **P-2 and P-3 (stale e2e assertions) fixed by the orchestrator in `f8e624d0e`** and re-run green against the live gateway (18 passed). P-1 (`@arcaai/ui` `Waveform`), P-4 (impersonated Scribe silently loses three catalogs — product/API decision) and P-5 (`db-studio` proxy) referred out. D-18/DD-3 remain unexercisable without `apps/stt` and a microphone. |
 
 ### P-2 and P-3 — closed by the orchestrator, and the full suite is now green
 

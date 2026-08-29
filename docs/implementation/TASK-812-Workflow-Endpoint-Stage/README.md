@@ -308,8 +308,10 @@ node type.
 
 Seeds regenerated **by script**, never by hand:
 `regen-arcaai-consultation-workflow-seed.ts` (writes) then `regen-workflow-definition-seed.ts`
-(drift detector) until `=== DRIFT: 0 ===`. New `REGISTRY_CHECKSUM`
-`4d90110e06d825ce2e017a9fa042687e54d39d1431b21b3a6dad68a8128d916d`.
+(drift detector) until `=== DRIFT: 0 ===`. The registry checksum moved again with this ticket's
+three new node types — as TASK-809 §2y2 warns, it moves on every ticket that touches a node
+descriptor, so it is not pinned here. Read the live value from `REGISTRY_CHECKSUM` in
+`packages/database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts`.
 
 ### Nothing touched that was fenced
 
@@ -355,8 +357,9 @@ Three decisions taken by the implementing agent, all accepted:
 descriptor fields explicitly and a function is not serialisable, so no console screen can generically
 discover that a key carries an ordering rule. That is precisely WHY the predicate is duplicated
 above. If generic client-side pre-validation is ever wanted, the catalog needs a serialisable
-`invariant: { description }` on the descriptor. Deliberately not built here — one invariant does not
-justify a catalog contract change, but the second one will.
+`invariant: { description }` on the descriptor. **Status: tracked, not built.** Deliberately not
+built here — one invariant does not justify a catalog contract change, but the second one will;
+this note is the trigger for that follow-on, not an oversight.
 
 ## 7a. Owner notes (neither blocks closure)
 
