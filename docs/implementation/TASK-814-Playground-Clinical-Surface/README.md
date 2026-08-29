@@ -380,7 +380,10 @@ guards; the four failing real-browser axe scans (light AND dark) now pass.
 | **P-4** | **Under impersonation the Consultation Scribe screen silently loses three of its data sources.** As `doctor_derm`: `admin/departments` → 403, `admin/dna-writing-styles` → 403, `admin/consent-grants` → 403, `admin/users` → 403 (`audio/pipelines` and `consultations` stay 200). The Department and Writing-style selectors render empty with no explanation — a silent failure (rule 11 §5). Since OD-2 makes "tenant admin impersonating a clinician" the ONLY clinical persona, this is the persona the screen must serve. The consent 403 IS handled deliberately (`consentBlockedReason` returns null on error and lets the gateway enforce). **Not patched here because the right remedy is a product/API call** — either clinicians get non-admin endpoints for these catalogs, or the screen degrades explicitly the way `/playground/dna-writing-style` already does with its "Impersonation gate — GATE 403 … a designed state, not a failure" panel. | live network capture |
 | **P-5** ✅ FIXED | `apps/admin-console/tests/e2e/db-studio.spec.ts:81` fails reproducibly: the studio query proxy returns `PostgresError: unrecognized configuration parameter "schema"` — a Prisma-only `?schema=` URL param being passed through as a libpq connection parameter. Unrelated to this ticket. | admin-console suite, re-run on a stable gateway |
 
-### Still NOT verified at runtime, and why
+### Still NOT verified at runtime, and why — SUPERSEDED 2026-08-29 (Lane E), see §10
+
+The table below is kept as written. **Its premise for D-18 and DD-3 was wrong**, and that mistake is
+the reason both sat unverified for a day: see §10.
 
 | Item | Why it is not exercisable here |
 |---|---|
@@ -449,3 +452,52 @@ Two corrections to the orchestrator's citations, both caught by the lane:
 - The stale "DEFAULTS TO FALSE" claim in `origin-tenant-binding.guard.ts` appeared **twice**, not
   once; both fixed, and the pass-through-vs-404 behaviour was verified against the implementation
   rather than copied from the brief.
+
+## 10. D-18 and DD-3 — VERIFIED at runtime 2026-08-29 (Lane E)
+
+Both are now exercised in a real browser against a running gateway, and both are pinned by a new
+spec: `apps/admin-console/tests/e2e/consultation-live-status.spec.ts`.
+
+### §9's stated blocker was wrong, and that is the finding
+
+§9 recorded D-18 as unexercisable because it "gates on `isRecording`", which "needs `apps/stt`
+(:8861) and a real microphone". Neither half holds:
+
+- `isRecording` is derived from the **server's** consultation status —
+  `(consultation?.status ?? '').toUpperCase() === 'RECORDING'` — and `live.start(id)` is called when
+  a SELECTED consultation reports `RECORDING` (`consultation-demo-screen.tsx`). Neither reads a
+  `MediaStream`. `POST :id/recording/start` is sufficient.
+- The render gate is `showLive = !draft && (isRecording || !!live)` (`case-note-column.tsx:406`), so
+  a live snapshot alone opens the surface even without recording.
+
+A microphone is needed to produce AUDIO. That is a different claim from putting the UI into its
+recording state, and only the latter is what D-18 and DD-3 assert. `apps/stt` was never required.
+
+### What was observed
+
+| Case | Result |
+|---|---|
+| **Empty-first-flush** — RECORDING consultation selected, snapshot still `null` | the case-note header reads "Running SOAP · auto-drafted live" with the **"Note assistant drafting"** pill, and the body shows the `role="status"` "Waiting for the first live summary" skeleton. Exactly the state the ticket names. |
+| **`liveStatus === 'error'`** — SSE transport aborted, gateway and note assistant left healthy | the destructive **"Live update connection lost"** badge renders, distinct from the `textFailed` "Note assistant unavailable" badge. D-18's whole point (a transport failure is not a generation failure) holds. |
+| **DD-3 — `section.patch` → UI** | with the graph executor on for the tenant, a flush renders `DocumentSectionsView` (`aria-label="Live documents"`) with a per-section `SectionStateBadge` (icon + text, never colour alone). |
+
+The flush was driven by `POST :id/context` with a `CASE_NOTE` — `handleContextAdded` schedules a
+flush, so the whole live plane is reachable over HTTP with no audio at all.
+
+### Still open on DD-3: **N** documents
+
+Every `section.patch` in the capture carried the same `documentKey` (`soap_note`) — the platform
+lane binds one document. Proving N > 1 needs a tenant consultation graph with two generation nodes
+bound to two published `DocumentTemplate`s. See TASK-811 §9.
+
+### Two defects found on the way
+
+1. **FIXED (TASK-811 §9)** — a second recording session on the same consultation published no
+   section at all (`stale-generation` against a watermark that outlived the previous session). It is
+   what made this spec flaky before the cause was understood, and it is a clinician-visible outage:
+   an empty live note with a spinner, for every consultation recorded twice.
+2. **REPORTED ONLY** — `tests/e2e/helpers/auth.ts#impersonateUser` cannot find a username that is a
+   strict prefix of another. It searches with `limit=1` and then requires an exact match, so
+   `impersonateUser(page, 'doctor')` gets `doctor_med` back and throws *"No seeded user named
+   doctor"*. It works today only because callers happen to pass `doctor2`. The new spec uses its own
+   `impersonateExact` (page size 100) rather than change shared behaviour from inside this lane.
