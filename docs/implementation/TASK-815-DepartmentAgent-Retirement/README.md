@@ -667,3 +667,57 @@ model was paid for, and the flush published `entities: []` with `nlpRan: false`.
   producer, and the registry's only one (`input.context_binding`) is summarization-palette and
   `critical: true`. Documented in the seed rather than papered over with `retrieveEvidence`.
 - `port-validation.ts:222` still claims every descriptor declares `requires: []` — stale since Lane A.
+
+## 15. Lane B — visit type is now tenant-configured data (merged 2026-08-29)
+
+§11 row 3 closed. Key `consultation.visitTypes`, a **`global-kv` settings descriptor**
+(`maxScope: 'tenant'`, `failMode: 'open-to-default'`, `validate: visitTypeCatalogueProblem`).
+Resolution is tenant → SYSTEM via `TenantSettingsService.resolve`, which already implements that
+cascade with the max-scope clamp honoured on READ as well as write and the customer tenant
+`50000000-…` structurally unable to enter it.
+
+### 15a. Shape question resolved — reading (a), FLAGGED FOR OWNER CONFIRMATION
+
+**Two visit types; the parenthesised terms are ALIASES.** Chosen from consumers, not wording:
+`text-proxy.controller.ts` already carried `type VisitType = 'new_visit' | 'referral'` — both of the
+owner's "New patient" terms as ONE axis value; `Department` has exactly two visit-type prompt
+columns; and **(a) subsumes (b)** — a tenant wanting six types defines six entries, whereas (b)
+cannot represent (a) without collapsing the aliases.
+
+**Behaviour delta the owner should confirm:** the old proxy rendered TWO different prompt sentences
+(`"This is a new patient visit."` vs `"This is a referral visit."`). Both now render
+`"This is a New patient visit."` A test proves a tenant restores the distinction by CONFIGURING a
+split catalogue with no code change — the property that made (a) safe. **If (b) was meant, the fix
+is a data edit to the shipped default, not a rewrite.**
+
+### 15b. What the orchestrator's scan missed — the load-bearing one
+
+`apps/api/src/modules/streaming/text-proxy.controller.ts:880` (NOT in the compat fence) threw
+**400** for anything outside `['new_visit','referral']`. That one line made "tenant-admin defined and
+controlled" false **at the front door** — no downstream configurability could have helped. Verified
+present at the base commit before the fix.
+
+Also a **third vocabulary**: `summary.service.ts:408` and `pre-summary.processor.ts:190` spelled the
+concept `'new-visit'`, not `'new-patient'`. Nine derived sites, three disagreeing spellings.
+
+### 15c. Tier trade-offs, recorded in the descriptor header
+No per-entry `_version`/ETag (two admins editing different visit types contend at list level) · no
+per-type `AuditLog` row (the audit is the `GlobalSetting` write) · no FK integrity · no
+department/doctor scope yet. If any becomes a requirement the key keeps its name and moves to
+`db-config` — that is what `targetTier` is for.
+
+**Defaults deliberately NOT seeded.** They ARE `descriptor.default`; a `GlobalSetting` row carrying
+the same values would be a second source of one truth, written once at bootstrap and never
+re-asserted — the defect TASK-705 removed from `harness.loop.enabled`. A guard test asserts no seed
+phase writes the key.
+
+`'pre-summary'` was kept OUT of the taxonomy — it is a prompt PHASE, not a visit type, and the
+resolver already derived `resolvedCapability` from the same parameter. The frozen v1-compat route
+needed **zero edits**: `text-compat-template.service.ts` declares its own local literal union with no
+type import from the resolver, so TASK-815 §2's acceptance criterion holds.
+
+### 15d. Still hardcoded, flagged not fixed
+`apps/admin-console/src/features/consultations/api/types.ts:145-156` holds a **fourth** vocabulary
+(`VISIT_TYPES = ['new','revisit']` + `visitTypeOf()`) driving a client-side grid filter. The
+consultations list API exposes no visit type on the row at all, so making it tenant-aware is a UI
+feature with its own design and test surface, not a literal retirement.
