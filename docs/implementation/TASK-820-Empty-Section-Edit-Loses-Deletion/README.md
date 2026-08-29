@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-30 — awaiting merge into `dev-2.2` |
+| **Status** | **`Completed`** 2026-08-30 — merged to `dev-2.2`. The `ContextItem` instance split out as TASK-825. |
 | **Type** | `bugfix` |
 | **Severity** | **High — silent loss of clinical intent, no outage required** |
 | **Found by** | TASK-819 lane, 2026-08-29, while fixing the adjacent swallow |
@@ -167,3 +167,44 @@ No schema, route, DTO or generated-artifact change — so no migration and no fi
 |---|---|
 | 2026-08-29 | Opened from the TASK-819 finding. |
 | 2026-08-30 | Fixed at the repository seam. Mechanism corrected (the mapper is not in the chain) and a second lossy lane found (authorized machine deletion). `encryptBestEffort` cleared; a `ContextItem` instance of the same defect split out. |
+
+## 7. What the fix actually was — and two corrections to the brief
+
+**The defect was ONE link, not two.** The brief said `AutoEntityChangeMapper`'s `if (result)` guard
+was the blocker. It is not: `encryptContentIntoEntity` returns **before assigning**, so
+`encryptedContent` never enters `changes` and the UPDATE simply omits the column. When it IS
+explicitly nulled, the mapper carries it through. Proven by probing the mapper directly:
+
+```
+clinician empties a section, pre-fix:
+  entity.changes = [content, revision, state, confirmedAt, confirmedBy]   ← no encryptedContent
+  prisma payload = [revision, state, confirmedAt, confirmedBy]            ← content has no column
+```
+
+**That correction chose the seam.** Had the mapper dropped clearing nulls, the fix would have had to
+live in `AutoEntityChangeMapper` — every `@Secret()` field on every model.
+
+**The store would have been too narrow, and the test proved it.** An AUTHORIZED machine deletion — a
+flush that empties a section and DOES name a transcript contradiction — lost it identically. That
+second lossy lane is not in the ticket. A fix in `DocumentSectionStore.applyClinicianEdit` would have
+shipped green with the machine lane still broken.
+
+**The fix**, in `DocumentSectionRepository.encryptContentIntoEntity`, separates the two cases
+`encryptStringToCiphertext` collapses into one `null`: `undefined`/`null` → no-op (unchanged — that
+is how a column-reconstituted row arrives); `''` → clear `encryptedContent` + `contentKeyVersion` as
+a pair. The old contract stated the bug as a feature: *"No-op when `content` is empty/null, so it is
+safe to call unconditionally."* A no-op is only safe on a row with no ciphertext yet.
+
+**The false-assurance test** now builds a REAL repository with only persistence doubled, and asserts
+the ciphertext handed to `updateWithVersion`. The lane verified it catches the bug by reverting the
+fix and rebuilding.
+
+**Machine vs clinician holds.** `deletion-without-contradiction` decides WHETHER a machine deletion
+is allowed; this fix decides whether an allowed one is PERSISTED. Orthogonal, and the guard is
+structurally out of reach — it returns from `applyFlushPatch` before the try block.
+
+Gates: domains 1851 · applications 10537 · api 4046 · lint 40/40.
+
+**Fresh-worktree trap worth knowing:** `@arcaai/async-contract` needs building alongside
+`pnpm db:generate`, or 5 api suites fail at collection with `Failed to resolve entry for package` —
+0 failed tests, which makes it look like a real failure and is not.
