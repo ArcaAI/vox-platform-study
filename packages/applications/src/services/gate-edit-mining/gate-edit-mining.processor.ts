@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
@@ -8,6 +8,7 @@ import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { GateEditMiningService } from './gate-edit-mining.service';
 import { GateEditMiningJob, IGateEditMiningQueue } from './IGateEditMiningQueue';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
 
 /**
  * The enqueue half of the gate-edit learning loop.
@@ -63,6 +64,12 @@ export class GateEditMiningProcessor extends WorkerHost {
     private readonly contextItemVersionRepository: ContextItemVersionRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // + trailing so existing positional fixtures keep their arity; an unwired
+    // resolver serves the two shipped visit types, whose keys and follow-up rule
+    // are byte-identical to the ternary it replaces.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
     super();
   }
@@ -94,7 +101,13 @@ export class GateEditMiningProcessor extends WorkerHost {
         tenantId,
         consultationId,
         departmentId: consultation?.departmentId ?? null,
-        visitType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
+        // The mined retrieval facet carries the TENANT's visit-type key
+        // (TASK-815 §11 row 3), so a tenant that defines its own vocabulary
+        // mines and retrieves exemplars under it rather than under a platform
+        // literal. `parentConsultationId` remains the follow-up signal.
+        visitType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+          isFollowUp: Boolean(consultation?.parentConsultationId),
+        }).key,
         gateDecision,
         deliveredContent: delivered,
         signedContent: signed,

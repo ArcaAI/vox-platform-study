@@ -15,6 +15,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NotificationServiceModule } from '../../notification';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -23,6 +24,7 @@ import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/
  */
 @Module({
   imports: [
+    VisitTypeServiceModule,
     CoreDatabaseModule,
     // Supplies ConfigService for the
     // warm-start env FALLBACK (HARNESS_WARM_START_ENABLED). The authority is now

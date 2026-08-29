@@ -20,9 +20,11 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 
 @Module({
   imports: [
+    VisitTypeServiceModule,
     ConfigModule,
     HttpModule,
     CoreDatabaseModule,

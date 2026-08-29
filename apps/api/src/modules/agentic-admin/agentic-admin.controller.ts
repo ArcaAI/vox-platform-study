@@ -53,14 +53,15 @@ export class AgenticAdminController {
   @ApiQuery({
     name: 'promptType',
     required: false,
-    enum: ['pre-summary', 'new-patient', 'revisit'],
-    description: 'Prompt type to resolve the tier for.',
+    type: String,
+    description:
+      'Prompt type to resolve the tier for: either a PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key from the tenant’s own ' +
+      '`consultation.visitTypes` catalogue. Deliberately NOT an enum since TASK-815 §11 row 3 — visit type is tenant-admin defined, so a ' +
+      'fixed three-value list could only ever answer for the platform’s two. Omitted ⇒ the tenant’s own initial-visit type.',
   })
   @ApiResponse({ status: 200, type: AgenticInstructionsResponse })
   @ApiResponse({ status: 404, description: 'Cross-tenant request from a tenant-bound caller (no existence leak).' })
-  async getInstructions(
-    @Query() query: { tenantId?: string; departmentId?: string; promptType?: 'pre-summary' | 'new-patient' | 'revisit' },
-  ): Promise<AgenticInstructionsResponse> {
+  async getInstructions(@Query() query: { tenantId?: string; departmentId?: string; promptType?: string }): Promise<AgenticInstructionsResponse> {
     const tenantId = this.resolveTenantId(query.tenantId);
     return this.agenticInstructionsService.getEffectiveInstructions(tenantId, {
       departmentId: query.departmentId,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
 import { PromptResolutionService } from './prompt-resolution.service';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 
 /**
  * `WorkflowAssignmentServiceModule` resolves the `@Optional()`
@@ -17,7 +18,7 @@ import { PromptResolutionService } from './prompt-resolution.service';
  * is not dropped.
  */
 @Module({
-  imports: [CoreDatabaseModule, WorkflowAssignmentServiceModule],
+  imports: [VisitTypeServiceModule, CoreDatabaseModule, WorkflowAssignmentServiceModule],
   providers: [PromptResolutionService],
   exports: [PromptResolutionService],
 })

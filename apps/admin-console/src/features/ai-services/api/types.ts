@@ -87,5 +87,11 @@ export interface AgenticInstructionsParams {
   tenantId?: string;
   /** Resolve the prompt tier against a department (omit = tenant baseline). */
   departmentId?: string;
-  promptType?: 'pre-summary' | 'new-patient' | 'revisit';
+  /**
+   * A PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key from the
+   * tenant's own `consultation.visitTypes` catalogue. Stopped being a closed
+   * union at TASK-815 §11 row 3 — visit type is tenant-admin defined, so the
+   * three literals could only ever name the platform's own defaults.
+   */
+  promptType?: string;
 }

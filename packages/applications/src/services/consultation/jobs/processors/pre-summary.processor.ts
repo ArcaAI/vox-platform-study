@@ -25,6 +25,7 @@ import {
   resolveInternalAccessToken,
 } from '../../../../common';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 
 // TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
@@ -70,6 +71,12 @@ export class PreSummaryProcessor extends WorkerHost {
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
+    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // + trailing so existing positional fixtures keep their arity; an unwired
+    // resolver serves the two shipped visit types, whose keys and follow-up rule
+    // are byte-identical to the ternary it replaces.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -183,11 +190,10 @@ export class PreSummaryProcessor extends WorkerHost {
           // Native callers resolve the department-free fork;
           // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
           preSummaryVariant: 'dept-free',
-          // v1 `{visit_type}`. `parentConsultationId` is the
-          // consultation's own visit-type signal (NULL = initial visit); the
-          // vocabulary is the one the seeded pre-summary template declares for
-          // this variable ("new-visit or revisit").
-          visitType: consultation.parentConsultationId ? 'revisit' : 'new-visit',
+          // v1 `{visit_type}`. `parentConsultationId` is still the
+          // consultation's own follow-up signal, but the LABEL is the tenant's
+          // now: it comes from `consultation.visitTypes` (tenant → SYSTEM).
+          visitType: this.visitType(consultation).label,
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
@@ -347,5 +353,22 @@ export class PreSummaryProcessor extends WorkerHost {
     const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
 
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+  }
+
+  /**
+   * The consultation's visit type, resolved through the TENANT's catalogue
+   * (`consultation.visitTypes`, tenant → SYSTEM).
+   *
+   * `parentConsultationId` is still the consultation's own follow-up signal —
+   * that rule has not changed. What changed is that WHICH visit type the signal
+   * selects, and what that type is called, is tenant-configured data rather
+   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * resolver serves the two shipped types, so the answer is byte-identical to
+   * the ternary this replaces.
+   */
+  private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
+    return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {
+      isFollowUp: Boolean(consultation.parentConsultationId),
+    });
   }
 }
