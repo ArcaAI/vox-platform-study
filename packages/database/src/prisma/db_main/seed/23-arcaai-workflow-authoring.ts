@@ -133,10 +133,29 @@ export const ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG = 'arcaai-rheum-consultation-so
  * through `captureBinding`, `phiHop`, `synthesize` and `sensors`, and WF-CONS-012 requires every
  * route from `captureBinding` to `synthesize` to pass through `extractEntities`. So a data edge
  * that skips a mandatory node does not merely look untidy — it makes the graph fail validation.
- * `captureBinding -> realtimeSummary` is the clearest casualty: it jumps `extractEntities`, and
- * WF-CONS-012 refuses it. The transcript-typed inputs of `realtimeSummary`, `phiHop` and
- * `suggestions` are therefore left UNWIRED, which is honest: their activities resolve what they
- * need server-side from `consultationId`, exactly as `assemblePrompt` already does.
+ *
+ * ## CORRECTION (TASK-821 §17e): `captureBinding -> realtimeSummary` is NOT refused
+ *
+ * This docstring used to name that edge as "the clearest casualty" of WF-CONS-012 and leave
+ * `realtimeSummary.in` unwired on the strength of it. That was wrong, and it cost the platform a
+ * live defect: `RealtimeSummaryHandler` reads exactly one input — `boundText(ctx, 'in')` — so in
+ * graph mode the running note was generated from `''` on every flush, while the node's UNREAD
+ * `entities` port was the one that carried a binding.
+ *
+ * WF-CONS-012 constrains where the branch REJOINS, not whether the edge may exist. A branch off
+ * capture that rejoins AT `extractEntities` keeps extraction on every route to synthesis — which
+ * is exactly the placement `agent.important_findings` was given, and it admits `realtimeSummary`
+ * and `agent.grammar` on the same terms. All three now hang off capture and rejoin at extraction.
+ *
+ * A second constraint, invisible to the validator, pins the PRODUCER as well as the rejoin point:
+ * `buildRealtimeLane` drops any binding whose producer is not itself a `realtime` node, so a
+ * transcript sourced from `consultation.phiHop` (also `transcript`-typed, and durable) would
+ * validate, compile, and then be silently unbound at flush time. `consultation.captureBinding` is
+ * the palette's only realtime producer of `transcript`, so it is the only legal source.
+ *
+ * `phiHop` and `suggestions` keep UNWIRED transcript inputs, and for them the original reasoning
+ * still holds: both are durable, and their activities resolve what they need server-side from
+ * `consultationId`, exactly as `assemblePrompt` already does.
  */
 type SeedEdge = { id: string; from: string; fromPort: string; to: string; toPort: string };
 
@@ -220,6 +239,40 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
       onError: 'degrade',
     },
   },
+  // TASK-821 §17e — the LIVE GRAMMAR pass, which Lane R registered and seeded nowhere.
+  //
+  // §14a recorded "partial transcript plus advisory corrections" as *"Made to work"*. It was made
+  // POSSIBLE — node type, realtime handler, Python activity — and then contained in neither
+  // ArcaAI graph, so the pass ran for no tenant at all. This row is what makes it run.
+  //
+  // ⚠ Its placement is the SAME forced one `n_findings` has, for the same two reasons. WF-CONS-012
+  // is an `allPathsPassThrough` check, so a branch off capture rejoining anywhere downstream of
+  // extraction opens a route around it, and rejoining after synthesis skips the PHI hop
+  // (WF-CONS-009) and synthesis (WF-CONS-010). And `buildRealtimeLane` drops a binding whose
+  // producer is not a realtime node, so `consultation.captureBinding` — the palette's only
+  // realtime producer of `transcript` — is the only source whose edge survives to flush time.
+  //
+  // Its `in` is `transcript`, and that is the DIFFERENCE from `n_correct` rather than an
+  // oversight: `consultation.proposeCorrections.in` is `text` so the durable pass may review the
+  // FINISHED note, while this one reviews the raw partial transcript the clinician is watching
+  // grow. Both are seeded; neither replaces the other.
+  //
+  // Its optional `entities` hint port stays UNWIRED for the reason `n_findings`' does — the hints
+  // come from `n_entities`, which now runs after it, and an edge back would be a cycle.
+  //
+  // `promptTemplateId` is the PLATFORM-DEFAULT instruction (a SYSTEM-tenant `PromptTemplate`, 07),
+  // and it is not optional decoration: the realtime handler resolves its system prompt from this
+  // binding and THROWS when it is absent, so an unbound node degrades on every flush. A tenant
+  // admin overrides the instruction by binding its own template here.
+  {
+    id: 'n_grammar',
+    type: 'agent.grammar',
+    config: {
+      promptTemplateId: TEMPLATE_IDS.LIVE_GRAMMAR_SYSTEM,
+      taskKey: 'text.live',
+      onError: 'degrade',
+    },
+  },
   // `requiresFinalized: true` is WF-CONS-017 — entity extraction reads the FINALIZED transcript,
   // never a partial one.
   {
@@ -233,6 +286,16 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // `consultation.realtimeSummary` config schema does not declare it — the node publishes to the
   // live consultation feed unconditionally (`nodes/consultation_realtime.py`), so the key was a
   // configuration promise the platform never kept.
+  //
+  // ⚠ TASK-821 §17e — its `in: transcript` is now WIRED, and its `entities` port is not. That is
+  // the reverse of what this seed carried since OD-15, and the reversal is the fix: the realtime
+  // handler reads `in` and nothing else, so the note was being generated from an empty string
+  // while the port it ignores carried the only binding. Moving it onto the capture branch is what
+  // the rule set actually permits (see the module docstring's CORRECTION), and dropping the
+  // `entities` edge is required twice over — it would be a cycle once the summary is ordered into
+  // extraction, and the PLATFORM-DEFAULT lane leaves the same port unwired on purpose, because
+  // wiring it "would make the note wait for NER, serialising the two calls". The seeded graph now
+  // agrees with the lane it is meant to be at parity with.
   { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade' } },
   // `purposeScope` is WF-CONS-013 (a tool-calling node declares its PURPOSE OF USE for the
   // outbound tool call); `unmappedOutputKey` is WF-CONS-019's sibling CR-19 — unmapped terms are
@@ -340,7 +403,6 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       ['n_start', 'next', 'n_consent', 'after'],
       // The consent gate's `out` IS the authorization signal — a `control` port, not data.
       ['n_consent', 'out', 'n_capture', 'after'],
-      ['n_realtime', 'next', 'n_terms', 'after'],
       ['n_terms', 'next', 'n_phi', 'after'],
       ['n_phi', 'next', 'n_evidence', 'after'],
       ['n_synth', 'next', 'n_suggest', 'after'],
@@ -365,7 +427,19 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // node comment for why this is the only placement the rule set admits.
       ['n_capture', 'out', 'n_findings', 'in'],
       ['n_findings', 'next', 'n_entities', 'after'],
-      ['n_entities', 'out', 'n_realtime', 'entities'],
+      // TASK-821 §17e — the LIVE GRAMMAR pass, on the same branch and for the same reasons. Its
+      // `out: edits` is deliberately consumed by NOTHING: corrections are advisory alongside the
+      // raw transcript, and an edge out of `out` would be a second promotion channel beside the
+      // accepted-proposal path the clinician actually approves through.
+      ['n_capture', 'out', 'n_grammar', 'in'],
+      ['n_grammar', 'next', 'n_entities', 'after'],
+      // TASK-821 §17e — the running note reads the CAPTURED TRANSCRIPT. This edge is what the
+      // module docstring wrongly recorded as refused by WF-CONS-012; rejoining at extraction (the
+      // line below) is what keeps every capture->synthesize route crossing `extractEntities`.
+      // `n_entities -> n_realtime.entities` is GONE with it: it would now be a cycle, the handler
+      // never read it, and the platform-default lane leaves that port unwired on purpose.
+      ['n_capture', 'out', 'n_realtime', 'in'],
+      ['n_realtime', 'next', 'n_entities', 'after'],
       ['n_entities', 'out', 'n_terms', 'in'],
       // TASK-806 lane A item 18 — ORDERING, not data. `consultation.assemblePrompt` no longer
       // declares a `transcript` input: the gateway assembles the prompt from the consultation's
