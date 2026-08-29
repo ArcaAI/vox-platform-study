@@ -431,8 +431,9 @@ describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruli
       (node) => node.type === 'agent.presummarization',
     );
     expect(nodes).toHaveLength(1);
-    expect(nodes[0].config?.enabled).not.toBe(false);
-    expect(typeof nodes[0].config?.promptTemplateId).toBe('string');
+    const [node] = nodes;
+    expect(node?.config?.enabled).not.toBe(false);
+    expect(typeof node?.config?.promptTemplateId).toBe('string');
   });
 
   it.each(GRAPHS)('%s binds the TENANT’s own pre-summary prompt, not the SYSTEM default', (_slug, graph) => {
