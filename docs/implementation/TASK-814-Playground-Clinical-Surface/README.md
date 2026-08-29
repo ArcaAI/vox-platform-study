@@ -370,8 +370,8 @@ guards; the four failing real-browser axe scans (light AND dark) now pass.
 | # | Defect | Evidence |
 |---|---|---|
 | **P-1** | `@arcaai/ui` `Waveform` **declares `active?: boolean` on `WaveformProps` but never destructures it** (`packages/ui/src/components/elevenlabs/waveform.tsx:15`; the component body, lines 19–140, references `active` zero times), so it falls through `...props` onto the container `<div>`. The prop type lies: it promises behaviour the component does not implement. Fix belongs in `packages/ui` — either consume `active` or remove it from the type. | R-2's root cause |
-| **P-2** | `apps/api/tests/e2e/task-776-route-authz-matrix.spec.ts:380` asserts `toBe(27)` `@Public() /internal/*` routes; the manifest holds **30**. The literal went stale on **2026-08-28** with **TASK-812** (`2bf8b373a`), which added three service-token-gated `HarnessInternalController` routes — `endpoint/feedback`, `endpoint/finalize`, `endpoint/session`. **TASK-813/814/815 added or removed none.** The behavioural half of the test (every such route 401s without a service token) PASSED; only the frozen count failed. Fix: bump the literal to 30 and refresh its breakdown comment. | full-suite failure #2 |
-| **P-3** | `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts:225` expects 400/404 for an unknown `taskId` on `test/finalize` and got **503**. Not an app defect: `finalizePromptTemplateTest` validates `taskId` only by calling TEXT (`prompt-management.service.ts:1001` → `fetchTextTaskOutput:1386`), and with `apps/text` down the `ECONNREFUSED` is classified by TASK-768 into an honest 503 (`apps/api/src/filters/downstream-error.ts:160`). Every sibling test in that file gates on TEXT availability; this one does not. Fix: give it the same gate. | full-suite failure #1 |
+| **P-2** ✅ FIXED | `apps/api/tests/e2e/task-776-route-authz-matrix.spec.ts:380` asserts `toBe(27)` `@Public() /internal/*` routes; the manifest holds **30**. The literal went stale on **2026-08-28** with **TASK-812** (`2bf8b373a`), which added three service-token-gated `HarnessInternalController` routes — `endpoint/feedback`, `endpoint/finalize`, `endpoint/session`. **TASK-813/814/815 added or removed none.** The behavioural half of the test (every such route 401s without a service token) PASSED; only the frozen count failed. Fix: bump the literal to 30 and refresh its breakdown comment. | full-suite failure #2 |
+| **P-3** ✅ FIXED | `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts:225` expects 400/404 for an unknown `taskId` on `test/finalize` and got **503**. Not an app defect: `finalizePromptTemplateTest` validates `taskId` only by calling TEXT (`prompt-management.service.ts:1001` → `fetchTextTaskOutput:1386`), and with `apps/text` down the `ECONNREFUSED` is classified by TASK-768 into an honest 503 (`apps/api/src/filters/downstream-error.ts:160`). Every sibling test in that file gates on TEXT availability; this one does not. Fix: give it the same gate. | full-suite failure #1 |
 | **P-4** | **Under impersonation the Consultation Scribe screen silently loses three of its data sources.** As `doctor_derm`: `admin/departments` → 403, `admin/dna-writing-styles` → 403, `admin/consent-grants` → 403, `admin/users` → 403 (`audio/pipelines` and `consultations` stay 200). The Department and Writing-style selectors render empty with no explanation — a silent failure (rule 11 §5). Since OD-2 makes "tenant admin impersonating a clinician" the ONLY clinical persona, this is the persona the screen must serve. The consent 403 IS handled deliberately (`consentBlockedReason` returns null on error and lets the gateway enforce). **Not patched here because the right remedy is a product/API call** — either clinicians get non-admin endpoints for these catalogs, or the screen degrades explicitly the way `/playground/dna-writing-style` already does with its "Impersonation gate — GATE 403 … a designed state, not a failure" panel. | live network capture |
 | **P-5** | `apps/admin-console/tests/e2e/db-studio.spec.ts:81` fails reproducibly: the studio query proxy returns `PostgresError: unrecognized configuration parameter "schema"` — a Prisma-only `?schema=` URL param being passed through as a libpq connection parameter. Unrelated to this ticket. | admin-console suite, re-run on a stable gateway |
 
@@ -390,3 +390,40 @@ an integration-environment task, not a gap in the shipped code.
 | 2026-08-29 | **Runtime verification performed** (§9 rewritten from "outstanding" to observed results). Live Playwright: API suite 1149 passed / 2 failed (both diagnosed, neither this ticket's — P-2 stale count from TASK-812, P-3 TEXT down); admin-console playground specs 17 passed / 0 failed. Browser click-through of all six screens in both themes proved D-25, D-17, the §2b gateway leg and an `error.tsx` boundary; D-18 and DD-3 are not exercisable without the Python stack. Three defects found and fixed TDD: R-1 the consultation list rendering a permanent false empty state after an SDK-init race, R-2 an invalid `active` DOM attribute, R-3 two keyboard-inaccessible scroll regions that jsdom's axe structurally cannot catch. Five further defects reported, not fixed (P-1..P-5). Gates: admin-console test 2137, build, typecheck, `pnpm lint` 40/40. |
 
 | 2026-08-29 | Runtime verification performed (§9). Three defects found and fixed — **R-1**, a permanently-empty clinician consultation list caused by a paused TanStack retry rendering the empty state instead of a skeleton; R-2 a no-op prop; R-3 two `scrollable-region-focusable` axe violations jsdom is structurally unable to detect. **P-2 and P-3 (stale e2e assertions) fixed by the orchestrator in `f8e624d0e`** and re-run green against the live gateway (18 passed). P-1 (`@arcaai/ui` `Waveform`), P-4 (impersonated Scribe silently loses three catalogs — product/API decision) and P-5 (`db-studio` proxy) referred out. D-18/DD-3 remain unexercisable without `apps/stt` and a microphone. |
+
+### P-2 and P-3 — closed by the orchestrator, and the full suite is now green
+
+**Full API e2e suite on `dev-2.2`: 1158 passed · 46 skipped · 0 failed** (was 1149 / 2 failed /
+9 did not run). Run with `RESET_DB=false` against the live gateway on `:8968`.
+
+**P-2** — the `@Public() /internal/*` inventory literal was bumped 27 → 30 with its breakdown
+comment corrected (HarnessInternalController 23 → 26, naming TASK-812's `endpoint/feedback`,
+`endpoint/finalize` and `endpoint/session`). Verified against the manifest before changing it.
+
+**P-3 took two attempts, and the first was wrong.** The initial fix simply added `503` to the
+accepted set. That is weaker than it looks: the test could then never fail on a 503 — including
+one raised **while TEXT is up**, the regression it sits closest to. Adding a status to an
+accepted list reads like a fix while quietly retiring the assertion. The reporting agent caught
+it in review.
+
+The second attempt gated on TEXT availability but probed with `dryRun: true` — and **a dry run
+deliberately never touches TEXT** (stated in this very file, above the `dry-run submit` test), so
+the probe reported "up" while TEXT was down and the strict assertion ran and failed.
+
+The landed fix probes with a REAL stream submit — the same dependency the finalize path validates
+through, returning an ack without awaiting generation. With TEXT reachable the original
+`[400, 404]` invariant is asserted in full; otherwise it logs and skips, exactly as every sibling
+test in the file already does. The no-write assertion runs unconditionally either way.
+
+Verified via the intended path, not a lucky pass:
+
+```
+[task-635] unknown-task finalize (TEXT probe) returned 503 — TEXT/text-generation
+likely unavailable in this stack; skipping generation-dependent assertions.
+  11 passed
+```
+
+**Lesson worth keeping:** when a test fails because a dependency is down, widening the accepted
+statuses is almost always the wrong repair — it converts a failing test into a permanently
+passing one. Gate on availability instead, and make sure the probe actually exercises the
+dependency being gated on.
