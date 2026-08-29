@@ -803,7 +803,9 @@ brief's own reading), three of the four already resolved. **`Re-visit` did not**
 `revisit` and nothing folded to `re-visit`, so a term the owner used to NAME this default fell
 through to the parent-link heuristic. Added as an alias.
 
-**The LABELS were deliberately NOT changed, and this needs an owner answer.** They are "New patient"
+**The LABELS were deliberately NOT changed, and this needs an owner answer.** *(Superseded — the
+owner answered on 2026-08-29 and the keys/labels moved to `new-visit` / "New visit"; see §16c.)*
+They are "New patient"
 / "Revisit" from §11 row 3, quoted verbatim in the descriptor. Three reasons to leave them: the two
 owner statements disagree and the older one states labels explicitly while the newer one lists
 slash-separated pairs (alias sets); the label is LLM-visible — it fills `{visit_type}`, and "This is
@@ -857,13 +859,29 @@ portal and the generated vox-node schema.
 `revisit` and nothing folded to `re-visit`, so a term naming the default fell through to the
 parent-link heuristic. Added as an alias. "New visit", "Referral" and "Follow-up" already resolved.
 
-### 16c. OPEN — labels, owner decision
-Labels remain **"New patient" / "Revisit"**, not "New visit" / "Follow-up". Three reasons: the two
-owner statements disagree (§11 row 3 names labels explicitly; the 2026-08-29 directive lists
-slash-separated pairs that read as ALIAS SETS); the label is **LLM-visible** — it fills
-`{visit_type}`, and *"This is a New visit visit."* is worse copy; and it is a **one-line data edit in
-the console**, which is the point of the catalogue. **If the owner meant the labels, it is a data
-edit to the shipped default, not a code change.**
+### 16c. Labels — **CLOSED 2026-08-29 by owner directive** (was OPEN)
+The owner answered directly:
+
+> "visit-type labels must be easy for user/developer/admins to understand:
+> * **new-visit**: new patient, new visit, new referral
+> * **revisit**: here is follow-up or revisit in the same day"
+
+That names the first IDENTIFIER `new-visit`, so it is not only a label edit. Shipped now:
+`new-visit` / "New visit" and `revisit` / "Revisit"; `new-patient` moved from key to **alias**, which
+is what keeps every `GateEditExemplar.visitType` row and every caller already sending it resolving
+onto the same entry. `revisit` needed no change — all four of the owner's terms ("follow-up",
+"revisit", and the same-day spellings) already resolved.
+
+The one prediction in the original note came true and was fixed at its cause rather than by
+choosing a worse label: `text-proxy.controller.ts` built `This is a ${label} visit.`, which the
+label "New visit" renders as *"This is a New visit visit."* That sentence only ever worked while the
+labels were platform literals picked to fit it — a tenant-defined label could always break it — so it
+is now `Visit type: ${label}.`, the same labelled-field form every seeded prompt body already uses
+(`- **Visit Type:** {visit_type}`). No label can break it. **This is the one LLM-visible copy change
+in the lane; revert it only by accepting the stutter.**
+
+The remaining reasoning in the original note still holds: labels stay a **data edit in the console**
+for any tenant that wants different wording, and the shipped pair is only the SYSTEM-tier default.
 
 ### 16d. An incidental catch worth more than it sounds
 `LiveAgentResolutionServiceModule` never imported `VisitTypeServiceModule` (importing

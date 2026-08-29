@@ -1496,7 +1496,7 @@ describe('TextProxyController', () => {
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
-          system_prompt: expect.stringContaining('This is a New patient visit.'),
+          system_prompt: expect.stringContaining('Visit type: New visit.'),
         }),
         expect.any(Object),
       );
@@ -1602,7 +1602,7 @@ describe('TextProxyController', () => {
       const systemPrompt = callArgs[1].system_prompt;
       expect(systemPrompt).toContain('specialist');
       expect(systemPrompt).toContain('bullet points');
-      expect(systemPrompt).toContain('This is a New patient visit.');
+      expect(systemPrompt).toContain('Visit type: New visit.');
     });
 
     describe('DNA writing-style ownership', () => {

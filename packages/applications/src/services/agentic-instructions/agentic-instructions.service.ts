@@ -81,7 +81,8 @@ export class AgenticInstructionsService extends BaseService {
     // An omitted prompt type means "the ordinary case", and WHICH visit type
     // that is belongs to the tenant now (TASK-815 §11 row 3) — it used to be a
     // hardcoded `'new-patient'`. A tenant with no catalogue of its own inherits
-    // the two shipped types, so this still resolves `'new-patient'`.
+    // the two shipped types, so this resolves `'new-visit'` — the same entry the
+    // retired `'new-patient'` spelling still reaches as an alias.
     const visitTypeKey = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
     const promptType = options.promptType ?? visitTypeKey;
 

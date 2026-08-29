@@ -92,9 +92,9 @@ export const VISIT_TYPE_SETTINGS: SettingDescriptor[] = [
     label: 'Consultation visit types',
     description:
       "The tenant's visit-type catalogue: which encounter kinds exist, what a clinician calls them, which inbound spellings map onto " +
-      'them, and which of a Department’s two visit-type prompt columns each one reads. Two defaults ship — New patient (aliases: new ' +
-      'visit, new referral) and Revisit (aliases: follow-up / review / revisit same-day) — and a tenant with no catalogue of its own ' +
-      'inherits them. ORDER IS THE VALUE: when a consultation records no visit type, its parent link picks a prompt slot and the FIRST ' +
+      'them, and which of a Department’s two visit-type prompt columns each one reads. Two defaults ship — New visit (aliases: new ' +
+      'patient, new referral, referral) and Revisit (aliases: follow-up / review / revisit same-day) — and a tenant with no catalogue ' +
+      'of its own inherits them. ORDER IS THE VALUE: when a consultation records no visit type, its parent link picks a prompt slot and the FIRST ' +
       'entry carrying that slot is used, so a tenant makes its own type the default for a branch by putting it first. `label` is what ' +
       'fills the `{visit_type}` prompt variable. Each entry may also carry `prompts` — a text-generation task key (`summary`, ' +
       '`pre-summary`, `live`, or any task this platform later serves) mapped to `{ promptTemplateId, promptVersionNumber?, ' +
