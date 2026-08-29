@@ -384,3 +384,62 @@ gen:model/entity/factory :check — no drift, schema coverage OK
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-6, OD-7, DD-3, DD-4, DD-7. |
 | 2026-08-28 | Implemented on `lane-811-runtime`. All 15 tasks landed; substrate gate closes the root cause; trajectory parity demonstrated. Two owner-call items recorded rather than worked around (registry `lane`, section REST surface). Dev-DB sync PENDING — orchestrator-owned. |
+
+## 8. DocumentSection editing surface — §7 follow-up #3 CLOSED (2026-08-29)
+
+The handoff that fell between three tickets: §7 #3 delegated the editing route to "TASK-812 or the
+console lane"; 812 recorded nothing, 814 explicitly declined it. Until now `applyClinicianEdit` had
+**only test call sites** and a clinician could not persist a per-section edit at all.
+
+Three routes shipped — `GET/PATCH .../documents/:documentKey/sections[/:sectionKey]`. The two GETs
+are load-bearing, not scope creep: `_version` is the CAS token and is **not** the `revision` the SSE
+`section.patch` carries, and the stream never publishes it, so without a read that emits the ETag
+the PATCH would be unusable.
+
+### 8a. `If-Match` would have been decorative — found and fixed
+
+`applyClinicianEdit` computed `expectedVersion = section.version` from the row it had **just
+re-read**. That is a read-modify-write, not a precondition: the check can only ever pass. Sound for
+the in-process flush writer, useless as an HTTP gate — a clinician submitting from a stale render
+would have silently overwritten a flush they never saw, while 428/412 looked correct and enforced
+nothing. Proven RED first, then fixed additively: `SectionWriteInput.expectedVersion` is consulted
+only when supplied, so the flush writer's self-read path is byte-identical.
+
+### 8b. Status semantics
+
+| Case | Answer | Why |
+|---|---|---|
+| absent / cross-tenant | 404 | tenant-filtered read makes foreign and missing indistinguishable |
+| LOCKED (post-finalize) | **409, not 412** | DD-3 locks EVERY document and no version is writable — "re-read and retry" would loop forever |
+| stale `If-Match` | 412 | raised pre-write so `currentVersion` is accurate for a conflict modal |
+| missing `If-Match` | 428 | `@RequiresIfMatch()` |
+| persistence down | 503 | the store never pretends a write happened |
+
+`deletion-without-contradiction` is deliberately NOT evaluated on the clinician lane: it guards the
+MACHINE writer from silently emptying prose it wrote earlier. A clinician emptying their own section
+is authorized by definition and owes the transcript no reason. Pinned by a test.
+
+### 8c. Three things reported, not fixed
+
+1. **Pre-existing data-loss path (most serious).** `DocumentSectionStore.encrypt()` catches
+   encryption failure, warns, and continues. `content` is transient with no column, so a Vault
+   outage persists the CONFIRMED state and bumped revision while `encryptedContent` keeps its OLD
+   value — the clinician gets a 200 and their text is gone. Affects the flush writer identically;
+   fixing it changes both lanes and needs its own change.
+2. **A persisted edit publishes no `section.patch`.** The section is CONFIRMED, so the next flush
+   refuses with `confirmed-no-overwrite` and publishes nothing — a second viewer keeps stale
+   provisional text with no path to converge. Not fixed because duplicating the channel prefix is
+   the "second transport for one payload" failure the codebase warns against; the honest fix is a
+   publish method on `LiveDocumentationService`.
+3. **The two GETs inherit `consultation:session:write`.** `:read` is semantically right, but that
+   would WIDEN PHI reach for API keys — a security decision not taken unilaterally inside a
+   persistence lane.
+
+`ResourceType` has no `DocumentSection` member, so the sys-event reports `ResourceType.Consultation`
+with the transition in `data` — the precedent `finalizeDocuments` set for the lock half.
+
+### 8d. Remaining: console wiring
+`case-note-column.tsx` must read via `GET .../sections` on mount (SSE only emits during an active
+flush, so a reload currently shows nothing), hold each section's `version`, send it as `If-Match`,
+and handle 409 (finalized ⇒ read-only) distinctly from 412 (re-read and re-apply). Deliberately not
+started — another session owns that file.
