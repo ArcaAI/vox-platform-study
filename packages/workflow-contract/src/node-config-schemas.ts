@@ -1044,6 +1044,11 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'agent.transcription': CONSULTATION_CAPTURE_BINDING_SCHEMA,
   'agent.normalization': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
   'agent.ner': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
+  // Lane R (R1) — the realtime grammar pass shares the correction engine's config surface for
+  // the same reason the three generation entries share theirs: one engine, one authorable
+  // schema. In particular it inherits `promptTemplateId`, which is where the correction prompt
+  // comes from — a bound template, never a literal in runtime code.
+  'agent.grammar': CONSULTATION_PROPOSE_CORRECTIONS_SCHEMA,
   // DD-9 — three palette entries, ONE generation engine, therefore ONE config surface.
   'agent.presummarization': CONSULTATION_SYNTHESIZE_SCHEMA,
   'agent.summarization': CONSULTATION_SYNTHESIZE_SCHEMA,

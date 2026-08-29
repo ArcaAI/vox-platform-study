@@ -70,6 +70,8 @@ class TestNodeRegistryParity:
             "agent.discharge_summary",
             "agent.dna_redaction",
             "agent.feedback",
+            # Lane R (R1) — the realtime grammar/spelling pass.
+            "agent.grammar",
             "agent.ner",
             "agent.normalization",
             "agent.presummarization",

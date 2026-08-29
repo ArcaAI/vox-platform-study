@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { NODE_PORTS, portPrimitiveSatisfies, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
-import { REALTIME_NODE_HANDLERS, REALTIME_NODE_TYPES, realtimeHandlerFor, type RealtimeCapabilities } from '../realtime-node-registry';
+import { REALTIME_NODE_HANDLERS, REALTIME_NODE_TYPES, canonicalRealtimeNodeType, realtimeHandlerFor, type RealtimeCapabilities } from '../realtime-node-registry';
 import { LIVE_TOOL_KEYS } from '../../live-tool-keys';
 
 const capabilities = (over: Partial<RealtimeCapabilities> = {}): RealtimeCapabilities => ({
@@ -104,5 +104,94 @@ describe('task 14 — captureBinding is a REAL producer of `transcript` (TASK-80
 
     expect(generated.primitive).toBe('document');
     expect(portPrimitiveSatisfies(generated.primitive as never, consumed.primitive as never)).toBe(false);
+  });
+});
+
+describe('Lane R (R1) — the handler table is TOTAL over the contract’s realtime lane', () => {
+  it('every `lane: realtime` node type in the contract has a handler here', () => {
+    // The module docstring has always CLAIMED this ("`REALTIME_NODE_HANDLERS` is asserted total
+    // over this set"), but nothing asserted it: the test above iterates the HANDLERS, so a node
+    // flipped to `realtime` in the contract with no handler here was a silent `skipped`
+    // (`unsupported_node_type`) at flush time rather than a failing test.
+    const missing = [...REALTIME_NODE_TYPES].filter((type) => REALTIME_NODE_HANDLERS[type] === undefined);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('Lane R (R1) — agent.grammar proposes corrections over the PARTIAL transcript', () => {
+  const grammarCaps = (over: Partial<RealtimeCapabilities> = {}) =>
+    capabilities({
+      proposeCorrections: vi.fn().mockResolvedValue({
+        proposals: [{ proposalId: 'p1', start: 0, end: 7, original: 'aspirin', proposed: 'Aspirin' }],
+        textSha256: 'sha',
+        rejectedProposals: 0,
+      }),
+      ...over,
+    });
+
+  it('reads its DECLARED `in` port — the raw transcript, never a generated note', async () => {
+    const caps = grammarCaps();
+    const output = await REALTIME_NODE_HANDLERS['agent.grammar'].run({
+      ...ctx({ in: 'patient takes asprin', entities: [{ text: 'asprin', type: 'MEDICATION' }] }, caps),
+      config: { promptTemplateId: 'tpl-1', onError: 'degrade' },
+    });
+
+    expect(caps.proposeCorrections).toHaveBeenCalledTimes(1);
+    expect(caps.proposeCorrections).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceText: 'patient takes asprin',
+        entities: [{ text: 'asprin', type: 'MEDICATION' }],
+        tenantId: 'tenant-1',
+        config: { promptTemplateId: 'tpl-1', onError: 'degrade' },
+      }),
+      undefined,
+    );
+    expect(output.proposals).toHaveLength(1);
+  });
+
+  it('publishes under the `outputKey` its declared port names, and NEVER applies anything', async () => {
+    const port = NODE_PORTS['agent.grammar'].outputs.find((p) => p.name === 'out');
+    expect(port).toMatchObject({ primitive: 'edits', outputKey: 'proposals' });
+
+    const output = await REALTIME_NODE_HANDLERS['agent.grammar'].run({ ...ctx({ in: 'text' }, grammarCaps()), config: {} });
+    expect(output).toHaveProperty(port!.outputKey!);
+    // Advisory alongside the raw transcript. Promotion is the DD-8 accepted-proposal path only.
+    expect(output.applied).toBe(false);
+  });
+
+  it('with NO bound transcript makes no model call and fabricates nothing', async () => {
+    const caps = grammarCaps();
+    const output = await REALTIME_NODE_HANDLERS['agent.grammar'].run({ ...ctx({}, caps), config: {} });
+
+    expect(caps.proposeCorrections).not.toHaveBeenCalled();
+    expect(output).toEqual({ proposals: [], applied: false });
+  });
+
+  it('runs with no entities bound — a lane without a NER node still proposes', async () => {
+    const caps = grammarCaps();
+    await REALTIME_NODE_HANDLERS['agent.grammar'].run({ ...ctx({ in: 'text' }, caps), config: {} });
+    expect(caps.proposeCorrections).toHaveBeenCalledWith(expect.objectContaining({ entities: [] }), undefined);
+  });
+});
+
+describe('Lane R — a catalogue alias must project like the engine it delegates to', () => {
+  it('canonicalizes every alias onto its pipeline key, and leaves non-aliases alone', () => {
+    // The defect this closes: `runGraphLane` read its flush projection back with
+    // `outcomes.find((o) => o.type === 'consultation.extractEntities')`. A tenant graph authored
+    // against the TARGET CATALOGUE runs `agent.ner`, so that lookup returned undefined and the
+    // flush published `entities: []` with `nlpRan: false` — the node ran, the model was paid for,
+    // and nothing reached the clinician.
+    expect(canonicalRealtimeNodeType('agent.ner')).toBe('consultation.extractEntities');
+    expect(canonicalRealtimeNodeType('agent.transcription')).toBe('consultation.captureBinding');
+    // `agent.grammar` has no pipeline counterpart (its sibling stays durable), so it is its own
+    // canonical form rather than being folded onto an unrelated engine.
+    expect(canonicalRealtimeNodeType('agent.grammar')).toBe('agent.grammar');
+    expect(canonicalRealtimeNodeType('consultation.realtimeSummary')).toBe('consultation.realtimeSummary');
+  });
+
+  it('every realtime node type canonicalizes to a type that has a handler', () => {
+    for (const type of REALTIME_NODE_TYPES) {
+      expect(REALTIME_NODE_HANDLERS[canonicalRealtimeNodeType(type)], type).toBeDefined();
+    }
   });
 });

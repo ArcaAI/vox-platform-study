@@ -360,6 +360,23 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // entity is still an entity.
   'agent.normalization': ports([port('in', 'entities', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
   'agent.ner': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
+  // Lane R (R1) — the realtime grammar/spelling pass. `in: transcript`, NOT `text`, and that is
+  // the difference from `consultation.proposeCorrections` rather than an oversight: the durable
+  // sibling reviews any clinical text INCLUDING a generated note, while this one reviews the raw
+  // partial transcript a clinician is watching grow. Typing it `transcript` is what stops a
+  // generation node being wired in — `document` and `transcript` are lattice siblings, so the
+  // edge is a type error exactly as it is into `agent.ner`.
+  //
+  // `entities` (optional, multiple) takes the detector hints the SAME flush already produced, so
+  // the live pass costs one model call rather than a second NER round trip. Optional because a
+  // lane with no NER node must still be able to propose.
+  //
+  // `out: edits` — advisory. No extraction node consumes `edits`, and the only `edits` consumers
+  // that WRITE are the DD-8 promotion nodes, so this node cannot become a second promotion path.
+  'agent.grammar': ports(
+    [port('in', 'transcript', true, false), port('entities', 'entities', false, true), AFTER],
+    [port('out', 'edits', true, true, { outputKey: 'proposals' }), NEXT],
+  ),
   // DD-6 — pre-summarization is fed from CONTEXT SUPPLIED AT RUNTIME, never from the transcript.
   // Today's pre-summary job already takes `caseNoteIds`: it summarizes provided context, so
   // `in: context<schemaRef>` formalizes existing intent and widens it to admin-selected kinds.
