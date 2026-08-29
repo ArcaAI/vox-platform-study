@@ -46,6 +46,46 @@ describe('UserDepartmentsMeController', () => {
       expect(result).toBe(assignments);
     });
 
+    /**
+     * TASK-815 §12 (P-4) — the ownership property the playground's department
+     * picker now RESTS on.
+     *
+     * The Consultation Scribe moved its picker off `admin/departments` (403 for
+     * a clinician) onto this route. That is only safe because the subject is
+     * the CLS principal and nothing else: under impersonation CLS holds the
+     * IMPERSONATED clinician, so the read must follow the clinician, never the
+     * admin who is acting as them, and never an id supplied by the caller.
+     */
+    it('follows the IMPERSONATED clinician, not the admin acting as them', async () => {
+      clsService = createMockClsService({ id: 'doctor-derm', impersonatedBy: 'tenant-admin-1' } as never);
+      controller = new UserDepartmentsMeController(userDepartmentService as never, clsService as never);
+      userDepartmentService.getByUser.mockResolvedValue([]);
+
+      await controller.myDepartments();
+
+      expect(userDepartmentService.getByUser).toHaveBeenCalledWith('doctor-derm');
+      expect(userDepartmentService.getByUser).not.toHaveBeenCalledWith('tenant-admin-1');
+    });
+
+    /**
+     * Cross-clinician isolation is STRUCTURAL here, and this test pins the
+     * structure rather than a branch: `myDepartments` takes no parameters, so
+     * there is no id for one clinician to substitute for another's. If someone
+     * ever adds one, this fails and the reviewer is forced to think about it.
+     */
+    it('exposes no caller-supplied id — the subject cannot be substituted', async () => {
+      userDepartmentService.getByUser.mockResolvedValue([]);
+
+      expect(controller.myDepartments.length).toBe(0);
+
+      // Calling it with another clinician's id changes nothing: the argument
+      // is ignored and CLS still decides.
+      await (controller.myDepartments as (id?: string) => Promise<unknown>)('some-other-doctor');
+
+      expect(userDepartmentService.getByUser).toHaveBeenCalledWith('user-1');
+      expect(userDepartmentService.getByUser).not.toHaveBeenCalledWith('some-other-doctor');
+    });
+
     it('throws UnauthorizedException when no user is in CLS', async () => {
       clsService = createMockClsService(undefined);
       controller = new UserDepartmentsMeController(userDepartmentService as never, clsService as never);

@@ -21,6 +21,8 @@ import {
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
   listAudioPipelines,
+  listDnaStyleOptions,
+  listScopingDepartments,
   liveSummaryStreamPath,
   openConsultation,
   startRecording,
@@ -342,5 +344,63 @@ describe('TASK-793 — the previously-unsent request shapes', () => {
     await openConsultation({ patientId: 'P-1', departmentId: 'dept-cardio' });
 
     expect(calls[0].body).toEqual({ patientId: 'P-1', departmentId: 'dept-cardio' });
+  });
+});
+
+/**
+ * TASK-815 §12 (P-4) — the two scoping catalogs live on the CLINICIAN plane.
+ *
+ * They used to call `admin/departments` and `admin/dna-writing-styles`, which
+ * 403 for the one clinical persona the product defines (a tenant admin
+ * impersonating a clinician: `doctor_derm` holds ZERO abilities on
+ * `Department`, and `admin/dna-writing-styles` needs `manage`). Both catalogs
+ * already had owner-scoped, CLS-derived equivalents on the non-admin plane, so
+ * the fix is to CALL them — no widened admin gate, no new route.
+ */
+describe('clinician-plane scoping catalogs (P-4)', () => {
+  it('listScopingDepartments reads the caller-scoped assignments, never admin/departments', async () => {
+    const calls = installFetchMock(() =>
+      Response.json([
+        { id: 'assign-1', userId: 'u-1', departmentId: 'dept-derm', departmentName: 'Dermatology', isPrimary: true },
+        { id: 'assign-2', userId: 'u-1', departmentId: 'dept-gp', departmentCode: 'GP', isPrimary: false },
+      ]),
+    );
+
+    const departments = await listScopingDepartments();
+
+    // The ownership boundary is the ROUTE: `users/me/departments` derives the
+    // user from CLS, so there is no id a caller could smuggle.
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toBe('/api/hope/users/me/departments');
+    expect(calls[0].url).not.toContain('admin/');
+    // `departmentId` is the id the consultation is opened with — NOT the
+    // assignment row id, which would be meaningless to the gateway.
+    expect(departments).toEqual([
+      { id: 'dept-derm', name: 'Dermatology' },
+      { id: 'dept-gp', name: 'GP' },
+    ]);
+  });
+
+  it('listDnaStyleOptions reads the caller-owned reports, never admin/dna-writing-styles', async () => {
+    const calls = installFetchMock(() =>
+      Response.json([
+        { id: 'dna-2', doctorId: 'u-1', isLatest: true, currentVersionNumber: 4, createdAt: '2026-08-20T10:00:00.000Z' },
+        { id: 'dna-1', doctorId: 'u-1', isLatest: false, currentVersionNumber: 2, createdAt: '2026-07-01T10:00:00.000Z' },
+      ]),
+    );
+
+    const styles = await listDnaStyleOptions();
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toBe('/api/hope/dna-writing-styles/mine');
+    expect(calls[0].url).not.toContain('admin/');
+    // Every row here belongs to the SAME doctor, so the old
+    // `doctorName ?? doctorId ?? id` label rendered N identical options.
+    // Version + recency is what distinguishes one of my styles from another.
+    expect(styles.map((s) => s.id)).toEqual(['dna-2', 'dna-1']);
+    expect(styles[0].label).toContain('v4');
+    expect(styles[0].label).toContain('latest');
+    expect(styles[1].label).toContain('v2');
+    expect(new Set(styles.map((s) => s.label)).size).toBe(2);
   });
 });

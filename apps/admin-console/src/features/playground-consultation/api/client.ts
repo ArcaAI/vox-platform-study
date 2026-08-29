@@ -33,28 +33,80 @@ function consultationPath(consultationId: string, suffix: string): string {
 }
 
 /**
- * TASK-793 W2 — picker data for the two scoping inputs the playground never
- * sent (TASK-789 H-4).
+ * Picker data for the two scoping inputs, on the CLINICIAN plane.
  *
- * These two reads are on the ADMIN plane, unlike everything else in this file:
- * no end-user route lists departments or DNA reports. That is sound HERE and
- * only here — the playground routes are role-gated to SUPER_ADMIN /
- * TENANT_ADMIN at the nav layer (`nav-config.ts`), which is the audience that
- * holds `manage:Department` / `manage:DnaWritingStyleReport`. Both callers
- * treat a failure as "no picker", never as a screen error, so a narrower role
- * degrades to the tenant tier instead of breaking the workspace.
+ * TASK-815 §12 (P-4). These two reads used to sit on the ADMIN plane
+ * (`admin/departments`, `admin/dna-writing-styles`) on the theory that the
+ * playground's audience is SUPER_ADMIN / TENANT_ADMIN. That theory does not
+ * survive impersonation, which is the ONLY clinical persona the product
+ * defines (OD-2): as `doctor_derm` both routes return 403, and both pickers
+ * then rendered blank with no explanation — a silent failure (rule 11 §5).
+ *
+ * The remedy is NOT a widened admin gate. Both catalogs already had
+ * owner-scoped, CLS-derived equivalents on the non-admin plane, so these
+ * callers simply use them:
+ *
+ * - `users/me/departments` (`UserDepartmentsMeController`) — the caller's own
+ *   assignments. The user is read from CLS, so there is no id to smuggle and
+ *   nothing to widen; the service additionally pins the tenant.
+ * - `dna-writing-styles/mine` (`DnaWritingStyleController.getMine`) — reports
+ *   owned by the caller, filtered `doctorId = CLS user` + `tenantId = CLS
+ *   tenant` inside `DnaWritingStyleService.listReports`.
+ *
+ * Both callers still treat a failure as "no picker" rather than a screen
+ * error, but the UI no longer renders that as an unexplained blank — see the
+ * degrade panel in `consultations-column.tsx`.
  */
-export function listScopingDepartments(): Promise<Array<{ id: string; name: string }>> {
-  return getJson('admin/departments', { page: 1, limit: 100 });
+
+/** One row of `GET users/me/departments` (`UserDepartmentResponse`). */
+interface UserDepartmentAssignment {
+  departmentId: string;
+  departmentName?: string;
+  departmentCode?: string;
+}
+
+export async function listScopingDepartments(): Promise<Array<{ id: string; name: string }>> {
+  const assignments = await getJson<UserDepartmentAssignment[]>('users/me/departments');
+  return assignments.map((assignment) => ({
+    // The consultation is opened with the DEPARTMENT id, never the assignment
+    // row id — the gateway would not recognise the latter.
+    id: assignment.departmentId,
+    name: assignment.departmentName ?? assignment.departmentCode ?? assignment.departmentId,
+  }));
+}
+
+/** One row of `GET dna-writing-styles/mine` (`DnaReportResponse`). */
+interface OwnDnaReport {
+  id: string;
+  isLatest?: boolean;
+  currentVersionNumber?: number;
+  createdAt?: string;
+}
+
+/**
+ * Label one of the caller's OWN styles.
+ *
+ * Every row belongs to the same doctor, so the previous
+ * `doctorName ?? doctorId ?? id` label rendered N identical options — useless
+ * for choosing between them. Version + latest-marker + creation date is what
+ * actually distinguishes one of my styles from another.
+ */
+function ownDnaStyleLabel(report: OwnDnaReport): string {
+  const parts = [`v${report.currentVersionNumber ?? 1}`];
+  if (report.isLatest) parts.push('latest');
+  if (report.createdAt) {
+    const created = new Date(report.createdAt);
+    if (!Number.isNaN(created.getTime())) {
+      parts.push(created.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+    }
+  }
+  return parts.join(' \u00b7 ');
 }
 
 /** DNA writing-style reports usable as `GenerateSummaryRequest.dnaStyleId`. */
 export async function listDnaStyleOptions(): Promise<Array<{ id: string; label: string }>> {
-  const page = await getJson<{ data?: Array<{ id: string; doctorId?: string; doctorName?: string; status?: string }> }>('admin/dna-writing-styles', {
-    page: 1,
-    limit: 100,
-  });
-  return (page.data ?? []).map((report) => ({ id: report.id, label: report.doctorName ?? report.doctorId ?? report.id }));
+  const reports = await getJson<OwnDnaReport[]>('dna-writing-styles/mine');
+  return reports.map((report) => ({ id: report.id, label: ownDnaStyleLabel(report) }));
 }
 
 /** Pipeline picker data — AudioPipelinePublicController. */

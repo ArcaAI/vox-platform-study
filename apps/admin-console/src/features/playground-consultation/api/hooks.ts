@@ -42,9 +42,14 @@ import { isTerminalConsultationJob } from './types';
 // ─── REST queries + mutations ───
 
 /**
- * W2 scoping pickers. Best-effort by design: `retry: false` and callers hide
- * the control on error, so a role without the admin read still gets a working
- * workspace (scoping simply falls back to the tenant tier).
+ * W2 scoping pickers, on the CLINICIAN plane (TASK-815 §12 / P-4).
+ *
+ * Best-effort by design: `retry: false`, and a failure degrades scoping to the
+ * tenant tier rather than breaking the workspace. What changed is that the
+ * degrade is no longer SILENT — `isLoading`/`isError` are handed to the
+ * consuming control so it can render a skeleton or an explicit notice
+ * (rule 11 §5, rule 10). `retry: false` is what makes `isError` trustworthy
+ * enough to render on.
  */
 export function useScopingDepartments() {
   return useQuery({
