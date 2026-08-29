@@ -74,6 +74,17 @@ export interface GenerateDocumentInput {
   /** The transcript this turn contributes, resolved from the node's declared `in` port. */
   sourceText: string;
   tenantId: string;
+  /**
+   * The node's OWN authored config, exactly as `ProposeCorrectionsInput` and
+   * `ExtractFindingsInput` already carry it.
+   *
+   * TASK-816 (DD-10): it carries this node's `llmBinding`, and `config` is the ONLY thing that
+   * distinguishes one instance of a node type from another — so without it a model binding
+   * authored on THIS `consultation.realtimeSummary` had no route to the call it governs.
+   * Optional so non-graph callers of the capability keep their arity; absent reads as "no
+   * binding", which is the tenant `text.live` default, unchanged.
+   */
+  config?: Readonly<Record<string, unknown>>;
 }
 
 export interface GenerateDocumentResult {
@@ -292,7 +303,7 @@ class RealtimeSummaryHandler implements RealtimeNodeHandler {
 
   async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
     const sourceText = boundText(ctx, 'in');
-    const result = await ctx.capabilities.generateDocument({ sourceText, tenantId: ctx.tenantId }, ctx.signal);
+    const result = await ctx.capabilities.generateDocument({ sourceText, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
     // `text` is the declared `outputKey` of this node's `out: document` port.
     return { text: result.text, sections: result.sections, stats: result.stats, repaired: result.repaired };
   }

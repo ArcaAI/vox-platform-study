@@ -196,7 +196,7 @@ class TestTextGenerate:
         captured_policy_args: dict[str, Any] = {}
 
         class _FakeApi:
-            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
                 captured_policy_args["task_key"] = task_key
                 return {
                     "textProvider": "lm-studio",
@@ -238,7 +238,7 @@ class TestTextGenerate:
         captured_policy_args: dict[str, Any] = {}
 
         class _FakeApi:
-            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
                 captured_policy_args["task_key"] = task_key
                 return {"textProvider": None, "textModel": None}
 
@@ -259,7 +259,7 @@ class TestTextGenerate:
         captured_policy_args: dict[str, Any] = {}
 
         class _FakeApi:
-            async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+            async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
                 captured_policy_args["task_key"] = task_key
                 return {"textProvider": "lm-studio", "textModel": "m"}
 

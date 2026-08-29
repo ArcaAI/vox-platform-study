@@ -35,6 +35,9 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+// TASK-816 (DD-10) — the ONE reader of a node's `llmBinding`, shared with the durable
+// interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
+import { readLlmBindingFromConfig } from '../../workflow-definition/node-llm-binding';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
@@ -1916,6 +1919,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               corrective,
               ctx.agent,
               ctx.template.compiled,
+              // TASK-816 — the realtime node's own config, so its `llmBinding` reaches selection.
+              input.config,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
           },
@@ -2840,6 +2845,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // TASK-810 — the session's FROZEN compiled template. Defaulted to the
     // platform shape so non-DI/positional test fixtures keep their arity.
     compiled: CompiledDocumentTemplate = PLATFORM_TEMPLATE.compiled,
+    // TASK-816 (DD-10) — the GRAPH node's own config, when a graph node made this call.
+    // Trailing and optional, so every legacy-flush caller keeps its arity and reads as unbound.
+    nodeConfig?: Readonly<Record<string, unknown>>,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     // TEXT is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
@@ -2856,14 +2864,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // drift mid-consultation. WITHOUT an override the per-flush tenant resolve
     // below runs exactly as before, which is what keeps an admin re-point
     // landing on the next flush for unconfigured tenants.
+    //
+    // TASK-816 (DD-10): when a GRAPH node made this call and that node carries an `llmBinding`,
+    // the binding SELECTS the model — fail-closed, per node. It sits below the frozen
+    // session-level override (which is what a resumed session was already generating with) and
+    // above the tenant `text.live` default. Unbound ⇒ the two lines below run exactly as before.
     let provider = this.textProvider;
     let model = this.textModel;
     let selectionSource: 'agent-override' | 'task-default' = 'task-default';
+    const nodeBinding = readLlmBindingFromConfig(nodeConfig);
     if (agent?.liveLlm) {
       ({ provider, model } = agent.liveLlm);
       selectionSource = 'agent-override';
     } else if (this.harnessPolicyService) {
-      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', nodeBinding ?? undefined));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -2968,10 +2982,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const systemPrompt = await this.resolveCorrectionPrompt(config);
 
     // Same LIVE tier the running note uses, and fail-CLOSED the same way: provider/model
-    // SELECTION is never substituted with an env default.
+    // SELECTION is never substituted with an env default. TASK-816 — and the node's own
+    // `llmBinding`, off the SAME `config` the prompt above came from, selects for this node.
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    if (this.harnessPolicyService)
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', readLlmBindingFromConfig(config) ?? undefined));
 
     const payload = {
       // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
@@ -3059,9 +3075,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { sourceText, context, entities, tenantId, config } = input;
     const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
 
+    // TASK-816 — same per-node selection as the grammar pass, off the same `config`.
     let provider = this.textProvider;
     let model = this.textModel;
-    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    if (this.harnessPolicyService)
+      ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live', readLlmBindingFromConfig(config) ?? undefined));
 
     const payload = {
       // The context the owner's sentence names, handed over as authored. Entity spans ride along

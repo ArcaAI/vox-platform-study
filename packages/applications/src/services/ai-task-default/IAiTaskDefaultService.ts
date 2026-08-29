@@ -1,4 +1,4 @@
-import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
+import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
  * Per-tenant AI task-model default service.
@@ -15,6 +15,30 @@ export interface IAiTaskDefaultService {
    * ([tenant, SYSTEM] preferring tenant) when the slug resolves.
    */
   getEffective(taskKey: string, tenantId?: string): Promise<EffectiveAiTaskDefaultResponse>;
+
+  /**
+   * TASK-816 (DD-10) — resolve a bare `AiModel.slug` through the SAME
+   * `[tenant, SYSTEM]` ENABLED-model lookup `getEffective` uses for the slug on
+   * an `AiTaskDefault` row, preferring the tenant's own row.
+   *
+   * Exposed so a workflow node's `llmBinding.modelSlug` reaches ONE model
+   * resolution rather than a second copy of it: the tenant → SYSTEM preference,
+   * the ENABLED pin and the cross-tenant read lane all live in the private
+   * `resolveEnabledModelBySlug` this delegates to, and a caller that
+   * reimplemented them would drift on the first one that changed.
+   *
+   * Deliberately does NOT take a task key, and therefore performs NO
+   * `taskType` compatibility check: that check belongs to a WRITE
+   * (`upsertRow`), which is where a mismatch can still be refused with the
+   * offending value in hand. A runtime READ that silently dropped a bound model
+   * for a task-type mismatch would be a fail-OPEN substitution — the caller
+   * fails closed on `null` instead.
+   *
+   * `null` — never a throw — when the slug resolves to no ENABLED model in
+   * either tier. What that means is the CALLER's decision, exactly as it is for
+   * `getEffective`.
+   */
+  resolveModelBySlug(modelSlug: string, tenantId?: string): Promise<AiTaskModelSummary | null>;
 
   /** Raw persisted row for (tenant, taskKey) — version:0 placeholder when none. */
   getRow(taskKey: string, tenantId?: string): Promise<AiTaskDefaultResponse>;
