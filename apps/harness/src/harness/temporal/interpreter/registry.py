@@ -28,6 +28,17 @@ with workflow.unsafe.imports_passed_through():
         interpreter_noop,
         interpreter_passthrough,
     )
+    from harness.temporal.interpreter.nodes.agent_catalogue import (
+        interpreter_agent_discharge_summary,
+        interpreter_agent_dna_redaction,
+        interpreter_agent_feedback,
+        interpreter_agent_ner,
+        interpreter_agent_normalization,
+        interpreter_agent_presummarization,
+        interpreter_agent_retrieval,
+        interpreter_agent_summarization,
+        interpreter_agent_transcription,
+    )
     from harness.temporal.interpreter.nodes.consultation import (
         interpreter_consultation_consent_gate,
         interpreter_consultation_hitl_gate,
@@ -66,6 +77,11 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
     from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
     from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
+    from harness.temporal.interpreter.nodes.guards import (
+        interpreter_guard_groundedness,
+        interpreter_guard_moderation,
+        interpreter_guard_phi,
+    )
     from harness.temporal.interpreter.nodes.stt_placeholder import (
         interpreter_stt_asr_engine,
         interpreter_stt_audio_input,
@@ -130,6 +146,21 @@ class NodeSpec:
     Authored here by hand and asserted against the SAME committed fixture the TypeScript
     projection is asserted against (``node-registry.snapshot.json``) — see
     ``test_node_registry_parity.py``. Never add it to one side only.
+
+    ``lane`` is the SECOND shared field (TASK-806 lane A, item 17/7), and it is shared for the
+    same kind of reason: it changes what this interpreter DOES. ``"realtime"`` means TASK-811's
+    live executor owns the node, so ``_dispatch_node`` SKIPS it with ``reason="realtime_lane"``
+    rather than running it a second time. Before this, ``descriptor.lane`` said ``durable`` on
+    every node while ``REALTIME_NODE_TYPES`` (a hand-kept set in the applications layer) said
+    otherwise for three of them — two sources of truth for one fact, and the durable interpreter
+    read neither. The failure that made it urgent is concrete: ``consultation.realtimeSummary`` is
+    ``external_write``, so both runtimes executing it means two engines writing one consultation's
+    document.
+
+    Skipping loses nothing that was working. In the DURABLE lane
+    ``consultation.captureBinding`` emits no transcript at all, so ``consultation.extractEntities``
+    and ``consultation.realtimeSummary`` already degraded on ``no_bound_text`` every time. The skip
+    turns a silent degrade into an OBSERVABLE one and names the runtime that owns the work.
     """
 
     key: str
@@ -143,6 +174,7 @@ class NodeSpec:
     default_max_attempts: int = 1
     entitlement_key: str | None = None
     output_keys: Mapping[str, str | None] = field(default_factory=dict)
+    lane: str = "durable"
 
     def __post_init__(self) -> None:
         # frozen dataclass: use object.__setattr__ for the derived field.
@@ -352,6 +384,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=30,
         default_max_attempts=2,
         output_keys={"out": "transcript", "next": None},
+        lane="realtime",
     ),
     # external_write=True for the persist leg (persist_entities), not the extraction — see
     # contracts/node-types.md's `critical` rationale, third bullet.
@@ -364,6 +397,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=150,
         default_max_attempts=2,
         output_keys={"out": "entities", "next": None},
+        lane="realtime",
     ),
     "consultation.bindTerminology": NodeSpec(
         key="consultation.bindTerminology",
@@ -497,6 +531,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=150,
         default_max_attempts=2,
         output_keys={"out": "text", "next": None},
+        lane="realtime",
     ),
     "consultation.suggestions": NodeSpec(
         key="consultation.suggestions",
@@ -566,5 +601,124 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=30,
         default_max_attempts=3,
         output_keys={"next": None},
+    ),
+    # ---------------------------------------------------------------------------------------
+    # The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+    # Every entry delegates to an engine that already exists; see
+    # `nodes/agent_catalogue.py` and `nodes/guards.py` for the mapping and the reasoning.
+    # Registered ALONGSIDE the pipeline keys above, never instead of them: a node type is a
+    # contract with every saved tenant graph, and the seeds name the pipeline keys.
+    # ---------------------------------------------------------------------------------------
+    "agent.transcription": NodeSpec(
+        key="agent.transcription",
+        implemented=True,
+        activity=interpreter_agent_transcription,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=2,
+        output_keys={"out": "transcript", "next": None},
+        lane="realtime",
+    ),
+    "agent.normalization": NodeSpec(
+        key="agent.normalization",
+        implemented=True,
+        activity=interpreter_agent_normalization,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=1,
+        output_keys={"out": "entities", "next": None},
+    ),
+    "agent.ner": NodeSpec(
+        key="agent.ner",
+        implemented=True,
+        activity=interpreter_agent_ner,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "entities", "next": None},
+        lane="realtime",
+    ),
+    "agent.presummarization": NodeSpec(
+        key="agent.presummarization",
+        implemented=True,
+        activity=interpreter_agent_presummarization,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
+    ),
+    "agent.summarization": NodeSpec(
+        key="agent.summarization",
+        implemented=True,
+        activity=interpreter_agent_summarization,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
+    ),
+    "agent.discharge_summary": NodeSpec(
+        key="agent.discharge_summary",
+        implemented=True,
+        activity=interpreter_agent_discharge_summary,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "text", "next": None},
+    ),
+    "agent.retrieval": NodeSpec(
+        key="agent.retrieval",
+        implemented=True,
+        activity=interpreter_agent_retrieval,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "context", "next": None},
+    ),
+    "agent.feedback": NodeSpec(
+        key="agent.feedback",
+        implemented=True,
+        activity=interpreter_agent_feedback,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+        output_keys={"next": None},
+    ),
+    "agent.dna_redaction": NodeSpec(
+        key="agent.dna_redaction",
+        implemented=True,
+        activity=interpreter_agent_dna_redaction,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+        output_keys={"out": "text", "next": None},
+    ),
+    "guard.phi": NodeSpec(
+        key="guard.phi",
+        implemented=True,
+        activity=interpreter_guard_phi,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+        output_keys={"out": "verdict", "text": "text", "next": None},
+    ),
+    "guard.moderation": NodeSpec(
+        key="guard.moderation",
+        implemented=True,
+        activity=interpreter_guard_moderation,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+        output_keys={"out": "verdict", "next": None},
+    ),
+    "guard.groundedness": NodeSpec(
+        key="guard.groundedness",
+        implemented=True,
+        activity=interpreter_guard_groundedness,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "verdict", "next": None},
     ),
 }

@@ -162,12 +162,20 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // live consultation feed unconditionally (`nodes/consultation_realtime.py`), so the key was a
   // configuration promise the platform never kept.
   { id: 'n_realtime', type: 'consultation.realtimeSummary', config: { onError: 'degrade' } },
-  // `purposeScope` is WF-CONS-013 (a tool-calling node declares its purpose); `unmappedOutputKey`
-  // is WF-CONS-019's sibling CR-19 — unmapped terms are SURFACED, never silently dropped.
+  // `purposeScope` is WF-CONS-013 (a tool-calling node declares its PURPOSE OF USE for the
+  // outbound tool call); `unmappedOutputKey` is WF-CONS-019's sibling CR-19 — unmapped terms are
+  // SURFACED, never silently dropped.
+  //
+  // TASK-806 lane A item 19 closed the taxonomy: `purposeScope` now draws from
+  // `TERMINOLOGY_PURPOSE_SCOPES`, the `ConsentPurpose` vocabulary restricted to the members that
+  // can justify an outbound call. This row said `'terminology.validate'` — a free string written
+  // before any taxonomy existed. `EXTERNAL_TOOL_LOOKUP` is what this node's own egress already
+  // asks consent for: `call_mcp_tool` checks `purpose="EXTERNAL_TOOL_LOOKUP"`
+  // (`apps/harness/.../activities.py:1092`).
   {
     id: 'n_terms',
     type: 'consultation.bindTerminology',
-    config: { purposeScope: 'terminology.validate', unmappedOutputKey: 'unmappedTerms', onError: 'degrade' },
+    config: { purposeScope: 'EXTERNAL_TOOL_LOOKUP', unmappedOutputKey: 'unmappedTerms', onError: 'degrade' },
   },
   { id: 'n_phi', type: 'consultation.phiHop', config: { mode: 'pseudonymize', onError: 'degrade' } },
   { id: 'n_evidence', type: 'consultation.retrieveEvidence', config: { retrievalEnabled: true, onError: 'degrade' } },
@@ -239,7 +247,12 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       ['n_capture', 'out', 'n_entities', 'in'],
       ['n_entities', 'out', 'n_realtime', 'entities'],
       ['n_entities', 'out', 'n_terms', 'in'],
-      ['n_phi', 'out', 'n_prompt', 'transcript'],
+      // TASK-806 lane A item 18 — ORDERING, not data. `consultation.assemblePrompt` no longer
+      // declares a `transcript` input: the gateway assembles the prompt from the consultation's
+      // own persisted transcript, so a second one over a port could only duplicate it inside the
+      // prompt. The PHI hop must still precede the prompt (WF-CONS-009 is an allPathsPassThrough
+      // check), and an `after` edge is what an ordering dependency is for.
+      ['n_phi', 'next', 'n_prompt', 'after'],
       ['n_evidence', 'out', 'n_prompt', 'in'],
       ['n_prompt', 'out', 'n_synth', 'in'],
       // `document ⊑ text`: the correction pass proposes over any clinical text, including a

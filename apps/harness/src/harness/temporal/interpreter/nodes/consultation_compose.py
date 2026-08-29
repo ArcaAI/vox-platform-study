@@ -22,6 +22,7 @@ from harness.temporal.activities import assemble_prompt, retrieve_context
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import (
     bound_entities,
+    bound_text,
     run_identity,
 )
 from harness.temporal.interpreter.nodes._shared import (
@@ -32,6 +33,7 @@ from harness.temporal.interpreter.nodes._shared import (
 )
 from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 from harness.temporal.models import AssembleInput, RetrieveContextInput
+from harness.temporal.prompt_cache import assemble_generation_prompt
 
 
 @activity.defn(name="interpreter.consultation_retrieve_evidence")
@@ -96,11 +98,32 @@ async def interpreter_consultation_retrieve_evidence(
 async def interpreter_consultation_assemble_prompt(
     payload: NodeActivityInput,
 ) -> NodeActivityResult:
-    """N-7 — build the composer prompt from the consultation's own persisted context.
+    """N-7 — build the composer prompt from the consultation's own persisted context, plus the
+    EVIDENCE bound to this node's declared ``in`` port.
 
     ``assemble_prompt`` reads the consultation server-side (apps/api owns template resolution,
     DNA style and segment citations), so this node's authored config carries only the SELECTION
     knobs — never prompt text.
+
+    ## The bound-evidence fold (TASK-806 lane A, item 18)
+
+    This activity used to read NO ``bound_inputs`` at all, while ``node-types.md`` documented the
+    node as consuming evidence and ``node-ports.ts`` declared an ``in`` socket for it. That was not
+    merely a doc-vs-code divergence: ``consultation.retrieveEvidence`` publishes the
+    StrictCitations block it retrieved, both committed seed graphs wire it into this node, and
+    nothing consumed it — so on the interpreter path the retrieved evidence was fetched, paid for
+    and then dropped, silently.
+
+    The fold uses ``assemble_generation_prompt`` (``temporal/prompt_cache.py``), the SAME pure
+    helper ``HarnessDocWorkflow`` already appends a retrieval block with. That matters for two
+    reasons beyond not writing a second one: the ordering it enforces (stable, cacheable prompt
+    prefix first, citations block after) is what the engine prefix-cache expects, and with no
+    evidence bound it returns the prompt byte-identical — so a graph that wires nothing is
+    unchanged.
+
+    The ``transcript`` input the port table used to declare is GONE rather than read: the gateway
+    assembles the prompt from the consultation's own persisted transcript, so a second one arriving
+    over a port could only duplicate it inside the prompt.
     """
     started = now()
     identity = run_identity(payload.run_payload)
@@ -136,11 +159,17 @@ async def interpreter_consultation_assemble_prompt(
         )
         return NodeActivityResult(status="DEGRADED", reason="prompt assembly returned no prompt")
 
+    # The node's `in: context<schemaRef>` socket, read generically off `bound_inputs` (never a
+    # fixed port name — port names are graph-author-chosen). `bound_text` prefers the `text` key
+    # of a dict-shaped bound value, which is exactly the shape `retrieveEvidence` publishes.
+    evidence_block = bound_text(payload.bound_inputs)
+    user_prompt = assemble_generation_prompt(assembled.user_prompt, evidence_block)
+
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
         status="SUCCEEDED",
         output={
-            "text": assembled.user_prompt,
+            "text": user_prompt,
             "systemPrompt": assembled.system_prompt,
             "promptTemplateId": assembled.prompt_template_id,
             "promptVersion": assembled.prompt_version,

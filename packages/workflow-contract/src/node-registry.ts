@@ -99,18 +99,29 @@ export interface WorkflowNodeDescriptor {
    *  nodes share a lane without sharing a cadence, and it absorbs the endpoint stage uniformly
    *  as `on-end`. */
   readonly trigger: WorkflowNodeTrigger;
-  /** WHICH RUNTIME executes it. `realtime` carries a latency budget; `durable` must survive a
-   *  restart. Every node registered today is `durable` — each one's `activityName` is a
-   *  registered Temporal `@activity.defn` dispatched by the interpreter workflow, which IS the
-   *  durable lane. The realtime executor arrives with TASK-811; assigning nodes to a lane whose
-   *  runtime does not exist yet would be a claim this package cannot back. */
+  /** WHICH RUNTIME executes it, and it is now LOAD-BEARING rather than descriptive (TASK-806
+   *  lane A, item 7). `durable` means the interpreter workflow dispatches `activityName` as a
+   *  Temporal activity; `realtime` means TASK-811's live executor runs it and the durable
+   *  interpreter SKIPS it (`reason: 'realtime_lane'`), so exactly one runtime ever executes a
+   *  given node.
+   *
+   *  It was `durable` on every entry until this lane, which was a claim the platform had already
+   *  outgrown: `REALTIME_NODE_TYPES` (`realtime-node-registry.ts`) listed three consultation
+   *  nodes the realtime runtime executes, and that set is now DERIVED from this field rather than
+   *  hand-maintained beside it. `lane` is the SECOND field shared with the Python mirror (after
+   *  `outputKey`), because the skip has to be enforced where dispatch happens. */
   readonly lane: WorkflowNodeLane;
   /** Guard attachment keys — node types that must be wired to EVERY INSTANCE of this node
    *  before a graph containing it can be published (`workflowPublishProblems`, checked per
-   *  instance, not per type). Empty on every node today: the `guard.*` node types the target
-   *  catalogue names do not exist yet, and the summarization palette's mandatory guardrail is
-   *  already enforced by the rule catalogue — a second enforcement path for one policy is how
-   *  the two drift apart. */
+   *  instance, not per type).
+   *
+   *  Populated on the TARGET CATALOGUE only (TASK-806 lane A, item 17): the three `agent.*`
+   *  generation entries require `guard.groundedness`, and `agent.transcription` requires
+   *  `guard.phi`. It stays `[]` on every PIPELINE node type, deliberately — the summarization
+   *  palette's mandatory guardrail and the consultation palette's mandatory PHI hop are already
+   *  enforced by the rule catalogue (`WF-SUMM-*`, `WF-CONS-009`), and a second enforcement path
+   *  for one policy is how the two drift apart. The new catalogue has no rule set of its own, so
+   *  here `requires` IS the only enforcement rather than a duplicate of one. */
   readonly requires: readonly string[];
   /** MUST be `true` for any `lane: 'durable'` node, because Temporal retries activities and a
    *  non-idempotent retry double-writes invisibly. Enforced by
@@ -523,7 +534,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultMaxAttempts: 2,
     entitlementKey: null,
     trigger: 'on-start',
-    lane: 'durable',
+    lane: 'realtime',
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
@@ -542,7 +553,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultMaxAttempts: 2,
     entitlementKey: null,
     trigger: 'per-turn',
-    lane: 'durable',
+    lane: 'realtime',
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
@@ -751,7 +762,7 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     defaultMaxAttempts: 2,
     entitlementKey: null,
     trigger: 'per-turn',
-    lane: 'durable',
+    lane: 'realtime',
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
@@ -872,6 +883,263 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     externalWrite: true,
     defaultTimeoutSeconds: 30,
     defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  // -------------------------------------------------------------------------------------------
+  // The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+  //
+  // ## Why these are ADDITIONS, not renames
+  //
+  // A node type is a contract with every saved tenant graph (see `schemaVersion` above), and both
+  // committed seed graphs plus every golden fixture name the pipeline keys above. So the target
+  // catalogue is registered ALONGSIDE them. The two vocabularies are not duplicate BEHAVIOUR —
+  // each `agent.*` entry DELEGATES to the engine of its pipeline counterpart, so there is one
+  // implementation, two names, and no second behaviour to keep in step.
+  //
+  // | Catalogue entry | Engine it delegates to |
+  // |---|---|
+  // | `agent.transcription` | `interpreter.consultation_capture_binding` |
+  // | `agent.normalization` | `interpreter.consultation_bind_terminology` (ontology linking) |
+  // | `agent.ner` | `interpreter.consultation_extract_entities` |
+  // | `agent.presummarization` / `agent.summarization` / `agent.discharge_summary` | `interpreter.text_generate` — DD-9's ONE generation engine |
+  // | `agent.retrieval` | `interpreter.consultation_retrieve_evidence` |
+  // | `agent.feedback` | `interpreter.feedback_capture` |
+  // | `agent.dna_redaction` | `interpreter.consultation_phi_hop`'s redactor, in DNA-rule mode |
+  // | `guard.phi` | `interpreter.consultation_phi_hop` |
+  // | `guard.moderation` | `interpreter.guardrail_check` |
+  // | `guard.groundedness` | `interpreter.consultation_sensors` (the groundedness sensor) |
+  //
+  // `paletteKey: 'consultation'` on the `agent.*` entries follows TASK-812's precedent for
+  // `session.timeout`/`summary.finalize`/`feedback.capture`: the palette rail is where an admin
+  // FINDS a node, and DD-9's whole reason for three generation entries is that an admin can find
+  // them. The `guard.*` entries are `paletteKey: null` because a guard genuinely is
+  // palette-agnostic — the summarization palette's generation node needs one exactly as the
+  // consultation palette's does.
+  // -------------------------------------------------------------------------------------------
+  'agent.transcription': Object.freeze({
+    key: 'agent.transcription',
+    implemented: true,
+    activityName: 'interpreter.agent_transcription',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    // Same lane as the capture node it delegates to: the runtime that actually produces a
+    // transcript from a live session is TASK-811's realtime executor.
+    lane: 'realtime',
+    // A transcript is the most PHI-dense artifact this platform holds, and every consultation
+    // rule set already makes a redaction hop mandatory on every path out of capture
+    // (WF-CONS-009). Stating it as a guard requirement is what carries that property into a
+    // graph built from the new catalogue, where no WF-CONS rule applies.
+    requires: Object.freeze(['guard.phi']),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.normalization': Object.freeze({
+    key: 'agent.normalization',
+    implemented: true,
+    activityName: 'interpreter.agent_normalization',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.ner': Object.freeze({
+    key: 'agent.ner',
+    implemented: true,
+    activityName: 'interpreter.agent_ner',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    // The persist leg writes, exactly as `consultation.extractEntities`' does — which is also
+    // what makes the interpreter's sandbox suppression correct for free.
+    externalWrite: true,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'realtime',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  // DD-6 — pre-summarization is a NODE, fed from context supplied at runtime, running on-start.
+  // It must stay NON-SIGNABLE: `isFinalSummary` excludes `PRE_SUMMARY`, locked by
+  // `kept-generators-signability.task732.test.ts:63`. Nothing here can make it signable — that
+  // property lives on the generator, not the node — but the constraint is recorded because a
+  // future `externalWrite`/persistence change to this node is where it would be lost.
+  'agent.presummarization': Object.freeze({
+    key: 'agent.presummarization',
+    implemented: true,
+    activityName: 'interpreter.agent_presummarization',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze(['guard.groundedness']),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.summarization': Object.freeze({
+    key: 'agent.summarization',
+    implemented: true,
+    activityName: 'interpreter.agent_summarization',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze(['guard.groundedness']),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.discharge_summary': Object.freeze({
+    key: 'agent.discharge_summary',
+    implemented: true,
+    activityName: 'interpreter.agent_discharge_summary',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze(['guard.groundedness']),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.retrieval': Object.freeze({
+    key: 'agent.retrieval',
+    implemented: true,
+    activityName: 'interpreter.agent_retrieval',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agent.feedback': Object.freeze({
+    key: 'agent.feedback',
+    implemented: true,
+    activityName: 'interpreter.agent_feedback',
+    classes: Object.freeze(['activity', 'endpoint']),
+    paletteKey: 'consultation',
+    critical: false,
+    // DD-8 — an ACCEPTED advisory correction becomes real here or nowhere.
+    externalWrite: true,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  // TASK-815 §11 — the DNA-redaction pass, migrated out of the resolver flag triple. The
+  // department-agent VETO stays retired: this node redacts when the tenant placed it and (by
+  // default) the doctor opted in, which is the two-gate behaviour the owner ruled on.
+  'agent.dna_redaction': Object.freeze({
+    key: 'agent.dna_redaction',
+    implemented: true,
+    activityName: 'interpreter.agent_dna_redaction',
+    classes: Object.freeze(['activity', 'redaction']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  // ---- Guards (DD-7) -------------------------------------------------------------------------
+  // `critical: false` on all three, matching the engines they delegate to
+  // (`consultation.phiHop`, `guardrail.check`, `consultation.sensors` are all non-critical).
+  // The PHI guard's fail-CLOSED property is not criticality: it lives in `ensure_egress_safe`,
+  // which RAISES before any cloud call, so a blocked egress fails the run whatever this flag says.
+  'guard.phi': Object.freeze({
+    key: 'guard.phi',
+    implemented: true,
+    activityName: 'interpreter.guard_phi',
+    classes: Object.freeze(['guard', 'redaction']),
+    paletteKey: null,
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'guard.moderation': Object.freeze({
+    key: 'guard.moderation',
+    implemented: true,
+    activityName: 'interpreter.guard_moderation',
+    classes: Object.freeze(['guard']),
+    paletteKey: null,
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'guard.groundedness': Object.freeze({
+    key: 'guard.groundedness',
+    implemented: true,
+    activityName: 'interpreter.guard_groundedness',
+    classes: Object.freeze(['guard']),
+    paletteKey: null,
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
     entitlementKey: null,
     trigger: 'on-end',
     lane: 'durable',

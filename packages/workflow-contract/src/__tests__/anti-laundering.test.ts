@@ -127,7 +127,16 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
       .filter((descriptor) => descriptor.outputs.some((port) => port.primitive === 'transcript'))
       .map((descriptor) => descriptor.key)
       .sort();
-    expect(transcriptProducers).toEqual(['consultation.captureBinding', 'consultation.phiHop', 'stt.asrEngine', 'stt.phiHop']);
+    // TASK-806 lane A — `agent.transcription` is the target catalogue's capture entry. It
+    // belongs on this list for exactly the reason the list exists: it is a TRANSCRIPTION node,
+    // not a generation node, and the loop below is what enforces that distinction.
+    expect(transcriptProducers).toEqual([
+      'agent.transcription',
+      'consultation.captureBinding',
+      'consultation.phiHop',
+      'stt.asrEngine',
+      'stt.phiHop',
+    ]);
     for (const key of transcriptProducers) {
       expect(WORKFLOW_NODE_REGISTRY[key].classes).not.toContain('generation');
     }

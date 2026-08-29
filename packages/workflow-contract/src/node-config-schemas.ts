@@ -491,6 +491,47 @@ const BOUNDARY_MARKER_SCHEMA: NodeConfigSchema = Object.freeze({
 //     but `hitlGate` DOES — `compileGate` reads four fields off it (see its schema below).
 // -----------------------------------------------------------------------------------------
 
+/**
+ * WF-CONS-013's `purposeScope` taxonomy (TASK-806 lane A, item 19).
+ *
+ * ## Why these values and not an invented vocabulary
+ *
+ * CR-03 states the rule in its own words: *"Every node performing a tool/MCP call MUST declare a
+ * purpose scope in its config"*. So `purposeScope` names the PURPOSE OF USE of an outbound call,
+ * not a property of the codes that come back — and this platform already has a ratified
+ * purpose-of-use vocabulary for exactly that: `ConsentPurpose`
+ * (`packages/database/src/prisma/db_main/enums.prisma`, TASK-712 consent-abac). WF-CONS-013's own
+ * invariant list cites **INV-007**, which is the same invariant `ConsentPurpose.EXTERNAL_TOOL_LOOKUP`
+ * cites — the two are the same concept seen from two sides.
+ *
+ * The correspondence is not theoretical. `consultation.bindTerminology`'s activity calls
+ * `call_mcp_tool`, which performs a consent check with `purpose="EXTERNAL_TOOL_LOOKUP"`
+ * (`apps/harness/src/harness/temporal/activities.py:1092`) — a HARDCODED literal today. Declaring
+ * the config taxonomy over the same enum is what makes it possible for that literal to become
+ * `config.purposeScope` instead, which is the direction `00-project-context.md` §Configuration
+ * Principles requires ("a label taxonomy is NOT a literal in code").
+ *
+ * ## Which members, and which are deliberately absent
+ *
+ * | Value | Grounding |
+ * |---|---|
+ * | `EXTERNAL_TOOL_LOOKUP` | `activities.py:1092` — the purpose THIS node's own egress already checks. |
+ * | `HISTORY_RETRIEVAL` | `activities.py:1541` — the purpose the platform's other retrieval egress checks. |
+ * | `AI_DOCUMENTATION` | `enums.prisma` — "Consultation capture + AI-assisted note generation"; a bind performed purely to code the note being written. |
+ * | `QUALITY_REVIEW` | `enums.prisma` — "Downstream quality/metrics review of the encounter". |
+ *
+ * `STYLE_LEARNING` is the one `ConsentPurpose` member deliberately EXCLUDED: it authorizes a DNA
+ * writing-style opt-in, not an outbound tool call, so offering it here would let a node declare a
+ * purpose under which its egress could never be granted.
+ *
+ * ⚠ **Proposed, pending owner confirmation.** TASK-809 §2z left this "an open owner decision"; the
+ * set above is derived from real usage rather than supplied, and the two values previously in the
+ * tree (`terminology.validate` in the seed, `clinical-coding` in the golden fixtures) were both
+ * free strings written before any taxonomy existed. Both are migrated to `EXTERNAL_TOOL_LOOKUP`,
+ * which is what their egress actually asks consent for.
+ */
+export const TERMINOLOGY_PURPOSE_SCOPES = Object.freeze(['EXTERNAL_TOOL_LOOKUP', 'HISTORY_RETRIEVAL', 'AI_DOCUMENTATION', 'QUALITY_REVIEW'] as const);
+
 /** WF-CONS-019's permitted error policies, verbatim. Shared so the rule and the schemas cannot
  *  drift apart silently. */
 const CONSULTATION_ON_ERROR = Object.freeze({
@@ -580,19 +621,16 @@ const CONSULTATION_BIND_TERMINOLOGY_SCHEMA: NodeConfigSchema = Object.freeze({
   additionalProperties: false,
   required: ['purposeScope', 'unmappedOutputKey', 'onError'],
   properties: {
-    // DELIBERATELY UNCONSTRAINED beyond "a non-empty string". `purposeScope` is required by
-    // WF-CONS-013 (`op: 'present'` — presence only, no value check) and is read NOWHERE in
-    // `consultation_nlp.py`: no activity, no client, no validator consumes its VALUE. The only
-    // sample in the tree is the seed's `'terminology.validate'`
-    // (`seed/23-arcaai-workflow-authoring.ts:139`), which is one data point, not a taxonomy.
-    // An enum, a pattern or even a length ceiling invented here would be a NEW design decision
-    // wearing a schema's clothes, and would silently reject purposes nobody has thought of yet.
-    // ⚠ OPEN OWNER DECISION: what vocabulary `purposeScope` draws from is unresolved.
+    // TASK-806 item 19 — CLOSED. `purposeScope` now draws from `TERMINOLOGY_PURPOSE_SCOPES`
+    // above, which is the `ConsentPurpose` purpose-of-use vocabulary restricted to the members
+    // that can justify an outbound tool call. WF-CONS-013 still only checks PRESENCE (`op:
+    // 'present'`); the enum is what makes the declared purpose comparable with the consent
+    // purpose the node's own egress asks for.
     purposeScope: {
       type: 'string',
-      minLength: 1,
+      enum: TERMINOLOGY_PURPOSE_SCOPES,
       description:
-        'WF-CONS-013 — the declared purpose the code binding is scoped to. Taxonomy is an open owner decision; presence is all that is enforced.',
+        "WF-CONS-013 — the purpose of use declared for this node's outbound terminology call. Drawn from ConsentPurpose (TASK-712), so it is comparable with the consent grant the egress is checked against.",
     },
     unmappedOutputKey: {
       type: 'string',
@@ -884,13 +922,85 @@ const FEEDBACK_CAPTURE_SCHEMA: NodeConfigSchema = Object.freeze({
   },
 });
 
+// -----------------------------------------------------------------------------------------
+// The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+//
+// Nine `agent.*` entries and three `guard.*` entries. Almost every one of them REUSES the config
+// schema of the engine it delegates to, exactly as `consultation.inferentialSensors` already
+// reuses `consultation.sensors`' schema: DD-9's instruction is "one implementation behind them —
+// do not fork the engine", and a forked SCHEMA is how a forked implementation starts. Only the
+// two node types with no existing engine node carry a schema of their own, below.
+// -----------------------------------------------------------------------------------------
+
 /**
- * Node-type key -> config JSON Schema. A key ABSENT from this map means no schema has been
- * authored for that node type yet (`WORKFLOW_NODE_REGISTRY[key].configSchema` stays
+ * `agent.dna_redaction` — the DNA writing-style redaction pass, which TASK-815 §11 turns from a
+ * resolver flag triple into a NODE.
+ *
+ * The triple was `dnaRedactionEnabled` (tenant cascade) AND the doctor's `dnaStyleEnabled` opt-in
+ * AND the department default agent's `dnaStylePolicy` veto. The veto retired with
+ * `DepartmentAgent` and stays retired (owner ruling: "a consultation both surviving gates enable
+ * IS redacted"). What remains migrates here as follows, and the split is deliberate:
+ *
+ *  - the TENANT gate becomes the NODE ITSELF. A tenant enables redaction by placing this node in
+ *    its published graph; there is no separate boolean that can disagree with the graph.
+ *  - the DOCTOR opt-in stays a doctor-scope setting, because it is a clinician's own preference
+ *    over their own writing style (TASK-815 §12 P-4 makes that ownership explicit). `requireDoctorOptIn`
+ *    is the node's declaration of whether it honours that opt-in — default TRUE, which is the
+ *    two-gate behaviour verbatim.
+ */
+const AGENT_DNA_REDACTION_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'agent.dna_redaction node config (TASK-815 §11 — the DNA-redaction pass as a node)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    requireDoctorOptIn: {
+      type: 'boolean',
+      default: true,
+      description:
+        "Whether the consulting doctor's own DNA opt-in is still required for this node to redact. TRUE reproduces the surviving two-gate behaviour exactly; FALSE makes the tenant's placement of this node sufficient.",
+    },
+    dnaStyleId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
+ * `guard.groundedness` — the groundedness gate as a first-class, ATTACHABLE node.
+ *
+ * `realtime-lane.ts` records the gap this closes in its own words: *"There is no groundedness NODE
+ * because the registry has no groundedness node type; the gate is a GUARD attached to the
+ * generation node"*. `threshold` is the one knob that is already load-bearing rather than
+ * invented — `guard-memo.ts` keys its memo on `(guard, config, input)` precisely because *"a
+ * discharge summary held to 0.9 and a running note to 0.6 are two genuinely different verdicts on
+ * the same text"*.
+ */
+const GUARD_GROUNDEDNESS_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'guard.groundedness node config (DD-7)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    threshold: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+      description: 'The groundedness score below which the guarded document is marked ungrounded. Per-node, by design (guard-memo.ts).',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
+ * Node-type key -> AUTHORED config JSON Schema. A key ABSENT from this map means no schema has
+ * been authored for that node type yet (`WORKFLOW_NODE_REGISTRY[key].configSchema` stays
  * `undefined`) — a real, structural, always-possible state (see this module's docstring),
  * not an omission to fix here.
+ *
+ * This is the AUTHORED half. The exported `NODE_CONFIG_SCHEMAS` below folds the palette-agnostic
+ * runtime knobs into every entry — see the ADDENDUM at the foot of this module.
  */
-export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
+const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
   noop: NOOP_SCHEMA,
   'core.start': BOUNDARY_MARKER_SCHEMA,
   'core.end': BOUNDARY_MARKER_SCHEMA,
@@ -929,4 +1039,99 @@ export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = O
   'session.timeout': SESSION_TIMEOUT_SCHEMA,
   'summary.finalize': SUMMARY_FINALIZE_SCHEMA,
   'feedback.capture': FEEDBACK_CAPTURE_SCHEMA,
+  // The TARGET CATALOGUE (DD-6/DD-9), in catalogue order. Each entry reuses the schema of the
+  // engine it delegates to — see the block above `AGENT_DNA_REDACTION_SCHEMA`.
+  'agent.transcription': CONSULTATION_CAPTURE_BINDING_SCHEMA,
+  'agent.normalization': CONSULTATION_BIND_TERMINOLOGY_SCHEMA,
+  'agent.ner': CONSULTATION_EXTRACT_ENTITIES_SCHEMA,
+  // DD-9 — three palette entries, ONE generation engine, therefore ONE config surface.
+  'agent.presummarization': CONSULTATION_SYNTHESIZE_SCHEMA,
+  'agent.summarization': CONSULTATION_SYNTHESIZE_SCHEMA,
+  'agent.discharge_summary': CONSULTATION_SYNTHESIZE_SCHEMA,
+  'agent.retrieval': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
+  'agent.feedback': FEEDBACK_CAPTURE_SCHEMA,
+  'agent.dna_redaction': AGENT_DNA_REDACTION_SCHEMA,
+  // The guards (DD-7). `guard.phi` and `guard.moderation` reuse the redaction and content-safety
+  // engines' own schemas; only groundedness had no node to inherit from.
+  'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
+  'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
+  'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
 });
+
+// ===========================================================================================
+// ADDENDUM — the palette-agnostic RUNTIME knobs `compileNode` reads off EVERY node
+// (TASK-806 lane A, item 5; the addendum TASK-809 promised at line ~505 and never wrote)
+// ===========================================================================================
+//
+// `compiler.ts`'s `compileNode` reads three keys off `node.config` for every node it compiles:
+// `timeoutSeconds`, `retry` and `onError`. Until now NO schema declared the first two, and every
+// schema sets `additionalProperties: false` — so the two halves of the platform disagreed about
+// the same object: the engine honoured a per-node budget and retry ceiling that an admin could
+// not author, and a graph that DID carry them failed publish on an undeclared property.
+//
+// The decision (recorded because the alternative was live): **declare them once, here**, rather
+// than deleting the compiler's reads. Deleting them would remove a capability that is genuinely
+// exercised — `compileGate` reads `timeoutSeconds` on the one durable human wait, and TASK-811's
+// realtime executor takes its PER-NODE budget and retry ceiling straight off the compiled
+// `timeoutSeconds` / `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode`). A per-node
+// budget is the mechanism by which one slow model does not stall another; it is not dead code.
+//
+// Folded in HERE rather than pasted into ~36 literals for the same reason `NODE_PORTS` is
+// attached in `node-registry.ts` rather than inlined: a uniform property that must appear on
+// every node is a derivation, and a derivation cannot be forgotten on the next node someone adds.
+// An authored schema that already declares one of these keys KEEPS its own declaration
+// (`consultation.hitlGate` declares a gate-scoped `timeoutSeconds`), so this can only ever add.
+//
+// `onError` is deliberately NOT folded in: the consultation palette declares it with WF-CONS-019's
+// own enum, and the summarization/STT schemas that omit it would need a vocabulary this module
+// cannot derive (`compileNode` treats every value that is not `'degrade'` as `'fail'`, so the
+// consultation enum's `'retry'` is already an authoring-time value with no compiled meaning).
+// That is a real, separate gap — reported, not silently papered over with a guessed enum.
+
+/** The per-node retry ceiling `compileNode` clamps against `caps.maxAttempts`. Mirrors
+ *  `CompiledRetryPolicy` exactly; a key the compiler does not read is not offered. */
+const NODE_RETRY_SCHEMA: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    maximumAttempts: { type: 'integer', minimum: 1, description: 'Clamped to the definition`s `caps.maxAttempts` at compile time.' },
+    initialIntervalSeconds: { type: 'number', minimum: 0, description: 'First retry delay, in seconds.' },
+    backoffCoefficient: { type: 'number', minimum: 1, description: 'Multiplier applied to the interval after each attempt.' },
+  },
+});
+
+/** The two keys `compileNode` reads off every node`s config. */
+const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
+  timeoutSeconds: Object.freeze({
+    type: 'integer',
+    minimum: 1,
+    description: 'Per-node execution budget in seconds, clamped to the definition`s `caps.maxNodeSeconds` at compile time.',
+  }),
+  retry: NODE_RETRY_SCHEMA,
+});
+
+/**
+ * `consultation.hitlGate` is the ONE exclusion, and it is structural rather than a carve-out: it
+ * is the only `gate`-classed node type, so the compiler lifts it out of `stages` into `gates` and
+ * routes it through `compileGate` — which reads `timeoutSeconds` (already declared on its own
+ * schema, scoped to the human wait) and NO retry policy at all. `CompiledGate` has no `retry`
+ * field, so offering one would be a configuration promise the runtime cannot keep.
+ */
+const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.hitlGate']);
+
+function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
+  if (RUNTIME_PROPERTY_EXCLUSIONS.has(key)) return schema;
+  const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
+  const additions = Object.entries(NODE_RUNTIME_PROPERTIES).filter(([name]) => declared[name] === undefined);
+  if (additions.length === 0) return schema;
+  return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, ...Object.fromEntries(additions) }) });
+}
+
+/**
+ * The PUBLIC map: every authored schema with the palette-agnostic runtime knobs folded in. This
+ * is what `node-registry.ts` attaches as `WorkflowNodeDescriptor.configSchema`, what
+ * `GET /admin/workflow-nodes` serves, and what the Studio inspector compiles into fields.
+ */
+export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
+  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
+);

@@ -48,6 +48,7 @@ def _project_registry() -> list[dict]:
             "defaultMaxAttempts": spec.default_max_attempts,
             "entitlementKey": spec.entitlement_key,
             "outputKeys": dict(spec.output_keys),
+            "lane": spec.lane,
         }
         for spec in NODE_REGISTRY.values()
     ]
@@ -65,6 +66,16 @@ class TestNodeRegistryParity:
 
     def test_carries_exactly_the_seed_and_stt_palette_keys(self):
         assert sorted(NODE_REGISTRY.keys()) == [
+            # TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+            "agent.discharge_summary",
+            "agent.dna_redaction",
+            "agent.feedback",
+            "agent.ner",
+            "agent.normalization",
+            "agent.presummarization",
+            "agent.retrieval",
+            "agent.summarization",
+            "agent.transcription",
             "consultation.assemblePrompt",
             "consultation.bindTerminology",
             "consultation.captureBinding",
@@ -86,6 +97,9 @@ class TestNodeRegistryParity:
             # TASK-812 — the endpoint stage.
             "feedback.capture",
             "generate.text",
+            "guard.groundedness",
+            "guard.moderation",
+            "guard.phi",
             "guardrail.check",
             "input.context_binding",
             "noop",

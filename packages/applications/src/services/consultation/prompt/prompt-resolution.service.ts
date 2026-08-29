@@ -177,6 +177,16 @@ export interface PromptResolutionTrace {
    */
   tenantPromptId?: string | null;
   usedDefaults: string[];
+  /**
+   * CONFIGURATION errors surfaced during resolution — a tenant setup problem the caller should
+   * see, distinct from `usedDefaults`, which records a legitimate tier miss.
+   *
+   * Added by TASK-806 lane A item 1 for the owner's ruling that the pre-summary tier's loss is
+   * "not accepted as a silent fallback": a tenant with no ACTIVE `agent.presummarization` node
+   * still gets a prompt, but the absence is NAMED here and logged at error level rather than
+   * disappearing into `usedDefaults`. Additive and optional — no existing consumer branches on it.
+   */
+  configurationErrors?: string[];
 }
 
 /**
@@ -402,6 +412,34 @@ function effectiveTaskKey(node: WorkflowGraphNode): string | undefined {
 function promptBearingNodesForTask(graph: WorkflowGraph | null | undefined, taskKey: NodeTaskKey): WorkflowGraphNode[] {
   if (!graph || !Array.isArray(graph.nodes)) return [];
   return graph.nodes.filter((node) => readPromptTemplateId(node) !== null && effectiveTaskKey(node) === taskKey);
+}
+
+/** DD-6's pre-summarization node type — the successor to the department default agent's
+ *  `preSummaryTemplateId` column (TASK-815 §11, owner ruling). */
+const PRESUMMARIZATION_NODE_TYPE = 'agent.presummarization';
+
+/**
+ * A node the tenant has switched OFF. `config.enabled === false` is the platform-wide
+ * "authored, but not running" convention — the realtime executor reads exactly this key
+ * (`realtime-lane.ts`) — so an inactive node must not supply a prompt either. The owner's ruling
+ * says a tenant must configure an ACTIVE pre-summarization node; this is what "active" means.
+ */
+function isNodeDisabled(node: WorkflowGraphNode): boolean {
+  return nodeConfig(node).enabled === false;
+}
+
+/**
+ * Every ACTIVE, prompt-bearing pre-summarization node, in authored order.
+ *
+ * Selected by node TYPE rather than by `taskKey`, unlike the summary/live tiers, and that
+ * difference is the point: `taskKey` distinguishes which GENERATION TASK a node in the note
+ * pipeline serves, while pre-summary is a different CAPABILITY with its own node type. Keying it
+ * off `taskKey` would make a pre-summary request selectable by a note node again, which is the
+ * exact wrong-prompt failure the capability split exists to prevent.
+ */
+function activePresummarizationNodes(graph: WorkflowGraph | null | undefined): WorkflowGraphNode[] {
+  if (!graph || !Array.isArray(graph.nodes)) return [];
+  return graph.nodes.filter((node) => node.type === PRESUMMARIZATION_NODE_TYPE && !isNodeDisabled(node) && readPromptTemplateId(node) !== null);
 }
 
 // ============================================================================
@@ -637,23 +675,54 @@ export class PromptResolutionService {
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
     const variant = params.preSummaryVariant ?? 'v1';
 
-    // TASK-815 — THERE IS NO LONGER A TIER-1a' HERE, and that absence is
-    // deliberate rather than an oversight.
+    // TIER-1a' — RESTORED (TASK-806 lane A item 1) onto the node the owner ruled
+    // a tenant must configure.
     //
     // The tier used to read the department default `DepartmentAgent`'s
-    // `preSummaryTemplateId`. Its successor would be a PRE-SUMMARISATION NODE
-    // (`agent.presummarization`, DD-6), and that node type does not exist yet —
-    // it is in TASK-809's TARGET catalogue, not in `WORKFLOW_NODE_REGISTRY`.
-    // Rather than pick some other node's prompt (which is how a clinical NOTE
-    // prompt gets served for a pre-summary request — the exact defect this
-    // capability split exists to kill), the tier is simply absent until the node
-    // type lands. The tenant tier below and the SYSTEM default behind it are
-    // unchanged, so every pre-summary that resolved through them still does.
+    // `preSummaryTemplateId`; TASK-815 retired it with nothing in its place,
+    // because `agent.presummarization` (DD-6) did not exist. It does now, and the
+    // owner's ruling on the delta was that the loss is NOT accepted as a silent
+    // fallback: pre-summary must be TENANT TIER, and a tenant must configure an
+    // ACTIVE pre-summarization node.
     //
-    // The v1-compat shim never reached the agent tier in the first place (it
-    // calls `resolve({ tenantId, promptType: 'pre-summary' })` with no
-    // department), so this changes nothing on the frozen compat route.
+    // `null` department, deliberately: pre-summary has no department axis (see
+    // this method's docstring), so the assignment cascade resolves
+    // tenant -> platform default and the DEPARTMENT tier is never consulted.
+    // Selection is by node TYPE, never by `taskKey` — keying it off `taskKey`
+    // would make a clinical NOTE node selectable for a pre-summary request, which
+    // is the exact wrong-prompt failure this capability split exists to kill.
     trace.agentId = null;
+
+    if (tenantId) {
+      const node = await this.resolveGraphNodePrompt(tenantId, null, activePresummarizationNodes, undefined, {
+        nodeType: PRESUMMARIZATION_NODE_TYPE,
+      });
+      if (node) {
+        trace.agentId = node.nodeId;
+        trace.agentVersionNumber = node.versionNumber;
+        return {
+          promptId: node.templateId,
+          tier: 'tenant',
+          content: node.content,
+          versionNumber: node.versionNumber,
+          agentId: node.nodeId,
+        };
+      }
+
+      // NOT SILENT. The owner's ruling forbids an invisible slide onto the
+      // platform default, so the absence is NAMED — on the trace the caller
+      // already receives, and at error level in the log. It is not made FATAL:
+      // the SYSTEM-default tier behind this one is reached by the frozen v1-compat
+      // route (which passes no department and has never had an agent tier), and no
+      // tenant has such a node on day one, so failing closed here would take out
+      // every pre-summary on the platform including the compat plane. Loud, not
+      // lethal — and flagged to the owner rather than decided silently.
+      const configurationError =
+        `no ACTIVE ${PRESUMMARIZATION_NODE_TYPE} node with a bound prompt template is configured in this tenant's ` +
+        'governing consultation workflow — pre-summary is falling through to the tenant/SYSTEM default';
+      trace.configurationErrors = [...(trace.configurationErrors ?? []), configurationError];
+      this.logger.error({ message: configurationError, tenantId, preSummaryVariant: variant });
+    }
 
     if (tenantId) {
       const tenantTemplateId = await this.findTenantPreSummaryTemplateId(tenantId, variant);
@@ -936,14 +1005,34 @@ export class PromptResolutionService {
     taskKey: NodeTaskKey,
     pinnedNodeId?: string,
   ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string } | null> {
+    return this.resolveGraphNodePrompt(tenantId, departmentId, (graph) => promptBearingNodesForTask(graph, taskKey), pinnedNodeId, { taskKey });
+  }
+
+  /**
+   * The shared body of every NODE tier: assignment cascade -> published definition -> a caller
+   * supplied node SELECTION -> that node's DD-11 prompt binding, under the approval + snapshot
+   * discipline described on `resolveNodePrompt`.
+   *
+   * Extracted (TASK-806 lane A) so the PRE-SUMMARY tier can select by node TYPE while the
+   * summary/live tiers keep selecting by `taskKey`, without a second copy of the template
+   * approval, pin resolution and degrade-never-throw logic — which is the half that actually
+   * carries the safety properties.
+   */
+  private async resolveGraphNodePrompt(
+    tenantId: string,
+    departmentId: string | null,
+    selectNodes: (graph: WorkflowGraph | null | undefined) => WorkflowGraphNode[],
+    pinnedNodeId?: string,
+    logContext: Record<string, unknown> = {},
+  ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string } | null> {
     if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
 
     try {
-      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId);
+      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, departmentId as string);
       if (!assignment.workflowDefinitionSlug) return null;
 
       const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
-      const candidates = promptBearingNodesForTask(definition?.graph as unknown as WorkflowGraph | null | undefined, taskKey);
+      const candidates = selectNodes(definition?.graph as unknown as WorkflowGraph | null | undefined);
       if (candidates.length === 0) return null;
 
       // WHICH node, before WHICH template. A pinned session node replaces the
@@ -973,7 +1062,7 @@ export class PromptResolutionService {
         message: 'Failed to resolve the governing workflow node — skipping the node tier',
         tenantId,
         departmentId,
-        taskKey,
+        ...logContext,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
