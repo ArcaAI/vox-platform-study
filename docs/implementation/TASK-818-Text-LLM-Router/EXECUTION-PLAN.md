@@ -32,6 +32,7 @@ of **shared, regenerated or append-only files**. Naming them is 90% of the work.
 | **C8 — Console nav** | `apps/admin-console/src/shared/navigation/nav-config.ts` | Every new screen appends one entry | Owner lane appends; union-merge |
 | **C9 — Compose / infra** | `infrastructure/docker/docker-compose{,.dev}.yml`, MinIO init entrypoint | Three tickets add services and buckets to the same files | **Orchestrator serializes** — 822, 823, 824 submit their block; orchestrator applies in ticket order |
 | **C10 — This repo's own rules/docs** | `.claude/rules/**`, `docs/architecture/**` | Multiple lanes want to document | Orchestrator only, at closure |
+| **C11 — The SECOND repo** | `hope-v2-deployment`: `deployment/k8s/base/kustomization.yaml`, `overlays/*/kustomization.yaml`, `base/config/*.env` | Three tickets (822/823/824) each add a workload; all three append to the same `resources:` list and the same `images:` stanza | **Orchestrator applies all three manifest sets, in ticket order.** Lanes author their single `<service>.yaml` and hand it over |
 
 **Corollary:** the C1/C2/C7/C9 classes are why "just give everyone a worktree" is not a plan.
 Worktrees isolate *edits*; they do not isolate *regeneration* or *ledger ordering*.
@@ -52,7 +53,7 @@ it to the orchestrator; it does not change it locally.
 | S-4 | Provider identity vocabulary | Exact `provider` string values: `vllm`, `lm-studio`, `azure-openai`, `azure-foundry`, `bedrock`, `openai`, `anthropic`, `vertex`, `ollama`, `llama-cpp` | 818, 822, 823, 824, seeds, console |
 | S-5 | `AiProviderConnection` row shape per backend | The exact SYSTEM-tier row each backend needs (`service`, `provider`, `baseUrl`, `extraJson`) | 823, 824 register themselves this way — **no router code change** |
 | S-6 | Model artifact layout in MinIO | `s3://hope-models/<publisher>/<model>/<quant>/…` + `manifest.json` + `SHA256SUMS` (TASK-824 §3.1) | 822, 823, 824 |
-| S-7 | LM Studio server-status contract | The response shape for "is it up / which models loaded" (TASK-824 §9) | 824 gateway + console |
+| S-7 | LM Studio server-status contract | The response shape for "is it up / which models loaded" (TASK-824 §7) | 824 gateway + console |
 | S-8 | Metric names + label sets | Names and **labels**, enforcing the cardinality rule (tenant on counters only, never histograms) | all four |
 
 **Rule: a seam is frozen when it is committed on `dev-2.2`. Until then, no lane that depends on
@@ -74,7 +75,7 @@ WAVE 0 — Foundations (SERIAL, orchestrator + 1 agent)          ~gate: seams co
 
 WAVE 1 — Independent build-out (4 parallel writers)
   W1-a  818 Lane A   Egress client layer            apps/text/src/text/providers/**
-  W1-b  818 Lane B   Streaming + stateful removal   apps/text streaming/task plane
+  W1-b  818 Lane B   Resumable streaming            apps/text streaming + replay buffer
   W1-c  818 Lane H   Benchmark harness              apps/text/tests/{load,bench}/**
   W1-d  822          MLflow deployment              infra + deployment repo
 
@@ -201,7 +202,7 @@ change is elsewhere, **report them as out of scope** — do not fix them.
 |---|---|---|---|
 | Wave 0.2 decomposition | `opus` | high | 1076-line pure-move refactor that must not change behaviour |
 | 818 A egress clients | `opus` | high | Multi-tenant credential isolation is a correctness boundary |
-| 818 B streaming | `opus` | high | Deletes a durable-state plane |
+| 818 B streaming | `opus` | high | Owns the no-data-loss guarantee across three hops |
 | 818 C fast path | `opus` | medium | Multi-file, new contract |
 | 818 D surfaces | `opus` | high | Touches a documented deadlock guard |
 | 818 E callers | `sonnet` | medium | Mechanical migration against a settled contract |
@@ -270,7 +271,7 @@ Never pre-emptively raise the whole fleet.
 |---|---|
 | **Orchestrator** | §4 list, C1, C7, C9, C10, `main.py`, `CoreDatabaseModule`, all merges |
 | 818 A | `apps/text/src/text/providers/**`, `core/connection.py` |
-| 818 B | `routing/streaming.py`, `api/endpoints/stream.py`, `services/task_manager.py`, `worker.py`, `services/worker_pool_queue.py`, `api/endpoints/{tasks,worker_pools}.py` |
+| 818 B | `routing/streaming.py`, `api/endpoints/stream.py`, `services/task_manager.py` (**refactored to a replay buffer, not deleted**), `worker.py`, `services/worker_pool_queue.py`, `api/endpoints/{tasks,worker_pools}.py` |
 | 818 C | `api/v1_compat/**`, `routing/{admission,dispatch,nonstreaming}.py`, `api/endpoints/generate.py` |
 | 818 D | `api/endpoints/judge.py`, `services/{judge_guard,generation_audit,external_guardrail}.py`, `core/{guardrail_posture,metrics,observability,telemetry}.py` |
 | 818 E | `apps/api/**` (consumers), `packages/applications/**` (consumers), `apps/{nlp,guardrail,harness}` text clients, `packages/vox-node/**` |
@@ -312,7 +313,95 @@ Never pre-emptively raise the whole fleet.
 
 ---
 
-## 13. Change History
+## 14. The second repo — `hope-v2-deployment`
+
+Deployment manifests live in a **separate GitOps repo** at
+`/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2-deployment` (branch `main`), auto-synced by Argo CD.
+TASK-822, 823 and 824 all write into it. Its conventions are **not** the ones a generic Kubernetes
+guide would suggest, and four of them contradict the tickets' first drafts — corrections are already
+applied to those tickets; this section is the shared reference.
+
+### 14.1 Ground truth beats the README
+
+The repo's own `README.md` is stale in places: it names files that no longer exist (`smr.yaml`,
+`stt-v2.yaml`, `ollama.yaml`), and claims a sync policy that the manifests contradict. **Read the
+manifests, not the prose.**
+
+Verified facts: the cluster is **k3s, Rancher-managed**
+(`destination.server: https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq`). `docs/aws-eks/` is a
+fully-worked migration proposal that says of itself that **nothing in it has been executed**.
+Only `hope-v2-dev` exists today. Argo sync policy is `automated: {prune: false, selfHeal: false}`
+on **both** dev and staging ("BOTH ARE FALSE ON PURPOSE"), and **prod has no `automated:` block at
+all** — a human runs the sync.
+
+### 14.2 The four conventions that contradict generic guidance
+
+| Generic guidance | This repo |
+|---|---|
+| `ServiceMonitor` for Prometheus | **Does not exist.** No Prometheus Operator. Plain Deployment self-scraping via `prometheus.io/scrape\|port\|path` **pod annotations** (`observability-config.yaml:546-584`) |
+| Vault Agent / VSO / ESO injection | **None installed** — zero hits for `vault.hashicorp.com`, `vault-agent`, `ExternalSecret`. Pattern is a hand-applied `hope-secrets` Secret carrying the bootstrap AppRole pair, each app doing **its own AppRole login at boot**. The `AppProject` **blacklists Secrets** — Argo may never manage them |
+| KEDA / `ScaledObject` for GPU autoscaling | **None installed.** `stt.yaml` ships a deliberately **inert** HPA (`min == max == 1`) with a comment explaining CPU autoscaling is wrong for GPU pods |
+| `NetworkPolicy` for isolation | **None anywhere.** The first one written here establishes the convention |
+
+Also absent, with no precedent to copy: **`CronJob`** (MLflow's `gc` would be the first),
+**PVC warmed by a Job** (`stt.yaml` uses a `hostPath`, itself flagged as EKS-incompatible),
+**TLS/cert-manager**, and any **Ingress except Grafana's** — `hope-api` is reached in dev on a fixed
+NodePort (30088).
+
+### 14.3 LM Studio is a migration, not a new deploy
+
+`deployment/k8s/out-of-band/lmstudio-{service,endpoints}.yaml` is a **selector-less Service plus
+hand-written Endpoints pointing at `10.10.1.10:1234`** — LM Studio runs on the node host today, and
+those files are applied **outside kustomize and Argo** on purpose: `base/kustomization.yaml`'s
+`commonLabels` transformer would invent a selector on a selector-less Service and hijack it
+(documented postmortem of a **2026-08-09 outage**).
+
+TASK-824 moves it in-cluster, which **retires that indirection** — a real in-cluster pod gets a
+normal selector-based Service and does not need the out-of-band workaround. Deleting those two files
+is part of the ticket, not cleanup.
+
+### 14.4 Checklist for each new workload
+
+1. One file per workload under `deployment/k8s/base/` (`mlflow.yaml`, `vllm.yaml`, `lmstudio.yaml`),
+   `---`-separated: Deployment/StatefulSet + Service + HPA + PDB. Named `hope-<service>`, labeled
+   `app: hope-<service>` + `app.kubernetes.io/part-of: project-hope`. Register in
+   `base/kustomization.yaml` `resources:` **with a comment saying why**.
+2. `configMapGenerator` entry only if the service needs config beyond `hope-platform-config`.
+3. `envFrom: [hope-platform-config, hope-<service>-config?, secretRef hope-secrets]`. Promote a
+   single value to a **non-optional `configMapKeyRef`** only where a silent fallback is dangerous —
+   `api.yaml` does this for `TEXT_URL`/`STT_URL`/`NLP_URL` so a missing key fails loudly as
+   `CreateContainerConfigError`.
+4. **`imagePullSecrets: [hope-registry-creds]` on every pod spec, Jobs included** — CI's
+   `pull-secrets` job fails the pipeline otherwise.
+5. All three probes on real endpoints; wire into `smoke-test.yaml`.
+6. GPU: `runtimeClassName: nvidia` + `nvidia.com/gpu` on **both** request and limit. Check the
+   `gpu-time-slicing.yaml` budget (3 virtual slices/GPU, **not yet applied**).
+7. `terminationGracePeriodSeconds`, `preStop` sleep 10, `RollingUpdate{maxUnavailable:0,maxSurge:1}`,
+   **soft** `podAntiAffinity` (never `required` — single node).
+8. HPA + PDB always present, even inert (`minAvailable: 0` / `min == max`) — "the primitive exists
+   uniformly".
+9. Migration Job → `db-migrate.yaml` shape (`PreSync`, wave `-1`). Job that must run **after** its
+   dependency is Ready → `qdrant-init.yaml` (`Sync` hook, wave `1`).
+10. **Overlay patches must be name-based strategic merges.** CI's `patch-hygiene` job **bans
+    index-based JSON6902** (`/env/5/value`) outright.
+11. Add `newName`/`digest` to `overlays/dev/kustomization.yaml` `images:`. **Never hand-edit
+    staging/prod images** — the app repo's `promote-*` jobs write those.
+12. Run `kustomize build deployment/k8s/overlays/<env>` locally first. CI gates, all blocking, no
+    `allow_failure`: `schemas` (kubeconform -strict), `config-refs`, `envfrom-coverage`,
+    `image-hygiene` (bans `:latest`), `pull-secrets`, `patch-hygiene`, `secrets` (gitleaks).
+
+### 14.5 Orchestration rule for this repo
+
+**It is a separate git repo with its own branch and its own CI.** Treat it as one more shared
+surface (§4): lane agents author their `<service>.yaml` in isolation and hand it to the orchestrator
+in their report; **the orchestrator makes every commit to `hope-v2-deployment`**, applying the three
+tickets' manifests in ticket order so `base/kustomization.yaml` and the dev `images:` stanza are
+edited once each, not three times concurrently.
+
+---
+
+## 15. Change History
 | Date | Change |
 |---|---|
 | 2026-08-29 | Created. Wave schedule, seam freeze, ownership matrix and conflict playbook for TASK-818/822/823/824. Ticket renumber recorded: MLflow 819→822, vLLM 820→823, LM Studio 821→824 (819 and 820 were both taken by concurrent work). |
+| 2026-08-29 | Added §14 (the `hope-v2-deployment` repo) and conflict class C11 after exploring it. Four generic-guidance assumptions corrected in TASK-822/823/824: no ServiceMonitor, no Vault injection, no KEDA, no NetworkPolicy. LM Studio recorded as an in-cluster migration retiring the out-of-band Service/Endpoints. |

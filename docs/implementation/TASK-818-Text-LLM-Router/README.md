@@ -119,7 +119,7 @@ validations. This is the single largest item in the ticket.
 
 | # | Bottleneck | Evidence | Why it matters for concurrent streams |
 |---|---|---|---|
-| B-1 | Redis `XADD` per chunk on write, `XREAD` per batch on read, with JSON + pydantic on both sides | `task_manager.py:128,176-194,225`; `generate.py:972` | O(streams × tokens) Redis round trips. Dominant cost. |
+| B-1 | Per-token JSON + pydantic on **both** sides, plus the 202-and-poll indirection | `task_manager.py:128,176-194,225`; `generate.py:972` | **Revised (§3C.1): the Python tax is the cost, not Redis** — Redis runs at ~6% capacity at this scale. Fixed by coalescing, not by deletion. |
 | B-2 | **Fresh SDK client + TLS pool per request** for OpenAI, Azure, Anthropic, Vertex, Bedrock **and** `openai_compat` (LM Studio) | `openai.py:91`, `azure_openai.py:114`, `anthropic.py:97`, `vertex.py:150`, `bedrock.py:78-88`, `openai_compat.py:139-144` | Every stream pays a TLS handshake and gets no connection reuse. `openai_compat` is `SELF_HOST` — it has no BYOK reason to pay this. |
 | B-3 | Bedrock streaming holds a **default-executor thread for the entire stream** | `bedrock.py:265-278` | Executor is `min(32, cpu+4)`. ~32 concurrent Bedrock streams saturates it and starves every other `to_thread` user in the process. Hard ceiling. |
 | B-4 | Single uvicorn process, **no `--workers`** | `Dockerfile:121`, `scripts/dev-service.sh:242` | One event loop per pod. Any CPU-bound work (JSON, pydantic) stalls all concurrent streams. (`uvicorn[standard]` does give uvloop + httptools.) |
@@ -198,7 +198,7 @@ must own. Rename to make that explicit (e.g. `POST /internal/lanes/judge` or a g
 `lane=` admission parameter), delete only judge-specific business logic, and keep both guard
 layers and their tests intact. Cross-reference TASK-735 Phase 2 before touching it.
 
-### OPEN-2 — Deleting the task plane deletes stream resume. (Recommend: accept the loss.)
+### OPEN-2 — RESOLVED 2026-08-29: resumability is REQUIRED. Design in §3C. ✅
 
 Dropping `task_manager` + Redis Streams (D-1) is the single biggest throughput win (B-1) and
 is exactly right for D-3. But today's design buys one real capability with that cost: a
@@ -208,15 +208,15 @@ id**, and generation continues server-side independent of the client.
 Direct SSE passthrough removes both: a dropped connection means a lost (and already-billed)
 generation.
 
-**Recommendation: accept the loss for the synchronous path.** Long-running,
-resumable, fire-and-forget generation is a *job* product, not a *router* product — it belongs
-behind the API gateway's existing BullMQ job plane
-(`packages/applications/src/services/consultation/jobs/**`), which already owns durable
-consultation jobs. Confirm that gateway-side jobs cover the resumable cases before Lane B
-deletes the plane. If any caller genuinely needs router-side resume, say so now — it changes
-Lane B's design, not its schedule.
+**Owner ruling: nothing may be lost.** A client that disconnects — tab closed, network drop, pod
+restart, laptop sleep — must reconnect and resume the same generation without losing context or
+output. **This reverses the recommendation above**, and Lane B changes from "delete the durable
+plane" to "restructure it". See **§3C** for the design.
 
-### OPEN-3 — `generation_audit` is HIPAA audit; it may move but must not vanish.
+**And the cost premise behind the original recommendation was wrong** — see §3C.1. Redis was not
+the bottleneck.
+
+### OPEN-3 — RESOLVED 2026-08-29: move it off the hot path. ✅
 
 D-1 drops generation audit. `services/generation_audit.py` is called synchronously on every
 completion and failure (`generate.py:611,718,772,924`). It is in-process structured logging,
@@ -224,16 +224,23 @@ not an external call, so it is cheap — but in a healthcare platform, *usage at
 generation audit for a multi-tenant router is arguably intrinsic to the router*, not a
 business concern.
 
-**Recommendation:** do not delete. Convert to a **fire-and-forget async event** off the hot
-path (emit to the existing sys-event/BullMQ fan-out via the gateway, per
-`.claude/rules/04-application-services.md`), preserving BYOK-vs-CLOUD funding attribution
-derived from the row (`row.tenantId === SYSTEM_TENANT_ID`), never stamped at the call site.
-Deleting audit outright needs an explicit owner ruling, which this plan does not assume.
+**Owner ruling: move it off the hot path. Do not delete it.**
 
-**Also confirm:** D-1 did not mention the **inline guardrail moderation gate** (B-6,
-`generate.py:383`). It is a safety-policy hop inside the routing path. Options: keep inline
-(current, safest), move to the caller/gateway (fastest), or make it a per-tenant-configurable
-posture. Lane D is written to keep it inline unless overridden.
+Lane D converts `generation_audit` to a **fire-and-forget async event**: emit to the existing
+sys-event / BullMQ fan-out via the gateway (per `.claude/rules/04-application-services.md`),
+never an inline write. Constraints that survive the move:
+
+- **BYOK-vs-CLOUD funding attribution stays derived, never stamped** — `row.tenantId === SYSTEM_TENANT_ID`
+  decides it, as `AiProviderConnectionService` already does. A call site that stamps it mis-bills silently.
+- **The emit must not be able to fail the generation.** Wrap it; a full queue drops the event and
+  increments a counter rather than 500-ing a billed request.
+- **But the event must not be silently lossy either** — HIPAA §164.312(b) audit controls is a
+  *required* standard. Use the existing transactional-outbox shape (`AiUsageOutbox`) rather than a
+  bare `fire_and_forget`, so an emit that fails is retried, not lost. That is the difference between
+  "off the hot path" and "best effort".
+- Alert on audit-event lag. An audit plane that is quietly hours behind is a compliance finding.
+
+**The guardrail gate is now specified in §3B — RESOLVED 2026-08-29.** ✅
 
 ---
 
@@ -354,6 +361,319 @@ Panels a super admin needs, grouped: **Fleet health** (rps by provider; error ra
 ### 3A.9 New lane
 
 **Lane I — Routing policy plane.** *Owns `src/text/routing/policy.py`, the `RoutingPolicy` Prisma model + domain trio, its admin controller, and the `/ai-task-defaults` console extension.* Depends on Lane F (config plane) and merges after Lane C. Delivers: the §3A.3 schema, tenant→SYSTEM resolution, the §3A.4 STRICT ruling with its three hard gates and response headers, §3A.5 health semantics, the simulate/dry-run endpoint, and the §3A.8 audit trail. Tier `opus`, effort `high` — it decides where PHI goes.
+
+---
+
+## 3C. Resumable streaming — the design (owner ruling 2026-08-29)
+
+**Requirement: nothing may be lost.** Reconnect after a tab close, network drop, laptop sleep,
+gateway restart or router restart must resume the same generation with no gap and no duplicate.
+
+### 3C.1 ⚠️ Correction: Redis was never the bottleneck
+
+§2.3 ranked per-token `XADD`/`XREAD` as bottleneck B-1, "the dominant cost". **That was
+overstated, and the plan is corrected here.**
+
+Arithmetic at this platform's scale: 40 concurrent streams × ~100 tok/s = **4,000 tok/s**, so
+per-token XADD plus XREAD delivery ≈ **8,000 Redis ops/s**. A single node benchmarks at
+**~136,000 XADD/s, p50 0.191 ms** — so this is **~6% of one node's capacity, with ~16× headroom**,
+adding ~0.4–1 ms against a 10–20 ms inter-token budget.
+
+**The diagnosis was misplaced, not the symptom.** What is genuinely expensive per token is the
+**Python tax** already identified in B-1: two JSON encode/decode passes, two pydantic validations
+and two event-loop round trips — plus the 202-and-poll indirection itself. Coalescing collapses
+that by roughly 10–40× *for the same durability*. Memory is the other real constraint
+(~200 B/entry × 4,000/s ≈ 800 KB/s without `MAXLEN`), which batching also fixes.
+
+**So: batch for the CPU and the memory, not for Redis.** And profile `apps/text` before sizing the
+win — no published measurement splits the per-token cost across Redis, JSON and pydantic in a
+FastAPI SSE router, so the 10–40× is arithmetic from op counts, not a benchmark.
+
+### 3C.2 The providers cannot help — the router must own durability
+
+| Provider | Resume |
+|---|---|
+| **OpenAI / Azure Responses** | **Yes** — create with `background: true, stream: true`; every event carries `sequence_number`; resume via `GET /v1/responses/{id}?stream=true&starting_after={n}`. Retention ~10 min; **streams older than ~5 min are refused** |
+| **Anthropic** | **No.** Documented recovery is a **new, separately billed request** continuing from the captured prefix. Tool-use and thinking blocks **cannot** be partially recovered |
+| **Bedrock** | **No resume documented** |
+| **vLLM / LM Studio** | No |
+
+Exactly one provider family offers resume, with a five-minute window. **A multi-provider router
+cannot build its resume contract on the provider** — the buffer is ours.
+
+### 3C.3 Architecture — one buffer, at the router
+
+**Router owns durability. Gateway is a pure stateless relay. Browser owns its cursor.**
+
+1. **Split producer from response.** `POST /generate` returns **200 + SSE immediately** — drop the
+   202-and-poll indirection entirely. An `asyncio` task owns the provider socket and is the
+   *producer*; the HTTP response is a *subscriber*. **Killing the response never kills the
+   producer.** This is the shape vercel/resumable-stream and LibreChat both converged on.
+2. **Dual-write, coalesced.** Producer appends the delta to an in-process ring buffer → writes to
+   attached subscribers **first** → hands the batch to a flush task. Flush on **N = 16–32 deltas OR
+   T = 25 ms, whichever first**. One `XADD text:gen:{gid} MAXLEN ~ 10000` **per batch**, fields
+   `{seq, deltas[], type}`, `EXPIRE 3600`. The client's latency never waits on Redis.
+   *Shipped precedents for the window: LibreChat 25 ms, S2 10 chunks / 50 ms, Temporal AI plugins
+   100 ms. **Nobody who scaled this stayed at one durable write per token.***
+3. **Terminal state goes to Postgres**, keyed by `generation_id` — that is the record of record.
+   Redis is the replay buffer, not the store.
+4. **Event ids: `id: {generation_id}:{seq}`.** The first event carries `generation_id` in `data` so
+   the client can persist it *before any token arrives*.
+5. **Resume endpoint** `GET /generations/{gid}/stream`: cursor from the `Last-Event-ID` header
+   (canonical) or `?from=<seq>` (fallback for header-stripping proxies) → `XRANGE (gid seq+1 +` for
+   the backlog → then tail live. Cursor ahead of the stream head (the dual-write race) → emit
+   nothing, tail. Terminal → replay backlog + `done`, close. Unknown → **204**.
+6. **Gateway: stateless relay.** Forwards `Last-Event-ID` upstream and `id:` downstream unchanged;
+   sets `Cache-Control: no-cache`, `X-Accel-Buffering: no`, `Connection: keep-alive`. **On browser
+   disconnect it drops only its own upstream subscription — it never cancels the router
+   generation.** Keeping it stateless is what makes a gateway pod restart survivable.
+7. **Browser:** a `fetch`-based SSE reader — **`EventSource` cannot set `Authorization` or
+   `X-Tenant-Id` and cannot POST**, which is why every provider SDK uses `fetch`. Persist
+   `{generation_id, last_seq}` per consultation in IndexedDB on every event, **and** store
+   `activeGenerationId` on the consultation row server-side, because **`Last-Event-ID` does not
+   survive a page reload** — the spec gives each new `EventSource` an empty buffer. Reconnect with
+   capped exponential backoff + jitter.
+
+### 3C.4 Disconnect detection is unreliable — do not build on it
+
+- **`request.is_disconnected()` does not fire** for apps using `BaseHTTPMiddleware` (Starlette ≥ 0.21),
+  and raises noisy `ClientDisconnected` on uvicorn 0.28.0.
+- A vanished peer (sleep, NAT drop) is invisible to TCP until a **write fails** — which for a silent
+  LLM can be minutes.
+
+**Therefore:** generation lifetime is **never** derived from socket state. **Cancellation is an
+explicit persisted flag** (`POST /generations/{gid}/cancel` → Redis flag, checked by the producer
+between batches). A dropped socket is not a cancel.
+
+This also **kills the lazy/spill-on-disconnect design** that looked attractive: disconnect detection
+is precisely the unreliable part, so the gap between "client left" and "buffering started" is
+unbounded — and that gap is exactly the data that must not be lost.
+
+**Heartbeat is mandatory**, not optional: `sse_starlette` `ping=15`. Idle timeouts that will
+otherwise kill a long clinical generation: **Cloudflare 100 s** (Free/Pro/Business → 524),
+**AWS ALB 60 s**, nginx needs `proxy_buffering off; proxy_http_version 1.1; proxy_read_timeout <long>`
+plus `X-Accel-Buffering: no` and gzip off on SSE routes. **Confirm what actually sits in the k3s
+path and its configured idle timeout** — Lane G owns this.
+
+### 3C.5 Abandonment is configuration, not a hardcoded policy
+
+`db-config`, tenant → SYSTEM, per task key: `abandonOnDisconnect` (**default `false`** for clinical
+summarization), `disconnectGraceSeconds`, `maxGenerationSeconds`. The grace timer starts on
+**heartbeat write failure**, not on `is_disconnected()`. An expensive summarization and a cheap
+classification should differ, and that is a tenant-visible cost decision, not a code constant.
+
+### 3C.6 Idempotency — at-least-once delivery, exactly-once effect
+
+`Idempotency-Key` on create (Standards Track, `draft-ietf-httpapi-idempotency-key-header-07`,
+2025-10-15). Router maps key → `generation_id` and returns the same id on retry; payload mismatch →
+**409 `idempotency_conflict`**. The terminal write to the consultation/document is keyed by
+`generation_id`, so replaying the terminal event is a **no-op** — that is what makes at-least-once
+delivery safe. Conversation and document state are separately checkpointed, never reconstructed
+from token replay.
+
+### 3C.7 Provider bonus: survive a router restart on OpenAI/Azure
+
+When the resolved provider is OpenAI or Azure Responses, create with `background: true,
+stream: true` and persist `response.id` + `sequence_number`. **A router pod restart then becomes
+survivable** — re-attach with `starting_after`, subject to the ~5-min streaming and ~10-min
+retention windows. For Anthropic, Bedrock and self-hosted engines this is impossible; the fallback
+is re-issuing with the persisted prefix as a continuation (Anthropic's documented technique) — **a
+new billed request**, under the same idempotency key.
+
+### 3C.8 Failure matrix — what the user sees
+
+| Failure | User sees | Recovered |
+|---|---|---|
+| Browser tab closed | On reopen, the consultation shows an in-flight generation and streams the backlog, then live | **Everything** — the producer never stopped |
+| Network drop / laptop sleep | Brief stall, then text resumes exactly where it stopped | **Everything** — `Last-Event-ID` → `XRANGE seq+1 +` |
+| **Gateway pod restart** | One reconnect stall | **Everything** — the gateway holds no state; a new pod re-subscribes at the browser's cursor |
+| **Router pod restart** | Stall, then either seamless continuation (OpenAI/Azure only), or a visible "resuming" state, or an explicit failure with all prior text intact | **All flushed tokens.** ≤ 25 ms of unflushed deltas can be lost — **and those were never delivered to anyone**, so no user-visible gap |
+| Provider error mid-generation | Partial text stays, explicit error event + "Continue" | **All tokens up to the error**, persisted. Retry is a new provider call with the prefix as continuation; same `generation_id`, so no double-write |
+
+---
+
+## 3B. The guardrail gate — specified (owner ruling 2026-08-29)
+
+The owner named two uses with very different latency budgets:
+
+1. **Authoring-time** — a *tenant admin* manages prompts / agent instructions; guardrail validates
+   them. A human waits on a form submit. Seconds are fine.
+2. **Runtime** — pre-summarization / summarization requests, where the clinical content's validity
+   is unknown. Latency-sensitive clinical hot path.
+
+### 3B.0 Two findings that constrain the whole design
+
+**⚠️ "Prompt Overflow" — a guardrail that inspects less than the model infers is not a guardrail.**
+Guardrail models inspect a **truncated window** while the downstream LLM processes the **full
+context**; harmful instructions fragmented across an overlong prompt pass every inspected segment
+while remaining actionable. Demonstrated against Llama Prompt Guard, IBM Granite Guardian and
+DeBERTa detectors (arXiv:2605.23196, 2026-05-22). **This bites us directly** — clinical transcripts
+are long. The T0 tier below therefore asserts *inspection window ≥ model window*, and **chunks
+rather than truncates**.
+
+**⚠️ Guardrails are a DoS target, and that makes `timeout ⇒ fail-open` a safety bypass.** Crafted
+input traps LLM-based guardrails in extended reasoning loops: **13–63× token amplification, up to
+148× latency amplification**, and a single poisoned document can saturate *shared* guardrail
+infrastructure (arXiv:2606.14517, 2026-06-12). An attacker who can manufacture timeouts owns the
+bypass. Hence §3B.4, and hence a hard token + wall-clock cap on every judgement call — the existing
+judge lane's concurrency budget is necessary but not sufficient.
+
+### 3B.1 Use 2 — the runtime gate stays inline, tiered, and overlapped
+
+**Keep it inline. Do not move it to the caller.** But restructure it so "inline" stops meaning
+"serial".
+
+- **Run it concurrently with request setup** — config resolution, tenant-config, credential
+  resolution, retrieval. Setup already costs tens of ms, so a ~20–100 ms classifier is largely
+  absorbed. This is the free win, and it is what NeMo's `parallel: True` and every practitioner
+  source recommend.
+- **Tier it:**
+
+| Tier | What | Budget | When |
+|---|---|---|---|
+| **T0** | Deterministic: PHI-pattern scan, size/structure limits, **and the window assertion above** — if content exceeds the classifier window, chunk and check every chunk | ~1 ms | Always |
+| **T1** | Small classifier — injection + a **clinical-aware** harm taxonomy resolved tenant → SYSTEM via `AiModel._metadata.labelTaxonomy` | ~20–100 ms | Always |
+| **T2** | LLM judge over the existing ungated judge lane | ≤ 1.5 s hard cap | **Only on T1 ambiguity**, and never inline on a streaming summary |
+
+  Reference latencies (ranking is robust; absolute ms are not — benchmark on our own hardware with
+  clinical-length inputs): regex ~0.4 ms · Prompt-Guard-2-22M ~19 ms · Prompt-Guard-2-86M ~92 ms ·
+  Llama Guard 3 1B ~53 ms · 8B ~111 ms · LLM-as-judge, seconds.
+
+- **Budget: T0+T1 p95 ≤ 120 ms, fully overlapped with setup ⇒ ~0–40 ms net added TTFT.**
+
+**Do NOT speculatively dispatch to the provider before the T0+T1 verdict.** OpenAI's Agents SDK
+runs guardrails in parallel with the agent *by default* and documents that "the agent may have
+already consumed tokens and executed tools before being cancelled" — but that framing is written for
+a non-regulated default. For PHI the objection is not token cost: **an LLM call is a disclosure.**
+If the verdict was "this should never have gone to provider X," speculation means it already did.
+Speculate only *inside our own trust boundary* — warm the connection, resolve credentials,
+pre-tokenize. Same latency win, no disclosure.
+
+### 3B.2 ⚠️ A general harm taxonomy will block valid clinical documentation
+
+This is documented, not theoretical: Azure's self-harm classifier blocks routine psychiatric
+documentation (*"suicidal ideation denied"*) and surgical/emergency notes mentioning cutting,
+bleeding, amputation or risk of death, and customers report being unable to fully exempt clinical
+text (Microsoft Q&A 5624982).
+
+**Consequence:** the runtime taxonomy must be clinical-context-aware and **tenant-resolved** — which
+is exactly what `AiModel._metadata.labelTaxonomy` already provides (TASK-735 Phase 6). Do not ship a
+fixed harm set. And **track false-positive rate as a first-class metric** (§3B.5): over-blocking a
+clinician is a patient-safety failure, not a tuning inconvenience.
+
+### 3B.3 Use 1 — authoring-time, two phases
+
+Called synchronously by the **admin BFF** on form submit. It is not on the router's hot path at all.
+
+- **Phase 1 — synchronous, ≤ 2 s p95, blocking:** deterministic lint, PHI-in-template scan,
+  policy/taxonomy conformance, output-schema check, plus one small-classifier injection pass.
+- **Phase 2 — async job, minutes:** curated adversarial suite (promptfoo-style critical set) over
+  the ungated judge lane. The result attaches to the prompt **version** as a validation record.
+
+**Lifecycle:** save → `PENDING_VALIDATION`; promotion to `APPROVED` requires Phase 2 green.
+Adversarial red-teaming of a template does not fit a form submit, and pretending otherwise produces
+a validation that proves only that the prompt is well-formed.
+
+### 3B.4 Authoring-time trust — yes, for the template only
+
+**A prompt validated at authoring time may skip its own runtime re-validation**, which removes the
+per-request re-scan of long instruction sets. That is real waste eliminated. Seven conditions, and
+condition 5 is non-negotiable:
+
+1. **Immutable and content-addressed.** Runtime loads by `promptVersionId` + content hash, never a
+   mutable name. Any edit creates a new version in `PENDING_VALIDATION`.
+2. **The stamp binds every input to the verdict**: `{contentHash, policyVersion, guardrailModelVersion,
+   taxonomyVersion, thresholdSet, tenantId, validatedAt, validatorIdentity}`, HMAC-signed so a DB
+   write alone cannot forge it.
+3. **Any policy / guardrail-model / taxonomy version change invalidates every stamp issued under the
+   old versions, en masse.** The stamp is a cache entry; it dies when its key components change.
+4. **Scoped to the validating tenant.** A SYSTEM template inherited by a tenant is trusted only
+   under that tenant's resolved policy version.
+5. **The runtime prompt is `template ⊕ clinical_content`. Only the template is trusted. The clinical
+   content is untrusted every single time**, and the *composition* is re-checked for window overflow
+   (§3B.0) and for injection carried in the content. Without this condition the whole scheme is a
+   safety bypass, not an optimisation.
+6. The template's own validation must have been **adversarial**, not merely structural.
+7. **Bounded validity** — expire stamps (≈90 days) and re-validate on a model/provider change, since
+   injection resistance is model-dependent.
+
+*Honest status: no vendor or framework publishes this pattern.* It is synthesised from immutable
+prompt registries (MLflow Prompt Registry, LangSmith Hub) and LLM cache-key completeness rules.
+Treat it as a reasoned design, and note arXiv:2605.23196 is direct evidence against the naive
+version of it.
+
+### 3B.5 Verdict caching
+
+**Exact hash only. Never semantic.** Guardrail verdicts are adversarially sensitive — near-identical
+inputs can legitimately have opposite verdicts, so approximate matching is unsound here even though
+it is fine for answer caching.
+
+Key: `sha256(normalized_content) | policyVersion | guardrailModelVersion | taxonomyVersion |
+thresholdSet | tenantId`. **Omit `tenantId` and you serve one tenant's policy verdict to another** —
+the same failure the `AppSettingsService` cache rule already guards against. Short TTL as a
+staleness backstop; **invalidation via the existing Redis channel on any policy/model/taxonomy write
+is the propagation mechanism**, per §Config caches.
+
+### 3B.6 Streaming output moderation
+
+Summaries are the higher-risk direction — PHI leak and ungrounded clinical claims. If output is
+moderated while streaming, use **buffered/synchronous chunk moderation** (Bedrock `SYNCHRONOUS`,
+Azure Default). TTFT cost ≈ one buffer's generation time.
+
+**Async-with-retraction is the wrong posture here, on both vendors' own guidance:** Bedrock
+**cannot mask PII at all in `ASYNCHRONOUS` mode**, and Microsoft explicitly scopes its Asynchronous
+Filter *away* from regulated industries, naming "customer-facing chatbots in regulated industries"
+as the Default-mode case.
+
+### 3B.7 Fail posture — closed on both, with a distinguished timeout path
+
+| Condition | Action |
+|---|---|
+| Definitive violation, or an attributable 4xx/5xx | **Block.** 503 to caller, audited |
+| **Timeout** | **Block, not allow.** See §3B.0 — 148× latency amplification makes timeout an attacker-reachable state, so `timeout ⇒ open` converts a DoS into a safety bypass |
+| Retry | Exactly one, **on timeout only**, on T0/T1 only, within the remaining request deadline. **Never retry the LLM judge** — that is what the DoS amplifies. Never retry a definitive violation |
+| T2 unavailable | **Degrade to T1 at a stricter threshold — never to "allow."** T0/T1 are in-process/small-model and must have a better availability profile than the router, which the judge lane depends on |
+| Kill-switch | Exists, **platform-admin only, defaults OFF, time-boxed, audited on every invocation** — `redis-flag` tier semantics |
+
+This is consistent with the platform's own rule that `failMode` governs an **absent value** only —
+*a backend error propagates and is never disguised as "the default."* **A guardrail timeout is a
+backend error, not an absent value.**
+
+**Per-tenant configurability is a one-way ratchet.** A tenant may make it stricter (lower thresholds,
+force T2 always); it can never go below the SYSTEM floor. A symmetric per-tenant `fail_open` is a
+customer-facing off-switch for safety — indefensible for PHI, and it breaks "entitlements bound,
+they never supply".
+
+### 3B.7b Realtime consultation — see TASK-825
+
+The realtime-consultation application of this gate (validate a partial transcript once at the STT
+boundary, fan out to summarization / NER / grammar; two independent verdict axes; alerts to the
+clinician) is specified separately in **TASK-825**, because it spans `apps/{stt,guardrail,harness,nlp,text}`
+and the admin console rather than `apps/text` alone. §3B here remains the policy; TASK-825 is its
+realtime instance.
+
+### 3B.8 PHI and audit obligations on the guardrail hop
+
+- **The guardrail hop processes PHI.** Any vendor whose infrastructure sees it is a business
+  associate and needs a BAA. Verified coverage: OpenAI `/v1/moderations` **is** ZDR-eligible (and
+  ZDR is an account-team opt-in, not a self-serve toggle; without it, abuse-monitoring logs retain
+  up to 30 days). Azure is covered under the Online Services DPA **but default abuse monitoring
+  retains prompts 30 days with possible human review** — PHI workloads must apply for **Modified
+  Abuse Monitoring**, for which **only EA/MCA-E Managed Customers are eligible**. Bedrock's
+  HIPAA-eligibility is **per-model**, not blanket.
+- **Minimum necessary (§164.502(b)) applies here too** — sending a whole chart to a classifier when
+  one section needs checking is itself a violation.
+- **Log the decision, not the content.** Per decision: verdict, category + confidence, policy
+  version, guardrail model id + version, taxonomy version, tenantId, requesting principal, latency,
+  fail-posture taken, and a **content digest** — never the content.
+- **⚠️ EU AI Act Article 12 is already in force.** Full application for high-risk systems began
+  **2 August 2026** — three weeks before this ticket was written — and healthcare is Annex III
+  high-risk. It requires **automatic** logging over the system lifetime, generated at the moment
+  events occur (no scheduled export), **minimum 6-month retention**, and regulators read
+  "appropriate to the intended purpose" as tamper-evident. This is a present obligation, not a
+  roadmap item, and it applies to the audit plane OPEN-3 just moved off the hot path.
+- **Metrics:** block rate by category, **false-positive rate** (§3B.2), p50/p95/p99 guardrail
+  latency, timeout rate, cache hit rate, fail-posture invocations.
 
 ---
 
@@ -532,7 +852,11 @@ stream terms. All measured against the Lane H harness, both mock modes.
 | AC-2 | Steady-state RSS per active stream | **< 50 KB** | RSS delta / stream count at plateau |
 | AC-3 | Proxy-added TTFT (client first byte − provider first byte), p99 | **< 10 ms** | Both mocks; report both numbers per §4.6 |
 | AC-4 | Proxy-added inter-token latency, p99 | **< 2 ms** | Latency-injecting mock |
-| AC-5 | Redis round trips per streamed token | **0** | Instrumented; B-1 eliminated |
+| AC-5 | Redis writes per streamed token | **≤ 1 per 16–32 deltas or 25 ms**, not per token (§3C.2) | Instrumented |
+| AC-15 | Reconnect after a forced disconnect mid-generation | Resumes at `seq+1`, **no gap, no duplicate** | Kill the client socket at a random point; diff the reassembled output against an uninterrupted run |
+| AC-16 | Gateway pod restart during an active stream | Zero tokens lost; one reconnect stall | Rolling restart under load |
+| AC-17 | Router pod restart during an active stream | All flushed tokens recovered; loss bounded by one batch and never user-visible | Rolling restart under load |
+| AC-18 | A dropped socket never cancels a generation | Producer continues; only an explicit cancel stops it | Contract test |
 | AC-6 | Streams dropped during a rolling restart | **0** | Rolling deploy under AC-1 load |
 | AC-7 | Non-streaming p99 added latency / RPS per core | **< 10 ms / ≥ 500 RPS-core** | Zero-latency mock |
 | AC-8 | Concurrent Bedrock streams before executor starvation | **≥ AC-1**, no cross-provider impact | Mixed-provider mock run |
@@ -635,38 +959,45 @@ Fixes **B-2, B-3, B-8**. This is the highest-value lane after B.
 all green **unmodified except where the ticket explicitly changes contract** — and where you
 must modify one, say so and why in the report.
 
-#### Lane B — Streaming rewrite + stateful-plane removal *(owns `routing/streaming.py`, `api/endpoints/stream.py`, `services/task_manager.py`, `worker.py`, `services/worker_pool_queue.py`, `api/endpoints/{tasks,worker_pools}.py`, batch endpoints)*
+#### Lane B — Resumable streaming *(owns `routing/streaming.py`, `api/endpoints/stream.py`, `services/task_manager.py`, `api/endpoints/tasks.py`, and the producer/subscriber split)*
 
-Fixes **B-1, B-7**. The largest single win; gated on **OPEN-2**.
+**Rewritten 2026-08-29.** The original brief said "delete the durable-state plane." **The owner
+ruled that resumability is required and nothing may be lost**, and the cost premise behind that
+deletion was wrong (§3C.1 — Redis runs at ~6% capacity here). Lane B now **restructures** the plane.
+Read **§3C in full** before starting; it is the specification.
 
-- **B-1 — Direct SSE passthrough.** Provider stream → `aiter_bytes()`/`aiter_raw()` →
-  `EventSourceResponse`, **no Redis, no intermediate buffer, no pydantic per chunk**.
-  `stream=true` returns the SSE stream itself, not 202 + `task_id`.
-- **B-2 — Backpressure and teardown.** Rely on Starlette's TCP backpressure (§4.2); poll
-  `await request.is_disconnected()` and **cancel the upstream call** on client disconnect so a
-  hung client stops burning provider tokens and a connection slot.
-- **B-3 — SSE headers**: `Cache-Control: no-cache`, `X-Accel-Buffering: no`,
-  `Connection: keep-alive`. Coordinate the ingress half with Lane G.
-- **B-4 — Usage capture in teardown**, not by re-parsing the stream (§4.5). Preserve today's
-  deliberate `pending_done` behaviour (`generate.py:905-1007`) that folds the usage block into
-  the final frame.
-- **B-5 — Delete the durable-state plane**: `task_manager.py`, `worker.py`,
-  `worker_pool_queue.py`, `api/endpoints/tasks.py`, `api/endpoints/worker_pools.py`,
-  `/generate/batch`, `/embeddings/batch`, and the root `text:worker:dev` script. Remove the
-  ≥2 Redis round trips per non-streaming request (B-7) — **keep the `Idempotency-Key` path**
-  (B-12), it is the one sanctioned response cache (§4.5).
-- **B-6 — Per-stream memory budget** for AC-2: no accumulating buffer, bounded chunk sizes.
-- **B-7 — Graceful drain**: `shutdown_manager.py` must count **active streams** and hold
-  SIGTERM until they finish or the grace period expires. Hand the drain semantics to Lane G.
+- **B-1 — Producer/subscriber split.** `POST /generate` returns **200 + SSE immediately**; drop the
+  202-and-poll indirection. An `asyncio` producer task owns the provider socket; the HTTP response
+  is a subscriber. **Killing the response must never kill the producer** — that property is the
+  whole ticket.
+- **B-2 — Dual-write, coalesced.** Deltas go to attached subscribers **first**, then to a flush task
+  batching on **N = 16–32 deltas OR T = 25 ms**. One `XADD … MAXLEN ~ 10000` per batch. The
+  client's latency never waits on Redis. Remove the per-chunk JSON + pydantic on both sides — that
+  is the actual win.
+- **B-3 — `id: {generation_id}:{seq}` on every event**, and `generation_id` in the first event's
+  `data` so a client can persist it before any token arrives.
+- **B-4 — Resume endpoint** `GET /generations/{gid}/stream` per §3C.3(5), honouring `Last-Event-ID`
+  and `?from=`, including the cursor-ahead-of-head race and the **204** for unknown.
+- **B-5 — Cancellation is an explicit persisted flag**, checked between batches. **A dropped socket
+  is never a cancel** (§3C.4). Do **not** build on `request.is_disconnected()` — it does not fire
+  under `BaseHTTPMiddleware`.
+- **B-6 — Heartbeat `ping=15`** and the SSE headers; coordinate the ingress half with Lane G.
+- **B-7 — Terminal state to Postgres** keyed by `generation_id`; Redis holds the replay buffer only.
+- **B-8 — Idempotency** per §3C.6: key → `generation_id`, 409 on payload mismatch, terminal write is
+  a no-op on replay.
+- **B-9 — Abandonment as config** (§3C.5), tenant → SYSTEM, `abandonOnDisconnect` defaulting
+  **false**. Never a hardcoded constant.
+- **B-10 — Delete only what is genuinely dead**: the batch/worker-pool plane
+  (`worker.py`, `services/worker_pool_queue.py`, `api/endpoints/worker_pools.py`,
+  `/generate/batch`, `/embeddings/batch`, the `text:worker:dev` script) if and only if no caller
+  needs it. **`task_manager.py` is NOT deleted** — it is refactored into the replay buffer.
+- **B-11 — Profile before and after** (§3C.1): no published measurement splits the per-token cost
+  across Redis, JSON and pydantic, so the 10–40× claim is arithmetic, not evidence. Lane H's
+  harness supplies the numbers.
 
-**Prerequisite:** OPEN-2 confirmed — verify the gateway BullMQ job plane
-(`packages/applications/src/services/consultation/jobs/**`) covers every caller that relies on
-resumable/fire-and-forget generation **before** deleting `task_manager.py`. If it does not,
-stop and report; do not delete.
-
-**Gates:** `test_stream_endpoint`, `test_stream_chunk_model` updated to the new contract (with
-justification); `test_xread_streaming`, `test_worker_pool_*`, `test_generate_batch_endpoint`
-deleted with the plane they test. `test_generate_idempotency` must stay green **unmodified**.
+**Gates:** `test_stream_endpoint`, `test_stream_chunk_model`, `test_xread_streaming` updated to the
+new contract with justification; `test_generate_idempotency` must stay green **unmodified**.
+AC-5 and AC-15..AC-18 are this lane's.
 
 #### Lane F — Tenant config and routing policy *(owns `packages/database/**`, `packages/domains/**`, `packages/applications/**`)*
 

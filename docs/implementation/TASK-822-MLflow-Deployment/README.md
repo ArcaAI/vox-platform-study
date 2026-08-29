@@ -22,6 +22,18 @@ Deploy and integrate a self-hosted **MLflow** instance as the platform's model r
 
 **Trap:** `--default-artifact-root` is now the **direct-access** knob. Using it when you meant proxied silently gives you direct mode and requires client credentials you never issued. This is pitfall #1.
 
+> #### ⚠️ R-1 is only safe because R-2 holds. State it as an invariant.
+> **In proxied mode the underlying `s3://` path is unreachable.** `mlflow/store/artifact/mlflow_artifacts_repo.py`
+> defines `_validate_uri_scheme` with `allowable_schemes = {"http", "https"}` and resolves every URI
+> onto `/api/2.0/mlflow-artifacts/artifacts`, delegating to `HttpArtifactRepository`. The bucket and
+> key are **server-side-only configuration** (`--artifacts-destination`); **no REST endpoint exposes
+> them.** An API client can only stream bytes over HTTP through the tracking server.
+>
+> **vLLM's `runai_streamer` needs a real `s3://` URI.** So proxied mode and vLLM are compatible
+> *only* because R-2 keeps serving weights in a plain MinIO bucket that MLflow merely references by
+> tag. **If anyone later "simplifies" by putting weights into MLflow's artifact store, vLLM breaks
+> silently.** Guardrail: assert in CI that every resolved `weights_uri` starts with `s3://`.
+
 ### R-2 — MLflow holds metadata; MinIO holds the weights
 - **In MLflow**: experiment metadata, params, eval metrics, lineage, registered-model versions and **aliases**, plus a tag recording the MinIO URI **and a checksum** of the weights.
 - **In a plain versioned MinIO bucket**: the multi-GB weight files, uploaded by `mc`/boto3 multipart directly, under immutable prefixes.
@@ -85,7 +97,26 @@ MinIO env: `MLFLOW_S3_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID/SECRET`, `MLFLOW_ENABLE_
 
 > **Unverified — test, do not assume:** MLflow documents **no S3 path-style toggle**. boto3 generally defaults to path-style against a custom endpoint, but confirm against MinIO explicitly. Also unconfirmed: whether MLflow's multipart code path is exercised against MinIO (docs name S3 and GCS).
 
-Object list: Deployment (replicas 1, RollingUpdate, `/health` liveness **and** readiness, emptyDir at `/tmp` — required because `readOnlyRootFilesystem: true` + `--expose-prometheus` needs a writable multiprocess dir), Service (ClusterIP), Ingress (TLS at edge, oauth2-proxy forward-auth), **PreSync migration Job** (`hook-delete-policy: BeforeHookCreation`, same image digest as the Deployment, exactly one runner — migration is not concurrency-safe), Vault-injected Secret, ServiceMonitor, NetworkPolicy, `mlflow gc` CronJob.
+Object list: Deployment (replicas 1, RollingUpdate, `/health` liveness **and** readiness, emptyDir at `/tmp` — required because `readOnlyRootFilesystem: true` + `--expose-prometheus` needs a writable multiprocess dir), Service (ClusterIP), **PreSync migration Job** (`hook-delete-policy: BeforeHookCreation`, same image digest as the Deployment, exactly one runner — migration is not concurrency-safe), HPA + PDB placeholders, `mlflow gc` CronJob.
+
+> **Corrected against the real deployment repo (2026-08-29).** Three objects in the sentence above
+> do not match house convention and must not be copied from generic MLflow guides:
+> - **No `ServiceMonitor`.** The Prometheus Operator is not installed; `deployment/k8s/base/prometheus.yaml`
+>   is a plain Deployment that self-scrapes via `prometheus.io/scrape|port|path` **pod annotations**
+>   (`observability-config.yaml:546-584`). Expose metrics that way, or make introducing the Operator
+>   an explicit, separate decision.
+> - **No Vault Agent injection / VSO / ESO.** None is installed — zero hits for `vault.hashicorp.com`,
+>   `vault-agent` or `ExternalSecret` in the whole repo. The house pattern is a hand-applied
+>   `hope-secrets` Secret (template: `deployment/secrets.dev.yaml.example`) carrying the bootstrap
+>   AppRole pair, with each app performing **its own Vault AppRole login at boot**
+>   (`SECRETS_PROVIDER=vault`, `VAULT_ADDR: http://hope-vault:8200`). Follow that.
+>   Note also: the `AppProject` **blacklists `{group:"", kind: Secret}`** — Argo CD may never manage Secrets.
+> - **No `NetworkPolicy` anywhere** and **no `CronJob` anywhere.** `mlflow gc` would be the repo's
+>   first CronJob; there is no naming/annotation/hook convention to copy, so establish one and say so.
+> - **No Ingress except Grafana**, no TLS, no cert-manager. `hope-api` is reached in dev via a fixed
+>   NodePort. An MLflow Ingress inherits Grafana's plain-HTTP pattern unless cert-manager is
+>   introduced separately — which makes the oauth2-proxy forward-auth in S-3 a new dependency, not a
+>   configuration detail.
 
 **Secrets: Vault Agent injection, not the chart's External Secrets Operator templates** — per `.claude/rules/09` §L7, ESO writes plaintext into etcd Secrets, which is the wrong posture for a PHI platform. Vault kv-v2 path `platform/mlflow` holds `backend_store_uri`, `minio_access_key`, `minio_secret_key`, `flask_secret_key`, `webhook_secret_encryption_key`.
 
@@ -106,6 +137,108 @@ Implement the resolver that is currently a dangling enum value: resolve `MLFLOW`
 ## 5. Observability
 `GET /health` (both probes). **Prometheus is native**: `--expose-prometheus=<dir>` exposes `/metrics` via `prometheus-flask-exporter` with a multiprocess dir. Metrics are HTTP-level, not domain-level — a domain exporter is unnecessary at this scale. Backup: Postgres logical dump (mandatory pre-migration) + MinIO bucket versioning. Upgrade: backup → `mlflow db upgrade` → roll pods; MLflow does **not** support upgrading a live server. Server is backward compatible with clients **one major version** back; **newer clients against older servers is unsupported** — pin the SDK. Downgrade is undocumented; assume forward-only.
 
+## 5A. Registry conventions (added 2026-08-29)
+
+### 5A.1 One registered model per (logical model × format)
+
+Register `clinical-summariser-awq` and `clinical-summariser-gguf` as **separate registered models**,
+each with a `format` tag and a shared `logical_model: clinical-summariser` tag.
+
+**Why not one model with two artifacts:** aliases attach to a *registered model*, not to an artifact
+inside a version. With both formats under one model, `@champion` is ambiguous — you cannot promote
+the AWQ build without promoting whatever GGUF shares that version, and you cannot roll back one
+backend independently. Separate models give each backend its own flippable `@champion`, its own
+version counter and its own rollback. Multiple artifacts per version also forces every consumer to
+download both multi-GB artifacts to get one.
+
+The router resolves `models:/clinical-summariser-<format>@champion`, choosing `<format>` from the
+backend it is dispatching to, and reads `logical_model` to present one name to callers.
+
+### 5A.2 Required model-version tags
+
+`weights_uri`, `weights_sha256`, `format` (`safetensors-awq` | `gguf-q4_k_m`), `quantization`,
+`context_length`, `size_bytes`, `tokenizer_uri`.
+
+**Tags, not params** — params are immutable run inputs and are not settable on a *model version* at
+all. Use `MlflowClient.set_model_version_tag`.
+
+### 5A.3 The tokenizer trap
+
+MLflow's `transformers` flavor writes weights to `<artifacts>/model/` but the tokenizer to
+`<artifacts>/components/tokenizer/` (`mlflow/transformers/model_io.py:23-24,41,64,80`). **`model/`
+is therefore not servable by vLLM as-is** — either point `--tokenizer` at `components/tokenizer` or
+merge the two directories at sync time. This is the most likely silent breakage in a naive
+integration; the sync job must assert `tokenizer_config.json` exists in the served directory before
+emitting a GitOps commit.
+
+### 5A.4 Immutable, content-addressed prefixes
+
+Write weights to `s3://hope-models/<name>/<version>/<sha256>/…` and **never overwrite**. Overwriting
+in place is the failure that breaks everything at once: running pods keep serving stale cached
+weights, new pods get different bytes under an identical URI, the MLflow version no longer describes
+what is stored, and rollback is impossible because the prior bytes are gone — with **zero signal**
+that anything changed. Enable MinIO object versioning and object locking so an accidental overwrite
+is recoverable.
+
+**The sync job verifies, it does not trust**: recompute sha256 against the tag; for GGUF additionally
+run `gguf-dump.py --no-tensors --json` and assert `general.file_type` and `<arch>.context_length`
+match. Fail loudly — in a clinical setting a silently-swapped quantization is a patient-safety
+issue, not config drift.
+
+### 5A.5 `mlflow gc` must never be able to delete served weights
+
+`gc` deletes "all files in the run's artifact location". Because R-2 keeps served weights **outside**
+the run artifact tree under an immutable `s3://hope-models/` prefix that MLflow only references by
+tag, `gc` structurally cannot reach them. MinIO object-lock is the backstop. Do not undo this by
+moving weights into MLflow artifacts.
+
+---
+
+## 5B. Two registries: HuggingFace AND our MLflow (owner ruling 2026-08-29)
+
+The platform uses **both** — HuggingFace as an upstream source, and our own MLflow as the registry
+of record for models we publish, fine-tune or promote. `AiModel.source` already encodes this
+(`HUGGINGFACE | GITHUB | MLFLOW | LOCAL | S3`), but **only `hf:`, `file://` and `s3://` have
+resolvers today** (`stt.prisma:33-42`); `MLFLOW` is a declared enum value with nothing behind it.
+
+### 5B.1 HuggingFace is natively supported by every backend — MLflow is not
+
+This asymmetry drives the design. HF needs **no resolution step at all**:
+
+| Backend | HuggingFace | MLflow |
+|---|---|---|
+| **vLLM** | `--model <user>/<model>` directly | ✗ cannot parse `models:/`; resolve to `s3://` or a local path first |
+| **LM Studio** | `POST /api/v1/models/download` accepts a catalog id **or a full HF URL** (+ `quantization`); CLI `lms get <hf-repo>` | ✗ no MLflow awareness; resolve, then `lms import` (TASK-824 §4.10) |
+| **llama.cpp** | `-hf/--hf-repo <user>/<model>[:quant]`, `--hf-file`, `-hft/--hf-token` | ✗ same as LM Studio |
+
+**So the resolver is source-aware, and the HF path is a pass-through.** Only `MLFLOW` sources take
+the alias-resolution chain; `HUGGINGFACE` sources hand the repo id straight to the backend.
+
+### 5B.2 When to use which
+
+| Use | Registry |
+|---|---|
+| An off-the-shelf public model, unmodified | **HuggingFace** — pass the repo id through; no artifacts to manage |
+| Anything we fine-tune, quantize, evaluate or promote | **MLflow** — it is the registry of record, and carries the lineage, eval scores and the `@champion` alias |
+| Anything that must be reproducible or auditable for a clinical decision | **MLflow** — a HF repo id is a mutable pointer; an MLflow version plus `weights_sha256` is not |
+
+### 5B.3 ⚠️ The PHI-cluster conflict this creates
+
+**Pulling from HuggingFace at pod start requires egress from a PHI namespace to `huggingface.co`.**
+That directly contradicts the default-deny egress NetworkPolicy recommended for the inference
+workloads (TASK-824 §5 L-3, TASK-823 V-3), and it makes a pod's startup depend on a third-party's
+availability and on a repo whose contents can change under a mutable tag.
+
+**Recommendation: mirror HF models into MinIO rather than pulling at runtime.** A one-off job
+fetches the HF repo, records a checksum, writes it to `s3://hope-models/<publisher>/<model>/…`, and
+registers an `AiModel` row whose `source` is `S3` with the HF origin recorded in metadata. The
+serving pods then never egress. This keeps one artifact path (MinIO) for every backend, keeps the
+egress policy intact, and makes the model reproducible.
+
+**If runtime HF pulls are wanted anyway**, that is an owner decision, and it needs: an explicit
+egress allow-list entry, pinning by **revision SHA** (never a bare tag or `main`), and a documented
+acceptance that a HF outage is a cold-start outage. Say so in the manifest comment.
+
 ## 6. Verification Criteria
 - [ ] `mlflow db upgrade` succeeds against Postgres 18 (evidence pasted)
 - [ ] Proxied artifacts confirmed: a client with **no** MinIO credentials can log and download an artifact
@@ -116,6 +249,12 @@ Implement the resolver that is currently a dangling enum value: resolve `MLFLOW`
 - [ ] `mlflow gc` CronJob removes a soft-deleted run **and its artifacts**
 - [ ] Webhook fires to an in-cluster endpoint (proves `ALLOW_PRIVATE_IPS`) with a valid HMAC signature
 - [ ] Dev compose and cluster manifests use the same image digest and the same flags
+- [ ] CI asserts every resolved `weights_uri` starts with `s3://` (the R-1/R-2 invariant)
+- [ ] A resolved transformers-flavor artifact has `tokenizer_config.json` in the served directory
+- [ ] Metrics scrape via `prometheus.io/*` pod annotations, not a ServiceMonitor
+- [ ] Secrets arrive via `hope-secrets` + app-level AppRole login, not an injector
+- [ ] `AiModelSource.MLFLOW` has a working resolver; `HUGGINGFACE` still resolves unchanged
+- [ ] No inference pod egresses to huggingface.co (or the exception is explicit in the manifest)
 
 ## 7. Pitfalls (ranked)
 1. `--default-artifact-root` vs `--artifacts-destination` confusion → silent direct mode.
