@@ -523,3 +523,53 @@ Design constraints this inherits automatically:
 only ever match a hand-made tenant role holding zero abilities — so any behaviour gated on them is
 unreachable in a seeded stack. Needs its own ticket: either seed the roles with real abilities, or
 delete the dead constants.
+
+## 13. Lane A landed — the node catalogue (merged 2026-08-29)
+
+Registry **36 → 48**: nine `agent.*` (transcription, normalization, ner, presummarization,
+summarization, discharge_summary, retrieval, feedback, **dna_redaction**) and three `guard.*`
+(phi, moderation, groundedness). Checksum `65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c`,
+verified by the orchestrator against the value computed from the built contract — not a literal
+anyone typed. Two seeds now agree; seed 21 had been carrying a checksum stale since TASK-812.
+
+Gates: workflow-contract 972 · database 1641 · applications 10344 · api 4029 · harness 1670 ·
+`gen:check` no-drift ×3 · lint 40/40.
+
+### 13a. TWO OWNER RULINGS STILL NEEDED
+
+**(1) Should a missing pre-summarization node be FATAL?** §11 said absence must not be a silent
+drop. Lane A made it loud (`trace.configurationErrors` + error log) but **not fatal**, because the
+SYSTEM tier behind it is reached by the frozen v1-compat route and **no tenant has such a node
+today** — failing closed now would take out every pre-summary on the platform, compat plane
+included. Proposed safe ordering: seed an `agent.presummarization` node into the platform-default
+graph FIRST, then make absence fatal. **Owner decision required.**
+
+**(2) Confirm the durable-lane skip.** `lane` is now a real registry field and the durable
+interpreter SKIPS realtime nodes with `reason="realtime_lane"`. In the seeded ARCAAI graphs that
+means `consultation.captureBinding`, `consultation.extractEntities` and `consultation.realtimeSummary`
+are skipped on the durable path. Argued lossless — in the durable lane `captureBinding` emits no
+transcript, so both downstream nodes already degraded on `no_bound_text` every run — so this turns a
+silent degrade into a visible skip. It is nonetheless a live behaviour change in seeded graphs.
+
+### 13b. A contract rule was DELETED on evidence
+
+TASK-809 declared *"a realtime-lane node MUST NOT be `externalWrite`"*. The runtime TASK-811 shipped
+falsifies it: two of the three realtime node types write, and publishing the running note to the
+live feed IS the realtime lane's product. Replaced by **"every node must be idempotent, in either
+lane"**. The hazard the old rule reached for — two engines writing one consultation's document — is
+a lane-membership hazard, now closed structurally rather than by a port-level prohibition.
+
+### 13c. `purposeScope` taxonomy — proposed, awaiting confirmation
+
+Reuses the existing `ConsentPurpose` enum rather than inventing one, restricted to members that can
+justify an outbound tool call: `EXTERNAL_TOOL_LOOKUP` (the purpose `call_mcp_tool` already hardcodes),
+`HISTORY_RETRIEVAL`, `AI_DOCUMENTATION`, `QUALITY_REVIEW`. `STYLE_LEARNING` deliberately excluded —
+it authorizes a DNA writing-style opt-in, not egress, so a node declaring it could never be granted.
+Stopped at four rather than padding to five. Exported as `TERMINOLOGY_PURPOSE_SCOPES`.
+
+### 13d. Reported, not closed
+
+`config.onError` is read by `compileNode` on every node but declared only on the consultation
+schemas, and `compileNode` treats every value that is not `'degrade'` as `'fail'` — so the
+consultation enum's `'retry'` is an authoring-time value with no compiled meaning. Guessing an enum
+for the summarization/STT schemas would have been invention.
