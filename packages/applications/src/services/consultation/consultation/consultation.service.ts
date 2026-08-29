@@ -41,6 +41,7 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { HarnessAuditService } from '../../harness-audit';
 import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
+import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 import { readGoverningEngineMarker } from '../governing-engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
@@ -163,6 +164,44 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
 
     await this.workflowDispatchService.assertSelectableForConsultation(tenantId, workflowDefinitionSlug);
+  }
+
+  /**
+   * TASK-813 §8 — the workflows this caller may name at open.
+   *
+   * Selection shipped without a way to learn what is selectable, so the contract was "guess a
+   * slug, get a 404/403". The answer comes from the DISPATCHER, which owns the gate: the list
+   * and the gate are one predicate with two consumers
+   * (`workflow-dispatch/consultation-selection-policy.ts`), so a slug this route advertises can
+   * never be one the gate refuses.
+   *
+   * This service adds only the two request-shaped facts the dispatcher has no business knowing:
+   *
+   *   * the tenant is the CLS-resolved one, never a request field — so there is no cross-tenant
+   *     identifier on this surface and no 404-over-403 case to get wrong;
+   *   * an UNWIRED dispatcher is a 503, exactly as it is for the selection gate. Answering
+   *     `{ data: [] }` would be a claim about what the tenant has authored, when the truth is
+   *     that this deployment cannot tell — and a caller that believed it would stop selecting
+   *     rather than retry.
+   *
+   * No `ResourceViewed` sys-event: this reads workflow definitions, and this service's audit
+   * resource type is `Consultation`. Mis-typing the event to obtain coverage would be worse
+   * than the absence — the same call this route's sibling `getGoverningWorkflow` makes.
+   */
+  async listSelectableWorkflows(): Promise<SelectableConsultationWorkflowListResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    if (!this.workflowDispatchService) {
+      this.logger.error({
+        message: 'Selectable workflows were requested but consultation workflow dispatch is NOT WIRED — refusing rather than reporting an empty set',
+      });
+      throw new ServiceUnavailableException('Workflow selection is not available on this deployment');
+    }
+
+    return this.workflowDispatchService.listSelectableForConsultation(tenantId);
   }
 
   /**

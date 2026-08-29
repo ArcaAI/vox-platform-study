@@ -7,14 +7,13 @@ import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
 import { SttPipelineResolverService } from '../../workflow-definition/resolvers/stt-pipeline-resolver.service';
 import { withGoverningEngineMarker } from '../governing-engine';
+import { CONSULTATION_PALETTE_KEY, consultationSelectionViolation } from './consultation-selection-policy';
+import { SelectableConsultationWorkflowListResponse } from './dto';
 import {
   ConsultationWorkflowDispatchResult,
   DispatchForConsultationInput,
   IConsultationWorkflowDispatchService,
 } from './IConsultationWorkflowDispatchService';
-
-/** The palette a consultation-governing graph must declare. */
-const CONSULTATION_PALETTE_KEY = 'consultation';
 
 /** The palette whose assignment resolves to an `AsrPipeline` rather than an interpreter run. */
 const STT_PALETTE_KEY = 'stt';
@@ -74,10 +73,74 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // Visible, but not a consultation-governing graph. A `summarization` or `stt` definition has
     // no consultation nodes: dispatching it would bind nothing and quietly leave the document
     // unwritten, so this is refused up front rather than degraded at dispatch.
-    if (definition.paletteKey !== CONSULTATION_PALETTE_KEY) {
-      throw new ForbiddenException(
-        `Workflow definition '${workflowDefinitionSlug}' is palette '${definition.paletteKey}' and cannot govern a consultation`,
-      );
+    //
+    // The rule itself is NOT written here — `listSelectableForConsultation` asks the same
+    // function, so the set this gate authorizes and the set that route advertises cannot drift.
+    const violation = consultationSelectionViolation(definition);
+    if (violation) {
+      throw new ForbiddenException(`Workflow definition '${workflowDefinitionSlug}' ${violation}`);
+    }
+  }
+
+  /**
+   * TASK-813 §8 — the DISCOVERY half of the same question: which slugs would pass the gate
+   * above, for this tenant, right now.
+   *
+   * Selection shipped without it, so the contract was "guess a slug, get a 404/403". The fix is
+   * not a second query that reproduces the gate's conditions — it is the SAME predicate applied
+   * to the whole tenant instead of to one slug:
+   *
+   *   * visibility — `findActivePublishedByTenant` spreads the identical `PUBLISHED_AND_ACTIVE`
+   *     filter object `findPublishedBySlug` spreads, so nothing invisible to the gate is listed;
+   *   * selectability — `consultationSelectionViolation`, the function the gate calls.
+   *
+   * `tenantId` is the caller's resolved tenant, never a request field, so there is no
+   * cross-tenant identifier to hide: a caller simply cannot address another tenant's set. The
+   * answer for a tenant that has authored nothing is an empty list, which is a real answer and
+   * not an error.
+   */
+  async listSelectableForConsultation(tenantId: string): Promise<SelectableConsultationWorkflowListResponse> {
+    const published = await this.definitionRepository.findActivePublishedByTenant(tenantId);
+    const selectable = published.filter((definition) => consultationSelectionViolation(definition) === null);
+    const tenantDefaultSlug = await this.resolveTenantDefaultSlug(tenantId);
+
+    return {
+      data: selectable.map((definition) => ({
+        slug: definition.slug,
+        name: definition.name,
+        description: definition.description ?? null,
+        // Matched against the SELECTABLE set, never asserted from the assignment alone: a tenant
+        // default that has since been unpublished (or was never a consultation graph) must not
+        // add a phantom entry, or the list would advertise a slug the gate refuses.
+        isTenantDefault: definition.slug === tenantDefaultSlug,
+      })),
+    };
+  }
+
+  /**
+   * Which slug the TENANT-tier assignment names, or `null`.
+   *
+   * Best-effort by design, and the direction matters: the selectable set IS the answer this
+   * route owes; the default marker is decoration on it. An assignment store that cannot be read
+   * must therefore cost the caller the marker, never the list — a discovery route that fails
+   * because a nice-to-have failed would send an integrator hunting for a problem in the part
+   * that worked.
+   *
+   * Resolved with `departmentId: null` deliberately — see
+   * `SelectableConsultationWorkflowResponse.isTenantDefault` for why this route answers the
+   * tenant tier rather than taking a department from the caller.
+   */
+  private async resolveTenantDefaultSlug(tenantId: string): Promise<string | null> {
+    try {
+      const assignment = await this.assignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, null);
+      return assignment.workflowDefinitionSlug;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Tenant default workflow could not be resolved — listing the selectable set without a default marker',
+        tenantId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -120,9 +183,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       // boundary — re-verify rather than trust, and never dispatch a graph from another palette
       // into a consultation (an `stt` graph has no consultation nodes and would bind nothing).
       if (!definition) return notDispatched('assignment names no ACTIVE PUBLISHED definition');
-      if (definition.paletteKey !== CONSULTATION_PALETTE_KEY) {
-        return notDispatched(`assigned definition is palette '${definition.paletteKey}', not '${CONSULTATION_PALETTE_KEY}'`);
-      }
+
+      // Same predicate as the gate and the discovery list — a third restatement here is exactly
+      // how the three answers would come apart.
+      const violation = consultationSelectionViolation(definition);
+      if (violation) return notDispatched(`assigned definition ${violation}`);
       if (!definition.compiledConfig) return notDispatched('definition has no compiled configuration');
       if (!this.s3Service) return notDispatched('no claim-check storage backend is configured');
 

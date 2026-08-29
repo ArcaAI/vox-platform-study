@@ -7,6 +7,7 @@ import {
   ConsultationWorkflowResponse,
   PaginatedConsultationResponse,
 } from './dto';
+import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 
 /**
  * Consultation Service Interface
@@ -37,6 +38,15 @@ export abstract class IConsultationService {
    * cross-tenant id (404-over-403).
    */
   abstract getGoverningWorkflow(consultationId: string): Promise<ConsultationWorkflowResponse>;
+
+  /**
+   * TASK-813 §8 — the workflows the CLS-resolved tenant may name in
+   * `OpenConsultationRequest.workflowDefinitionSlug`. Same predicate as the
+   * selection gate, so the list and the gate cannot disagree. An empty set is a
+   * real answer; a deployment with no dispatcher raises `ServiceUnavailable`
+   * rather than reporting one.
+   */
+  abstract listSelectableWorkflows(): Promise<SelectableConsultationWorkflowListResponse>;
 
   /**
    * Get consultation by ID with all relations (Doctor, Department, Context)

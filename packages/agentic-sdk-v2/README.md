@@ -178,13 +178,38 @@ instead — and `session.open()` lets you override the cascade for one consultat
 await session.open({ patientId, workflowDefinitionSlug: 'discharge_summary' });
 ```
 
+**Which slugs may you pass?** Ask — do not guess:
+
+```ts
+const { workflows, tenantDefault } = useSelectableConsultationWorkflows();
+
+workflows            // [{ slug, name, description, isTenantDefault }, ...] — every slug `open` accepts
+workflows === null   // unknown — the read has not resolved, or it failed
+workflows.length===0 // asked, and your tenant has published none: the default engine governs
+tenantDefault        // what governs if you pass no slug at all — a sensible preselection
+```
+
+`GET /consultations/workflows` answers from the **same predicate** that authorizes `open`, so a
+slug it lists is never refused and a slug it omits is never accepted. It is gated by the ability
+`open` itself needs (`create:Consultation`), not by a workflow-definition ability — a
+clinician-facing integration can enumerate its options without being able to read the workflow
+plane. It is scoped to your session's tenant and takes no parameters.
+
+Do **not** reach for `GET /workflows` here: that is the exposure plane (invokable products), it
+needs `workflow:definition:read`, and it excludes the `consultation` palette entirely — it lists
+none of these.
+
+`useSelectableConsultationWorkflows` fails open exactly like `useConsultationWorkflow` below:
+`null` is "we could not ask", `[]` is "there are none". Never collapse the two — an empty picker
+on a network blip tells a clinician something false about their tenant.
+
 The gateway authorizes the slug **before the consultation is written**, against your own tenant's
 published, active `consultation`-palette definitions:
 
 | Outcome | Status | Why |
 | --- | --- | --- |
 | Not visible to your tenant — another tenant's slug, an unknown one, or one that is not published/active | `404` | Answering `403` would confirm the slug exists. All three are deliberately indistinguishable. |
-| Visible to your tenant, but not a `consultation`-palette definition | `403` | You can already see it in `GET /workflows`; hiding it would send you hunting for a row that is plainly there. |
+| Visible to your tenant, but not a `consultation`-palette definition | `403` | A definition you authored and can already see in the admin plane; hiding it would send you hunting for a row that is plainly there. `useSelectableConsultationWorkflows` never lists these. |
 | Not a well-formed slug (`[a-z0-9_]{2,48}`) | `400` | Refused at the edge — it could never name a real row. |
 
 Omit the field and the cascade decides, exactly as before. It is honoured by `session.open()` only:
@@ -364,7 +389,7 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 
 | Group            | Hooks                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useAudioRecordings`                                |
+| Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useSelectableConsultationWorkflows`, `useAudioRecordings`                                |
 | Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
 | Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
 | Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
