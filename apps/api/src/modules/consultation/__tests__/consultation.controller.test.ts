@@ -177,6 +177,7 @@ function buildController(
     {} as any, // harnessLiveAssistService
     {} as any, // redisSubscriber
     {} as any, // loopContextSignalService
+    {} as any, // documentSectionService
   );
 
   return {
