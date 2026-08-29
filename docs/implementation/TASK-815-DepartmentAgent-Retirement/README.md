@@ -721,3 +721,101 @@ type import from the resolver, so TASK-815 §2's acceptance criterion holds.
 (`VISIT_TYPES = ['new','revisit']` + `visitTypeOf()`) driving a client-side grid filter. The
 consultations list API exposes no visit type on the row at all, so making it tenant-aware is a UI
 feature with its own design and test surface, not a literal retirement.
+
+## 15e. Lane V — visit type is the PROMPT-COMPOSITION IDENTIFIER (2026-08-29)
+
+Second owner directive, going further than §15 shipped:
+
+> "Visit type is an identifier where the hope platform configure and compose the instructions and
+> consultation context as prompt for agent to work on: pre-summarization OR summarization OR any
+> text generation task."
+
+### What was actually missing
+
+Lane B made the visit type tenant-configured DATA. It was still a **two-column pointer**:
+`promptSlot` answers one question (which of `Department`'s two prompt columns) for one task
+(finalize). Consequences, both real:
+
+- a tenant that defined a THIRD visit type had to borrow one of the two slots — it could never
+  compose its own prompt;
+- the **pre-summary chain had no visit-type axis at all**. `promptType` carries both axes (frozen
+  contract §2), so a pre-summary request says `'pre-summary'` and the visit type becomes invisible
+  to the resolver. It reached assembly only as the `{visit_type}` VARIABLE — data, never a selector.
+  The chain the owner names FIRST was the one that could not use the identifier.
+
+### Where the `(task, visitType)` key went, and why there
+
+**On the catalogue entry** — `VisitTypeDefinition.prompts?: Record<task, { promptTemplateId,
+promptVersionNumber?, contextVariables? }>`, resolved by the cascade `consultation.visitTypes`
+already has. Rejected alternatives, each for a stated reason:
+
+| Candidate | Why not |
+|---|---|
+| Workflow node config (`node-*.ts`) | DD-2 gives a generation node NO visit-type axis by design — it binds its prompt statically. A substrate that cannot express the distinction cannot host the key. (Also a sibling lane's file this sprint.) |
+| More `Department` columns | Combinatorial in (task × visitType), and a schema fact a tenant cannot extend — the exact limit being removed. |
+| `PromptTemplate` tags | The pre-summary tier already resolves by tag convention and its own header calls that a tradeoff with a migration path. Extending the smell, not the machinery. |
+| A second settings key | Two rows that can disagree: a binding outliving the visit type it names. On the entry, a binding cannot exist without its visit type. |
+
+The owner's sentence makes the visit type the IDENTIFIER, so the composition hangs off it. One key,
+one write lane, one `validate`, one audited value, no migration, no second resolver.
+
+### The tier, in all three chains
+
+`preferred (T0) → (task, visitType) binding → node (T1a) → department column (T1b) → SYSTEM`.
+
+- **Above the node tier** because the node has no visit-type axis (DD-2): a tier that cannot express
+  the distinction must not pre-empt the tier that can.
+- **Below tier-0** because an individual clinician's explicit template choice outranks a tenant-wide
+  default (DR-2).
+- Same placement on pre-summary (before the presummarization-node tier, so its fail-closed rule is
+  untouched — a miss still reaches it) and on live (fail-open preserved: a miss, an unapproved
+  template or a missing snapshot all fall through).
+
+**`resolvedFrom` gains NO new member.** `ResolvedPromptConfig` is reached by a frozen v1-compat wire
+route, so its value set is a published contract, and adding one would also drift `openapi.json`, the
+portal and the generated `vox-node` admin schema. The tier reports `'tenant'`, which already means
+"a tenant-configured template, not the department column and not the SYSTEM default". The pairing is
+recorded in `resolutionTrace` (`visitTypeKey` / `visitTypeTask` / `visitTypePromptId`), which is
+additive and internal.
+
+### The axis is now stateable
+
+`PromptResolutionParams.visitTypeKey` (and `PromptAssemblyParams.visitTypeKey`) — additive, optional,
+a key or any alias. Absent ⇒ derived from `promptType` exactly as before. `PromptAssemblyParams`
+keeps `visitType` (the LABEL, filling `{visit_type}`) as a separate field on purpose: collapsing them
+would make a tenant's display wording change which prompt is served.
+
+Threaded at the call sites that had no way to state it: both pre-summary sites
+(`summary.service.ts`, `pre-summary.processor.ts`), `live-agent-resolution.service.ts` (one
+consultation read now yields both axes), and `agentic-instructions.service.ts`. The four summary
+sites needed no change — they already put the visit-type key in `promptType`.
+
+### Safety property, tested first
+
+**A tenant that configured no binding resolves byte-identically on all three chains.** The shipped
+default carries no `prompts`, so zero tenants change behaviour on merge. That is the first `describe`
+block of `prompt-resolution.visit-type-binding.test.ts`, and it passed before the tier existed.
+
+### Labels vs aliases — one fixed, one flagged
+
+The owner named the defaults "New visit/Referral OR Follow-up/Re-visit". Read as alias sets (the
+brief's own reading), three of the four already resolved. **`Re-visit` did not** — the key folds to
+`revisit` and nothing folded to `re-visit`, so a term the owner used to NAME this default fell
+through to the parent-link heuristic. Added as an alias.
+
+**The LABELS were deliberately NOT changed, and this needs an owner answer.** They are "New patient"
+/ "Revisit" from §11 row 3, quoted verbatim in the descriptor. Three reasons to leave them: the two
+owner statements disagree and the older one states labels explicitly while the newer one lists
+slash-separated pairs (alias sets); the label is LLM-visible — it fills `{visit_type}`, and "This is
+a New visit visit." is worse copy than the current rendering; and it is a one-line data edit a tenant
+admin makes in the console, which is the whole point of the catalogue. **If the owner meant the
+labels, it is a data edit to the shipped default, not a code change.**
+
+### Still not fixed — the fourth vocabulary
+
+`apps/admin-console/.../consultations/api/types.ts` (`VISIT_TYPES = ['new','revisit']` +
+`visitTypeOf()`) is unchanged, and this lane does not make it expressible. The blocker is not the
+catalogue: the consultations LIST DTO exposes no visit type on the row, and
+`ConsultationAggregate.totals` hardcodes the same two-valued split SERVER-side (`newVisits` /
+`revisits`). Making it tenant-aware means changing both DTOs plus the aggregate query — a route/DTO
+change with its own five-artifact regeneration and a UI design surface. Unchanged from §15d.

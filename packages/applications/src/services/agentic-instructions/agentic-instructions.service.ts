@@ -82,7 +82,8 @@ export class AgenticInstructionsService extends BaseService {
     // that is belongs to the tenant now (TASK-815 §11 row 3) — it used to be a
     // hardcoded `'new-patient'`. A tenant with no catalogue of its own inherits
     // the two shipped types, so this still resolves `'new-patient'`.
-    const promptType = options.promptType ?? (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
+    const visitTypeKey = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
+    const promptType = options.promptType ?? visitTypeKey;
 
     const [policy, tier] = await Promise.all([
       this.harnessPolicyService.getEffectivePolicy(tenantId),
@@ -94,6 +95,11 @@ export class AgenticInstructionsService extends BaseService {
         // pre-summary template.
         tenantId,
         promptType,
+        // The visit-type axis, so this inventory reports the tier a
+        // `(task, visitType)` binding would actually serve. Needed because
+        // `options.promptType` may be a PHASE (`'pre-summary'`), which carries
+        // no visit-type opinion of its own.
+        visitTypeKey,
       }),
     ]);
 

@@ -31,7 +31,7 @@
  * IDENTICAL behavior, not to different behavior.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConsultationRepository, PromptTemplateRepository, PromptVersionRepository } from '@arcaai/domains';
 
 import {
@@ -41,6 +41,7 @@ import {
   type PersistedLiveAgentLineage,
 } from '../live-documentation/live-agent.port';
 import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation/live-documentation.service';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PromptResolutionService } from './prompt-resolution.service';
 
 @Injectable()
@@ -52,16 +53,29 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptVersionRepository: PromptVersionRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
+    // The tenant's visit-type catalogue, so a live session can resolve
+    // `(live, visitType)` instructions (owner directive, 2026-08-29). Optional +
+    // trailing, the house pattern: an unwired composition sees the two shipped
+    // visit types, neither of which binds anything, so live resolution is
+    // byte-identical to before.
+    @Optional() private readonly visitTypes?: VisitTypeService,
   ) {}
 
   async resolveForSession(input: { consultationId: string; tenantId: string }): Promise<FrozenLiveAgentSnapshot> {
     try {
-      const departmentId = await this.resolveDepartmentId(input.consultationId, input.tenantId);
+      const consultation = await this.readConsultation(input.consultationId, input.tenantId);
 
       const resolved = await this.promptResolutionService.resolve({
         promptType: 'live',
         tenantId: input.tenantId,
-        ...(departmentId ? { departmentId } : {}),
+        ...(consultation?.departmentId ? { departmentId: consultation.departmentId } : {}),
+        // The visit-type axis. `promptType` is the PHASE here, so without this
+        // the live chain could never see a visit type — the same blind spot the
+        // pre-summary chain had. `parentConsultationId` is the consultation's
+        // own follow-up signal; the VOCABULARY is the tenant's.
+        visitTypeKey: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(input.tenantId, {
+          isFollowUp: Boolean(consultation?.parentConsultationId),
+        }).key,
       });
 
       // Tier 3 (`code-default`) carries no content by design — the absence IS
@@ -164,11 +178,29 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
    * treated as "no department" (never as an error, and never as a way to reach
    * another tenant's agent bindings).
    */
-  private async resolveDepartmentId(consultationId: string, tenantId: string): Promise<string | null> {
+  /**
+   * The consultation's two resolution axes — its department and its follow-up
+   * link — read in ONE lookup.
+   *
+   * It used to return the department id alone; the visit type needs
+   * `parentConsultationId` off the same row, and a second read for one boolean
+   * on the session-start path would be a wasted round trip.
+   *
+   * Null on a miss, a cross-tenant id, or a lookup error: live resolution
+   * proceeds with no department and no visit-type opinion rather than failing,
+   * which is this service's documented fail-open posture.
+   */
+  private async readConsultation(
+    consultationId: string,
+    tenantId: string,
+  ): Promise<{ departmentId: string | null; parentConsultationId: string | null } | null> {
     try {
       const consultation = await this.consultationRepository.findById(consultationId);
       if (!consultation || consultation.tenantId !== tenantId) return null;
-      return consultation.departmentId ?? null;
+      return {
+        departmentId: consultation.departmentId ?? null,
+        parentConsultationId: consultation.parentConsultationId ?? null,
+      };
     } catch (error) {
       this.logger.warn({
         message: 'Failed to read the consultation for live-agent resolution — proceeding without a department',

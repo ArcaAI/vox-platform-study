@@ -149,6 +149,9 @@ export class PreSummaryProcessor extends WorkerHost {
           // lands on the SYSTEM default (or a 503).
           tenantId: consultation.tenantId,
           promptType: 'pre-summary',
+          // Same pairing as the assemble() below, so this debug resolve reports
+          // the tier that will actually serve rather than a different one.
+          visitTypeKey: this.visitType(consultation).key,
           // Native callers resolve the department-free fork;
           // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
           preSummaryVariant: 'dept-free',
@@ -194,6 +197,10 @@ export class PreSummaryProcessor extends WorkerHost {
           // consultation's own follow-up signal, but the LABEL is the tenant's
           // now: it comes from `consultation.visitTypes` (tenant → SYSTEM).
           visitType: this.visitType(consultation).label,
+          // …and the same visit type as an IDENTIFIER, so `(pre-summary,
+          // visitType)` can select this tenant's own pre-summary instructions
+          // (owner directive, 2026-08-29).
+          visitTypeKey: this.visitType(consultation).key,
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,

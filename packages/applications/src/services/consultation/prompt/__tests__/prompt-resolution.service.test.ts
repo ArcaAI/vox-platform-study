@@ -816,6 +816,13 @@ describe('PromptResolutionService', () => {
           departmentTemplate: null,
           departmentPromptId: 'dept-prompt',
           usedDefaults: ['template', 'contextVariables'],
+          // Additive trace fields naming the `(task, visitType)` pairing this
+          // resolution looked up. `visitTypePromptId: null` is the assertion
+          // that matters in a REGRESSION LOCK: the tenant bound nothing, so the
+          // visit-type tier did not serve and the node tier still answers.
+          visitTypeKey: 'new-patient',
+          visitTypeTask: 'summary',
+          visitTypePromptId: null,
         },
         content: 'PINNED v3 body',
         resolvedVersionNumber: 3,
