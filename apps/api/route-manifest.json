@@ -11259,6 +11259,60 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "listDocumentSections",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/documents/{documentKey}/sections",
+      "routePath": "/consultations/:id/documents/:documentKey/sections",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
+      "handler": "getDocumentSection",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey}",
+      "routePath": "/consultations/:id/documents/:documentKey/sections/:sectionKey",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
+      "handler": "updateDocumentSection",
+      "method": "PATCH",
+      "path": "/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey}",
+      "routePath": "/consultations/:id/documents/:documentKey/sections/:sectionKey",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "streamHarnessAssurance",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/harness-assurance/stream",

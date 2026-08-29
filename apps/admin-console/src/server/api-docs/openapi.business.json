@@ -6217,6 +6217,111 @@
         ],
         "type": "object"
       },
+      "DocumentSectionResponse": {
+        "properties": {
+          "annotations": {
+            "description": "Section-LOCAL annotations (entity / groundedness / flagged spans)",
+            "items": {
+              "$ref": "#/components/schemas/SectionAnnotationDto"
+            },
+            "type": "array"
+          },
+          "confirmedAt": {
+            "description": "When a clinician first confirmed this section",
+            "nullable": true,
+            "type": "string"
+          },
+          "confirmedBy": {
+            "description": "Who confirmed it",
+            "nullable": true,
+            "type": "string"
+          },
+          "consultationId": {
+            "description": "Consultation this section belongs to",
+            "type": "string"
+          },
+          "content": {
+            "description": "The section body. Offsets in `annotations` index THIS string.",
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "documentKey": {
+            "description": "WHICH document — the tenant's `DocumentTemplate.slug` (e.g. `soap_note`)",
+            "type": "string"
+          },
+          "documentTemplateVersionId": {
+            "description": "The IMMUTABLE `DocumentTemplateVersion` this section was compiled from, pinned at write time.",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Row id",
+            "type": "string"
+          },
+          "idx": {
+            "description": "0-based render ordinal within the document",
+            "type": "number"
+          },
+          "lockedAt": {
+            "description": "When the endpoint finalization locked it",
+            "nullable": true,
+            "type": "string"
+          },
+          "provenance": {
+            "description": "Transcript anchors this content is grounded in",
+            "items": {
+              "$ref": "#/components/schemas/SectionProvenanceDto"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "description": "Monotonic per-section revision, advanced by every accepted write. Orders the SSE `section.patch` stream; NOT the concurrency token — see `version`.",
+            "type": "number"
+          },
+          "sectionKey": {
+            "description": "WHICH section within that document — the compiled template section key",
+            "type": "string"
+          },
+          "state": {
+            "description": "Section state. `empty` renders as a SKELETON, not an error. `provisional` is model-written and freely replaceable by the next flush. `confirmed` is clinician-touched and never overwritten by a flush. `locked` is finalized at the endpoint and rejects EVERY writer — a PATCH against it returns 409.",
+            "enum": [
+              "empty",
+              "provisional",
+              "confirmed",
+              "locked"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "description": "Human-readable heading, so a reader needs no template join to render it",
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "version": {
+            "description": "The row's `_version`, and the ONLY value valid as this section's `If-Match` precondition. Also emitted as the response `ETag`.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "consultationId",
+          "documentKey",
+          "sectionKey",
+          "title",
+          "idx",
+          "state",
+          "revision",
+          "version",
+          "content",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "DocumentTemplateBundleResponse": {
         "properties": {
           "checksum": {
@@ -14333,6 +14438,66 @@
         ],
         "type": "object"
       },
+      "SectionAnnotationDto": {
+        "properties": {
+          "end": {
+            "description": "Character offset end within THIS SECTION's `content`",
+            "type": "number"
+          },
+          "icd10": {
+            "description": "For `entity`: ICD-10-CM code linked by the NLP OntologyLinker, when one matched",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What this annotation is",
+            "enum": [
+              "entity",
+              "groundedness",
+              "flagged"
+            ],
+            "type": "string"
+          },
+          "score": {
+            "description": "Model/NLI confidence, when the producer reported one",
+            "type": "number"
+          },
+          "start": {
+            "description": "Character offset start within THIS SECTION's `content` (never a concatenated document)",
+            "type": "number"
+          },
+          "type": {
+            "description": "For `entity`: the entity class (MEDICATION, CONDITION, …)",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "For `groundedness`: grounded | ungrounded | unverified",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "start",
+          "end"
+        ],
+        "type": "object"
+      },
+      "SectionProvenanceDto": {
+        "properties": {
+          "transcriptEnd": {
+            "description": "Character offset end within the parent transcript",
+            "type": "number"
+          },
+          "transcriptSegmentId": {
+            "description": "The `TranscriptSegment` id this content is grounded in",
+            "type": "string"
+          },
+          "transcriptStart": {
+            "description": "Character offset start within the parent transcript",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "SecurityPolicyResponse": {
         "properties": {
           "bounds": {
@@ -17960,6 +18125,24 @@
         },
         "required": [
           "enabled"
+        ],
+        "type": "object"
+      },
+      "UpdateDocumentSectionRequest": {
+        "properties": {
+          "content": {
+            "description": "The section body as the clinician wants it stored. MAY be empty — a clinician emptying a section needs no transcript contradiction, unlike a flush.",
+            "maxLength": 100000,
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "The section `_version` the client read, as the compare-and-set operand. The `If-Match` header is REQUIRED on this route and OVERRIDES this field when both are present; the body field exists for non-browser callers that drive optimistic concurrency through the payload.",
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "content"
         ],
         "type": "object"
       },
@@ -25791,6 +25974,260 @@
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/consultations/{id}/documents/{documentKey}/sections": {
+      "get": {
+        "description": "Returns every section of `documentKey` for this consultation in render order (`idx` ascending), with decrypted content. This is the DURABLE view: the `section.patch` SSE lane only emits while a flush is running, so a client that reloads mid-encounter reads its state here. Each item carries `version` — the value that section requires as its `If-Match`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationController_listDocumentSections",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The tenant's `DocumentTemplate.slug` (e.g. `soap_note`, `discharge_summary`)",
+            "in": "path",
+            "name": "documentKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/PaginatedResponse"
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "items": {
+                            "$ref": "#/components/schemas/DocumentSectionResponse"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Retrieving multiple DocumentSectionResponses by id and documentKey"
+          },
+          "404": {
+            "description": "Consultation not found, or not visible to this caller."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retrieving multiple DocumentSectionResponses by id and documentKey",
+        "tags": [
+          "consultations"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "consultation:session:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/consultations/{id}/documents/{documentKey}/sections/{sectionKey}": {
+      "get": {
+        "description": "Returns the section with its content decrypted. The response carries `version`, which the `ETagInterceptor` also emits as a strong `ETag` — that validator is what the PATCH below requires as `If-Match`. Note `version` and `revision` are different numbers doing different jobs: `revision` orders the SSE stream, `version` is the concurrency precondition.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationController_getDocumentSection",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The tenant's `DocumentTemplate.slug`",
+            "in": "path",
+            "name": "documentKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The compiled template's section key (e.g. `assessment`)",
+            "in": "path",
+            "name": "sectionKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSectionResponse"
+                }
+              }
+            },
+            "description": "Retrieving a single DocumentSectionResponse by id and documentKey and sectionKey"
+          },
+          "404": {
+            "description": "No such section for this consultation, or it is not visible to this caller."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retrieving a single DocumentSectionResponse by id and documentKey and sectionKey",
+        "tags": [
+          "consultations"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "consultation:session:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      },
+      "patch": {
+        "description": "Writes the clinician-authored body of one section and transitions it to `confirmed`, after which a flush may append but will never overwrite it. Optimistic concurrency is enforced per SECTION: `If-Match` (RFC 7232) is REQUIRED and is compare-and-set against that row's `_version`, so an edit composed against a stale render LOSES to a flush that landed in between. When the header is present it OVERRIDES the body `expectedVersion`. A section the endpoint stage has finalized is `locked` and returns 409 — that is a state conflict, not a stale precondition, so re-reading and retrying cannot help. Unlike a flush, a clinician emptying a section needs no transcript contradiction.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "ConsultationController_updateDocumentSection",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The tenant's `DocumentTemplate.slug`",
+            "in": "path",
+            "name": "documentKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The compiled template's section key",
+            "in": "path",
+            "name": "sectionKey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the section `version` the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"7\"",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentSectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentSectionResponse"
+                }
+              }
+            },
+            "description": "Updating a DocumentSectionResponse by id and documentKey and sectionKey"
+          },
+          "404": {
+            "description": "No such section for this consultation, or it is not visible to this caller."
+          },
+          "409": {
+            "description": "The section is LOCKED — the encounter was finalized and no version of it is writable."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch the section and re-apply against the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Updating a DocumentSectionResponse by id and documentKey and sectionKey",
+        "tags": [
+          "consultations"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "consultation:session:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": true,
         "x-hope-service-account-scopes": []
       }
     },
