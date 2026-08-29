@@ -468,7 +468,35 @@ Two of these (pre-summary, DNA-redaction) say the same structural thing: **a cap
 live in resolver logic becomes a NODE a tenant admin places in a graph.** That is the substrate
 direction TASK-806 set out, applied to the two capabilities this deletion exposed.
 
-## 12. P-4 ruling — clinicians get non-admin endpoints for their OWN DNA writing style
+## 12. P-4 — **CLOSED 2026-08-29.** The endpoints already existed; the defect was client-side
+
+> **The orchestrator's brief for this lane was wrong, and the lane said so.** It was told to BUILD
+> non-admin clinician endpoints. Both already existed on the base commit and were verified there
+> before merge:
+> `GET dna-writing-styles/mine` (`dna-writing-style.controller.ts:196`, `doctorId` = CLS user) and
+> `GET users/me/departments` (`user-departments-me.controller.ts:28`, `userId` = CLS user).
+> **Zero routes were added** — the manifest and `openapi.json` are untouched in the lane's diff, and
+> no admin guard was relaxed. The playground was simply calling `admin/*` when owner-scoped
+> equivalents were already serving the same data.
+>
+> `users/me/departments` is also the better surface than the tenant-wide catalog the brief would
+> have produced: a clinician scopes a note to a department they actually belong to.
+>
+> **Ownership is structural, not branch-guarded.** Neither route accepts an id — the subject is the
+> CLS principal, so cross-clinician substitution cannot be expressed. Proven by mutation: making the
+> resolver return `impersonatedBy ?? user.id` turned both ownership tests RED (impersonation must
+> read the CLINICIAN's rows, not the admin's); reverting restored 42/42.
+>
+> Two further silent-failure defects fixed in passing: the DNA picker rendered N identical options
+> (labelling one doctor's own styles by doctor name), and the department picker collapsed loading,
+> empty and failed into one vanished control — now a `<Skeleton />` and a `role="status"` notice
+> naming the consequence, following the existing `ImpersonationGatePanel` idiom.
+>
+> **Not verified:** no real browser in both themes. The lane was barred from starting a stack, and
+> TASK-814 §9 established that jsdom axe is structurally blind to contrast and scroll-focus rules —
+> so a jsdom "both themes pass" would have been false confidence. Folded into the Lane E runtime pass.
+
+### 12a. Original ruling (for the record) — clinicians get non-admin endpoints for their OWN DNA writing style
 
 TASK-814 §9 P-4 reported that an impersonated clinician silently 403s on `admin/dna-writing-styles`,
 `admin/departments` and `admin/consent-grants`, leaving selectors blank with no explanation, on the
@@ -486,3 +514,12 @@ Design constraints this inherits automatically:
   own rows. Carry an `AUTH-NOTE:` marker.
 - Cross-tenant is **404**, privilege failure inside the tenant is **403**.
 - The `admin/*` routes stay exactly as they are; this is an ADDITIVE clinician plane.
+
+
+### 12b. Incidental finding — two clinician roles that do not exist
+
+`SPECIALIST` and `CONSULTANT` appear in `DNA_DOCTOR_ROLES` and `CLINICIAN_ROLES`, but **no such
+`Role` row exists in the seed and no policy grants them anything.** Those two string comparisons can
+only ever match a hand-made tenant role holding zero abilities — so any behaviour gated on them is
+unreachable in a seeded stack. Needs its own ticket: either seed the roles with real abilities, or
+delete the dead constants.
