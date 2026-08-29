@@ -11,7 +11,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
-import { PromptResolutionService, PromptResolutionTier } from './prompt-resolution.service';
+import { PromptResolutionService, PromptResolutionTier, type PromptTypeSelector } from './prompt-resolution.service';
 import { buildPreSummaryVariables, templateReferencesPreSummaryVariables } from './pre-summary-variables';
 import { PromptTemplateRepository, DnaWritingStyleReportRepository, DepartmentRepository } from '@arcaai/domains';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
@@ -210,7 +210,7 @@ export interface PromptAssemblyParams {
    */
   tenantId?: string;
   departmentId?: string;
-  promptType?: 'pre-summary' | 'new-patient' | 'revisit';
+  promptType?: PromptTypeSelector;
   /**
    * Which pre-summary prompt FAMILY to resolve when
    * `promptType === 'pre-summary'`. `'v1'` (the resolver default) is the
@@ -224,11 +224,12 @@ export interface PromptAssemblyParams {
    * The consultation's visit type, rendered into v1's `{visit_type}` placeholder
    * on a pre-summary body.
    *
-   * Supplied by the caller because assembly cannot see the consultation: the
-   * native callers derive it from `parentConsultationId` (NULL = initial visit)
-   * using the vocabulary the seeded pre-summary template itself declares
-   * (`visit_type: 'new-visit or revisit'`). Absent ⇒ v1's own default,
-   * `'Medical examination'`.
+   * Supplied by the caller because assembly cannot see the consultation. Native
+   * callers now pass the LABEL of the visit type resolved from the tenant's
+   * `consultation.visitTypes` catalogue (`VisitTypeService.forConsultation`),
+   * which is where the vocabulary lives since TASK-815 §11 row 3 — it used to be
+   * a `parentConsultationId ? 'revisit' : 'new-visit'` literal at each call
+   * site. Absent ⇒ v1's own default, `'Medical examination'`.
    */
   visitType?: string;
   transcript: string;

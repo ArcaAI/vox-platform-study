@@ -17,6 +17,7 @@ import {
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
   UsageLedgerServiceModule,
+  VisitTypeServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
@@ -31,6 +32,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
 
 @Module({
   imports: [
+    VisitTypeServiceModule,
     HttpModule.register({
       timeout: 120000,
       maxRedirects: 3,

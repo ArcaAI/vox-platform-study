@@ -20,6 +20,7 @@ import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.ser
 import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mining.service.module';
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -34,6 +35,7 @@ import { DocumentTemplateServiceModule } from '../../document-template/document-
   // transaction as its SummaryMeta, and WS-E uses it for the ner.extract
   // usage row extractEntities emits.
   imports: [
+    VisitTypeServiceModule,
     CommonServiceModule,
     CoreDatabaseModule,
     ConfigModule,

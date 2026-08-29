@@ -9,6 +9,10 @@ export * from './events';
 export * from './note-generation';
 export * from './timeline';
 export * from './prompt';
+// TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue. The label set that
+// used to be a derived literal in nine places; resolved tenant → SYSTEM through
+// the `consultation.visitTypes` settings descriptor.
+export * from './visit-type';
 // apps/api <-> apps/harness gate adapter.
 export * from './harness';
 // Session-timeout sweep worker (TASK-711 state-machine.md §1a).

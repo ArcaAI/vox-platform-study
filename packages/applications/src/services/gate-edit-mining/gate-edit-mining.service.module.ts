@@ -7,6 +7,7 @@ import { GateEditMiningService } from './gate-edit-mining.service';
 import { GateEditMiningProcessor, GateEditMiningQueue } from './gate-edit-mining.processor';
 import { IGateEditExemplarRetriever } from './IGateEditExemplarRetriever';
 import { IGateEditMiningQueue } from './IGateEditMiningQueue';
+import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.service.module';
 
 /**
  * GateEditMiningService DI module.
@@ -37,6 +38,7 @@ import { IGateEditMiningQueue } from './IGateEditMiningQueue';
   // EffectiveSettingsModule resolves the @Optional EffectiveSettingsService that
   // governs `agentic.fewshot.curationMode` (F-24). Unwired ⇒ the gate stays off.
   imports: [
+    VisitTypeServiceModule,
     CoreDatabaseModule,
     EffectiveSettingsModule,
     PhiRedactionServiceModule,
