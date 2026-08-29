@@ -9,7 +9,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { DocumentSectionFactory, DocumentSectionState } from '@arcaai/domains';
+import { DocumentSectionFactory, DocumentSectionRepository, DocumentSectionState } from '@arcaai/domains';
+import { SecretsService } from '../../../baseServices/_meta/secrets';
+import { VaultSecretsProvider } from '../../../baseServices/_meta/secrets/providers/vault-secrets.provider';
 import { DocumentSectionService } from '../document-section.service';
 
 const TENANT = 'tenant-d';
@@ -203,5 +205,64 @@ describe('reads decrypt', () => {
 
     expect(response).toHaveLength(2);
     expect(mockRepository.findByDocument).toHaveBeenCalledWith(TENANT, CONSULTATION, DOCUMENT);
+  });
+});
+
+/**
+ * TASK-819 — the HTTP half of "a failed encryption must not commit".
+ *
+ * The store's own suite proves the row is left alone; this proves the CALLER is
+ * told. Nothing on the encryption path is stubbed: a real `VaultSecretsProvider`
+ * pointed at a closed port, the real `SecretsService`, and the real
+ * `DocumentSectionRepository.encryptContentIntoEntity`. Only persistence is a
+ * double — and it exists to assert it is never reached.
+ */
+describe('TASK-819 — an unencryptable edit is never reported as a write', () => {
+  function serviceWithUnreachableVault() {
+    const repository = new DocumentSectionRepository({ getDatabaseService: () => ({}) } as never);
+    const updateWithVersion = vi.fn(async () => undefined);
+    const create = vi.fn(async () => undefined);
+    Object.assign(repository, {
+      findSection: vi.fn(async () => sectionAt(7)),
+      updateWithVersion,
+      create,
+    });
+
+    const secrets = new SecretsService(
+      new VaultSecretsProvider({
+        addr: 'http://127.0.0.1:1',
+        roleId: 'role-819',
+        secretId: 'secret-819',
+        kvMount: 'secret',
+        kvPrefix: 'hope',
+        transitMount: 'transit',
+        transitKey: 'hope-globalsetting',
+        requestTimeoutMs: 250,
+      }) as never,
+    );
+
+    const service = new DocumentSectionService(repository as never, mockEmitter as never, mockCls as never, secrets as never);
+    return { service, updateWithVersion, create };
+  }
+
+  it('503s — it does not answer 200 for content that was never stored', async () => {
+    const { service } = serviceWithUnreachableVault();
+
+    await expect(
+      service.updateSectionContent(CONSULTATION, DOCUMENT, SECTION, { content: 'Clinician: chest pain resolved.', expectedVersion: 7 }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('commits nothing and broadcasts no sys-event', async () => {
+    const { service, updateWithVersion, create } = serviceWithUnreachableVault();
+
+    await expect(
+      service.updateSectionContent(CONSULTATION, DOCUMENT, SECTION, { content: 'Clinician: chest pain resolved.', expectedVersion: 7 }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(updateWithVersion).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    // A `ResourceUpdated` here would tell every audit consumer the section moved.
+    expect(mockEmitter.emit).not.toHaveBeenCalled();
   });
 });

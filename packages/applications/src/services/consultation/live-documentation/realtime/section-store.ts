@@ -307,15 +307,29 @@ export class DocumentSectionStore {
     return value === undefined ? undefined : (value as unknown as JsonValue);
   }
 
+  /**
+   * Encrypt the transient plaintext into `encryptedContent` before persistence.
+   *
+   * TASK-819 — THIS MUST NOT CATCH. `content` has no column: `encryptedContent`
+   * is the only persisted form of the body, while `revision`, `state`,
+   * `confirmedAt`/`confirmedBy` and `_version` are real columns that both
+   * `applyMachineContent` and `applyClinicianContent` have ALREADY moved by the
+   * time we get here. So swallowing a failure does not "lose the encryption" —
+   * it commits the state transition and the bumped revision on top of the
+   * PREVIOUS ciphertext (or, on the create branch, a permanently NULL body) and
+   * answers the clinician 200. The write must be abandoned instead.
+   *
+   * Both callers' catch blocks turn the throw into `unavailable`, which is a 503
+   * on the clinician route and publishes no `section.patch` on the flush lane.
+   * Secrets are `failMode: closed` (`09-infrastructure-devops.md` §Configuration
+   * Tiers); this is that policy applied to the one field it protects.
+   *
+   * An ABSENT encryptor is still not a failure — unit fixtures and dev paths run
+   * without Vault, and there is nothing to encrypt or lose there.
+   */
   private async encrypt(section: DocumentSectionEntity): Promise<void> {
     if (!this.repository || !this.secrets) return;
-    try {
-      await this.repository.encryptContentIntoEntity(section, this.secrets);
-    } catch (error) {
-      // Mirrors `encryptPhiFields`: a dev/test path with no Vault must not lose the
-      // write, but a PRODUCTION encryptor failing is loud.
-      this.logger.warn({ message: 'Section content encryption failed', error: this.reason(error) });
-    }
+    await this.repository.encryptContentIntoEntity(section, this.secrets);
   }
 
   private reason(error: unknown): string {
