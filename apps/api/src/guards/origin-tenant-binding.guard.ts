@@ -19,15 +19,25 @@
  * a locally-declared SYSTEM constant) — this ticket already paid for that
  * mistake once (copying the HTTP/WS rule into both places, then consolidating).
  *
- * ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which
- * DEFAULTS TO FALSE. While it is off (rule 0 below) this guard passes every
- * request. Nothing here is deleted — one settings write re-arms it.
+ * ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which DEFAULTS TO
+ * TRUE — for every tenant including SYSTEM and GLOBAL, in every environment,
+ * with no row present and no opt-in step (`platform-ops.descriptors.ts`;
+ * TASK-641 FR-6 reversed the original permissive-by-default posture). While
+ * it is off (rule 0 below — an operator's deliberate flip, not the default)
+ * this guard passes every request. Nothing here is deleted — one settings
+ * write re-arms it.
+ *
+ * Two outcomes integrators actually hit, and they are NOT the same: an
+ * origin that is not registered AT ALL (rule 3) always PASSES THROUGH, with
+ * only a warning logged — there is no grant to violate. The 404 (rule 4)
+ * fires ONLY when the origin IS registered to some tenant set and this
+ * request's resolved tenant is not a member of it.
  *
  * Five rules, each with a SILENT failure mode (nothing goes red; the wrong
  * requests are simply allowed, or the platform quietly breaks):
  *
- *  0. Origin enforcement disabled (the DEFAULT) → PASS THROUGH, without
- * consulting the registry.
+ *  0. Origin enforcement disabled (an operator opt-OUT — enforcement is ON by
+ * default) → PASS THROUGH, without consulting the registry.
  *
  *  1. No `Origin` header  → PASS THROUGH. Server-to-server, CLI, worker and
  *     internal callers send none, and CORS already admits them
