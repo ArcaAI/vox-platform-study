@@ -12019,6 +12019,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "ConsultationController",
+      "handler": "listSelectableWorkflows",
+      "method": "GET",
+      "path": "/api/v1/consultations/workflows",
+      "routePath": "/consultations/workflows",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [
+        [
+          "create",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "DnaWritingStyleController",
       "handler": "deleteReport",
       "method": "DELETE",

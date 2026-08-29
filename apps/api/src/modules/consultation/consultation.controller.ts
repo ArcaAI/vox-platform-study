@@ -8,6 +8,7 @@ import {
   UpdateConsultationRequest,
   ConsultationResponse,
   ConsultationWorkflowResponse,
+  SelectableConsultationWorkflowListResponse,
   PaginatedConsultationResponse,
   AddContextRequest,
   AddAudioRecordingRequest,
@@ -365,6 +366,61 @@ export class ConsultationController {
   @ApiResponse({ status: 400, description: 'Bad request' })
   async open(@Body() request: OpenConsultationRequest): Promise<ConsultationResponse> {
     return this.consultationService.getOrCreate(request, this.getDoctorId());
+  }
+
+  /**
+   * TASK-813 §8 — the SELECTABLE-set half of workflow selection.
+   *
+   * `open` accepts `workflowDefinitionSlug` and authorizes it, but until now nothing returned
+   * the set of slugs that would pass that gate, so the contract was "guess a slug, get a
+   * 404/403". `GET /workflows` is not that route: it is the exposure plane, gated
+   * `CanList('WorkflowDefinition')` + scope `workflow:definition:read` which no clinician-facing
+   * integration need hold — and it structurally EXCLUDES the consultation palette
+   * (`EXPOSURE_ALLOWED_PALETTES` is `{summarization}`), so it lists none of these.
+   *
+   * The advertised set and the authorized set are one predicate with two consumers
+   * (`consultation-selection-policy.ts`), so this route can never advertise a slug the gate
+   * refuses, nor hide one it allows.
+   *
+   * DECLARATION ORDER IS LOAD-BEARING: this must stay above `getById`'s `:id` route, or Express
+   * matches `/consultations/workflows` as a consultation id and answers 404. Do not move it
+   * below.
+   *
+   * AUTH-NOTE: `create:Consultation` on a GET is deliberate and is the whole authorization
+   * decision. This route is not a `WorkflowDefinition` read surface — it answers "what may I
+   * pass to `open`", so it is gated by the ability `open` itself requires, and by nothing else.
+   * Consequences, each of them intended:
+   *   * a clinician who can open a consultation can see their options, WITHOUT holding any
+   *     `WorkflowDefinition` ability — which is the point; requiring one would leave the gap
+   *     this route exists to close;
+   *   * the class-level bare `@Authorize()` is deliberately OVERRIDDEN. Inheriting it would let
+   *     any authenticated tenant user enumerate the tenant's authored workflows, which is
+   *     configuration disclosure with no matching capability. Unlike its sibling
+   *     `:id/workflow`, a tenant-wide list has no per-row `verifyConsultationAccess` to lean on,
+   *     so the ability IS the boundary;
+   *   * `consultation:session:write` — the scope `open` carries — for the same reason, and not
+   *     `…:read`: a key scoped only to read cannot open a consultation, so the set would be
+   *     useless to it, while a key that CAN open would be unable to discover. The reachable set
+   *     is exactly the set that can act on the answer;
+   *   * no `@RequiredSvcScopes`, so service accounts are refused (deny-by-default) exactly as
+   *     they are on `open`.
+   * Cross-tenant does not arise: `tenantId` comes from CLS, never from the request, so there is
+   * no foreign identifier to answer 404 for. A privilege failure inside the caller's own tenant
+   * is a 403.
+   */
+  @Get('workflows')
+  @Authorize(['create', 'Consultation'])
+  @RequiredScopes('consultation:session:write')
+  @ApiOperation({
+    summary: 'The workflows this caller may select when opening a consultation.',
+    description:
+      "The set of `workflowDefinitionSlug` values `POST /consultations/open` will accept for the caller's tenant — the same predicate that route authorizes with, so a slug listed here is never refused and a slug omitted here is never accepted. Tenant-scoped from the session, so it takes no tenant or department parameter. An empty `data` array means the tenant has published no consultation-palette workflow, which is the normal case: the platform default engine governs. `isTenantDefault` marks the TENANT-tier assignment; a department override can still win at open.",
+  })
+  @ApiResponse({ status: 200, type: SelectableConsultationWorkflowListResponse })
+  @ApiResponse({ status: 403, description: 'The caller may not open consultations, and so may not choose a workflow for one.' })
+  @ApiResponse({ status: 503, description: 'This deployment cannot dispatch selected workflows, so it cannot say which are selectable.' })
+  async listSelectableWorkflows(): Promise<SelectableConsultationWorkflowListResponse> {
+    return this.consultationService.listSelectableWorkflows();
   }
 
   @ApiEndpoint({
