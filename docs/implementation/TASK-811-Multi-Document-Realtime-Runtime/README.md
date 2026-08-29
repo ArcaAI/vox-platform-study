@@ -443,3 +443,148 @@ with the transition in `data` — the precedent `finalizeDocuments` set for the 
 flush, so a reload currently shows nothing), hold each section's `version`, send it as `If-Match`,
 and handle 409 (finalized ⇒ read-only) distinctly from 412 (re-read and re-apply). Deliberately not
 started — another session owns that file.
+
+## 9. Runtime verification — PERFORMED 2026-08-29 (Lane E)
+
+Everything below was run against a LIVE stack: the gateway on `:8868` (prebuilt `dist`, not
+`--watch`), `apps/text` on `:8862` generating through LM Studio on `:1234`, `apps/nlp` on `:8864`,
+and the admin console's `next dev` on `:5176`.
+
+> **Environment note, because it changes how to read this section.** The TEST infrastructure the
+> lane brief assumed (postgres 5433 / redis 6380 / minio 9002 / qdrant 6335) **did not exist** — no
+> such containers were present, only the eight `hope-*` dev ones. Rather than start it (an
+> orchestrator-owned surface) or mutate the dev database, the dev DB was CLONED with
+> `pg_dump | psql` into a throwaway `hope_lane_e` on the same container and every service pointed
+> at it by host-env override. The dev database `hope` was never written to; it held only its idle
+> Vault connection throughout.
+>
+> Incidentally this retires §7a of TASK-810: `prisma migrate diff --from-config-datasource
+> --to-schema` against the dev DB reports **"This is an empty migration."** — the dev database is
+> fully in sync with the schema, so the "99 statements behind / awaiting an owner decision on
+> wiping" note there is stale.
+
+### §7 item 15 — trajectory parity is now FIELD-proven, and it HOLDS
+
+The claim was test-proven only, because the flag (`consultation.realtime.graphExecutor.enabled`)
+defaults OFF and had never been on for any tenant. It was flipped for **one** tenant (Global,
+`50000000-…-0000`) through `PUT /admin/settings/registry/:key` with `scope: tenant`; the other
+tenant kept resolving `code-default: false`, so the per-tenant rollout gate works as designed.
+
+The same transcript was then driven through both engines and their `AgentTrajectoryStep` rows
+diffed. **The repeating per-flush unit is identical:**
+
+```
+LEGACY (flag OFF, consultation …0005)   GRAPH (flag ON, consultation …0006)
+LLM_CALL/flush/OK                       LLM_CALL/flush/OK
+TOOL_CALL/nlp.classify-tokens/OK        TOOL_CALL/nlp.classify-tokens/OK
+PHASE/publish/OK                        PHASE/publish/OK
+                                        (diff of the first 6 steps: IDENTICAL)
+```
+
+The only observable difference is the intended one: graph mode materialises `DocumentSection`
+rows (4) where legacy writes none.
+
+**One real behavioural difference the parity test cannot see.** In a session with context notes
+but NO transcript, the legacy engine emits **no** `nlp.classify-tokens` step at all (its NER input
+was `delta || transcript`, D-14) while the graph engine emits one with zero entities — task 5's
+declared-port resolution, working as specified. The parity test always supplies a transcript, so
+this asymmetry is invisible to it. It is a change in what gets CALLED, not in what gets written.
+
+### §8 — the three section routes, conflict semantics proven against the live gateway
+
+Unit-proven before; these are real HTTP responses.
+
+| Case | Expected | Observed |
+|---|---|---|
+| `GET .../sections` (none yet) | 200 `[]` | **200 `[]`** |
+| `GET .../sections/:key` (absent) | 404 | **404** |
+| `PATCH` with no `If-Match` | 428 | **428** `HTTP.PRECONDITION_REQUIRED` |
+| `PATCH` stale `If-Match: "1"` (current 3) | 412 | **412**, `metadata: {expectedVersion:1,currentVersion:3}` |
+| `PATCH` LOCKED section, FRESH `If-Match` | 409 | **409** |
+| `PATCH` LOCKED section, STALE `If-Match` | 409 (state beats precondition) | **409** — the §8b ordering holds |
+| `PATCH`/`GET` cross-tenant id | 404 | **404** |
+| `PATCH` correct `If-Match: "3"` | 200 | **200**, `ETag: "4"`, state `provisional → confirmed`, revision 4 → 5 |
+| `PATCH` by a non-owner clinician | 403 | **403** "Only the assigned doctor can modify this consultation" |
+
+The `GET` emits `ETag: "<version>"` and the SSE `section.patch` carries `revision` but **not**
+`version` — confirmed on the wire, which is exactly why §8's two GETs are load-bearing.
+
+The 412 body carries a sanitised `stack` (relative filenames, no `cwd`) outside production and
+omits it in production — F-030 behaving as designed, not a leak.
+
+### DD-3 — `section.patch` is emitted live
+
+Seven `section.patch` events observed on `GET :id/live-summary/stream` during a graph-mode session,
+one per section per flush, e.g.
+
+```json
+{"event":"section.patch","documentKey":"soap_note","sectionKey":"subjective","idx":0,
+ "revision":1,"state":"provisional","content":"…","annotations":[],"updatedAt":"…"}
+```
+
+**The "N documents" half is still NOT proven, and it is not provable from any graph that exists.**
+Every event carried the same `documentKey` (`soap_note`) — the platform lane binds one document.
+Checked against the database rather than assumed:
+
+- the only published `consultation`-palette definitions are `arcaai-consultation-soap` and
+  `arcaai-rheum-consultation-soap`, and their node list contains exactly ONE generation node
+  (`consultation.realtimeSummary`);
+- `select count(*) from "WorkflowDefinition" where graph::text like '%documentTemplateId%'` returns
+  **0** — no graph anywhere carries a document binding, which is expected: `documentTemplateId` was
+  only added to the generation-node schemas by TASK-810 §7b item 2, after these graphs were authored.
+
+So closing DD-3's N-half needs a graph AUTHORED with two generation nodes bound to two published
+`DocumentTemplate`s, then published and assigned. That is workflow authoring plus a product decision
+about what the second document should be — not a runtime gap. A second template
+(`discharge_summary`, 5 sections, published v1/v2) was created during this pass, so the template
+half of the prerequisite already exists.
+
+### DEFECT FOUND AND FIXED — a second recording session published nothing
+
+**The most serious thing this pass found.** With the graph executor on, the *second* recording
+session on any consultation wrote no section and published no `section.patch` — the clinician was
+left on the "Waiting for the first live summary" skeleton indefinitely:
+
+```
+Section patch refused {"documentKey":"soap_note","sectionKey":"subjective","reason":"stale-generation"}
+… objective / assessment / plan, all refused …
+Live summary flush {"generation":1,"flushCount":1,…}      ← a BRAND-NEW session
+```
+
+Root cause: `DocumentSectionStore.lastGeneration` is the flush staleness watermark, keyed by
+section address alone, and `LiveDocumentationService` memoizes ONE store for the life of the
+process (`this.sectionStore ??= new DocumentSectionStore(...)`). `generation` restarts at 0 for
+every new session, so once session 1 reached generation N every write of session 2 satisfied
+`input.generation < seen`. `DocumentSectionStore.forget()` was written for precisely this — "Drop a
+finished session's staleness bookkeeping" — and had **zero production callers**.
+
+Fixed in `LiveDocumentationService.start()`, after the re-bind early-return so re-attaching an STT
+stream to a live session still keeps its state:
+
+```ts
+this.sections().forget(params.consultationId);
+```
+
+Reset on START, not on stop(): a session that crashed, lost its owner lock, or was stood down by
+the substrate gate never reaches `stop()`, and those are exactly the ones whose stale watermark
+would poison the next session.
+
+Proven RED first (`live-documentation.session-generation.test.ts` — the second session's write list
+was empty), then green; plus two store-level tests for `forget()` itself. Field-verified afterwards
+on one consultation across two consecutive sessions in ONE process:
+
+```
+BEFORE:           subjective rev3  objective rev3  assessment rev3  plan rev3
+AFTER SESSION A:  subjective rev5  objective rev5  assessment rev5  plan rev5
+AFTER SESSION B:  subjective rev8  objective rev7  assessment rev8  plan rev8
+stale-generation refusals in the whole process: 0
+```
+
+### Still not verified, and what would close it
+
+| Item | Why not | What closes it |
+|---|---|---|
+| N > 1 documents from `section.patch` | the platform lane binds ONE document; no tenant graph in this DB has two generation nodes | author a consultation graph with two generation nodes bound to two published `DocumentTemplate`s, then record |
+| §7 follow-up 2 (`sttPipelineId` threading) | untouched this pass | a request-DTO change plus the five regenerated artifacts |
+| §8c item 1 (encrypt-failure data loss) | needs a Vault outage injected mid-write | a fault-injection test around `DocumentSectionStore.encrypt()` |
+| §8d console wiring of the section GET/PATCH | `case-note-column.tsx` is owned by another session | that session |

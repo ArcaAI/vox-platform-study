@@ -754,6 +754,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // A GENUINELY NEW session (the re-bind above has already returned) restarts
+    // `generation` at 0, so the per-section staleness watermark left behind by
+    // the PREVIOUS session must go with it. The store is memoized for the life
+    // of this process, so without this every flush of a consultation's second
+    // session is refused as `stale-generation`: no row written, no
+    // `section.patch` published, and the clinician watches an empty live note.
+    // Observed on a live stack; pinned by `live-documentation.session-generation.test.ts`.
+    //
+    // Reset on START rather than on stop() deliberately — a session that crashed,
+    // lost its owner lock, or was stood down by the substrate gate never reaches
+    // stop(), and those are exactly the ones whose watermark would poison the next.
+    this.sections().forget(params.consultationId);
+
     const startedAt = Date.now();
     const session: LiveSession = {
       consultationId: params.consultationId,

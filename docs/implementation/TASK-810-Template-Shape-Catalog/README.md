@@ -186,7 +186,14 @@ confirmed the UI lane measured no pin-stripping in practice either way.
   type union**, the deepest structural commitment to exactly four sections. Needs a type-level
   change in a lane that owns the SDK.
 
-### ⚠ Environment — local dev DB cannot be synced without a full wipe
+### ✅ Environment — RESOLVED: the dev DB is in sync (verified 2026-08-29, Lane E)
+`prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script` against the
+dev database now prints **"This is an empty migration."**, and `DocumentTemplate`,
+`DocumentTemplateVersion`, `DocumentSection` and `ContextItem.documentKey` are all present. The
+backlog described below was cleared at some point after this note was written; no wipe is needed and
+no owner decision is outstanding. Kept for the record:
+
+### ⚠ (historical) Environment — local dev DB cannot be synced without a full wipe
 `pnpm db:push` **refused**: `Role.tenantId` was added as required and 7 rows exist, so Prisma
 demands `--force-reset` (**all data lost**). The preview shows the dev DB is **99 statements**
 behind the schema — a backlog across many tickets, not just this one — with only 2 destructive
@@ -259,10 +266,40 @@ verbatim, and never dropped it. What the contract declaration actually buys is (
 accepting the key under `additionalProperties: false` and (b) the pin being visible and editable
 rather than an invisible passenger. The fix was right; the stated mechanism was not.
 
-### Outstanding verification
-The authoring screen has **not** been exercised logged-in against a live gateway. Its component tree
-is covered by jsdom tests driving real interactions (open drawer, reorder, publish, pin, adopt), and
-`next build` + the proxy gate are verified, but a browser pass against a running API remains.
+### Outstanding verification — CLOSED 2026-08-29 (Lane E)
+
+The authoring screen has now been driven logged-in against a running gateway (`next dev` on `:5176`
+against the gateway on `:8868`, super admin, working tenant «Global»), and the pass is pinned by a
+new spec — `apps/admin-console/tests/e2e/document-templates.spec.ts`, the one tenant-scoped screen
+in that suite that had none.
+
+| Exercised in the browser | Result |
+|---|---|
+| No working tenant | the tier 30–49 NoTenant gate ("Select a working tenant"), not an empty catalog |
+| Create (`New template` → drawer → name/slug/description) | 201, drawer becomes the template's own DRAFT detail surface |
+| Shape → **Start from SOAP** → add a 5th section | 5 sections, reorder via Up/Down buttons (a single-pointer alternative to drag — WCAG 2.5.7) |
+| Publish | `DRAFT → PUBLISHED`, "Pinned to v1", Versions (1); `changeReason` and a `checksum` persisted |
+| **Identical re-publish** | **no-op — no v3 minted.** The §7b checksum short-circuit, previously unit-proven only, confirmed at runtime |
+| Changed shape → publish | mints v2 and moves the pin |
+| Versions tab → **Pin version 1** | rolls back; v2 gains a "Pin" button and an **"Additive drift — readers still work"** badge |
+| Catalog cards | show the **pinned** version, not the latest (verified against a template pinned v1 with latest v2) |
+| Publishing an INCOMPLETE section | refused with a precise `role="alert"`: ``shape.sections[5].key `` must match ^[a-z0-9_]{2,48}$`` — not a silent failure |
+| **axe (WCAG 2.2 AA), BOTH themes** | **0 violations** in light and dark, via `@axe-core/playwright` |
+
+Two observations worth an owner's eye, neither fixed here:
+
+1. **"Start from SOAP" overwrites the Document title with "SOAP Note"**, silently. The field's own
+   placeholder shows the template's name, so it reads as already-filled; a template named and
+   slugged `discharge_summary` published a v1 whose frozen `shape.title` was `"SOAP Note"`. Copying
+   the platform shape's title is arguably faithful to "start from", but the frozen artifact is
+   mislabelled and nothing warns.
+2. Publish-validation errors are announced page-level. The offending inputs carry no
+   `aria-invalid`, and the message is not adjacent to the field — a small deviation from
+   `11-ux-ui-principles.md` §9 ("validation errors below the field").
+
+The a11y suspicion this pass started with — that Name/Slug/Title were named only by their
+placeholder — was a **false positive** from the accessibility-tree reader: `<label for>` is properly
+wired (`labels[0].textContent === 'Document title *'`), and axe agrees.
 
 ## 6. Definition of Done
 - [x] Head/version/pin triple with checksum + DB trigger — migration `20260826113600_task_810_document_template_catalog` (tables, indexes, `ALTER TYPE ResourceType`, the OD-13 trigger); trigger is a real Postgres test (installs the committed DDL, attempts a real UPDATE/DELETE, asserts `restrict_violation`) per §7a

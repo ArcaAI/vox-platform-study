@@ -162,6 +162,56 @@ describe('task 8 — per-section state and per-section OCC', () => {
     expect(late).toEqual({ applied: false, reason: 'stale-generation' });
     expect(repo.rows.get('soap_note::assessment')?.content).toBe('Generation 4 content.');
   });
+
+  /**
+   * FIELD DEFECT (Lane E, 2026-08-29). `lastGeneration` lives for the STORE's
+   * lifetime, and `LiveDocumentationService` memoizes one store per process
+   * (`this.sectionStore ??= new DocumentSectionStore(...)`). A flush generation
+   * counter restarts at 1 for every NEW recording session, so once a
+   * consultation's first session reaches generation N, EVERY section write of
+   * its SECOND session is refused as `stale-generation` — no row is written and
+   * no `section.patch` is published, so the clinician watches an empty live note
+   * with a spinner until the gateway restarts.
+   *
+   * Observed on a live stack: consultation ...0018 reached generation 2, and the
+   * next session's generation-1 flush logged
+   * `Section patch refused … reason: stale-generation` for all four sections.
+   *
+   * `forget()` exists for exactly this and had ZERO production callers.
+   */
+  it('a NEW session starts clean after forget() — a restarted generation counter is not stale', async () => {
+    const repo = repositoryDouble();
+    const store = storeWith(repo);
+
+    // Session 1 runs to generation 2.
+    await store.applyFlushPatch(write({ content: 'Session 1, flush 1.', generation: 1 }));
+    await store.applyFlushPatch(write({ content: 'Session 1, flush 2.', generation: 2 }));
+
+    // Session 2 begins: the flush counter restarts at 1.
+    store.forget(CID);
+
+    const firstOfSession2 = await store.applyFlushPatch(write({ content: 'Session 2, flush 1.', generation: 1 }));
+
+    expect(firstOfSession2.applied).toBe(true);
+    expect(repo.rows.get('soap_note::assessment')?.content).toBe('Session 2, flush 1.');
+  });
+
+  it('forget() is scoped to ONE consultation — a sibling session keeps its watermark', async () => {
+    const repo = repositoryDouble();
+    const store = storeWith(repo);
+
+    await store.applyFlushPatch(write({ generation: 4, content: 'A gen 4.' }));
+    await store.applyFlushPatch(write({ consultationId: 'other-consultation', generation: 4, content: 'B gen 4.' }));
+
+    store.forget(CID);
+
+    // The forgotten consultation accepts a restarted counter...
+    await expect(store.applyFlushPatch(write({ generation: 1, content: 'A gen 1 again.' }))).resolves.toMatchObject({ applied: true });
+    // ...while the untouched one still refuses a late flush.
+    await expect(
+      store.applyFlushPatch(write({ consultationId: 'other-consultation', generation: 3, content: 'B late.' })),
+    ).resolves.toEqual({ applied: false, reason: 'stale-generation' });
+  });
 });
 
 // ---------------------------------------------------------------------------
