@@ -67,6 +67,46 @@ Benchmark (Llama-3-8B, 15 GB safetensors, A10G — 2024, still the canonical mea
 
 > **Unverified:** vLLM's page does not cover CA bundles for self-signed MinIO certs; it defers to the streamer's env docs. Plan on mounting the CA and setting `AWS_CA_BUNDLE`, but **verify**. Safest day-1: terminate MinIO TLS with a cluster-trusted cert, or use the in-cluster endpoint on an isolated network.
 
+## 4A. Resolving a model — two sources (added 2026-08-29)
+
+The platform uses **both** HuggingFace and its own MLflow (TASK-822 §5B). The resolver is
+source-aware and the two paths differ sharply:
+
+- **`HUGGINGFACE` → pass-through.** vLLM's `--model` accepts `<user>/<model>` directly. No
+  resolution step. **But pin the revision SHA, never a bare tag**, and see TASK-822 §5B.3: a runtime
+  HF pull needs egress from a PHI namespace, which contradicts V-3's default-deny policy. The
+  recommended posture is to mirror HF weights into MinIO and serve them as an `S3` source.
+- **`MLFLOW` → resolve first.** The chain below.
+
+### 4A.1 The MLflow chain
+
+**vLLM cannot parse `models:/` in any form** — `--model` takes a local directory or an HF repo id
+only, and **no MLflow flavor for vLLM exists** (`mlflow deployments` targets are `databricks, http,
+https, openai, faketarget, sagemaker`). The gap is one resolution step wide.
+
+**Chain, direct-mode / split-storage (recommended — no download at all):**
+
+1. `mv = MlflowClient().get_model_version_by_alias("clinical-summariser-awq", "champion")`
+2. `uri = client.get_model_version_download_uri(name, mv.version)` — **use this public method**, not
+   `ModelsArtifactRepository.get_underlying_uri`, which is an undocumented static with no stability
+   guarantee (it calls the same thing).
+3. Assert `uri.startswith("s3://")` and that `mv.tags["weights_sha256"]` matches the stored object.
+   Assert `mv.status == READY`. Fail the pipeline here — never the pod.
+4. CI commits the URI + image digest to `hope-v2-deployment`; Argo CD syncs.
+5. Pod serves it directly:
+   `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=0 AWS_EC2_METADATA_DISABLED=true AWS_ENDPOINT_URL=… vllm serve <uri> --load-format runai_streamer --served-model-name <logical>`
+
+**If MLflow is ever run in proxied mode, step 2 cannot produce an `s3://` URI** — see TASK-822 R-1's
+invariant. The fallback is `mlflow.artifacts.download_artifacts(artifact_uri="models:/…@champion")`,
+then **merge `components/tokenizer/` into `model/`** before serving (TASK-822 §5A.3), then
+`vllm serve <local>/model`.
+
+**Build the resolver, do not adopt one.** Off-the-shelf options are each disqualified: Seldon Core
+is **BSL 1.1** since 2024-01-22 (commercial licence required in production); KServe's MLflow support
+needs an already-resolved `storageUri` and has no evidence of accepting `models:/`; **ModelMesh is
+archived**; and no Argo CD ConfigManagementPlugin resolving MLflow URIs exists. The resolver is
+~50 lines of `get_model_version_by_alias` + `download_artifacts`.
+
 ## 5. Model promotion — rolling re-deploy, not hot swap
 
 **There is no production-grade hot model swap in vLLM in 2026.** Sleep Mode (`/sleep`, `/wake_up`, 18–200× faster than full reload) requires `VLLM_SERVER_DEV_MODE=1`, which V-1 forbids, and is documented "trusted networks only"; in-place weight loading is still an open RFC.
@@ -98,9 +138,35 @@ Therefore: MLflow alias flip → webhook → CI resolves `models:/name@champion`
 **Version**: the line is v0.28.0 (~2026-08), preceded by v0.27.1/v0.27.0/v0.26.0. **Pin one minor behind head (v0.27.1)** and do not enable Model Runner V2 (`VLLM_USE_V2_MODEL_RUNNER=1`), FP8 KV and LoRA on day 1 — you lose attributability for every failure.
 
 ## 8. Kubernetes shape
-Deployment (replicas 2) · `nvidia.com/gpu: 1` · `shm` emptyDir ≥2Gi · **startupProbe on `/health` with `failureThreshold` covering ~120s cold start** · readiness on `/health` · **`terminationGracePeriodSeconds: 600`** (≫ longest generation) · `preStop` sleep 15 so the Service drops the endpoint first · `maxSurge: 1 / maxUnavailable: 0` · NetworkPolicy (router only) · ServiceMonitor on `/metrics`.
+Deployment (replicas 2) · `nvidia.com/gpu: 1` · `shm` emptyDir ≥2Gi · **startupProbe on `/health` with `failureThreshold` covering ~120s cold start** · readiness on `/health` · **`terminationGracePeriodSeconds: 600`** (≫ longest generation) · `preStop` sleep 15 so the Service drops the endpoint first · `maxSurge: 1 / maxUnavailable: 0` · NetworkPolicy (router only) · metrics via `prometheus.io/scrape|port|path` **pod annotations**.
 
-**Autoscaling: KEDA Prometheus scaler on `vllm:num_requests_waiting`**, min 2 / max 4, cooldown ≥300s, with Cluster Autoscaler for GPU nodes. **HPA-on-CPU is wrong** — a saturated vLLM pod is CPU-idle while its token queue fills, and a new pod needs 3–10 min to pull the image, load weights and capture CUDA graphs. vLLM's own production-stack documents exactly this KEDA pattern.
+> **Two corrections against the deployment repo:** there is **no `ServiceMonitor`** anywhere (Prometheus
+> is a plain Deployment self-scraping via pod annotations, `observability-config.yaml:546-584`), and
+> there is **no `NetworkPolicy`** anywhere either — V-3 below would be the repo's first, so it needs a
+> stated convention rather than a copied one. Also, **no workload in the repo sets
+> `terminationGracePeriodSeconds` above 60s**; the 600s this ticket needs is a new value to justify
+> in the manifest comment, not a house default.
+
+**Autoscaling — corrected against the real deployment repo (2026-08-29).** The upstream-recommended
+answer is a **KEDA Prometheus scaler on `vllm:num_requests_waiting`** (min 2 / max 4, cooldown ≥300s),
+because **HPA-on-CPU is wrong**: a saturated vLLM pod is CPU-idle while its token queue fills, and a
+new pod needs 3–10 min to pull the image, load weights and capture CUDA graphs. vLLM's own
+production-stack documents exactly this pattern.
+
+**But `hope-v2-deployment` has no KEDA** — zero hits for `keda` or `ScaledObject`. The house
+precedent is the opposite and is deliberate: `deployment/k8s/base/stt.yaml` ships an HPA pinned
+**inert** (`minReplicas == maxReplicas == 1`) with a long comment explaining that CPU-based
+autoscaling is wrong for a GPU-bound pod, and naming DCGM-metrics-driven autoscaling as the real
+answer — never implemented.
+
+**Day-1 recommendation: follow the house precedent, not the upstream one.** Ship a fixed 2-replica
+Deployment with an inert HPA and the same explanatory comment. Introducing KEDA is a real
+platform decision with its own install, RBAC and failure modes; it should not ride in on this ticket.
+Record `num_requests_waiting` as the metric to scale on **when** KEDA arrives, and alert on it
+meanwhile so the need is visible.
+
+Also note: `gpu-time-slicing.yaml` (3 virtual slices per physical GPU) exists in the repo but **is
+not applied**. Any replica count must be checked against that capacity budget, not assumed.
 
 ## 9. Metrics and alerts
 `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc`, `vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:e2e_request_latency_seconds`, `vllm:request_queue_time_seconds`, `vllm:prefix_cache_queries`/`_hits`, `vllm:prompt_tokens_total`, `vllm:generation_tokens_total`, `vllm:request_success_total{finished_reason}`.
@@ -124,6 +190,8 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 - [ ] Rolling update completes with **zero** dropped in-flight generations
 - [ ] KEDA scales on `vllm:num_requests_waiting`, not CPU
 - [ ] `apps/text` routes to it as provider priority #1 via an `AiProviderConnection` SYSTEM row
+- [ ] A `models:/<name>@champion` alias resolves to an `s3://` URI and the pod serves it (§4A)
+- [ ] Manifest follows house convention: annotation-based metrics, `imagePullSecrets`, inert HPA + PDB present, `runtimeClassName: nvidia` with matching GPU request **and** limit
 
 ## 12. Pitfalls (ranked)
 1. `--max-model-len` left at the model's advertised max → KV starvation, ~10× fewer concurrent slots.
