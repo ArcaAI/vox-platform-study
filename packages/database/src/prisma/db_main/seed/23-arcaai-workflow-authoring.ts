@@ -66,6 +66,7 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_USER_IDS } from './00-constants';
+import { TEMPLATE_IDS } from './07-prompt-template';
 import { ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { CUSTOMER_DNA_CLINICIANS } from './08-dna-writing-style';
 import {
@@ -185,6 +186,40 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // the guard is the reason the requirement exists, not paperwork to satisfy it.
   { id: 'n_ground_presum', type: 'guard.groundedness', config: { onError: 'degrade' } },
   { id: 'n_capture', type: 'consultation.captureBinding', config: { action: 'start', persistSnapshot: true, onError: 'degrade' } },
+  // Lane N (TASK-815 §14a) — IMPORTANT FINDINGS, the third item of the owner's live-loop
+  // acceptance bar and the one §14a found missing outright.
+  //
+  // It reads the TRANSCRIPT the capture node published, and nothing else on the data side. That
+  // is the anti-laundering rule applied where it matters most: a "finding" the note generator
+  // invented, then highlighted as clinically IMPORTANT, is the worst shape this failure could
+  // take, and `document` does not satisfy `transcript` so the wiring cannot be authored.
+  //
+  // ⚠ Its ordering edge runs `n_findings -> n_entities`, i.e. findings sits BETWEEN capture and
+  // extraction, and that placement is forced by the rule set rather than chosen. WF-CONS-012 is an
+  // `allPathsPassThrough` check: EVERY route from `captureBinding` to `synthesize` must cross
+  // `extractEntities`. Hanging this node off capture and rejoining anywhere downstream of
+  // extraction would open a route that skips it; rejoining after synthesis would skip the PHI hop
+  // (WF-CONS-009) and synthesis itself (WF-CONS-010). Routing it INTO extraction is the one shape
+  // that satisfies all three.
+  //
+  // The consequence is that its optional `entities` hint port stays UNWIRED here — the hints come
+  // from `n_entities`, which now runs after it, and an edge back would be a cycle. That costs one
+  // model call's worth of detector hints and buys three satisfied invariants; the port stays
+  // declared because a tenant graph that orders the two differently can use it.
+  //
+  // `promptTemplateId` is the PLATFORM-DEFAULT instruction (a SYSTEM-tenant `PromptTemplate`, 07).
+  // A tenant admin overrides what counts as important by binding its OWN template here — that
+  // binding IS the tenant -> SYSTEM cascade for this capability, and there is no in-code default
+  // behind it: an unbound node degrades visibly rather than mining by some platform definition.
+  {
+    id: 'n_findings',
+    type: 'agent.important_findings',
+    config: {
+      promptTemplateId: TEMPLATE_IDS.IMPORTANT_FINDINGS_SYSTEM,
+      taskKey: 'text.live',
+      onError: 'degrade',
+    },
+  },
   // `requiresFinalized: true` is WF-CONS-017 — entity extraction reads the FINALIZED transcript,
   // never a partial one.
   {
@@ -229,6 +264,49 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // `producesCode: false` is WF-CONS-015: only `bindTerminology` may produce a clinical code.
   // The negative must be STATED, not merely absent.
   { id: 'n_synth', type: 'consultation.synthesize', config: { taskKey: 'text.finalize', producesCode: false, onError: 'degrade' } },
+  // Lane N (TASK-815 §14b) — THE FINALIZATION CHAIN, which §14b recorded as unseeded:
+  // "`agent.dna_redaction` is absent from both seeded graphs".
+  //
+  // ## Redaction runs BEFORE grounding, and that ordering is the owner's
+  //
+  // The specification says grounding evaluates the *redacted* transcript and the *redacted*
+  // summary. So the note goes `synthesize -> dna_redaction -> verifier`, and everything that
+  // scores the note now scores the REDACTED one. (Earlier programme notes had this the other way
+  // round — grounding then redaction. They were wrong, and the port lattice now makes the correct
+  // order structural: the redactor emits a `document` the guard consumes, while the guard emits a
+  // `verdict` the redactor cannot.)
+  //
+  // `requireDoctorOptIn: true` reproduces the surviving two-gate behaviour verbatim (TASK-815
+  // §11): the TENANT gate is the presence of this node in the published graph, and the DOCTOR's
+  // own DNA opt-in still applies. The retired `DepartmentAgent` veto stays retired.
+  { id: 'n_dna', type: 'agent.dna_redaction', config: { requireDoctorOptIn: true, onError: 'degrade' } },
+  // The POLICY-DRIVEN grounding pass over the redacted note.
+  //
+  // Distinct from `n_sensors` rather than a duplicate of it: the sensors node runs the
+  // COMPUTATIONAL pass, while this one follows the tenant's own written policies. With no
+  // `policies` declared the guard falls back to that same computational pass, which is why the
+  // policy binding below is what makes this node worth placing at all.
+  //
+  // ONE policy is seeded, bound to the platform-default policy body (a SYSTEM-tenant
+  // `PromptTemplate`, 07). A tenant admin adds, replaces or disables policies by editing this
+  // array on its own graph — that is the "set of policies defined/declared/overwriten by tenant
+  // admin" the owner specified, and the platform ships no rubric, no pass mark and no score
+  // formula of its own.
+  //
+  // ⚠ Its `transcript` and `findings` input ports are deliberately UNWIRED, and both are honest
+  // rather than unfinished. The palette has no `transcript`-typed producer downstream of the PHI
+  // hop, so the guard's engine resolves the consultation transcript server-side from
+  // `run_payload` exactly as `consultation.sensors` already does; and `agent.important_findings`
+  // is a REALTIME node, so a durable edge from it would name a producer this lane never runs.
+  // The same declared-but-unwired state `n_realtime` and `n_presum` have carried since OD-15.
+  {
+    id: 'n_ground_note',
+    type: 'guard.groundedness',
+    config: {
+      policies: [{ key: 'clinical-note-grounding', appliesTo: 'summary', promptTemplateId: TEMPLATE_IDS.GROUNDING_POLICY_SYSTEM }],
+      onError: 'degrade',
+    },
+  },
   { id: 'n_suggest', type: 'consultation.suggestions', config: { onError: 'degrade' } },
   // Proposes spelling / medical-term / drug-name corrections and applies none of them — the
   // clinician accepts. `externalWrite: false` on this node is a safety property, not a perf one.
@@ -282,6 +360,11 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // mandatory hop; until the activity publishes one, the interpreter contributes nothing for
       // it and `extractEntities` degrades on `no_bound_text` — exactly as it does today.
       ['n_capture', 'out', 'n_entities', 'in'],
+      // Lane N — findings mine the same raw transcript NER does, and are ordered INTO extraction
+      // so no route from capture to synthesis can skip `extractEntities` (WF-CONS-012). See the
+      // node comment for why this is the only placement the rule set admits.
+      ['n_capture', 'out', 'n_findings', 'in'],
+      ['n_findings', 'next', 'n_entities', 'after'],
       ['n_entities', 'out', 'n_realtime', 'entities'],
       ['n_entities', 'out', 'n_terms', 'in'],
       // TASK-806 lane A item 18 — ORDERING, not data. `consultation.assemblePrompt` no longer
@@ -314,7 +397,16 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // `document ⊑ text`: the correction pass proposes over any clinical text, including a
       // generated note — safe because its product is `edits`, which no extraction node consumes.
       ['n_synth', 'out', 'n_correct', 'in'],
-      ['n_synth', 'out', 'n_sensors', 'in'],
+      // Lane N — REDACTION, then GROUNDING, then the computational verifier. The verifier now
+      // scores the REDACTED note, which is what "grounding evaluates the redacted summary" means
+      // once it is a graph rather than a sentence.
+      ['n_synth', 'out', 'n_dna', 'in'],
+      ['n_dna', 'out', 'n_sensors', 'in'],
+      ['n_dna', 'out', 'n_ground_note', 'in'],
+      // Rejoins at the verifier rather than at persistence: WF-CONS-011 requires every route from
+      // the consent gate to the HITL gate to pass through `consultation.sensors`, so a branch that
+      // rejoined later would open one that does not.
+      ['n_ground_note', 'next', 'n_sensors', 'after'],
       ...(options.inferentialSensors
         ? ([
             ['n_sensors', 'document', 'n_infer', 'in'],

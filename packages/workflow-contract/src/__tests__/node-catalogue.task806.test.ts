@@ -146,7 +146,10 @@ describe('item 7 — descriptor.lane tells the truth about which runtime execute
     // Lane R (R1) adds `agent.grammar`: the live grammar/spelling pass has no pipeline
     // counterpart, because `consultation.proposeCorrections` stays DURABLE (it reviews the
     // finished note in the seeded graphs) and one node type cannot serve both runtimes.
-    expect(realtime).toEqual([...REALTIME, 'agent.transcription', 'agent.ner', 'agent.grammar'].sort());
+    // Lane N adds `agent.important_findings` for the same kind of reason and a stronger one: the
+    // owner's bar is findings "popped up and highlighted" DURING the session, which no `on-end`
+    // durable node can satisfy, and the highlight path it publishes onto is the realtime lane's.
+    expect(realtime).toEqual([...REALTIME, 'agent.transcription', 'agent.ner', 'agent.grammar', 'agent.important_findings'].sort());
   });
 });
 

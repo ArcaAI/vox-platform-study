@@ -91,6 +91,9 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'agent.feedback',
       // Lane R (R1) — the realtime grammar/spelling pass.
       'agent.grammar',
+      // Lane N (TASK-815 §14a) — the first catalogue entry with NO pipeline counterpart: important
+      // findings did not exist in any form, so this is a real implementation rather than a delegation.
+      'agent.important_findings',
       'agent.ner',
       'agent.normalization',
       'agent.presummarization',

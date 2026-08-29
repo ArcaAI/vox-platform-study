@@ -38,7 +38,7 @@ export { canonicalJson } from './canonical-json';
 export { WORKFLOW_NODE_REGISTRY, classesOf, paletteOf, nodeInfo, workflowNodeClassLookup, registryChecksum } from './node-registry';
 export type { WorkflowNodeDescriptor, WorkflowNodeEvalGate, WorkflowNodeLane, WorkflowNodeTrigger } from './node-registry';
 
-export { NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
+export { GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
 export type { NodeConfigSchema } from './node-config-schemas';
 
 // TASK-809 — the node CONTRACT: typed ports, their compatibility lattice, and the publish-time
