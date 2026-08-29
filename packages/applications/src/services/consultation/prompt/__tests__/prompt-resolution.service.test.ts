@@ -820,7 +820,7 @@ describe('PromptResolutionService', () => {
           // resolution looked up. `visitTypePromptId: null` is the assertion
           // that matters in a REGRESSION LOCK: the tenant bound nothing, so the
           // visit-type tier did not serve and the node tier still answers.
-          visitTypeKey: 'new-patient',
+          visitTypeKey: 'new-visit',
           visitTypeTask: 'summary',
           visitTypePromptId: null,
         },

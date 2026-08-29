@@ -46,7 +46,7 @@ describe('the descriptor says what the ruling said', () => {
 
   it('ships the owner’s two defaults as the descriptor default', () => {
     expect(descriptor().default).toEqual(CONSULTATION_VISIT_TYPES_DEFAULT.map((e) => ({ ...e, aliases: [...e.aliases] })));
-    expect((descriptor().default as VisitTypeDefinition[]).map((e) => e.label)).toEqual(['New patient', 'Revisit']);
+    expect((descriptor().default as VisitTypeDefinition[]).map((e) => e.label)).toEqual(['New visit', 'Revisit']);
   });
 
   it('fails OPEN to those defaults — a missing taxonomy must not take out every consultation', () => {
@@ -96,7 +96,7 @@ describe('the SYSTEM tier answers by DEFAULT, not by a seeded row', () => {
   it('resolves the two shipped types with no row anywhere, reported as the code default', () => {
     const resolved = new TenantSettingsService(fakeAppSettings(null)).resolve<VisitTypeDefinition[]>(CONSULTATION_VISIT_TYPES_KEY, 'tenant-1');
     expect(resolved.source).toBe('code-default');
-    expect(resolved.value.map((e) => e.key)).toEqual(['new-patient', 'revisit']);
+    expect(resolved.value.map((e) => e.key)).toEqual(['new-visit', 'revisit']);
   });
 
   it('lets a platform admin override the SYSTEM tier without touching any tenant', () => {
