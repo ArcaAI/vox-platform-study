@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { DocumentSectionFactory, DocumentSectionRepository, DocumentSectionState } from '@arcaai/domains';
+import { DocumentSectionEntity, DocumentSectionFactory, DocumentSectionRepository, DocumentSectionState } from '@arcaai/domains';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { VaultSecretsProvider } from '../../../baseServices/_meta/secrets/providers/vault-secrets.provider';
 import { DocumentSectionService } from '../document-section.service';
@@ -157,13 +157,45 @@ describe('updateSectionContent — the accepted write', () => {
     expect(response.content).toBe('Clinician text.');
   });
 
-  it('accepts an EMPTY edit — a clinician deleting their own text owes the transcript no contradiction', async () => {
-    wireAcceptedWrite();
+  it('accepts an EMPTY edit AND clears the stored body — a deletion that only moves the state is a lost deletion', async () => {
+    // TASK-820. This case used to assert only that a write was ATTEMPTED, while
+    // stubbing `encryptContentIntoEntity` — so it passed throughout the window in
+    // which an empty edit committed CONFIRMED/revision/_version on top of the
+    // clinician's UNDELETED text. `content` is transient, so "the body is empty"
+    // exists only as a cleared `encryptedContent`; asserting anything less than
+    // the persisted ciphertext cannot tell the fix from the bug.
+    //
+    // Hence a REAL `DocumentSectionRepository` (so the production
+    // `encryptContentIntoEntity` and the real `encryptStringToCiphertext` run)
+    // with only persistence doubled — the same shape the TASK-819 block below uses.
+    const repository = new DocumentSectionRepository({ getDatabaseService: () => ({}) } as never);
+    const before = sectionAt(7);
+    const after = sectionAt(8, DocumentSectionState.CONFIRMED);
+    const updateWithVersion = vi.fn(async (_id: string, entity: DocumentSectionEntity, _expected: number) => {
+      void entity;
+      return after;
+    });
+    Object.assign(repository, {
+      findSection: vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(before).mockResolvedValueOnce(after),
+      updateWithVersion,
+      create: vi.fn(),
+    });
+    const service = new DocumentSectionService(repository as never, mockEmitter as never, mockCls as never, mockSecrets as never);
 
-    const response = await buildService().updateSectionContent(CONSULTATION, DOCUMENT, SECTION, { content: '', expectedVersion: 7 });
+    // The row starts WITH a body, so the null asserted below is a change this
+    // write made and not the state it was already in.
+    expect(before.encryptedContent).not.toBeNull();
 
+    const response = await service.updateSectionContent(CONSULTATION, DOCUMENT, SECTION, { content: '', expectedVersion: 7 });
+
+    // Still accepted: a clinician emptying their own section owes the transcript
+    // no contradiction (TASK-811 §8b). The fix clears the body, it does not refuse.
     expect(response.content).toBe('');
-    expect(mockRepository.updateWithVersion).toHaveBeenCalled();
+    expect(updateWithVersion).toHaveBeenCalledTimes(1);
+
+    const persisted = updateWithVersion.mock.calls.at(-1)![1];
+    expect(persisted.encryptedContent).toBeNull();
+    expect(persisted.contentKeyVersion).toBeNull();
   });
 
   it('broadcasts the transition and puts NO section content in the event', async () => {
