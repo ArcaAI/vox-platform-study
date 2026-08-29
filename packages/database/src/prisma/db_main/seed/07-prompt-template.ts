@@ -147,6 +147,17 @@ export const TEMPLATE_IDS = {
   GENERIC_BEHAVIORAL_REVIEW: '71000000-0000-0000-0003-000000000011',
   GENERIC_PEDIATRIC_NEW: '71000000-0000-0000-0003-000000000012',
   GENERIC_PEDIATRIC_REVISIT: '71000000-0000-0000-0003-000000000013',
+  // Lane N (TASK-815 §14a/§14b) — the PLATFORM DEFAULT instruction and grounding policy.
+  //
+  // SYSTEM-tenant rows, and that placement is the whole point rather than a filing choice.
+  // `00-project-context.md` §Configuration Principles forbids these bodies from being literals in
+  // code or env, and prescribes exactly this: "the SYSTEM-tenant rows a platform admin writes are
+  // the FALLBACK for tenants with no opinion". `PromptTemplate`/`PromptVersion` are
+  // SYSTEM_SHARED_READ_MODELS, so every tenant can resolve them while a tenant that authors its
+  // own template simply binds that id on its node instead — tenant -> SYSTEM, expressed as a
+  // binding rather than a cascade.
+  IMPORTANT_FINDINGS_SYSTEM: '71000000-0000-0000-0000-000000000041',
+  GROUNDING_POLICY_SYSTEM: '71000000-0000-0000-0000-000000000042',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
@@ -1220,6 +1231,77 @@ Transcript:
     approvedVersionNumber: 1,
     departmentId: DEPT.PEDS,
     tags: ['generic', 'platform-default', 'peds'],
+  },
+  // ──────────────────────────────────────────────────────────────────
+  // Lane N — the two PLATFORM-DEFAULT instruction bodies (TASK-815 §14a/§14b)
+  //
+  // Appended at the END on purpose: `DEFAULT_PROMPT_VERSIONS` maps this array by INDEX onto
+  // `VERSION_IDS`, so inserting anywhere else would silently re-point every later template's
+  // version row at a different id.
+  //
+  // Both are TENANT-OVERRIDABLE by construction: a node binds a `promptTemplateId`, and a tenant
+  // that has an opinion binds its own template instead of this one. Neither is a fallback the
+  // runtime reaches for on its own — an unbound node DEGRADES rather than defaulting, which is why
+  // these can be a helpful starting point without becoming the platform's answer.
+  // ──────────────────────────────────────────────────────────────────
+  {
+    id: TEMPLATE_IDS.IMPORTANT_FINDINGS_SYSTEM,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
+    name: 'Important Findings Extraction (platform default)',
+    description:
+      "Platform-default instruction for the `agent.important_findings` node. A tenant admin overrides it by binding their own template on the node — this row is what a tenant with no opinion inherits.",
+    // Note what this body does NOT do: it names no severity levels, no red-flag terms and no
+    // clinical categories. It tells the model to use the reader's OWN judgement of relevance and
+    // to label in its own words, because the labels are the tenant's to define — a shipped
+    // vocabulary here would become the platform's answer to a question the owner assigned to the
+    // tenant admin, whatever the node config said.
+    content:
+      'You review a clinical consultation and pick out the information a treating clinician would want brought to their attention immediately.\n\n' +
+      'You are given a JSON object with a `transcript` (what was said), and optionally `context` (consultation context items such as case notes) and `entities` (spans a detector already recognised, as hints).\n\n' +
+      'Return ONLY a JSON object of this shape:\n' +
+      '{"findings":[{"text":"<the exact wording from the source>","type":"<a short label describing why it matters>","confidence":<0.0-1.0>,"rationale":"<one short sentence>"}]}\n\n' +
+      'Rules:\n' +
+      '- `text` MUST be copied verbatim from the transcript or the supplied context. Never paraphrase it and never write something that is not there.\n' +
+      '- If nothing in this material warrants attention, return {"findings":[]}. An empty list is a correct answer.\n' +
+      '- Choose `type` yourself, in a few lowercase words. Do not invent a grading scale and do not rank findings against each other.\n' +
+      '- Do not diagnose, do not recommend treatment, and do not write a code of any kind.\n' +
+      '- Return the JSON object and nothing else.',
+    category: 'SYSTEM',
+    variables: {},
+    currentVersionNumber: 1,
+    departmentId: null,
+    tags: ['important-findings', 'system', 'platform-default'],
+  },
+  {
+    id: TEMPLATE_IDS.GROUNDING_POLICY_SYSTEM,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
+    name: 'Grounding Policy (platform default)',
+    description:
+      "Platform-default policy body for a `guard.groundedness` node's `policies[]`. A tenant admin declares its own policies by binding its own templates; this row is the starting point.",
+    // No pass mark, no score formula and no rubric dimensions. The owner's sentence assigns all
+    // three to the tenant admin, so this body asks the model to REPORT what it observed and leaves
+    // what to do about it to the tenant's own policy body.
+    content:
+      'You check one piece of clinical material against the requirements below and report what you find.\n\n' +
+      'You are given a JSON object with `appliesTo` (which material this is: `transcript`, `summary` or `findings`) and `subject` (the material itself).\n\n' +
+      'Return ONLY a JSON object of this shape:\n' +
+      '{"observations":[{"quote":"<the exact wording you are commenting on>","issue":"<what you observed>"}],"supported":<true|false>,"notes":"<one short sentence>"}\n\n' +
+      'What to check:\n' +
+      '- For a `summary`: every statement should be traceable to what was actually said. Report spelling, grammar, and medical-term or concept errors, and any statement you cannot trace.\n' +
+      '- For a `transcript`: report spelling and transcription errors, especially in medication names, doses and clinical terms.\n' +
+      '- For `findings`: report any finding whose wording does not appear in the material it was drawn from.\n\n' +
+      'Rules:\n' +
+      '- `quote` MUST be copied verbatim from `subject`.\n' +
+      '- Report only what you can point at. If you observe nothing, return an empty `observations` list with `supported: true`.\n' +
+      '- Do not rewrite the material, do not score it out of ten, and do not decide whether it is acceptable — report, and let the reader decide.\n' +
+      '- Return the JSON object and nothing else.',
+    category: 'SYSTEM',
+    variables: {},
+    currentVersionNumber: 1,
+    departmentId: null,
+    tags: ['grounding-policy', 'system', 'platform-default'],
   },
 ];
 

@@ -72,6 +72,9 @@ class TestNodeRegistryParity:
             "agent.feedback",
             # Lane R (R1) — the realtime grammar/spelling pass.
             "agent.grammar",
+            # Lane N (TASK-815 §14a) — the one catalogue entry that is not a delegation:
+            # important findings had no engine anywhere to delegate to.
+            "agent.important_findings",
             "agent.ner",
             "agent.normalization",
             "agent.presummarization",

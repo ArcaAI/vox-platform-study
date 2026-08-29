@@ -878,3 +878,120 @@ the consultations list DTO exposes no visit type on the row AND `ConsultationAgg
 hardcodes the same two-valued split **server-side** (`newVisits`/`revisits`). Fixing it changes both
 DTOs plus the aggregate query — a route/DTO change with its own five-artifact regeneration and a UI
 design surface.
+
+## 17. Lane N — important findings and grounding, both as tenant configuration (merged 2026-08-29)
+
+Closes §14a ("important information highlighted — **DOES NOT EXIST**") and §14b (the finalization
+chain is not seeded). Registry **49 → 50** (`agent.important_findings`). New checksum
+`eb2e97fb7d20a69e958d5f36d9d6ddc957aa7ed97f0682d2007eba3b6ee0baf3`, produced by
+`scripts/regen-arcaai-consultation-workflow-seed.ts` and confirmed by
+`scripts/regen-workflow-definition-seed.ts` printing `=== DRIFT: 0 ===`. Gates: workflow-contract
+1028 · database 1671 · domains 1848 · applications 10457 · api 4046 · harness 1689 · `gen:check`
+no-drift ×3 · harness lint + mypy clean · lint 40/40 · openapi/portal/route-manifest/vox-node-admin
+all regenerated and drift-free.
+
+### 17a. Neither capability is a heuristic, and the tests say so
+
+The owner's two sentences are configuration statements, so the deliverable is a configuration
+contract, not an algorithm. **There is no severity ladder, no red-flag term list, no
+critical-value table, no allergy-alert class and no grounding rubric anywhere in the code**, and
+that absence is asserted rather than assumed: `important-findings-and-grounding.task815.test.ts`
+greps the shipped config schemas for each of those words, and the seed suite greps the two
+platform-default prompt bodies for them too. Both capabilities take their instructions from a
+BOUND, APPROVED `PromptTemplate`; an unbound one **degrades with a named code and never reaches a
+model** (proved by mutation — adding a default fallback turns
+`test_an_unbound_instruction_DEGRADES_and_never_falls_back_to_a_default` red).
+
+The two platform defaults are **SYSTEM-tenant** `PromptTemplate` rows (`07-prompt-template.ts`,
+`…041`/`…042`). That is the sanctioned tier, not a workaround: `PromptTemplate`/`PromptVersion` are
+`SYSTEM_SHARED_READ_MODELS`, so every tenant can resolve them, and a tenant with an opinion binds
+its own id on the node instead. Seeding them under the Global CUSTOMER tenant (`50000000-…`) would
+have been the cross-tenant leak `00-project-context.md` names; a seed test asserts `tenantId ===
+SYSTEM_TENANT_ID` for both.
+
+### 17b. N1 — `agent.important_findings` is REALTIME, and the durable side loses nothing
+
+The owner's bar is findings "popped up and highlighted" *during* the session; an `on-end` durable
+node cannot pop anything up while a clinician is still speaking. Realtime is also where the
+highlight path already exists — TASK-811's `groundEntitiesToNote` re-anchors transcript-sourced
+spans into the rendered note — so findings ride that path rather than growing a second one. The
+durable interpreter SKIPS it (`reason: 'realtime_lane'`), so exactly one runtime owns it.
+
+Two shape decisions worth recording:
+
+- **Output primitive `entities`, output KEY `findings`.** The primitive is what buys the existing
+  re-anchoring for free; the distinct key is what keeps "the tenant said this matters" apart from
+  "the detector saw a drug name". They travel to the client as a separate `findings` array and a
+  fourth `SectionAnnotationDto` kind, so a console can render them differently — which is what
+  "highlighted" means. `agent.important_findings` is its OWN canonical type (no pipeline
+  counterpart), so §14d's alias bug cannot recur here.
+- **`requires: []`, deliberately.** The owner says grounding evaluates highlighted findings, but
+  `guard.groundedness` is `durable` — a `requires` edge from a realtime node would name a guard
+  that cannot run in the lane producing the findings. That is exactly the publish-time-vs-runtime
+  drift §13b removed a rule for. The relationship is expressed where it is real: as the guard's
+  optional `findings` input port.
+
+Its placement in the seeded graphs was **forced by the rule set, not chosen**: WF-CONS-012 is an
+`allPathsPassThrough` check, so a findings branch off capture that rejoined anywhere downstream of
+`extractEntities` opens a route around it, and rejoining after synthesis skips the PHI hop
+(WF-CONS-009) and synthesis (WF-CONS-010). `capture → findings → entities` is the one shape that
+satisfies all three. The cost is that its optional `entities` hint port stays unwired in the seed
+(the hints now come from a node that runs after it); the port stays declared for tenant graphs that
+order the two differently. Verified end to end: the compiled seed graph yields a realtime lane
+`capture → findings(in←capture.out) → entities → realtimeSummary`.
+
+### 17c. N2 — `guard.groundedness` was EXTENDED, not complemented
+
+Three reasons, in order of weight. (1) It already IS the grounding node, and three `agent.*`
+generation entries declare `requires: ['guard.groundedness']` — a second grounding node would give
+the platform two ways to satisfy one policy, which is the drift `requires`' own docstring warns
+about. (2) The owner's sentence changes what grounding is HANDED (three inputs, not one) and where
+its rubric comes from; neither is a new capability. (3) A sibling key would sit beside it with no
+way for an author to know which one the platform enforces.
+
+The two new inputs (`transcript`, `findings`) are OPTIONAL, so no saved graph is invalidated and
+the node keeps `schemaVersion: 1` — the `@N` suffix rule is for ports that MOVE, not ports that
+appear. The output side is untouched, so the cross-language `outputKeys` projection did not move
+and the parity fixture carries no change for this node. `policies[]` is an array of
+`{key, appliesTo, promptTemplateId, promptVersionNumber?, enabled?}`; `appliesTo` draws from
+`GROUNDING_POLICY_TARGETS` (`transcript | summary | findings`), which IS the node's own evaluation
+inputs rather than an invented clinical vocabulary — a fourth target needs a fourth port first.
+**Absent `policies` is a supported state**: the guard then runs its pre-existing pass unchanged,
+which is what makes the addition safe for every already-published graph. A policy that could not
+run reports `UNEVALUATED` with a reason; it never reads as satisfied.
+
+### 17d. Redaction runs BEFORE grounding — confirming the correction
+
+The owner says grounding evaluates the *redacted* transcript and the *redacted* summary. **Earlier
+programme notes had this as "grounding → redaction"; that ordering was wrong and is now inverted
+everywhere.** The seeded chain is `n_synth → n_dna (agent.dna_redaction) → n_sensors`, with the
+policy-driven `n_ground_note` branching off `n_dna` and rejoining at the verifier (WF-CONS-011
+requires every consent→gate route to cross `consultation.sensors`). So every verifier now scores
+the REDACTED note. The ordering is also structural in the port lattice: the redactor emits a
+`document` the guard consumes, while the guard emits a `verdict` the redactor cannot — proved by
+mutation, restoring `n_synth → n_sensors` turns both the Lane N ordering test and TASK-798's
+provenance tests red.
+
+`n_ground_note`'s `transcript` and `findings` ports are declared but UNWIRED in the seed, honestly
+rather than as an oversight: the palette has no `transcript`-typed producer downstream of the PHI
+hop (the engine resolves the transcript server-side from `run_payload`, as `consultation.sensors`
+already does), and `agent.important_findings` is realtime, so a durable edge would name a producer
+that lane never runs. Same declared-but-unwired state `n_realtime` and `n_presum` have carried
+since OD-15.
+
+### 17e. Reported, not closed
+
+- **`consultation.realtimeSummary` receives an EMPTY transcript in graph mode.** Its `in:
+  transcript` is unwired in both seeded graphs — deliberately, because `captureBinding →
+  realtimeSummary` jumps `extractEntities` and WF-CONS-012 refuses it — and the seed comment says
+  the activity "resolves what it needs server-side". The REALTIME handler does not: it passes
+  `boundText(ctx, 'in')`, i.e. `''`. Confirmed by inspecting the lane built from the committed
+  compiled config (stage 3, `n_realtime <- [n_entities.out->entities]` only). Pre-existing, from
+  OD-15/Lane R; fixing it needs either a rule change or a handler fallback, both of which are
+  decisions rather than edits.
+- **`agent.grammar` is registered but never seeded.** Lane R added the node type, the realtime
+  handler and the Python activity, but neither ArcaAI graph contains one, so the live grammar pass
+  runs for no tenant today. Not in this lane's scope; noted because §14a records that item as
+  "Made to work".
+- `port-validation.ts:222` still claims every descriptor declares `requires: []` — stale since
+  Lane A, unchanged here.

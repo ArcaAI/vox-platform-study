@@ -55,6 +55,7 @@ import type { HarnessLiveAssistProposalDto, HarnessLiveSummaryRequest, HarnessRe
 // above) because the grammar pass publishes its proposals through this service rather than
 // re-implementing the two-branch snapshot fold beside it.
 import { HarnessLiveAssistService } from '../harness/harness-live-assist.service';
+import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
 // TASK-810 — the clinical-document SHAPE catalog. The live loop no longer knows
@@ -263,6 +264,9 @@ interface GraphFlushProjection {
   repairLatencyMs: number;
   repairStats: LiveSummaryStatsDto | null;
   entities: LiveSummaryEntityDto[];
+  /** Lane N — the tenant instruction's IMPORTANT FINDINGS for this flush. Empty when the lane
+   *  runs no `agent.important_findings` node, which is every lane authored before Lane N. */
+  findings: LiveSummaryEntityDto[];
   vitals?: LiveSummaryVitalsDto;
   nlpRan: boolean;
   nlpFailed: boolean;
@@ -1649,8 +1653,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let nlpFailed = false;
     let nlpLatencyMs = 0;
     let nlpRan = false;
+    // Lane N — the tenant instruction's IMPORTANT FINDINGS for this flush. Only graph mode can
+    // produce them: they come from a node a tenant AUTHORED, and the legacy engine has no node to
+    // author. A lane without one yields `[]`, which is why every pre-Lane-N session is untouched.
+    let flushFindings: LiveSummaryEntityDto[] = [];
     if (graph) {
       extracted = graph.entities;
+      flushFindings = graph.findings;
       flushVitals = graph.vitals;
       nlpFailed = graph.nlpFailed;
       nlpLatencyMs = graph.nlpLatencyMs;
@@ -1708,6 +1717,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (NER only sees the new delta, but the note is cumulative — recall), and always re-grounding
     // against the current `runningSummary` keeps offsets valid even on the NLP-failure fallback.
     const entities = this.groundEntitiesToNote([...priorEntities, ...extracted], runningSummary);
+    // Lane N — findings go through the SAME grounding function, deliberately. A finding whose
+    // surface form does not survive in the rendered note is DROPPED for the identical reason an
+    // entity is: there is nothing to anchor a highlight to, and — because the findings pass reads
+    // the transcript and never the note — a note-only (hallucinated) mention was never a
+    // candidate. Merging with the prior set preserves the running highlight across flushes, since
+    // each pass only sees the new delta while the note is cumulative.
+    const priorFindings = session.lastPayload?.findings ?? [];
+    const findings = this.groundEntitiesToNote([...priorFindings, ...flushFindings], runningSummary);
     // Vitals accumulate across flushes (NER only sees the new delta) — a later
     // non-null value wins, prior values persist. Absent until one is seen.
     const vitals = this.mergeVitals(session.lastPayload?.vitals, flushVitals);
@@ -1727,6 +1744,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       runningSummary,
       sections,
       entities,
+      // Additive and OMITTED when empty, so a tenant whose lane runs no important-findings node
+      // sees a byte-identical payload to the one it saw before Lane N.
+      ...(findings.length > 0 ? { findings } : {}),
       lastSegmentId: session.lastSegmentId,
       ...(groundedness ? { groundedness } : {}),
       // attach the AD-1 stats when present; omit the envelope
@@ -1757,6 +1777,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         sections,
         runningSummary,
         entities,
+        findings,
         groundedness,
         template,
         generation: myGeneration,
@@ -1775,6 +1796,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       textFailed,
       nlpFailed,
       entityCount: entities.length,
+      // PHI-safe: a COUNT of findings, never a finding.
+      findingCount: findings.length,
       sectionCount: sections.length,
       summaryChars: runningSummary.length,
       staleDropCount: session.staleDropCount,
@@ -1921,6 +1944,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // second NER round trip.
       proposeCorrections: async (input, signal) => this.proposeCorrections(input, session.consultationId, signal),
 
+      // Lane N — IMPORTANT FINDINGS, by the TENANT'S OWN instruction. Same shape as the grammar
+      // pass and for the same reason: the instruction is bound to the node, so what counts as
+      // important is a per-tenant, per-node decision and never a constant in this service.
+      extractFindings: async (input, signal) => this.extractImportantFindings(input, signal),
+
       extractEntities: async (input, signal) => {
         // ONE executor, ONE HTTP call — `vitals` is a projection of the same
         // `nlp.classify-tokens` response, exactly as it always was.
@@ -1972,6 +2000,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const summarize = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.realtimeSummary');
     const extract = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.extractEntities');
     const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
+    // Lane N. `agent.important_findings` is its OWN canonical type — it has no pipeline
+    // counterpart, so `canonicalRealtimeNodeType` returns it unchanged and matching on the raw
+    // type here is correct rather than the §14d bug repeated.
+    const findingsNode = run.outcomes.find((o) => o.type === 'agent.important_findings');
+    const findingsOutput = findingsNode?.status === 'succeeded' ? findingsNode.output : undefined;
 
     return {
       sections: summarize?.status === 'succeeded' ? parsedSections : [],
@@ -1983,6 +2016,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       repairLatencyMs,
       repairStats,
       entities: (extractOutput?.entities as LiveSummaryEntityDto[] | undefined) ?? [],
+      findings: (findingsOutput?.findings as LiveSummaryEntityDto[] | undefined) ?? [],
       vitals: extractOutput?.vitals as LiveSummaryVitalsDto | undefined,
       nlpRan: extract !== undefined && extract.status !== 'skipped',
       nlpFailed: extract !== undefined && extract.status !== 'succeeded' && extract.status !== 'skipped',
@@ -2016,6 +2050,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       sections: LiveSummarySectionDto[];
       runningSummary: string;
       entities: LiveSummaryEntityDto[];
+      /** Lane N — annotated under their own `finding` kind, never merged into `entities`. */
+      findings: LiveSummaryEntityDto[];
       groundedness?: LiveSummaryGroundednessDto;
       template: ResolvedDocumentTemplate;
       generation: number;
@@ -2027,7 +2063,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // makes a second one addressable without reshaping anything.
     const documentKey = ctx.template.slug;
     const sectionKeys = ctx.template.compiled.sectionKeys;
-    const perSection = reanchorAnnotations(ctx.sections, ctx.runningSummary, ctx.entities, ctx.groundedness);
+    const perSection = reanchorAnnotations(ctx.sections, ctx.runningSummary, ctx.entities, ctx.groundedness, ctx.findings);
 
     for (const [idx, section] of ctx.sections.entries()) {
       // Positional: `parseDocumentJson`/`parseDocumentSections` emit sections in
@@ -2984,16 +3020,97 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * looking like a model that found nothing to correct.
    */
   private async resolveCorrectionPrompt(config: Readonly<Record<string, unknown>>): Promise<string> {
+    return this.resolveGovernedNodePrompt(config, 'correction');
+  }
+
+  /**
+   * Lane N — mine IMPORTANT FINDINGS from the consultation context, by the TENANT'S instruction.
+   *
+   * ## There is no importance logic in this method, and that is the design
+   *
+   * TASK-815 §14a asked the owner what makes information "important". The answer was not a
+   * severity scale:
+   *
+   * > "'Important' information or findings will be mined/generated/extracted by agent following a
+   * > set of instructions defined/declared/overwriten by tenant admin for using LLM to detect,
+   * > extract, picking-up knowledge from consultation context (transcription, consultation context
+   * > items, etc...)"
+   *
+   * So the system prompt is the node's bound `promptTemplateId`, resolved APPROVED, and an
+   * unbound / unapproved / empty template THROWS so the executor degrades the node with a named
+   * reason. It does not fall back to a default, and it must never grow one: a constant here would
+   * be this service deciding what is clinically important for every tenant on the platform, which
+   * is exactly the hardcoded configuration `00-project-context.md` §Configuration Principles
+   * forbids — and a far worse instance of it than a mis-placed timeout.
+   *
+   * Nothing below inspects, ranks, filters or re-labels what comes back beyond dropping rows a
+   * client could not anchor a highlight to. `type` is whatever label the tenant's instruction told
+   * the model to assign.
+   *
+   * ## Selection is fail-CLOSED, exactly like the running note
+   *
+   * Provider/model resolve tenant -> SYSTEM through the same `resolveTextSelection(…, 'live')`
+   * path `callText` uses; there is no env fallback.
+   */
+  private async extractImportantFindings(
+    input: { sourceText: string; context: unknown[]; entities: LiveSummaryEntityDto[]; tenantId: string; config: Readonly<Record<string, unknown>> },
+    signal?: AbortSignal,
+  ): Promise<{ findings: LiveSummaryEntityDto[] }> {
+    const { sourceText, context, entities, tenantId, config } = input;
+    const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
+
+    let provider = this.textProvider;
+    let model = this.textModel;
+    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+
+    const payload = {
+      // The context the owner's sentence names, handed over as authored. Entity spans ride along
+      // as DETECTOR HINTS, the same "one call, two uses" the grammar pass makes.
+      prompt: JSON.stringify({
+        transcript: sourceText,
+        ...(context.length > 0 ? { context } : {}),
+        ...(entities.length > 0 ? { entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) } : {}),
+      }),
+      system_prompt: systemPrompt,
+      provider,
+      model,
+      max_tokens: this.textMaxTokens,
+      stream: false as const,
+    };
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
+      timeout: this.textTimeoutMs,
+      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
+      signal,
+    });
+
+    const maxFindings = typeof config.maxFindings === 'number' && config.maxFindings > 0 ? Math.floor(config.maxFindings) : DEFAULT_MAX_FINDINGS;
+    return { findings: parseImportantFindings(mapTextGenerateResponse(response.data).summary, maxFindings) };
+  }
+
+  /**
+   * Resolve a GOVERNED per-node prompt from its `promptTemplateId` binding.
+   *
+   * Throws rather than defaulting, and the executor turns the throw into a `degraded` outcome
+   * with a typed event — so an unconfigured node is VISIBLE to the clinician UI instead of looking
+   * like a model that found nothing.
+   *
+   * Generalised out of `resolveCorrectionPrompt` when Lane N added a second node with the same
+   * binding: two copies of "resolve a template, insist it is APPROVED, refuse to default" is two
+   * places for the approval check to be forgotten.
+   */
+  private async resolveGovernedNodePrompt(config: Readonly<Record<string, unknown>>, label: string): Promise<string> {
     const templateId = typeof config.promptTemplateId === 'string' ? config.promptTemplateId : null;
-    if (!templateId) throw new Error('no_correction_prompt_bound');
+    if (!templateId) throw new Error(`no_${label}_prompt_bound`);
     if (!this.promptTemplateRepository) throw new Error('prompt_repository_unavailable');
 
     const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
-    if (!template) throw new Error('correction_prompt_not_found');
+    if (!template) throw new Error(`${label}_prompt_not_found`);
     // Same bar `PromptResolutionService` holds every governed prompt to.
-    if (template.status !== 'APPROVED') throw new Error('correction_prompt_not_approved');
+    if (template.status !== 'APPROVED') throw new Error(`${label}_prompt_not_approved`);
     const content = template.content?.trim();
-    if (!content) throw new Error('correction_prompt_empty');
+    if (!content) throw new Error(`${label}_prompt_empty`);
     return content;
   }
 

@@ -377,6 +377,29 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
     [port('in', 'transcript', true, false), port('entities', 'entities', false, true), AFTER],
     [port('out', 'edits', true, true, { outputKey: 'proposals' }), NEXT],
   ),
+  // TASK-815 §14a — IMPORTANT FINDINGS. The port table IS the owner's sentence:
+  // "detect, extract, picking-up knowledge from consultation context (transcription,
+  // consultation context items, etc...)".
+  //
+  //  - `in: transcript` (REQUIRED) is the transcription half, and it is typed `transcript` for
+  //    the same anti-laundering reason `agent.ner`'s input is. `document` and `transcript` are
+  //    lattice siblings, so a generated note cannot be wired in — an "important finding" the
+  //    model invented and then highlighted as clinically important is the worst shape this
+  //    failure could take, and the type refuses it rather than a reviewer having to.
+  //  - `context: context<schemaRef>` (optional, multiple) is the "consultation context items"
+  //    half. Optional because a session with no case notes must still surface what was SAID.
+  //  - `entities` (optional, multiple) takes the detector hints the SAME flush already produced,
+  //    so the pass costs one model call rather than a second NER round trip — `agent.grammar`'s
+  //    shape, for `agent.grammar`'s reason.
+  //
+  // `out: entities` with `outputKey: 'findings'`. The PRIMITIVE is `entities` so findings ride
+  // the highlight path that already exists (TASK-811 re-anchors transcript-sourced entities into
+  // the rendered note); the KEY is distinct so a consumer can tell a tenant-declared important
+  // finding apart from an NER entity instead of merging two different claims into one set.
+  'agent.important_findings': ports(
+    [port('in', 'transcript', true, false), port('context', 'context<schemaRef>', false, true), port('entities', 'entities', false, true), AFTER],
+    [port('out', 'entities', true, true, { outputKey: 'findings' }), NEXT],
+  ),
   // DD-6 — pre-summarization is fed from CONTEXT SUPPLIED AT RUNTIME, never from the transcript.
   // Today's pre-summary job already takes `caseNoteIds`: it summarizes provided context, so
   // `in: context<schemaRef>` formalizes existing intent and widens it to admin-selected kinds.
@@ -419,7 +442,27 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // sources. Asking it to score a raw transcript is a category error — a transcript is the
   // ground, not something grounded — and `transcript` does not satisfy `document`, so the
   // lattice refuses that wiring rather than relying on anyone remembering the distinction.
-  'guard.groundedness': ports([port('in', 'document', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
+  //
+  // TASK-815 §14b — the other TWO things the owner says grounding evaluates, added as OPTIONAL
+  // inputs: *"evaluate the: redacted transcript ..., redacted summary ..., highlighted important
+  // information/findings"*. `in` is the redacted summary and stays required; these two are what
+  // the node is evaluating it AGAINST.
+  //
+  //  - `transcript` is the GROUND itself, and typing it `transcript` rather than widening `in`
+  //    keeps the category distinction above intact: the thing being grounded and the thing it is
+  //    grounded against arrive on different sockets and can never be confused for one another.
+  //  - `findings` closes the loop with `agent.important_findings`: a highlighted finding is a
+  //    claim about the consultation, so it is exactly the kind of thing a grounding policy has to
+  //    be able to check.
+  //
+  // Both OPTIONAL, and that is what makes this ADDITIVE rather than a reshape: every graph saved
+  // against the one-input version still validates, so the node keeps its key and its
+  // `schemaVersion` (the `@N` suffix rule exists for ports that MOVE, not for ports that appear).
+  // The OUTPUT side is untouched, so the cross-language `outputKeys` projection does not move.
+  'guard.groundedness': ports(
+    [port('in', 'document', true, false), port('transcript', 'transcript', false, false), port('findings', 'entities', false, true), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT],
+  ),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the

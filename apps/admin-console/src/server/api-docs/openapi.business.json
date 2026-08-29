@@ -14453,7 +14453,8 @@
             "enum": [
               "entity",
               "groundedness",
-              "flagged"
+              "flagged",
+              "finding"
             ],
             "type": "string"
           },
@@ -14466,7 +14467,7 @@
             "type": "number"
           },
           "type": {
-            "description": "For `entity`: the entity class (MEDICATION, CONDITION, …)",
+            "description": "For `entity`: the entity class (MEDICATION, CONDITION, …). For `finding`: the label the TENANT`s own instruction told the model to assign — the platform supplies no importance vocabulary.",
             "type": "string"
           },
           "verdict": {
