@@ -67,7 +67,7 @@ class _RecordingApi:
         self.summaries: list[dict[str, Any]] = []
         self.assists: list[dict[str, Any]] = []
 
-    async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+    async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
         return {
             "textProvider": self.provider,
             "textModel": self.model,

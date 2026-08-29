@@ -373,10 +373,24 @@ export class HarnessInternalController {
     required: false,
     description: 'Optional — resolve textProvider/textModel from the AiTaskDefault row for this task key (e.g. `text.live`).',
   })
+  // TASK-816 (DD-10) — the executing node's OWN `config.llmBinding.modelSlug`. It OUTRANKS
+  // `taskKey`: a node that names a model has stated something no tenant-level row can, which is
+  // the whole point of moving selection onto the graph. Unlike `taskKey` it is fail-CLOSED — a
+  // slug that resolves to no ENABLED model 400s rather than quietly serving the task default,
+  // because an explicitly-bound node generating on a different model is exactly the silent
+  // substitution `09-infrastructure-devops.md` §Configuration Tiers forbids. Omitted ⇒
+  // byte-identical prior behaviour.
+  @ApiQuery({
+    name: 'modelSlug',
+    required: false,
+    description:
+      "Optional — the executing workflow node's `llmBinding.modelSlug`. Outranks `taskKey`; fails closed when it resolves to no ENABLED model.",
+  })
   async getEffectivePolicy(
     @Query('tenantId') tenantId?: string,
     @Query('consultationId') consultationId?: string,
     @Query('taskKey') taskKey?: string,
+    @Query('modelSlug') modelSlug?: string,
   ): Promise<HarnessPolicyResponse> {
     if (!tenantId) {
       throw new BadRequestException('tenantId query parameter is required');
@@ -392,7 +406,7 @@ export class HarnessInternalController {
     // the precedent for getting this wrong first).
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
-      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey });
+      return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId, taskKey, modelSlug });
     });
   }
 

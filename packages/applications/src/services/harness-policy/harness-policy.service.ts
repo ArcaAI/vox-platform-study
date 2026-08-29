@@ -34,6 +34,20 @@ import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest 
  */
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
+/**
+ * TASK-816 (DD-10) — a workflow node's OWN model selection, read off its `config.llmBinding`.
+ *
+ * One field, because one field is the whole of what `AiTaskDefault` transfers: its `taskKey` is
+ * already a node config key, its `configJson` has no reader in either runtime, and the
+ * `{provider, model}` pair a caller finally sends to `apps/text` is DERIVED from the `AiModel`
+ * row the slug names. See the ADDENDUM 2 block in
+ * `@arcaai/workflow-contract`'s `node-config-schemas.ts` for why each richer field would be
+ * either a hardcoded literal or a second source for something already modelled.
+ */
+export interface NodeLlmBinding {
+  readonly modelSlug?: string | null;
+}
+
 const TEXT_TASK_KEY: Record<TextRoutingTask, string> = {
   live: 'text.live',
   finalize: 'text.finalize',
@@ -377,12 +391,25 @@ export class HarnessPolicyService {
    * policy columns in place. Without a taskKey the result is byte-identical to
    * the prior behaviour.
    */
-  async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string; taskKey?: string }): Promise<HarnessPolicyResponse> {
+  async getEffectivePolicy(
+    tenantId?: string,
+    opts?: { consultationId?: string; taskKey?: string; modelSlug?: string },
+  ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
+    // TASK-816: the interpreter passes the executing node's `llmBinding.modelSlug` alongside its
+    // `taskKey`, so the DURABLE lane resolves through the same two-tier precedence the TS callers
+    // do — node binding (fail-CLOSED) first, then the task key. This is the whole of "the graph
+    // carries selection" on the Python side: `nodes/*.py` already read `config.taskKey`, and now
+    // read `config.llmBinding.modelSlug` beside it.
+    //
     // D-1: the task key SELECTS the model. Resolved once and overlaid on every
     // return path below, exactly like `judge` — null ⇒ keep the policy columns.
-    const taskSelection = opts?.taskKey ? await this.resolveTextSelectionForKey(opts.taskKey, tid) : null;
+    const taskSelection = opts?.modelSlug
+      ? await this.resolveBoundNodeSelection(opts.modelSlug, tid)
+      : opts?.taskKey
+        ? await this.resolveTextSelectionForKey(opts.taskKey, tid)
+        : null;
     const applyTaskSelection = (resp: HarnessPolicyResponse): HarnessPolicyResponse => {
       if (taskSelection) {
         resp.textProvider = taskSelection.provider;
@@ -501,6 +528,57 @@ export class HarnessPolicyService {
   }
 
   /**
+   * TASK-816 (DD-10) — resolve a workflow node's OWN `llmBinding.modelSlug`.
+   *
+   * The successor to `AiTaskDefault` for the one thing a task key cannot say: WHICH model THIS
+   * node generates with. A tenant running both an `agent.summarization` and an
+   * `agent.discharge_summary` node has one `text.finalize` row between them, so before this the
+   * two were pinned to the same model with no way to differ.
+   *
+   * Shares {@link IAiTaskDefaultService.resolveModelBySlug} with the task tier, so the
+   * `[tenant, SYSTEM]` preference, the ENABLED pin and the `azure -> azure-openai` runtime alias
+   * cannot drift between the two tiers — the same reason {@link resolveTextSelectionForKey}
+   * exists.
+   *
+   * FAIL-CLOSED, and that is the difference from every other seam on this class. Selection is
+   * `failMode: closed` (`09-infrastructure-devops.md` §Configuration Tiers): a slug that resolves
+   * to nothing, or a lookup that faults, THROWS. It must never fall through to the tenant's
+   * `taskKey` default, because that would keep an explicitly-bound node generating on a
+   * different model with nothing anywhere saying so — the silent-substitution class of failure
+   * the 2026-08-25 outage belongs to. An ABSENT binding is a different statement ("this node has
+   * no opinion") and is handled by the caller, which simply does not call this.
+   *
+   * Funding is NOT stamped here and cannot be: the binding names a MODEL, while funding is
+   * derived from whose `AiProviderConnection` row supplies the CREDENTIAL
+   * (`AiProviderConnectionService.fundingOf`), downstream and unchanged.
+   */
+  private async resolveBoundNodeSelection(modelSlug: string, tenantId?: string): Promise<{ provider: string; model: string }> {
+    if (!this.aiTaskDefaultService) {
+      throw new BadRequestException(
+        `Workflow node model binding '${modelSlug}' cannot be resolved: the AI task-default service is not wired in this composition.`,
+      );
+    }
+    let model: { provider?: string | null; sourceUri?: string | null } | null;
+    try {
+      model = await this.aiTaskDefaultService.resolveModelBySlug(modelSlug, tenantId);
+    } catch (error) {
+      // A FAULT is not "no opinion". Re-raised, never swallowed into the task tier.
+      throw new BadRequestException(
+        `Workflow node model binding '${modelSlug}' could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!model?.provider || !model.sourceUri) {
+      throw new BadRequestException(
+        `Workflow node model binding '${modelSlug}' does not resolve to an ENABLED model in this tenant or the platform registry. ` +
+          'Bind the node to a registered model, or remove the binding to use the tenant AiTaskDefault for its task key.',
+      );
+    }
+    // Catalog seeds `azure`; the text service registers `azure-openai` (mirrors
+    // `resolveTextSelectionForKey`, deliberately the same line).
+    return { provider: model.provider === 'azure' ? 'azure-openai' : model.provider, model: model.sourceUri };
+  }
+
+  /**
    * The single fail-closed text-selection seam every TS
    * `/api/v1/generate` caller funnels through. Resolves the effective policy
    * (tenant own → SYSTEM default → code default, with the B1 field-level
@@ -518,7 +596,17 @@ export class HarnessPolicyService {
    * documented fallback for tenants that have not migrated to AiTaskDefault. The
    * text service stays a stateless gateway; the model resolved here is authority.
    */
-  async resolveTextSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
+  async resolveTextSelection(
+    tenantId?: string,
+    task: TextRoutingTask = 'finalize',
+    binding?: NodeLlmBinding,
+  ): Promise<{ provider: string; model: string }> {
+    // TASK-816 precedence 0 — the NODE's own binding, when the caller carries one. It is not a
+    // "tier" in the widen-on-absence sense: a node that names a model has stated something no
+    // tenant-level row can, so it wins outright and fails closed. Absent ⇒ every line below runs
+    // byte-identically to before, which is what keeps this addition safe for the live loop.
+    if (binding?.modelSlug) return this.resolveBoundNodeSelection(binding.modelSlug, tenantId);
+
     // Precedence 1 — AiTaskDefault (when wired), tenant → SYSTEM.
     const selected = await this.resolveTextSelectionForKey(TEXT_TASK_KEY[task], tenantId);
     if (selected) return selected;

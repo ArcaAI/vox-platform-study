@@ -220,7 +220,11 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     await service.flush(CID);
 
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledTimes(2);
-    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
+    // TASK-816: the third argument is the NODE's `llmBinding`. This is the LEGACY FLUSH path —
+    // no graph node made this call — so it must be `undefined`, i.e. the tenant `text.live`
+    // AiTaskDefault, unchanged. Asserted rather than dropped: a binding appearing here would
+    // mean the flush had invented one.
+    expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live', undefined);
     expect(calls[1].model).toBe('tenant-default');
   });
 });

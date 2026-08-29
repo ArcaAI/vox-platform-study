@@ -340,6 +340,7 @@ class ApiClient:
         tenant_id: str,
         consultation_id: str | None = None,
         task_key: str | None = None,
+        model_slug: str | None = None,
     ) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
@@ -359,12 +360,21 @@ class ApiClient:
                 (tenant → SYSTEM) instead of serving the ``HarnessPolicy`` columns. This is
                 what makes a workflow node's ``config.taskKey`` actually select a model;
                 without it every node resolved the same one. Omitted ⇒ unchanged behaviour.
+
+                TASK-816 (DD-10): ``model_slug`` is the executing node's OWN
+                ``config.llmBinding.modelSlug`` and OUTRANKS ``task_key`` — a node that names a
+                model has stated something no tenant-level row can. Unlike ``task_key`` it is
+                fail-CLOSED: a slug resolving to no ENABLED model returns 400 rather than quietly
+                serving the task default, so an explicitly-bound node can never generate on a
+                different model in silence. Omitted ⇒ unchanged behaviour.
         """
         params: dict[str, Any] = {"tenantId": tenant_id}
         if consultation_id:
             params["consultationId"] = consultation_id
         if task_key:
             params["taskKey"] = task_key
+        if model_slug:
+            params["modelSlug"] = model_slug
         return await self._get("/policy", params)
 
     async def get_resolved_prompt_template(

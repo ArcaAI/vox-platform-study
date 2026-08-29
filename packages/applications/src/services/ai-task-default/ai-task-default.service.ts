@@ -25,7 +25,7 @@ import {
   isSuperAdminOnlyTaskKey,
   isGuardrailTaskKey,
 } from './constants';
-import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
+import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
  * "Default model for task X" service.
@@ -90,6 +90,22 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
       configJson: winning?.configJson ?? null,
       model: model ? AiTaskDefaultDtoMapper.toModelSummary(model) : null,
     };
+  }
+
+  /**
+   * TASK-816 (DD-10) — the public projection of {@link resolveEnabledModelBySlug}.
+   *
+   * A workflow node's `llmBinding.modelSlug` is the same KIND of reference an
+   * `AiTaskDefault` row's `modelSlug` is, so it resolves through the same
+   * method: tenant-owned ENABLED row first, SYSTEM row otherwise, on the same
+   * cross-tenant read lane. See the interface for why there is no `taskKey`
+   * parameter and why a miss is `null` rather than a throw.
+   */
+  async resolveModelBySlug(modelSlug: string, tenantId?: string): Promise<AiTaskModelSummary | null> {
+    const scopedTenantId = this.resolveScopedTenantId(tenantId);
+    const tx = this.crossTenantLane(scopedTenantId);
+    const model = await this.resolveEnabledModelBySlug(scopedTenantId, modelSlug, tx);
+    return model ? AiTaskDefaultDtoMapper.toModelSummary(model) : null;
   }
 
   async getRow(taskKey: string, tenantId?: string): Promise<AiTaskDefaultResponse> {
