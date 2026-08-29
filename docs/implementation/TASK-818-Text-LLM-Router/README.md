@@ -8,6 +8,7 @@
 | **Primary surface** | `apps/text` (port 8862) |
 | **Blast radius (owner-approved)** | callers may be rewritten · `@arcaai/vox-node` may change · DB/tenant config may change · deploy/infra may change |
 | **Related** | TASK-735 (guardrail delegation + judge cycle guard), TASK-799 (python config plane), TASK-808 (unblock TEXT generation), TASK-736 (engine removal) |
+| **Companion tickets** | **TASK-822** MLflow deployment · **TASK-823** vLLM inference service · **TASK-824** LM Studio containerized service. 818 is the router; 822–824 are the backends it routes to. |
 
 ---
 
@@ -23,9 +24,13 @@ platform-provided fallback. **`apps/text` must NOT be able to serve any model.**
 | # | Decision | Consequence |
 |---|---|---|
 | D-1 | **Scope: router + embeddings + translate.** Keep proxy-shaped capabilities that route to an external backend. Drop the async task/worker-pool plane, generation audit, and (see OPEN-1) `/judge`. | The durable-state plane leaves `apps/text` entirely. |
-| D-2 | **Contract: dual surface, one hot path.** A new OpenAI-compatible route is the fast path; the existing HOPE schema becomes a thin shim over it, then is deleted. | Migration insurance; the shim has a scheduled death date (Phase 4). |
-| D-3 | **Target: concurrent streams, not RPS.** Optimize per-stream memory, backpressure, connection limits, graceful drain. | The streaming path is the primary workstream, not a side-effect. |
-| D-4 | Callers, SDK, DB/tenant config and deploy/infra are all in scope. | No compatibility shims required outside the scheduled one in D-2. |
+| D-2 | **Two PERMANENT interfaces, one hot path.** `text` publishes gold-standard internal REST + streaming APIs in **two** supported contracts: an **OpenAI-standard** surface and the **existing HOPE** surface. Both are first-class and permanent. *(Revised 2026-08-29 — supersedes the earlier "shim then delete" reading.)* | Neither contract is deprecated. Both are thin layers over one shared routing core. |
+| D-3 | **Target: ~200 concurrent users ≈ 20–40 in-flight generations.** Optimize per-stream memory, backpressure, connection limits, graceful drain. *(Revised 2026-08-29 — supersedes the earlier 2,000-stream target.)* | Comfortably inside a hardened Python proxy. Heavier optimizations (Granian, SigV4 direct-HTTP Bedrock) become **measure-first**, not scheduled work. |
+| D-4 | Callers, SDK, DB/tenant config and deploy/infra are all in scope. | No compatibility shim needed — both contracts are permanent. |
+| D-5 | **Provider priority order**: vLLM → LM Studio → Azure OpenAI / Azure AI Foundry → AWS Bedrock → OpenAI → Anthropic. **All existing providers are KEPT** — Ollama, llama.cpp, Vertex/Gemini and Sarvam translate stay. | Two new adapters needed (Azure AI Foundry, LM Studio as its own identity); nothing is deleted. |
+| D-6 | **Routing policy**: the platform **super admin** authors the default routing policy AND the failover chain at SYSTEM tier. A tenant's **enabled + keyed `AiProviderConnection`** overrides it. | Needs **no** new privilege exception — it is exactly the existing three-state semantics (no row = no opinion, enabled+keyed = tenant wins, disabled = veto). |
+| D-7 | **Explicit provider in a request is honoured**, subject to the failover ruling in §3.4. | Request-named provider is the primary candidate, not a hint. |
+| D-8 | **Cost and performance must be manageable by platform super admins.** | Extends the EXISTING `AiPriceBook` / `AiUsageEvent` / `AiUsageRollup*` ledger and the `/ai-operations/*` console screens — not a new plane. |
 
 **Standing platform rules that bind this work** (do not re-litigate):
 
@@ -232,6 +237,126 @@ posture. Lane D is written to keep it inline unless overridden.
 
 ---
 
+## 3A. The Routing Policy Plane (added 2026-08-29)
+
+### 3A.1 What already exists — and the honest gap
+
+Verified in-repo:
+
+- **`AiProviderConnection`** (`packages/database/src/prisma/db_main/ai-provider-connection.prisma:51-89`) — WHERE/HOW to reach a provider: `service`, `provider`, `baseUrl`, `region`, `apiVersion`, `deploymentName`, `encryptedApiKey` (Vault-Transit `Bytes?`), `enabled`, unique on `(tenantId, service, provider)`. Cascade documented at `:38` — **tenant row (enabled) → SYSTEM row → fail closed**. Implemented in `ai-provider-connection.service.ts:287-301`; funding derived, never stamped, at `:734-736` (`row.tenantId === SYSTEM_TENANT_ID ? 'platform' : 'tenant'`).
+- **`AiTaskDefault`** (`ai-task-default.prisma:23-53`) — per-`(tenant, taskKey)` model selection. `text.live` / `text.finalize` and their `.fallback` variants **are tenant-admin configurable** (`:12-20`). This is the existing routing substrate.
+- **`AiRuntimeProfile`** (`ai-runtime-profile.prisma:16-55`) — hyperparameters/concurrency per `(tenant, provider, modelSlug)`.
+- **`AiModel`** (in `stt.prisma`) — `source: AiModelSource` includes **`MLFLOW`, an enum value with no implemented resolver**; only `hf:`, `file://`, `s3://` are handled (`stt.prisma:33-42`).
+
+**The gap is real and specific.** What exists is **one primary + one fallback**, expressed as two `AiTaskDefault` rows, and the cross-provider retry is **reactive only** — `summary.service.ts:1601-1642` catches an error and retries once against `resolveTextFallbackSelection`. There is:
+
+- **no ordered N-way candidate chain**, no weights, no selection strategy;
+- **no proactive health-driven failover** — `pool_router.py:14-45` degrades within `apps/text`'s own health cache and is one-provider-to-one-named-fallback, driven by a **per-request** `GenerateRequest.fallback_provider` (`models/requests.py:170`), not by policy;
+- **`.fallback` wired only for `finalize`, not `live`** (streaming);
+- **no routing-policy field in the effective-config contract** — `effective-config.controller.ts:40-41` states outright that its values are *"service-level knobs ONLY — never per-request model selection"*;
+- **`GenerateRequest.provider` defaults to the hardcoded literal `"lm-studio"`** (`requests.py:142`) — a rule-00 "config costume" that must become "absent ⇒ resolve via policy".
+
+### 3A.2 Minimum policy vocabulary (derived from what shipped gateways actually expose)
+
+Surveyed LiteLLM Router, Portkey, Envoy AI Gateway, Kong AI Proxy Advanced, OpenRouter and Cloudflare AI Gateway. The common denominator every serious router has: (1) ordered candidate list per logical model; (2) a selection strategy; (3) weights; (4) a **depth-bounded** fallback chain; (5) **typed** fallback triggers; (6) cooldown/circuit gating; (7) match conditions on tenant/metadata; (8) explicit-caller-override semantics; (9) an addressable, **versioned** config unit.
+
+Signal worth heeding: **LiteLLM ships three separate fallback chains** — `fallbacks`, `context_window_fallbacks`, `content_policy_fallbacks` — which is the clearest evidence in the field that **one undifferentiated chain is not enough**. A context-window overflow and a 503 need different next-hops.
+
+Equally: **Bedrock Intelligent Prompt Routing and Azure AI Foundry Model Router are NOT rules engines** — they are learned, per-request routers inside one model family. Do not model our admin-editable policy on them.
+
+### 3A.3 Recommended schema
+
+One `RoutingPolicy` row per `(tenantId, taskKey, version)`; `tenantId = SYSTEM` is the super-admin-authored platform default (D-6).
+
+```jsonc
+{
+  "policyId": "uuid7", "version": 7, "status": "ACTIVE",      // DRAFT | ACTIVE | ARCHIVED
+  "tenantId": "00000000-…-0000", "taskKey": "text.finalize",
+  "match": { "models": ["gpt-4o-class"], "metadata": {"phi":"true"},
+             "minContextTokens": null, "maxContextTokens": 128000 },
+  "candidates": [                       // ORDER = priority; weight splits within a rank tier
+    {"rank":0,"weight":100,"connectionRef":"vllm-inhouse","model":"qwen3-32b-med",
+     "residency":"IN_CLUSTER","baaCovered":true,"maxTtftMs":1500},
+    {"rank":1,"weight":100,"connectionRef":"azure-openai-eastus","model":"gpt-4o",
+     "residency":"AZURE_US","baaCovered":true},
+    {"rank":2,"weight":100,"connectionRef":"bedrock-us-east-1","model":"claude-sonnet-4",
+     "residency":"AWS_US","baaCovered":true}
+  ],
+  "strategy": "PRIORITY",               // PRIORITY | WEIGHTED | LEAST_BUSY | LOWEST_LATENCY | LOWEST_COST
+  "fallback": {
+    "maxDepth": 2,                                     // hops AFTER the primary; hard cap
+    "triggers": ["CONNECT_ERROR","TIMEOUT","HTTP_5XX","HTTP_429_AFTER_BACKOFF",
+                 "CONTEXT_WINDOW_EXCEEDED","CONTENT_POLICY"],
+    "requireSameResidencyClass": true,
+    "requireBaaCovered": true,
+    "crossFundingAllowed": false                       // never BYOK -> SYSTEM credential silently
+  },
+  "health": {"consecutiveFailures":5,"failureRatePct":50,"windowSec":60,
+             "baseEjectionSec":30,"maxEjectionSec":300,"maxEjectionPct":50,"halfOpenProbes":1,
+             "rateLimit":{"treatAs":"BACKOFF_NOT_OUTAGE","maxBackoffRetries":2}},
+  "explicitProvider": {"mode":"STRICT"}, // STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE
+  "killSwitch": false,
+  "createdBy":"uuid","activatedAt":"…","supersedesVersion":6
+}
+```
+
+- **Per-model override** = a policy row with a narrower `match.models`. Most-specific match wins; ties broken by an explicit `priority` int.
+- **Resolution stays tenant → SYSTEM, two tiers.** Never `50000000-…`.
+- **Worked example** ("prefer vLLM, fall back Azure then Bedrock, except tenant X pins Anthropic"): the row above at `tenantId = SYSTEM`, plus one row at `tenantId = X` with a single candidate `{rank:0, connectionRef:"anthropic-byok-tenantX"}`, `fallback.maxDepth: 0`, `explicitProvider.mode: "STRICT"`. Tenant X wins on presence; everyone else inherits SYSTEM.
+- **Propagation**: DB row + `routing-policy:invalidate` on Redis pub/sub, TTL as backstop — mirrors the existing `app-settings:invalidate` mechanism. This is the LiteLLM `STORE_MODEL_IN_DB` model, which is the only hot-reload approach proven at scale in the survey.
+- **Dry-run**: `POST /admin/routing-policies/{id}/simulate` replays the last N logged requests through a DRAFT policy and returns per-candidate hit counts, projected cost delta vs ACTIVE, and any request that would now be **rejected**. Prior art: Kong `deck gateway diff` (the only mature dry-run found in any AI gateway) and LaunchDarkly's test-run preview. **Neither LiteLLM nor Portkey has a dry-run** — this is a genuine differentiator, not catch-up.
+
+### 3A.4 FAILOVER RULING — explicit provider that is down returns an ERROR
+
+**Default `explicitProvider.mode = "STRICT"`: a request naming a provider that is down returns 503 with a machine-readable `provider_unavailable` code and retry guidance. No silent substitution, ever.** Opt-in is per-request (`allow_fallbacks: true`), bounded by the residency/BAA/funding gates below.
+
+**This deliberately inverts the industry default** — OpenRouter and Cloudflare default `allow_fallbacks` to true, and LiteLLM fires configured fallbacks by default. Nothing surveyed defaults to hard-fail. The healthcare evidence is what justifies the deviation:
+
+- **BAA coverage is per-vendor AND per-model.** AWS's HIPAA-eligible reference (updated 2026-08-03) lists *"Amazon Bedrock [excluding Fable and Mythos models]"* — eligibility is not blanket even within one vendor. OpenAI's BAA never covers ChatGPT Free/Plus/Pro/Team. Anthropic's excludes beta products and Free/Pro/Max/Team. Azure OpenAI is eligible under the standard DPA but **excludes image inputs**. A single fallback hop can therefore move PHI outside BAA coverage.
+- **There is no HTTP-standard way to signal substitution.** RFC 9111 (June 2022) **obsoleted the `Warning` header**, so every gateway invented its own (`cf-aig-step`, `X-Kong-LLM-Model`, `x-litellm-model-id`). A silent fallback is genuinely invisible to a caller who did not ask for it.
+- **Under BYOK it is a billing fact**: failing over from the tenant's own key to a SYSTEM credential moves the charge onto the platform's P&L and flips the metering class mid-request.
+
+**When fallback IS permitted it must be loud.** Every response carries:
+`x-hope-provider-requested` / `x-hope-provider-served`, `x-hope-model-requested` / `x-hope-model-served`, `x-hope-fallback-step` (0 = primary), `x-hope-fallback-reason`, `x-hope-funding` (`BYOK`|`CLOUD`, **derived** from the row that supplied the credential). Plus OTel `gen_ai.request.model` vs `gen_ai.response.model` — the semconv separates these two attributes precisely to catch silent model substitution — and a `fallback_occurred` sys-event carrying tenant, from/to, trigger and both prices.
+
+**Three hard gates on any hop, enforced in code, not in policy text**: same residency class, BAA-covered target, same funding tier. A hop crossing any of them is **not a fallback — it is a rejection.**
+
+### 3A.5 Health signals — 429 is not an outage
+
+- **Envoy outlier detection is the reference implementation**: `consecutive_5xx` (default 5), `success_rate` = mean − (stdev × factor), `base_ejection_time` 30s multiplied by ejection count, **`max_ejection_percent` default 10% so the pool can never be fully ejected**.
+- **Copy LiteLLM's per-exception-type thresholds** (`AllowedFailsPolicy`): a `RateLimitError` budget far higher than a hard-error budget. Its default is `allowed_fails` 3/min → cooldown.
+- **Feeding 429s into a 5xx ejection counter ejects a healthy-but-busy provider.** Correct response is same-provider backoff honouring `Retry-After`, and only then a lateral shift. Anthropic distinguishes client-quota `429` from server-side `529 overloaded_error`; Azure returns `retry-after-ms` + `x-ratelimit-remaining-*`; Bedrock marks `ThrottlingException` retry-eligible while `ValidationException`/`AccessDeniedException` are not. Kong makes it *easy* to conflate them (`http_429` in `failover_criteria`) — **do not.**
+- **Hedging** (Dean & Barroso, *The Tail at Scale*, CACM 2013 — a duplicate request after p95 cut one BigTable p99 from 1800ms to 74ms at ~2% extra work) applies to **non-streaming, idempotent** calls only, and doubles token cost. Not day-1.
+
+### 3A.6 Cost governance — extend what exists, build only the gap
+
+**Already built in this repo** (`packages/database/src/prisma/db_main/usage-ledger.prisma`): `AiUsageEvent` (append-only per-(request,unit) ledger with `deployment: SELF_HOSTED|CLOUD|BYOK`, `unitPriceMicros`, `costMicros`, `costBasis: INTERNAL|BYOK_NOTIONAL`), `AiUsageOutbox` (transactional outbox, BullMQ-drained), **`AiPriceBook`** (a real effective-dated, supersede-only price table keyed by `(plane, capability, provider, model, unit, contextBand, cacheTtl)`), `AiUsageRollupHourly`/`Daily`, and `ProviderReconciliationRun` (vendor-vs-ledger drift). Console screens `/ai-operations/consumption` and `/ai-operations/reconciliation` already exist.
+
+**So the cost work is extension, not construction.** The genuine gaps, confirmed against the market survey:
+
+1. **Price-table freshness.** The **Azure Retail Prices API is the only first-party programmatic token-price feed** found; no equivalent exists for Bedrock, OpenAI or Anthropic. LiteLLM's community-maintained JSON is the de-facto source and it defaults unmapped models to **$1/token to avoid false-cheap** — copy that defensive default and **alert on an `unpriced_model` counter**, because a silent $0 is worse than a wrong price.
+2. **One budget ceiling spanning BYOK + platform spend is structurally impossible off-the-shelf** — the gateway is not the payer of record for BYOK. Track BYOK as `BYOK_NOTIONAL` (already modelled) and never sum it into a platform budget.
+3. **Showback is required, chargeback is optional** (FinOps Foundation). Ship showback.
+4. **Do NOT ship prompt-difficulty / quality-aware routing day-1.** RouterArena (arXiv:2510.00202) exists precisely because the space lacks reproducible evaluation; vendor claims are marketing-grade (Azure's Model Router figure rests on a **10-prompt** sample).
+
+### 3A.7 Dashboards and the cardinality rule that governs them
+
+**Verified Grafana dashboard IDs for vLLM**: 25043, 24755, 24756, 25237, 25502, 23991 (vLLM ships `examples/observability/prometheus_grafana/` in-repo). **No dashboard exists for Kong AI Gateway or Envoy AI Gateway.**
+
+Panels a super admin needs, grouped: **Fleet health** (rps by provider; error rate by provider × class — 5xx/429/timeout/content-policy as *separate series, never summed*; circuit state gauge; cooldown events/hr; **failover events/hr by (from, to, reason)**; strict-mode rejections). **Latency** (TTFT p50/p95/p99 by provider × model; TPOT p95; e2e p95; **gateway overhead = total − provider latency**, the one panel that proves the router is not the bottleneck; streaming vs non-streaming split). **Saturation** (in-flight; **queue depth** — the leading indicator; KV-cache utilisation; prefix-cache hit rate; remaining RPM/TPM headroom, the 429 early warning). **Cost** (spend/hr by provider/model/tenant; tokens in/out; cost per 1k requests by task; BYOK vs SYSTEM split; top-10 tenants + "other"; budget burn-down; **unpriced-model counter**). **Governance** (active policy version per tenant; policy changes in last 24h with actor; kill-switches engaged).
+
+**The cardinality rule, non-negotiable:** 500 tenants × 20 models × 7 providers ≈ **70k series per metric** before other labels — and histograms multiply that by bucket count. Therefore: **`tenant_id` on counters ONLY; NEVER on a histogram.** Latency histograms carry `provider` + `model` + `outcome`. Per-tenant latency comes from the usage/audit table, queried on demand. Precedent: Kong disables its AI metrics by default (`config.ai_metrics=true`) explicitly for cardinality, and LiteLLM makes the `model` label opt-in.
+
+### 3A.8 Policy changes are auditable — this is a HIPAA requirement, not a nicety
+
+**HIPAA §164.312(b) audit controls is a *required*, not addressable, standard.** A routing-policy change can redirect PHI to a different vendor, so it is squarely in scope: record **who, what, when, before/after, immutably**. Every policy mutation emits a sys-event and writes an AuditLog row; the previous version stays addressable for one-click rollback. Prior art for the rollout mechanics is the feature-flag world (Unleash ships an exportable audit log of every config change; LaunchDarkly does staged rollout + kill-switch), **not** the AI gateways — LiteLLM's admin UI has no dry-run, no audit trail and no kill switch.
+
+### 3A.9 New lane
+
+**Lane I — Routing policy plane.** *Owns `src/text/routing/policy.py`, the `RoutingPolicy` Prisma model + domain trio, its admin controller, and the `/ai-task-defaults` console extension.* Depends on Lane F (config plane) and merges after Lane C. Delivers: the §3A.3 schema, tenant→SYSTEM resolution, the §3A.4 STRICT ruling with its three hard gates and response headers, §3A.5 health semantics, the simulate/dry-run endpoint, and the §3A.8 audit trail. Tier `opus`, effort `high` — it decides where PHI goes.
+
+---
+
 ## 4. Best-Practice Reference (researched 2026-08-29; apply, don't re-derive)
 
 ### 4.1 Build vs adopt — keep Python, keep the hot path lean
@@ -403,7 +528,7 @@ stream terms. All measured against the Lane H harness, both mock modes.
 
 | # | Criterion | Target | How measured |
 |---|---|---|---|
-| AC-1 | Concurrent SSE streams per pod, sustained 10 min, zero drops | **≥ 2,000** | Latency-injecting mock @ 800 ms TTFT, 30 tok/s |
+| AC-1 | Concurrent SSE streams per pod, sustained 10 min, zero drops | **≥ 100** (2.5× the 40 in-flight day-1 target) | Latency-injecting mock @ 800 ms TTFT, 30 tok/s |
 | AC-2 | Steady-state RSS per active stream | **< 50 KB** | RSS delta / stream count at plateau |
 | AC-3 | Proxy-added TTFT (client first byte − provider first byte), p99 | **< 10 ms** | Both mocks; report both numbers per §4.6 |
 | AC-4 | Proxy-added inter-token latency, p99 | **< 2 ms** | Latency-injecting mock |
@@ -411,6 +536,9 @@ stream terms. All measured against the Lane H harness, both mock modes.
 | AC-6 | Streams dropped during a rolling restart | **0** | Rolling deploy under AC-1 load |
 | AC-7 | Non-streaming p99 added latency / RPS per core | **< 10 ms / ≥ 500 RPS-core** | Zero-latency mock |
 | AC-8 | Concurrent Bedrock streams before executor starvation | **≥ AC-1**, no cross-provider impact | Mixed-provider mock run |
+| AC-12 | Explicit-provider request whose provider is down | Returns **503 `provider_unavailable`**, never a silent substitution (§3.4) | Contract test per §3.4 |
+| AC-13 | Permitted fallback is signalled on every response | `x-hope-provider-requested` / `-served`, `x-hope-fallback-step`, `-reason`, `x-hope-funding` all present | Contract test |
+| AC-14 | Both interfaces serve the same routing core | OpenAI-standard and HOPE contracts produce identical routing decisions for equivalent inputs | Differential test |
 | AC-9 | `apps/text` cannot serve a model | Automated test fails the build on any inference-runtime import or weight path | New `test_no_serving_invariant.py` (Phase 0) |
 | AC-10 | Config lookups doing I/O per request | **0** | Preserved property; regression test |
 | AC-11 | Prometheus series count per metric | **< 100** potential cardinality; tenant absent from labels | Metric registry assertion test |
@@ -665,7 +793,7 @@ Phase 0 (serial: baseline, AC-9 test, doc fixes, generate.py decomposition)
    |                    |             |               |            |
    +-- Phase 2 --> C (fast path, needs A+B)   D (surfaces)   G (deploy, needs B+H)
    |
-   +-- Phase 3 --> E (callers + SDK, needs C merged)
+   +-- Phase 3 --> I (routing policy, needs C+F)  -->  E (callers + SDK, needs C+I merged)
    |
    +-- Phase 4 --> shim deletion, closure
 ```
@@ -683,9 +811,10 @@ Phase 0 (serial: baseline, AC-9 test, doc fixes, generate.py decomposition)
 | F | `packages/database/**`, `packages/domains/**`, `packages/applications/**` (config plane) |
 | G | `apps/text/Dockerfile`, `scripts/dev-service.sh`, root `package.json`, deployment repo |
 | H | `apps/text/tests/load/**`, `apps/text/tests/bench/**` |
+| I | `src/text/routing/policy.py`, the `RoutingPolicy` Prisma model + hand-authored domain trio, its admin controller in `apps/api`, and the `/ai-task-defaults` console extension |
 
-**E and F both touch `packages/applications`.** They must be **serialized** (F in Phase 1,
-E in Phase 3) — never run concurrently. `src/text/main.py` is touched by A, B, C and D:
+**E, F and I all touch `packages/applications`.** They must be **serialized** (F in Phase 1,
+I then E in Phase 3) — never run concurrently. `src/text/main.py` is touched by A, B, C and D:
 **the orchestrator owns `main.py`** and applies each lane's registration change at merge time.
 
 ### 6.8 Model tier per lane (`.claude/rules/14` §1)
@@ -701,6 +830,7 @@ E in Phase 3) — never run concurrently. `src/text/main.py` is touched by A, B,
 | F | `opus` | medium | Schema + hand-authored domain trio, high blast radius |
 | G | `sonnet` | medium | Config/manifest work with a measured decision handed in by H |
 | H | `sonnet` | medium | Harness construction; the numbers it produces are judged by the orchestrator |
+| I | `opus` | high | It decides where PHI goes — the deciding stage, never downshifted |
 
 Escalate **on evidence** — a hedged or self-contradicting result re-runs *that* lane higher,
 not the whole fleet.

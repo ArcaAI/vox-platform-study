@@ -819,3 +819,62 @@ catalogue: the consultations LIST DTO exposes no visit type on the row, and
 `ConsultationAggregate.totals` hardcodes the same two-valued split SERVER-side (`newVisits` /
 `revisits`). Making it tenant-aware means changing both DTOs plus the aggregate query — a route/DTO
 change with its own five-artifact regeneration and a UI design surface. Unchanged from §15d.
+
+## 16. Lane V — visit type is now the (task, visitType) prompt identifier (merged 2026-08-29)
+
+Owner directive: *"Visit type is an identifier where the hope platform configure and compose the
+instructions and consultation context as prompt for agent to work on: pre-summarization OR
+summarization OR any text generation task."*
+
+The key lives **on the catalogue entry**: `VisitTypeDefinition.prompts?: Record<task,
+{promptTemplateId, promptVersionNumber?, contextVariables?}>`, resolved by the tenant → SYSTEM
+cascade `consultation.visitTypes` already owns. **No new resolver, no new settings key, no
+migration.** Alternatives rejected with reasons: workflow node config (DD-2 gives a generation node
+no visit-type axis by design — a substrate that cannot express the distinction cannot host the key),
+more `Department` columns (combinatorial in task × visitType, and a schema fact a tenant cannot
+extend — the exact limit being removed), `PromptTemplate` tags (extends a smell its own header calls
+a tradeoff), a second settings key (two rows that can disagree).
+
+### 16a. The load-bearing finding — the first-named chain was the one that could not work
+**`promptType` conflated the phase and visit-type axes**, so a pre-summary request said
+`'pre-summary'` and the visit type reached assembly only as the `{visit_type}` VARIABLE — data,
+never a selector. **Pre-summarization, the first task the owner named, could never see a visit type
+at all.** Fixed additively with `PromptResolutionParams.visitTypeKey`; absent, it derives from
+`promptType` exactly as before.
+
+`PromptAssemblyParams` deliberately keeps `visitType` (the LABEL, filling `{visit_type}`) separate
+from `visitTypeKey` (the SELECTOR). Collapsing them would let a tenant editing display wording
+silently change which prompt is served.
+
+Tier placement: `preferred (T0) → (task, visitType) → node (T1a) → department column (T1b) → SYSTEM`,
+on all three chains. Above the node because the node has no visit-type axis; below T0 because a
+clinician's explicit choice outranks a tenant-wide default. `resolvedFrom` gains **no** new member —
+the pairing rides the additive `resolutionTrace`, which also avoids drifting `openapi.json`, the
+portal and the generated vox-node schema.
+
+### 16b. The owner's own spelling did not resolve — fixed
+`re-visit` (written verbatim in the 2026-08-29 directive) folded to nothing: the key folds to
+`revisit` and nothing folded to `re-visit`, so a term naming the default fell through to the
+parent-link heuristic. Added as an alias. "New visit", "Referral" and "Follow-up" already resolved.
+
+### 16c. OPEN — labels, owner decision
+Labels remain **"New patient" / "Revisit"**, not "New visit" / "Follow-up". Three reasons: the two
+owner statements disagree (§11 row 3 names labels explicitly; the 2026-08-29 directive lists
+slash-separated pairs that read as ALIAS SETS); the label is **LLM-visible** — it fills
+`{visit_type}`, and *"This is a New visit visit."* is worse copy; and it is a **one-line data edit in
+the console**, which is the point of the catalogue. **If the owner meant the labels, it is a data
+edit to the shipped default, not a code change.**
+
+### 16d. An incidental catch worth more than it sounds
+`LiveAgentResolutionServiceModule` never imported `VisitTypeServiceModule` (importing
+`PromptResolutionServiceModule` does not re-export the provider), so the `@Optional()` injection
+would have silently resolved `undefined` — **every live session reading platform visit types instead
+of the tenant's, with no boot error.** That is the failure mode where `@Optional()` converts a
+missing import into wrong behaviour rather than a crash. Now guarded by a DI-wiring test.
+
+### 16e. Fourth vocabulary still not expressible, and the reason is sharper
+`apps/admin-console/.../consultations/api/types.ts` is unchanged. The blocker is not the catalogue:
+the consultations list DTO exposes no visit type on the row AND `ConsultationAggregate.totals`
+hardcodes the same two-valued split **server-side** (`newVisits`/`revisits`). Fixing it changes both
+DTOs plus the aggregate query — a route/DTO change with its own five-artifact regeneration and a UI
+design surface.
