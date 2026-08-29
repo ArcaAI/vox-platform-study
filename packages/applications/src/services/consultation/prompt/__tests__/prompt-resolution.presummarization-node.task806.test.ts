@@ -102,13 +102,17 @@ describe('pre-summary tier-1a — the agent.presummarization node', () => {
   it('IGNORES a pre-summarization node the tenant has switched OFF, and says so', async () => {
     // `config.enabled === false` is the platform-wide "authored, but off" convention
     // (`realtime-lane.ts` reads exactly this key). An inactive node is not a configured one.
+    //
+    // Lane R (R2) changed the CONSEQUENCE, not this property: the tenant here governs
+    // consultations, so an inactive node is now an incomplete opinion and fails closed rather
+    // than sliding onto the platform default. What has not changed — and is the half that
+    // matters — is that the switched-off node's template is never served.
     assignConsultationGraph([{ id: 'pre_sum', type: 'agent.presummarization', config: { promptTemplateId: PRESUM_TEMPLATE, enabled: false } }]);
     mockPromptTemplateRepository.findById.mockResolvedValue(approvedTemplate(PRESUM_TEMPLATE, 1));
 
-    const result = await buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' });
-
-    expect(result.promptId).not.toBe(PRESUM_TEMPLATE);
-    expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
+    await expect(buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
+    // The disabled node's template never became the answer by another route.
+    expect(mockPromptVersionRepository.findLatestVersion).not.toHaveBeenCalled();
   });
 
   it('SURFACES the absence of a configured node rather than sliding onto the platform default', async () => {
@@ -133,5 +137,77 @@ describe('pre-summary tier-1a — the agent.presummarization node', () => {
     await buildService().resolve({ tenantId: TENANT, departmentId: 'dept-should-be-ignored', promptType: 'pre-summary' });
 
     expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
+  });
+});
+
+/**
+ * Lane R (R2) — the owner's ruling made ENFORCEABLE, on the only population where enforcing it
+ * cannot break anyone.
+ *
+ * §11 says an absent/inactive pre-summarization node is "a configuration error to surface, not a
+ * silent drop to a platform default". Making that FATAL for every tenant is still not safe, and
+ * seeding the node did not make it safe: `WorkflowDefinition` is deliberately excluded from
+ * `SYSTEM_SHARED_READ_MODELS` and the assignment cascade is department -> tenant -> null, so a
+ * tenant reads only its OWN definitions. There is no platform-default consultation graph that
+ * every tenant inherits, which means a blanket fail-closed would take out pre-summary for every
+ * tenant that has not authored a consultation workflow — the compat plane included.
+ *
+ * The distinction that IS safe, and is what the ruling actually describes:
+ *
+ *  - a tenant with NO governing consultation graph has not adopted the substrate. It expressed no
+ *    opinion, so the platform default applies. That is tenant -> SYSTEM working correctly.
+ *  - a tenant WITH a governing consultation graph that omits or disables the node has expressed
+ *    an INCOMPLETE opinion. That is a misconfiguration its own admin created, and serving the
+ *    platform default there is exactly the silent drop §11 refuses.
+ */
+describe('Lane R (R2) — an incomplete GOVERNING graph fails closed; an absent one does not', () => {
+  beforeEach(() => {
+    mockPromptTemplateRepository.findById.mockImplementation(async (id: string) =>
+      id === SYSTEM_DEFAULTS.preSummaryPromptId ? approvedTemplate(id, 1) : null,
+    );
+    mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 1, content: 'system default body' });
+  });
+
+  it('THROWS when the tenant governs consultations but its graph has no pre-summarization node', async () => {
+    assignConsultationGraph([{ id: 'n_synth', type: 'consultation.synthesize', config: {} }]);
+
+    await expect(buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
+  });
+
+  it('THROWS when the node is present but switched OFF — a disabled node is an expressed opinion', async () => {
+    assignConsultationGraph([
+      { id: 'pre_sum', type: 'agent.presummarization', config: { promptTemplateId: PRESUM_TEMPLATE, enabled: false } },
+    ]);
+
+    await expect(buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
+  });
+
+  it('THROWS when the node is present but binds no prompt template', async () => {
+    assignConsultationGraph([{ id: 'pre_sum', type: 'agent.presummarization', config: {} }]);
+
+    await expect(buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
+  });
+
+  it('does NOT throw for a tenant with no governing consultation graph — no opinion is not a defect', async () => {
+    // The compat plane's population, and every tenant that has not adopted the substrate. Still
+    // surfaced on the trace; still not lethal.
+    mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' });
+
+    const result = await buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' });
+
+    expect(result.promptId).toBe(SYSTEM_DEFAULTS.preSummaryPromptId);
+    expect(result.resolvedFrom).toBe('default');
+    expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
+  });
+
+  it('does NOT throw when the assignment names a slug with no PUBLISHED definition', async () => {
+    // A rotted reference is an operational problem, not a tenant declaring an incomplete graph —
+    // and `WorkflowAssignmentService` already logs and degrades on exactly this.
+    mockWorkflowAssignments.resolve.mockResolvedValue({ workflowDefinitionSlug: 'gone', source: 'tenant' });
+    mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(null);
+
+    await expect(buildService().resolve({ tenantId: TENANT, promptType: 'pre-summary' })).resolves.toMatchObject({
+      promptId: SYSTEM_DEFAULTS.preSummaryPromptId,
+    });
   });
 });
