@@ -264,6 +264,26 @@ export class LiveSummaryEventDto {
   @ApiProperty({ description: 'Medical entities detected in the running transcript', type: [LiveSummaryEntityDto] })
   entities: LiveSummaryEntityDto[];
 
+  /**
+   * Lane N (TASK-815 §14a) — the IMPORTANT FINDINGS a tenant's own instruction picked out of this
+   * consultation, grounded to `runningSummary` exactly as `entities` are.
+   *
+   * A SEPARATE array rather than a flag on `entities`, because the two are different claims. An
+   * entity is what a detector RECOGNISED in the transcript; a finding is what the TENANT ADMIN'S
+   * INSTRUCTION said matters. Each finding's `type` is the label that instruction told the model
+   * to assign — the platform ships no importance vocabulary, no severity ladder and no red-flag
+   * list, because the owner assigned that definition to the tenant admin.
+   *
+   * Optional and additive: absent when no `agent.important_findings` node is in the tenant's lane,
+   * which is every graph authored before this ticket.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Important findings picked out by the tenant's own agent instruction, grounded to `runningSummary`. `type` carries the label that instruction assigned — the platform supplies no importance vocabulary. Absent when the tenant's lane runs no important-findings node.",
+    type: [LiveSummaryEntityDto],
+  })
+  findings?: LiveSummaryEntityDto[];
+
   @ApiPropertyOptional({ description: 'STT segment id of the last final segment folded into this summary' })
   lastSegmentId?: string;
 

@@ -86,6 +86,13 @@ export function reanchorAnnotations(
   document: string,
   entities: readonly LiveSummaryEntityDto[],
   groundedness?: LiveSummaryGroundednessDto,
+  /**
+   * Lane N — the tenant's IMPORTANT FINDINGS. Shaped like entities (so they re-anchor through the
+   * identical code path) but annotated under their own `finding` kind, because "a detector
+   * recognised this" and "the tenant's instruction says this matters" are different claims and a
+   * console has to be able to render them differently.
+   */
+  findings: readonly LiveSummaryEntityDto[] = [],
 ): SectionAnnotationDto[][] {
   const spans = locateSections(sections, document);
 
@@ -102,6 +109,18 @@ export function reanchorAnnotations(
         type: entity.type,
         ...(entity.icd10 ? { icd10: entity.icd10 } : {}),
         ...(typeof entity.confidence === 'number' ? { score: entity.confidence } : {}),
+      });
+    }
+
+    for (const finding of findings) {
+      const local = localSpan(span, finding.start, finding.end);
+      if (!local) continue;
+      annotations.push({
+        kind: 'finding',
+        start: local.start,
+        end: local.end,
+        type: finding.type,
+        ...(typeof finding.confidence === 'number' ? { score: finding.confidence } : {}),
       });
     }
 

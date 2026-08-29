@@ -28,6 +28,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'agent.dna_redaction',
         'agent.feedback',
         'agent.grammar',
+        'agent.important_findings',
         'agent.ner',
         'agent.normalization',
         'agent.presummarization',

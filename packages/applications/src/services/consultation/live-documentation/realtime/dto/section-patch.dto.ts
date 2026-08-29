@@ -22,8 +22,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * every existing consumer; this is an ADDITIVE second event on the same stream.
  */
 
-/** Discriminates the kinds of annotation a section can carry. */
-export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged'] as const;
+/**
+ * Discriminates the kinds of annotation a section can carry.
+ *
+ * `finding` (Lane N) is deliberately its OWN kind rather than an `entity` with a special `type`.
+ * The two are different claims about the text: an `entity` is what a detector RECOGNISED, a
+ * `finding` is what the TENANT'S OWN INSTRUCTION said is important. Collapsing them would make a
+ * console unable to render one differently from the other, which is precisely the "popped up and
+ * highlighted" behaviour the owner asked for — and it would let a tenant's importance vocabulary
+ * silently mix into the NER entity classes.
+ */
+export const SECTION_ANNOTATION_KINDS = ['entity', 'groundedness', 'flagged', 'finding'] as const;
 export type SectionAnnotationKind = (typeof SECTION_ANNOTATION_KINDS)[number];
 
 /**
@@ -43,7 +52,10 @@ export class SectionAnnotationDto {
   @ApiProperty({ description: "Character offset end within THIS SECTION's `content`" })
   end: number;
 
-  @ApiPropertyOptional({ description: 'For `entity`: the entity class (MEDICATION, CONDITION, …)' })
+  @ApiPropertyOptional({
+    description:
+      'For `entity`: the entity class (MEDICATION, CONDITION, …). For `finding`: the label the TENANT`s own instruction told the model to assign — the platform supplies no importance vocabulary.',
+  })
   type?: string;
 
   @ApiPropertyOptional({ description: 'For `groundedness`: grounded | ungrounded | unverified' })

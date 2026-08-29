@@ -1021,6 +1021,67 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     idempotent: true,
     schemaVersion: 1,
   }),
+  // TASK-815 §14a — IMPORTANT FINDINGS, the capability the realtime lane audit recorded as
+  // absent: "there is no red-flag / critical-value / allergy-alert / severity layer anywhere".
+  //
+  // ## It is a CONFIGURATION capability, not a heuristic
+  //
+  // The owner's specification is a configuration statement end to end: findings are "mined /
+  // generated / extracted by agent following a set of instructions defined / declared /
+  // overwriten by tenant admin for using LLM to detect, extract, picking-up knowledge from
+  // consultation context (transcription, consultation context items, etc...)". So this node ships
+  // NO severity ladder, NO red-flag term list and NO importance threshold — every one of those
+  // would be the platform deciding what "important" means on a tenant's behalf, which is exactly
+  // the hardcoded configuration `00-project-context.md` §Configuration Principles forbids. The
+  // instructions are a BOUND PROMPT TEMPLATE on the node's own config, resolved through the same
+  // approval-gated path every other governed prompt uses, and a tenant with no opinion inherits
+  // the platform-default template the seed binds rather than a constant in this file.
+  //
+  // ## Why REALTIME, and why that costs nothing on the durable path
+  //
+  // The acceptance bar is "important information popped up and highlighted" DURING a live
+  // session; a durable `on-end` node cannot pop anything up while a clinician is still speaking.
+  // The realtime executor is also where the highlight path already exists — TASK-811 re-anchors
+  // transcript-sourced entities into the rendered note (`groundEntitiesToNote`), and this node's
+  // output is `entities` precisely so findings ride that path rather than growing a second one.
+  // The durable interpreter SKIPS it (`reason: 'realtime_lane'`), so exactly one runtime owns it.
+  //
+  // ## The first catalogue entry with NO pipeline counterpart
+  //
+  // Every other `agent.*` entry is a thin delegation to an engine that already exists. This
+  // capability did not exist in any form, so its activity is a real implementation and its config
+  // schema is its own — the same position `agent.dna_redaction` and `guard.groundedness` are in.
+  // It calls `apps/text` for the judgement and `apps/nlp` for nothing: no second inference stack.
+  'agent.important_findings': Object.freeze({
+    key: 'agent.important_findings',
+    implemented: true,
+    activityName: 'interpreter.agent_important_findings',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'consultation',
+    critical: false,
+    // Its findings reach the live consultation feed and the persisted flush snapshot through the
+    // SAME projection `agent.ner`'s entities do. Claiming `false` would say this node's output
+    // never leaves the run, which is untrue — and the sandbox suppression the flag buys costs
+    // nothing on a lane the durable interpreter skips anyway.
+    externalWrite: true,
+    // Realtime-shaped, like `agent.grammar`: the executor races each node against its own timer
+    // on a flush cadence, so a durable 150s budget would outlive the flush that started it.
+    defaultTimeoutSeconds: 25,
+    // A retry inside a flush that a newer one supersedes is discarded as `stale`.
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'realtime',
+    // Deliberately EMPTY, and the reason is the §13b lesson rather than an oversight. The owner
+    // says grounding EVALUATES highlighted findings — but `guard.groundedness` is a `durable`
+    // node, so a `requires` edge from this realtime node would name a guard that cannot run in
+    // the lane that produces the findings. A publish-time requirement the runtime does not honour
+    // is precisely the drift `requires`' own docstring warns about; the relationship is expressed
+    // where it is real, as the guard's optional `findings` input port.
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
   // DD-6 — pre-summarization is a NODE, fed from context supplied at runtime, running on-start.
   // It must stay NON-SIGNABLE: `isFinalSummary` excludes `PRE_SUMMARY`, locked by
   // `kept-generators-signability.task732.test.ts:63`. Nothing here can make it signable — that

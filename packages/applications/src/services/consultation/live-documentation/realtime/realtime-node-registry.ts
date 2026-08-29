@@ -100,6 +100,41 @@ export interface ExtractEntitiesResult {
   vitals?: LiveSummaryVitalsDto;
 }
 
+export interface ExtractFindingsInput {
+  /**
+   * RAW transcript, resolved from the node's declared `in: transcript` port. Same structural
+   * guarantee `ExtractEntitiesInput` carries, and it matters most here: a "finding" the model
+   * invented in the running note and then highlighted as clinically IMPORTANT is the worst shape
+   * this failure could take. There is no field on this type through which a note can arrive.
+   */
+  sourceText: string;
+  /**
+   * The consultation context items the owner's specification names alongside transcription,
+   * resolved from the optional `context` port. Passed through as authored — deciding which
+   * context matters is the tenant instruction's job, not this runtime's.
+   */
+  context: unknown[];
+  /** Detector hints from the SAME flush's NER, so the pass costs one model call, not two. */
+  entities: LiveSummaryEntityDto[];
+  tenantId: string;
+  /**
+   * The node's OWN authored config. It carries the tenant's INSTRUCTION binding
+   * (`promptTemplateId`/`promptVersionNumber`) and `maxFindings`. What counts as important is
+   * declared there and nowhere else — this runtime holds no severity table, no red-flag list and
+   * no importance threshold.
+   */
+  config: Readonly<Record<string, unknown>>;
+}
+
+export interface ExtractFindingsResult {
+  /**
+   * The findings, shaped as entities so they ride the highlight path that already exists.
+   * `type` carries the label the TENANT's instruction told the model to assign — the platform
+   * neither supplies nor validates that vocabulary.
+   */
+  findings: LiveSummaryEntityDto[];
+}
+
 export interface ProposeCorrectionsInput {
   /**
    * RAW transcript, resolved from the node's declared `in: transcript` port. Same structural
@@ -146,6 +181,8 @@ export interface RealtimeCapabilities {
   extractEntities(input: ExtractEntitiesInput, signal?: AbortSignal): Promise<ExtractEntitiesResult>;
   /** Lane R (R1). PROPOSES corrections over the raw partial transcript; applies none of them. */
   proposeCorrections(input: ProposeCorrectionsInput, signal?: AbortSignal): Promise<ProposeCorrectionsResult>;
+  /** Lane N. Mines IMPORTANT FINDINGS from the consultation context by tenant instruction. */
+  extractFindings(input: ExtractFindingsInput, signal?: AbortSignal): Promise<ExtractFindingsResult>;
 }
 
 // =============================================================================
@@ -307,6 +344,60 @@ class GrammarHandler implements RealtimeNodeHandler {
 }
 
 /**
+ * `agent.important_findings` — Lane N. The capability TASK-815 §14a recorded as missing.
+ *
+ * ## What makes it "important" is CONFIGURATION, and it lives nowhere in this file
+ *
+ * The owner's specification is a configuration statement: findings are *"mined/generated/extracted
+ * by agent following a set of instructions defined/declared/overwriten by tenant admin"*. So this
+ * handler contains no severity ladder, no red-flag vocabulary and no importance threshold — every
+ * one of those would be the platform answering the question the owner assigned to the tenant
+ * admin. What it does is bind the node's declared inputs and hand them, with the tenant's own
+ * instruction, to the host service.
+ *
+ * ## Its input is TRANSCRIPT, and that is the safety property
+ *
+ * Identical to `agent.ner`'s, for a sharper reason. A generation node cannot be wired in
+ * (`document` and `transcript` are lattice siblings, so the executor's port-type check refuses
+ * it), which means a finding highlighted as clinically important is always something that was
+ * SAID — never something the running-note model produced and this pass then promoted.
+ *
+ * ## Its output is `entities`, under the key `findings`
+ *
+ * The PRIMITIVE is `entities` so a finding rides the highlight path TASK-811 already built —
+ * `groundEntitiesToNote` re-anchors it into the rendered note, `reanchorAnnotations` puts it on a
+ * section. The KEY is distinct so a consumer can tell "the tenant said this matters" apart from
+ * "the detector saw a drug name", which are two different claims and must not merge into one
+ * highlight set.
+ */
+class ImportantFindingsHandler implements RealtimeNodeHandler {
+  readonly type = 'agent.important_findings';
+  readonly inputs = portsOf('agent.important_findings').inputs;
+  readonly outputs = portsOf('agent.important_findings').outputs;
+
+  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
+    const sourceText = boundText(ctx, 'in');
+    // Nothing was said this turn, so there is nothing to mine. Calling a model over an empty turn
+    // invites findings with no source — the same early return the grammar pass makes.
+    if (!sourceText) return { findings: [] };
+
+    const boundEntities = ctx.bound.entities;
+    const boundContext = ctx.bound.context;
+    const result = await ctx.capabilities.extractFindings(
+      {
+        sourceText,
+        context: Array.isArray(boundContext) ? boundContext : boundContext === undefined ? [] : [boundContext],
+        entities: Array.isArray(boundEntities) ? (boundEntities as LiveSummaryEntityDto[]) : [],
+        tenantId: ctx.tenantId,
+        config: ctx.config,
+      },
+      ctx.signal,
+    );
+    return { findings: result.findings };
+  }
+}
+
+/**
  * `agent.transcription` and `agent.ner` are the TARGET CATALOGUE's names for capture and NER
  * (TASK-809 DD-9), and they run the SAME handler rather than a second implementation of the same
  * behaviour — `nodes/agent_catalogue.py` does exactly this on the durable side. What an alias does
@@ -330,6 +421,9 @@ export const REALTIME_NODE_HANDLERS: Readonly<Record<string, RealtimeNodeHandler
   // NOT an alias: `consultation.proposeCorrections` stays DURABLE (it reviews the finished note
   // in the seeded graphs), so this node has no pipeline counterpart to delegate to here.
   'agent.grammar': new GrammarHandler(),
+  // Lane N — no alias either: `agent.important_findings` is the one catalogue entry with no
+  // pipeline counterpart anywhere, because the capability did not exist before this ticket.
+  'agent.important_findings': new ImportantFindingsHandler(),
 });
 
 export function realtimeHandlerFor(type: string): RealtimeNodeHandler | undefined {
