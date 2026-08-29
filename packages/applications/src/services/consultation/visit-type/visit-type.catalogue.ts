@@ -5,6 +5,18 @@
 // referral) and Revisit (follow-up same-day, review same-day, revisit
 // same-day)."
 //
+// THE VOCABULARY, SETTLED (owner, 2026-08-29 — closes the §16c question):
+//
+//   "visit-type labels must be easy for user/developer/admins to understand:
+//    * new-visit: new patient, new visit, new referral
+//    * revisit: here is follow-up or revisit in the same day"
+//
+// The owner NAMES the first identifier `new-visit`, so the shipped key and
+// label are `new-visit` / "New visit" — `new-patient` is now an ALIAS. That
+// ordering matters: `key` is the persisted, wire-visible id, so retiring it to
+// an alias is what keeps every row and caller that already carries it resolving
+// onto the same entry (see the alias comment on the default below).
+//
 // WHAT THIS REPLACES. Visit type was a DERIVED LITERAL in nine places — six
 // copies of `consultation.parentConsultationId ? 'revisit' : 'new-patient'`, a
 // closed TS union on three service/route signatures, and a hand-rolled
@@ -63,7 +75,15 @@
 // parameter. They keep travelling in `promptType` (a frozen v1-compat contract,
 // TASK-815 §2), and `promptSlotFor` treats them as "no visit-type opinion".
 
-/** Which of `Department`'s two visit-type prompt columns a visit type selects. */
+/**
+ * Which of `Department`'s two visit-type prompt columns a visit type selects.
+ *
+ * These two strings are COLUMN NAMES (`newPatientPromptId` / `revisitPromptId`),
+ * not catalogue keys, which is why `'new-patient'` survives here after the key
+ * of the same spelling was retired. A slot is renamed by a Prisma migration, a
+ * key by a data edit; conflating them is how a label change would silently
+ * become a schema change.
+ */
 export type VisitTypePromptSlot = 'new-patient' | 'revisit';
 
 /**
@@ -152,11 +172,19 @@ export const CONSULTATION_VISIT_TYPES_KEY = 'consultation.visitTypes';
  */
 export const CONSULTATION_VISIT_TYPES_DEFAULT: readonly VisitTypeDefinition[] = Object.freeze([
   Object.freeze({
-    key: 'new-patient',
-    label: 'New patient',
-    // "new visit, new referral" (owner) + `new_visit` / `referral`
-    // (`text-proxy.controller.ts`) + `new-visit` (the `{visit_type}` variable).
-    aliases: Object.freeze(['new-visit', 'new-referral', 'referral']) as unknown as string[],
+    key: 'new-visit',
+    label: 'New visit',
+    // "new patient, new visit, new referral" (owner, 2026-08-29 — `new visit`
+    // IS the key) + `new_visit` / `referral` (`text-proxy.controller.ts`).
+    //
+    // `new-patient` is the RETIRED KEY, kept here for as long as the data
+    // outlives it: it is what `GateEditExemplar.visitType` rows written before
+    // the rename carry, what the frozen v1-compat lane still emits as a
+    // `promptType`, and what any caller integrated against the old catalogue
+    // still sends. Dropping it would not fail loudly — `selectVisitType` would
+    // fall through to the parent link and silently re-derive a follow-up
+    // consultation as `revisit`, relabelling one visit type as the other.
+    aliases: Object.freeze(['new-patient', 'new-referral', 'referral']) as unknown as string[],
     promptSlot: 'new-patient',
   }),
   Object.freeze({

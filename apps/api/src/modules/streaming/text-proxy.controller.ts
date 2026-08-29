@@ -1088,7 +1088,14 @@ export class TextProxyController {
       // `validateAssembledRequest` has already refused anything the catalogue
       // does not name, so the raw value is only a defensive last resort.
       const visitLabel = this.resolveVisitType(body.visit_type)?.label ?? body.visit_type;
-      systemPrompt += `\n\nThis is a ${visitLabel} visit.`;
+      // Stated as a LABELLED FIELD, not as a sentence the label has to fit
+      // grammatically. It used to read `This is a ${visitLabel} visit.`, which
+      // only worked while the labels were platform literals chosen to fit it:
+      // the owner's 2026-08-29 label "New visit" renders that as "This is a New
+      // visit visit.", and a tenant is free to define a label worse still. This
+      // form is the one every seeded prompt body already uses for the same fact
+      // (`- **Visit Type:** {visit_type}`), and no label can break it.
+      systemPrompt += `\n\nVisit type: ${visitLabel}.`;
     }
 
     const typeLabel = body.type === 'pre-summary' ? 'pre-summary' : 'clinical summary';
