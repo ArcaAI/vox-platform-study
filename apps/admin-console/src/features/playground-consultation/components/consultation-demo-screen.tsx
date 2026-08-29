@@ -630,6 +630,11 @@ function ScribeWorkspace() {
               onOpenPatient={handleOpenPatient}
               activeIsRecording={isRecording}
               departments={departments.data ?? []}
+              // P-4: the catalog's loading/failed states reach the column so
+              // it can EXPLAIN them, instead of collapsing all three into the
+              // same silent blank.
+              departmentsLoading={departments.isLoading}
+              departmentsError={departments.isError}
               selectedDepartmentId={departmentId}
               onDepartmentChange={setDepartmentId}
             />
