@@ -36,9 +36,7 @@ export class AdminAgenticResource extends AdminResource {
    * `GET /api/v1/admin/agentic/instructions` — `AgenticAdminController.getInstructions`.
    */
   getInstructions(
-    options: AdminRequestOptions & {
-      query?: { departmentId?: QueryValue; promptType?: 'pre-summary' | 'new-patient' | 'revisit'; tenantId?: QueryValue };
-    } = {},
+    options: AdminRequestOptions & { query?: { departmentId?: QueryValue; promptType?: string; tenantId?: QueryValue } } = {},
   ): Promise<AgenticInstructionsResponse> {
     return this.request<AgenticInstructionsResponse>({
       method: 'GET',

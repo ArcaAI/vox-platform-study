@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -53,6 +53,7 @@ import type { CreateNotificationRequest } from '../../notification/dto';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE } from './dto';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import type {
   HarnessAssembleRequest,
   HarnessAssembleResponse,
@@ -244,6 +245,12 @@ export class HarnessInternalService {
     // which is the FAIL-CLOSED direction (never `absent`, which would let a
     // consumer proceed unauthenticated because the gateway was misconfigured).
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // + trailing so existing positional fixtures keep their arity; an unwired
+    // resolver serves the two shipped visit types, whose keys and follow-up rule
+    // are byte-identical to the ternary it replaces.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -761,7 +768,13 @@ export class HarnessInternalService {
         // (the harness runs outside the API-edge CLS middleware).
         tenantId,
         departmentId: consultation?.departmentId ?? undefined,
-        promptType: consultation?.parentConsultationId ? 'revisit' : 'new-patient',
+        // The visit type comes from the TENANT's catalogue now, not a literal:
+        // `parentConsultationId` still supplies the follow-up signal, but WHICH
+        // visit type that selects — and what it is called — is tenant-configured
+        // (TASK-815 §11 row 3).
+        promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+          isFollowUp: Boolean(consultation?.parentConsultationId),
+        }).key,
         transcript,
         conversationLanguage: dto.conversationLanguage?.trim() || 'en',
         dnaStyleId: effectiveDnaStyleId,

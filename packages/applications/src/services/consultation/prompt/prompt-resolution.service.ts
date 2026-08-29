@@ -17,6 +17,9 @@
  *     Tier-1b (department) — the department's visit-type prompt column. This is
  *       where the VISIT-TYPE AXIS now lives on its own: the node substrate has
  *       none by design (DD-2 — a generation node binds its prompt statically).
+ *       WHICH column is a tenant-configured question now, not a literal: the
+ *       tenant's `consultation.visitTypes` catalogue (tenant → SYSTEM) maps the
+ *       `promptType` value onto one of the department's two prompt slots.
  *     Tier-2  (default)    — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
  *
  *   promptType === 'pre-summary' — the PRE-SUMMARY chain:
@@ -86,10 +89,31 @@ import {
 import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } from '@arcaai/workflow-contract';
 
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * A prompt PHASE selector: WHICH capability chain runs. Not a visit type — the
+ * resolver has always known the difference, it just never named it (it derives
+ * `resolvedCapability` from the same parameter, below).
+ */
+export type PromptPhase = 'pre-summary' | 'live';
+
+/**
+ * What `promptType` accepts. It carries BOTH axes, and that is a frozen wire
+ * contract (TASK-815 §2), so the phase selectors keep travelling here rather
+ * than moving to a parameter of their own.
+ *
+ * Anything that is not a phase is a VISIT-TYPE KEY from the tenant's
+ * `consultation.visitTypes` catalogue. `'new-patient'` and `'revisit'` are
+ * spelled out because they are the two keys the platform SHIPS — a tenant that
+ * has expressed no opinion still resolves exactly those — and `(string & {})`
+ * admits a tenant's own keys while keeping the four literals in autocomplete.
+ */
+export type PromptTypeSelector = PromptPhase | 'new-patient' | 'revisit' | (string & {});
 
 /**
  * Resolved prompt configuration returned by the service.
@@ -213,7 +237,7 @@ export interface PromptResolutionParams {
    * a column: `'pre-summary'` runs the tenant chain, `'live'` the live chain
    * everything else the summary chain.
    */
-  promptType?: 'pre-summary' | 'new-patient' | 'revisit' | 'live';
+  promptType?: PromptTypeSelector;
 
   /**
    * Which PRE-SUMMARY template FAMILY the caller wants.
@@ -464,6 +488,12 @@ export class PromptResolutionService {
     // clinical generation path.
     @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    // Tier-1b's VISIT-TYPE axis, which is tenant-configured data now
+    // (TASK-815 §11 row 3) rather than the `promptType === 'revisit'` literal
+    // this replaces. `@Optional()` for the same reason as the two above; an
+    // unwired resolver serves the two shipped visit types, which maps the two
+    // legacy `promptType` values onto exactly the columns they always read.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {}
 
   /**
@@ -577,7 +607,16 @@ export class PromptResolutionService {
     // trace whether or not it ends up being served.
     let departmentPromptId: string | null = null;
     if (department) {
-      departmentPromptId = (params.promptType === 'revisit' ? department.revisitPromptId : department.newPatientPromptId) ?? null;
+      // The visit-type axis, resolved through the tenant's own catalogue
+      // (`consultation.visitTypes`, tenant → SYSTEM) instead of a literal
+      // comparison. A tenant that has defined no catalogue inherits the two
+      // shipped types, whose keys ARE the two legacy values — so this is
+      // byte-identical to the ternary it replaces until a tenant says otherwise.
+      const promptSlot = (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).promptSlot(
+        department.tenantId ?? params.tenantId ?? null,
+        params.promptType,
+      );
+      departmentPromptId = (promptSlot === 'revisit' ? department.revisitPromptId : department.newPatientPromptId) ?? null;
       trace.departmentPromptId = departmentPromptId;
     }
 

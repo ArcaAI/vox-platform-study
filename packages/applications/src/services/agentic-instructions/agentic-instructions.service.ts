@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ResourceType } from '@arcaai/domains';
@@ -7,6 +7,7 @@ import { BaseService } from '../../common/base.service';
 import { IActiveUserContext } from '../../interfaces';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { PromptResolutionService } from '../consultation/prompt/prompt-resolution.service';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../consultation/visit-type/visit-type.service';
 import { AgenticInstructionsResolveOptions } from './IAgenticInstructionsService';
 import { AgenticInstructionsResponse, SafetyCriterionResponse, SensorThresholdsResponse } from './dto';
 
@@ -67,13 +68,21 @@ export class AgenticInstructionsService extends BaseService {
     private readonly promptResolutionService: PromptResolutionService,
     eventEmitter: EventEmitter2,
     clsService: ClsService<IActiveUserContext>,
+    // The tenant's visit-type catalogue, so an omitted `promptType` defaults to
+    // the TENANT's initial-visit type rather than to a platform literal.
+    // Optional + trailing so existing positional fixtures keep their arity.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
     // Read-only surface; the resource type is inert (no broadcastSysEvent call).
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
   }
 
   async getEffectiveInstructions(tenantId: string, options: AgenticInstructionsResolveOptions = {}): Promise<AgenticInstructionsResponse> {
-    const promptType = options.promptType ?? 'new-patient';
+    // An omitted prompt type means "the ordinary case", and WHICH visit type
+    // that is belongs to the tenant now (TASK-815 §11 row 3) — it used to be a
+    // hardcoded `'new-patient'`. A tenant with no catalogue of its own inherits
+    // the two shipped types, so this still resolves `'new-patient'`.
+    const promptType = options.promptType ?? (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, { isFollowUp: false }).key;
 
     const [policy, tier] = await Promise.all([
       this.harnessPolicyService.getEffectivePolicy(tenantId),

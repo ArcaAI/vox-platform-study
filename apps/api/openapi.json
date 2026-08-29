@@ -22689,16 +22689,11 @@
         "operationId": "AgenticAdminController_getInstructions",
         "parameters": [
           {
-            "description": "Prompt type to resolve the tier for.",
+            "description": "Prompt type to resolve the tier for: either a PHASE selector (`pre-summary`, `live`) or a VISIT-TYPE key from the tenant’s own `consultation.visitTypes` catalogue. Deliberately NOT an enum since TASK-815 §11 row 3 — visit type is tenant-admin defined, so a fixed three-value list could only ever answer for the platform’s two. Omitted ⇒ the tenant’s own initial-visit type.",
             "in": "query",
             "name": "promptType",
             "required": false,
             "schema": {
-              "enum": [
-                "pre-summary",
-                "new-patient",
-                "revisit"
-              ],
               "type": "string"
             }
           },

@@ -91,6 +91,21 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
     ticket: 'TASK-760',
     why: 'registers the redirect shim above',
   },
+  // TASK-815 §11 row 3 (owner ruling) — visit type becomes tenant-configured data.
+  // `TextProxyController.validateAssembledRequest` enforced a hardcoded
+  // `['new_visit', 'referral']` allow-list and 400'd everything else, so a tenant could define a
+  // visit type and then be unable to send it. The change replaces that literal with a lookup in
+  // the caller tenant's `consultation.visitTypes` catalogue (tenant → SYSTEM). This is the TEXT
+  // generate/assembled surface, not the STT realtime path: the WS gateway, the Redis-Streams
+  // bridge and `transcription-job.controller.ts` are untouched, no execution surface is added,
+  // and both values the old list accepted are aliases of the SHIPPED "New patient" type — so no
+  // caller that worked before is refused now. `text-proxy.controller.ts` itself is already
+  // sanctioned above (TASK-737/738); this entry covers the new test file for the change.
+  {
+    path: 'apps/api/src/modules/streaming/__tests__/text-proxy.visit-type.controller.test.ts',
+    ticket: 'TASK-815',
+    why: 'covers the tenant visit-type catalogue replacing the hardcoded visit_type allow-list',
+  },
 ];
 
 const SANCTIONED_PATHS: ReadonlySet<string> = new Set(SANCTIONED_LATER_CHANGES.map((entry) => entry.path));
