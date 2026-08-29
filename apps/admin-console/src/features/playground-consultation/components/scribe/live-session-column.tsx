@@ -221,7 +221,11 @@ export function LiveSessionColumn({
           </span>
         </div>
         <div aria-hidden className="text-foreground min-w-0 flex-1">
-          <Waveform data={displayWave} active={isCapturing} height={40} />
+          {/* No `active` prop: @arcaai/ui's Waveform declares `active?: boolean`
+              but never consumes it, so it lands on the container <div> and React
+              logs "Received `false` for a non-boolean attribute `active`". The
+              idle/live distinction is already carried by `displayWave`. */}
+          <Waveform data={displayWave} height={40} />
         </div>
         {/* D-17 — add-details-during-consultation. Available whenever a
             consultation is open, not gated on active capture: a clinician may
@@ -290,7 +294,11 @@ export function LiveSessionColumn({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      {/* tabIndex 0 — WCAG 2.1.1/2.1.3: this pane scrolls but can hold no
+          focusable child (empty state, or a plain transcript), so without a
+          tab stop a keyboard user cannot scroll it. axe
+          `scrollable-region-focusable`, impact serious. */}
+      <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {!hasConsultation ? (
           <EmptyState
             icon={IconMicrophone}

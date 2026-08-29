@@ -32,6 +32,19 @@ function setup(overrides: Partial<React.ComponentProps<typeof ConsultationsColum
 afterEach(cleanup);
 
 describe('ConsultationsColumn', () => {
+  /**
+   * WCAG 2.1.1 / 2.1.3 — axe `scrollable-region-focusable` (impact: serious).
+   * The list pane scrolls; while it is loading or empty it holds no focusable
+   * child, so a keyboard user cannot scroll it. Real-browser-only finding
+   * (TASK-814 §9).
+   */
+  it('exposes the scrolling list pane to the keyboard', () => {
+    const { container } = setup({ isLoading: true });
+    const pane = container.querySelector('.overflow-y-auto');
+    expect(pane).not.toBeNull();
+    expect(pane?.getAttribute('tabindex')).toBe('0');
+  });
+
   it('renders each patient with a count and a REC badge on the active recording row', () => {
     setup();
     expect(screen.getByText('Consultations (2)')).toBeTruthy();

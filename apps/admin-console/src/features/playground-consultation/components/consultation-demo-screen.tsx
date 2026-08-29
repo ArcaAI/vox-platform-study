@@ -210,7 +210,7 @@ function SdkBoundary() {
 function ScribeWorkspace() {
   // D-17: `context` was never destructured, so `addCaseNote`/`addAttachment` had zero call
   // sites — a clinician had no way to hand the loop a supplementary detail mid-consultation.
-  const { session: sdkSession, audio, context } = useArca();
+  const { session: sdkSession, audio, context, isReady: sdkReady } = useArca();
   const storeApi = useStoreApi();
 
   const layout = useColumnLayout();
@@ -313,6 +313,13 @@ function ScribeWorkspace() {
   // Real consultation list — TanStack Query over the SDK method (rule 13: no
   // fetch-in-useEffect). The SDK is untyped at the app boundary (dts: false).
   const listQuery = useQuery({
+    // Gated on SDK readiness. `listConsultations` throws `SDK not initialized`
+    // until AgenticProvider has wired `apiClient` onto the store; firing before
+    // that leaves the retry in TanStack's `paused` fetchStatus, where the query
+    // is neither loading (`isFetching` false) nor errored — so the column
+    // renders "No consultations yet" permanently and the clinician can never
+    // re-open a prior consultation. Observed at runtime, TASK-814 §9.
+    enabled: sdkReady,
     queryKey: [...playgroundConsultationKeys.root, 'scribe-list'],
     queryFn: async (): Promise<ConsultationListRow[]> => {
       const page = await sdkSession.listConsultations({ limit: 50 });
@@ -613,7 +620,10 @@ function ScribeWorkspace() {
           <ResizablePanel id="consultations" defaultSize={layout.sizes[0]} minSize={16} className="min-w-0">
             <ConsultationsColumn
               rows={rows}
-              isLoading={listQuery.isLoading}
+              // While the SDK is still initializing the query is disabled, so
+              // TanStack reports isLoading=false — the column must still read as
+              // LOADING, never as an (untrue) empty list.
+              isLoading={!sdkReady || listQuery.isLoading}
               error={listError}
               selectedId={consultationId}
               onSelect={handleSelect}
