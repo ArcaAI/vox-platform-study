@@ -22,15 +22,33 @@
  * cannot widen `consultation.extractEntities.in` from `transcript` to `text`,
  * because it does not own the declaration.
  */
-import { NODE_PORTS, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import { NODE_PORTS, WORKFLOW_NODE_REGISTRY, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
 
-/** Node types the realtime runtime implements. See `realtime-lane.ts` §lane membership. */
-export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set([
-  'consultation.captureBinding',
-  'consultation.extractEntities',
-  'consultation.realtimeSummary',
-]);
+/**
+ * Node types the realtime runtime implements — DERIVED from the contract, not listed here
+ * (TASK-806 lane A, item 7).
+ *
+ * This used to be a hand-kept set of three keys, and `realtime-lane.ts` explained at length why it
+ * had to be: `WorkflowNodeDescriptor.lane` said `durable` on every node type, the contract package
+ * refused a `realtime` node that was `externalWrite`, and no runtime read `lane` anyway. All three
+ * of those are now false — the rule that refused a writing realtime node was falsified by this
+ * very runtime and has been removed, `lane` carries the truth, and the durable interpreter SKIPS a
+ * `realtime` node (`workflow.py`, reason `realtime_lane`) so exactly one runtime executes a given
+ * node.
+ *
+ * Deriving it is the point rather than a tidy-up: two sources of truth for "which runtime owns
+ * this node" is how the durable interpreter came to re-run nodes this executor already owns, and
+ * for `consultation.realtimeSummary` (`externalWrite: true`) that is two engines writing one
+ * consultation's document. `REALTIME_NODE_HANDLERS` below is asserted total over this set, so a
+ * node flipped to `realtime` in the contract with no handler here is a failing test, never a
+ * silent no-op at flush time.
+ */
+export const REALTIME_NODE_TYPES: ReadonlySet<string> = new Set(
+  Object.values(WORKFLOW_NODE_REGISTRY)
+    .filter((descriptor) => descriptor.lane === 'realtime')
+    .map((descriptor) => descriptor.key),
+);
 
 // =============================================================================
 // Capabilities — the NARROW port the host service implements
@@ -192,10 +210,27 @@ class RealtimeSummaryHandler implements RealtimeNodeHandler {
   }
 }
 
+/**
+ * `agent.transcription` and `agent.ner` are the TARGET CATALOGUE's names for capture and NER
+ * (TASK-809 DD-9), and they run the SAME handler rather than a second implementation of the same
+ * behaviour — `nodes/agent_catalogue.py` does exactly this on the durable side. What an alias does
+ * NOT share is its port declaration: those are read from `@arcaai/workflow-contract` under the
+ * alias's own key, so each node type is still validated against what it itself declares.
+ */
+function aliasHandler(type: string, delegate: RealtimeNodeHandler): RealtimeNodeHandler {
+  const ports = portsOf(type);
+  return Object.freeze({ type, inputs: ports.inputs, outputs: ports.outputs, run: (ctx: RealtimeNodeRunContext) => delegate.run(ctx) });
+}
+
+const captureBinding = new CaptureBindingHandler();
+const extractEntities = new ExtractEntitiesHandler();
+
 export const REALTIME_NODE_HANDLERS: Readonly<Record<string, RealtimeNodeHandler>> = Object.freeze({
-  'consultation.captureBinding': new CaptureBindingHandler(),
-  'consultation.extractEntities': new ExtractEntitiesHandler(),
+  'consultation.captureBinding': captureBinding,
+  'consultation.extractEntities': extractEntities,
   'consultation.realtimeSummary': new RealtimeSummaryHandler(),
+  'agent.transcription': aliasHandler('agent.transcription', captureBinding),
+  'agent.ner': aliasHandler('agent.ner', extractEntities),
 });
 
 export function realtimeHandlerFor(type: string): RealtimeNodeHandler | undefined {

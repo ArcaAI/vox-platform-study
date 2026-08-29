@@ -86,7 +86,9 @@ function port(
   multiple: boolean,
   options?: { readonly outputKey: string },
 ): WorkflowPortDescriptor {
-  return Object.freeze(options === undefined ? { name, primitive, required, multiple } : { name, primitive, required, multiple, outputKey: options.outputKey });
+  return Object.freeze(
+    options === undefined ? { name, primitive, required, multiple } : { name, primitive, required, multiple, outputKey: options.outputKey },
+  );
 }
 
 /** A CONTROL port — ordering only. It carries no payload, so it can name no `outputKey`; the
@@ -161,8 +163,14 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
     [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), port('bypass', 'stream<audio>', false, true, { outputKey: 'audio' }), NEXT],
   ),
   'stt.vad': ports([port('in', 'stream<audio>', true, false), AFTER], [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT]),
-  'stt.noiseFilter': ports([port('in', 'stream<audio>', true, false), AFTER], [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT]),
-  'stt.diarization': ports([port('in', 'stream<audio>', true, false), AFTER], [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT]),
+  'stt.noiseFilter': ports(
+    [port('in', 'stream<audio>', true, false), AFTER],
+    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
+  ),
+  'stt.diarization': ports(
+    [port('in', 'stream<audio>', true, false), AFTER],
+    [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
+  ),
   'stt.languageDetection': ports(
     [port('in', 'stream<audio>', true, false), AFTER],
     [port('out', 'stream<audio>', true, true, { outputKey: 'audio' }), NEXT],
@@ -218,18 +226,26 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
     [port('in', 'entities', false, true), AFTER],
     [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT],
   ),
-  // ⚠ DOC-vs-CODE DIVERGENCE, recorded rather than resolved. `node-types.md:117` documents this
-  // node's input as `TEXT + STRUCTURED`, but the ACTIVITY reads no `bound_inputs` at all — it
-  // resolves everything server-side from `consultationId` (`consultation_compose.py:90-118`,
-  // which reads only `config.template` / `dnaStyleId` / `conversationLanguage`).
+  // ⚠ DOC-vs-CODE DIVERGENCE — RESOLVED (TASK-806 lane A, item 18), in the direction that makes
+  // the CODE match the contract rather than the other way round, because the divergence was
+  // hiding a real data loss.
   //
-  // Both data inputs are therefore declared OPTIONAL (`required: false`): that is consistent with
-  // the code (nothing must be wired for the node to run) while still permitting the wiring the
-  // doc describes and the golden fixtures author. Typing them `required: true` off the doc alone
-  // would make the activity's own behaviour unpublishable.
-  // OWNER CALL NEEDED on which of the two is authoritative — do not silently "fix" either side.
+  // `node-types.md:117` documented this node's input as `TEXT + STRUCTURED` while the activity
+  // read NO `bound_inputs` at all. That mattered: `consultation.retrieveEvidence` publishes the
+  // StrictCitations block it retrieved, the seeded graphs wire it into this node, and nothing
+  // consumed it — so on the interpreter path the retrieved evidence was fetched, paid for, and
+  // then dropped. `interpreter_consultation_assemble_prompt` now folds the bound context into the
+  // prompt through `assemble_generation_prompt` (`temporal/prompt_cache.py`), the SAME pure
+  // helper the legacy `HarnessDocWorkflow` already uses for exactly this — so this is a wiring
+  // fix, not a new prompt design.
+  //
+  // The `transcript` input is REMOVED rather than retyped. The gateway's `assemble` builds the
+  // prompt from the consultation's own persisted transcript (`apps/api` owns that), so a second
+  // transcript arriving over a port could only DUPLICATE it inside the prompt. A port that can
+  // only cause duplication is not a contract worth keeping; ordering after the PHI hop is
+  // expressed by the `after` socket, which is what an ordering dependency is for.
   'consultation.assemblePrompt': ports(
-    [port('in', 'context<schemaRef>', false, true), port('transcript', 'transcript', false, false), AFTER],
+    [port('in', 'context<schemaRef>', false, true), AFTER],
     [port('out', 'text', true, true, { outputKey: 'text' }), NEXT],
   ),
   // `in: text` (multiple) accepts BOTH the assembled prompt and a transcript widened to text —
@@ -247,19 +263,11 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // a single flat key would have carried exactly one of them and silently dropped the rest.
   'consultation.sensors': ports(
     [port('in', 'document', true, false), port('entities', 'entities', false, true), AFTER],
-    [
-      port('out', 'verdict', true, true, { outputKey: 'verdict' }),
-      port('document', 'document', true, true, { outputKey: 'text' }),
-      NEXT,
-    ],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
   ),
   'consultation.inferentialSensors': ports(
     [port('in', 'document', true, false), port('verdict', 'verdict', false, true), AFTER],
-    [
-      port('out', 'verdict', true, true, { outputKey: 'verdict' }),
-      port('document', 'document', true, true, { outputKey: 'text' }),
-      NEXT,
-    ],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('document', 'document', true, true, { outputKey: 'text' }), NEXT],
   ),
   // OD-15 FIX 1 of 2. `persistDraft` declared `[NEXT]` only, yet its activity emits
   // `{contextItemId, text}` and `finalizeAssurance` genuinely consumes the former — so NO legal
@@ -333,6 +341,68 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   // consultation, which is why the edge is optional.
   'summary.finalize': ports([port('in', 'document', false, true), AFTER], [NEXT]),
   'feedback.capture': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
+
+  // -------------------------------------------------------------------------------------------
+  // The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+  //
+  // These are the catalogue the substrate is converging ON, registered alongside the pipeline
+  // node types the seeded graphs already use rather than instead of them: a node type is a
+  // contract with every saved tenant graph, so the existing keys cannot be renamed out from under
+  // them. Each entry delegates to an engine that already exists (see `node-registry.ts` for the
+  // mapping); the port tables below are what an author actually wires, and they are the same
+  // typed sockets the rest of this file uses — in particular `agent.ner` consumes `transcript`
+  // and NOTHING else, so `document -> ner` stays a type error in the new catalogue too.
+  // -------------------------------------------------------------------------------------------
+  'agent.transcription': ports([AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
+  // "Normalization" here is ONTOLOGY normalization — mapping surface forms onto coded concepts
+  // (`apps/nlp/src/nlp/services/ontology_linker.py`), which is what the terminology engine behind
+  // this node does. Entities in, coded entities out; the type is unchanged because a normalized
+  // entity is still an entity.
+  'agent.normalization': ports([port('in', 'entities', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
+  'agent.ner': ports([port('in', 'transcript', true, false), AFTER], [port('out', 'entities', true, true, { outputKey: 'entities' }), NEXT]),
+  // DD-6 — pre-summarization is fed from CONTEXT SUPPLIED AT RUNTIME, never from the transcript.
+  // Today's pre-summary job already takes `caseNoteIds`: it summarizes provided context, so
+  // `in: context<schemaRef>` formalizes existing intent and widens it to admin-selected kinds.
+  // Typing it `context<schemaRef>` is also what stops a transcript being wired in by accident.
+  'agent.presummarization': ports(
+    [port('in', 'context<schemaRef>', true, true), AFTER],
+    [port('out', 'document', true, true, { outputKey: 'text' }), NEXT],
+  ),
+  // DD-9 — the other two entries over the SAME generation engine. `in: text` (multiple) accepts
+  // an assembled prompt, a transcript widened to text, or a prior document; the trigger and the
+  // bound shape are what distinguish them, exactly as DD-9 says.
+  'agent.summarization': ports([port('in', 'text', true, true), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
+  'agent.discharge_summary': ports([port('in', 'text', true, true), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
+  'agent.retrieval': ports(
+    [port('in', 'entities', false, true), AFTER],
+    [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT],
+  ),
+  // The only `edits`-consuming node of the new catalogue, and it writes — same DD-8 property
+  // `feedback.capture` carries: a proposed correction becomes real HERE or nowhere.
+  'agent.feedback': ports([port('in', 'edits', false, true), AFTER], [NEXT]),
+  // Document in, redacted document out. The type is preserved for the same reason `stt.phiHop`'s
+  // is: a redacted note is still a note, so everything downstream of it stays wireable.
+  'agent.dna_redaction': ports([port('in', 'document', true, false), AFTER], [port('out', 'document', true, true, { outputKey: 'text' }), NEXT]),
+
+  // -------------------------------------------------------------------------------------------
+  // Guards (DD-7). A guard's product is a VERDICT — that is what makes it a guard rather than a
+  // transformer, and it is why `requires[]` can be satisfied by an edge in EITHER direction: a
+  // pre-guard reads what is about to be produced from, a post-guard reads what was produced.
+  //
+  // `guard.phi` additionally republishes the REDACTED text, because a PHI guard that could only
+  // say "this contains PHI" without offering the safe version would force every consumer to
+  // choose between the unredacted text and nothing.
+  // -------------------------------------------------------------------------------------------
+  'guard.phi': ports(
+    [port('in', 'text', true, false), AFTER],
+    [port('out', 'verdict', true, true, { outputKey: 'verdict' }), port('text', 'text', true, true, { outputKey: 'text' }), NEXT],
+  ),
+  'guard.moderation': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
+  // `in: document` and not `text`: groundedness is a claim about GENERATED prose against its
+  // sources. Asking it to score a raw transcript is a category error — a transcript is the
+  // ground, not something grounded — and `transcript` does not satisfy `document`, so the
+  // lattice refuses that wiring rather than relying on anyone remembering the distinction.
+  'guard.groundedness': ports([port('in', 'document', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the

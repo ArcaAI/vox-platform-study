@@ -348,6 +348,61 @@ class TestAssemblePrompt:
         assert call.await_args.args[0].consultation_id == "c1"
 
     @pytest.mark.asyncio
+    async def test_folds_the_bound_evidence_context_into_the_prompt(self, monkeypatch):
+        """TASK-806 lane A, item 18 — the node now READS its declared `in` port.
+
+        `consultation.retrieveEvidence` publishes its StrictCitations block under `context`, both
+        committed seed graphs wire it into this node, and until now nothing consumed it — so on the
+        interpreter path the retrieved evidence was fetched and then silently dropped. The fold
+        uses `assemble_generation_prompt`, the SAME pure helper the legacy `HarnessDocWorkflow`
+        already appends a retrieval block with, so the ORDER (stable prompt prefix, then the
+        citations block) is the one the engine prefix-cache already expects.
+        """
+        monkeypatch.setattr(
+            compose,
+            "assemble_prompt",
+            AsyncMock(
+                return_value=_Obj(
+                    user_prompt="write the note",
+                    system_prompt="you are a scribe",
+                    prompt_template_id="t1",
+                    prompt_version="3",
+                    resolved_from="TENANT",
+                )
+            ),
+        )
+        result = await compose.interpreter_consultation_assemble_prompt(
+            _payload(
+                "consultation.assemblePrompt",
+                bound_inputs={"in": {"text": "[[chunk:1]] evidence", "chunkCount": 1}},
+            )
+        )
+        assert result.status == "SUCCEEDED"
+        assert result.output["text"] == "write the note\n\n[[chunk:1]] evidence"
+
+    @pytest.mark.asyncio
+    async def test_unbound_evidence_leaves_the_prompt_byte_identical(self, monkeypatch):
+        """Nothing wired ⇒ nothing appended. The node's inputs are OPTIONAL, and a graph that
+        wires no evidence must produce exactly the prompt the gateway assembled."""
+        monkeypatch.setattr(
+            compose,
+            "assemble_prompt",
+            AsyncMock(
+                return_value=_Obj(
+                    user_prompt="write the note",
+                    system_prompt="",
+                    prompt_template_id=None,
+                    prompt_version=None,
+                    resolved_from="TENANT",
+                )
+            ),
+        )
+        result = await compose.interpreter_consultation_assemble_prompt(
+            _payload("consultation.assemblePrompt", bound_inputs={})
+        )
+        assert result.output["text"] == "write the note"
+
+    @pytest.mark.asyncio
     async def test_no_consultation_id_degrades(self):
         result = await compose.interpreter_consultation_assemble_prompt(
             _payload("consultation.assemblePrompt", run_payload={})

@@ -25,8 +25,11 @@ interface FixtureEntry {
   defaultTimeoutSeconds: number;
   defaultMaxAttempts: number;
   entitlementKey: string | null;
-  /** TASK-809 OD-15 — the ONE port field that is SHARED, not TS-only. See the projection below. */
+  /** TASK-809 OD-15 — the FIRST port field that is SHARED, not TS-only. See the projection below. */
   outputKeys: Record<string, string | null>;
+  /** TASK-806 lane A item 7 — the SECOND shared field: it decides which runtime executes a node,
+   *  and the durable interpreter has to read it in order to skip a `realtime` one. */
+  lane: 'realtime' | 'durable';
 }
 
 function loadFixtureEntries(): FixtureEntry[] {
@@ -64,6 +67,7 @@ function projectRegistry(): FixtureEntry[] {
       defaultMaxAttempts: descriptor.defaultMaxAttempts,
       entitlementKey: descriptor.entitlementKey,
       outputKeys: Object.fromEntries(descriptor.outputs.map((port) => [port.name, port.outputKey ?? null])),
+      lane: descriptor.lane,
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
@@ -81,6 +85,16 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
 
   it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
+      // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+      'agent.discharge_summary',
+      'agent.dna_redaction',
+      'agent.feedback',
+      'agent.ner',
+      'agent.normalization',
+      'agent.presummarization',
+      'agent.retrieval',
+      'agent.summarization',
+      'agent.transcription',
       'consultation.assemblePrompt',
       'consultation.bindTerminology',
       'consultation.captureBinding',
@@ -103,6 +117,9 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       // asserted sorted so a future addition never looks like a reorder.
       'feedback.capture',
       'generate.text',
+      'guard.groundedness',
+      'guard.moderation',
+      'guard.phi',
       'guardrail.check',
       'input.context_binding',
       'noop',

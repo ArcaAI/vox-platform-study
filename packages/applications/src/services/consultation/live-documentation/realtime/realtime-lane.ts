@@ -19,28 +19,27 @@
  * that is the parity claim the cutover rests on, and it is a property of this
  * constant, not of a code path that happens to agree.
  *
- * ## Why lane membership is decided HERE and not by `WorkflowNodeDescriptor.lane`
+ * ## Lane membership comes from `WorkflowNodeDescriptor.lane` (TASK-806 lane A)
  *
- * `lane: 'realtime' | 'durable'` exists in `@arcaai/workflow-contract`, and every
- * one of the 33 registered node types is `durable` today. Flipping the three
- * consultation nodes this runtime implements is NOT a change this ticket can
- * make, for two independent reasons:
+ * It did not, and the reasons it could not are worth keeping because both were
+ * removed rather than worked around:
  *
- *  1. `nodeDescriptorContractProblems` (`port-validation.ts`) declares that a
- *     `realtime` node MUST NOT be `externalWrite: true` — and both
- *     `consultation.realtimeSummary` and `consultation.extractEntities` ARE
- *     `externalWrite: true` (they publish to the live feed and persist entities).
- *     The flip is refused by the contract package's own rule.
- *  2. Nothing reads `lane` yet. The DURABLE interpreter that would have to SKIP a
- *     realtime node lives in `apps/harness/**`. Flipping the flag without that
- *     half would declare a split no runtime enforces — and for
- *     `consultation.realtimeSummary` (`externalWrite: true`) that means two
- *     engines writing one consultation's document.
+ *  1. `nodeDescriptorContractProblems` (`port-validation.ts`) refused a
+ *     `realtime` node that was `externalWrite: true` — which both
+ *     `consultation.realtimeSummary` and `consultation.extractEntities` are.
+ *     That rule was written before this runtime existed and this runtime
+ *     falsifies it: publishing the running note to the live feed IS the realtime
+ *     lane's product. The rule is gone; see that function's docstring.
+ *  2. Nothing read `lane`. The durable interpreter now does — `lane` is a shared
+ *     registry field and `_dispatch_node` SKIPS a `realtime` node with
+ *     `reason="realtime_lane"` (`apps/harness/.../interpreter/workflow.py`), so
+ *     exactly one runtime executes a given node and the "two engines writing one
+ *     consultation's document" hazard is closed structurally.
  *
- * So membership is `REALTIME_NODE_TYPES` in `realtime-node-registry.ts`: the set
- * of node types this runtime can actually execute. That is a claim this package
- * can back. Reconciling it with `descriptor.lane` is a coordinated change across
- * `workflow-contract` + `apps/harness` and needs an owner decision.
+ * `REALTIME_NODE_TYPES` (`realtime-node-registry.ts`) is therefore DERIVED from
+ * the contract rather than hand-kept beside it, and `REALTIME_NODE_HANDLERS` is
+ * asserted total over it — a node flipped to `realtime` with no handler here is a
+ * failing test, not a silent no-op at flush time.
  */
 import type { CompiledInputBinding, CompiledWorkflowConfig } from '@arcaai/workflow-contract';
 import { REALTIME_NODE_TYPES } from './realtime-node-registry';

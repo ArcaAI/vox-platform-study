@@ -17,7 +17,7 @@
       "id": "n_terminology",
       "type": "consultation.bindTerminology",
       "config": {
-        "purposeScope": "clinical-coding",
+        "purposeScope": "EXTERNAL_TOOL_LOOKUP",
         "unmappedOutputKey": "unmapped"
       }
     },

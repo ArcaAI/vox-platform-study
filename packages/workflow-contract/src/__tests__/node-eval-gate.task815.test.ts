@@ -31,6 +31,10 @@ import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schem
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
 const PROMPT_CARRYING_KEYS = [
+  // TASK-806 lane A — DD-9's three generation entries reuse `consultation.synthesize`'s schema.
+  'agent.presummarization',
+  'agent.summarization',
+  'agent.discharge_summary',
   'prompt.template_ref',
   'generate.text',
   'consultation.assemblePrompt',
@@ -41,6 +45,9 @@ const PROMPT_CARRYING_KEYS = [
 ] as const;
 
 const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, unknown>> = {
+  'agent.presummarization': { producesCode: false, onError: 'fail' },
+  'agent.summarization': { producesCode: false, onError: 'fail' },
+  'agent.discharge_summary': { producesCode: false, onError: 'fail' },
   'prompt.template_ref': { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' },
   'generate.text': { taskKey: 'text.finalize' },
   'consultation.assemblePrompt': { requiresFinalized: true, onError: 'fail' },

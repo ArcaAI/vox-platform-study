@@ -23,6 +23,19 @@ describe('NODE_CONFIG_SCHEMAS', () => {
   it('carries a schema for every node type in the registry except `passthrough` (TASK-809 D-9)', () => {
     expect(Object.keys(NODE_CONFIG_SCHEMAS).sort()).toEqual(
       [
+        // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+        'agent.discharge_summary',
+        'agent.dna_redaction',
+        'agent.feedback',
+        'agent.ner',
+        'agent.normalization',
+        'agent.presummarization',
+        'agent.retrieval',
+        'agent.summarization',
+        'agent.transcription',
+        'guard.groundedness',
+        'guard.moderation',
+        'guard.phi',
         'consultation.assemblePrompt',
         'consultation.bindTerminology',
         'consultation.captureBinding',
@@ -163,8 +176,12 @@ describe('consultation.* config schemas (D-9)', () => {
     }
   });
 
-  it('consultation.consentGate accepts no config at all', () => {
-    expect(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties).toEqual({});
+  it('consultation.consentGate accepts no config OF ITS OWN — only the palette-agnostic runtime knobs', () => {
+    // The gate's activity reads no `payload.config` (`nodes/consultation.py:44`). It is not
+    // `gate`-classed, though, so the compiler routes it through `compileNode`, which DOES read
+    // `timeoutSeconds`/`retry` off every node — see the ADDENDUM at the foot of
+    // `node-config-schemas.ts` (TASK-806 lane A, item 5).
+    expect(Object.keys(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties as object).sort()).toEqual(['retry', 'timeoutSeconds']);
   });
 
   /**
@@ -280,6 +297,11 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
 describe('DD-11 prompt binding survives a config-schema round-trip', () => {
   /** Node types that may legitimately carry a prompt binding. */
   const PROMPT_CARRYING_KEYS = [
+    // TASK-806 lane A — DD-9's three generation entries share `consultation.synthesize`'s
+    // schema, so they inherit the DD-11 prompt binding with it.
+    'agent.presummarization',
+    'agent.summarization',
+    'agent.discharge_summary',
     'prompt.template_ref',
     'generate.text',
     'consultation.assemblePrompt',
@@ -292,6 +314,9 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
   /** A minimal config satisfying each schema's own `required`, so the assertions below fail on
    *  the BINDING and never on an unrelated missing field. */
   const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, unknown>> = {
+    'agent.presummarization': { producesCode: false, onError: 'fail' },
+    'agent.summarization': { producesCode: false, onError: 'fail' },
+    'agent.discharge_summary': { producesCode: false, onError: 'fail' },
     'prompt.template_ref': {},
     'generate.text': { taskKey: 'text.finalize' },
     'consultation.assemblePrompt': { requiresFinalized: true, onError: 'fail' },
@@ -377,6 +402,9 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
 describe('DD-2 document-template binding survives a config-schema round-trip', () => {
   /** Node types that PRODUCE a document — i.e. exactly the registry's `generation` class. */
   const DOCUMENT_CARRYING_KEYS = [
+    'agent.presummarization',
+    'agent.summarization',
+    'agent.discharge_summary',
     'generate.text',
     'consultation.synthesize',
     'consultation.realtimeSummary',
@@ -387,6 +415,9 @@ describe('DD-2 document-template binding survives a config-schema round-trip', (
   /** Minimal configs satisfying each schema's own `required`, so the assertions below fail on
    *  the BINDING and never on an unrelated missing field. */
   const DOCUMENT_BASE_CONFIG: Record<(typeof DOCUMENT_CARRYING_KEYS)[number], Record<string, unknown>> = {
+    'agent.presummarization': { producesCode: false, onError: 'fail' },
+    'agent.summarization': { producesCode: false, onError: 'fail' },
+    'agent.discharge_summary': { producesCode: false, onError: 'fail' },
     'generate.text': { taskKey: 'text.finalize' },
     'consultation.synthesize': { producesCode: false, onError: 'fail' },
     'consultation.realtimeSummary': { onError: 'degrade' },

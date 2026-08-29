@@ -260,6 +260,24 @@ class WorkflowInterpreter:
                 reason="unsupported_node_type",
             )
 
+        # TASK-806 lane A (item 7) — LANE OWNERSHIP. A `realtime` node belongs to TASK-811's
+        # live executor, not to this durable interpreter, and exactly one runtime must execute
+        # any given node: `consultation.realtimeSummary` is `external_write`, so both running it
+        # means two engines writing one consultation's document.
+        #
+        # This loses nothing that was working. In THIS lane `consultation.captureBinding` emits no
+        # transcript, so `consultation.extractEntities` and `consultation.realtimeSummary` already
+        # degraded on `no_bound_text` every run. The skip turns a silent degrade into an
+        # OBSERVABLE one that names the runtime which owns the work — the same discipline as
+        # `unsupported_node_type` above, and never a silent no-op.
+        if spec.lane == "realtime":
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="SKIPPED",
+                reason="realtime_lane",
+            )
+
         # S-4: the callable that gets invoked always comes from the registry; the wire's
         # `activity` string is only a consistency check, never trusted for routing.
         if node.activity != spec.activity_name:

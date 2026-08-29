@@ -96,37 +96,43 @@ describe('schemaVersion is pinned to the key suffix (never reshape a published n
   });
 });
 
-describe('publish-time rule 3 — a durable-lane node MUST be idempotent (Temporal retries activities)', () => {
+describe('publish-time rule 3 — EVERY node MUST be idempotent, in either lane', () => {
   it('holds for every node in the live registry', () => {
-    for (const descriptor of DESCRIPTORS) {
-      if (descriptor.lane === 'durable') expect(descriptor.idempotent).toBe(true);
-    }
+    for (const descriptor of DESCRIPTORS) expect(descriptor.idempotent, descriptor.key).toBe(true);
   });
 
   it('REJECTS a durable node that is not idempotent', () => {
     const problems = nodeDescriptorContractProblems(descriptorFixture({ lane: 'durable', idempotent: false }));
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('idempotent');
-    expect(problems[0]).toContain('durable');
   });
 
-  it('does not impose idempotency on a realtime node', () => {
-    expect(nodeDescriptorContractProblems(descriptorFixture({ lane: 'realtime', idempotent: false }))).toEqual([]);
+  // TASK-806 lane A, item 7. The rule used to exempt the realtime lane, which was wrong for the
+  // same reason it was wrong for the durable one: TASK-811's realtime executor retries a node up
+  // to its compiled `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode.maxAttempts`), so
+  // a non-idempotent realtime node double-writes on a retry nobody sees.
+  it('REJECTS a realtime node that is not idempotent — the realtime executor retries too', () => {
+    const problems = nodeDescriptorContractProblems(descriptorFixture({ lane: 'realtime', idempotent: false }));
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('idempotent');
   });
 });
 
-describe('publish-time rule 4 — a realtime-lane node MUST NOT declare externalWrite', () => {
-  it('holds for every node in the live registry', () => {
-    for (const descriptor of DESCRIPTORS) {
-      if (descriptor.lane === 'realtime') expect(descriptor.externalWrite).toBe(false);
-    }
-  });
-
-  it('REJECTS a realtime node that performs an external write', () => {
-    const problems = nodeDescriptorContractProblems(descriptorFixture({ lane: 'realtime', externalWrite: true, idempotent: false }));
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('externalWrite');
-    expect(problems[0]).toContain('realtime');
+/**
+ * TASK-806 lane A, item 7 — the rule TASK-809 §2b wrote as "a realtime-lane node MUST NOT be
+ * `externalWrite`" is GONE, and its removal is asserted rather than merely done: a rule that is
+ * silently dropped comes back.
+ *
+ * It was written before a realtime runtime existed and the runtime falsified it. Two of the three
+ * node types TASK-811's executor implements write — `consultation.realtimeSummary` publishes each
+ * interim summary to the live consultation feed, which IS the realtime lane's product. See
+ * `port-validation.ts`'s `nodeDescriptorContractProblems` docstring for the full argument,
+ * including why the hazard it was reaching for (two runtimes executing one node) is now closed
+ * structurally by the durable interpreter's `realtime_lane` skip instead.
+ */
+describe('a realtime-lane node MAY declare externalWrite', () => {
+  it('accepts a realtime node that writes', () => {
+    expect(nodeDescriptorContractProblems(descriptorFixture({ lane: 'realtime', externalWrite: true, idempotent: true }))).toEqual([]);
   });
 
   it('permits externalWrite on the durable lane — that is where every persistence node lives', () => {

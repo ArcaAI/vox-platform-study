@@ -1,6 +1,140 @@
 {
-  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with the consultation palette. The consultation palette now carries ALL THIRTEEN node types of docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table: TASK-731 shipped three (consentGate, phiHop, hitlGate) and left ten specified-but-unwired, which made the palette unbuildable because DRAFT_CONSULTATION_RULE_SET names nine node types by key; the remaining ten interpreter wrappers were added later over the compile targets palette-contract.md §1 had already verified. consultation.hitlGate remains implemented:false, a documented placeholder pending the interpreter's own durable-wait extension (Phase B), so compile() still refuses any graph containing it. Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. Also carries the two palette-agnostic GRAPH BOUNDARY MARKERS `core.start`/`core.end` (TS class `boundary`): the palette-independent structural rules WF-S-002/003/004/007 are written against these literal node types, so until they were registered no graph in any palette could validate — the platform's own seeded summarization graph scored 17 errors against its own validator. They execute nothing but are `implemented: true` because compile() refuses any graph containing an unimplemented type. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. Extended by TASK-791 with R3's three missing capabilities — consultation.realtimeSummary, consultation.suggestions and consultation.proposeCorrections — which TASK-789 verified had no node, activity or sensor anywhere. realtimeSummary is externalWrite:true because it publishes to the live consultation feed (so a sandboxed run skips it); suggestions and proposeCorrections are externalWrite:false because both are PROPOSAL surfaces that write nothing — proposeCorrections in particular must never be the thing that edits clinical text. Extended by TASK-809 OD-15 (option A) with `outputKeys`: the ONE port field that is deliberately SHARED rather than TS-only. A port NAME is an authoring handle (`out`, `entities`, `verdict`) — what the canvas draws and what a graph edge's fromPort/toPort names — but the interpreter threads values by reading a KEY out of the producing activity's own NodeActivityResult.output dict, and no activity has ever emitted a key called \"out\". Before OD-15 the only bridge was the interpreter's whole-object fallback, which is exactly the untyped bundle the port vocabulary exists to abolish. `outputKeys` maps EVERY declared output port name to the key it carries, or to null for a `control` port, which carries no payload at all — that null is what lets _resolve_bound_inputs tell a legitimate ordering edge apart from an edge naming a port that does not exist (the latter raises). Asserted from BOTH sides exactly like every other field here; adding it to one language's projection without the other is a failing test, not a silent drift. Extended by TASK-812 with the ENDPOINT STAGE's three node types — session.timeout, summary.finalize and feedback.capture — the ordered sequence that runs before a consultation session closes. All three are trigger:'on-end', lane:'durable' and therefore idempotent (TS-only fields; the durable-lane idempotency rule is enforced by nodeDescriptorContractProblems, not by this fixture). All three are externalWrite:true: session.timeout stamps the consultation's endpoint disposition, summary.finalize LOCKS every document of the consultation (DD-3, not just the SOAP note), and feedback.capture promotes an ACCEPTED advisory transcript correction over the raw channel (DD-8 — the only path that can; consultation.proposeCorrections stays externalWrite:false and never applies anything). Their outputKeys carry the control port only: each one's product is a state change, not a value, exactly like output.deliver.",
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with the consultation palette. The consultation palette now carries ALL THIRTEEN node types of docs/implementation/TASK-731-Palette-Consultation/contracts/node-types.md's node table: TASK-731 shipped three (consentGate, phiHop, hitlGate) and left ten specified-but-unwired, which made the palette unbuildable because DRAFT_CONSULTATION_RULE_SET names nine node types by key; the remaining ten interpreter wrappers were added later over the compile targets palette-contract.md §1 had already verified. consultation.hitlGate remains implemented:false, a documented placeholder pending the interpreter's own durable-wait extension (Phase B), so compile() still refuses any graph containing it. Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. Also carries the two palette-agnostic GRAPH BOUNDARY MARKERS `core.start`/`core.end` (TS class `boundary`): the palette-independent structural rules WF-S-002/003/004/007 are written against these literal node types, so until they were registered no graph in any palette could validate — the platform's own seeded summarization graph scored 17 errors against its own validator. They execute nothing but are `implemented: true` because compile() refuses any graph containing an unimplemented type. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. Extended by TASK-791 with R3's three missing capabilities — consultation.realtimeSummary, consultation.suggestions and consultation.proposeCorrections — which TASK-789 verified had no node, activity or sensor anywhere. realtimeSummary is externalWrite:true because it publishes to the live consultation feed (so a sandboxed run skips it); suggestions and proposeCorrections are externalWrite:false because both are PROPOSAL surfaces that write nothing — proposeCorrections in particular must never be the thing that edits clinical text. Extended by TASK-809 OD-15 (option A) with `outputKeys`: the ONE port field that is deliberately SHARED rather than TS-only. A port NAME is an authoring handle (`out`, `entities`, `verdict`) — what the canvas draws and what a graph edge's fromPort/toPort names — but the interpreter threads values by reading a KEY out of the producing activity's own NodeActivityResult.output dict, and no activity has ever emitted a key called \"out\". Before OD-15 the only bridge was the interpreter's whole-object fallback, which is exactly the untyped bundle the port vocabulary exists to abolish. `outputKeys` maps EVERY declared output port name to the key it carries, or to null for a `control` port, which carries no payload at all — that null is what lets _resolve_bound_inputs tell a legitimate ordering edge apart from an edge naming a port that does not exist (the latter raises). Asserted from BOTH sides exactly like every other field here; adding it to one language's projection without the other is a failing test, not a silent drift. Extended by TASK-812 with the ENDPOINT STAGE's three node types — session.timeout, summary.finalize and feedback.capture — the ordered sequence that runs before a consultation session closes. All three are trigger:'on-end', lane:'durable' and therefore idempotent (TS-only fields; the durable-lane idempotency rule is enforced by nodeDescriptorContractProblems, not by this fixture). All three are externalWrite:true: session.timeout stamps the consultation's endpoint disposition, summary.finalize LOCKS every document of the consultation (DD-3, not just the SOAP note), and feedback.capture promotes an ACCEPTED advisory transcript correction over the raw channel (DD-8 — the only path that can; consultation.proposeCorrections stays externalWrite:false and never applies anything). Their outputKeys carry the control port only: each one's product is a state change, not a value, exactly like output.deliver. Extended by TASK-806 lane A with the TARGET CATALOGUE (TASK-809 DD-6/DD-9) — nine agent.* node types — and the three guard.* node types of DD-7, plus a SECOND shared field, `lane`. Every agent.*/guard.* entry is a thin DELEGATION to an engine already registered above (see apps/harness/src/harness/temporal/interpreter/nodes/agent_catalogue.py and nodes/guards.py for the mapping), so there are two names and one implementation rather than a second behaviour to keep in step; they are registered alongside the pipeline keys rather than instead of them, because a node type is a contract with every saved tenant graph and both committed seeds name the pipeline keys. `lane` is shared for the same reason `outputKeys` is — it changes what the interpreter DOES: a `realtime` node belongs to TASK-811 s live executor, so _dispatch_node SKIPS it with reason=\"realtime_lane\" and exactly one runtime ever executes a given node. Before this, descriptor.lane said \"durable\" on all 36 entries while REALTIME_NODE_TYPES (a hand-kept set in the applications layer) said otherwise for three of them, and the durable interpreter read neither — which for consultation.realtimeSummary (externalWrite:true) meant two engines could write one consultation s document. The three flipped entries lose nothing that was working: in the durable lane consultation.captureBinding emits no transcript, so extractEntities and realtimeSummary already degraded on no_bound_text every run.",
   "entries": [
+    {
+      "key": "agent.discharge_summary",
+      "implemented": true,
+      "activityName": "interpreter.agent_discharge_summary",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.dna_redaction",
+      "implemented": true,
+      "activityName": "interpreter.agent_dna_redaction",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.feedback",
+      "implemented": true,
+      "activityName": "interpreter.agent_feedback",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.ner",
+      "implemented": true,
+      "activityName": "interpreter.agent_ner",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "entities",
+        "next": null
+      },
+      "lane": "realtime"
+    },
+    {
+      "key": "agent.normalization",
+      "implemented": true,
+      "activityName": "interpreter.agent_normalization",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "entities",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.presummarization",
+      "implemented": true,
+      "activityName": "interpreter.agent_presummarization",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.retrieval",
+      "implemented": true,
+      "activityName": "interpreter.agent_retrieval",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "context",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.summarization",
+      "implemented": true,
+      "activityName": "interpreter.agent_summarization",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agent.transcription",
+      "implemented": true,
+      "activityName": "interpreter.agent_transcription",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "transcript",
+        "next": null
+      },
+      "lane": "realtime"
+    },
     {
       "key": "consultation.assemblePrompt",
       "implemented": true,
@@ -13,7 +147,8 @@
       "outputKeys": {
         "out": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.bindTerminology",
@@ -27,7 +162,8 @@
       "outputKeys": {
         "out": "entities",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.captureBinding",
@@ -41,7 +177,8 @@
       "outputKeys": {
         "out": "transcript",
         "next": null
-      }
+      },
+      "lane": "realtime"
     },
     {
       "key": "consultation.consentGate",
@@ -55,7 +192,8 @@
       "outputKeys": {
         "out": null,
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.extractEntities",
@@ -69,7 +207,8 @@
       "outputKeys": {
         "out": "entities",
         "next": null
-      }
+      },
+      "lane": "realtime"
     },
     {
       "key": "consultation.finalizeAssurance",
@@ -83,7 +222,8 @@
       "outputKeys": {
         "contextItemId": "contextItemId",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.hitlGate",
@@ -97,7 +237,8 @@
       "outputKeys": {
         "out": null,
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.inferentialSensors",
@@ -112,7 +253,8 @@
         "out": "verdict",
         "document": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.persistDraft",
@@ -127,7 +269,8 @@
         "out": "text",
         "contextItemId": "contextItemId",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.phiHop",
@@ -141,7 +284,8 @@
       "outputKeys": {
         "out": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.proposeCorrections",
@@ -155,7 +299,8 @@
       "outputKeys": {
         "out": "proposals",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.realtimeSummary",
@@ -169,7 +314,8 @@
       "outputKeys": {
         "out": "text",
         "next": null
-      }
+      },
+      "lane": "realtime"
     },
     {
       "key": "consultation.retrieveEvidence",
@@ -183,7 +329,8 @@
       "outputKeys": {
         "out": "context",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.sensors",
@@ -198,7 +345,8 @@
         "out": "verdict",
         "document": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.suggestions",
@@ -212,7 +360,8 @@
       "outputKeys": {
         "out": "suggestions",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "consultation.synthesize",
@@ -226,7 +375,8 @@
       "outputKeys": {
         "out": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "core.end",
@@ -237,7 +387,8 @@
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 1,
       "entitlementKey": null,
-      "outputKeys": {}
+      "outputKeys": {},
+      "lane": "durable"
     },
     {
       "key": "core.start",
@@ -250,7 +401,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "feedback.capture",
@@ -263,7 +415,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "generate.text",
@@ -277,7 +430,54 @@
       "outputKeys": {
         "out": "text",
         "next": null
-      }
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.groundedness",
+      "implemented": true,
+      "activityName": "interpreter.guard_groundedness",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.moderation",
+      "implemented": true,
+      "activityName": "interpreter.guard_moderation",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "guard.phi",
+      "implemented": true,
+      "activityName": "interpreter.guard_phi",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "text": "text",
+        "next": null
+      },
+      "lane": "durable"
     },
     {
       "key": "guardrail.check",
@@ -291,7 +491,8 @@
       "outputKeys": {
         "out": "verdict",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "input.context_binding",
@@ -305,7 +506,8 @@
       "outputKeys": {
         "out": "context",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "noop",
@@ -318,7 +520,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "output.deliver",
@@ -331,7 +534,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "passthrough",
@@ -344,7 +548,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "prompt.template_ref",
@@ -358,7 +563,8 @@
       "outputKeys": {
         "out": "content",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "session.timeout",
@@ -371,7 +577,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.asrEngine",
@@ -386,7 +593,8 @@
         "out": "transcript",
         "loop": null,
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.audioInput",
@@ -401,7 +609,8 @@
         "out": "audio",
         "bypass": "audio",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.diarization",
@@ -415,7 +624,8 @@
       "outputKeys": {
         "out": "audio",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.languageDetection",
@@ -429,7 +639,8 @@
       "outputKeys": {
         "out": "audio",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.noiseFilter",
@@ -443,7 +654,8 @@
       "outputKeys": {
         "out": "audio",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.phiHop",
@@ -457,7 +669,8 @@
       "outputKeys": {
         "out": "transcript",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.transcriptOutput",
@@ -471,7 +684,8 @@
       "outputKeys": {
         "loop": null,
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "stt.vad",
@@ -485,7 +699,8 @@
       "outputKeys": {
         "out": "audio",
         "next": null
-      }
+      },
+      "lane": "durable"
     },
     {
       "key": "summary.finalize",
@@ -498,7 +713,8 @@
       "entitlementKey": null,
       "outputKeys": {
         "next": null
-      }
+      },
+      "lane": "durable"
     }
   ]
 }
