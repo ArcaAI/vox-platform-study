@@ -151,9 +151,13 @@ export interface IConsultationWorkflowDispatchService {
    *     slug, an unknown slug, and an unpublished/inactive one are deliberately
    *     indistinguishable: a 403 for any of them would confirm the slug exists (404-over-403).
    *   * `ForbiddenException` (403) — the definition is VISIBLE to this tenant (published +
-   *     active, so `GET /workflows` already lists it) but belongs to a palette that cannot
-   *     govern a consultation. Hiding a resource the caller can already see would be theatre,
-   *     and a 404 here would send an author hunting for a row that is plainly there.
+   *     active, so it already appears on the tenant's own workflow-authoring surface, `GET
+   *     admin/workflow-definitions`) but belongs to a palette that cannot govern a consultation.
+   *     `GET /workflows`, the public exposure-plane listing, is NOT that visibility surface — it
+   *     excludes every palette but `summarization` (`EXPOSURE_ALLOWED_PALETTES`), so a `consultation`
+   *     or `stt` selection refused here was never listed there either. Hiding a resource the caller
+   *     can already see (via authoring) would be theatre, and a 404 here would send an author
+   *     hunting for a row that is plainly there.
    *
    * `tenantId` is the caller's resolved tenant, never a request field.
    */

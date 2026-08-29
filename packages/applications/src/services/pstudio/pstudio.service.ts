@@ -11,6 +11,21 @@ type StudioExecutor = {
   execute(query: unknown, options?: unknown): Promise<[Error] | [null, unknown]>;
 };
 
+/**
+ * Prisma's connection-string-only `?schema=` query param is not understood by
+ * the `postgres` (postgres.js) driver below: an unrecognized query param is
+ * forwarded to the server as a startup/session GUC, and Postgres rejects it
+ * with `unrecognized configuration parameter "schema"`. HOPE's `core` schema
+ * is already selected client-side (see pstudio.html.ts's
+ * `defaultSchema: 'core'` override), so the param carries no meaning for the
+ * raw driver connection and must be stripped before the driver sees it.
+ */
+export function stripPrismaSchemaParam(connectionString: string): string {
+  const url = new URL(connectionString);
+  url.searchParams.delete('schema');
+  return url.toString();
+}
+
 @Injectable()
 export class PrismaStudioService implements IPrismaStudioService, OnModuleDestroy {
   private readonly logger = new Logger(PrismaStudioService.name);
@@ -25,7 +40,7 @@ export class PrismaStudioService implements IPrismaStudioService, OnModuleDestro
         throw new Error('DATABASE_URL environment variable is not set');
       }
 
-      this.sqlInstance = postgres(connectionString);
+      this.sqlInstance = postgres(stripPrismaSchemaParam(connectionString));
       this.executorInstance = createPostgresJSExecutor(this.sqlInstance) as StudioExecutor;
     }
     return this.executorInstance;
