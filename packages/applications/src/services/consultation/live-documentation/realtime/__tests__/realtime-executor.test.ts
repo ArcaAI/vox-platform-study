@@ -412,3 +412,112 @@ describe('task 10 — budget and staleness are per node, not per flush', () => {
     expect(result.events.some((e) => e.status === 'stale')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Lane R (R3) — the loop the OWNER described, end to end through the executor
+// ---------------------------------------------------------------------------
+
+/**
+ * The acceptance bar for this lane is what a clinician SEES during a live session, and the
+ * executor is where the three things are produced. This walks one flush of the owner's loop —
+ * transcription → entity extraction → partial summarization → grammar/spelling — and asserts
+ * that each stage's product is really carried on the run's outputs, in the target catalogue's
+ * node names (the vocabulary a tenant graph is authored in).
+ *
+ * The names matter as much as the values: everything here is `agent.*`, so this is also the
+ * regression for the projection defect where a catalogue-authored graph ran and published
+ * nothing.
+ */
+describe('Lane R (R3) — one flush of the owner’s realtime loop yields all three products', () => {
+  const ownerLoop = (): RealtimeLane =>
+    laneOf([
+      [node({ nodeId: 'transcribe', type: 'agent.transcription' })],
+      [
+        node({ nodeId: 'ner', type: 'agent.ner', inputs: [{ fromNodeId: 'transcribe', fromPort: 'out', toPort: 'in' }] }),
+        node({ nodeId: 'summarize', type: 'consultation.realtimeSummary', inputs: [{ fromNodeId: 'transcribe', fromPort: 'out', toPort: 'in' }] }),
+      ],
+      [
+        node({
+          nodeId: 'grammar',
+          type: 'agent.grammar',
+          config: { promptTemplateId: 'tpl-corrections', onError: 'degrade' },
+          inputs: [
+            { fromNodeId: 'transcribe', fromPort: 'out', toPort: 'in' },
+            { fromNodeId: 'ner', fromPort: 'out', toPort: 'entities' },
+          ],
+        }),
+      ],
+    ]);
+
+  const loopCapabilities = () =>
+    capabilities({
+      proposeCorrections: vi.fn().mockResolvedValue({
+        proposals: [{ proposalId: 'p1', start: 0, end: 7, original: 'patient', proposed: 'Patient' }],
+        textSha256: 'sha-of-transcript',
+        rejectedProposals: 0,
+      }),
+    });
+
+  it('produces a transcript, entities, a document and correction proposals in one run', async () => {
+    const caps = loopCapabilities();
+    const result = await run(ownerLoop(), caps);
+
+    expect(result.failed).toBe(false);
+    expect(result.outcomes.map((o) => o.status)).toEqual(['succeeded', 'succeeded', 'succeeded', 'succeeded']);
+
+    // 1. the partial transcript the session ingested
+    expect(result.outputs.get('transcribe')?.transcript).toBe('patient reports cough and takes aspirin');
+    // 2. the entities the UI highlights
+    expect(result.outputs.get('ner')?.entities).toEqual([{ text: 'aspirin', type: 'MEDICATION' }]);
+    // 3. the partial summary
+    expect(result.outputs.get('summarize')?.text).toBe('Assessment: viral URI.');
+    // 4. the advisory corrections — ADVISORY, which is the property that makes them publishable
+    //    alongside the raw transcript rather than over it.
+    expect(result.outputs.get('grammar')?.proposals).toHaveLength(1);
+    expect(result.outputs.get('grammar')?.applied).toBe(false);
+  });
+
+  it('feeds the grammar pass the RAW transcript and the SAME flush’s entities — not a second NER call', async () => {
+    const caps = loopCapabilities();
+    await run(ownerLoop(), caps);
+
+    expect(caps.extractEntities).toHaveBeenCalledTimes(1);
+    expect(caps.proposeCorrections).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceText: 'patient reports cough and takes aspirin',
+        entities: [{ text: 'aspirin', type: 'MEDICATION' }],
+        config: { promptTemplateId: 'tpl-corrections', onError: 'degrade' },
+      }),
+      undefined,
+    );
+  });
+
+  it('REFUSES to wire the generated note into the grammar pass — corrections review what was SAID', async () => {
+    // The same anti-laundering guarantee `agent.ner` carries, and for a related reason: a
+    // correction proposed over the model's own prose would offer the clinician an edit to text
+    // nobody spoke, anchored to offsets in a document rather than in the transcript.
+    const laundered = laneOf([
+      [node({ nodeId: 'transcribe', type: 'agent.transcription' })],
+      [node({ nodeId: 'summarize', type: 'consultation.realtimeSummary', inputs: [{ fromNodeId: 'transcribe', fromPort: 'out', toPort: 'in' }] })],
+      [node({ nodeId: 'grammar', type: 'agent.grammar', inputs: [{ fromNodeId: 'summarize', fromPort: 'out', toPort: 'in' }] })],
+    ]);
+
+    await expect(run(laundered, loopCapabilities())).rejects.toBeInstanceOf(RealtimeBindingError);
+  });
+
+  it('an unconfigured grammar prompt DEGRADES visibly instead of silently proposing nothing', async () => {
+    // The prompt is CONFIG. A node with none is a misconfiguration, and the clinician-facing
+    // difference between "no corrections were found" and "this node was never configured" is the
+    // whole reason degrade is never silent.
+    const caps = capabilities({
+      proposeCorrections: vi.fn().mockRejectedValue(new Error('no_correction_prompt_bound')),
+    });
+    const result = await run(ownerLoop(), caps);
+
+    const grammar = result.outcomes.find((o) => o.nodeId === 'grammar');
+    expect(grammar?.status).toBe('degraded');
+    expect(result.events.map((e) => e.nodeId)).toContain('grammar');
+    // ...and the rest of the flush is untouched: the note still publishes.
+    expect(result.outputs.get('summarize')?.text).toBe('Assessment: viral URI.');
+  });
+});
