@@ -61,23 +61,39 @@ in-region GPU instances — "cloud" without a policy change.
 
 ## 3. Wiring Text to the engines
 
-Text loads every provider config at startup; point its `base_url` at the running
-server to make the engine available (see `apps/text/.env.prod` —
-Text gates a provider by the PRESENCE of its connection config, not an
-`enabled` flag, so there is no `TEXT_VLLM_ENABLED`/`TEXT_LLAMA_CPP_ENABLED`).
+> **Corrected 2026-08-30 (TASK-818 Wave 0, V-2).** This section previously documented
+> an env-var wiring model — `TEXT_VLLM_BASE_URL`, `TEXT_LLAMA_CPP_BASE_URL`,
+> `apps/text/.env.prod`. **None of it exists.** Those variables were deleted with the
+> engine sub-configs (TASK-736 / TASK-799) and are now BANNED BY NAME in
+> `test_task799_config_surface.py`; `apps/text/.env.prod` has never existed in this
+> checkout. Setting any of them has no effect whatsoever. The instructions below are
+> the real ones.
 
-```bash
-# vLLM (OpenAI wire; base_url INCLUDES /v1; /health + /metrics at the root)
-TEXT_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
-TEXT_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
+Text holds **no engine endpoint of its own**. Every self-hosted adapter is fail-closed
+on a caller-supplied `base_url` (`text.core.connection.require_base_url`), and
+`core/config.py` declares nine bootstrap fields with no provider block, model id or
+credential among them.
 
-# llama.cpp (native /completion; GGUF tier)
-TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
-```
+**To make an engine reachable, seed an `AiProviderConnection` row** — SYSTEM tenant for
+a platform default, or the tenant's own row for BYO:
 
-Model routing stays caller-authoritative (D-7): the `provider` + `model` on each
-`/generate` request pick the engine and model. `AiTaskDefault` / `HarnessPolicy`
-own the per-task selection (`text.live` / `text.finalize`, control-plane phase).
+| Column | vLLM | llama.cpp |
+|---|---|---|
+| `service` | `llm` | `llm` |
+| `provider` | `vllm` | `llama-cpp` |
+| `baseUrl` | `http://hope-vllm:8000/v1` (**includes `/v1`**; `/health` + `/metrics` sit at the root) | `http://hope-llama-cpp:8080` |
+| `enabled` | `true` | `true` |
+
+Resolution is **tenant → SYSTEM, two tiers**, fail-closed when neither exists. An absent
+row means "no opinion" (the SYSTEM default applies); a **disabled** row is a veto in both
+tiers. Self-hosted engines are SYSTEM-only — tenant rows are for cloud APIs with BYO keys.
+
+**Per-task model selection has moved.** As of TASK-816 Phase 1 the three node-reachable
+keys — `text.live`, `text.finalize`, `text.test` — resolve from a workflow node's
+per-node **`llmBinding`**, and the `{provider, model}` pair sent to `apps/text` is DERIVED
+from the `AiModel` row the binding's slug names. `AiTaskDefault` survives as the selection
+tier for **non-node capabilities only** (the peer services: `apps/guardrail`, `apps/nlp`).
+Do not add new `text.*` rows to `AiTaskDefault` expecting a node to read them.
 
 > **Deferred provider-accept wiring** (owned by parallel agents, NOT in this
 > ticket): guardrail engine selector + harness `JudgeConfig.provider` accepting
