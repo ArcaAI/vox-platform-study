@@ -83,14 +83,47 @@ export class DocumentSectionRepository extends Repository<DocumentSectionEntity,
   /**
    * Encrypt the entity's transient plaintext `content` under the PHI Transit key
    * and store the ciphertext in `encryptedContent` (+ key version). Mutates in
-   * place; the caller persists. No-op when `content` is empty/null, so it is
-   * safe to call unconditionally.
+   * place; the caller persists.
+   *
+   * `encryptStringToCiphertext` returns `null` for BOTH "no content was
+   * supplied" (`undefined`/`null`) and "the content is now the empty string",
+   * and on this model those are OPPOSITE instructions — so the two are
+   * separated here rather than collapsed into one early return:
+   *
+   *  - **`undefined` / `null` — no opinion.** The caller is updating something
+   *    other than the body (or the row is not yet migrated). Leave the stored
+   *    ciphertext exactly as it is. This is the original no-op, unchanged.
+   *  - **`''` — the body is now empty.** `content` is TRANSIENT: there is no
+   *    plaintext column, so `encryptedContent` is the only place a deletion can
+   *    be recorded. Returning early here would leave the OLD ciphertext on a row
+   *    whose `state`, `revision` and `_version` have already advanced past it —
+   *    the clinician gets `200` and their deleted text reappears on reload
+   *    (TASK-820). So the columns are cleared, as a matching pair: a null body
+   *    with a stale key version is incoherent, and `decryptCiphertextToString`
+   *    reads nothing from an empty ciphertext anyway.
+   *
+   * Only an empty STRING clears. `undefined`/`null` deliberately do not, because
+   * that is how a row reconstituted from columns arrives (there is no `content`
+   * column to hydrate), and treating that as a deletion would blank the body of
+   * every section touched by a write that never mentioned it.
+   *
+   * WHY HERE and not in the caller: this is the one function that owns "make
+   * `encryptedContent` agree with `content`", and both writers — the clinician
+   * edit and an authorized machine deletion — lose the deletion identically.
+   * Fixing it in `DocumentSectionStore` would close one lane and leave the other
+   * open. It does NOT touch who is ALLOWED to delete: `deletion-without-
+   * contradiction` still guards the machine writer, upstream and unchanged.
    */
   async encryptContentIntoEntity(entity: DocumentSectionEntity, secrets: SecretsServiceLike): Promise<void> {
     const result = await encryptStringToCiphertext(secrets, entity.content);
-    if (!result) return;
-    entity.encryptedContent = result.ciphertext;
-    entity.contentKeyVersion = result.keyVersion;
+    if (result) {
+      entity.encryptedContent = result.ciphertext;
+      entity.contentKeyVersion = result.keyVersion;
+      return;
+    }
+    if (entity.content !== '') return;
+    entity.encryptedContent = null;
+    entity.contentKeyVersion = null;
   }
 
   /** Decrypt `encryptedContent`; `null` when the section has no content yet. */
