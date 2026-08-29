@@ -620,9 +620,41 @@ database 1647 · applications 10375 · api 4029 · harness 1670 · gen:check no-
 | Item | Verdict |
 |---|---|
 | Partial transcript | **Works** (WS `/ws/stt/stream`, partial + final frames) |
-| …plus advisory corrections | **Made to work.** Channel and console panel already existed; the realtime lane now produces corrections per flush over the RAW transcript. Offsets are into the flush slice, pinned by `textSha256` — not session-global |
-| Partial summary + template autofill | **Works** — `DocumentTemplate` → compiled `responseFormat` schema → parsed into the template's checklist. **Caveat: tenant-default template only**; `realtimeSummary`'s own `documentTemplateId` is declared but inert in the realtime path |
-| **Important information highlighted** | **DOES NOT EXIST.** Entities reach the client re-anchored into the note so the UI *can* highlight them, but there is no red-flag / critical-value / allergy-alert / severity layer anywhere. `groundedness.flaggedSpans` flags UNGROUNDED MODEL TEXT — a different thing. **Owner design decision needed: what makes information "important"?** |
+| …plus advisory corrections | ~~**Made to work.**~~ **CORRECTED 2026-08-30 (TASK-821)** — this row was WRONG when written, and the orchestrator repeated it to the owner. Lane R made the pass POSSIBLE (node type `agent.grammar`, realtime handler, Python activity) and seeded it in NEITHER ArcaAI graph, so it ran for **no tenant at all**. What was true: channel and console panel already existed, and offsets are into the flush slice, pinned by `textSha256`. **Now genuinely runs**: TASK-821 seeds `n_grammar` on the capture branch of both graphs, bound to a SYSTEM-tenant platform-default instruction (`71000000-…-043`) — a node with no bound instruction would have degraded on every flush, which is the same "runs for nobody" in a different costume. See §14f |
+| Partial summary + template autofill | ~~**Works**~~ **CORRECTED 2026-08-30 (TASK-821)** — it worked on the PLATFORM-DEFAULT lane only. In graph mode `consultation.realtimeSummary`'s `in: transcript` was unwired in both seeded graphs while its **unread** `entities` port carried the only binding, and `RealtimeSummaryHandler` reads exactly one input (`boundText(ctx, 'in')`) — so the running note was generated from `''` on every flush of every graph-mode session. Fixed by wiring `n_capture.out → n_realtime.in`. The rest of the row still stands: `DocumentTemplate` → compiled `responseFormat` schema → parsed into the template's checklist. **Caveat: tenant-default template only**; `realtimeSummary`'s own `documentTemplateId` is declared but inert in the realtime path |
+| **Important information highlighted** | **DOES NOT EXIST.** Entities reach the client re-anchored into the note so the UI *can* highlight them, but there is no red-flag / critical-value / allergy-alert / severity layer anywhere. `groundedness.flaggedSpans` flags UNGROUNDED MODEL TEXT — a different thing. **Owner design decision needed: what makes information "important"?** *(Closed by Lane N — §17b.)* |
+
+> **The verdict vocabulary this table got wrong.** Two rows above claimed a capability the platform
+> could not deliver for any tenant, because both were assessed against the CODE rather than against
+> the SEEDED CONFIGURATION. "Registered", "implemented" and "handled" are statements about a code
+> path; **"runs" is a statement about a seeded graph**, and on this platform they are independent —
+> a node type with a handler and no seeded instance executes for nobody, and a seeded instance with
+> an unbound prompt degrades on every flush. Any future row in this table that says a realtime
+> capability works must name the graph it runs in and the binding it resolves.
+
+### 14f. TASK-821 — the two corrections above, as they were actually fixed
+
+Both nodes now hang off `n_capture` and rejoin at `n_entities`, and **that placement is forced by
+two independent constraints rather than chosen** (the same pair that decided `agent.important_findings`
+in §17b, plus one §17b did not have to state):
+
+1. **The rule set.** WF-CONS-012 is an `allPathsPassThrough` check, so a branch off capture that
+   rejoins anywhere downstream of `extractEntities` opens a route around it; rejoining after
+   synthesis skips the PHI hop (WF-CONS-009) and synthesis (WF-CONS-010).
+2. **Lane filtering.** `buildRealtimeLane` DROPS any binding whose producer is not itself a
+   `realtime` node. `consultation.phiHop.out` is also `transcript`-typed, so a transcript sourced
+   from it would validate, compile, and then be **silently unbound at flush time**.
+   `consultation.captureBinding` is the palette's only realtime producer of `transcript`.
+
+The seed's own docstring claim — *"`captureBinding -> realtimeSummary` is the clearest casualty: it
+jumps `extractEntities`, and WF-CONS-012 refuses it"* — was **false as stated** and is corrected in
+place. WF-CONS-012 constrains where a branch REJOINS, not whether the edge may exist; the edge was
+refused by the rest of the wiring (`n_realtime → n_terms`), not by the rule.
+
+`n_entities.out → n_realtime.entities` is **gone**, required twice over: it is a cycle once the
+summary is ordered into extraction, and `PLATFORM_REALTIME_LANE` leaves that same port unwired on
+purpose because wiring it *"would make the note wait for NER, serialising the two calls"*. The
+seeded graphs now agree with the lane they are meant to be at parity with.
 
 ### 14b. The finalization chain is NOT seeded — owner design call
 
@@ -999,7 +1031,16 @@ since OD-15.
 
 ### 17e. Reported, not closed
 
-- **`consultation.realtimeSummary` receives an EMPTY transcript in graph mode.** Its `in:
+> **§17e status, 2026-08-30 — the first two items are CLOSED by TASK-821.** Both are struck
+> through below rather than deleted, because the reports themselves were correct and are the record
+> of how they were found. The third remains open.
+
+- ~~**`consultation.realtimeSummary` receives an EMPTY transcript in graph mode.**~~ **CLOSED
+  (TASK-821)** by the GRAPH, not by a handler fallback: `n_capture.out → n_realtime.in`, rejoining
+  at `n_entities`. A handler fallback was rejected — it would have made the runtime resolve an
+  input the graph did not give it, which is the exact property the port architecture exists to
+  prevent, and it cannot distinguish "authored unwired" from "the producer degraded this turn".
+  See §14f. Original report: Its `in:
   transcript` is unwired in both seeded graphs — deliberately, because `captureBinding →
   realtimeSummary` jumps `extractEntities` and WF-CONS-012 refuses it — and the seed comment says
   the activity "resolves what it needs server-side". The REALTIME handler does not: it passes
@@ -1007,9 +1048,10 @@ since OD-15.
   compiled config (stage 3, `n_realtime <- [n_entities.out->entities]` only). Pre-existing, from
   OD-15/Lane R; fixing it needs either a rule change or a handler fallback, both of which are
   decisions rather than edits.
-- **`agent.grammar` is registered but never seeded.** Lane R added the node type, the realtime
-  handler and the Python activity, but neither ArcaAI graph contains one, so the live grammar pass
-  runs for no tenant today. Not in this lane's scope; noted because §14a records that item as
-  "Made to work".
+- ~~**`agent.grammar` is registered but never seeded.**~~ **CLOSED (TASK-821)** — `n_grammar` is
+  seeded on the capture branch of both ArcaAI graphs, bound to a SYSTEM-tenant platform-default
+  instruction. §14a corrected. Original report: Lane R added the node type, the realtime handler
+  and the Python activity, but neither ArcaAI graph contains one, so the live grammar pass runs for
+  no tenant today.
 - `port-validation.ts:222` still claims every descriptor declares `requires: []` — stale since
   Lane A, unchanged here.

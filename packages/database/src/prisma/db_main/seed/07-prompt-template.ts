@@ -158,6 +158,13 @@ export const TEMPLATE_IDS = {
   // binding rather than a cascade.
   IMPORTANT_FINDINGS_SYSTEM: '71000000-0000-0000-0000-000000000041',
   GROUNDING_POLICY_SYSTEM: '71000000-0000-0000-0000-000000000042',
+  // TASK-821 §17e — the LIVE GRAMMAR instruction, and the same tier for the same reason.
+  //
+  // `agent.grammar` was registered by Lane R and seeded by nothing, so the live grammar pass ran
+  // for no tenant. Seeding the NODE alone would not have changed that: the realtime handler
+  // resolves its system prompt from the node's `promptTemplateId` and THROWS when it is unbound,
+  // so an unbound node degrades on every flush — "runs for nobody" in a different costume.
+  LIVE_GRAMMAR_SYSTEM: '71000000-0000-0000-0000-000000000043',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
@@ -1302,6 +1309,43 @@ Transcript:
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['grounding-policy', 'system', 'platform-default'],
+  },
+  {
+    id: TEMPLATE_IDS.LIVE_GRAMMAR_SYSTEM,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
+    name: 'Live Transcript Corrections (platform default)',
+    description:
+      "Platform-default instruction for the `agent.grammar` node — the LIVE grammar/spelling pass over the raw partial transcript. A tenant admin overrides it by binding their own template on the node.",
+    // Two things this body is careful about, both patient-safety rather than style.
+    //
+    // The three CATEGORIES are named because they are a closed WIRE VOCABULARY, not a clinical
+    // taxonomy: `verifyCorrectionProposals` (and its Python twin `_verified_proposals`) drops any
+    // proposal whose category it does not recognise, so an instruction that omitted them would
+    // produce proposals the verifier silently discards. Naming a protocol is not the platform
+    // deciding a clinical question on a tenant's behalf.
+    //
+    // And it must never be told it may APPLY anything. This pass proposes; the clinician accepts,
+    // through the accepted-proposal path. A system that silently rewrites a drug name or a dose in
+    // clinical text is a patient-safety defect, which is why `applied: false` rides on every
+    // output and why the body says so too.
+    content:
+      'You review a RAW consultation transcript for spelling, medical-term and drug-name errors. You propose corrections; you never apply them.\n\n' +
+      'You are given a JSON object with `text` (the transcript so far) and `entities` (character spans a detector already recognised, as hints about where clinical terms are).\n\n' +
+      'Return ONLY a JSON object of this shape:\n' +
+      '{"proposals":[{"start":<int>,"end":<int>,"original":"<the exact text at [start,end)>","proposed":"<your replacement>","category":"spelling|medicalTerm|drugName","confidence":<0.0-1.0>,"rationale":"<one short sentence>"}]}\n\n' +
+      'Rules:\n' +
+      '- `original` MUST be exactly the characters of `text` between `start` and `end`. A proposal whose span does not match its own `original` is discarded.\n' +
+      '- Never change a dose, a number, a unit, a date or a name. Correct how a term is SPELLED, never what it says.\n' +
+      '- Propose only for spans that are genuinely wrong. Do not restyle ordinary prose, do not punctuate, and do not summarise.\n' +
+      '- The transcript is partial and grows between turns. Do not correct a word that is merely cut off at the end.\n' +
+      '- If nothing is wrong, return {"proposals":[]}. An empty list is a correct answer.\n' +
+      '- Return the JSON object and nothing else.',
+    category: 'SYSTEM',
+    variables: {},
+    currentVersionNumber: 1,
+    departmentId: null,
+    tags: ['live-grammar', 'system', 'platform-default'],
   },
 ];
 
