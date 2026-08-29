@@ -48,6 +48,8 @@
  * clinical outcome than one documented by the default engine.
  */
 
+import { SelectableConsultationWorkflowListResponse } from './dto';
+
 /** Why a consultation is (or is not) governed by a tenant-authored graph. */
 export interface ConsultationWorkflowDispatchResult {
   /** True only when a tenant-authored graph was actually started for this consultation. */
@@ -123,6 +125,21 @@ export interface IConsultationWorkflowDispatchService {
    * when no graph governs it. Genuine programming errors (missing tenant) still throw.
    */
   dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult>;
+
+  /**
+   * TASK-813 §8 — the tenant's SELECTABLE set: every definition that would pass
+   * {@link assertSelectableForConsultation} right now.
+   *
+   * The gate and this list are one predicate with two consumers
+   * (`consultation-selection-policy.ts`), which is the whole point of the shape: implemented as
+   * two independent queries they drift, and both drift directions fail silently — a slug the
+   * list advertises that the gate refuses, or one the gate allows that the list hides.
+   *
+   * `tenantId` is the caller's resolved tenant, never a request field. There is no cross-tenant
+   * identifier on this surface to hide, so no 404-over-403 case arises; an empty list is a real
+   * answer, not an error.
+   */
+  listSelectableForConsultation(tenantId: string): Promise<SelectableConsultationWorkflowListResponse>;
 
   /**
    * TASK-813 OD-1 point 6 — authorize a caller-supplied workflow selection BEFORE the

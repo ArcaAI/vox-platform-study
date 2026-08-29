@@ -56,6 +56,7 @@ export {
   // Schema discovery + the consultation-loop event stream
   useConsultationSchema,
   useConsultationWorkflow,
+  useSelectableConsultationWorkflows,
   useConsultationEvents,
   useDepartments,
   useDnaDashboard,
@@ -152,6 +153,7 @@ export type {
   UseConsultationJobReturn,
   UseConsultationSchemaReturn,
   UseConsultationWorkflowReturn,
+  UseSelectableConsultationWorkflowsReturn,
   UseConsultationEventsReturn,
   ConsultationEventsStreamStatus,
   UseDepartmentsReturn,
@@ -307,8 +309,10 @@ export type { AudioRecording, AddAudioRecordingInput } from './types';
 export type {
   ConsultationContextSchemaDefinition,
   ConsultationSchemaBundle,
-  // TASK-813 — the discovery answer returned by `useConsultationWorkflow`.
+  // TASK-813 — the discovery answer returned by `useConsultationWorkflow`, and the selectable
+  // set returned by `useSelectableConsultationWorkflows`.
   ConsultationWorkflow,
+  SelectableConsultationWorkflow,
   ContextKindDeclaration,
   ContextKindDeprecation,
   ContextOutputDeclaration,

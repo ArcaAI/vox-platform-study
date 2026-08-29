@@ -36,3 +36,26 @@ export interface ConsultationWorkflow {
   /** Always `null` today — the substrate declares no per-definition input schema. */
   inputSchema: Record<string, unknown> | null;
 }
+
+/**
+ * One entry of `GET /consultations/workflows` (TASK-813 §8) — a workflow that may be passed as
+ * `OpenSessionInput.workflowDefinitionSlug`.
+ *
+ * Mirrors `SelectableConsultationWorkflowResponse`. Deliberately four fields: enough to render a
+ * chooser, and nothing describing the graph itself — the route is reachable by callers holding
+ * no workflow-definition ability at all. `paletteKey` is absent because it is `consultation` for
+ * every entry by construction, and a version number is absent because selection is by slug,
+ * which always resolves to whatever version is live.
+ */
+export interface SelectableConsultationWorkflow {
+  /** The value to send as `workflowDefinitionSlug` when opening a consultation. */
+  slug: string;
+  name: string;
+  description: string | null;
+  /**
+   * `true` for the slug the TENANT-level assignment names — what governs when no selection is
+   * made. A department override can still win at open, so treat this as a sensible preselection
+   * rather than a promise about a particular consultation.
+   */
+  isTenantDefault: boolean;
+}

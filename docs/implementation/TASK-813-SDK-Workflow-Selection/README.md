@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`56f98622f`). Declared scope delivered; one follow-on in §8 needs an owner decision (selectable-set discovery). |
+| **Status** | **`Review`** 2026-08-29 — §1–§7 merged to `dev-2.2` (`56f98622f`). §8 (selectable-set discovery) BUILT on `lane-813-discovery`; merge pending with the orchestrator. |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -383,8 +383,161 @@ list hides.
 
 Deliberately deferred rather than bolted on — a discovery route is a new authorization surface
 (who may enumerate a tenant's consultation workflows?) and deserves its own decision, not a
-by-product of this ticket. **Owner decision needed** on whether it belongs to a follow-on ticket
-or to TASK-816.
+by-product of this ticket. ~~**Owner decision needed** on whether it belongs to a follow-on ticket
+or to TASK-816.~~ **Owner decision, 2026-08-29: built here, inside TASK-813.** Implemented on
+`lane-813-discovery` — see §8a.
+
+## 8a. Selectable-set discovery — BUILT (2026-08-29, branch `lane-813-discovery`)
+
+### The route
+
+`GET /api/v1/consultations/workflows` → `SelectableConsultationWorkflowListResponse`
+(`{ data: [{ slug, name, description, isTenantDefault }] }`).
+
+On the CONSULTATION controller, not the workflows one, because it answers "what may I pass to
+`open`", not "what workflow products exist". Declaration order is load-bearing and is pinned by a
+test: the route is a single static segment competing with `getById`'s `:id`, and Express matches
+in registration order.
+
+`GET /workflows` was never a candidate, and the §8 statement above understated why: it is not
+merely broader, it **structurally excludes this palette** — `EXPOSURE_ALLOWED_PALETTES` is
+`{summarization}` (`workflow-exposure/exposure-palette-policy.ts:61`), so it lists ZERO
+consultation definitions. There was no wider route to narrow; there was no route at all.
+
+### The authorization decision (the deferred one)
+
+**The route's authorization declaration is byte-identical to `POST /consultations/open`.** That is
+the decision, and everything else follows from it: the set is defined as "what `open` will accept",
+so the callers who may ask are exactly the callers who can act on the answer.
+
+| Gate | Value | Why |
+|---|---|---|
+| Ability | `@Authorize(['create','Consultation'])` | The ability `open` requires. A clinician-facing integration holding NO `WorkflowDefinition` ability can now discover its options — which is the entire point; requiring `workflow:definition:read` would leave the gap open. |
+| Class default | **overridden, deliberately** | `ConsultationController` carries a class-level bare `@Authorize()`. Inheriting it would let ANY authenticated tenant user enumerate the tenant's authored workflows — configuration disclosure with no matching capability. Unlike its sibling `:id/workflow`, a tenant-wide list has no per-row `verifyConsultationAccess` to lean on, so the ability IS the boundary. |
+| API key | `@RequiredScopes('consultation:session:write')` | The scope `open` carries. NOT `…:read`: a read-only key cannot open a consultation, so the set is useless to it; a key that CAN open would be unable to discover. A `:write` scope on a GET is the mirror of the sanctioned rule-05 pattern (personal prompt-template writes declared with `read`) — the decorator states the ability the caller HOLDS, not the verb. Carries an `AUTH-NOTE:`. |
+| Service account | no `@RequiredSvcScopes` ⇒ 403 | Deny-by-default, exactly as on `open` (`svcScopes: []`). |
+| Cross-tenant | does not arise | `tenantId` is CLS-resolved; the route takes no tenant, department or id parameter, so there is no foreign identifier to answer 404 for. Privilege failure inside one's own tenant is 403. |
+
+Proof, from the regenerated manifest — the two rows are identical apart from method and path:
+
+```
+{"handler":"open",                    "method":"POST","routePath":"/consultations/open",
+ "svcScopes":[],"apiKeyForbidden":false,"apiKeyScopes":["consultation:session:write"],
+ "requiredPermissions":[["create","Consultation"]],"isPublic":false,"permissionMode":"AND"}
+{"handler":"listSelectableWorkflows", "method":"GET", "routePath":"/consultations/workflows",
+ "svcScopes":[],"apiKeyForbidden":false,"apiKeyScopes":["consultation:session:write"],
+ "requiredPermissions":[["create","Consultation"]],"isPublic":false,"permissionMode":"AND"}
+```
+
+Route-level authz conformance is therefore GENERATED — the route is covered by
+`task-776-route-authz-matrix.spec.ts` the moment it appears in the manifest, and no per-route
+"403 for an API key" test was hand-written. What WAS hand-written is the depth the matrix cannot
+express: the matrix reads the manifest as its own oracle, so deleting the method-level
+`@Authorize` would silently downgrade `[["create","Consultation"]]` to `[]` (the class default,
+"any authenticated user") and the matrix would accept both. Four metadata assertions in
+`consultation.controller.workflow-discovery.task813.test.ts` pin it, plus the declaration-order
+guard. Both were verified by mutation, not by passing.
+
+### One predicate, two consumers — named
+
+`consultationSelectionViolation` in
+`packages/applications/src/services/consultation/workflow-dispatch/consultation-selection-policy.ts`.
+Shape copied from `exposureBoundaryViolation`, which solves the identical list/invoke problem on
+the exposure plane: a violation-reason-or-`null` function, so the reason is available to the 403
+message and to the dispatcher's `skippedReason` without either re-deriving it.
+
+Three call sites, zero restatements: `assertSelectableForConsultation` (→ 403),
+`listSelectableForConsultation` (→ omission), and `dispatchForConsultation`'s re-verification
+(→ `skippedReason`). The gate's palette `if` is GONE — this is a refactor of the gate, not an
+addition beside it.
+
+The VISIBILITY half is single-sourced one layer down:
+`WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE` is now the one filter object that both
+`findPublishedBySlug` (the gate's read) and `findActivePublishedByTenant` (the list's read)
+spread. Between the two, "authorized" and "discoverable" are the same predicate by construction.
+
+Pinned by an anti-drift test that asserts the two ANSWERS against each other rather than each
+against a fixture: every slug the list advertises passes the gate, and every published slug it
+omits is refused by it. Mutating the list to a copy-pasted laxer rule fails that test (verified).
+
+**Palette is the whole predicate, deliberately.** The dispatcher additionally SKIPS a definition
+with no `compiledConfig` — but skips it, degrading to the default engine, rather than refusing.
+Folding that into the predicate would make the list hide a slug the gate still accepts, which is
+the exact drift this design forbids. A selectable definition can therefore still degrade at
+dispatch; `GET /consultations/:id/workflow` is where "what actually governs" is answered.
+
+### `isTenantDefault`, and what it does not claim
+
+Resolved with `departmentId: null`, so it is the TENANT tier. The real cascade is
+`department → tenant → platform-default`, and this route takes no `departmentId` — that would be a
+caller-supplied cross-aggregate reference on a read that otherwise needs none. The field name says
+which tier it answers. It is matched against the SELECTABLE set, never asserted from the
+assignment alone, so a tenant default that has since been unpublished adds no phantom entry.
+
+The cascade read is best-effort: an unreadable assignment store costs the caller the marker, never
+the list.
+
+### 503 over `{ data: [] }` when the dispatcher is unwired
+
+Same posture as the selection gate, and for the same reason. `[]` would be a claim about what the
+tenant has authored, when the truth is that this deployment cannot tell — and a caller that
+believed it would stop selecting rather than retry.
+
+### SDK
+
+`useSelectableConsultationWorkflows()` in `@arcaai/vox` — no consultation id, because the set is
+tenant-wide and is needed BEFORE a consultation exists. Fails open like `useConsultationWorkflow`,
+with the same "never fail-inventive" rule: `null` ("we could not ask") stays distinct from `[]`
+("the tenant has published none"). Collapsing them would tell a clinician their tenant has no
+workflows because a request blipped. A malformed payload resolves to `null`, not to an empty
+picker. `tenantDefault` is exposed for preselection.
+
+**No `@arcaai/vox-node` change, deliberately.** That SDK has no consultation-open surface at all
+(`ConsultationsResource` is `get` + `addContext` + `.summaries`), so a selectable-workflows read
+there would describe a choice it cannot make. The route is business plane, so
+`src/resources/admin/**` is correctly untouched and `gen:admin:check` reports no drift.
+
+### Contradiction found while building this
+
+The shipped 403 rationale — "already listed by `GET /workflows`, so hiding it would be theatre" —
+holds for a `summarization` definition but NOT for an `stt` one: the exposure list refuses `stt`
+too, so a 403 there discloses to a consultation-opener that an `stt`-palette slug exists. It is
+SAME-tenant disclosure of a slug the caller already had to name, so it is minor and was left
+alone rather than changed under a discovery ticket — recorded here rather than silently
+inherited.
+
+### Files
+
+| File | Change |
+|---|---|
+| `packages/applications/.../workflow-dispatch/consultation-selection-policy.ts` | NEW — the shared predicate |
+| `packages/applications/.../workflow-dispatch/dto/selectable-consultation-workflow.response.ts` | NEW — the four-field response |
+| `packages/applications/.../workflow-dispatch/consultation-workflow-dispatch.service.ts` | gate + dispatch re-verify now call the predicate; `listSelectableForConsultation` added |
+| `packages/applications/.../workflow-dispatch/IConsultationWorkflowDispatchService.ts` | declares the list |
+| `packages/applications/.../consultation/consultation.service.ts` | `listSelectableWorkflows()` — CLS tenant, 400 without one, 503 unwired |
+| `packages/applications/.../consultation/IConsultationService.ts` | declares it |
+| `packages/domains/src/repositories/generated/core/WorkflowDefinitionRepository.ts` | `PUBLISHED_AND_ACTIVE` single-sourced |
+| `apps/api/src/modules/consultation/consultation.controller.ts` | the route + `AUTH-NOTE` |
+| `packages/agentic-sdk-v2/src/hooks/useSelectableConsultationWorkflows.ts` | NEW hook |
+| `packages/agentic-sdk-v2/src/{types/consultationWorkflow.ts,core/constants.ts,core.ts,hooks/index.ts,types/index.ts,README.md}` | type, endpoint, exports, docs |
+
+Tests: `consultation-workflow-discovery.task813.test.ts` (NEW, 11), additions to
+`consultation.service.workflow-selection.task813.test.ts` (4) and
+`consultation.controller.workflow-discovery.task813.test.ts` (6), and
+`useSelectableConsultationWorkflows.task813.test.ts` (NEW, 6).
+
+### Gates (worktree `lane-813-discovery`)
+
+`domains build/test` 1848 passed · `applications build` · `applications test` 10318 passed ·
+`api build` · `api test` 4025 passed · `vox build` · `vox typecheck` · `vox test` 4241 passed ·
+`vox-node test` 244 passed · five artifacts regenerated ·
+`gen:admin:check` no drift (52 areas / 404 routes / 371 schemas) ·
+`api:portal:check` no drift (admin 609 / business 182) · `api:openapi:check` OK — both ratchets
+IMPROVED (missing description 405→404, missing 4xx 289→288) · `pnpm lint` 40/40.
+
+`pnpm test:e2e` NOT run (live infra is owned by the orchestrator and in use by a sibling lane).
+The new route needs no matrix edit — `task-776-route-authz-matrix.spec.ts` is manifest-driven and
+picks it up automatically.
 
 ### Also recorded (behaviour, documented not changed)
 
@@ -395,3 +548,4 @@ means a caller can send a selector, receive `200`, and be governed by something 
 matters to an integrator it needs a deliberate 409, not a silent no-op.
 
 | 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4034, vox 4235, gen:admin no drift (53 areas/414 routes/379 schemas), portal no drift (admin 618 / business 181 ops), lint 40/40. Authorization gate verified by the orchestrator to run before both the existence lookup and the write; 404 hides existence, 403 only where `GET /workflows` already discloses. `inputSchema` absence independently confirmed against the `WorkflowDefinition` columns. |
+| 2026-08-29 | §8 CLOSED — selectable-set discovery built on `lane-813-discovery` (owner decision: inside TASK-813, not a follow-on). `GET /consultations/workflows`, authorization declaration byte-identical to `POST /consultations/open`; gate, list and dispatch re-verification refactored onto one predicate (`consultationSelectionViolation`) with the visibility filter single-sourced in the repository; `useSelectableConsultationWorkflows()` in `@arcaai/vox`. Merge pending with the orchestrator. |
