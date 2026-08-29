@@ -32,6 +32,7 @@ import { IActiveUserContext } from '../../../../interfaces';
 import { TENANTLESS, assertEqualTenants, createWorkerSession, internalServiceHeaders, resolveInternalAccessToken } from '../../../../common';
 import { IUsageLedgerService } from '../../../usageLedger';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
+import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 
 /**
  * BullMQ processor for async comprehensive summary generation.
@@ -120,6 +121,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
+    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // + trailing so existing positional fixtures keep their arity; an unwired
+    // resolver serves the two shipped visit types, whose keys and follow-up rule
+    // are byte-identical to the ternary it replaces.
+    @Optional() @Inject(VisitTypeService) private readonly visitTypes?: VisitTypeService,
   ) {
     super();
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -401,7 +408,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
-      promptType: consultation.parentConsultationId ? 'revisit' : 'new-patient',
+      // Tenant-configured visit type (TASK-815 §11 row 3); `parentConsultationId`
+      // remains the follow-up signal, the vocabulary is no longer a literal.
+      promptType: this.visitType(consultation).key,
       transcript: fullText,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,
@@ -535,5 +544,22 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       // would be strictly worse than losing the meter.
       await this.summaryMetaRepository.create(summaryMeta);
     }
+  }
+
+  /**
+   * The consultation's visit type, resolved through the TENANT's catalogue
+   * (`consultation.visitTypes`, tenant → SYSTEM).
+   *
+   * `parentConsultationId` is still the consultation's own follow-up signal —
+   * that rule has not changed. What changed is that WHICH visit type the signal
+   * selects, and what that type is called, is tenant-configured data rather
+   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * resolver serves the two shipped types, so the answer is byte-identical to
+   * the ternary this replaces.
+   */
+  private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null }): VisitTypeDefinition {
+    return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {
+      isFollowUp: Boolean(consultation.parentConsultationId),
+    });
   }
 }

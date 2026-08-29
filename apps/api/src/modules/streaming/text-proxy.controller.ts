@@ -22,6 +22,9 @@ import {
   TENANTLESS,
   TENANT_ID_HEADER,
   tenantHeaderValue,
+  DEFAULT_VISIT_TYPE_SERVICE,
+  VisitTypeService,
+  type VisitTypeDefinition,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
@@ -114,7 +117,13 @@ interface TextGenerateRequest {
   >;
 }
 
-type VisitType = 'new_visit' | 'referral';
+/**
+ * A visit type on the wire: a KEY or an ALIAS from the caller tenant's
+ * `consultation.visitTypes` catalogue. It was a closed `'new_visit' |
+ * 'referral'` union until TASK-815 §11 row 3 — and both of those are aliases of
+ * the SHIPPED "New patient" type, so a caller sending either is unaffected.
+ */
+type VisitType = string;
 type GenerationType = 'pre-summary' | 'summary';
 
 interface AssembledGenerateRequest {
@@ -250,6 +259,15 @@ export class TextProxyController {
     // expressed no opinion (the platform posture then stands).
     @Optional()
     private readonly effectiveSettingsService?: EffectiveSettingsService,
+    // TASK-815 §11 row 3 — the caller tenant's VISIT-TYPE catalogue. This route
+    // used to enforce a hardcoded `['new_visit', 'referral']` allow-list and
+    // 400 anything else, which made "tenant-admin defined and controlled" false
+    // at the front door. @Optional so existing positional test fixtures keep
+    // compiling; absent ⇒ the two shipped visit types, whose aliases include
+    // both of the values the old allow-list accepted.
+    @Optional()
+    @Inject(VisitTypeService)
+    private readonly visitTypes?: VisitTypeService,
   ) {
     // BUG-018 — the two enrichment steps now live in ONE applications-layer
     // service shared with the prompt-template test bench. Constructed here from
@@ -877,8 +895,11 @@ export class TextProxyController {
     if (body.context_item_ids && body.context_item_ids.length === 0) {
       throw new BadRequestException('context_item_ids must not be empty');
     }
-    if (body.visit_type && !['new_visit', 'referral'].includes(body.visit_type)) {
-      throw new BadRequestException('visit_type must be "new_visit" or "referral"');
+    if (body.visit_type && !this.resolveVisitType(body.visit_type)) {
+      const known = this.visitTypeCatalogue()
+        .flatMap((entry) => [entry.key, ...entry.aliases])
+        .join('", "');
+      throw new BadRequestException(`visit_type must be one of "${known}" — the visit types configured for this tenant`);
     }
   }
 
@@ -1063,8 +1084,11 @@ export class TextProxyController {
     }
 
     if (body.visit_type) {
-      const visitLabel = body.visit_type === 'new_visit' ? 'new patient visit' : 'referral visit';
-      systemPrompt += `\n\nThis is a ${visitLabel}.`;
+      // The tenant's own LABEL for the visit type, not a two-branch literal.
+      // `validateAssembledRequest` has already refused anything the catalogue
+      // does not name, so the raw value is only a defensive last resort.
+      const visitLabel = this.resolveVisitType(body.visit_type)?.label ?? body.visit_type;
+      systemPrompt += `\n\nThis is a ${visitLabel} visit.`;
     }
 
     const typeLabel = body.type === 'pre-summary' ? 'pre-summary' : 'clinical summary';
@@ -1263,5 +1287,15 @@ export class TextProxyController {
     }
 
     return this.groupRegistryModelsByProvider(rows, defaultSelection);
+  }
+
+  /** The caller tenant's visit-type catalogue (tenant → SYSTEM), or the shipped default. */
+  private visitTypeCatalogue(): readonly VisitTypeDefinition[] {
+    return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).catalogue(this.clsService?.get('tenantId') ?? null);
+  }
+
+  /** The catalogue entry a wire `visit_type` names, by key or alias, or `null`. */
+  private resolveVisitType(raw: string): VisitTypeDefinition | null {
+    return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).match(this.clsService?.get('tenantId') ?? null, raw);
   }
 }

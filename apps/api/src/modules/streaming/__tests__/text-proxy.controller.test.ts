@@ -1109,7 +1109,11 @@ describe('TextProxyController', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should reject invalid visit_type', async () => {
+    // TASK-815 §11 row 3: the route no longer enforces a hardcoded
+    // `['new_visit', 'referral']` list — it refuses what the CALLER TENANT's
+    // `consultation.visitTypes` catalogue does not name. A garbage value is
+    // still a 400; a tenant's own visit type no longer is.
+    it('should reject a visit_type the tenant’s catalogue does not name', async () => {
       await expect(
         controller.generateAssembled({
           type: 'pre-summary',
@@ -1117,6 +1121,13 @@ describe('TextProxyController', () => {
           visit_type: 'invalid' as any,
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('accepts every visit_type the SHIPPED catalogue names, including both old allow-list values', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'x' } });
+      for (const visit_type of ['new_visit', 'referral', 'new-patient', 'revisit', 'Follow-Up Same-Day']) {
+        await expect(controller.generateAssembled({ type: 'summary', message: 'test', visit_type } as any)).resolves.toBeDefined();
+      }
     });
 
     it('should reject debug mode for non-admin users', async () => {
@@ -1479,10 +1490,13 @@ describe('TextProxyController', () => {
         visit_type: 'referral',
       });
 
+      // The sentence carries the catalogue LABEL now, not one of two literals.
+      // `referral` is an ALIAS of the shipped "New patient" type (the owner's
+      // "New patient (new visit, new referral)"), so it labels as that.
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
-          system_prompt: expect.stringContaining('referral visit'),
+          system_prompt: expect.stringContaining('This is a New patient visit.'),
         }),
         expect.any(Object),
       );
@@ -1588,7 +1602,7 @@ describe('TextProxyController', () => {
       const systemPrompt = callArgs[1].system_prompt;
       expect(systemPrompt).toContain('specialist');
       expect(systemPrompt).toContain('bullet points');
-      expect(systemPrompt).toContain('new patient visit');
+      expect(systemPrompt).toContain('This is a New patient visit.');
     });
 
     describe('DNA writing-style ownership', () => {

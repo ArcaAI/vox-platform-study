@@ -36,6 +36,7 @@ import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
+import { VISIT_TYPE_SETTINGS } from './descriptors/visit-type.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
@@ -65,6 +66,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // verdict-deciding keys. Companion to MODEL_DEFAULT_SETTINGS' `models.guardrail.*`
   // (which selects WHICH model runs; this selects HOW STRICT it is).
   ...GUARDRAIL_POLICY_SETTINGS,
+  // The tenant's VISIT-TYPE catalogue (TASK-815 §11 row 3) — the label set that
+  // used to be a derived literal in nine places. `maxScope: 'tenant'`, so a
+  // tenant defines its own and one with no opinion inherits the two shipped
+  // defaults through the SYSTEM lane.
+  ...VISIT_TYPE_SETTINGS,
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).

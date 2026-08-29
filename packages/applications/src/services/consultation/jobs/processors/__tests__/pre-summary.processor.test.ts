@@ -9,6 +9,9 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TenantSettingsService } from '../../../../settings-registry/tenant-settings.service';
+import { CONSULTATION_VISIT_TYPES_KEY } from '../../../visit-type/visit-type.catalogue';
+import { VisitTypeService } from '../../../visit-type/visit-type.service';
 import { PreSummaryProcessor } from '../pre-summary.processor';
 
 const CONSULTATION = {
@@ -19,7 +22,7 @@ const CONSULTATION = {
   doctorId: 'doctor-1',
 };
 
-function createProcessor(consultation: Record<string, unknown>) {
+function createProcessor(consultation: Record<string, unknown>, visitTypes?: VisitTypeService) {
   const promptResolutionService = {
     resolve: vi.fn().mockResolvedValue({ resolvedFrom: 'tenant', template: 'Pre-Summary', promptId: 'p1' }),
   };
@@ -65,6 +68,15 @@ function createProcessor(consultation: Record<string, unknown>) {
     promptAssemblyService as any,
     jobMetrics as any,
     cls as any,
+    // 9-13: secretsService, harnessPolicyService, configResolver,
+    // noteGenerationService, textRequestEnrichment — all @Optional().
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    // 14: the tenant's visit-type catalogue. Omitted ⇒ the two shipped types.
+    visitTypes as any,
   );
 
   return { processor, promptResolutionService, promptAssemblyService };
@@ -93,12 +105,20 @@ describe('PreSummaryProcessor', () => {
     expect(promptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', promptType: 'pre-summary' }));
   });
 
+  /*
+   * TASK-815 §11 row 3. These three cases used to assert the LITERALS
+   * `'revisit'` / `'new-visit'` — one of the two disagreeing vocabularies the
+   * ruling retired (the summary path spelled the same concept
+   * `'new-patient'`). What is asserted now is the SOURCE: `{visit_type}` is
+   * filled from the visit type the tenant's `consultation.visitTypes`
+   * catalogue supplies, and `parentConsultationId` still chooses between them.
+   */
   it("passes the tenant and the consultation's visit type to prompt assembly", async () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION, parentConsultationId: 'consult-0' });
     await processor.process(job());
 
     expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', visitType: 'revisit', conversationLanguage: 'ml' }),
+      expect.objectContaining({ tenantId: 'tenant-1', visitType: 'Revisit', conversationLanguage: 'ml' }),
     );
   });
 
@@ -106,6 +126,27 @@ describe('PreSummaryProcessor', () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION });
     await processor.process(job());
 
-    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'new-visit' }));
+    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'New patient' }));
+  });
+
+  it("renders the TENANT's own visit-type label into {visit_type}, not a platform literal", async () => {
+    const { processor, promptAssemblyService } = createProcessor(
+      { ...CONSULTATION, parentConsultationId: 'consult-0' },
+      new VisitTypeService(
+        new TenantSettingsService({
+          getValueFromCache: () => null,
+          getTenantValueFromCache: (tenantId: string, key: string) =>
+            tenantId === 'tenant-1' && key === CONSULTATION_VISIT_TYPES_KEY
+              ? [
+                  { key: 'walk-in', label: 'Walk-in', aliases: [], promptSlot: 'new-patient' },
+                  { key: 'clinic-review', label: 'Clinic review (same day)', aliases: [], promptSlot: 'revisit' },
+                ]
+              : null,
+        } as never),
+      ),
+    );
+    await processor.process(job());
+
+    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'Clinic review (same day)' }));
   });
 });
