@@ -619,7 +619,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
           // multiple documents), so it takes priority the moment any section.patch has arrived.
           <DocumentSectionsView documents={documentSections} />
         ) : showLive && liveSections.length > 0 ? (
-          <div className="flex flex-col gap-4" aria-label="Live running summary">
+          <div className="flex flex-col gap-4" role="group" aria-label="Live running summary">
             {liveSections.map((section) => (
               <div key={section.title} className="flex gap-2.5">
                 <span
@@ -669,7 +669,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         )}
 
         {loopActivity.length > 0 ? (
-          <div className="border-t pt-3" aria-label="Assistant activity">
+          <div className="border-t pt-3" role="group" aria-label="Assistant activity">
             <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Assistant activity
               <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
@@ -697,7 +697,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
 
         {vitals.length > 0 ? (
-          <div className="border-t pt-3" aria-label="Extracted vitals">
+          <div className="border-t pt-3" role="group" aria-label="Extracted vitals">
             <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Vitals
               <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>
@@ -714,7 +714,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
 
         {showLive && liveEntities.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" aria-label="Detected entities">
+          <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" role="group" aria-label="Detected entities">
             {liveEntities.map((entity, index) => (
               <Badge key={`${entity.text}-${index}`} variant="secondary" className="gap-1">
                 {entity.text}
@@ -729,7 +729,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
         ) : null}
 
         {persistedEntityGroups.length > 0 ? (
-          <div className="border-t pt-3" aria-label="Detected entities in this consultation">
+          <div className="border-t pt-3" role="group" aria-label="Detected entities in this consultation">
             <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs font-medium">
               Detected entities
               <span className="bg-ai/10 text-ai rounded px-1 text-xs font-medium">AI</span>

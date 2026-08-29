@@ -159,4 +159,40 @@ describe('CaseNoteColumn — W2 surfaces (TASK-797)', () => {
     );
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it('0 axe violations across the live-session surfaces (running summary, assistant activity, vitals, detected entities)', async () => {
+    const { container } = render(
+      <CaseNoteColumn
+        {...props({
+          draft: null,
+          live: {
+            ...LIVE,
+            entities: [{ text: 'chest pain', type: 'symptom', icd10: 'R07.9' }],
+            vitals: { systolic: 120, diastolic: 80, heartRate: 72, spo2: 98, temperatureC: 37, weightKg: 70 },
+          },
+          isRecording: true,
+          loopActivity: [
+            {
+              kind: 'note.thinking',
+              kindKey: 'note.thinking',
+              label: 'Drafting subjective',
+              publishedAt: '2026-08-23T10:00:00.000Z',
+              ordinal: 1,
+              total: 3,
+              chars: 120,
+            },
+          ],
+          namedEntities: {
+            consultationId: 'c-1',
+            scope: 'consultation',
+            entities: { Symptom: [{ text: 'chest pain', displayText: 'Chest pain' }] },
+            totalCount: 1,
+            countByClass: { Symptom: 1 },
+            sources: [],
+          },
+        })}
+      />,
+    );
+    expect(await axe(container)).toHaveNoViolations();
+  });
 });
