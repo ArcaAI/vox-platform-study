@@ -314,8 +314,11 @@ describe('task 12 — the section.patch payload contract (§2b)', () => {
     expect(second.applied && second.patch.revision).toBe(2);
   });
 
-  it('declares exactly the three annotation kinds the live plane produces', () => {
-    expect(SECTION_ANNOTATION_KINDS).toEqual(['entity', 'groundedness', 'flagged']);
+  it('declares exactly the annotation kinds the live plane produces', () => {
+    // Lane N adds `finding` as its OWN kind rather than an `entity` with a special `type`: an
+    // entity is what a DETECTOR recognised, a finding is what the TENANT'S instruction said is
+    // important, and a console has to be able to render the two differently.
+    expect(SECTION_ANNOTATION_KINDS).toEqual(['entity', 'groundedness', 'flagged', 'finding']);
   });
 
   it('refuses cleanly when no repository is wired rather than pretending the write happened', async () => {

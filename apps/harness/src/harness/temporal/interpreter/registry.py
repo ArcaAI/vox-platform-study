@@ -33,6 +33,7 @@ with workflow.unsafe.imports_passed_through():
         interpreter_agent_dna_redaction,
         interpreter_agent_feedback,
         interpreter_agent_grammar,
+        interpreter_agent_important_findings,
         interpreter_agent_ner,
         interpreter_agent_normalization,
         interpreter_agent_presummarization,
@@ -651,6 +652,29 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=20,
         default_max_attempts=1,
         output_keys={"out": "proposals", "next": None},
+        lane="realtime",
+    ),
+    # Lane N (TASK-815 §14a) — IMPORTANT FINDINGS, the one catalogue entry that is NOT a
+    # delegation, because the capability had no engine anywhere to delegate to. `realtime` for the
+    # same reason `agent.grammar` is and a stronger one: the owner's bar is findings surfaced
+    # DURING the session, so this interpreter SKIPS it (reason `realtime_lane`) and TASK-811's
+    # live executor owns it. `external_write=True` mirrors `agent.ner`: findings reach the live
+    # consultation feed and the persisted flush snapshot through the same projection, so the flag
+    # is the truth about the node rather than a claim about this durable wrapper.
+    #
+    # `output_keys["out"] = "findings"`, deliberately NOT "entities". The port PRIMITIVE is
+    # `entities` so findings ride the existing highlight path; the distinct runtime KEY is what
+    # keeps "the tenant said this matters" apart from "the detector saw a drug name" instead of
+    # merging two different claims into one highlight set.
+    "agent.important_findings": NodeSpec(
+        key="agent.important_findings",
+        implemented=True,
+        activity=interpreter_agent_important_findings,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=25,
+        default_max_attempts=1,
+        output_keys={"out": "findings", "next": None},
         lane="realtime",
     ),
     "agent.presummarization": NodeSpec(

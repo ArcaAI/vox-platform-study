@@ -966,6 +966,120 @@ const AGENT_DNA_REDACTION_SCHEMA: NodeConfigSchema = Object.freeze({
 });
 
 /**
+ * `agent.important_findings` — the tenant's OWN definition of what matters, as a node.
+ *
+ * TASK-815 §14a found no importance layer of any kind on the platform, and put the design
+ * question to the owner. The answer was not a taxonomy, it was a configuration contract:
+ *
+ * > "'Important' information or findings will be mined/generated/extracted by agent following a
+ * > set of instructions defined/declared/overwriten by tenant admin for using LLM to detect,
+ * > extract, picking-up knowledge from consultation context."
+ *
+ * Read that as a schema and it says exactly what may and may not appear below. What MAY: a
+ * binding to the tenant's instructions, and the tuning knobs a bounded LLM call needs. What may
+ * NOT, and is asserted absent by `important-findings-and-grounding.task815.test.ts`: a severity
+ * enum, a red-flag term list, an allergy-alert class, an importance threshold. Every one of those
+ * is the platform answering the question the owner assigned to the tenant admin — and a
+ * `default` on any of them would make the platform's answer the one that ships.
+ *
+ * `promptTemplateId` is therefore the whole capability. The instruction set is a `PromptTemplate`
+ * the tenant authors, versions and approves through the governance every other governed prompt
+ * goes through, and the tenant -> SYSTEM cascade is expressed the way this substrate expresses
+ * every binding: the node names a template id, which may be the tenant's own or the SYSTEM
+ * platform default it inherits. `evalGate` rides along with the prompt binding for the same
+ * reason it does everywhere else (see `PROMPT_BINDING_PROPERTIES`).
+ *
+ * `taskKey` selects the `AiTaskDefault` routing key, NOT a model: selection resolves tenant ->
+ * SYSTEM at run time and FAILS CLOSED. There is no provider or model field here, deliberately.
+ */
+const AGENT_IMPORTANT_FINDINGS_SCHEMA: NodeConfigSchema = Object.freeze({
+  title: 'agent.important_findings node config (TASK-815 §14a — important findings as tenant-authored instructions)',
+  type: 'object',
+  additionalProperties: false,
+  required: ['onError'],
+  properties: {
+    ...PROMPT_BINDING_PROPERTIES,
+    taskKey: {
+      type: 'string',
+      description:
+        'The AiTaskDefault routing key this node selects its text provider/model under. A ROUTING key, never a model id — selection resolves tenant -> SYSTEM and fails closed.',
+    },
+    maxFindings: {
+      type: 'integer',
+      minimum: 1,
+      description:
+        'Upper bound on findings returned per turn. A bounded-output knob, not a ranking policy — WHICH findings matter is the tenant instruction`s answer, never this node`s.',
+    },
+    onError: CONSULTATION_ON_ERROR,
+  },
+});
+
+/**
+ * What ONE grounding policy may be pointed at — and it is the node's own evaluation inputs, not
+ * an invented clinical vocabulary.
+ *
+ * `summary` is the required `in: document` socket (the redacted summary), `transcript` and
+ * `findings` are the two optional ones TASK-815 §14b added. Deriving the set from the ports is
+ * what stops it drifting: a policy can only ever be scoped to something the node can actually be
+ * handed, and adding a fourth target means adding a fourth input first.
+ *
+ * The socket is called `in` rather than `summary` because it predates this addition and renaming
+ * a published port is the reshape `schemaVersion` exists to forbid; `summary` is the name an
+ * ADMIN reads, which is why the taxonomy uses it and the port table does not.
+ */
+export const GROUNDING_POLICY_TARGETS = Object.freeze(['transcript', 'summary', 'findings'] as const);
+
+/**
+ * The grounding POLICY SET — the owner's specification, expressed as configuration.
+ *
+ * > "Grounding is a set of policies defined/declared/overwriten by tenant admin where LLM will
+ * > follow and evaluate the: redacted transcript (errors fixes including grammar, spellings,
+ * > etc), redacted summary (especially grammar, spelling, medical terms, concepts, detected named
+ * > entities, etc.), highlighted important information/findings."
+ *
+ * Four words in that sentence decide the shape. **"set"** — an ARRAY, so a tenant declares as
+ * many policies as it has, and each one can be turned off without deleting it. **"defined /
+ * declared / overwriten by tenant admin"** — each policy's instruction is a `promptTemplateId`,
+ * a governed template the tenant authors and approves, never a string typed into this file.
+ * **"LLM will follow"** — there is no score formula and no rubric here; the model follows the
+ * tenant's own words. **"evaluate the: ... , ... , ..."** — `appliesTo` says WHICH of the three
+ * the policy governs, drawn from {@link GROUNDING_POLICY_TARGETS}.
+ *
+ * `key` is the tenant's own stable handle for the policy, so a verdict can name the policy that
+ * produced it and an admin can recognise it. It is opaque to the platform on purpose: a
+ * platform-owned key set would be a platform-owned policy catalogue, which is the thing this
+ * whole property exists NOT to be.
+ *
+ * ABSENT `policies` is a real and supported state, not an unfinished one: the guard then behaves
+ * exactly as it did before this ticket. That is what makes the addition safe for every graph
+ * already published with a `guard.groundedness` node in it.
+ */
+const GROUNDING_POLICIES_PROPERTY = Object.freeze({
+  type: 'array',
+  description:
+    'The tenant-authored grounding policies this guard evaluates. Absent or empty means the guard runs its pre-existing pass unchanged.',
+  items: Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    required: ['key', 'appliesTo', 'promptTemplateId'],
+    properties: {
+      key: { type: 'string', minLength: 1, description: 'The tenant`s own stable handle for this policy. Opaque to the platform.' },
+      appliesTo: {
+        type: 'string',
+        enum: GROUNDING_POLICY_TARGETS,
+        description: 'Which of the guard`s three evaluation inputs this policy governs.',
+      },
+      promptTemplateId: PROMPT_TEMPLATE_ID_PROPERTY,
+      promptVersionNumber: PROMPT_VERSION_NUMBER_PROPERTY,
+      enabled: {
+        type: 'boolean',
+        description: 'Turn one policy off without deleting it. Absent is ENABLED — a declared policy that silently did nothing would be worse than no policy.',
+      },
+    },
+  }),
+});
+
+/**
  * `guard.groundedness` — the groundedness gate as a first-class, ATTACHABLE node.
  *
  * `realtime-lane.ts` records the gap this closes in its own words: *"There is no groundedness NODE
@@ -976,7 +1090,7 @@ const AGENT_DNA_REDACTION_SCHEMA: NodeConfigSchema = Object.freeze({
  * the same text"*.
  */
 const GUARD_GROUNDEDNESS_SCHEMA: NodeConfigSchema = Object.freeze({
-  title: 'guard.groundedness node config (DD-7)',
+  title: 'guard.groundedness node config (DD-7, extended by TASK-815 §14b with tenant-authored policies)',
   type: 'object',
   additionalProperties: false,
   required: ['onError'],
@@ -987,6 +1101,7 @@ const GUARD_GROUNDEDNESS_SCHEMA: NodeConfigSchema = Object.freeze({
       maximum: 1,
       description: 'The groundedness score below which the guarded document is marked ungrounded. Per-node, by design (guard-memo.ts).',
     },
+    policies: GROUNDING_POLICIES_PROPERTY,
     onError: CONSULTATION_ON_ERROR,
   },
 });
@@ -1055,6 +1170,7 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'agent.discharge_summary': CONSULTATION_SYNTHESIZE_SCHEMA,
   'agent.retrieval': CONSULTATION_RETRIEVE_EVIDENCE_SCHEMA,
   'agent.feedback': FEEDBACK_CAPTURE_SCHEMA,
+  'agent.important_findings': AGENT_IMPORTANT_FINDINGS_SCHEMA,
   'agent.dna_redaction': AGENT_DNA_REDACTION_SCHEMA,
   // The guards (DD-7). `guard.phi` and `guard.moderation` reuse the redaction and content-safety
   // engines' own schemas; only groundedness had no node to inherit from.
