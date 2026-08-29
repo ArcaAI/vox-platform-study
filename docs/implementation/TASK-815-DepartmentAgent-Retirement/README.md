@@ -238,12 +238,12 @@ pnpm test:up:api && pnpm test:e2e
 ```
 
 ## 9. Definition of Done
-- [ ] Eval gate still fires from node config; `GoldenSet`/`GoldenCase`/`EvalRun` untouched; enable/disable works
-- [ ] `PromptResolutionService.resolve()` contract unchanged; compat untouched
-- [ ] `AgentPromotion` rewritten; new CASL subject; scopes repointed
-- [ ] Eval gate retired deliberately and tested
-- [ ] No survivor from §5 deleted
-- [ ] Enum parity green; allow-list sizes updated
+- [x] Eval gate still fires from node config; `GoldenSet`/`GoldenCase`/`EvalRun` untouched; enable/disable works — `eval-promotion-gate.service.test.ts:78` "BLOCKS in block-mode when the eval fails — the safety control still fires after the repoint"; `GoldenSet`/`GoldenCase`/`EvalRun` untouched per §3 (repointed discovery only, subsystem not modified)
+- [x] `PromptResolutionService.resolve()` contract unchanged; compat untouched — `prompt-resolution.service.ts:110,127,139,485` still declares `resolvedFrom`/`resolvedVersionNumber`/`resolvedAgentId` and `async resolve(params): Promise<ResolvedPromptConfig>` verbatim; `DepartmentAgent` appears only in historical comments, no live reference
+- [x] `AgentPromotion` rewritten; new CASL subject; scopes repointed — `agentPromotion.service.ts:46` `PROMOTION_SUBJECT = 'WorkflowDefinition'`; `agent-promotion.controller.ts:32` `@CanManage('WorkflowDefinition')` (was `DepartmentAgent`, D-28)
+- [x] Eval gate retired deliberately and tested — `eval-promotion-gate.service.test.ts:120` "OD-11 — a DISABLED gate proceeds with a recorded warning rather than blocking" (the tenant-admin disable toggle from §3, tested as its own scenario distinct from the still-fires case above)
+- [x] No survivor from §5 deleted — spot-verified: `packages/domains/src/entities/generated/core/` has no `DepartmentAgent*` (deleted); `AgenticInstructionsResponse`, `agent-trajectory-retention` and `AgentPromotion` all still exist (survived, per §5)
+- [x] Enum parity green; allow-list sizes updated — `tenant-scope.test.ts:149` `TENANT_SCOPED_MODELS.size).toBe(87)`, comment recording the -2 for `DepartmentAgent`+`DepartmentAgentVersion` (TASK-815); `ResourceType.DepartmentAgent` confirmed still present in `pg_enum` after the owner-applied migration (§10a)
 
 ## Best Practices — apply to every task here
 
@@ -397,14 +397,47 @@ reviewed against §5 before executing.
 
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 02, 03, 04, 05, 06, 13. A subagent inherits NONE of the orchestrator's context — read them.
 
-## 10. Implementation Summary
-_Not started._
+## 9a. Implementation Summary
 
-## 11. Change History
+> Renumbered from `§10` (2026-08-29 docs pass) — `§10` below ("Two things awaiting the owner") is
+> a distinct, later addendum with its own established `§10a`–`§10d` subsections and an existing
+> cross-reference from the header; giving this required section the same number was the collision.
+> This section and `§9b` (Change History, renumbered from `§11` for the same reason) sit here,
+> between the Definition of Done and the addenda chain, rather than colliding with it.
+
+`DepartmentAgent` and its whole capability surface were deleted from a live-running platform in one
+merge: 205 files changed, 21,092 deletions. The deletion inventory (§5a) and the four capability
+deltas it necessarily produces (§10b) were known and accepted *before* the deletion landed — this
+was not a mechanical `rm` run against a schema nobody had read.
+
+What survived, deliberately: `AgentPromotion` (rewritten onto a new CASL subject, §4), the eval
+gate (OD-11 — binding moved to the node, golden sets untouched), the compat contract
+(`TextCompatController` → `PromptResolutionService.resolve()`, §2, verified unmoved), and the
+`ResourceType.DepartmentAgent` enum value (kept for historical `AuditLog` rows, §2c).
+
+What was found and fixed in passing, not part of the original scope: tenant provisioning was
+iterating golden **agents** instead of golden **departments** (§10c) — left alone, every newly
+provisioned tenant would have been silently reduced to a bare `GEN` department.
+
+Work continued after the initial merge, each recorded in its own numbered section below rather
+than folded back into this summary: the migration's application to shared databases (§10a,
+resolved by the owner), the four capability-delta rulings (§11), the P-4 client-side fix for the
+impersonated clinician's silently-403ing catalogs (§12), the target node catalogue landing in Lane
+A — registry 36→48 (§13), and the realtime consultation-loop work in Lane R — registry 48→49
+(§14). Full evidence (gate output, file lists, test names) lives in those sections; this summary
+is a map to them, not a second copy.
+
+## 9b. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-10, OD-11, OD-12. |
 | 2026-08-25 | **OD-11 revised — unblocked.** Eval gate survives; `goldenSetId` binds to the node; tenant-admin enable/disable added. Full DELETE/EDIT/COUPLING inventory inlined (§5a) so the ticket is self-contained. |
+| 2026-08-29 | **Deletion merged to `dev-2.2`.** 205 files, 21,092 deletions. Gates: database 1641, domains 1848, applications 10303, api 4019, admin-console 2130 (two consecutive clean runs after a load flake in the first sweep), harness 1668, `gen:check` no-drift ×3 + schema coverage OK, `gen:admin`/`portal`/`openapi` no drift (52 areas, 404 routes, 371 schemas; admin 608 ops), lint 40/40. Orchestrator independently verified both hard invariants and rebuilt domains+applications before trusting any artifact (stale-dist trap). Migration authored against a throwaway shadow DB, drift-free, deliberately **not yet applied** to shared dev/test (§10a). Tenant-provisioning golden-agents-vs-departments bug found and fixed in passing (§10c). |
+| 2026-08-29 | **Migration applied by the owner** (§10a resolved) — verified against both dev and test DBs: `DepartmentAgent`/`DepartmentAgentVersion` gone, `AgentPromotion` survives, `ResourceType.DepartmentAgent` still present in `pg_enum`. Test DB reseeded (32 users, 3 workflow definitions). Owner rulings recorded on all four §10b capability deltas (§11) — all binding. |
+| 2026-08-29 | **P-4 CLOSED** (§12) — the impersonated clinician's silently-403ing catalogs were a client-side defect, not a missing endpoint; the non-admin routes the original ruling asked to build already existed (`dna-writing-styles/mine`, `users/me/departments`). Zero routes added. |
+| 2026-08-29 | **Lane A landed** (§13) — the target node catalogue: registry 36 → 48 (nine `agent.*`, three `guard.*`). Two owner rulings still needed (§13a); one contract rule deleted on evidence (§13b — "realtime-lane node MUST NOT be `externalWrite`" replaced by "every node must be idempotent, in either lane"). |
+| 2026-08-29 | **Lane R landed** (§14) — the realtime consultation loop against the owner's four-item acceptance bar: partial transcript + advisory corrections and partial summary + template autofill both work; "important information highlighted" does not exist anywhere in the platform and needs an owner design decision (§14a). A silent live defect (flush projecting by raw node type instead of canonically) found and fixed (§14d). |
+| 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): this section and `§9b` renumbered from colliding `§10`/`§11` headings (the required Implementation Summary/Change History vs. the later addenda that had reused the same numbers); `§9a` given real content in place of "_Not started._"; the two hardcoded/stale registry-checksum literals in §13 corrected to point at the generated constant. No code changed. |
 
 ## 10. Two things awaiting the owner
 
@@ -450,8 +483,6 @@ would have shipped that.
 `apps/api/src/modules/consultation/__tests__/harness-internal.controller.test.ts` fails `tsc --noEmit`
 (12 constructor args, 13-15 expected). Identical at base `55555d988`, untouched by this ticket, and
 Vitest passes — only a standalone typecheck sees it.
-
-| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: database 1641, domains 1848, applications 10303, api 4019, admin-console 2130 (two consecutive clean runs after a load flake in the first sweep), harness 1668, gen:check no drift x3 + schema coverage OK, gen:admin/portal/openapi no drift (52 areas, 404 routes, 371 schemas; admin 608 ops), lint 40/40. Orchestrator independently verified both hard invariants and rebuilt domains+applications before trusting any artifact (stale-dist trap). |
 
 ## 11. Owner rulings on the four deltas (2026-08-29) — BINDING
 
@@ -528,9 +559,12 @@ delete the dead constants.
 
 Registry **36 → 48**: nine `agent.*` (transcription, normalization, ner, presummarization,
 summarization, discharge_summary, retrieval, feedback, **dna_redaction**) and three `guard.*`
-(phi, moderation, groundedness). Checksum `65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c`,
-verified by the orchestrator against the value computed from the built contract — not a literal
-anyone typed. Two seeds now agree; seed 21 had been carrying a checksum stale since TASK-812.
+(phi, moderation, groundedness). The checksum was verified by the orchestrator against the value
+computed from the built contract — not a literal anyone typed, and not pinned here either, since
+it moves again with Lane R's `agent.grammar` addition below (§14) and every later ticket that
+touches a node descriptor (TASK-809 §2y2). Read the live value from `REGISTRY_CHECKSUM` in
+`packages/database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts`. Two seeds
+now agree; seed 21 had been carrying a checksum stale since TASK-812.
 
 Gates: workflow-contract 972 · database 1641 · applications 10344 · api 4029 · harness 1670 ·
 `gen:check` no-drift ×3 · lint 40/40.

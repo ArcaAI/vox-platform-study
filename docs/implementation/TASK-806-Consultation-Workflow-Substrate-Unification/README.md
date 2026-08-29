@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — **MASTER ticket**; sub-tickets TASK-808…815 (§7). All decisions answered. No blockers — TASK-808 and the TASK-814 D-25 lane can start immediately. |
+| **Status** | **`In Progress`** (2026-08-29 docs pass — was stale at `Pending`) — **MASTER ticket**; nine sub-tickets, TASK-808…816 (§7.1a). **Eight of nine are `Completed`** (808, 809, 810, 811, 812, 813, 814, 815); **TASK-816 (Legacy Config Retirement) is still `Pending`** and is the one blocker left on this ticket. The root-cause finding in §2.1 is closed (`startRecording` gates on the governing-engine marker; the realtime lane is graph-driven) — see §9 Change History, 2026-08-28/29 rows, for what actually landed. Do not read this as "all nine sub-tickets closed"; it is eight of nine. |
 | **Type** | `refactor` + `feature` (multi-phase program) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-08-25 |
@@ -731,7 +731,31 @@ Non-negotiable, per `14-multi-agent-worktrees.md` §2 — a subagent inherits no
 
 ## 8. Implementation Summary
 
-_Not started — awaiting owner answers on OD-7…OD-14, then sub-ticket authoring._
+OD-7…OD-14 were answered the same day this ticket was opened (§5.0-R); sub-tickets TASK-808…816
+were authored immediately after, and eight of the nine are `Completed` as of 2026-08-29. This
+section is intentionally a map to the sub-tickets rather than a duplicate of their content — each
+carries its own detailed Implementation Summary and evidence.
+
+| Sub-ticket | What it closed | Status |
+|---|---|---|
+| 808 | Unblocked TEXT generation (Phase 0 prerequisite) | `Completed` |
+| 809 | Typed ports, `trigger`/`lane`/`requires[]`, edge type-checking, interpreter fallback removed | `Completed` |
+| 810 | Document-template shape catalog, DD-11 prompt binding, D-7 closed | `Completed` |
+| 811 | Graph-driven realtime executor, per-section OCC, the §2.1 root-cause substrate gate | `Completed` |
+| 812 | Admin-ordered endpoint sequence, `session.timeout`/`summary.finalize`/`feedback.capture` | `Completed` |
+| 813 | Session-open workflow selection (OD-1) + selectable-set/governing-workflow discovery | `Completed` |
+| 814 | Tenant-admin-impersonates-clinician playground surface (OD-2), D-17/D-18/DD-3 | `Completed` |
+| 815 | `DepartmentAgent` deletion (205 files, 21,092 deletions), eval gate repointed (OD-11), `AgentPromotion` rewritten (OD-10) | `Completed` |
+| 816 | Legacy config retirement | `Pending` — the one remaining blocker on this ticket |
+
+Root cause (§2.1) is closed: `startRecording` now gates on the `Consultation.metadata.governingEngine`
+marker before running the hardcoded live loop, and the realtime lane is graph-driven behind a
+per-tenant flag with trajectory parity demonstrated against the legacy path (TASK-811). Several
+follow-on decisions and defects surfaced by the later sub-tickets are recorded in their own
+READMEs, not retrofitted into this summary — see TASK-815 §§11-14 in particular for four owner
+rulings, the target node catalogue landing (registry 36→48→49), and two owner expectations recorded
+as explicitly **not** met (no "important information highlighted" layer exists anywhere; the
+finalization chain is not seeded).
 
 ---
 
@@ -740,9 +764,11 @@ _Not started — awaiting owner answers on OD-7…OD-14, then sub-ticket authori
 | Date | Change |
 |---|---|
 | 2026-08-25 | Ticket opened. Five-lens read-only architecture review completed; 20 defects recorded with re-verified evidence; target architecture and 9-phase plan drafted. Status `Pending` pending owner approval and OD-1..OD-4. |
-| 2026-08-28 | **TASK-808, 809, 810 and 811 all `Completed` and merged to `dev-2.2`.** The root cause in §2.1 is closed: `startRecording` is gated on the governing-engine marker, and the realtime lane is graph-driven behind a per-tenant flag with trajectory parity. 809 §2y1 closed by 811. Three follow-ons carried on 811 §9a — `descriptor.lane` reconciliation (needs a lane owning `apps/harness`), a `DocumentSection` REST surface, and `pipelineId` observability. |
+| 2026-08-28 | **TASK-808, 809, 810 and 811 all `Completed` and merged to `dev-2.2`.** The root cause in §2.1 is closed: `startRecording` is gated on the governing-engine marker, and the realtime lane is graph-driven behind a per-tenant flag with trajectory parity. 809 §2y1 closed by 811. Three follow-ons carried on 811 §7 "Known follow-ups" (not §9a — that section does not exist in the ticket) — `descriptor.lane` reconciliation (needs a lane owning `apps/harness`), a `DocumentSection` REST surface, and `pipelineId` observability. |
 | 2026-08-25 | **OD-11 revised** — the eval gate SURVIVES; `goldenSetId` binds to the node that references it, with a tenant-admin enable/disable. The earlier "remove it along with goldenSet" reading is withdrawn; the `GoldenSet`/`GoldenCase`/`EvalRun` subsystem is untouched. D-27 closed by repointing. **TASK-815 unblocked.** All findings, best practices, standing instructions, destructive-tooling warnings, the full compat fence and a copy-verbatim agent brief pushed down into all nine sub-tickets. |
 | 2026-08-25 | **Sub-tickets authored** — TASK-808…816 created (renumbered from 807…815; TASK-807 was claimed by an unrelated Vault-session fix, `fe7fc77c1`). Second-round decisions OD-7…OD-14 recorded in §5.0-R, plus **DD-11** (prompt binding + two-path versioning). OD-11 applied under a narrow reading with the scope confirmation flagged as blocking on TASK-815. |
 | 2026-08-25 | **Promoted to MASTER ticket.** OD-1…OD-6 answered and recorded (§5.A). Five parallel read-only inventories run (DepartmentAgent deletion surface, playground/console, Prisma+DDD, both SDKs, compat boundary) — findings in §2.8, with seven new defects **D-23…D-28** and one explorer claim **rejected on re-verification (D-29)**. Eight new decisions raised as **OD-7…OD-14** (§5.0); four block sub-tickets. Sub-ticket map TASK-808…815 authored with layer coverage, sequencing constraints, agent + model-tier alignment and brief requirements (§7). Header, AC-3.1 and the problem statement corrected to match OD-2 (no clinical app; D-16 is not a defect). |
 | 2026-08-25 | **Design settled** (owner brainstorm). Ten decisions recorded as DD-1…DD-10 in §3.2a, with diagrams in the [Consultation Graph Architecture](https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b) artifact. Dropped: the template selector and everything it implied. Added: multi-document workflows, `trigger` as a node property, pre-summarization, per-node guards with memoization, concurrent per-node generation. Two new defects recorded — **D-21** (strict-schema confabulation pressure) and **D-22** (`PRE_SUMMARY` type overload, now **OD-6**). Phase steps added to 1, 2, 5, 6. |
 | 2026-08-25 | **`@arcaai/vox-node` lane added** (owner: "one missing thing: Vox-node SDK"). R2 split across the two SDK packages (AC-2.4/2.5/2.6); §2.5 records the existing generated admin plane; §2.6 records that `.claude/rules/05-nestjs-api.md:155` still says "four artifacts" and omits `gen:admin` — the omission that turned TASK-805's pipeline #990 red (I-3, commit `5daca9ddd`). Regenerate steps added to Phases 2, 3, 4, 6; Phase 7 rewritten to cover both packages; three risks and OD-5 added. |
+| 2026-08-29 | **812, 813, 814 and 815 also `Completed` and merged** — eight of the nine sub-tickets (808-815) are now done; only TASK-816 (Legacy Config Retirement) remains `Pending`. Header and §8 Implementation Summary were stale (header still read `Pending`/"can start immediately"; §8 still read "Not started — awaiting owner answers") and are corrected in this pass. |
+| 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): header status corrected from stale `Pending` to `In Progress` with an accurate 8-of-9 count; §8 Implementation Summary given real content (a map to the sub-tickets) in place of the stale "Not started" placeholder; the 811 §9a cross-reference above corrected to point at the section that actually exists (§7). No code changed. |

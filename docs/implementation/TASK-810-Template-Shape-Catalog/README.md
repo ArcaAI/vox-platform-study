@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — **all 15 tasks complete and merged to `dev-2.2`**. Both §7a carry-overs closed. Two owner items remain: §7b. |
+| **Status** | **`Completed`** 2026-08-29 (docs reconciliation) — **all 15 tasks complete and merged to `dev-2.2`, including task 14 (the authoring UI, landed `c42627153`/`6d60d566c` after this ticket's own README was last updated).** §7a Carry-over 1 (D-7) closed, verified against the live code; Carry-over 2 is deliberately out of scope, not a task to close. §7b's admin-console toast follow-up is also closed (`428cee2d7`). The only open item is verification, not an owner decision: the authoring screen has not been exercised logged-in against a live gateway (§7b "Outstanding verification"). |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -162,16 +162,21 @@ full property set, which **silently disables strict decoding** — the opposite 
 implementation keeps every key required and compiles an optional section to `type: ['string','null']`
 (`['object','null']` for STRUCTURED), keeping `null` distinguishable from `""`.
 
-### ⚠ Carry-over 1 — D-7 is still open (out of the backend lane's boundary)
-Two changes live in `packages/workflow-contract`, which that lane did not own:
-- `promptVersionNumber` on `PROMPT_TEMPLATE_REF_SCHEMA` — without it the Studio's
-  `additionalProperties:false` form generation **may strip a node's prompt pin on a UI round-trip**,
-  silently undoing DD-11.
-- `documentTemplateRefs` on `CompiledPolicyBindings`.
+### ✅ Carry-over 1 — D-7 CLOSED (verified against `dev-2.2`, 2026-08-29 docs pass)
 
-Until both land, `DEFAULT_POLICY_BINDINGS`' hardcoded `contextSchemaVersionId: null` /
-`promptTemplateRefs: []` (D-7) remains. **The first item should land before the UI lane (task 14)**,
-or the UI can destroy pins it round-trips.
+Originally recorded as open (out of the backend lane's boundary): two changes lived in
+`packages/workflow-contract`, which that lane did not own — `promptVersionNumber` on
+`PROMPT_TEMPLATE_REF_SCHEMA` (without it the Studio's `additionalProperties:false` form generation
+may strip a node's prompt pin on a UI round-trip, silently undoing DD-11) and
+`documentTemplateRefs` on `CompiledPolicyBindings`.
+
+Both landed. `workflow-definition.service.ts:61-72` now derives `contextSchemaVersionId`,
+`promptTemplateRefs` and `entitlementKeys` per compile — the constant that used to carry all five
+policy-binding fields (`DEFAULT_POLICY_BINDINGS`) is gone, replaced by
+`NON_DERIVABLE_POLICY_BINDINGS`, which holds only the two fields that genuinely have no source in
+the graph yet (`guardrailProfile`, `redactionRuleSetId`). The code's own comment records D-7 as
+closed by name. §7b's "correction to this ticket's own framing of D-7" (below) independently
+confirmed the UI lane measured no pin-stripping in practice either way.
 
 ### ⚠ Carry-over 2 — remaining SOAP couplings, deliberately untouched
 - `services/consultation/summary/content-diff.util.ts` — its own private 4-key `SOAP_SECTIONS` on a
@@ -234,10 +239,11 @@ Two things came with it, because the short-circuit is unsafe without them:
   `previousPromptVersionNumber`. Sys-events split too: `node-prompt-edit` (`minted: true`) vs
   `node-prompt-adopt` (`minted: false`).
 
-**Follow-up for the admin-console lane (not done here — that app is owned by concurrent lanes):**
-`node-prompt-editor.tsx` toasts `Minted v${latest + 1} and pinned …` unconditionally on success. On
-the adopt path that is now wrong on both counts — read `promptVersionMinted` / `promptVersionNumber`
-off the response instead.
+**Follow-up for the admin-console lane — CLOSED (`428cee2d7`, 2026-08-28, same day as the fix
+above).** `node-prompt-editor.tsx` toasted `Minted v${latest + 1} and pinned …` unconditionally on
+success; on the adopt path that was wrong on both counts. Fixed to read `promptVersionMinted` /
+`promptVersionNumber` off the response instead of assuming a mint. This commit lands after this
+ticket's own README was last touched, which is why it was undocumented here until this pass.
 
 ### 2. DD-2 document binding now exists on generation nodes
 `documentTemplateId` + `documentVersionNumber` were added to the five `generation`-classed node
@@ -259,11 +265,11 @@ is covered by jsdom tests driving real interactions (open drawer, reorder, publi
 `next build` + the proxy gate are verified, but a browser pass against a running API remains.
 
 ## 6. Definition of Done
-- [ ] Head/version/pin triple with checksum + DB trigger
-- [ ] Compiler emits schema + checklist + state machine; D-21 closed
-- [ ] DD-11 both paths proven by test
-- [ ] Enum parity green; allow-lists updated; repositories registered
-- [ ] Five artifacts regenerated
+- [x] Head/version/pin triple with checksum + DB trigger — migration `20260826113600_task_810_document_template_catalog` (tables, indexes, `ALTER TYPE ResourceType`, the OD-13 trigger); trigger is a real Postgres test (installs the committed DDL, attempts a real UPDATE/DELETE, asserts `restrict_violation`) per §7a
+- [x] Compiler emits schema + checklist + state machine; D-21 closed — §7a "D-21 was solved better than this ticket specified" (nullable sections, not `required`-stripping, keeps strict decoding intact)
+- [x] DD-11 both paths proven by test — mint path at ship; adopt-vs-mint checksum short-circuit closed 2026-08-28 with its own console-side toast fix (`428cee2d7`), both documented in §7b item 1
+- [x] Enum parity green; allow-lists updated; repositories registered — `TENANT_SCOPED_MODELS` (+2 → 88), `MODELS_WITHOUT_SOFT_DELETE` (+`DocumentTemplateVersion`), `ResourceType` parity (`DocumentTemplate` only, per §7 "What landed")
+- [x] Five artifacts regenerated — task 15 merged (§8 Change History); `packages/vox-node/src/resources/admin/document-template.ts` exists as the generated SDK surface
 
 ## Best Practices — apply to every task here
 
@@ -412,10 +418,31 @@ paths, tests pasted), `ARTIFACTS`.
 
 ## 7. Implementation Summary
 
-Tasks 1–13 and 15 are implemented on `dev-2.2`. Task 14 (the authoring UI) is a
-separate lane and was deliberately not started.
+All 15 tasks are implemented and merged to `dev-2.2`. Tasks 1–13 and 15 landed first, from the
+backend/domain lane described below. Task 14 (the authoring UI) was deliberately left to a
+separate lane at that time — it landed afterward, `c42627153`/`6d60d566c` (2026-08-28), under this
+same ticket number.
 
-### What landed
+### Task 14 — the document-template authoring UI
+
+`/document-templates` (tier 30-49, `(tenant)` route group) follows the `/context-schemas` idiom
+rather than inventing a second one: `ScreenTemplate` + `WorkingTenantGate`, one `DetailDrawer` with
+Settings/Shape/Versions tabs, the draft lifted into the drawer, the same publish-rejection
+surfacing (problems inline, `breakingChanges` behind an explicit acknowledgement) and the same
+versions/pin panel with the server-computed `versionSkew`. Section ORDER is editable via Move
+up/down buttons — WCAG 2.5.7's single-pointer alternative by construction, rather than a drag
+surface plus a fallback. `effectiveTemplate()` mirrors the server's `isServable` +
+`findDefaultForTenant` and names which fallback state a clinician is seeing (unconfigured,
+undefaulted, unpublished, still DRAFT) rather than letting all four present as an unexplained "SOAP
+came out again". DD-11's affordance lives in the Studio editor's right rail.
+
+Nine components under `apps/admin-console/src/features/document-templates/components/`
+(`document-templates-screen.tsx`, `document-templates-list.tsx`, `document-template-detail-drawer.tsx`,
+`template-settings-form.tsx`, `shape-editor.tsx`, `section-form.tsx`, `template-versions-panel.tsx`,
+`create-template-form.tsx`, `effective-template-banner.tsx`) plus the route at
+`apps/admin-console/src/app/(console)/(tenant)/document-templates/page.tsx`.
+
+### What landed (tasks 1–13, 15)
 
 | Area | Files |
 |---|---|
@@ -458,4 +485,8 @@ describe a different document than the schema the model is decoded against.
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-13 and DD-11. |
-| 2026-08-26 | Tasks 1–13 + 15 implemented and merged to `dev-2.2`. Prompt checksum guards re-pinned deliberately (task 13). Task 14 left to the UI lane. |
+| 2026-08-26 | Tasks 1–13 + 15 implemented and merged to `dev-2.2`. Prompt checksum guards re-pinned deliberately (task 13). Task 14 left to the UI lane. D-7 carried over as open (out of this lane's boundary); D-21 solved by nullability rather than the ticket's original "drop from `required`" framing. |
+| 2026-08-28 | D-7 CLOSED: `promptVersionNumber` on `PROMPT_TEMPLATE_REF_SCHEMA` and `documentTemplateRefs` on `CompiledPolicyBindings` both landed; `workflow-definition.service.ts` now derives `contextSchemaVersionId`/`promptTemplateRefs`/`entitlementKeys` per compile instead of the old hardcoded-null `DEFAULT_POLICY_BINDINGS`. UI lane measured the pin-stripping risk did not materialise in practice either way (§7b). |
+| 2026-08-28 | DD-11 adopt-vs-mint fixed: an unchanged prompt adopt now moves the pin instead of minting a duplicate `PromptVersion` (checksum short-circuit on `content`+`variables`, compared against the template's latest version); `If-Match` is now actually checked before the mint/adopt decision. Console-side follow-up (`node-prompt-editor.tsx` toast) closed the same day (`428cee2d7`). |
+| 2026-08-28 | **Task 14 (document-template authoring UI) landed** (`c42627153`/`6d60d566c`): `/document-templates` following the `/context-schemas` idiom, `DetailDrawer` with Settings/Shape/Versions tabs, section-order Move up/down (WCAG 2.5.7 single-pointer alternative), `effectiveTemplate()` naming which fallback state a clinician is seeing, DD-11's stale-pin affordance in the Studio editor's right rail. All 15 tasks now complete; status → `Completed`. |
+| 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): header, §7 Implementation Summary and §6 DoD updated to reflect task 14 landing and D-7's closure, which this ticket's own README had not recorded (both landed after its last edit). No code changed. |
