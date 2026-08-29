@@ -33,7 +33,7 @@ function settings(platform: unknown, perTenant: Record<string, unknown> = {}): T
 describe('the cascade', () => {
   it('inherits the two shipped defaults when nobody has an opinion', () => {
     const service = new VisitTypeService(settings(null));
-    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
+    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
   });
 
   it('inherits the SYSTEM row when the platform has an opinion and the tenant does not', () => {
@@ -61,19 +61,19 @@ describe('the cascade', () => {
     // The playground tenant sees its own trial catalogue…
     expect(service.catalogue(GLOBAL_CUSTOMER_TENANT_ID).map((v) => v.key)).toEqual(['playground-visit', 'playground-review']);
     // …and every other tenant, and the tenant-less lane, still see the SYSTEM tier.
-    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
-    expect(service.catalogue(null).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
-    expect(service.catalogue(SYSTEM_TENANT_ID).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
+    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
+    expect(service.catalogue(null).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
+    expect(service.catalogue(SYSTEM_TENANT_ID).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
   });
 
   it('discards a MALFORMED stored catalogue rather than letting it take out prompt resolution', () => {
     const service = new VisitTypeService(settings([{ key: 'only-new', label: 'Only new', aliases: [], promptSlot: 'new-patient' }]));
-    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
+    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
   });
 
   it('degrades to the shipped default when the settings lane is not wired at all', () => {
     const service = new VisitTypeService();
-    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-patient', 'revisit']);
+    expect(service.catalogue(ACME).map((v) => v.key)).toEqual(['new-visit', 'revisit']);
   });
 });
 
@@ -96,7 +96,7 @@ describe('what the call sites ask it', () => {
 
   it('answers the membership question a route needs to accept or refuse a value', () => {
     const service = new VisitTypeService(settings(null));
-    expect(service.match(ACME, 'new_visit')?.key).toBe('new-patient');
+    expect(service.match(ACME, 'new_visit')?.key).toBe('new-visit');
     expect(service.match(ACME, 'nonsense')).toBeNull();
   });
 });

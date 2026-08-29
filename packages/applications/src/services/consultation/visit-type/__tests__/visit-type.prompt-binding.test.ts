@@ -44,8 +44,8 @@ const REVISIT: VisitTypeDefinition = {
 describe('the owner’s own spellings all resolve', () => {
   it('matches every term in "New visit/Referral OR Follow-up/Re-visit"', () => {
     const at = (raw: string) => matchVisitType(CONSULTATION_VISIT_TYPES_DEFAULT, raw)?.key;
-    expect(at('New visit')).toBe('new-patient');
-    expect(at('Referral')).toBe('new-patient');
+    expect(at('New visit')).toBe('new-visit');
+    expect(at('Referral')).toBe('new-visit');
     expect(at('Follow-up')).toBe('revisit');
     // The hyphenated spelling the owner wrote verbatim. It did NOT resolve
     // before: the key folds to `revisit`, and no alias folded to `re-visit`.

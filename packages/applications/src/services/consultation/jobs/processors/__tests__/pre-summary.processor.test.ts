@@ -126,7 +126,7 @@ describe('PreSummaryProcessor', () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION });
     await processor.process(job());
 
-    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'New patient' }));
+    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'New visit' }));
   });
 
   it("renders the TENANT's own visit-type label into {visit_type}, not a platform literal", async () => {
