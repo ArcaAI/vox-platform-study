@@ -66,7 +66,7 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'x' } });
 });
 
-/** The `This is a … visit.` line the route appends to the system prompt. */
+/** The `Visit type: …` line the route appends to the system prompt. */
 function systemPrompt(): string {
   return post.mock.calls[0]![1].system_prompt as string;
 }
@@ -76,7 +76,7 @@ describe('a tenant with no catalogue of its own', () => {
     for (const visit_type of ['new_visit', 'referral']) {
       post.mockClear();
       await controller().generateAssembled({ type: 'summary', message: 'transcript', visit_type } as never);
-      expect(systemPrompt()).toContain('This is a New patient visit.');
+      expect(systemPrompt()).toContain('Visit type: New visit.');
     }
   });
 });
@@ -89,12 +89,12 @@ describe('a tenant that defines its own visit types', () => {
 
   it('accepts a visit type the OLD allow-list would have refused with a 400', async () => {
     await controller(OWN).generateAssembled({ type: 'summary', message: 'transcript', visit_type: 'clinic-review' } as never);
-    expect(systemPrompt()).toContain('This is a Clinic review visit.');
+    expect(systemPrompt()).toContain('Visit type: Clinic review.');
   });
 
   it('accepts one of its own ALIASES too', async () => {
     await controller(OWN).generateAssembled({ type: 'summary', message: 'transcript', visit_type: 'Review Same-Day' } as never);
-    expect(systemPrompt()).toContain('This is a Clinic review visit.');
+    expect(systemPrompt()).toContain('Visit type: Clinic review.');
   });
 
   it('refuses a value ITS catalogue does not name, and says what it does name', async () => {
@@ -113,6 +113,6 @@ describe('a tenant that defines its own visit types', () => {
       { key: 'revisit', label: 'Revisit', aliases: [], promptSlot: 'revisit' },
     ];
     await controller(split).generateAssembled({ type: 'summary', message: 'transcript', visit_type: 'referral' } as never);
-    expect(systemPrompt()).toContain('This is a Referral visit.');
+    expect(systemPrompt()).toContain('Visit type: Referral.');
   });
 });
