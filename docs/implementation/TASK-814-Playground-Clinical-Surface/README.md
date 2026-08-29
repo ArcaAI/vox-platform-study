@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`daba7c13f`), contract artifacts regenerated (`1079767aa`). Three runtime verifications remain outstanding — see §9. |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`daba7c13f`), contract artifacts regenerated (`1079767aa`). Runtime verification PERFORMED 2026-08-29 against a live stack — see §9. |
 | **Type** | `feature` + `bugfix` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -333,24 +333,58 @@ separate out-of-scope task rather than fixed here.
 | 2026-08-25 | Opened from TASK-806 §7. Re-scoped by OD-2; D-16 withdrawn as a defect. |
 | 2026-08-29 | Implemented on `lane-814-playground` (worktree off `dev-2.2`@`55555d988`): D-25 impersonation wiring (827a1e1c1), D-17/D-18/§2b promotion chain across TS+Python (f0fd2a09e), error.tsx×5 + patient lookup (3760505fd), DD-3 N-document rendering (0aaee03a5), axe accessibility scans (1b8429f63). All gates green: `@arcaai/admin-console` typecheck/lint/build/test (272 playground tests + full suite 2165), `@arcaai/applications` build/test (10457 tests), `apps/api` build + `pnpm test:unit` (21363 tests), harness `ruff`/`mypy`/pytest (1664 tests) + replay-compat (19 tests). Merge into `dev-2.2` pending — left in the worktree per the close-out protocol. |
 
-## 9. Outstanding verification — recorded, NOT waived
+## 9. Runtime verification — PERFORMED 2026-08-29
 
-Three checks this ticket's own Definition of Done calls for were not performed, each for a stated
-reason. They are listed here so nobody reads "Completed" as "fully proven at runtime".
+The three checks §9 previously recorded as outstanding were executed against a live stack from
+the PRIMARY checkout (`dev-2.2`@`838248d77`) — the test gateway on `:8968` (`.env.test`, seeded
+test DB) with `next dev` on `:5176` pointed at it via host-env `API_URL`/`NEXT_PUBLIC_API_HOST`
+(host env > env file, so no file was edited). Driven with the Browser pane tools; the
+`next-dev-loop` skill's floor was NOT met (`agent-browser` CLI is not installed here) — Next
+16.3.1 + Turbopack were fine.
 
-| Not done | Why | What would close it |
+| Check | Result |
+|---|---|
+| **1. Playwright e2e** | **API suite: 1149 passed / 2 failed / 44 skipped / 9 did not run** (`RESET_DB=false`). Neither failure is TASK-814's — see below. **Admin-console suite: 172 passed / 6 failed**, then **30 passed / 1 failed** on re-run once the gateway stopped restarting; the one genuine failure is `db-studio`, unrelated. Playground specs: **17 passed, 0 failed.** |
+| **2. Browser click-through** | All six screens driven live. **D-25 proven end to end** — `tenant_admin` (NOT a super admin) opened the persona picker, impersonated clinician `doctor_derm`, `POST /api/auth/impersonate` → 200, banner + "Acting as «doctor_derm»" rendered, nav correctly narrowed. **D-17 proven** — Add detail → `POST /consultations/{id}/context` → **201**, toast shown. **§2b gateway leg proven** (below). **D-18 / DD-3 NOT exercisable** (below). Five `error.tsx` boundaries: one forced at runtime, rendered correctly with the console shell intact. |
+| **3. Both themes** | Light and dark walked on all six screens, and asserted by `@axe-core/playwright` in BOTH themes. **The real browser found violations jsdom could not** — see below. No contrast failures observed. |
+
+### What the real browser caught that vitest-axe could not
+
+`scrollable-region-focusable` (axe, **impact: serious**, WCAG 2.1.1/2.1.3) on two scroll
+containers — the live-transcript pane (`live-session-column.tsx`) and the consultation-list pane
+(`consultations-column.tsx`). Both scroll while holding no focusable child, so a keyboard user
+could not scroll them. **jsdom has no layout, so vitest-axe can never fire this rule** — the
+0-violation jsdom scans recorded in §6 were true but blind to it. Fixed (`tabIndex={0}`) with unit
+guards; the four failing real-browser axe scans (light AND dark) now pass.
+
+### Defects found and FIXED (TDD, RED first)
+
+| # | Defect | Fix |
 |---|---|---|
-| Live Playwright e2e | Needs `test:up:api` plus a destructive-by-default test-DB reset against shared test infra that a sibling lane was using at the time | `pnpm setup:test` → `pnpm test:up:api` → `pnpm test:e2e` on a quiet tree |
-| Browser click-through of the playground | `preview_start` launched `nest start` from the PRIMARY checkout, not the lane's worktree — it would have verified the wrong code and risked a schema-mismatched write to shared dev Postgres. The agent stopped rather than retry with a hand-started server. `next-dev-loop`'s `agent-browser` floor is also not installed here | A `next dev` pass against the merged tree now that the lanes are done |
-| Both-themes visual check | Verified **by construction** — every new element uses only semantic tokens already proven to exist in light and dark (`bg-ai`, `text-success`, `border-destructive`). No browser was opened | A visual pass in both themes alongside the click-through |
+| **R-1** | **The clinician's consultation list rendered permanently empty.** The list query fired before `AgenticProvider` wired `apiClient`, so `listConsultations()` rejected with `Error: SDK not initialized`; TanStack then left the retry in `fetchStatus: 'paused'`, where the query is `pending` with `data === undefined` and `error === null` — which renders neither the skeleton (`isLoading` is false while paused) nor the error branch, but the **"No consultations yet" EMPTY state**. Proven by instrumenting the queryFn in the browser: the gateway returned `count: 1` for the same session while the UI showed `Consultations (0)`, and the BFF proxy log recorded **zero** list requests. A clinician could never re-open a prior consultation. | `enabled: sdkReady` on the query + `isLoading={!sdkReady \|\| listQuery.isLoading}` so the pre-ready column reads as LOADING, never as an untrue empty list. Verified live: `Consultations (1)`, then `(9)`. |
+| **R-2** | React logged `Received \`false\` for a non-boolean attribute \`active\`` on every render of the live column. Root cause is upstream (below); the call site passed a prop that does nothing. | Dropped the no-op `active` prop from the `Waveform` call site. DOM now has zero `[active]` elements and the dev-overlay issue badge clears. |
+| **R-3** | `scrollable-region-focusable` × 2 (above). | `tabIndex={0}` on both scroll containers. |
 
-The axe scans WERE run (0 violations on every new/changed state, with two real
-`aria-prohibited-attr` violations found and fixed). Five further pre-existing
-`aria-label`-on-bare-`<div>` instances in `case-note-column.tsx` sit in untouched code paths and
-were deliberately left rather than folded into this diff.
+### Defects found and REPORTED ONLY (outside this lane's boundary)
 
-**Judgement:** the agent declining to verify against the wrong checkout was correct — a green
-result from the primary checkout would have been worse than no result, because it would have looked
-like evidence. Recording the gap is the honest close.
+| # | Defect | Evidence |
+|---|---|---|
+| **P-1** | `@arcaai/ui` `Waveform` **declares `active?: boolean` on `WaveformProps` but never destructures it** (`packages/ui/src/components/elevenlabs/waveform.tsx:15`; the component body, lines 19–140, references `active` zero times), so it falls through `...props` onto the container `<div>`. The prop type lies: it promises behaviour the component does not implement. Fix belongs in `packages/ui` — either consume `active` or remove it from the type. | R-2's root cause |
+| **P-2** | `apps/api/tests/e2e/task-776-route-authz-matrix.spec.ts:380` asserts `toBe(27)` `@Public() /internal/*` routes; the manifest holds **30**. The literal went stale on **2026-08-28** with **TASK-812** (`2bf8b373a`), which added three service-token-gated `HarnessInternalController` routes — `endpoint/feedback`, `endpoint/finalize`, `endpoint/session`. **TASK-813/814/815 added or removed none.** The behavioural half of the test (every such route 401s without a service token) PASSED; only the frozen count failed. Fix: bump the literal to 30 and refresh its breakdown comment. | full-suite failure #2 |
+| **P-3** | `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts:225` expects 400/404 for an unknown `taskId` on `test/finalize` and got **503**. Not an app defect: `finalizePromptTemplateTest` validates `taskId` only by calling TEXT (`prompt-management.service.ts:1001` → `fetchTextTaskOutput:1386`), and with `apps/text` down the `ECONNREFUSED` is classified by TASK-768 into an honest 503 (`apps/api/src/filters/downstream-error.ts:160`). Every sibling test in that file gates on TEXT availability; this one does not. Fix: give it the same gate. | full-suite failure #1 |
+| **P-4** | **Under impersonation the Consultation Scribe screen silently loses three of its data sources.** As `doctor_derm`: `admin/departments` → 403, `admin/dna-writing-styles` → 403, `admin/consent-grants` → 403, `admin/users` → 403 (`audio/pipelines` and `consultations` stay 200). The Department and Writing-style selectors render empty with no explanation — a silent failure (rule 11 §5). Since OD-2 makes "tenant admin impersonating a clinician" the ONLY clinical persona, this is the persona the screen must serve. The consent 403 IS handled deliberately (`consentBlockedReason` returns null on error and lets the gateway enforce). **Not patched here because the right remedy is a product/API call** — either clinicians get non-admin endpoints for these catalogs, or the screen degrades explicitly the way `/playground/dna-writing-style` already does with its "Impersonation gate — GATE 403 … a designed state, not a failure" panel. | live network capture |
+| **P-5** | `apps/admin-console/tests/e2e/db-studio.spec.ts:81` fails reproducibly: the studio query proxy returns `PostgresError: unrecognized configuration parameter "schema"` — a Prisma-only `?schema=` URL param being passed through as a libpq connection parameter. Unrelated to this ticket. | admin-console suite, re-run on a stable gateway |
+
+### Still NOT verified at runtime, and why
+
+| Item | Why it is not exercisable here |
+|---|---|
+| **D-18** (`liveStatus`/`liveError`, empty-first-flush) | `useLiveAssistStream`/`useArcaLiveSummary` are gated on `isRecording`. Recording needs `apps/stt` (:8861) and a real microphone; the automation browser has neither. |
+| **DD-3** (N documents from `section.patch`) | `section.patch` is emitted only from `LiveDocumentationService.flush()` (`:1994`), inside a live summary cycle. There is **no internal HTTP endpoint that can inject one** — the internal `live-summary` route accepts only the legacy `HarnessLiveSummaryRequest`. Needs `apps/harness` (:8866) + the Temporal worker. |
+| **§2b full chain** to `feedback.capture` | The **console→gateway leg IS proven**: `POST /consultations/{id}/recording/stop` carrying a full `AcceptedCorrectionProposal` returned **201 `DRAINING`**, while a control request with an undeclared field returned **400 "property bogusFieldXyz should not exist"** — so the 201 proves `acceptedProposals` is genuinely a declared, accepted field and not merely an unvalidated body. The gateway→harness→Temporal→`feedback.capture` leg cannot run: harness is `ECONNREFUSED` in the gateway log. That leg remains covered only by TASK-814's Temporal time-skipping test. |
+
+Closing these three needs the Python stack up (`pnpm stack:dev`) plus a microphone-capable browser —
+an integration-environment task, not a gap in the shipped code.
 
 | 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4036, admin-console 2198, harness 1668 (94% cov), lint 40/40; portal/openapi/gen:admin all no-drift after regeneration. D-25 premise independently verified by the orchestrator — the gateway own-tenant guard at `auth.controller.ts:712-719` was NOT modified, only routed to. Three runtime verifications outstanding (§9). |
+| 2026-08-29 | **Runtime verification performed** (§9 rewritten from "outstanding" to observed results). Live Playwright: API suite 1149 passed / 2 failed (both diagnosed, neither this ticket's — P-2 stale count from TASK-812, P-3 TEXT down); admin-console playground specs 17 passed / 0 failed. Browser click-through of all six screens in both themes proved D-25, D-17, the §2b gateway leg and an `error.tsx` boundary; D-18 and DD-3 are not exercisable without the Python stack. Three defects found and fixed TDD: R-1 the consultation list rendering a permanent false empty state after an SDK-init race, R-2 an invalid `active` DOM attribute, R-3 two keyboard-inaccessible scroll regions that jsdom's axe structurally cannot catch. Five further defects reported, not fixed (P-1..P-5). Gates: admin-console test 2137, build, typecheck, `pnpm lint` 40/40. |

@@ -227,7 +227,10 @@ export function ConsultationsColumn({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      {/* tabIndex 0 — WCAG 2.1.1/2.1.3: while loading or empty this pane
+          scrolls with no focusable child, so a keyboard user cannot reach
+          its content. axe `scrollable-region-focusable`, impact serious. */}
+      <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-2">
         {isLoading ? (
           <div className="flex flex-col gap-2 p-1" aria-hidden>
             {[0, 1, 2, 3].map((index) => (

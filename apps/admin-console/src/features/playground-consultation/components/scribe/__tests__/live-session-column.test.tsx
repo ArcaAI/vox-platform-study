@@ -35,6 +35,42 @@ describe('LiveSessionColumn', () => {
     expect(screen.queryByLabelText(/persisted transcript/i)).toBeNull();
   });
 
+  /**
+   * `Waveform` (@arcaai/ui elevenlabs registry) DECLARES `active?: boolean` on
+   * `WaveformProps` but never destructures it, so it falls through `...props`
+   * onto the container <div> and React logs
+   * "Received `false` for a non-boolean attribute `active`" on every render.
+   * Observed in the browser during the TASK-814 §9 runtime pass.
+   *
+   * The prop is a genuine no-op here — the visual idle/live distinction already
+   * comes from the `data` swap — so the call site must not pass it. (The
+   * upstream prop-type lie is reported separately; packages/ui is out of scope.)
+   */
+  /**
+   * WCAG 2.1.1 / 2.1.3 — axe `scrollable-region-focusable` (impact: serious).
+   * The transcript pane scrolls but contains no focusable child, so a keyboard
+   * user cannot scroll it. jsdom has no layout, so vitest-axe can NEVER catch
+   * this — it was found only by @axe-core/playwright in a real browser during
+   * the TASK-814 §9 runtime pass.
+   */
+  it('exposes the scrolling transcript pane to the keyboard', () => {
+    const { container } = render(<LiveSessionColumn {...baseProps()} />);
+    const pane = container.querySelector('.overflow-y-auto');
+    expect(pane).not.toBeNull();
+    expect(pane?.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('does not emit an invalid `active` DOM attribute for the waveform', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<LiveSessionColumn {...baseProps({ isCapturing: true })} />);
+      const messages = spy.mock.calls.map((call) => call.map(String).join(' ')).join('\n');
+      expect(messages).not.toMatch(/non-boolean attribute/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('renders the persisted transcript in review mode once capture stops', () => {
     render(<LiveSessionColumn {...baseProps({ reviewTranscriptText: 'Patient reports chest pain. History of hypertension.' })} />);
     expect(screen.getByLabelText(/persisted transcript/i)).toBeTruthy();

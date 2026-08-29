@@ -53,6 +53,9 @@ function makeArca() {
       load: vi.fn(async (id: string) => ({ id, patientId: 'P-448', status: 'OPEN', createdAt: '2026-07-06T14:02:00.000Z' })),
       listConsultations: vi.fn(async () => ({ data: CONSULTATIONS, total: CONSULTATIONS.length, page: 1, limit: 50 })),
     },
+    // `useArca().isReady` mirrors `store.initialized` — false until AgenticProvider
+    // has wired `apiClient` onto the store.
+    isReady: true,
     audio: {
       isCapturing: false,
       isMuted: false,
@@ -193,6 +196,59 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     // Footer model selectors.
     expect(screen.getByText('Transcription Listener')).toBeTruthy();
     expect(screen.getByText('Note assistant')).toBeTruthy();
+  });
+
+  /**
+   * The consultation list must not race SDK initialization.
+   *
+   * Observed at runtime (TASK-814 §9 browser pass, impersonated clinician): the
+   * query fired before `AgenticProvider` had put `apiClient` on the store, so
+   * `listConsultations()` rejected with `Error: SDK not initialized`. The retry
+   * was then left in TanStack's `paused` fetchStatus, so the query stayed
+   * `pending` forever with `data === undefined` and `error === null` — which
+   * renders neither the skeleton (`isLoading` is false while paused) nor the
+   * error branch, but the "No consultations yet" EMPTY state. A clinician with
+   * real consultations saw an empty list permanently and could never re-open one.
+   *
+   * An empty state is not a loading state: until the SDK is ready the query must
+   * not run at all.
+   */
+  it('does not query the consultation list until the SDK is initialized', async () => {
+    stubFetch();
+    sdk.arca.isReady = false;
+    renderWithProviders(<ConsultationDemoScreen />);
+
+    await screen.findByRole('region', { name: /consultations/i });
+    expect(sdk.arca.session.listConsultations).not.toHaveBeenCalled();
+  });
+
+  it('never shows the empty state while the SDK is still initializing', async () => {
+    stubFetch();
+    sdk.arca.isReady = false;
+    // Model the runtime failure exactly: called before init, the SDK rejects.
+    sdk.arca.session.listConsultations = vi.fn(async () => {
+      throw new Error('SDK not initialized');
+    });
+    renderWithProviders(<ConsultationDemoScreen />);
+
+    await screen.findByRole('region', { name: /consultations/i });
+    // The pre-ready column is LOADING, not empty — the empty state would be a lie.
+    expect(screen.queryByText(/no consultations yet/i)).toBeNull();
+    expect(sdk.arca.session.listConsultations).not.toHaveBeenCalled();
+  });
+
+  it('loads the list once the SDK finishes initializing (the gate opens, it does not latch)', async () => {
+    stubFetch();
+    sdk.arca.isReady = false;
+    const { rerender } = renderWithProviders(<ConsultationDemoScreen />);
+    await screen.findByRole('region', { name: /consultations/i });
+    expect(sdk.arca.session.listConsultations).not.toHaveBeenCalled();
+
+    sdk.arca = { ...sdk.arca, isReady: true };
+    rerender(<ConsultationDemoScreen />);
+
+    await waitFor(() => expect(sdk.arca.session.listConsultations).toHaveBeenCalled());
+    expect(await screen.findByText('P-448')).toBeTruthy();
   });
 
   it('reads the persisted column layout through the SDK settings plane', async () => {
