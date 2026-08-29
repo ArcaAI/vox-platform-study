@@ -5,9 +5,21 @@
 // constant. Subject to `00-project-context.md` §Configuration Principles:
 // tenant → SYSTEM, never a literal in code."
 //
+// SECOND OWNER DIRECTIVE (2026-08-29): visit type is also "an identifier where
+// the hope platform configure and compose the instructions and consultation
+// context as prompt for agent to work on: pre-summarization OR summarization OR
+// any text generation task." That is what `VisitTypeDefinition.prompts` serves:
+// a per-TASK prompt binding hanging off each entry, so `(task, visitType)`
+// selects the instructions and the context composition through THIS key's
+// cascade. It stayed on this key rather than becoming a second one because the
+// binding is meaningless without the visit type it belongs to — one key means
+// one write, one audited value, and no way to leave a binding pointing at a
+// visit type a later edit deleted.
+//
 // WHY `global-kv` AND NOT A TABLE. The tier decision turns on what a visit type
-// actually IS in this system: a LABEL SET with an alias list and a two-valued
-// prompt-column pointer. It has no relations (nothing FKs to it — `GateEditExemplar.visitType`
+// actually IS in this system: a LABEL SET with an alias list, a two-valued
+// prompt-column pointer and a sparse task -> template map. It has no relations
+// (nothing FKs to it — `GateEditExemplar.visitType`
 // is already a bare `String?` facet, and prompt selection is by department
 // column), no per-row lifecycle, and it is read on the consultation generation
 // hot path from inside BullMQ processors that have no request context.
@@ -31,7 +43,12 @@
 // `GateEditExemplar` row already recorded leaves an orphan string in a derived,
 // deletable ops projection; and no department/doctor scope. If any of those
 // becomes a requirement, the key keeps its name and moves to `db-config` —
-// that is what `targetTier` is for.
+// that is what `targetTier` is for. `prompts` sharpens the FK point rather than
+// changing it: a binding names a `PromptTemplate` id that nothing enforces, so a
+// deleted or never-existent template is caught at RESOLUTION (the tier requires
+// an APPROVED template with a snapshot and otherwise falls through) instead of
+// at write. That is the same posture the workflow node's own `promptTemplateId`
+// binding has, and it is why the tier can only ever ADD a governed prompt.
 //
 // NOT SEEDED, DELIBERATELY. The two defaults ARE `descriptor.default`, so a
 // tenant with no opinion inherits them through the SYSTEM lane's own fallback.
@@ -79,8 +96,12 @@ export const VISIT_TYPE_SETTINGS: SettingDescriptor[] = [
       'visit, new referral) and Revisit (aliases: follow-up / review / revisit same-day) — and a tenant with no catalogue of its own ' +
       'inherits them. ORDER IS THE VALUE: when a consultation records no visit type, its parent link picks a prompt slot and the FIRST ' +
       'entry carrying that slot is used, so a tenant makes its own type the default for a branch by putting it first. `label` is what ' +
-      'fills the `{visit_type}` prompt variable. Resolved per consultation at generation time, so a change applies to the next ' +
-      'generation, not retroactively.',
+      'fills the `{visit_type}` prompt variable. Each entry may also carry `prompts` — a text-generation task key (`summary`, ' +
+      '`pre-summary`, `live`, or any task this platform later serves) mapped to `{ promptTemplateId, promptVersionNumber?, ' +
+      'contextVariables? }` — which is how a visit type composes its OWN instructions and consultation context for that task instead of ' +
+      'borrowing a Department prompt column. A binding is served only when its template is APPROVED; anything else falls through to the ' +
+      'existing chain, and a doctor’s preferred template still wins. Resolved per consultation at generation time, so a change applies ' +
+      'to the next generation, not retroactively.',
     default: CONSULTATION_VISIT_TYPES_DEFAULT.map((entry) => ({ ...entry, aliases: [...entry.aliases] })),
     validate: visitTypeCatalogueProblem,
   },
