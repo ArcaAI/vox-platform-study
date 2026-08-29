@@ -369,11 +369,11 @@ guards; the four failing real-browser axe scans (light AND dark) now pass.
 
 | # | Defect | Evidence |
 |---|---|---|
-| **P-1** | `@arcaai/ui` `Waveform` **declares `active?: boolean` on `WaveformProps` but never destructures it** (`packages/ui/src/components/elevenlabs/waveform.tsx:15`; the component body, lines 19–140, references `active` zero times), so it falls through `...props` onto the container `<div>`. The prop type lies: it promises behaviour the component does not implement. Fix belongs in `packages/ui` — either consume `active` or remove it from the type. | R-2's root cause |
+| **P-1** ✅ FIXED | `@arcaai/ui` `Waveform` **declares `active?: boolean` on `WaveformProps` but never destructures it** (`packages/ui/src/components/elevenlabs/waveform.tsx:15`; the component body, lines 19–140, references `active` zero times), so it falls through `...props` onto the container `<div>`. The prop type lies: it promises behaviour the component does not implement. Fix belongs in `packages/ui` — either consume `active` or remove it from the type. | R-2's root cause |
 | **P-2** ✅ FIXED | `apps/api/tests/e2e/task-776-route-authz-matrix.spec.ts:380` asserts `toBe(27)` `@Public() /internal/*` routes; the manifest holds **30**. The literal went stale on **2026-08-28** with **TASK-812** (`2bf8b373a`), which added three service-token-gated `HarnessInternalController` routes — `endpoint/feedback`, `endpoint/finalize`, `endpoint/session`. **TASK-813/814/815 added or removed none.** The behavioural half of the test (every such route 401s without a service token) PASSED; only the frozen count failed. Fix: bump the literal to 30 and refresh its breakdown comment. | full-suite failure #2 |
 | **P-3** ✅ FIXED | `apps/api/tests/e2e/task-635-prompt-test-bench.spec.ts:225` expects 400/404 for an unknown `taskId` on `test/finalize` and got **503**. Not an app defect: `finalizePromptTemplateTest` validates `taskId` only by calling TEXT (`prompt-management.service.ts:1001` → `fetchTextTaskOutput:1386`), and with `apps/text` down the `ECONNREFUSED` is classified by TASK-768 into an honest 503 (`apps/api/src/filters/downstream-error.ts:160`). Every sibling test in that file gates on TEXT availability; this one does not. Fix: give it the same gate. | full-suite failure #1 |
 | **P-4** | **Under impersonation the Consultation Scribe screen silently loses three of its data sources.** As `doctor_derm`: `admin/departments` → 403, `admin/dna-writing-styles` → 403, `admin/consent-grants` → 403, `admin/users` → 403 (`audio/pipelines` and `consultations` stay 200). The Department and Writing-style selectors render empty with no explanation — a silent failure (rule 11 §5). Since OD-2 makes "tenant admin impersonating a clinician" the ONLY clinical persona, this is the persona the screen must serve. The consent 403 IS handled deliberately (`consentBlockedReason` returns null on error and lets the gateway enforce). **Not patched here because the right remedy is a product/API call** — either clinicians get non-admin endpoints for these catalogs, or the screen degrades explicitly the way `/playground/dna-writing-style` already does with its "Impersonation gate — GATE 403 … a designed state, not a failure" panel. | live network capture |
-| **P-5** | `apps/admin-console/tests/e2e/db-studio.spec.ts:81` fails reproducibly: the studio query proxy returns `PostgresError: unrecognized configuration parameter "schema"` — a Prisma-only `?schema=` URL param being passed through as a libpq connection parameter. Unrelated to this ticket. | admin-console suite, re-run on a stable gateway |
+| **P-5** ✅ FIXED | `apps/admin-console/tests/e2e/db-studio.spec.ts:81` fails reproducibly: the studio query proxy returns `PostgresError: unrecognized configuration parameter "schema"` — a Prisma-only `?schema=` URL param being passed through as a libpq connection parameter. Unrelated to this ticket. | admin-console suite, re-run on a stable gateway |
 
 ### Still NOT verified at runtime, and why
 
@@ -427,3 +427,25 @@ likely unavailable in this stack; skipping generation-dependent assertions.
 statuses is almost always the wrong repair — it converts a failing test into a permanently
 passing one. Gate on availability instead, and make sure the probe actually exercises the
 dependency being gated on.
+
+### P-1 and P-5 — closed by Lane F (merged 2026-08-29)
+
+**P-1** — the unconsumed `active?: boolean` was **removed** from `WaveformProps` rather than
+consumed. `Waveform` is a static, data-driven canvas renderer: no animation loop, no analyser,
+nothing an "active" flag could legitimately gate. The live concept belongs to
+`MicrophoneWaveform` / `LiveMicrophoneWaveform`, which declare and consume their own `active`
+independently. Consuming-and-discarding would have left a dead, misleading prop in the public API.
+
+**P-5** — root cause was NOT in `pstudio.html.ts` as the report guessed. `PstudioService.getExecutor()`
+passed `process.env.DATABASE_URL` verbatim to postgres.js, and Prisma's own `?schema=public`
+convention becomes an unrecognized Postgres startup parameter. Closed with `stripPrismaSchemaParam`,
+unit-tested (the e2e needs a live gateway).
+
+Two corrections to the orchestrator's citations, both caught by the lane:
+- The `harness-internal.controller.test.ts` arity bug was **9** call sites, not the 2 cited. The
+  lane got a clean `tsc` baseline first — which required building `@arcaai/async-contract`, whose
+  three unrelated `TS2307` errors were masking the real count. Trusting the two cited line numbers
+  would have left seven unfixed. `tsc --noEmit` on `apps/api` is now **0 errors**.
+- The stale "DEFAULTS TO FALSE" claim in `origin-tenant-binding.guard.ts` appeared **twice**, not
+  once; both fixed, and the pass-through-vs-404 behaviour was verified against the implementation
+  rather than copied from the brief.
