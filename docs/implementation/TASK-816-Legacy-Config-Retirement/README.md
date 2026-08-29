@@ -239,9 +239,123 @@ resolution path, and the retired authoring routes.
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 02, 03, 04, 09. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 6. Implementation Summary
-_Not started._
+
+### Phase 1 — `llmBinding` on node config, and AiTaskDefault selection relocated onto it (2026-08-29)
+
+**Status: landed on `lane-816-llmbinding`, pending merge. Nothing was removed.** Every existing
+resolution path resolves byte-identically; the successor tier was ADDED above it. That is the whole
+discipline of doing this before any drop — see §2a's statement of the hazard.
+
+Registry checksum `eb2e97fb…0baf3` → `21901af1becbe9a9be072bab9eac6a5fe97f13c1de1f370b591c2f8da549b2d4`
+(produced by `regen-arcaai-consultation-workflow-seed.ts`; `regen-workflow-definition-seed.ts`
+reports `=== DRIFT: 0 ===`). Gates: workflow-contract 1037 · database 1671 · domains 1848 ·
+applications 10532 · api 4046 · harness 1708 · harness lint + mypy clean · `gen:check` no-drift ×3 ·
+lint 40/40 · openapi/portal/vox-node-admin drift-free.
+
+#### 6a. The ticket's proposed shape was wrong on five of its six fields
+
+§2a sketched `llmBinding: { provider, model, contextLength, maxTokens, temperature,
+promptInstruction }`. Read against what `AiTaskDefault` ACTUALLY expresses — exactly
+`(taskKey, modelSlug, configJson)` — only one field survives.
+
+| Sketched field | Verdict | Where it already lives |
+|---|---|---|
+| `provider` | **rejected** | derived from `AiModel.provider` for the bound slug. Authoring it puts an engine name in tenant graph data and bypasses the ENABLED check, the `taskType` match and the `azure → azure-openai` alias, all of which live in one place today |
+| `model` | **replaced by `modelSlug`** | a raw model id is a hardcoded literal (`00-project-context.md` §Configuration Principles rule 1). The governed form is a REFERENCE into `AiModel`, resolved `[tenant, SYSTEM]` — which is precisely what an `AiTaskDefault` row's `modelSlug` is |
+| `contextLength` | **rejected** | `AiRuntimeProfile.contextLength`, keyed by the very `(tenantId, provider, modelSlug)` this binding selects |
+| `maxTokens` / `temperature` | **rejected** | already top-level config keys on every generation schema (`generate.text`, `consultation.synthesize`, the three live-assist nodes) |
+| `promptInstruction` | **rejected** | `promptTemplateId` + `promptVersionNumber` (DD-11) — an APPROVED, version-pinned template, not free text on a node |
+
+Four of the five would each create a SECOND source for a value the platform already models — the
+"two rows that can disagree" defect TASK-815 §15e rejected a second settings key for. The shipped
+shape is a one-field closed object: `llmBinding: { modelSlug }`. It is an OBJECT rather than a bare
+key because the binding is the unit that resolves or does not — present means "this node selects
+for itself, fail closed"; absent means "resolve the tenant `taskKey` default exactly as today" —
+and a bare optional key cannot express that against a config object already carrying a dozen
+unrelated optional keys.
+
+**`configJson` has no reader.** `AiTaskDefault.configJson` is echoed into
+`EffectiveAiTaskDefaultResponse` and read by nothing in either runtime (verified across TS and all
+six Python services). It transfers nothing.
+
+#### 6b. The set is DERIVED, not listed
+
+Membership is "the node's config schema declares `taskKey`" — which IS the marker for "this node's
+model is selected per node through the `AiTaskDefault` cascade". Folded in by `withLlmBinding`
+beside `withRuntimeProperties`, so the next generation node registered cannot be forgotten. Eleven
+node-type keys carry it; the sensor nodes correctly do not (they call `get_policy(tenant_id)` with
+NO task key and take their model from the `HarnessPolicy` columns — Phase 2's subject).
+
+**Incidental fix required by that derivation:** `guard.groundedness` reads
+`payload.config.get("taskKey")` at `nodes/guards.py:203` but its schema never declared it, and every
+schema is `additionalProperties: false` — so the runtime honoured a routing key an admin could not
+author. Same two-halves-disagree defect Lane A closed for `timeoutSeconds`/`retry`, in the same
+file. Now declared with `_llm_policy.ALLOWED_TASK_KEYS` as its enum and the activity's own
+`text.finalize` as its default, so an unauthored node is byte-identical.
+
+#### 6c. One resolver, fail-CLOSED, funding untouched
+
+`IAiTaskDefaultService.resolveModelBySlug` exposes the SAME private `[tenant, SYSTEM]` ENABLED
+lookup `getEffective` uses, so there is one model resolution rather than two.
+`HarnessPolicyService.resolveBoundNodeSelection` sits above the task tier and **throws** when a
+bound slug resolves to nothing or the lookup faults — selection is `failMode: closed`, and falling
+through would keep an explicitly-bound node generating on a different model in silence. An ABSENT
+binding is a different statement and keeps the existing fall-through.
+
+It deliberately performs no `taskType` compatibility check: that belongs to a WRITE (`upsertRow`),
+where a mismatch can be refused with the offending value in hand. A runtime READ that dropped a
+bound model for a task-type mismatch would be a fail-OPEN substitution.
+
+**Funding is not stamped and cannot be.** The binding names a MODEL; funding stays derived from
+whose `AiProviderConnection` row supplies the CREDENTIAL (`fundingOf`), downstream and unchanged. A
+test asserts the resolver returns `{provider, model}` and no third key.
+
+#### 6d. Both runtimes carry it
+
+| Runtime | How |
+|---|---|
+| Durable interpreter (Python) | `nodes/_shared.py`'s `read_model_slug` (the mirror of TS `readLlmBindingFromConfig`) → `get_policy(..., model_slug=)` → the gateway's `?modelSlug=`. Threaded, never resolved worker-side, so one model resolution serves both runtimes. Wired at all four model-resolving modules: `text_generate`, `consultation_realtime`, `guards`, `agent_catalogue` |
+| Realtime lane (TS) | the three generation handlers hand their node `config` to the capability that calls `apps/text`. `proposeCorrections` and `extractFindings` already did; **`generateDocument` did not** — so a binding authored on `consultation.realtimeSummary` had no route to the call at all. `GenerateDocumentInput.config` closes it |
+
+#### 6e. Requirement 3 — per-capability coverage. **`AiTaskDefault` CANNOT be dropped.**
+
+The successor covers the predecessor *for the selections a workflow node makes*, and only those.
+Of the 17 `AI_TASK_KEYS`, **three** are reachable from a node's `taskKey`; the other fourteen select
+for capabilities that are not workflow nodes, so there is nothing to relocate them onto.
+
+| Capability (`AI_TASK_KEYS`) | Covered by a node `llmBinding`? | Why |
+|---|---|---|
+| `text.live`, `text.finalize`, `text.test` | **YES** | the only values a generation node's `taskKey` enum admits; per-node selection now expressible |
+| `text.live.fallback`, `text.finalize.fallback` | **NO — named gap** | the fallback tier is a SEPARATE `AiTaskDefault` row read fail-OPEN by `resolveTextFallbackSelection` (live at `summary.service.ts:1629`). A node binding has no fallback field, deliberately: adding one would declare a knob no runtime reads. A node that binds its primary still falls back to the TENANT's configured fallback |
+| `guardrail.validate/.safety/.groundedness/.pii/.pii.spans` | **NO** | resolved inside `apps/guardrail` by its own SQL resolver (`core/tenant_config.py`), a peer service with no graph. `guardrail.check` the NODE declares `guardrailType`, not a task key |
+| `nlp.ner/.classification/.diagnosis/.sentiment/.toxicity` | **NO** | resolved inside `apps/nlp`; SUPER_ADMIN-only, no tenant BYO by owner decision D-4 |
+| `harness.judge` | **NO** | SYSTEM-only, resolved by the independent `resolveJudgeSelection` overlay, not by any node |
+| `vlm.extract` | **NO** | TEXT's vision capability; no node type exposes it |
+
+**Consequence for Task 3 and Task 8 of this ticket:** "prove no reader remains" and "drop the
+tables" cannot be satisfied by relocating onto node bindings alone. Either those fourteen keys keep
+`AiTaskDefault`, or each needs its own successor decided separately. That is an owner call, not
+something a later phase can quietly assume.
+
+#### 6f. Reported, not closed
+
+- **The two TS LEGACY seams TASK-815 left null are still null.** `FrozenLiveAgentSnapshot.liveLlm`
+  (`live-agent-resolution.service.ts:100,171`) and `SummaryJobPayload.agentLlm`
+  (`summary.service.ts:679`) both carry comments naming `llmBinding` as their successor. They are
+  the NON-graph flush/finalize paths, so this phase left them alone rather than widening scope: the
+  wiring needed is `PromptResolutionService` surfacing the resolved node's binding (it already
+  selects the node and returns its id as `resolvedAgentId`), plus a `HarnessPolicyService` edge on
+  `LiveAgentResolutionService`, which has none today.
+- `agent.important_findings` declares `taskKey` with **no enum and no default**, while its activity
+  defaults to `text.live` and `resolve_text_selection` rejects anything outside
+  `ALLOWED_TASK_KEYS`. Pre-existing looseness; left alone (surgical-change rule), unlike
+  `guard.groundedness` whose declaration this phase's derivation actually required.
+- An `@ApiQuery` on an INTERNAL route moves none of the five artifacts —
+  `/internal/consultation/policy` is outside the documented surface, so `openapi.json`, the portal
+  and the generated vox-node admin schema are byte-identical. All three checks were still run.
 
 ## 7. Change History
 | Date | Change |
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries DD-10, D-23, D-24. |
+| 2026-08-29 | **Phase 1 landed** (`lane-816-llmbinding`): `llmBinding` declared as a derivation over the eleven node types that select a model; one fail-closed resolver shared by both runtimes; seeds regenerated by script. §2a's proposed binding shape corrected to a single `modelSlug` (§6a). §6e records that fourteen of seventeen `AI_TASK_KEYS` have no node to relocate onto, so Tasks 3 and 8 need an owner decision before any drop. |
