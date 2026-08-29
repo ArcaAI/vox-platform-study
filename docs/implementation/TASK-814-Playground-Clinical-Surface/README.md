@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2` (`daba7c13f`), contract artifacts regenerated (`1079767aa`). Runtime verification PERFORMED 2026-08-29 against a live stack — see §9. |
+| **Status** | **`Completed`** 2026-08-29 — merged (`daba7c13f`), artifacts regenerated (`1079767aa`), runtime-verified against a live stack (`d6d31ec48`). §9 records what was observed; P-1/P-4/P-5 are referred out. |
 | **Type** | `feature` + `bugfix` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -388,3 +388,5 @@ an integration-environment task, not a gap in the shipped code.
 
 | 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4036, admin-console 2198, harness 1668 (94% cov), lint 40/40; portal/openapi/gen:admin all no-drift after regeneration. D-25 premise independently verified by the orchestrator — the gateway own-tenant guard at `auth.controller.ts:712-719` was NOT modified, only routed to. Three runtime verifications outstanding (§9). |
 | 2026-08-29 | **Runtime verification performed** (§9 rewritten from "outstanding" to observed results). Live Playwright: API suite 1149 passed / 2 failed (both diagnosed, neither this ticket's — P-2 stale count from TASK-812, P-3 TEXT down); admin-console playground specs 17 passed / 0 failed. Browser click-through of all six screens in both themes proved D-25, D-17, the §2b gateway leg and an `error.tsx` boundary; D-18 and DD-3 are not exercisable without the Python stack. Three defects found and fixed TDD: R-1 the consultation list rendering a permanent false empty state after an SDK-init race, R-2 an invalid `active` DOM attribute, R-3 two keyboard-inaccessible scroll regions that jsdom's axe structurally cannot catch. Five further defects reported, not fixed (P-1..P-5). Gates: admin-console test 2137, build, typecheck, `pnpm lint` 40/40. |
+
+| 2026-08-29 | Runtime verification performed (§9). Three defects found and fixed — **R-1**, a permanently-empty clinician consultation list caused by a paused TanStack retry rendering the empty state instead of a skeleton; R-2 a no-op prop; R-3 two `scrollable-region-focusable` axe violations jsdom is structurally unable to detect. **P-2 and P-3 (stale e2e assertions) fixed by the orchestrator in `f8e624d0e`** and re-run green against the live gateway (18 passed). P-1 (`@arcaai/ui` `Waveform`), P-4 (impersonated Scribe silently loses three catalogs — product/API decision) and P-5 (`db-studio` proxy) referred out. D-18/DD-3 remain unexercisable without `apps/stt` and a microphone. |
