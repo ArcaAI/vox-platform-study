@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2`. 205 files, 21,092 deletions. Migration authored + drift-proven but **NOT applied to the shared dev/test DB** — see §10. |
+| **Status** | **`Completed`** 2026-08-29 — merged to `dev-2.2`. 205 files, 21,092 deletions. Migration applied by the owner and verified against both DBs (§10a). |
 | **Type** | `refactor` (deletion) |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -408,7 +408,14 @@ _Not started._
 
 ## 10. Two things awaiting the owner
 
-### 10a. The migration is NOT applied to the shared dev/test databases
+### 10a. ~~The migration is NOT applied~~ — **RESOLVED 2026-08-29, owner applied it**
+
+> Verified by the orchestrator against both databases: `DepartmentAgent` and `DepartmentAgentVersion`
+> are gone from dev and test; `AgentPromotion` SURVIVES (correct — it was deliberately not dropped);
+> and `ResourceType.DepartmentAgent` is still present in `pg_enum` (correct — §2c). Test DB is
+> reseeded: 32 users, 3 workflow definitions. Original note below for the record.
+
+### 10a (original). The migration is NOT applied to the shared dev/test databases
 
 `20260828195605_task_815_retire_department_agent` was authored against a throwaway shadow DB
 (`hope_shadow_815`) with the full ledger replayed, and proven drift-free
