@@ -42,6 +42,8 @@ const PROMPT_CARRYING_KEYS = [
   'consultation.realtimeSummary',
   'consultation.suggestions',
   'consultation.proposeCorrections',
+  // Lane R (R1) — the realtime grammar pass shares the correction engine's schema.
+  'agent.grammar',
 ] as const;
 
 const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, unknown>> = {
@@ -55,6 +57,7 @@ const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, 
   'consultation.realtimeSummary': { onError: 'degrade' },
   'consultation.suggestions': { onError: 'degrade' },
   'consultation.proposeCorrections': { onError: 'degrade' },
+  'agent.grammar': { onError: 'degrade' },
 };
 
 const GOLDEN_SET_ID = '9c2f0f1e-6c1a-4a2b-8f3d-1b7e5c9a0d24';

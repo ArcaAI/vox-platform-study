@@ -32,6 +32,7 @@ with workflow.unsafe.imports_passed_through():
         interpreter_agent_discharge_summary,
         interpreter_agent_dna_redaction,
         interpreter_agent_feedback,
+        interpreter_agent_grammar,
         interpreter_agent_ner,
         interpreter_agent_normalization,
         interpreter_agent_presummarization,
@@ -637,6 +638,19 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=150,
         default_max_attempts=2,
         output_keys={"out": "entities", "next": None},
+        lane="realtime",
+    ),
+    # Lane R (R1) — the realtime grammar/spelling pass. `lane="realtime"` means `_dispatch_node`
+    # SKIPS it here (reason `realtime_lane`) and TASK-811's live executor owns it; the durable
+    # wrapper exists so the node type is dispatchable and admissible at all.
+    "agent.grammar": NodeSpec(
+        key="agent.grammar",
+        implemented=True,
+        activity=interpreter_agent_grammar,
+        critical=False,
+        default_timeout_seconds=20,
+        default_max_attempts=1,
+        output_keys={"out": "proposals", "next": None},
         lane="realtime",
     ),
     "agent.presummarization": NodeSpec(

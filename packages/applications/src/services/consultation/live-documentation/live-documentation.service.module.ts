@@ -19,6 +19,7 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
 import { TextRequestServiceModule } from '../../text-request/text-request.service.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
 import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workflow-assignment.service.module';
+import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -95,6 +96,11 @@ import { WorkflowAssignmentServiceModule } from '../../workflow-assignment/workf
     // Absent ⇒ every session serves PLATFORM_REALTIME_LANE, which encodes
     // today's behaviour.
     WorkflowAssignmentServiceModule,
+    // Lane R (R1) — resolves the @Optional HarnessLiveAssistService the realtime GRAMMAR pass
+    // publishes its proposals through. The same channel and the same two-branch fold the durable
+    // correction node already uses; absent ⇒ proposals are computed and returned on the node's
+    // output but nothing reaches the clinician's assist feed.
+    HarnessLiveAssistServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

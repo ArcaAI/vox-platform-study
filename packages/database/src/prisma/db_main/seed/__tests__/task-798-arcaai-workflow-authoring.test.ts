@@ -48,6 +48,12 @@ import {
 } from '../23-arcaai-workflow-authoring';
 import { detectSubstrateExclusivityGate } from '../substrate-exclusivity-guard';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_USER_IDS, SYSTEM_USER_ID } from '../00-constants';
+import { ARCAAI_CLINICAL_TEMPLATE_IDS } from '../07b-arcaai-clinical-templates';
+
+/** `SYSTEM_DEFAULTS.preSummaryPromptId` in `PromptResolutionService` — the tier a tenant node
+ *  must NOT re-point at. Restated here rather than imported so this seed test does not take a
+ *  dependency on the applications package. */
+const SYSTEM_DEFAULT_PRE_SUMMARY_PROMPT_ID = '71000000-0000-0000-0000-000000000040';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONTRACT_SRC = path.resolve(HERE, '../../../../../../workflow-contract/src/index.ts');
@@ -407,5 +413,43 @@ describe('TASK-798 — the tenant-authored rows are excluded from `safe` mode', 
     // `21-workflow-definition` is SYSTEM-owned, `createdBy: SYSTEM_USER_ID`, and asserts no human
     // authorship. It stays platform configuration.
     expect(SEED_PHASES_EXCLUDED_FROM_SAFE).not.toContain('21-workflow-definition');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruling, TASK-815 §11)', () => {
+  const GRAPHS = [
+    ['arcaai-consultation-soap', ARCAAI_CONSULTATION_GRAPH],
+    ['arcaai-rheum-consultation-soap', ARCAAI_RHEUM_CONSULTATION_GRAPH],
+  ] as const;
+
+  it.each(GRAPHS)('%s carries an ACTIVE agent.presummarization node with a prompt bound', (_slug, graph) => {
+    // These three predicates are exactly what `PromptResolutionService.resolvePreSummaryPromptId`
+    // filters on (`activePresummarizationNodes`). Assert them as a set, because a node that
+    // satisfies two of the three resolves to nothing and looks identical in a diff.
+    const nodes = (graph.nodes as { id: string; type: string; config?: Record<string, unknown> }[]).filter(
+      (node) => node.type === 'agent.presummarization',
+    );
+    expect(nodes).toHaveLength(1);
+    const [node] = nodes;
+    expect(node?.config?.enabled).not.toBe(false);
+    expect(typeof node?.config?.promptTemplateId).toBe('string');
+  });
+
+  it.each(GRAPHS)('%s binds the TENANT’s own pre-summary prompt, not the SYSTEM default', (_slug, graph) => {
+    // The ruling's substance: pre-summary is TENANT tier. A tenant node pointing at the platform
+    // row would resolve to the platform's bytes and satisfy the letter of "a node exists" while
+    // reinstating exactly the silent fallback §11 refuses.
+    const node = (graph.nodes as { type: string; config?: Record<string, unknown> }[]).find((n) => n.type === 'agent.presummarization');
+    expect(node?.config?.promptTemplateId).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(node?.config?.promptTemplateId).not.toBe(SYSTEM_DEFAULT_PRE_SUMMARY_PROMPT_ID);
+  });
+
+  it.each(GRAPHS)('%s passes the PUBLISH gate, so every requires[] guard is really attached', (_slug, graph) => {
+    // `workflowPublishProblems` is the only check that enforces `requires[]`, and it has NO
+    // production caller — nothing in the gateway invokes it, so a seeded graph could ship with a
+    // generation node whose mandatory guard was never wired and no gate would say so.
+    // `agent.presummarization` requires `guard.groundedness`; this is what proves it is attached.
+    expect(contract.workflowPublishProblems(graph)).toEqual([]);
   });
 });

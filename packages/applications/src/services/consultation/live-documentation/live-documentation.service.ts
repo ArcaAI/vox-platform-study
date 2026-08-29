@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, type MessageEvent, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -14,6 +15,7 @@ import {
   ContextItemRepository,
   ContextItemType,
   DocumentSectionRepository,
+  PromptTemplateRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -48,7 +50,12 @@ import {
 } from './dto';
 // TASK-795 RC-1 — the harness inbound contract for interpreter summary text. Type-only: this
 // service consumes the shape, never the harness module's runtime code.
-import type { HarnessLiveSummaryRequest, HarnessRealtimeDeliveryAck } from '../harness/dto/realtime-delivery.dto';
+import type { HarnessLiveAssistProposalDto, HarnessLiveSummaryRequest, HarnessRealtimeDeliveryAck } from '../harness/dto/realtime-delivery.dto';
+// Lane R (R1) — the live clinician-assist feed. A RUNTIME import (unlike the type-only line
+// above) because the grammar pass publishes its proposals through this service rather than
+// re-implementing the two-branch snapshot fold beside it.
+import { HarnessLiveAssistService } from '../harness/harness-live-assist.service';
+import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
 // TASK-810 — the clinical-document SHAPE catalog. The live loop no longer knows
 // what a SOAP note is: it resolves a COMPILED template once per session and
@@ -80,6 +87,7 @@ import {
   reanchorAnnotations,
   PLATFORM_REALTIME_LANE,
   buildRealtimeLane,
+  canonicalRealtimeNodeType,
   runRealtimeLane,
   type RealtimeCapabilities,
   type RealtimeLane,
@@ -607,6 +615,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // section writes report `unavailable` and the whole-document payload still
     // publishes, so the clinician never loses the feed to a persistence outage.
     @Optional() @Inject(DocumentSectionRepository) private readonly documentSectionRepository?: DocumentSectionRepository,
+    // Lane R (R1) — the two halves the live GRAMMAR pass needs, both optional and trailing so
+    // existing positional fixtures keep their arity.
+    //
+    // `promptTemplateRepository` resolves the correction prompt from the NODE's own
+    // `promptTemplateId` binding. The prompt is CONFIG (`00-project-context.md` §Configuration
+    // Principles), so there is deliberately NO in-code default to fall back to: an unbound or
+    // unapproved template DEGRADES the node with a named reason rather than substituting a
+    // literal nobody governs.
+    @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
+    // `liveAssist` publishes the proposals onto the EXISTING clinician-assist plane — the same
+    // `consultation:live-assist:{id}` channel the durable engine publishes to, folded by the same
+    // service. A second transport for one payload is how two feeds come apart.
+    @Optional() @Inject(HarnessLiveAssistService) private readonly liveAssist?: HarnessLiveAssistService,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -1882,6 +1903,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         return { text: buildRunningSummary(outcome.value), sections: outcome.value, stats: firstCall.stats, repaired: outcome.repaired };
       },
 
+      // Lane R (R1) — the live GRAMMAR pass. Reads the node's own config (the prompt binding)
+      // and the entities the SAME flush already produced, so it costs one model call and no
+      // second NER round trip.
+      proposeCorrections: async (input, signal) => this.proposeCorrections(input, session.consultationId, signal),
+
       extractEntities: async (input, signal) => {
         // ONE executor, ONE HTTP call — `vitals` is a projection of the same
         // `nlp.classify-tokens` response, exactly as it always was.
@@ -1926,8 +1952,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       await this.publishDegradeEvents(session, run);
     }
 
-    const summarize = run.outcomes.find((o) => o.type === 'consultation.realtimeSummary');
-    const extract = run.outcomes.find((o) => o.type === 'consultation.extractEntities');
+    // Read the outcomes back through the alias map, not the raw type. A tenant graph authored
+    // against the TARGET CATALOGUE runs `agent.ner` / `agent.transcription`, which are the same
+    // capability under a different name — matching on the pipeline key alone published
+    // `entities: []` with `nlpRan: false` for those graphs even though the node had succeeded.
+    const summarize = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.realtimeSummary');
+    const extract = run.outcomes.find((o) => canonicalRealtimeNodeType(o.type) === 'consultation.extractEntities');
     const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
 
     return {
@@ -2852,6 +2882,106 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       stats: stats ? { ...stats, task_key: 'text.live', selection_source: selectionSource } : null,
       structured: includeResponseFormat,
     };
+  }
+
+  /**
+   * Lane R (R1) — PROPOSE spelling / medical-term / drug-name corrections over the RAW PARTIAL
+   * transcript. Applies none of them.
+   *
+   * ## Why this exists in TypeScript when a Python engine already proposes corrections
+   *
+   * `interpreter.consultation_propose_corrections` is `lane: 'durable'` and, in both seeded
+   * consultation graphs, is fed from `consultation.synthesize` — it reviews the FINISHED note at
+   * the end of a run, not the transcript a clinician is watching grow. Lane membership is a
+   * property of the node TYPE and the durable interpreter SKIPS realtime nodes, so one type
+   * cannot serve both cadences.
+   *
+   * What is NOT duplicated is the ENGINE: `apps/text` is the engine, and this is a thin caller of
+   * it exactly as `callText` is for the running note. What IS duplicated, deliberately, is the
+   * VERIFICATION below — a proposal whose span does not match its own `original` must be dropped
+   * at every producer, because accepting it in a one-click UI would splice a replacement over the
+   * wrong characters. That is a patient-safety invariant, and defence in depth is the correct
+   * treatment for one.
+   *
+   * The system prompt is NOT a literal here. It comes from the node's own `promptTemplateId`
+   * binding, and an unbound / unapproved / unresolvable template THROWS so the executor degrades
+   * the node with a named reason — a governed prompt that silently becomes an in-code default is
+   * exactly the hardcoded-configuration failure `00-project-context.md` forbids.
+   */
+  private async proposeCorrections(
+    input: { sourceText: string; entities: LiveSummaryEntityDto[]; tenantId: string; config: Readonly<Record<string, unknown>> },
+    consultationId: string,
+    signal?: AbortSignal,
+  ): Promise<{ proposals: HarnessLiveAssistProposalDto[]; textSha256: string; rejectedProposals: number }> {
+    const { sourceText, entities, tenantId, config } = input;
+    const textSha256 = createHash('sha256').update(sourceText, 'utf8').digest('hex');
+
+    const systemPrompt = await this.resolveCorrectionPrompt(config);
+
+    // Same LIVE tier the running note uses, and fail-CLOSED the same way: provider/model
+    // SELECTION is never substituted with an env default.
+    let provider = this.textProvider;
+    let model = this.textModel;
+    if (this.harnessPolicyService) ({ provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+
+    const payload = {
+      // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
+      // so it proposes over those spans rather than over ordinary prose.
+      prompt: JSON.stringify({ text: sourceText, entities: entities.map((e) => ({ start: e.start, end: e.end, text: e.text, type: e.type })) }),
+      system_prompt: systemPrompt,
+      provider,
+      model,
+      max_tokens: this.textMaxTokens,
+      stream: false as const,
+    };
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
+      timeout: this.textTimeoutMs,
+      headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
+      signal,
+    });
+
+    const { proposals, rejectedProposals } = verifyCorrectionProposals(mapTextGenerateResponse(response.data).summary, sourceText, {
+      provider,
+      model,
+    });
+
+    // Publish onto the EXISTING clinician-assist plane. Best-effort by contract, like every
+    // sibling publish path: a feed outage must not fail the flush.
+    if (this.liveAssist && proposals.length > 0) {
+      await this.liveAssist.publishAssist(consultationId, {
+        tenantId,
+        kind: 'corrections',
+        nodeType: 'agent.grammar',
+        provider,
+        model,
+        corrections: { proposals, applied: false, appliedCount: 0, rejectedProposals, textSha256 },
+      });
+    }
+
+    return { proposals, textSha256, rejectedProposals };
+  }
+
+  /**
+   * Resolve the correction system prompt from the NODE's `promptTemplateId` binding.
+   *
+   * Throws rather than defaulting. The executor turns the throw into a `degraded` outcome with a
+   * typed event, so an unconfigured grammar node is VISIBLE to the clinician UI instead of
+   * looking like a model that found nothing to correct.
+   */
+  private async resolveCorrectionPrompt(config: Readonly<Record<string, unknown>>): Promise<string> {
+    const templateId = typeof config.promptTemplateId === 'string' ? config.promptTemplateId : null;
+    if (!templateId) throw new Error('no_correction_prompt_bound');
+    if (!this.promptTemplateRepository) throw new Error('prompt_repository_unavailable');
+
+    const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
+    if (!template) throw new Error('correction_prompt_not_found');
+    // Same bar `PromptResolutionService` holds every governed prompt to.
+    if (template.status !== 'APPROVED') throw new Error('correction_prompt_not_approved');
+    const content = template.content?.trim();
+    if (!content) throw new Error('correction_prompt_empty');
+    return content;
   }
 
   /**

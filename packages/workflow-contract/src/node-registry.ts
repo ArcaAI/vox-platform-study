@@ -980,6 +980,47 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     idempotent: true,
     schemaVersion: 1,
   }),
+  // Lane R (R1) — the GRAMMAR/SPELLING pass of the owner's live loop, and the catalogue's
+  // realtime sibling of `consultation.proposeCorrections`.
+  //
+  // ## Why a sibling rather than flipping the durable node's lane
+  //
+  // `lane` is a property of the node TYPE and the durable interpreter SKIPS a `realtime` node
+  // (`workflow.py`, reason `realtime_lane`), so one type cannot serve both runtimes. Both uses
+  // are real and neither may be deleted: the seeded ArcaAI graphs wire `n_synth -> n_correct`,
+  // i.e. the durable node reviews the FINISHED synthesized note, while the live loop needs
+  // corrections over the RAW PARTIAL TRANSCRIPT inside a flush budget. Flipping the lane would
+  // silently delete the first from every graph that already uses it.
+  //
+  // The INPUT TYPE is what makes the two genuinely different contracts rather than duplicates:
+  // `consultation.proposeCorrections.in` is `text` precisely so it may review a generated note;
+  // this node's `in` is `transcript`, so "the live grammar pass corrects what was SAID, not what
+  // the model WROTE" is structural. Its product is `edits`, which nothing here applies — a
+  // corrected transcript is ALWAYS ADVISORY alongside the raw, and promotion happens only
+  // through the DD-8 accepted-proposal path.
+  //
+  // Budget and retry are realtime-shaped on purpose: the executor races each node against its
+  // own timer on a flush cadence, and a retry inside a flush that a newer one supersedes is
+  // discarded as `stale`, so a second attempt buys latency and nothing else.
+  'agent.grammar': Object.freeze({
+    key: 'agent.grammar',
+    implemented: true,
+    activityName: 'interpreter.agent_grammar',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'consultation',
+    critical: false,
+    // A SAFETY property, not a performance one — identical to the durable sibling's. This node
+    // proposes; the clinician accepts.
+    externalWrite: false,
+    defaultTimeoutSeconds: 20,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'per-turn',
+    lane: 'realtime',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
   // DD-6 — pre-summarization is a NODE, fed from context supplied at runtime, running on-start.
   // It must stay NON-SIGNABLE: `isFinalSummary` excludes `PRE_SUMMARY`, locked by
   // `kept-generators-signability.task732.test.ts:63`. Nothing here can make it signable — that
