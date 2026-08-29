@@ -573,3 +573,63 @@ Stopped at four rather than padding to five. Exported as `TERMINOLOGY_PURPOSE_SC
 schemas, and `compileNode` treats every value that is not `'degrade'` as `'fail'` — so the
 consultation enum's `'retry'` is an authoring-time value with no compiled meaning. Guessing an enum
 for the summarization/STT schemas would have been invention.
+
+## 14. Lane R — the realtime consultation loop (merged 2026-08-29)
+
+Owner's acceptance bar: during a live session a clinician sees (1) partial transcription updated by
+grammar/spelling agents, (2) partial summarization with template autofill, (3) important information
+popped up and highlighted. Registry **48 → 49** (`agent.grammar`). Gates: workflow-contract 1003 ·
+database 1647 · applications 10375 · api 4029 · harness 1670 · gen:check no-drift ×3 · lint 40/40.
+
+### 14a. Per-item verdict against the owner's bar
+
+| Item | Verdict |
+|---|---|
+| Partial transcript | **Works** (WS `/ws/stt/stream`, partial + final frames) |
+| …plus advisory corrections | **Made to work.** Channel and console panel already existed; the realtime lane now produces corrections per flush over the RAW transcript. Offsets are into the flush slice, pinned by `textSha256` — not session-global |
+| Partial summary + template autofill | **Works** — `DocumentTemplate` → compiled `responseFormat` schema → parsed into the template's checklist. **Caveat: tenant-default template only**; `realtimeSummary`'s own `documentTemplateId` is declared but inert in the realtime path |
+| **Important information highlighted** | **DOES NOT EXIST.** Entities reach the client re-anchored into the note so the UI *can* highlight them, but there is no red-flag / critical-value / allergy-alert / severity layer anywhere. `groundedness.flaggedSpans` flags UNGROUNDED MODEL TEXT — a different thing. **Owner design decision needed: what makes information "important"?** |
+
+### 14b. The finalization chain is NOT seeded — owner design call
+
+`agent.dna_redaction` is **absent from both** seeded graphs, as are `summary.finalize` /
+`feedback.capture` / `session.timeout` (the endpoint stage is driven by the
+`consultation.endpoint.actions` global-kv sequence, not the graph). What IS present:
+`n_synth → n_sensors → n_persist`, so groundedness does run on the written note before persist.
+But `n_phi` (`mode: 'pseudonymize'`) runs BEFORE synthesis — on the input, not on a written note.
+Produce-then-lock is still enforced on the write path by `endpointOrderProblem` (TASK-812).
+
+### 14c. Three corrections to the orchestrator's brief
+
+1. **R1's premise was half wrong.** The live delivery channel already existed end to end
+   (`publish_live_assist(kind="corrections")` → Redis → SSE → `correction-proposals-panel.tsx`).
+   Broken was CADENCE and INPUT: `descriptor.trigger` is read by **no runtime** (0 hits in
+   `apps/harness/**`), the graph walk is dispatched once at consultation OPEN, and both seeded
+   graphs fed the corrector from `n_synth` — the finished note, not the partial transcript.
+2. **R2 was structurally impossible.** There is no SYSTEM-tenant consultation graph and cannot
+   usefully be one: `WorkflowDefinition`/`WorkflowAssignment` are deliberately excluded from
+   `SYSTEM_SHARED_READ_MODELS`, and assignment resolution cascades department → tenant → `null`,
+   never widening to SYSTEM. Seeded into ArcaAI's two graphs; gap reported rather than widening the
+   tenancy posture.
+3. **`agent.grammar` is a realtime SIBLING, not a lane flip.** The durable interpreter skips
+   realtime nodes so exactly one runtime owns a node — flipping `consultation.proposeCorrections`
+   would have deleted the note-level pass from both graphs. The input TYPE is the safety property:
+   `proposeCorrections.in` is `text` (may review a generated note); `agent.grammar.in` is
+   `transcript`, making "the live pass corrects what was SAID, not what the model WROTE" structural.
+   Widening it to `text` turns the anti-laundering test RED.
+
+### 14d. A silent live defect, found and fixed
+
+`runGraphLane` projected the flush by raw node type (`o.type === 'consultation.extractEntities'`).
+A tenant graph authored against the target catalogue runs `agent.ner` — the node succeeded, the
+model was paid for, and the flush published `entities: []` with `nlpRan: false`. Now canonicalised
+(`canonicalRealtimeNodeType`), with a test.
+
+### 14e. Reported, not closed
+
+- `workflowPublishProblems` — the ONLY enforcer of `requires[]` — has **no production caller**. A
+  tenant publishing through the API is unchecked.
+- `agent.presummarization` is seeded **unwired**: the consultation palette has no on-start `context`
+  producer, and the registry's only one (`input.context_binding`) is summarization-palette and
+  `critical: true`. Documented in the seed rather than papered over with `retrieveEvidence`.
+- `port-validation.ts:222` still claims every descriptor declares `requires: []` — stale since Lane A.
