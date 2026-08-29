@@ -34,6 +34,14 @@ The other **14** serve capabilities that are **not workflow nodes at all**:
 | `vlm.extract` | no node exists |
 | `text.live.fallback`, `text.finalize.fallback` | a separate FAIL-OPEN tier a node binding deliberately has no field for |
 
+> **OWNER DECISION, 2026-08-29: option 1.** Recorded from the owner's "Lets go" immediately
+> following the orchestrator's recommendation of option 1. `AiTaskDefault` SURVIVES as the selection
+> tier for non-node capabilities; only the three node-reachable keys (`text.live`, `text.finalize`,
+> `text.test`) are retired onto `llmBinding`. **The ticket's "drop the tables" goal (task 8) is
+> therefore WITHDRAWN** for `AiTaskDefault`; it still applies to `HarnessPolicy`/`PipelinePolicy` to
+> the extent Phase 2 proves no reader remains. If this reading is wrong, say so — it is one line to
+> reverse and nothing has been deleted.
+
 **Owner decision required before Phases 2–4.** Options, none of which this lane took:
 1. Keep `AiTaskDefault` as the selection tier for non-node capabilities; retire only the three node-reachable keys. The table survives, narrower.
 2. Give the Python services node-carried selection too — a much larger programme than this ticket.
