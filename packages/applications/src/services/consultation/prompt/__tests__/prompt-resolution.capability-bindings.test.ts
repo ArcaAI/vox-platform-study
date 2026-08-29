@@ -217,19 +217,23 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
       publishGraph([finalizeNode('note-tpl')]);
       mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
-      const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
-
-      expect(result.promptId).toBe('tenant-presum-tpl');
-      expect(result.resolvedFrom).toBe('tenant');
-      // …and the missing node is SURFACED rather than silently absorbed (owner ruling).
-      expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
+      // Lane R (R2): this tenant GOVERNS consultations and its graph omits the node, which is an
+      // incomplete opinion rather than an absent one — so the miss is now fatal instead of a
+      // fall-through. The property being protected is unchanged and is the reason it must not
+      // fall through to a note prompt: selection is by node TYPE, and `note-tpl` can never
+      // answer a pre-summary request.
+      await expect(service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' })).rejects.toThrow(
+        /agent\.presummarization/,
+      );
     });
 
     it('resolves the graph with NO department — pre-summary has no department axis', async () => {
       publishGraph([finalizeNode('note-tpl')]);
       mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
-      await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
+      // The outcome is now a fail-closed (Lane R R2), but the axis assertion is about HOW the
+      // cascade was consulted, and that is unchanged: a NULL department, every time.
+      await expect(service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' })).rejects.toThrow();
 
       expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
     });
@@ -247,13 +251,26 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
     });
 
     it('falls to the SYSTEM pre-summary default — never CATCHALL_SOAP — when no tenant row exists', async () => {
-      publishGraph([finalizeNode('note-tpl')]);
+      // Exercised WITHOUT a governing graph, because after Lane R (R2) that is the only shape in
+      // which the SYSTEM-default tier is reachable: a tenant that governs consultations and omits
+      // the node fails closed (asserted directly below). The property under test is unaffected by
+      // which shape reaches the tier — it is that the pre-summary default is the PRE-SUMMARY row
+      // and never the catch-all NOTE template.
       mockPromptTemplateRepository.findAll.mockResolvedValue([]);
 
       const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
 
       expect(result.promptId).toBe(SYSTEM_DEFAULTS.preSummaryPromptId);
       expect(result.resolvedFrom).toBe('default');
+    });
+
+    it('does NOT fall to the SYSTEM default when the tenant governs consultations but omits the node', async () => {
+      publishGraph([finalizeNode('note-tpl')]);
+      mockPromptTemplateRepository.findAll.mockResolvedValue([]);
+
+      await expect(service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' })).rejects.toThrow(
+        /agent\.presummarization/,
+      );
     });
   });
 

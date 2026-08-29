@@ -4,4 +4,5 @@ export * from './realtime-executor';
 export * from './guard-memo';
 export * from './reanchor-annotations';
 export * from './section-store';
+export * from './verify-corrections';
 export * from './dto/section-patch.dto';

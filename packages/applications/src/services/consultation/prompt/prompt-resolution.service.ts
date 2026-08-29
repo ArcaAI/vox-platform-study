@@ -709,19 +709,43 @@ export class PromptResolutionService {
         };
       }
 
-      // NOT SILENT. The owner's ruling forbids an invisible slide onto the
-      // platform default, so the absence is NAMED — on the trace the caller
-      // already receives, and at error level in the log. It is not made FATAL:
-      // the SYSTEM-default tier behind this one is reached by the frozen v1-compat
-      // route (which passes no department and has never had an agent tier), and no
-      // tenant has such a node on day one, so failing closed here would take out
-      // every pre-summary on the platform including the compat plane. Loud, not
-      // lethal — and flagged to the owner rather than decided silently.
+      // NOT SILENT — and, for a tenant that actually governs consultations, NOT SURVIVABLE
+      // either (Lane R, R2; owner ruling TASK-815 §11).
+      //
+      // The ruling is that absence is "a configuration error to surface, not a silent drop to a
+      // platform default". Enforcing that for EVERY tenant is still unsafe, and seeding the node
+      // did not make it safe: `WorkflowDefinition` is deliberately excluded from
+      // `SYSTEM_SHARED_READ_MODELS` and the assignment cascade is department -> tenant -> null,
+      // so a tenant reads only its OWN definitions. There is no platform-default consultation
+      // graph every tenant inherits, which means a blanket fail-closed would take out pre-summary
+      // for every tenant that has not authored a consultation workflow — the frozen v1-compat
+      // route's whole population included.
+      //
+      // The line the ruling actually draws is between an absent opinion and an INCOMPLETE one:
+      //
+      //  * no governing consultation graph  -> the tenant has not adopted the substrate. It
+      //    expressed nothing, so the platform default applies. That is tenant -> SYSTEM working
+      //    as designed, and it stays loud-but-not-lethal.
+      //  * a governing graph WITHOUT an active, prompt-bound pre-summarization node -> the tenant
+      //    IS configuring, and configured this incompletely. Serving the platform default there
+      //    is precisely the silent drop §11 refuses, so it fails closed with the misconfiguration
+      //    named.
       const configurationError =
         `no ACTIVE ${PRESUMMARIZATION_NODE_TYPE} node with a bound prompt template is configured in this tenant's ` +
-        'governing consultation workflow — pre-summary is falling through to the tenant/SYSTEM default';
-      trace.configurationErrors = [...(trace.configurationErrors ?? []), configurationError];
-      this.logger.error({ message: configurationError, tenantId, preSummaryVariant: variant });
+        'governing consultation workflow';
+      const governed = await this.hasGoverningConsultationGraph(tenantId);
+      trace.configurationErrors = [
+        ...(trace.configurationErrors ?? []),
+        governed ? configurationError : `${configurationError} — pre-summary is falling through to the tenant/SYSTEM default`,
+      ];
+      this.logger.error({ message: configurationError, tenantId, preSummaryVariant: variant, governed });
+
+      if (governed) {
+        throw new ServiceUnavailableException(
+          `${configurationError}. Add an enabled ${PRESUMMARIZATION_NODE_TYPE} node with a prompt template to the published ` +
+            'consultation workflow, or unassign the workflow to use the platform default.',
+        );
+      }
     }
 
     if (tenantId) {
@@ -1018,6 +1042,28 @@ export class PromptResolutionService {
    * approval, pin resolution and degrade-never-throw logic — which is the half that actually
    * carries the safety properties.
    */
+  /**
+   * Does this tenant have a PUBLISHED consultation graph governing it?
+   *
+   * The one question that separates "expressed no opinion" from "expressed an incomplete one",
+   * and therefore the one that decides whether a missing pre-summarization node is fatal. Read
+   * only on the MISS path, so the happy path costs nothing extra.
+   *
+   * TOTAL, like every other read in this service: a rejected assignment read or a rotted slug
+   * answers `false`, because an operational failure must never be reported to a tenant admin as
+   * "your graph is misconfigured".
+   */
+  private async hasGoverningConsultationGraph(tenantId: string): Promise<boolean> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return false;
+    try {
+      const assignment = await this.workflowAssignments.resolve(tenantId, CONSULTATION_PALETTE_KEY, null as unknown as string);
+      if (!assignment.workflowDefinitionSlug) return false;
+      return (await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug)) !== null;
+    } catch {
+      return false;
+    }
+  }
+
   private async resolveGraphNodePrompt(
     tenantId: string,
     departmentId: string | null,

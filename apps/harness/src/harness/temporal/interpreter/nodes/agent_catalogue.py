@@ -44,6 +44,9 @@ from harness.temporal.interpreter.nodes.consultation_nlp import (
     interpreter_consultation_bind_terminology,
     interpreter_consultation_extract_entities,
 )
+from harness.temporal.interpreter.nodes.consultation_realtime import (
+    interpreter_consultation_propose_corrections,
+)
 
 
 @activity.defn(name="interpreter.agent_transcription")
@@ -83,6 +86,29 @@ async def interpreter_agent_ner(payload: NodeActivityInput) -> NodeActivityResul
     catalogue can be wired into this one.
     """
     return await interpreter_consultation_extract_entities(payload)
+
+
+@activity.defn(name="interpreter.agent_grammar")
+async def interpreter_agent_grammar(payload: NodeActivityInput) -> NodeActivityResult:
+    """Lane R (R1) — the GRAMMAR/SPELLING pass, ``lane: 'realtime'``.
+
+    Delegates to the SAME correction engine ``consultation.proposeCorrections`` runs, for the
+    reason every wrapper in this module exists: two names for one capability are safe only when
+    there is one implementation behind them.
+
+    Like ``interpreter_agent_transcription``, this durable wrapper exists so the node is
+    DISPATCHABLE at all — ``compile()`` refuses a graph containing an unimplemented node type and
+    ``NodeSpec`` requires a real registered activity — but it is not the runtime that normally
+    executes it. ``_dispatch_node`` SKIPS a ``realtime`` node with ``reason="realtime_lane"``;
+    TASK-811's live executor owns this one, because corrections over a PARTIAL transcript are only
+    useful while the clinician is still watching it grow.
+
+    The engine PROPOSES and applies nothing: it returns the source text byte-identical, marks
+    every proposal ``applied: False``, and drops any proposal whose ``[start, end)`` does not
+    equal its own ``original``. That is a patient-safety property, not a preference, and it is
+    unchanged by which lane runs it.
+    """
+    return await interpreter_consultation_propose_corrections(payload)
 
 
 @activity.defn(name="interpreter.agent_presummarization")
@@ -154,6 +180,7 @@ AGENT_CATALOGUE_ACTIVITIES = [
     interpreter_agent_transcription,
     interpreter_agent_normalization,
     interpreter_agent_ner,
+    interpreter_agent_grammar,
     interpreter_agent_presummarization,
     interpreter_agent_summarization,
     interpreter_agent_discharge_summary,

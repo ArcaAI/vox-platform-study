@@ -66,6 +66,7 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_USER_IDS } from './00-constants';
+import { ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 import { CUSTOMER_DNA_CLINICIANS } from './08-dna-writing-style';
 import {
   GEN_COMPILED_CONFIG,
@@ -147,6 +148,42 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // Identity is read from `run_payload`, never from config — a consent decision configured into
   // a graph would be a consent decision made at authoring time for every future patient.
   { id: 'n_consent', type: 'consultation.consentGate', config: {} },
+  // Lane R (R2) — PRE-SUMMARIZATION, seeded BY DEFAULT (owner ruling, TASK-815 §11).
+  //
+  // The ruling has two halves and this node is the first: pre-summary resolution is TENANT tier,
+  // and a tenant must have an ACTIVE `agent.presummarization` node carrying the prompt that
+  // governs it. `PromptResolutionService.resolvePreSummaryPromptId` reads exactly that — an
+  // enabled node of this type with a bound `promptTemplateId` in the tenant's PUBLISHED
+  // consultation graph — so what this row supplies is the tenant's DECLARATION of which prompt
+  // governs pre-summary, not merely another step in the durable walk.
+  //
+  // The binding is the tenant's OWN tenant-wide pre-summary template (07b), never the SYSTEM
+  // default: a tenant tier that resolved to a platform row would be exactly the silent fallback
+  // §11 refuses.
+  //
+  // ⚠ Its `in: context<schemaRef>` is deliberately UNWIRED, and that is the same declared state
+  // `n_entities` has lived in since OD-15. The consultation palette has no `on-start` producer of
+  // `context<schemaRef>`: the registry's only one is `input.context_binding`, which belongs to the
+  // summarization palette and is `critical: true`, so importing it here would let a
+  // context-binding failure fail a whole consultation. DD-6's runtime feed is separate work;
+  // until it exists the interpreter contributes nothing for the port and the node degrades
+  // exactly as `extractEntities` does, while the prompt binding it carries resolves regardless.
+  {
+    id: 'n_presum',
+    type: 'agent.presummarization',
+    config: {
+      // WF-CONS-015's negative, STATED rather than merely absent — only `bindTerminology` may
+      // produce a clinical code.
+      producesCode: false,
+      promptTemplateId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+      onError: 'degrade',
+    },
+  },
+  // `agent.presummarization` declares `requires: ['guard.groundedness']`, checked PER NODE
+  // INSTANCE by `workflowPublishProblems`. A generated pre-summary is read as clinical history,
+  // so an ungrounded one is precisely the claim a clinician would carry forward unchallenged —
+  // the guard is the reason the requirement exists, not paperwork to satisfy it.
+  { id: 'n_ground_presum', type: 'guard.groundedness', config: { onError: 'degrade' } },
   { id: 'n_capture', type: 'consultation.captureBinding', config: { action: 'start', persistSnapshot: true, onError: 'degrade' } },
   // `requiresFinalized: true` is WF-CONS-017 — entity extraction reads the FINALIZED transcript,
   // never a partial one.
@@ -253,6 +290,25 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // prompt. The PHI hop must still precede the prompt (WF-CONS-009 is an allPathsPassThrough
       // check), and an `after` edge is what an ordering dependency is for.
       ['n_phi', 'next', 'n_prompt', 'after'],
+      // ---- Lane R (R2): the pre-summarization branch ---------------------------------------
+      //
+      // It hangs off the PHI HOP, and the rule set is what decides that rather than taste.
+      // `agent.presummarization` is a GENERATION node, and WF-CONS-009 requires every route from
+      // the consent gate to the HITL gate to pass through `consultation.phiHop` — so a generation
+      // node placed EARLIER would either be unreachable or would open a route that generates from
+      // un-redacted text, which is the precise thing that rule exists to forbid. Branching after
+      // the hop and rejoining at prompt assembly keeps all four mandatory hops (capture, phi,
+      // synthesize, sensors) on every path, and keeps the branch off the note's data chain.
+      //
+      // ORDERING ONLY — `next -> after` carries no data. See the node comment for why `n_presum`'s
+      // `in: context<schemaRef>` is left unwired rather than fed from `n_evidence`: retrieved
+      // evidence is not the admin-selected case-note context DD-6 describes, and inventing that
+      // equivalence in a seed is how a semantic drift becomes a platform default.
+      ['n_phi', 'next', 'n_presum', 'after'],
+      ['n_presum', 'out', 'n_ground_presum', 'in'],
+      // WF-S-004 / WF-CONS-004: every node must REACH the `consultation.hitlGate` terminal, so the
+      // guarded branch rejoins the chain rather than dead-ending.
+      ['n_ground_presum', 'next', 'n_prompt', 'after'],
       ['n_evidence', 'out', 'n_prompt', 'in'],
       ['n_prompt', 'out', 'n_synth', 'in'],
       // `document ⊑ text`: the correction pass proposes over any clinical text, including a
