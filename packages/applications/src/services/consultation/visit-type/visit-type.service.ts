@@ -24,13 +24,16 @@ import {
   promptSlotFor,
   selectVisitType,
   visitTypeCatalogueProblem,
+  visitTypePromptBinding,
   type VisitTypeDefinition,
+  type VisitTypePromptBinding,
   type VisitTypePromptSlot,
+  type VisitTypePromptTask,
 } from './visit-type.catalogue';
 
 // Re-exported so a consumer that only ever talks to the SERVICE needs one
 // import, not two — the catalogue module stays the definition's home.
-export type { VisitTypeDefinition, VisitTypePromptSlot } from './visit-type.catalogue';
+export type { VisitTypeDefinition, VisitTypePromptBinding, VisitTypePromptSlot, VisitTypePromptTask } from './visit-type.catalogue';
 
 /** What a caller knows about a consultation when it needs its visit type. */
 export interface VisitTypeSelectionInput {
@@ -70,6 +73,43 @@ export class VisitTypeService {
   /** The entry `raw` names, or `null` — the membership test a route uses to accept or 400. */
   match(tenantId: string | null | undefined, raw: string | null | undefined): VisitTypeDefinition | null {
     return matchVisitType(this.catalogue(tenantId), raw);
+  }
+
+  /**
+   * WHAT `(task, visitType)` COMPOSES — the surface any text-generation task
+   * asks, and the reason the visit type is an IDENTIFIER rather than a label
+   * (owner directive, 2026-08-29).
+   *
+   * Two overload-ish entry points on purpose:
+   *  - {@link promptBindingFor} takes an ALREADY-RESOLVED entry, for a caller
+   *    that matched the visit type itself (the resolver does, so it can record
+   *    the key in its trace whether or not a binding answers);
+   *  - {@link promptBinding} does both, for a caller that only holds a
+   *    consultation.
+   *
+   * Both go through the SAME tenant -> SYSTEM catalogue, so there is one
+   * cascade, not two.
+   */
+  promptBindingFor(visitType: VisitTypeDefinition | null | undefined, task: VisitTypePromptTask): VisitTypePromptBinding | null {
+    return visitTypePromptBinding(visitType, task);
+  }
+
+  /**
+   * The `(task, visitType)` binding for one consultation, resolved end to end:
+   * the tenant's catalogue picks the visit type (recorded value first, parent
+   * link second), and the visit type answers for this task.
+   *
+   * `null` means the tenant bound nothing for this pairing — the caller runs its
+   * own chain, exactly as before the binding existed.
+   */
+  promptBinding(
+    tenantId: string | null | undefined,
+    input: VisitTypeSelectionInput,
+    task: VisitTypePromptTask,
+  ): { visitType: VisitTypeDefinition; binding: VisitTypePromptBinding } | null {
+    const visitType = this.forConsultation(tenantId, input);
+    const binding = visitTypePromptBinding(visitType, task);
+    return binding ? { visitType, binding } : null;
   }
 
   /**

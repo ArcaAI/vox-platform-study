@@ -3,6 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { ILiveAgentResolver } from '../live-documentation/live-agent.port';
 import { LiveAgentResolutionService } from './live-agent-resolution.service';
 import { PromptResolutionServiceModule } from './prompt-resolution.service.module';
+import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 
 /**
  * Provides {@link LiveAgentResolutionService} under the
@@ -14,7 +15,13 @@ import { PromptResolutionServiceModule } from './prompt-resolution.service.modul
  * documentation module can opt in explicitly.
  */
 @Module({
-  imports: [CoreDatabaseModule, PromptResolutionServiceModule],
+  // `VisitTypeServiceModule` is imported DIRECTLY, not inherited: importing
+  // `PromptResolutionServiceModule` does not re-export `VisitTypeService`, so
+  // without this line the `@Optional()` injection silently resolves to
+  // `undefined` and every live session would resolve the PLATFORM's visit types
+  // instead of the tenant's — the kind of miss an `@Optional()` dependency makes
+  // invisible at boot. `live-agent-resolution.di-wiring.test.ts` is the guard.
+  imports: [CoreDatabaseModule, PromptResolutionServiceModule, VisitTypeServiceModule],
   providers: [{ provide: ILiveAgentResolver, useClass: LiveAgentResolutionService }],
   exports: [ILiveAgentResolver],
 })

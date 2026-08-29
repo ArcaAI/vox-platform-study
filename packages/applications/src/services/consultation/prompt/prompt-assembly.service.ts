@@ -232,6 +232,20 @@ export interface PromptAssemblyParams {
    * site. Absent ⇒ v1's own default, `'Medical examination'`.
    */
   visitType?: string;
+  /**
+   * The visit type as an IDENTIFIER, on its own axis — a catalogue key or alias,
+   * NOT the human label `visitType` above carries.
+   *
+   * The two are deliberately separate fields because they do different jobs:
+   * `visitType` is DATA that fills the `{visit_type}` placeholder, while this
+   * one is a SELECTOR that, paired with the task, chooses which instructions and
+   * which context composition to resolve at all (owner directive, 2026-08-29 —
+   * see `PromptResolutionParams.visitTypeKey`). Collapsing them would make a
+   * tenant's display wording change which prompt is served.
+   *
+   * Optional: absent ⇒ the visit type is derived from `promptType`, as before.
+   */
+  visitTypeKey?: string;
   transcript: string;
   conversationLanguage: string;
   dnaStyleId?: string;
@@ -473,6 +487,10 @@ export class PromptAssemblyService {
       // callers already running inside a request/worker scope.
       tenantId: params.tenantId ?? this.cls?.get('tenantId'),
       promptType: params.promptType,
+      // The visit-type axis, stated explicitly. This is what lets the
+      // PRE-SUMMARY chain see a visit type at all — its `promptType` is the
+      // phase, so before this the axis could not reach the resolver.
+      visitTypeKey: params.visitTypeKey,
       preSummaryVariant: params.preSummaryVariant,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,

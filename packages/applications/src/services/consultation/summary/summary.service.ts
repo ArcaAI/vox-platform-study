@@ -413,6 +413,11 @@ export class SummaryService extends BaseService implements ISummaryService {
       // `consultation.visitTypes` (tenant → SYSTEM), not from a literal that
       // disagreed with the one the summary path used for the same concept.
       visitType: this.visitType(consultation).label,
+      // The same visit type as an IDENTIFIER, so `(pre-summary, visitType)` can
+      // select this tenant's own pre-summary instructions and context
+      // composition (owner directive, 2026-08-29). No binding configured ⇒ the
+      // chain resolves exactly as it did.
+      visitTypeKey: this.visitType(consultation).key,
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,

@@ -9,6 +9,10 @@
  *   chain (highest priority first):
  *     Tier-0  (preferred)  — the consulting doctor's preferred prompt template,
  *       from `UserProfile.preferredPromptTemplateId`.
+ *     Tier-0b (visit type) — the tenant's `(task, visitType)` PROMPT BINDING,
+ *       from its `consultation.visitTypes` catalogue (tenant -> SYSTEM). See
+ *       `resolveVisitTypeBinding` for the axis and `serveVisitTypeBinding` for
+ *       the tier; it runs on ALL THREE chains, not just this one.
  *     Tier-1a (node)       — the GOVERNING WORKFLOW DEFINITION's finalize
  *       generation node (`taskKey: 'text.finalize'`), serving that node's
  *       `promptTemplateId` at its own `promptVersionNumber` pin. The definition
@@ -23,6 +27,10 @@
  *     Tier-2  (default)    — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
  *
  *   promptType === 'pre-summary' — the PRE-SUMMARY chain:
+ *     Tier-0b (visit type) — as above. This chain had NO visit-type axis at all
+ *       until the owner's 2026-08-29 directive: `promptType` is the PHASE here,
+ *       so the visit type could not reach the resolver and arrived only as the
+ *       `{visit_type}` VARIABLE. `params.visitTypeKey` is what states it.
  *     (no node tier — the pre-summarisation node type does not exist yet; see
  *      `resolvePreSummaryPromptId` for why the tier is absent rather than
  *      pointed at some other node's prompt.)
@@ -36,9 +44,12 @@
  *     Tier-2  (default)    — the SYSTEM default for that surface.
  *     …otherwise it FAILS CLOSED (503).
  *
- * Why the split: pre-summary has NO department axis and NO visit-type axis —
- * v1 carries exactly ONE pre-summary prompt per tenant, and department and
- * visit type are VARIABLES INSIDE it, never selectors for a different prompt.
+ * Why the split: pre-summary has NO department axis, and had no visit-type axis
+ * either — v1 carries exactly ONE pre-summary prompt per tenant, and department
+ * and visit type are VARIABLES INSIDE it, never selectors for a different
+ * prompt. The DEPARTMENT half of that is unchanged. The VISIT-TYPE half is what
+ * the owner's 2026-08-29 directive reopened: a tenant may now bind a
+ * pre-summary prompt per visit type, and until it does, nothing changes.
  * The old single chain ran the promptType-AGNOSTIC agent tier first, so every
  * department with a default agent served a clinical NOTE prompt for
  * `promptType: 'pre-summary'`, and a department without one fell through to
@@ -90,6 +101,7 @@ import { WORKFLOW_NODE_REGISTRY, type WorkflowGraph, type WorkflowGraphNode } fr
 
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
+import { type VisitTypeDefinition, type VisitTypePromptBinding, type VisitTypePromptTask } from '../visit-type/visit-type.catalogue';
 
 // ============================================================================
 // Types
@@ -202,6 +214,21 @@ export interface PromptResolutionTrace {
   tenantPromptId?: string | null;
   usedDefaults: string[];
   /**
+   * The visit type this resolution used (its catalogue KEY), or null when the
+   * request carried no visit-type opinion — a bare phase selector, or a
+   * spelling no entry in the tenant's catalogue claims.
+   */
+  visitTypeKey?: string | null;
+  /** The TEXT-GENERATION TASK the `(task, visitType)` binding was looked up for. */
+  visitTypeTask?: string | null;
+  /**
+   * The template a `(task, visitType)` binding SERVED, or null when none did —
+   * either because the tenant bound nothing for this pairing or because what it
+   * bound was not APPROVED. A miss is visible here rather than silent, which is
+   * what makes a typo in an open-ended task key diagnosable.
+   */
+  visitTypePromptId?: string | null;
+  /**
    * CONFIGURATION errors surfaced during resolution — a tenant setup problem the caller should
    * see, distinct from `usedDefaults`, which records a legitimate tier miss.
    *
@@ -238,6 +265,24 @@ export interface PromptResolutionParams {
    * everything else the summary chain.
    */
   promptType?: PromptTypeSelector;
+
+  /**
+   * The VISIT TYPE, stated on its own axis — a key or any alias from the
+   * tenant's `consultation.visitTypes` catalogue.
+   *
+   * WHY IT EXISTS. `promptType` carries both the phase and the visit type
+   * because it is a frozen wire contract (TASK-815 §2), and that conflation is
+   * exactly what stopped visit type being the general prompt-composition
+   * identifier the owner specified: a request that says `'pre-summary'` cannot
+   * ALSO say `'revisit'`, so the pre-summary chain could never see a visit type
+   * at all. This parameter separates the axes WITHOUT narrowing `promptType`.
+   *
+   * ADDITIVE AND OPTIONAL. Absent ⇒ the visit type is derived from `promptType`
+   * exactly as before, so every existing call site is byte-identical. Present ⇒
+   * it WINS, because a caller that names the axis explicitly is stating
+   * something `promptType` cannot.
+   */
+  visitTypeKey?: string;
 
   /**
    * Which PRE-SUMMARY template FAMILY the caller wants.
@@ -365,6 +410,23 @@ interface ResolvedPromptId {
   content?: string | null;
   versionNumber?: number | null;
   agentId?: string;
+  /**
+   * The CONTEXT half of a `(task, visitType)` composition, merged over the
+   * department's own `promptConfig.contextVariables` by `resolve()`.
+   *
+   * Carried on the winning tier rather than applied out-of-band so the two
+   * halves cannot separate: a binding's context variables reach the prompt only
+   * when that binding's INSTRUCTIONS did, never composed into some other tier's
+   * template. Set by the visit-type tier alone; every other tier omits it.
+   */
+  contextVariables?: Record<string, unknown>;
+}
+
+/** A `(task, visitType)` pairing the tenant's catalogue actually answered. */
+interface ResolvedVisitTypeBinding {
+  visitType: VisitTypeDefinition;
+  task: VisitTypePromptTask;
+  binding: VisitTypePromptBinding;
 }
 
 // ============================================================================
@@ -532,16 +594,31 @@ export class PromptResolutionService {
       trace.usedDefaults.push('template');
     }
 
+    // --- the TASK axis, named once ---
+    // `resolvedCapability`'s own three values. It was already derived from
+    // `promptType` at the bottom of this method; deriving it HERE instead makes
+    // it available as the first half of the `(task, visitType)` key.
+    const task: VisitTypePromptTask = params.promptType === 'pre-summary' ? 'pre-summary' : params.promptType === 'live' ? 'live' : 'summary';
+
+    // --- the VISIT-TYPE axis, resolved through the tenant's catalogue ---
+    const visitTypeBinding = this.resolveVisitTypeBinding(params, department, trace, task);
+
     // --- promptId (capability chain) ---
     const resolvedPrompt =
       params.promptType === 'pre-summary'
-        ? await this.resolvePreSummaryPromptId(params, department, trace)
+        ? await this.resolvePreSummaryPromptId(params, department, trace, visitTypeBinding)
         : params.promptType === 'live'
-          ? await this.resolveLivePromptId(params, department, trace)
-          : await this.resolveSummaryPromptId(params, department, trace);
+          ? await this.resolveLivePromptId(params, department, trace, visitTypeBinding)
+          : await this.resolveSummaryPromptId(params, department, trace, visitTypeBinding);
 
     // --- contextVariables ---
-    const contextVariables = this.extractContextVariables(department);
+    // The department's, then the winning `(task, visitType)` binding's on top.
+    // Only the tier that actually SERVED contributes (see `ResolvedPromptId`),
+    // so context and instructions can never come from different compositions.
+    const departmentContextVariables = this.extractContextVariables(department);
+    const contextVariables = resolvedPrompt.contextVariables
+      ? { ...departmentContextVariables, ...resolvedPrompt.contextVariables }
+      : departmentContextVariables;
     if (!department?.promptConfig) {
       trace.usedDefaults.push('contextVariables');
     }
@@ -564,7 +641,7 @@ export class PromptResolutionService {
       contextVariables,
       resolvedFrom,
       resolutionTrace: trace,
-      resolvedCapability: params.promptType === 'pre-summary' ? 'pre-summary' : params.promptType === 'live' ? 'live' : 'summary',
+      resolvedCapability: task as 'summary' | 'pre-summary' | 'live',
     };
 
     // Attach the immutable/governed snapshot whenever one resolved (agent OR any
@@ -597,6 +674,7 @@ export class PromptResolutionService {
     params: PromptResolutionParams,
     department: DepartmentEntity | null,
     trace: PromptResolutionTrace,
+    visitTypeBinding: ResolvedVisitTypeBinding | null,
   ): Promise<ResolvedPromptId> {
     // Tier-0: the doctor's preferred prompt template, when it exists,
     // wins over the department/default tiers.
@@ -619,6 +697,18 @@ export class PromptResolutionService {
       departmentPromptId = (promptSlot === 'revisit' ? department.revisitPromptId : department.newPatientPromptId) ?? null;
       trace.departmentPromptId = departmentPromptId;
     }
+
+    // TIER-0b — the tenant's `(task, visitType)` binding.
+    //
+    // ABOVE the node tier, and that placement is the whole point: the node
+    // substrate has NO visit-type axis by design (DD-2 — a generation node binds
+    // its prompt statically), so it cannot answer a question that names one. A
+    // tier that cannot express the distinction must not pre-empt the tier that
+    // can. BELOW tier-0 for the mirror-image reason: an individual clinician's
+    // explicit template choice is a stronger signal than a tenant-wide default
+    // (DR-2), and a tenant setting must not silently overrule it.
+    const bound = await this.serveVisitTypeBinding(visitTypeBinding, trace, preferredPromptId !== null);
+    if (bound) return bound;
 
     // Tier-1a: the tenant's GOVERNING WORKFLOW NODE for finalize generation,
     // inserted BEFORE the legacy department prompt-id columns and only when no
@@ -701,6 +791,7 @@ export class PromptResolutionService {
     params: PromptResolutionParams,
     department: DepartmentEntity | null,
     trace: PromptResolutionTrace,
+    visitTypeBinding: ResolvedVisitTypeBinding | null,
   ): Promise<ResolvedPromptId> {
     // Explicitly recorded as "not consulted" rather than left absent, so a
     // trace never reads as though a department/preferred tier was considered.
@@ -731,6 +822,16 @@ export class PromptResolutionService {
     // would make a clinical NOTE node selectable for a pre-summary request, which
     // is the exact wrong-prompt failure this capability split exists to kill.
     trace.agentId = null;
+
+    // The tenant's `(task, visitType)` binding, FIRST. This is the chain the
+    // owner named first ("pre-summarization"), and until now it had no
+    // visit-type axis whatsoever — the visit type reached it only as the
+    // `{visit_type}` VARIABLE inside one tenant-wide body. A miss falls straight
+    // through, so the node tier's fail-closed rule below is untouched: a tenant
+    // that governs consultations but configured this pairing incompletely still
+    // gets the 503, never a substituted body.
+    const bound = await this.serveVisitTypeBinding(visitTypeBinding, trace, false);
+    if (bound) return bound;
 
     if (tenantId) {
       const node = await this.resolveGraphNodePrompt(tenantId, null, activePresummarizationNodes, undefined, {
@@ -851,6 +952,7 @@ export class PromptResolutionService {
     params: PromptResolutionParams,
     department: DepartmentEntity | null,
     trace: PromptResolutionTrace,
+    visitTypeBinding: ResolvedVisitTypeBinding | null,
   ): Promise<ResolvedPromptId> {
     // Neither the doctor-preferred tier nor the legacy department columns are
     // consulted: live is a department/tenant-GOVERNED surface, and a per-doctor
@@ -860,6 +962,14 @@ export class PromptResolutionService {
     if (department) trace.departmentPromptId = null;
 
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
+
+    // The tenant's `(task, visitType)` binding, above the node tier for the same
+    // reason as on the summary chain. FAIL-OPEN IS PRESERVED: a miss, an
+    // unapproved template or a missing snapshot all fall through to the node /
+    // SYSTEM / in-code tiers below, so this can only ever ADD a governed prompt,
+    // never take a live session down.
+    const bound = await this.serveVisitTypeBinding(visitTypeBinding, trace, false);
+    if (bound) return bound;
 
     // Tier 1a — the governing workflow's LIVE generation node (effective
     // `taskKey: 'text.live'`). Skipped entirely when the consultation carries no
@@ -1223,6 +1333,111 @@ export class PromptResolutionService {
    * Extract context variables from department's promptConfig.
    * Returns an empty object if no config exists.
    */
+  /**
+   * THE `(task, visitType)` KEY — resolved once per `resolve()`, before any
+   * chain runs.
+   *
+   * OWNER DIRECTIVE (2026-08-29): "Visit type is an identifier where the hope
+   * platform configure and compose the instructions and consultation context as
+   * prompt for agent to work on: pre-summarization OR summarization OR any text
+   * generation task."
+   *
+   * The visit type comes from `params.visitTypeKey` when the caller named the
+   * axis, and otherwise from `params.promptType` — which is where every existing
+   * caller still carries it. Either way it is MATCHED against the tenant's
+   * `consultation.visitTypes` catalogue (tenant -> SYSTEM), so a tenant's own
+   * key or any alias it declared resolves, and one tenant's vocabulary can never
+   * select another's prompt.
+   *
+   * `matchVisitType`, deliberately, NOT `selectVisitType`: this is a RESOLVER,
+   * not a consultation. It knows nothing about `parentConsultationId`, so it
+   * must never guess a visit type from a parent link that was not passed to it.
+   * No opinion in ⇒ no `(task, visitType)` binding consulted, and the chain runs
+   * exactly as it did before this tier existed. That is what makes a bare phase
+   * selector (`'pre-summary'`, `'live'`) — and any unrecognised string — a
+   * no-op here rather than a silent selection.
+   *
+   * Synchronous: the catalogue read is an in-memory settings cascade, so this
+   * costs no I/O on a clinical generation path.
+   */
+  private resolveVisitTypeBinding(
+    params: PromptResolutionParams,
+    department: DepartmentEntity | null,
+    trace: PromptResolutionTrace,
+    task: VisitTypePromptTask,
+  ): ResolvedVisitTypeBinding | null {
+    const visitTypes = this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE;
+    const tenantId = params.tenantId ?? department?.tenantId ?? null;
+    const spelling = params.visitTypeKey ?? params.promptType;
+
+    const visitType = visitTypes.match(tenantId, spelling);
+    trace.visitTypeKey = visitType?.key ?? null;
+    trace.visitTypeTask = visitType ? task : null;
+    trace.visitTypePromptId = null;
+    if (!visitType) return null;
+
+    const binding = visitTypes.promptBindingFor(visitType, task);
+    return binding ? { visitType, task, binding } : null;
+  }
+
+  /**
+   * Serve a `(task, visitType)` binding, or fall through.
+   *
+   * FALLS THROUGH, NEVER THROWS — the same posture as the node tier. An
+   * unapproved template, a missing snapshot or a lookup error all return null,
+   * so the chain below answers exactly as it would have with no binding at all.
+   * Prompt governance is unchanged: only an APPROVED template is servable, and
+   * the CONTENT comes from an immutable `PromptVersion` — the binding's own pin
+   * when it declared one, otherwise the template's `approvedVersionNumber`
+   * snapshot, never the mutable content row.
+   *
+   * `resolvedFrom` is `'tenant'`, an EXISTING member of the tier vocabulary,
+   * and no new one is added. `ResolvedPromptConfig` is reached by a frozen
+   * v1-compat wire route (TASK-815 §2), so its value set is a published
+   * contract; `'tenant'` already means precisely "a tenant-configured template,
+   * not the department column and not the SYSTEM default", which is what this
+   * tier is. The pairing that produced it is recorded in `resolutionTrace`,
+   * which is additive and internal.
+   */
+  private async serveVisitTypeBinding(
+    resolved: ResolvedVisitTypeBinding | null,
+    trace: PromptResolutionTrace,
+    supersededByPreferred: boolean,
+  ): Promise<ResolvedPromptId | null> {
+    if (!resolved || supersededByPreferred) return null;
+
+    const { binding } = resolved;
+    try {
+      const template = await this.promptTemplateRepository.findById(binding.promptTemplateId);
+      if (!template || template.status !== 'APPROVED') return null;
+
+      const targetVersionNumber = binding.promptVersionNumber ?? template.approvedVersionNumber ?? null;
+      const version =
+        targetVersionNumber !== null && targetVersionNumber !== undefined
+          ? await this.promptVersionRepository.findByVersionNumber(template.id, targetVersionNumber)
+          : await this.promptVersionRepository.findLatestVersion(template.id);
+      if (!version || version.content === null || version.content === undefined) return null;
+
+      trace.visitTypePromptId = template.id;
+      return {
+        promptId: template.id,
+        tier: 'tenant',
+        content: version.content,
+        versionNumber: version.versionNumber,
+        ...(binding.contextVariables ? { contextVariables: binding.contextVariables } : {}),
+      };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve the visit-type prompt binding — skipping the tier',
+        visitType: resolved.visitType.key,
+        task: resolved.task,
+        promptTemplateId: binding.promptTemplateId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   private extractContextVariables(department: DepartmentEntity | null): Record<string, unknown> {
     if (!department?.promptConfig) return {};
 
