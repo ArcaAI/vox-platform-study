@@ -27,6 +27,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'agent.discharge_summary',
         'agent.dna_redaction',
         'agent.feedback',
+        'agent.grammar',
         'agent.ner',
         'agent.normalization',
         'agent.presummarization',
@@ -309,6 +310,9 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
     'consultation.realtimeSummary',
     'consultation.suggestions',
     'consultation.proposeCorrections',
+    // Lane R (R1) — the realtime grammar pass reuses the correction engine's schema, so it
+    // inherits the same bindings.
+    'agent.grammar',
   ] as const;
 
   /** A minimal config satisfying each schema's own `required`, so the assertions below fail on
@@ -324,6 +328,7 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
     'consultation.realtimeSummary': { onError: 'degrade' },
     'consultation.suggestions': { onError: 'degrade' },
     'consultation.proposeCorrections': { onError: 'degrade' },
+    'agent.grammar': { onError: 'degrade' },
   };
 
   const TEMPLATE_ID = '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41';
@@ -410,6 +415,9 @@ describe('DD-2 document-template binding survives a config-schema round-trip', (
     'consultation.realtimeSummary',
     'consultation.suggestions',
     'consultation.proposeCorrections',
+    // Lane R (R1) — the realtime grammar pass reuses the correction engine's schema, so it
+    // inherits the same bindings.
+    'agent.grammar',
   ] as const;
 
   /** Minimal configs satisfying each schema's own `required`, so the assertions below fail on
@@ -423,6 +431,7 @@ describe('DD-2 document-template binding survives a config-schema round-trip', (
     'consultation.realtimeSummary': { onError: 'degrade' },
     'consultation.suggestions': { onError: 'degrade' },
     'consultation.proposeCorrections': { onError: 'degrade' },
+    'agent.grammar': { onError: 'degrade' },
   };
 
   const DOCUMENT_TEMPLATE_ID = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';

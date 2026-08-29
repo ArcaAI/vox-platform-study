@@ -82,7 +82,7 @@ export const COMPILED_AT = '2026-08-16T00:00:00.000Z';
 // GRAPH is unchanged; only the checksum it stamps is. It was ALSO stale before that re-run
 // (it still carried the value from the OD-15 regeneration, while TASK-812's three endpoint node
 // types had moved the registry since) — the kind of drift this script exists to make visible.
-const REGISTRY_CHECKSUM = '65bf034bd3dcf7fafbd2e1299fc7482e88e9fae7449b24ea2d6e5006b9ee3c7c';
+const REGISTRY_CHECKSUM = '00bf9a9748224e39053ae84986a4f8622c22199fa81f2b95eca5c2870bd25c40';
 
 export const GRAPH = {
   version: 1,
@@ -240,7 +240,7 @@ export const COMPILED_CONFIG = {
   },
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
   // sha256 over canonicalJson of every field above (computed by `compile()` — see docstring).
-  checksum: 'e32a59584edf474c1e656645ec687d89e6d20b5d8544498bc77a67b2405fcdb5',
+  checksum: 'd30e13d24d305fa29e3c6d7066d5762d3008c2a94f65c8f1f76d9c458773c705',
 };
 
 // sha256 over canonicalJson(GRAPH), computed by the same `canonicalJson` the compiler uses.

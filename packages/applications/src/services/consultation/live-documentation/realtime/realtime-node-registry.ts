@@ -23,7 +23,13 @@
  * because it does not own the declaration.
  */
 import { NODE_PORTS, WORKFLOW_NODE_REGISTRY, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import type { HarnessLiveAssistProposalDto } from '../../harness/dto';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
+
+/** The wire shape a correction proposal already has on the live-assist plane. Reused rather
+ *  than redeclared: the realtime pass publishes onto that SAME channel, so a second shape
+ *  would be a second contract for one payload. */
+type LiveAssistProposal = HarnessLiveAssistProposalDto;
 
 /**
  * Node types the realtime runtime implements — DERIVED from the contract, not listed here
@@ -94,6 +100,40 @@ export interface ExtractEntitiesResult {
   vitals?: LiveSummaryVitalsDto;
 }
 
+export interface ProposeCorrectionsInput {
+  /**
+   * RAW transcript, resolved from the node's declared `in: transcript` port. Same structural
+   * guarantee `ExtractEntitiesInput` carries: there is no field on this type through which a
+   * generated note could reach the grammar pass.
+   */
+  sourceText: string;
+  /**
+   * The detector hints the SAME flush already produced, resolved from the optional
+   * `entities` port. Empty when the lane has no NER node — the pass still runs.
+   */
+  entities: LiveSummaryEntityDto[];
+  tenantId: string;
+  /**
+   * The node's OWN authored config. It carries the prompt binding
+   * (`promptTemplateId`/`promptVersionNumber`) and the correction task/tuning knobs — the prompt
+   * is CONFIG, resolved per node instance, never a literal in this runtime.
+   */
+  config: Readonly<Record<string, unknown>>;
+}
+
+export interface ProposeCorrectionsResult {
+  /**
+   * Proposals that survived verification against the source. A proposal whose `[start, end)`
+   * does not equal its own `original` is DROPPED, because accepting it in a one-click UI would
+   * splice the replacement over the wrong characters.
+   */
+  proposals: LiveAssistProposal[];
+  /** sha256 of the exact bytes the spans were measured against, so a console cannot accept a
+   *  proposal into text that has since drifted. */
+  textSha256: string;
+  rejectedProposals: number;
+}
+
 /**
  * What a node handler is allowed to do. Deliberately three narrow methods rather
  * than the whole `LiveDocumentationService`: a handler that could reach the
@@ -104,6 +144,8 @@ export interface RealtimeCapabilities {
   transcribe(signal?: AbortSignal): Promise<TranscribeResult>;
   generateDocument(input: GenerateDocumentInput, signal?: AbortSignal): Promise<GenerateDocumentResult>;
   extractEntities(input: ExtractEntitiesInput, signal?: AbortSignal): Promise<ExtractEntitiesResult>;
+  /** Lane R (R1). PROPOSES corrections over the raw partial transcript; applies none of them. */
+  proposeCorrections(input: ProposeCorrectionsInput, signal?: AbortSignal): Promise<ProposeCorrectionsResult>;
 }
 
 // =============================================================================
@@ -113,6 +155,15 @@ export interface RealtimeCapabilities {
 export interface RealtimeNodeRunContext {
   /** Values resolved from this node's declared input bindings, keyed by `toPort`. */
   readonly bound: Readonly<Record<string, unknown>>;
+  /**
+   * The node's OWN authored config, straight off the compiled node.
+   *
+   * Distinct from `bound` on purpose: `bound` is what UPSTREAM NODES produced and is type-checked
+   * against the port table, while this is what the TENANT AUTHORED on this instance. A per-node
+   * prompt binding is the second kind, and there is nowhere else for it to come from — resolving
+   * it from anything but the node would make one node's config govern another's call.
+   */
+  readonly config: Readonly<Record<string, unknown>>;
   readonly tenantId: string;
   readonly consultationId: string;
   readonly capabilities: RealtimeCapabilities;
@@ -211,6 +262,51 @@ class RealtimeSummaryHandler implements RealtimeNodeHandler {
 }
 
 /**
+ * `agent.grammar` — Lane R (R1). The live grammar/spelling pass.
+ *
+ * ITS INPUT IS `transcript`, and that is the difference from its durable sibling rather than an
+ * oversight. `consultation.proposeCorrections.in` is `text` precisely so it may review a
+ * generated note at the end of a consultation; this node reviews the RAW PARTIAL TRANSCRIPT the
+ * clinician is watching grow, so the executor's port-type check refuses a generation node wired
+ * into it exactly as it does for NER.
+ *
+ * It APPLIES NOTHING. `applied: false` rides on every output because a system that silently
+ * rewrites a drug name or a dose in clinical text is a patient-safety defect: the corrected
+ * transcript is always ADVISORY alongside the raw, and a proposal becomes real only through the
+ * DD-8 accepted-proposal path.
+ *
+ * Entities come from the SAME flush's extraction rather than a second NER round trip — the same
+ * "one call, two projections" principle `vitals` follows.
+ */
+class GrammarHandler implements RealtimeNodeHandler {
+  readonly type = 'agent.grammar';
+  readonly inputs = portsOf('agent.grammar').inputs;
+  readonly outputs = portsOf('agent.grammar').outputs;
+
+  async run(ctx: RealtimeNodeRunContext): Promise<Record<string, unknown>> {
+    const sourceText = boundText(ctx, 'in');
+    // Nothing was said this turn, so there is nothing to propose a correction FOR. Calling a
+    // model here would invite ungrounded edits to ordinary prose — the same reason the durable
+    // engine returns early.
+    if (!sourceText) return { proposals: [], applied: false };
+
+    const bound = ctx.bound.entities;
+    const entities = Array.isArray(bound) ? (bound as LiveSummaryEntityDto[]) : [];
+
+    const result = await ctx.capabilities.proposeCorrections(
+      { sourceText, entities, tenantId: ctx.tenantId, config: ctx.config },
+      ctx.signal,
+    );
+    return {
+      proposals: result.proposals,
+      applied: false,
+      textSha256: result.textSha256,
+      rejectedProposals: result.rejectedProposals,
+    };
+  }
+}
+
+/**
  * `agent.transcription` and `agent.ner` are the TARGET CATALOGUE's names for capture and NER
  * (TASK-809 DD-9), and they run the SAME handler rather than a second implementation of the same
  * behaviour — `nodes/agent_catalogue.py` does exactly this on the durable side. What an alias does
@@ -231,8 +327,34 @@ export const REALTIME_NODE_HANDLERS: Readonly<Record<string, RealtimeNodeHandler
   'consultation.realtimeSummary': new RealtimeSummaryHandler(),
   'agent.transcription': aliasHandler('agent.transcription', captureBinding),
   'agent.ner': aliasHandler('agent.ner', extractEntities),
+  // NOT an alias: `consultation.proposeCorrections` stays DURABLE (it reviews the finished note
+  // in the seeded graphs), so this node has no pipeline counterpart to delegate to here.
+  'agent.grammar': new GrammarHandler(),
 });
 
 export function realtimeHandlerFor(type: string): RealtimeNodeHandler | undefined {
   return REALTIME_NODE_HANDLERS[type];
+}
+
+/**
+ * Which PIPELINE node type an alias stands for.
+ *
+ * `agent.transcription` and `agent.ner` are the target catalogue's names for capture and NER and
+ * run the same handlers (DD-9). A caller reading a lane's outcomes back — the flush projection in
+ * `LiveDocumentationService`, a trajectory reader, anything keyed by node type — must treat the
+ * two names as ONE capability, or a graph authored against the catalogue silently produces
+ * nothing: the node runs, the model is paid for, and `outcomes.find(o => o.type ===
+ * 'consultation.extractEntities')` returns undefined.
+ *
+ * A type with no pipeline counterpart is its own canonical form. `agent.grammar` is deliberately
+ * one of those: its sibling `consultation.proposeCorrections` stays on the DURABLE lane, so
+ * folding the two together would claim an equivalence no runtime honours.
+ */
+const REALTIME_ALIAS_OF: Readonly<Record<string, string>> = Object.freeze({
+  'agent.transcription': 'consultation.captureBinding',
+  'agent.ner': 'consultation.extractEntities',
+});
+
+export function canonicalRealtimeNodeType(type: string): string {
+  return REALTIME_ALIAS_OF[type] ?? type;
 }

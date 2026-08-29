@@ -143,7 +143,10 @@ describe('item 7 — descriptor.lane tells the truth about which runtime execute
     // `agent.transcription`/`agent.ner` delegate to the capture/extraction engines, so they
     // belong to the runtime that actually executes those — anything else would declare a split
     // no runtime enforces.
-    expect(realtime).toEqual([...REALTIME, 'agent.transcription', 'agent.ner'].sort());
+    // Lane R (R1) adds `agent.grammar`: the live grammar/spelling pass has no pipeline
+    // counterpart, because `consultation.proposeCorrections` stays DURABLE (it reviews the
+    // finished note in the seeded graphs) and one node type cannot serve both runtimes.
+    expect(realtime).toEqual([...REALTIME, 'agent.transcription', 'agent.ner', 'agent.grammar'].sort());
   });
 });
 

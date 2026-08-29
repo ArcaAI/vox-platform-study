@@ -277,7 +277,7 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
         while (attempts < node.maxAttempts) {
           attempts += 1;
           try {
-            const output = await withTimeout(handler.run({ bound, tenantId, consultationId, capabilities, signal }), node.timeoutMs);
+            const output = await withTimeout(handler.run({ bound, config: node.config, tenantId, consultationId, capabilities, signal }), node.timeoutMs);
 
             // A result that lands after a newer flush claimed the session is
             // DISCARDED. Publishing it would overwrite fresher content with older
