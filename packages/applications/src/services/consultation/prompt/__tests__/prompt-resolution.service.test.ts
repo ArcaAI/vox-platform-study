@@ -665,12 +665,12 @@ describe('PromptResolutionService', () => {
       publishGraph([finalizeNode('agent-note-tpl', { promptVersionNumber: 1 })]);
       wireTenantPreSummary();
 
-      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' });
-
-      expect(result.promptId).toBe('tenant-presummary-tpl');
-      expect(result.resolvedFrom).toBe('tenant');
-      expect(result.content).toBe('TENANT pre-summary body');
-      expect(result.resolvedAgentId).toBeUndefined();
+      // Lane R (R2): a tenant that GOVERNS consultations and whose graph carries only a clinical
+      // NOTE node has expressed an incomplete opinion, so the request fails closed instead of
+      // falling through. The property D-01 exists to pin is untouched and is exactly why it must
+      // not fall through: a note node yields NO pre-summary candidate, so a note prompt can never
+      // be served for a pre-summary request.
+      await expect(service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
       // TASK-806 lane A item 1 — the pre-summary chain DOES consult tier-1a again, now that
       // `agent.presummarization` exists (DD-6). What this case pins is the property that
       // survives every rewrite of that tier: a graph carrying only a clinical NOTE node yields
@@ -678,10 +678,9 @@ describe('PromptResolutionService', () => {
       // serving a note prompt for a pre-summary request. The cascade is consulted with a NULL
       // department, because pre-summary has no department axis.
       expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(expect.any(String), 'consultation', null);
-      expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
-      // …and the department visit-type columns are not read.
-      expect(result.promptId).not.toBe('dept-presummary-col');
-      expect(result.resolutionTrace.departmentPromptId).toBeNull();
+      // …and the department visit-type columns are never reached — the failure is the node tier's,
+      // not a silent slide onto a department column.
+      expect(mockPromptVersionRepository.findByVersionNumber).not.toHaveBeenCalled();
     });
 
     it('never resolves the doctor preferred (note) template for pre-summary', async () => {
