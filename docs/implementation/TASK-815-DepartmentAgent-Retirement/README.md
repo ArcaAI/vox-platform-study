@@ -452,3 +452,37 @@ would have shipped that.
 Vitest passes — only a standalone typecheck sees it.
 
 | 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: database 1641, domains 1848, applications 10303, api 4019, admin-console 2130 (two consecutive clean runs after a load flake in the first sweep), harness 1668, gen:check no drift x3 + schema coverage OK, gen:admin/portal/openapi no drift (52 areas, 404 routes, 371 schemas; admin 608 ops), lint 40/40. Orchestrator independently verified both hard invariants and rebuilt domains+applications before trusting any artifact (stale-dist trap). |
+
+## 11. Owner rulings on the four deltas (2026-08-29) — BINDING
+
+All four §10b deltas were put to the owner. Verdicts, verbatim intent:
+
+| Delta | Ruling | What it obliges |
+|---|---|---|
+| **PRIMARY/SPECIALIST deliberative lane retired** | **Approved.** | Nothing further. The capability is gone with no successor, by decision. |
+| **Pre-summary loses tier-1a** | **Not accepted as a silent fallback.** It **must be tenant tier**, and a tenant **must configure an active pre-summarization agent node**. | Pre-summary resolution is tenant-tier; absence of a configured, ACTIVE pre-summarization node is a configuration error to surface, not a silent drop to a platform default. |
+| **Visit-type axis** | **Tenant-admin defined and controlled.** Two defaults ship: **New patient** (new visit, new referral) and **Revisit** (follow-up same-day, review same-day, revisit same-day). | Visit type becomes tenant-configurable data with those two seeded defaults — NOT a hardcoded enum, NOT a platform constant. Subject to `00-project-context.md` §Configuration Principles: tenant → SYSTEM, never a literal in code. |
+| **DNA-redaction agent veto removed** | **Approved**, with a rider: **DNA-Redaction must be configured as an agent node.** | The veto stays gone. DNA-redaction itself becomes a NODE in the workflow graph like every other capability, rather than a resolver-side flag triple. |
+
+Two of these (pre-summary, DNA-redaction) say the same structural thing: **a capability that used to
+live in resolver logic becomes a NODE a tenant admin places in a graph.** That is the substrate
+direction TASK-806 set out, applied to the two capabilities this deletion exposed.
+
+## 12. P-4 ruling — clinicians get non-admin endpoints for their OWN DNA writing style
+
+TASK-814 §9 P-4 reported that an impersonated clinician silently 403s on `admin/dna-writing-styles`,
+`admin/departments` and `admin/consent-grants`, leaving selectors blank with no explanation, on the
+only clinical persona OD-2 defines. It was referred out as a product/API decision.
+
+**Owner ruling:** build **non-admin endpoints so a clinician can manage the DNA writing style data
+they OWN.** Not a widened admin gate, not a UI-only empty state — a clinician-plane surface scoped
+to the caller's own rows.
+
+Design constraints this inherits automatically:
+- Ownership is enforced server-side, never by the caller passing an id. Precedent: personal
+  (`USER_PERSONAL`) prompt templates, declared `@Authorize(['read','PromptTemplate'])` with
+  ownership checked imperatively in the service (`05-nestjs-api.md` §Imperative Privilege Checks) —
+  `read` is the ability clinicians hold; demanding `create`/`update` would lock them out of their
+  own rows. Carry an `AUTH-NOTE:` marker.
+- Cross-tenant is **404**, privilege failure inside the tenant is **403**.
+- The `admin/*` routes stay exactly as they are; this is an ADDITIVE clinician plane.
