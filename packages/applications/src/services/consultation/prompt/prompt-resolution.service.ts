@@ -5,7 +5,7 @@
  * variables). The chain is SPLIT BY CAPABILITY, because pre-summary and
  * summary are not the same shape of prompt:
  *
- *   promptType ∈ { 'new-patient', 'revisit' } — the SUMMARY (clinical note)
+ *   promptType ∈ { 'new-visit', 'revisit' } — the SUMMARY (clinical note)
  *   chain (highest priority first):
  *     Tier-0  (preferred)  — the consulting doctor's preferred prompt template,
  *       from `UserProfile.preferredPromptTemplateId`.
@@ -120,12 +120,17 @@ export type PromptPhase = 'pre-summary' | 'live';
  * than moving to a parameter of their own.
  *
  * Anything that is not a phase is a VISIT-TYPE KEY from the tenant's
- * `consultation.visitTypes` catalogue. `'new-patient'` and `'revisit'` are
+ * `consultation.visitTypes` catalogue. `'new-visit'` and `'revisit'` are
  * spelled out because they are the two keys the platform SHIPS — a tenant that
  * has expressed no opinion still resolves exactly those — and `(string & {})`
- * admits a tenant's own keys while keeping the four literals in autocomplete.
+ * admits a tenant's own keys while keeping the literals in autocomplete.
+ *
+ * `'new-patient'` stays listed because it is the RETIRED key (owner renamed it
+ * `new-visit` on 2026-08-29) and callers still send it; it is an alias on the
+ * shipped default, so it resolves onto the same entry. Widen this union, never
+ * narrow it — the retired spelling is a compatibility guarantee, not a leftover.
  */
-export type PromptTypeSelector = PromptPhase | 'new-patient' | 'revisit' | (string & {});
+export type PromptTypeSelector = PromptPhase | 'new-visit' | 'new-patient' | 'revisit' | (string & {});
 
 /**
  * Resolved prompt configuration returned by the service.

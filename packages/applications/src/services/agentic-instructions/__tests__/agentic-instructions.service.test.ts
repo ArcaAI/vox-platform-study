@@ -117,7 +117,7 @@ describe('AgenticInstructionsService.getEffectiveInstructions', () => {
       tenantId: 't1',
       departmentId: 'dep-1',
       promptType: 'new-patient',
-      visitTypeKey: 'new-patient',
+      visitTypeKey: 'new-visit',
     });
     expect(out.promptTier.template).toBe('SOAP');
     expect(out.promptTier.promptId).toBe('71000000-0000-0000-0000-000000000036');

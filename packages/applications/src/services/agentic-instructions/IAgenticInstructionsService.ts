@@ -15,7 +15,9 @@ export interface AgenticInstructionsResolveOptions {
    * could only ever answer for the platform's two.
    *
    * Omitted ⇒ the tenant's own initial-visit type, resolved from that catalogue
-   * (the two shipped defaults make that `'new-patient'`, as before).
+   * (the two shipped defaults make that `'new-visit'`; the retired `'new-patient'`
+   * spelling is an alias on that same entry, so a caller that sends it still
+   * resolves here).
    */
   promptType?: PromptTypeSelector;
 }
