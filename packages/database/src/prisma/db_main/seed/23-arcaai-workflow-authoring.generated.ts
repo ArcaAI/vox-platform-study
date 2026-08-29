@@ -16,7 +16,7 @@
 
 export const REGISTRY_CHECKSUM: string = "21901af1becbe9a9be072bab9eac6a5fe97f13c1de1f370b591c2f8da549b2d4" as const;
 
-export const GEN_GRAPH_CHECKSUM: string = "e37ac3bf782e19a6308ba541f8f09c30e23b1cf6862f43851ee67fe87aaed68c" as const;
+export const GEN_GRAPH_CHECKSUM: string = "d4c84e81501526cf3de899f9ab3f68cd6f3ffbb7364c4310b54f21c6b1f33179" as const;
 
 export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -142,6 +142,54 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           ],
           "onError": "degrade",
           "emitsTrajectory": true
+        },
+        {
+          "nodeId": "n_grammar",
+          "type": "agent.grammar",
+          "activity": "interpreter.agent_grammar",
+          "config": {
+            "promptTemplateId": "71000000-0000-0000-0000-000000000043",
+            "taskKey": "text.live",
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_capture",
+              "fromPort": "out",
+              "toPort": "in"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
+        },
+        {
+          "nodeId": "n_realtime",
+          "type": "consultation.realtimeSummary",
+          "activity": "interpreter.consultation_realtime_summary",
+          "config": {
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_capture",
+              "fromPort": "out",
+              "toPort": "in"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
         }
       ]
     },
@@ -171,6 +219,16 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
               "toPort": "after"
             },
             {
+              "fromNodeId": "n_grammar",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_realtime",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
               "fromNodeId": "n_capture",
               "fromPort": "out",
               "toPort": "in"
@@ -183,34 +241,6 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     },
     {
       "stageIndex": 5,
-      "nodes": [
-        {
-          "nodeId": "n_realtime",
-          "type": "consultation.realtimeSummary",
-          "activity": "interpreter.consultation_realtime_summary",
-          "config": {
-            "onError": "degrade"
-          },
-          "timeoutSeconds": 60,
-          "retry": {
-            "maximumAttempts": 1,
-            "initialIntervalSeconds": 1,
-            "backoffCoefficient": 2
-          },
-          "inputs": [
-            {
-              "fromNodeId": "n_entities",
-              "fromPort": "out",
-              "toPort": "entities"
-            }
-          ],
-          "onError": "degrade",
-          "emitsTrajectory": true
-        }
-      ]
-    },
-    {
-      "stageIndex": 6,
       "nodes": [
         {
           "nodeId": "n_terms",
@@ -229,11 +259,6 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           },
           "inputs": [
             {
-              "fromNodeId": "n_realtime",
-              "fromPort": "next",
-              "toPort": "after"
-            },
-            {
               "fromNodeId": "n_entities",
               "fromPort": "out",
               "toPort": "in"
@@ -245,7 +270,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 7,
+      "stageIndex": 6,
       "nodes": [
         {
           "nodeId": "n_phi",
@@ -274,7 +299,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 8,
+      "stageIndex": 7,
       "nodes": [
         {
           "nodeId": "n_evidence",
@@ -328,7 +353,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 9,
+      "stageIndex": 8,
       "nodes": [
         {
           "nodeId": "n_ground_presum",
@@ -356,7 +381,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 10,
+      "stageIndex": 9,
       "nodes": [
         {
           "nodeId": "n_prompt",
@@ -396,7 +421,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 11,
+      "stageIndex": 10,
       "nodes": [
         {
           "nodeId": "n_synth",
@@ -426,7 +451,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 12,
+      "stageIndex": 11,
       "nodes": [
         {
           "nodeId": "n_dna",
@@ -478,7 +503,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 13,
+      "stageIndex": 12,
       "nodes": [
         {
           "nodeId": "n_correct",
@@ -541,7 +566,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 14,
+      "stageIndex": 13,
       "nodes": [
         {
           "nodeId": "n_sensors",
@@ -579,7 +604,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 15,
+      "stageIndex": 14,
       "nodes": [
         {
           "nodeId": "n_persist",
@@ -613,7 +638,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 16,
+      "stageIndex": 15,
       "nodes": [
         {
           "nodeId": "n_assure",
@@ -651,7 +676,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 17,
+      "stageIndex": 16,
       "nodes": [
         {
           "nodeId": "n_end",
@@ -699,10 +724,10 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "7d92caf5ed819daabaa37144b88b3d21b96058184b35eff2653eebcccf0666d2"
+  "checksum": "1207f283c8a1082c6e21686d6641bd7f95eb01f50dfe6745173af09987738df8"
 } as const;
 
-export const RHEUM_GRAPH_CHECKSUM: string = "4e66cbdda6f2e03fcd77121e70c1502d3c7e8ae605e428e8f300479d9d348219" as const;
+export const RHEUM_GRAPH_CHECKSUM: string = "18f14aa863cc746ae12eda604075a587cbd87cc8754ae6a0f989784325d2632d" as const;
 
 export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -828,6 +853,54 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           ],
           "onError": "degrade",
           "emitsTrajectory": true
+        },
+        {
+          "nodeId": "n_grammar",
+          "type": "agent.grammar",
+          "activity": "interpreter.agent_grammar",
+          "config": {
+            "promptTemplateId": "71000000-0000-0000-0000-000000000043",
+            "taskKey": "text.live",
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_capture",
+              "fromPort": "out",
+              "toPort": "in"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
+        },
+        {
+          "nodeId": "n_realtime",
+          "type": "consultation.realtimeSummary",
+          "activity": "interpreter.consultation_realtime_summary",
+          "config": {
+            "onError": "degrade"
+          },
+          "timeoutSeconds": 60,
+          "retry": {
+            "maximumAttempts": 1,
+            "initialIntervalSeconds": 1,
+            "backoffCoefficient": 2
+          },
+          "inputs": [
+            {
+              "fromNodeId": "n_capture",
+              "fromPort": "out",
+              "toPort": "in"
+            }
+          ],
+          "onError": "degrade",
+          "emitsTrajectory": true
         }
       ]
     },
@@ -857,6 +930,16 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
               "toPort": "after"
             },
             {
+              "fromNodeId": "n_grammar",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
+              "fromNodeId": "n_realtime",
+              "fromPort": "next",
+              "toPort": "after"
+            },
+            {
               "fromNodeId": "n_capture",
               "fromPort": "out",
               "toPort": "in"
@@ -869,34 +952,6 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     },
     {
       "stageIndex": 5,
-      "nodes": [
-        {
-          "nodeId": "n_realtime",
-          "type": "consultation.realtimeSummary",
-          "activity": "interpreter.consultation_realtime_summary",
-          "config": {
-            "onError": "degrade"
-          },
-          "timeoutSeconds": 60,
-          "retry": {
-            "maximumAttempts": 1,
-            "initialIntervalSeconds": 1,
-            "backoffCoefficient": 2
-          },
-          "inputs": [
-            {
-              "fromNodeId": "n_entities",
-              "fromPort": "out",
-              "toPort": "entities"
-            }
-          ],
-          "onError": "degrade",
-          "emitsTrajectory": true
-        }
-      ]
-    },
-    {
-      "stageIndex": 6,
       "nodes": [
         {
           "nodeId": "n_terms",
@@ -915,11 +970,6 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           },
           "inputs": [
             {
-              "fromNodeId": "n_realtime",
-              "fromPort": "next",
-              "toPort": "after"
-            },
-            {
               "fromNodeId": "n_entities",
               "fromPort": "out",
               "toPort": "in"
@@ -931,7 +981,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 7,
+      "stageIndex": 6,
       "nodes": [
         {
           "nodeId": "n_phi",
@@ -960,7 +1010,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 8,
+      "stageIndex": 7,
       "nodes": [
         {
           "nodeId": "n_evidence",
@@ -1014,7 +1064,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 9,
+      "stageIndex": 8,
       "nodes": [
         {
           "nodeId": "n_ground_presum",
@@ -1042,7 +1092,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 10,
+      "stageIndex": 9,
       "nodes": [
         {
           "nodeId": "n_prompt",
@@ -1083,7 +1133,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 11,
+      "stageIndex": 10,
       "nodes": [
         {
           "nodeId": "n_synth",
@@ -1113,7 +1163,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 12,
+      "stageIndex": 11,
       "nodes": [
         {
           "nodeId": "n_dna",
@@ -1165,7 +1215,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 13,
+      "stageIndex": 12,
       "nodes": [
         {
           "nodeId": "n_correct",
@@ -1228,7 +1278,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 14,
+      "stageIndex": 13,
       "nodes": [
         {
           "nodeId": "n_sensors",
@@ -1266,7 +1316,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 15,
+      "stageIndex": 14,
       "nodes": [
         {
           "nodeId": "n_infer",
@@ -1299,7 +1349,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 16,
+      "stageIndex": 15,
       "nodes": [
         {
           "nodeId": "n_persist",
@@ -1338,7 +1388,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 17,
+      "stageIndex": 16,
       "nodes": [
         {
           "nodeId": "n_assure",
@@ -1381,7 +1431,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
       ]
     },
     {
-      "stageIndex": 18,
+      "stageIndex": 17,
       "nodes": [
         {
           "nodeId": "n_end",
@@ -1429,5 +1479,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "0b1cae0fb89358fd5e40c63303225c8e5493f392f3f0a9bf7c74154927cb20bb"
+  "checksum": "3a7d90b261f5e372e6a82f5d63607e7d6915784d8512635d4b5d1ced74f03f2a"
 } as const;
