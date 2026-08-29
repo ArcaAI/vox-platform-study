@@ -368,15 +368,16 @@ test.describe('TASK-776 route authorization conformance matrix', () => {
     assertAll('A5b PUBLIC-BUT-SERVICE-TOKEN-GATED', casesA5Internal, 'none', (s) => s === 401, '401');
     // Inventory derived from `apps/api/route-manifest.json`:
     //   routes where isPublic === true && path startsWith '/api/v1/internal/'
-    //   = 23 HarnessInternalController + 2 ServiceReleaseInternalController
-    //   + 1 ConsentInternalController + 1 EffectiveConfigController = 27.
-    //   (Harness grew from 20: `live-summary` + `live-assist` in TASK-795, and
-    //   `provider-credential` in TASK-799.)
+    //   = 26 HarnessInternalController + 2 ServiceReleaseInternalController
+    //   + 1 ConsentInternalController + 1 EffectiveConfigController = 30.
+    //   (Harness grew from 20: `live-summary` + `live-assist` in TASK-795,
+    //   `provider-credential` in TASK-799, and `endpoint/feedback` +
+    //   `endpoint/finalize` + `endpoint/session` in TASK-812.)
     //
     // Every one of those controllers also carries `@ApiExcludeController()`. That flag is a
     // DOCUMENTATION-visibility signal only, and must never be allowed to shrink this inventory
     // (see `skipReasonFor` in ./helpers/route-manifest.helper.ts). If this number collapses
     // toward 0, suspect the sweep's skip predicate before suspecting the routes.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(27);
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(30);
   });
 });
