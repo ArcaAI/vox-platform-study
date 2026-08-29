@@ -588,3 +588,41 @@ stale-generation refusals in the whole process: 0
 | §7 follow-up 2 (`sttPipelineId` threading) | untouched this pass | a request-DTO change plus the five regenerated artifacts |
 | §8c item 1 (encrypt-failure data loss) | needs a Vault outage injected mid-write | a fault-injection test around `DocumentSectionStore.encrypt()` |
 | §8d console wiring of the section GET/PATCH | `case-note-column.tsx` is owned by another session | that session |
+
+## 9. Lane E — the graph executor ran for a tenant for the first time (2026-08-29)
+
+### 9a. Parity HOLDS — now field-proven, not just test-proven
+The flag was flipped for ONE tenant in a throwaway clone of dev (`hope_lane_e`, `pg_dump | psql`,
+dropped afterwards — **the dev database was never written to**, verified: 32 users, 0
+DocumentTemplates, 0 DocumentSections, 0 flag rows, 0 trajectory steps). The other tenant kept
+resolving `code-default: false`, so per-tenant rollout works.
+
+Same transcript through both engines; `AgentTrajectoryStep` rows diffed. The repeating per-flush unit
+is **identical** — `LLM_CALL/flush → TOOL_CALL/nlp.classify-tokens → PHASE/publish` — and the first
+six steps are byte-identical. The only intended difference: graph mode writes 4 `DocumentSection`
+rows, legacy writes none.
+
+One asymmetry the parity TEST cannot see: with context notes and NO transcript, legacy emits no NER
+step at all (`delta || transcript` was empty) while graph emits one with zero entities — the
+declared-port resolution working as specified.
+
+### 9b. A clinical bug only a live run could find — FIXED
+**A second recording session on any consultation published nothing.** Every section was refused as
+`stale-generation` on a brand-new `generation:1` flush, leaving the clinician on the "Waiting for the
+first live summary" skeleton indefinitely. Cause: `DocumentSectionStore.lastGeneration` outlives the
+session (one store memoized per process) while `generation` restarts at 0. `forget()` existed for
+exactly this and had **zero production callers**. Fixed in `start()` (`9c28198f1`), RED first, then
+field-verified across two consecutive sessions in one process (rev3→5→8, zero refusals).
+
+### 9c. The three §8 routes, confirmed against a live gateway
+428 missing `If-Match` · 412 stale (with a structured `currentVersion`) · **409 on LOCKED, which
+correctly beats a stale precondition** · 404 cross-tenant · plus 403 for a non-owner. `section.patch`
+was observed live carrying `revision` but **not** `version` — precisely why the two GETs are
+load-bearing rather than scope creep.
+
+### 9d. DD-3's "N documents" is NOT closable, and it is not a runtime gap
+Checked in the database: the only tenant consultation graphs have exactly **one** generation node,
+and `documentTemplateId` appears in **zero** graphs — it was added to the node schemas after those
+graphs were authored. Closing it needs a graph authored with two generation nodes bound to two
+templates, **plus a product decision on what the second document is**. Lane E published
+`discharge_summary` during the pass, so the template half of the prerequisite now exists.

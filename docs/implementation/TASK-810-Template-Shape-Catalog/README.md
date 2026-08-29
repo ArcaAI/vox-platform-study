@@ -527,3 +527,13 @@ describe a different document than the schema the model is decoded against.
 | 2026-08-28 | DD-11 adopt-vs-mint fixed: an unchanged prompt adopt now moves the pin instead of minting a duplicate `PromptVersion` (checksum short-circuit on `content`+`variables`, compared against the template's latest version); `If-Match` is now actually checked before the mint/adopt decision. Console-side follow-up (`node-prompt-editor.tsx` toast) closed the same day (`428cee2d7`). |
 | 2026-08-28 | **Task 14 (document-template authoring UI) landed** (`c42627153`/`6d60d566c`): `/document-templates` following the `/context-schemas` idiom, `DetailDrawer` with Settings/Shape/Versions tabs, section-order Move up/down (WCAG 2.5.7 single-pointer alternative), `effectiveTemplate()` naming which fallback state a clinician is seeing, DD-11's stale-pin affordance in the Studio editor's right rail. All 15 tasks now complete; status → `Completed`. |
 | 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): header, §7 Implementation Summary and §6 DoD updated to reflect task 14 landing and D-7's closure, which this ticket's own README had not recorded (both landed after its last edit). No code changed. |
+
+### §7b CLOSED — the authoring screen was driven logged-in (2026-08-29)
+
+Lane E drove the screen logged-in end to end against a live gateway: create → edit shape → publish →
+pin → adopt. **axe: 0 violations in BOTH themes.** Also confirmed at runtime that an identical
+re-publish mints nothing (the §7b checksum short-circuit).
+
+Reported, not fixed: **"Start from SOAP" silently overwrites the Document title** with `"SOAP Note"` —
+a template slugged `discharge_summary` froze a v1 titled "SOAP Note". Needs a product call. Also:
+publish-validation errors are page-level with no `aria-invalid` on the offending field.
