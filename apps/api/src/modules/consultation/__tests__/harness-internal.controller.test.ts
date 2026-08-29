@@ -41,6 +41,7 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
     );
   });
 
@@ -178,6 +179,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -255,6 +257,7 @@ describe('HarnessInternalController', () => {
         // params, so the mock landed correctly by luck and only `tsc` caught it.
         // The two trailing `@Optional()` transcription services stay omitted.
         undefined as any, // harnessLiveAssistService
+        undefined as any, // consultationEndpointService (TASK-812)
       );
 
     it('resolves the pinned approved version, never the mutable content column', async () => {
@@ -312,6 +315,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -355,6 +359,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // liveDocumentationService (unused by this route)
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('delegates to ConsultationLoopEventService.publishEvent(consultationId, dto)', async () => {
@@ -398,6 +403,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto, idempotencyKey)', async () => {
@@ -460,6 +466,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('maps the harness batch (ISO → Date) and delegates to recordSteps, acking 202-style', async () => {
@@ -564,6 +571,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // liveDocumentationService (unused by this route)
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('delegates to LoopConfigService.resolveForConsultation(tenantId, consultationId)', async () => {
@@ -625,6 +633,7 @@ describe('HarnessInternalController', () => {
         mockLiveDocumentationService as any,
         undefined as any, // promptManagementService (unused by this route)
       undefined as any, // harnessLiveAssistService (TASK-795 RC-2, unused by this route)
+      undefined as any, // consultationEndpointService (TASK-812, unused by this route)
       );
 
     it('start delegates to LiveDocumentationService.start({ consultationId, tenantId, userId, sessionId })', async () => {

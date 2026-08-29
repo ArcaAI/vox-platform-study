@@ -12,7 +12,6 @@ export type WaveformProps = HTMLAttributes<HTMLDivElement> & {
   fadeEdges?: boolean;
   fadeWidth?: number;
   height?: string | number;
-  active?: boolean;
   onBarClick?: (index: number, value: number) => void;
 };
 
