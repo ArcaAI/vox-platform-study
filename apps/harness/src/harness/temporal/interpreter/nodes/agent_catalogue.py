@@ -50,6 +50,7 @@ from harness.temporal.interpreter.nodes._shared import (
     STATUS_DEGRADED,
     STATUS_OK,
     now,
+    read_model_slug,
     record_and_flush,
 )
 from harness.temporal.interpreter.nodes.consultation import interpreter_consultation_phi_hop
@@ -299,7 +300,9 @@ async def interpreter_agent_important_findings(payload: NodeActivityInput) -> No
         )
         return NodeActivityResult(status="DEGRADED", reason=exc.reason)
 
-    judgement, error_code = await resolve_text_selection(payload.tenant_id, task_key)
+    judgement, error_code = await resolve_text_selection(
+        payload.tenant_id, task_key, read_model_slug(config)
+    )
     if judgement is None:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code=error_code

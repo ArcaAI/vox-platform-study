@@ -64,7 +64,7 @@ class _FakeApi:
         self.summaries: list[dict[str, Any]] = []
         self.assists: list[dict[str, Any]] = []
 
-    async def get_policy(self, tenant_id, consultation_id=None, task_key=None):
+    async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
         self.policy_task_keys.append(task_key)
         return {
             "textProvider": self.provider,

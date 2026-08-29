@@ -120,16 +120,26 @@ def parse_json_object(content: str) -> dict[str, Any] | None:
     return None
 
 
-async def resolve_text_selection(tenant_id: str, task_key: str) -> tuple[LlmJudgement | None, str | None]:
+async def resolve_text_selection(
+    tenant_id: str, task_key: str, model_slug: str | None = None
+) -> tuple[LlmJudgement | None, str | None]:
     """``(judgement, error_code)`` — provider/model resolved tenant -> SYSTEM, FAIL-CLOSED.
 
     ``error_code`` non-``None`` means the caller must degrade. There is deliberately no env
     fallback: selection is ``failMode: closed``.
+
+    TASK-816 (DD-10): ``model_slug`` is the node's own ``llmBinding.modelSlug`` and outranks
+    ``task_key``. It is threaded to the gateway rather than resolved here — one model resolution,
+    shared with every TypeScript caller. A bound slug that resolves to nothing 400s there and
+    arrives as ``no_text_selection`` here, so the node DEGRADES with a named code instead of
+    silently generating on the tenant default.
     """
     if task_key not in ALLOWED_TASK_KEYS:
         return None, "invalid_task_key"
     try:
-        raw_policy = await _api_client(get_settings()).get_policy(tenant_id, task_key=task_key)
+        raw_policy = await _api_client(get_settings()).get_policy(
+            tenant_id, task_key=task_key, model_slug=model_slug
+        )
     except ApiServiceError:
         return None, "policy_fetch_unreachable"
 
