@@ -15,6 +15,9 @@ export * from './harness';
 export * from './timeout-sweep';
 // Per-consultation realtime live-summary watcher.
 export * from './live-documentation';
+// Lane D — the REST half of the DocumentSection state machine (the CLINICIAN writer,
+// counterpart to the flush writer inside `live-documentation`).
+export * from './document-section';
 // TASK-812 — the ENDPOINT STAGE: the three operations that run before a consultation session
 // closes (stamp the disposition, lock EVERY document, capture feedback + promote corrections).
 export * from './endpoint';

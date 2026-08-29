@@ -41,6 +41,10 @@ import {
   IHighlightService,
   CreateHighlightRequest,
   HighlightResponse,
+  // Lane D — the REST half of the DocumentSection state machine.
+  IDocumentSectionService,
+  DocumentSectionResponse,
+  UpdateDocumentSectionRequest,
   HarnessProgressService,
   HarnessAssuranceService,
   HarnessLiveAssistService,
@@ -203,6 +207,12 @@ export class ConsultationController {
     // `harness.loop.emergencyStop` platform veto (TASK-705), and never lets a
     // harness failure surface here.
     private readonly loopContextSignalService: LoopContextSignalService,
+    // Lane D — the CLINICIAN writer for `DocumentSection`, counterpart to the
+    // flush writer inside `liveDocumentationService`. Appended LAST so the
+    // positional test fixtures below keep their arity (this file's own warning:
+    // "the count is the contract").
+    @Inject(IDocumentSectionService)
+    private readonly documentSectionService: IDocumentSectionService,
   ) {}
 
   /** heartbeat cadence keeping idle trajectory streams alive through proxies. */
@@ -1038,6 +1048,123 @@ export class ConsultationController {
     await this.verifyConsultationOwnership(id);
     await this.contextService.deleteContext(contextId);
     return new OkResponseDto();
+  }
+
+  // ─── Document Sections ───────────────────
+  // The REST surface for `DocumentSection` (TASK-811 OD-7) — a clinical document
+  // stored one section per row so that a flush writing `assessment` and a
+  // clinician editing `plan` never contend.
+  //
+  // TASK-811 §7 left the editing route to "TASK-812 or the console lane", TASK-812
+  // never took it, and TASK-814 §6 declined it ("no section-level mutation
+  // endpoint exists yet"), so until now `DocumentSectionStore.applyClinicianEdit`
+  // had no caller outside its own tests and a clinician could not persist an edit
+  // at all. These three routes are that caller.
+  //
+  // The GETs are not convenience: `_version` is the section's compare-and-set
+  // token, it is NOT the `revision` the SSE `section.patch` carries, and the live
+  // stream never publishes it. Without a read that emits the `ETag`, a client has
+  // no way to obtain the `If-Match` the PATCH requires — the write route would be
+  // unusable on its own.
+
+  @ApiEndpoint({
+    returnedModel: DocumentSectionResponse,
+    multi: true,
+    path: ':id/documents/:documentKey/sections',
+    by: ['id', 'documentKey'],
+  })
+  @ApiOperation({
+    summary: 'List the persisted sections of one clinical document',
+    description:
+      'Returns every section of `documentKey` for this consultation in render order (`idx` ascending), with decrypted content. ' +
+      'This is the DURABLE view: the `section.patch` SSE lane only emits while a flush is running, so a client that reloads ' +
+      'mid-encounter reads its state here. Each item carries `version` — the value that section requires as its `If-Match`.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug` (e.g. `soap_note`, `discharge_summary`)" })
+  @ApiResponse({ status: 404, description: 'Consultation not found, or not visible to this caller.' })
+  async listDocumentSections(@Param('id') id: string, @Param('documentKey') documentKey: string): Promise<DocumentSectionResponse[]> {
+    await this.verifyConsultationAccess(id);
+    return this.documentSectionService.listSections(id, documentKey);
+  }
+
+  @ApiEndpoint({
+    returnedModel: DocumentSectionResponse,
+    path: ':id/documents/:documentKey/sections/:sectionKey',
+    by: ['id', 'documentKey', 'sectionKey'],
+  })
+  @ApiOperation({
+    summary: 'Read one section of a clinical document',
+    description:
+      'Returns the section with its content decrypted. The response carries `version`, which the `ETagInterceptor` also emits as a strong ' +
+      '`ETag` — that validator is what the PATCH below requires as `If-Match`. Note `version` and `revision` are different numbers doing ' +
+      'different jobs: `revision` orders the SSE stream, `version` is the concurrency precondition.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug`" })
+  @ApiParam({ name: 'sectionKey', description: "The compiled template's section key (e.g. `assessment`)" })
+  @ApiResponse({ status: 404, description: 'No such section for this consultation, or it is not visible to this caller.' })
+  async getDocumentSection(
+    @Param('id') id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('sectionKey') sectionKey: string,
+  ): Promise<DocumentSectionResponse> {
+    await this.verifyConsultationAccess(id);
+    return this.documentSectionService.getSection(id, documentKey, sectionKey);
+  }
+
+  @ApiEndpoint({
+    returnedModel: DocumentSectionResponse,
+    method: HttpMethod.PATCH,
+    path: ':id/documents/:documentKey/sections/:sectionKey',
+    by: ['id', 'documentKey', 'sectionKey'],
+  })
+  @RequiresIfMatch()
+  // AUTH-NOTE: the class-level `@Authorize()` UNDERSTATES this route. The real gate
+  // is imperative — `verifyConsultationOwnership`, the same helper `updateContext`
+  // uses: only the assigned doctor (or an admin holding `manage Consultation`) may
+  // write. A shared-patient colleague passes the READ gate the two GETs above use
+  // and must still fail here, because editing a colleague's note is not a read.
+  // That distinction cannot be expressed declaratively — there is no "owner"
+  // subject — so it lives in the helper and is pinned by
+  // `consultation.controller.document-sections.test.ts`.
+  @ApiOperation({
+    summary: 'Persist a clinician edit to one document section',
+    description:
+      'Writes the clinician-authored body of one section and transitions it to `confirmed`, after which a flush may append but will never ' +
+      'overwrite it. Optimistic concurrency is enforced per SECTION: `If-Match` (RFC 7232) is REQUIRED and is compare-and-set against that ' +
+      "row's `_version`, so an edit composed against a stale render LOSES to a flush that landed in between. When the header is present it " +
+      'OVERRIDES the body `expectedVersion`. A section the endpoint stage has finalized is `locked` and returns 409 — that is a state ' +
+      'conflict, not a stale precondition, so re-reading and retrying cannot help. Unlike a flush, a clinician emptying a section needs no ' +
+      'transcript contradiction.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the section `version` the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'documentKey', description: "The tenant's `DocumentTemplate.slug`" })
+  @ApiParam({ name: 'sectionKey', description: "The compiled template's section key" })
+  @ApiResponse({ status: 404, description: 'No such section for this consultation, or it is not visible to this caller.' })
+  @ApiResponse({ status: 409, description: 'The section is LOCKED — the encounter was finalized and no version of it is writable.' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch the section and re-apply against the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async updateDocumentSection(
+    @Param('id') id: string,
+    @Param('documentKey') documentKey: string,
+    @Param('sectionKey') sectionKey: string,
+    @Body() request: UpdateDocumentSectionRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<DocumentSectionResponse> {
+    await this.verifyConsultationOwnership(id);
+    // Header wins over body (house precedence, `department.controller.ts#update`).
+    // `@RequiresIfMatch()` guarantees the header is present, so this is the
+    // operand in practice; the body field remains for non-browser callers.
+    const effectiveRequest: UpdateDocumentSectionRequest =
+      expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.documentSectionService.updateSectionContent(id, documentKey, sectionKey, effectiveRequest);
   }
 
   // ─── Manual Highlights ───────────────────

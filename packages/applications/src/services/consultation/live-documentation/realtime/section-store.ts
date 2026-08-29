@@ -67,6 +67,21 @@ export interface SectionWriteInput {
   /** Required when the write EMPTIES a section that had content. */
   readonly contradiction?: TranscriptContradiction | null;
   readonly userId?: string | null;
+  /**
+   * The `_version` the CALLER read, when the caller has one — the compare-and-set
+   * operand for `applyClinicianEdit`.
+   *
+   * Without it the edit path re-reads the row and compare-and-sets against the
+   * version it JUST read, which is a read-modify-write, not a precondition: the
+   * check can only ever pass. That is sound for an in-process writer with no
+   * opinion about what it is replacing, and wrong for an HTTP client holding an
+   * `If-Match` from an earlier read — such a client must LOSE to a flush that
+   * landed in between, and with a self-read operand it would silently win.
+   *
+   * Absent ⇒ the previous read-modify-write behaviour, unchanged. Only
+   * `applyClinicianEdit` consults it; a flush's staleness token is `generation`.
+   */
+  readonly expectedVersion?: number;
 }
 
 export type SectionWriteRefusal =
@@ -239,7 +254,11 @@ export class DocumentSectionStore {
 
       if (!section.isWritable()) return { applied: false, reason: 'locked' };
 
-      const expectedVersion = section.version;
+      // The CALLER's operand when it has one (an HTTP `If-Match`), else the row
+      // we just read. See `SectionWriteInput.expectedVersion`: a self-read operand
+      // is a check that cannot fail, which is precisely what a client editing from
+      // a stale render must not get.
+      const expectedVersion = input.expectedVersion ?? section.version;
       section.applyClinicianContent(input.content, input.userId ?? null);
       await this.encrypt(section);
       await this.repository.updateWithVersion(section.id, section, expectedVersion);
