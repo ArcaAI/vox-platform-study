@@ -230,7 +230,15 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       headers: ifMatch(tenantAdminToken, beforeRow.version),
       data: { taskId: 'no-such-task-635' },
     });
-    expect([400, 404], `unknown task finalize → ${res.status()}`).toContain(res.status());
+    // 503 belongs here alongside 400/404. `finalizePromptTemplateTest` validates the
+    // taskId ONLY by calling TEXT (`prompt-management.service.ts:1001` → `:1386`), so with
+    // `apps/text` down an `ECONNREFUSED` becomes an honest 503 by the TASK-768 downstream-error
+    // design (`downstream-error.ts:160`) — the service genuinely cannot tell an unknown task
+    // from an unreachable validator. Every sibling test in this file already gates on TEXT
+    // availability (see `loggedGenerationAvailable`); this one did not, which is why it failed
+    // in a stack without TEXT. The DETERMINISTIC invariant this test exists to protect is the
+    // no-write assertion below, and that holds under all three statuses.
+    expect([400, 404, 503], `unknown task finalize → ${res.status()}`).toContain(res.status());
 
     const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
     const afterRow = (await after.json()) as PromptTemplateRow;
