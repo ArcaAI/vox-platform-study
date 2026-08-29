@@ -63,8 +63,17 @@ export interface ConsultationsColumnProps {
    */
   onOpenPatient: (patientId: string, departmentId?: string) => Promise<void>;
   activeIsRecording: boolean;
-  /** Selectable departments; empty ⇒ the picker is hidden (unreadable or none exist). */
+  /**
+   * Departments the CALLER may scope to — `users/me/departments`, the
+   * clinician plane (TASK-815 §12 / P-4). Empty is a real, explainable state,
+   * not a reason to hide the control: see `departmentsLoading` /
+   * `departmentsError` below.
+   */
   departments?: DepartmentOption[];
+  /** Catalog read in flight ⇒ skeleton, never a blank or a premature "none". */
+  departmentsLoading?: boolean;
+  /** Catalog read failed ⇒ say so; the note still drafts at the tenant tier. */
+  departmentsError?: boolean;
   selectedDepartmentId?: string;
   onDepartmentChange?: (id: string) => void;
 }
@@ -78,6 +87,30 @@ export interface DepartmentOption {
 /** Sentinel for "no department" — Radix Select forbids an empty-string value. */
 const NO_DEPARTMENT = '__none__';
 
+/**
+ * The department picker's DEGRADED state — a designed state, not a failure.
+ *
+ * Follows the same idiom as `/playground/dna-writing-style`'s
+ * `ImpersonationGatePanel`: name the state, badge it, say plainly what happens
+ * instead. `role="status"` because the notice resolves asynchronously — a
+ * clinician who never sees the control appear must still be TOLD why.
+ */
+function DepartmentScopingNotice({ unavailable }: { unavailable: boolean }) {
+  return (
+    <div role="status" className="border-border bg-muted/40 flex flex-col gap-1.5 rounded-md border p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{unavailable ? 'Department scoping unavailable' : 'No department assignments'}</span>
+        <StatusBadge label={unavailable ? 'UNAVAILABLE' : 'NONE'} colorRole={unavailable ? 'warning' : 'neutral'} />
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {unavailable
+          ? 'Your department list could not be read. The note still drafts \u2014 it is scoped to the tenant tier instead of a department.'
+          : 'You are not assigned to a department. The note still drafts \u2014 it is scoped to the tenant tier. A tenant admin assigns departments.'}
+      </p>
+    </div>
+  );
+}
+
 export function ConsultationsColumn({
   rows,
   isLoading,
@@ -87,6 +120,8 @@ export function ConsultationsColumn({
   onOpenPatient,
   activeIsRecording,
   departments = [],
+  departmentsLoading = false,
+  departmentsError = false,
   selectedDepartmentId = '',
   onDepartmentChange,
 }: ConsultationsColumnProps) {
@@ -188,7 +223,18 @@ export function ConsultationsColumn({
                 {patientIdError}
               </p>
             ) : null}
-            {departments.length > 0 ? (
+            {/* Department scoping — all four states are explained (P-4).
+                The catalog used to be an ADMIN read that 403'd under
+                impersonation, and every failure collapsed to the same silent
+                blank. It is now the clinician-plane `users/me/departments`,
+                and when it is genuinely empty or unreadable the clinician is
+                TOLD, with the consequence spelled out. */}
+            {departmentsLoading ? (
+              <>
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-9 w-full" />
+              </>
+            ) : departments.length > 0 ? (
               <>
                 <Label htmlFor="scribe-department">Department</Label>
                 <Select
@@ -211,7 +257,9 @@ export function ConsultationsColumn({
                   Scopes the drafted note to the department&apos;s prompt and agent configuration.
                 </p>
               </>
-            ) : null}
+            ) : (
+              <DepartmentScopingNotice unavailable={departmentsError} />
+            )}
           </form>
         ) : (
           <div className="relative flex items-center">
