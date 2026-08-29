@@ -279,6 +279,43 @@ describe('DnaWritingStyleController', () => {
 
       expect(result).toEqual([]);
     });
+
+    /**
+     * TASK-815 §12 (P-4) — the ownership property the playground's DNA-style
+     * picker now RESTS on.
+     *
+     * The Consultation Scribe moved that picker off `admin/dna-writing-styles`
+     * (which needs `manage`, so it 403s for a clinician) onto this route. Safe
+     * only because the doctor is the CLS principal: under impersonation CLS
+     * holds the IMPERSONATED clinician, so the list must follow the clinician
+     * and never the admin acting as them.
+     */
+    it('follows the IMPERSONATED clinician, not the admin acting as them', async () => {
+      const impersonatedCls = createMockClsService('doctor-7', { roles: ['DOCTOR'], impersonatedBy: 'admin-1' });
+      const scoped = new DnaWritingStyleController(mockDnaService as any, impersonatedCls as any, mockDnaQueue as any);
+      mockDnaService.listReports.mockResolvedValue([]);
+
+      await scoped.getMine();
+
+      expect(mockDnaService.listReports).toHaveBeenCalledWith({ doctorId: 'doctor-7' });
+      expect(mockDnaService.listReports).not.toHaveBeenCalledWith({ doctorId: 'admin-1' });
+    });
+
+    /**
+     * Cross-clinician isolation is STRUCTURAL: `getMine` takes no parameters,
+     * so one clinician has no id to substitute for another's. Pinning the
+     * structure means adding a parameter later cannot pass unnoticed.
+     */
+    it('exposes no caller-supplied id — the subject cannot be substituted', async () => {
+      mockDnaService.listReports.mockResolvedValue([]);
+
+      expect(controller.getMine.length).toBe(0);
+
+      await (controller.getMine as (id?: string) => Promise<unknown>)('doctor-99');
+
+      expect(mockDnaService.listReports).toHaveBeenCalledWith({ doctorId: 'doctor-1' });
+      expect(mockDnaService.listReports).not.toHaveBeenCalledWith({ doctorId: 'doctor-99' });
+    });
   });
 
   // ─── Set-default (PATCH :reportId/default) ────────────────────

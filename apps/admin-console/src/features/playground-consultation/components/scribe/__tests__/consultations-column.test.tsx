@@ -164,3 +164,69 @@ describe('ConsultationsColumn — department scoping on open', () => {
     await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-901', undefined));
   });
 });
+
+/**
+ * TASK-815 §12 (P-4) — the department picker must never degrade SILENTLY.
+ *
+ * The catalog now reads `users/me/departments` (clinician plane), but it can
+ * still be genuinely unavailable — the caller has no assignments, or the read
+ * failed. Previously ALL THREE of those states rendered as the same thing: the
+ * control simply vanished, with nothing telling the clinician why the note
+ * would be scoped to the tenant tier instead. Rule 11 §5: every state is
+ * explained; rule 10: loading is a Skeleton, never a blank or a spinner.
+ */
+describe('ConsultationsColumn — department scoping degrades explicitly (P-4)', () => {
+  const DEPARTMENTS = [{ id: 'dept-derm', name: 'Dermatology' }];
+
+  function openNewForm() {
+    fireEvent.click(screen.getByRole('button', { name: /^new$/i }));
+  }
+
+  it('shows a skeleton, not a blank, while the catalog is loading', () => {
+    const { container } = setup({ departments: [], departmentsLoading: true });
+    openNewForm();
+
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    // Must not claim "no departments" before the answer is known.
+    expect(screen.queryByText(/no department assignments/i)).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('explains an unavailable catalog instead of hiding the control', () => {
+    setup({ departments: [], departmentsError: true });
+    openNewForm();
+
+    // A live region: the notice appears asynchronously, so it must be
+    // ANNOUNCED, not just drawn.
+    const notice = screen.getByRole('status');
+    expect(within(notice).getByText(/department scoping unavailable/i)).toBeTruthy();
+    // The clinician is told what happens instead — the note still drafts.
+    expect(notice.textContent).toMatch(/tenant/i);
+  });
+
+  it('explains an empty catalog as a designed state, not an error', () => {
+    setup({ departments: [], departmentsLoading: false, departmentsError: false });
+    openNewForm();
+
+    const notice = screen.getByRole('status');
+    expect(within(notice).getByText(/no department assignments/i)).toBeTruthy();
+    expect(screen.queryByText(/department scoping unavailable/i)).toBeNull();
+  });
+
+  it('renders the picker and no degrade notice once the catalog resolves', () => {
+    setup({ departments: DEPARTMENTS, onDepartmentChange: vi.fn() });
+    openNewForm();
+
+    expect(screen.getByLabelText(/department/i)).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/no department assignments/i)).toBeNull();
+    expect(screen.queryByText(/department scoping unavailable/i)).toBeNull();
+  });
+
+  it('has no axe violations in the degraded state', async () => {
+    const { container } = setup({ departments: [], departmentsError: true });
+    openNewForm();
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
