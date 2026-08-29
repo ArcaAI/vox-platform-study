@@ -16,6 +16,21 @@ import { WorkflowDefinition } from '../../../models';
  */
 @Injectable()
 export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionEntity, WorkflowDefinition> {
+  /**
+   * What "the tenant's live version of a slug" means, written ONCE.
+   *
+   * `findPublishedBySlug` (one slug) and `findActivePublishedByTenant` (the whole tenant) are
+   * necessarily different queries, but they must select from the same population or the
+   * single-slug answer and the list answer diverge — a slug a list route advertises that a
+   * by-slug gate then refuses, or the reverse. Both spread this object rather than restating
+   * the filter, so adding a condition to one is adding it to both.
+   */
+  private static readonly PUBLISHED_AND_ACTIVE = {
+    status: WorkflowDefinitionStatus.PUBLISHED,
+    isActive: true,
+    resourceStatus: ResourceStatusType.ENABLED,
+  } as const;
+
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'workflowDefinition', WorkflowDefinitionEntityMapper.getInstance());
   }
@@ -30,13 +45,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * here is the expected common case, not an error.
    */
   async findPublishedBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity | null> {
-    return this.findFirstTolerant({
-      tenantId,
-      slug,
-      status: WorkflowDefinitionStatus.PUBLISHED,
-      isActive: true,
-      resourceStatus: ResourceStatusType.ENABLED,
-    });
+    return this.findFirstTolerant({ tenantId, slug, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE });
   }
 
   /**
@@ -46,7 +55,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    */
   async findActivePublishedByTenant(tenantId: string): Promise<WorkflowDefinitionEntity[]> {
     return this.findAll({
-      filters: { tenantId, status: WorkflowDefinitionStatus.PUBLISHED, isActive: true, resourceStatus: ResourceStatusType.ENABLED },
+      filters: { tenantId, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE },
       sort: [{ slug: 'asc' }],
     });
   }

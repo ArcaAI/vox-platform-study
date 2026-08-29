@@ -10,7 +10,7 @@
  * refused. Refusing before the write is what makes the refusal observable.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
 import { ResourceStatusType } from '@arcaai/domains';
 
@@ -204,5 +204,64 @@ describe('ConsultationService.getGoverningWorkflow — discovery (D-20)', () => 
       name: null,
       activeVersionNumber: null,
     });
+  });
+});
+
+/**
+ * TASK-813 §8 — the selectable-set route's service half.
+ *
+ * `ConsultationService` owns exactly two things here, and both are about the REQUEST rather
+ * than about workflows: the tenant comes from CLS and never from the caller, and a deployment
+ * that cannot answer says so instead of answering "none".
+ */
+describe('ConsultationService.listSelectableWorkflows — discovery of the selectable set (§8)', () => {
+  let m: ReturnType<typeof makeMocks>;
+  beforeEach(() => {
+    m = makeMocks();
+  });
+
+  const SELECTABLE = { data: [{ slug: SLUG, name: 'Caller Picked', description: 'a graph', isTenantDefault: true }] };
+
+  it('asks the dispatcher for the CLS tenant set — the tenant is never a request field', async () => {
+    m.workflowDispatchService.listSelectableForConsultation = vi.fn().mockResolvedValue(SELECTABLE);
+
+    await expect(makeService(m).listSelectableWorkflows()).resolves.toEqual(SELECTABLE);
+    expect(m.workflowDispatchService.listSelectableForConsultation).toHaveBeenCalledWith(TENANT);
+  });
+
+  it('passes an empty set straight through — a tenant that authored nothing is not an error', async () => {
+    m.workflowDispatchService.listSelectableForConsultation = vi.fn().mockResolvedValue({ data: [] });
+    await expect(makeService(m).listSelectableWorkflows()).resolves.toEqual({ data: [] });
+  });
+
+  it('503s when dispatch is not wired rather than answering "no workflows are selectable"', async () => {
+    // Same posture as the SELECTION gate, and for the same reason: an empty list would be a
+    // claim about the tenant's authoring, when the truth is that this deployment cannot tell.
+    const withoutDispatcher = makeMocks();
+    const service = new ConsultationService(
+      withoutDispatcher.consultationRepository as never,
+      withoutDispatcher.departmentRepository as never,
+      withoutDispatcher.userRoleAssignmentRepository as never,
+      withoutDispatcher.userDepartmentRepository as never,
+      withoutDispatcher.userRepository as never,
+      withoutDispatcher.eventEmitter as never,
+      withoutDispatcher.clsService as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined, // dispatcher NOT wired
+      undefined,
+      withoutDispatcher.workflowDefinitionRepository as never,
+    );
+
+    await expect(service.listSelectableWorkflows()).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('400s without a resolved tenant rather than reading some other tenant set', async () => {
+    m.clsService.get = vi.fn(() => null);
+    m.workflowDispatchService.listSelectableForConsultation = vi.fn().mockResolvedValue(SELECTABLE);
+
+    await expect(makeService(m).listSelectableWorkflows()).rejects.toBeInstanceOf(BadRequestException);
+    expect(m.workflowDispatchService.listSelectableForConsultation).not.toHaveBeenCalled();
   });
 });

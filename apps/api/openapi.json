@@ -14352,6 +14352,47 @@
         ],
         "type": "object"
       },
+      "SelectableConsultationWorkflowListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SelectableConsultationWorkflowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "SelectableConsultationWorkflowResponse": {
+        "properties": {
+          "description": {
+            "description": "Free-text description, when the author wrote one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "isTenantDefault": {
+            "description": "True for the slug the tenant-level assignment names — what governs when no selection is made. A department override can still win at open, so this is the TENANT default, not a promise about a particular consultation. At most one entry carries `true`, and none does when the tenant's assignment names something that is not itself selectable.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Human-readable name of the definition.",
+            "type": "string"
+          },
+          "slug": {
+            "description": "The value to send as `workflowDefinitionSlug` when opening a consultation.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "isTenantDefault"
+        ],
+        "type": "object"
+      },
       "SellRateResponse": {
         "properties": {
           "bookVersion": {
@@ -47830,6 +47871,46 @@
           }
         ],
         "summary": "Retrieving multiple ConsultationResponses by patientId",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/workflows": {
+      "get": {
+        "description": "The set of `workflowDefinitionSlug` values `POST /consultations/open` will accept for the caller's tenant — the same predicate that route authorizes with, so a slug listed here is never refused and a slug omitted here is never accepted. Tenant-scoped from the session, so it takes no tenant or department parameter. An empty `data` array means the tenant has published no consultation-palette workflow, which is the normal case: the platform default engine governs. `isTenantDefault` marks the TENANT-tier assignment; a department override can still win at open.",
+        "operationId": "ConsultationController_listSelectableWorkflows",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectableConsultationWorkflowListResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not open consultations, and so may not choose a workflow for one."
+          },
+          "503": {
+            "description": "This deployment cannot dispatch selected workflows, so it cannot say which are selectable."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The workflows this caller may select when opening a consultation.",
         "tags": [
           "consultations"
         ]

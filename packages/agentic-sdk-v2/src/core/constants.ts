@@ -55,6 +55,12 @@ export const CONSULTATION_ENDPOINTS = {
   GET: (id: string) => `/consultations/${encodeURIComponent(id)}`,
   /** TASK-813 — which engine governs this consultation (+ the governing definition's identity). */
   WORKFLOW: (id: string) => `/consultations/${encodeURIComponent(id)}/workflow`,
+  /**
+   * TASK-813 §8 — the workflows this caller may name at open. STATIC segment, and the gateway
+   * declares it ABOVE `/consultations/:id` for exactly that reason; do not turn it into a
+   * parameterised path.
+   */
+  SELECTABLE_WORKFLOWS: '/consultations/workflows',
   /** Get patient consultation history (all dates) */
   PATIENT_HISTORY: (patientId: string) => `/consultations/patient/${encodeURIComponent(patientId)}/history`,
   /** Get all consultations for patient on a specific date */
