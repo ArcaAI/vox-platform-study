@@ -78,6 +78,9 @@ describe('TASK-812 — endpoint-stage node types', () => {
     const editsConsumingWriters = Object.values(WORKFLOW_NODE_REGISTRY)
       .filter((descriptor) => descriptor.externalWrite && descriptor.inputs.some((port) => port.primitive === 'edits'))
       .map((descriptor) => descriptor.key);
-    expect(editsConsumingWriters).toEqual(['feedback.capture']);
+    // TASK-806 lane A — `agent.feedback` is the target catalogue's entry over the SAME engine
+    // (`interpreter.feedback_capture`), so it carries the same property rather than opening a
+    // second promotion path: two names, one implementation.
+    expect(editsConsumingWriters.sort()).toEqual(['agent.feedback', 'feedback.capture']);
   });
 });

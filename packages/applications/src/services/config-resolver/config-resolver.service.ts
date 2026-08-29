@@ -1,6 +1,14 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { PipelinePolicyEntity, PipelinePolicyRepository, PipelinePolicyScope, UserProfileRepository } from '@arcaai/domains';
+import {
+  PipelinePolicyEntity,
+  PipelinePolicyRepository,
+  PipelinePolicyScope,
+  UserProfileRepository,
+  WorkflowDefinitionRepository,
+} from '@arcaai/domains';
+import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
 import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
+import { IWorkflowAssignmentService } from '../workflow-assignment/IWorkflowAssignmentService';
 
 /**
  * Generalized realtime-config cascade resolver.
@@ -80,6 +88,17 @@ export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDesc
 
 const TOGGLE_KEYS = Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleKey[];
 
+/** The palette whose assigned definition governs a consultation (mirrors `PromptResolutionService`). */
+const CONSULTATION_PALETTE_KEY = 'consultation';
+
+/** TASK-815 §11 / DD-6 — the node type that carries the DNA-redaction pass. */
+const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';
+
+function nodeConfigOf(node: WorkflowGraphNode | null | undefined): Record<string, unknown> {
+  const config = node?.config;
+  return typeof config === 'object' && config !== null && !Array.isArray(config) ? (config as Record<string, unknown>) : {};
+}
+
 @Injectable()
 export class ConfigResolver {
   private readonly logger = new Logger(ConfigResolver.name);
@@ -89,6 +108,14 @@ export class ConfigResolver {
     // Optional + trailing so existing positional test fixtures keep compiling;
     // production DI (CoreDatabaseModule) always supplies it.
     @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
+    // TASK-806 lane A item 2 — the tenant gate for DNA REDACTION moved onto the graph, so the
+    // resolver needs the same two collaborators `PromptResolutionService` uses to reach a
+    // tenant's governing consultation definition. `@Optional()` and trailing for the same reason
+    // its are: this service is constructed positionally in background job processors and a long
+    // tail of unit tests, and an unwired resolver must degrade rather than throw on a clinical
+    // path. See `resolveEffectiveDnaRedactionEnabled` for exactly what it degrades TO.
+    @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
+    @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {}
 
   /**
@@ -210,12 +237,36 @@ export class ConfigResolver {
    * regardless of the other two. It retired with `DepartmentAgent` (TASK-815).
    * The direction matters — dropping a gate that could only force redaction OFF
    * means a consultation the tenant AND the doctor both enabled is now redacted
-   * where an agent could previously veto it. That veto had no successor in the
-   * workflow substrate, and the two gates that remain are the ones a tenant and
-   * a clinician actually set.
+   * where an agent could previously veto it. The owner APPROVED that loss, with
+   * a rider that is what this method now implements.
    *
-   * Fail-CLOSED: any lookup failure ⇒ redaction OFF (a note the doctor expected
-   * redacted must never slip through on a degraded config read).
+   * ## The tenant gate is the NODE (TASK-806 lane A item 2)
+   *
+   * *"DNA-Redaction must be configured as an agent node."* So the tenant does not
+   * enable redaction with a boolean that can disagree with its graph — it enables
+   * it by placing an ACTIVE `agent.dna_redaction` node in the governing
+   * consultation definition, resolved through the same
+   * `department -> tenant -> platform default` assignment cascade every other node
+   * tier uses.
+   *
+   * The DOCTOR opt-in does NOT move onto the node, deliberately: it is a
+   * clinician's own preference about their own writing style (TASK-815 §12 P-4
+   * makes that ownership explicit), not something a tenant admin authors into a
+   * graph. What the node declares is whether it HONOURS that opt-in —
+   * `requireDoctorOptIn`, default true, which reproduces the surviving two-gate
+   * behaviour exactly.
+   *
+   * ## What it degrades to, and why that is safe
+   *
+   * With the workflow resolvers unwired (`@Optional()` — background job
+   * processors, positional test fixtures) the legacy `dnaRedactionEnabled`
+   * cascade answers, exactly as before. That path cannot silently enable
+   * redaction anywhere real: no seed writes `dnaRedactionEnabled` and its code
+   * default is `false`, so in a wired system the node is the only thing that can
+   * turn it on.
+   *
+   * Fail-CLOSED: any lookup failure — policy OR graph — ⇒ redaction OFF (a note
+   * the doctor expected redacted must never slip through on a degraded read).
    */
   async resolveEffectiveDnaRedactionEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
     let cascadeRows: PipelinePolicyEntity[] = [];
@@ -243,20 +294,49 @@ export class ConfigResolver {
     const doctorRow =
       ctx.doctorId != null ? (cascadeRows.find((r) => r.scope === PipelinePolicyScope.DOCTOR && r.scopeId === ctx.doctorId) ?? null) : null;
 
-    // maxScope TENANT ⇒ resolveOne only walks tenant + system-default; department
-    // + doctor tiers are excluded by the descriptor, so pass them as null.
-    const tenantEnabled = this.resolveOne('dnaRedactionEnabled', {
-      doctorRow: null,
-      departmentRow: null,
-      tenantRow,
-      systemRow,
-    }).value;
+    // The NODE is the tenant gate. `undefined` means "the resolvers are not wired" — only then
+    // does the legacy cascade answer (maxScope TENANT ⇒ `resolveOne` walks tenant +
+    // system-default only, so department and doctor tiers are passed as null).
+    const node = await this.resolveDnaRedactionNode(ctx);
+    const tenantEnabled =
+      node === undefined
+        ? this.resolveOne('dnaRedactionEnabled', { doctorRow: null, departmentRow: null, tenantRow, systemRow }).value
+        : node !== null;
 
     // Doctor opt-in reuses the doctor's DNA toggle (redaction is part of DNA).
     const doctorToggle = doctorRow ? ((doctorRow.dnaStyleEnabled as boolean | null | undefined) ?? null) : null;
-    const effective = tenantEnabled && (doctorToggle ?? true);
+    const honoursDoctorOptIn = node == null || nodeConfigOf(node).requireDoctorOptIn !== false;
+    const effective = tenantEnabled && (honoursDoctorOptIn ? (doctorToggle ?? true) : true);
 
     return { effective, tenantEnabled, doctorToggle };
+  }
+
+  /**
+   * The tenant's ACTIVE `agent.dna_redaction` node, or `null` when the governing graph declares
+   * none, or `undefined` when the workflow resolvers are not wired at all.
+   *
+   * The three-way return is the whole point: `null` and `undefined` mean different things here
+   * and collapsing them would either force redaction OFF in every positional-construction call
+   * site, or let an unwired resolver look like a configured tenant. A THROWN lookup is reported
+   * as `null` — fail-closed, per this feature's posture.
+   */
+  private async resolveDnaRedactionNode(ctx: ConfigResolutionContext): Promise<WorkflowGraphNode | null | undefined> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return undefined;
+    try {
+      const assignment = await this.workflowAssignments.resolve(ctx.tenantId, CONSULTATION_PALETTE_KEY, ctx.departmentId ?? null);
+      if (!assignment.workflowDefinitionSlug) return null;
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(ctx.tenantId, assignment.workflowDefinitionSlug);
+      const graph = definition?.graph as unknown as WorkflowGraph | null | undefined;
+      if (!graph || !Array.isArray(graph.nodes)) return null;
+      return graph.nodes.find((node) => node.type === DNA_REDACTION_NODE_TYPE && nodeConfigOf(node).enabled !== false) ?? null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA-redaction node lookup failed — failing closed (redaction off)',
+        tenantId: ctx.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /**

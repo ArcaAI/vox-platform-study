@@ -162,18 +162,40 @@ export function workflowEdgePortProblems(graph: WorkflowGraph, options?: PortVal
  *
  * | Rule | Why |
  * |---|---|
- * | a `lane: 'durable'` node MUST be `idempotent` | Temporal retries activities. A durable node that is not idempotent double-writes on a retry that the author never sees. |
- * | a `lane: 'realtime'` node MUST NOT be `externalWrite` | The realtime lane has a latency budget; an inline external write blows it and cannot be compensated on restart. |
+ * | EVERY node MUST be `idempotent`, in either lane | Both runtimes retry. Temporal retries a durable activity; TASK-811's realtime executor retries a realtime node up to its compiled `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode.maxAttempts`). A non-idempotent retry double-writes in a way the author never sees, and the lane makes no difference to that. |
  * | `key` suffix and `schemaVersion` must agree | A node type is a contract with every saved tenant graph. Reshaping a published node's ports in place silently breaks them; a breaking change becomes `agent.ner@2`, and the suffix must not lie about which version it is. |
+ *
+ * ## The rule that was REMOVED, and why (TASK-806 lane A, item 7)
+ *
+ * TASK-809 §2b declared *"a realtime-lane node MUST NOT be `externalWrite`"*, on the reasoning
+ * that "the realtime lane has a latency budget; an inline external write blows it and cannot be
+ * compensated on restart". It was written before a realtime runtime existed, and the runtime
+ * TASK-811 then shipped FALSIFIES it: of the three node types the realtime executor implements,
+ * `consultation.realtimeSummary` publishes each interim summary to the live consultation feed and
+ * `consultation.extractEntities` persists the entities it found. Writing is not an accident of
+ * those nodes — publishing the running note IS the realtime lane's product. The rule could only
+ * be satisfied by declaring `lane: 'durable'` on nodes no durable runtime executes, which is
+ * exactly the state item 7 exists to end.
+ *
+ * Neither half of its stated reasoning survives contact with the implementation either. Latency is
+ * enforced by a PER-NODE budget the executor races each node against (DD-4), not by a type flag;
+ * and the realtime lane is not restart-compensated for ANY node, writing or not, because a lane
+ * run is a live flush rather than a durable history.
+ *
+ * The hazard the rule was reaching for is real but is a different one: TWO runtimes executing the
+ * same node, which for `consultation.realtimeSummary` would mean two engines writing one
+ * consultation's document. That is a lane-MEMBERSHIP hazard, and it is now closed structurally —
+ * `lane` is a shared registry field and the durable interpreter SKIPS every `realtime` node
+ * (`apps/harness/.../interpreter/workflow.py`, reason `realtime_lane`), so exactly one runtime
+ * ever executes a given node.
  */
 export function nodeDescriptorContractProblems(descriptor: WorkflowNodeDescriptor): string[] {
   const problems: string[] = [];
 
-  if (descriptor.lane === 'durable' && !descriptor.idempotent) {
-    problems.push(`${descriptor.key}: a lane:'durable' node MUST declare idempotent:true — Temporal retries activities`);
-  }
-  if (descriptor.lane === 'realtime' && descriptor.externalWrite) {
-    problems.push(`${descriptor.key}: a lane:'realtime' node MUST NOT declare externalWrite:true — the realtime lane has a latency budget`);
+  if (!descriptor.idempotent) {
+    problems.push(
+      `${descriptor.key}: a node MUST declare idempotent:true — both runtimes retry (Temporal retries a durable activity, the realtime executor retries up to retry.maximumAttempts)`,
+    );
   }
 
   const suffix = descriptor.key.includes('@') ? Number(descriptor.key.slice(descriptor.key.lastIndexOf('@') + 1)) : 1;

@@ -26,6 +26,7 @@ from harness.temporal.activities import (
 from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
+from harness.temporal.interpreter.nodes.agent_catalogue import AGENT_CATALOGUE_ACTIVITIES
 from harness.temporal.interpreter.nodes.consultation import (
     interpreter_consultation_consent_gate,
     interpreter_consultation_hitl_gate,
@@ -64,6 +65,7 @@ from harness.temporal.interpreter.nodes.consultation_verify import (
 from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
 from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
 from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
+from harness.temporal.interpreter.nodes.guards import GUARD_ACTIVITIES
 from harness.temporal.interpreter.nodes.stt_placeholder import (
     interpreter_stt_asr_engine,
     interpreter_stt_audio_input,
@@ -222,6 +224,15 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_session_timeout,
     interpreter_summary_finalize,
     interpreter_feedback_capture,
+    # The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+    # Spread from the module's own list rather than re-typed here, because this list and
+    # `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists (see the note above)
+    # and a catalogue this size is exactly where a re-typed name goes missing. Every one of these
+    # is a thin delegation to an engine already in this list; they are registered separately
+    # because `NodeSpec.activity_name` is what the S-4 cross-check compares against, so a node
+    # type needs an activity NAME of its own even when the body is shared.
+    *AGENT_CATALOGUE_ACTIVITIES,
+    *GUARD_ACTIVITIES,
 ]
 
 # ---------------------------------------------------------------------------

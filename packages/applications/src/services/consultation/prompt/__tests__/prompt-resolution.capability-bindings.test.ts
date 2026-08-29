@@ -207,21 +207,31 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   // The pre-summary chain has NO node tier (TASK-815)
   // =========================================================================
 
-  describe('pre-summary — the tier-1a slot is deliberately EMPTY', () => {
-    it('never consults the governing graph at all for a pre-summary request', async () => {
-      // The successor of the old agent `preSummaryTemplateId` tier is a
-      // PRE-SUMMARISATION NODE (`agent.presummarization`, DD-6), which is in the
-      // target catalogue but not in the registry. Rather than serve some other
-      // node's prompt — that is how a clinical NOTE prompt gets served for a
-      // pre-summary request — the tier is absent until the node type lands.
+  describe('pre-summary — tier-1a is the agent.presummarization NODE (TASK-806 lane A item 1)', () => {
+    it('consults the governing graph, but a NOTE node can never answer a pre-summary request', async () => {
+      // The tier's successor — a PRE-SUMMARISATION NODE (`agent.presummarization`, DD-6) — now
+      // exists, so the slot is filled rather than empty. What has NOT changed is the property the
+      // empty slot was protecting: selection is by node TYPE, so a graph carrying only a finalize
+      // node yields no candidate and the chain falls through to the tenant template. Serving that
+      // note node's prompt is the wrong-prompt failure the capability split exists to kill.
       publishGraph([finalizeNode('note-tpl')]);
       mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
       const result = await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
 
-      expect(mockWorkflowAssignments.resolve).not.toHaveBeenCalled();
       expect(result.promptId).toBe('tenant-presum-tpl');
       expect(result.resolvedFrom).toBe('tenant');
+      // …and the missing node is SURFACED rather than silently absorbed (owner ruling).
+      expect(result.resolutionTrace.configurationErrors?.join(' ')).toContain('agent.presummarization');
+    });
+
+    it('resolves the graph with NO department — pre-summary has no department axis', async () => {
+      publishGraph([finalizeNode('note-tpl')]);
+      mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
+
+      await service.resolve({ tenantId: TENANT, departmentId: DEPT, promptType: 'pre-summary' });
+
+      expect(mockWorkflowAssignments.resolve).toHaveBeenCalledWith(TENANT, 'consultation', null);
     });
 
     it('is unchanged for the compat signature — which never reached the tier anyway (RF-5)', async () => {
