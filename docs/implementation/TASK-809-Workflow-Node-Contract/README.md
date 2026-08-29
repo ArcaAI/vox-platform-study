@@ -162,7 +162,7 @@ assurance record under `verdict`.
 |---|---|
 | `consultation.persistDraft` | **FIXED.** Declared `[NEXT]` only while emitting `{contextItemId, text}`. Now declares `out: document` (`text`) and `contextItemId: text` (`contextItemId`), plus an `assurance` input distinct from `verdict`. |
 | `consultation.finalizeAssurance` | **FIXED.** Same defect; now declares `contextItemId` as both an input and an output, so the persist → assure flow is a type-checked edge for the first time. |
-| `consultation.captureBinding` | ⚠ **OPEN OWNER ITEM.** A THIRD divergence, found during this lane: `out: transcript` is design intent — the activity starts the live-documentation session and emits `{action, consultationId}`, no transcript. Left as design intent because retyping it `control` would leave the palette with NO producer of `transcript`, making `extractEntities`' required input unsatisfiable in every graph. The interpreter's "declared key absent from this run's output contributes nothing" rule keeps a graph that wires it degrading exactly as it does today. |
+| `consultation.captureBinding` | ✅ **CLOSED by TASK-811, 2026-08-28** — see §2y1 above. A THIRD divergence, found during this lane: `out: transcript` was design intent — the activity started the live-documentation session and emitted `{action, consultationId}`, no transcript. TASK-811's realtime lane took the "retype the producer" branch instead of leaving it aspirational: capture now publishes the session's ingested ASR stream, so the declared `out: transcript {outputKey:'transcript'}` is kept rather than degrading. Verified on `dev-2.2`: `realtime-node-registry.test.ts:98,106`. |
 
 ### The interpreter now distinguishes three outcomes, not two
 
@@ -258,9 +258,17 @@ the script named in that seed's docstring; never hand-patch.**
 
 ### Operational consequence to expect at deploy
 
-`registryChecksum()` is now **`a03faf93063adc0fa061eadae64eedc973387eb8ed1965357185785403953b3b`**.
-Every stamped `WorkflowDefinition` will flag `NEEDS_REVIEW` on next read. That is designed behaviour and correct here — the node contract genuinely changed — but it
-should be expected rather than discovered.
+`registryChecksum()` moved as of this lane's port-vocabulary change. **Do not pin the value in
+prose** — every ticket that adds or edits a node moves it again (this literal itself went stale
+across at least three later tickets: TASK-810's DD-11 prompt pin, TASK-812's three endpoint nodes,
+TASK-815's Lane A `agent.*`/`guard.*` catalogue and Lane R's `agent.grammar`). Read the live value
+from `REGISTRY_CHECKSUM` in
+`packages/database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts` (engine
+output, reproduced by `regen-arcaai-consultation-workflow-seed.ts` /
+`regen-workflow-definition-seed.ts` with a drift verdict of 0 — see §2y2's "Seed migration"
+subsection). Every stamped `WorkflowDefinition` flags `NEEDS_REVIEW` on next read when the registry
+moves under it. That is designed behaviour and correct here — the node contract genuinely
+changed — but it should be expected rather than discovered.
 
 ### Open owner decisions surfaced (none blocking)
 
@@ -379,11 +387,11 @@ pnpm --filter @arcaai/admin-console build lint test
 `packages/ui` suite only if the canvas package itself changed (owner directive).
 
 ## 5. Definition of Done
-- [ ] Every descriptor declares ports, trigger, lane, requires, schemaVersion
-- [ ] Incompatible edges refused at author time; `document → ner` proven impossible
-- [ ] Registry parity green in both languages
-- [ ] Interpreter fallback removed; seeds migrated
-- [ ] Five artifacts regenerated and committed together
+- [x] Every descriptor declares ports, trigger, lane, requires, schemaVersion — tasks 1–4 merged (`090048cbd`), 532 tests; `outputKey` on every non-control output port asserted across all 33 nodes (`node-contract.test.ts`, §2y2)
+- [x] Incompatible edges refused at author time; `document → ner` proven impossible — task 6 dedicated regression, "asserted exhaustively over the registry" (§2z)
+- [x] Registry parity green in both languages — task 10 DONE; `node-registry-parity.test.ts` + `test_node_registry_parity.py` both green, reopened and re-closed for `outputKey` under OD-15 (§2y2, §2z task 10 row)
+- [x] Interpreter fallback removed; seeds migrated — task 8 (`_resolve_bound_inputs` raises on an unresolvable binding, 12 tests) and task 13 (both seeds on named sockets, 0 validation findings) landed together under OD-15, seeds BEFORE fallback removal per the ordering trap (§2y2, §2z)
+- [x] Five artifacts regenerated and committed together — task 14 DONE, merged `b8c697271`; `route-manifest.json` no diff, `openapi.json` +118, `schemas.ts` +34, all three drift checks clean (§2z task 14 row)
 
 ## Best Practices — apply to every task here
 
@@ -518,28 +526,30 @@ ticket needs none — `graph`/`compiledConfig` are opaque JSONB read by a code-o
 **Rules to read before starting:** `.claude/rules/` files 00, 01, 03, 05, 06. A subagent inherits NONE of the orchestrator's context — read them.
 
 ## 6. Implementation Summary
-_Not started._
 
-## 10. Lane status (reviewed 2026-08-26)
+Landed across two merges, in two lanes (contract lane, then the OD-15 lane once the seed-migration
+lane surfaced the port-vocabulary mismatch): `090048cbd`/`8a1958ac4` (tasks 1–7, 9 — typed ports,
+`trigger`, `lane`, `requires[]`, `idempotent`, `schemaVersion`, the port-compatibility lattice, the
+four publish-time rules, all 16 missing `consultation.*` config schemas) and `b8c697271` (tasks 11,
+14 — `GET /admin/workflow-nodes` ports + canvas `isValidConnection`, five-artifact regeneration).
+Tasks 8/10/13 (interpreter fallback removal, the one-field Python mirror reopening, seed migration)
+landed together under OD-15 once the two incompatible port vocabularies were found and resolved
+(option A — named sockets, runtime key on the descriptor). Full per-task state, evidence and the
+532/632-test progression are in §2z ("Progress — verified 2026-08-26") and §2y2 ("OD-15 RESOLVED").
+This section is intentionally short — §2z/§2y2 already carry the implementation detail and this
+avoids a third copy of the same narrative going stale independently.
 
-| Lane | Tasks | State |
-|---|---|---|
-| **A — TS contract** | 1-7, 9 | ✅ **MERGED** (`090048cbd`, `8a1958ac4`). 532 tests, +243 over baseline. Worktree + branch destroyed. |
-| **B — Python interpreter** | 8, 10 | ⛔ Outstanding. The whole-object fallback is still live at `workflow.py:196-201`. Parity is green (all 7 fields TS-only), so the mirror itself needs no change. |
-| **C — Gateway DTO** | 11 | ⛔ Outstanding. `workflow-definition.dto.mapper.ts:74-88` projects field-by-field and drops all 7 new fields, so the API cannot expose ports. |
-| **D — Canvas** | 12 | ⛔ Outstanding. `isValidConnection` already exists (`workflow-studio-editor.tsx:213`) but predates the port model — it must be re-pointed at the registry's port types. |
-| **E — Seed migration** | 13 | ⛔ Outstanding, and **larger than this ticket originally scoped**. Every seed edge uses `out`/`in`; no activity emits `"out"`. 14/15 edges in `ARCAAI_CONSULTATION_GRAPH`, 15/16 in the Rheum variant, 3/3 in the SYSTEM default. Derived blobs must be regenerated by the seed's own script, never hand-patched. |
-| **F — Five artifacts** | 14 | Blocked on C — no admin route has changed yet. |
+## 10. Lane status — DELETED, superseded (2026-08-29 docs pass)
 
-**Deploy-visible consequence:** `registryChecksum()` changed to
-`9d84cb97be251093bb9364810d98f210d592a0e347044144acf62e361acb3c33`. Every stamped
-`WorkflowDefinition` flags `NEEDS_REVIEW` on next read. Designed behaviour, but expect it.
-
-**Open owner decisions surfaced by lane A** (none blocking):
-- `requires[]` is `[]` on all 33 nodes — real guard assignment waits for the `guard.*` node types.
-- `bindTerminology.purposeScope` — validator-required, read by no code, taxonomy unknown.
-- `assemblePrompt` reads no `bound_inputs` at all, contradicting `node-types.md:117`.
-- A 9th port primitive `control` was added (precedent verified: TASK-715 README:735).
+This section used to carry a "reviewed 2026-08-26" table marking lanes B–F "⛔ Outstanding" and a
+pinned `registryChecksum()` literal. Both were stale within days: every lane it marked outstanding
+landed (B and E together under OD-15, §2y2; C and F with Lane B's merge `b8c697271`; D with the
+canvas wiring), and the pinned checksum is exactly what §2y2 warns against — the value moves on
+every later ticket that touches a node descriptor. **For current per-task state, read §2z
+("Progress — verified 2026-08-26") and §2y/§2y2. For the live registry checksum, read
+`REGISTRY_CHECKSUM` in `packages/database/src/prisma/db_main/seed/23-arcaai-workflow-authoring.generated.ts`
+— never a literal in prose.** The "open owner decisions" this section listed are superseded by the
+fuller list in §2z's own "Open owner decisions surfaced" subsection.
 
 ## 7. Change History
 | Date | Change |

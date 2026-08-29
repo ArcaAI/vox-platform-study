@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Completed`** 2026-08-28 — all 15 tasks merged to `dev-2.2` (`0977256f0`), verified by the orchestrator. Two follow-ons in §9a; neither blocks. |
+| **Status** | **`Completed`** 2026-08-28 — all 15 tasks merged to `dev-2.2` (`0977256f0`), verified by the orchestrator. Three follow-ons in §7 "Known follow-ups"; none blocks. (This section is `§7`, not `§9a` — the document has no §9; a prior header revision and TASK-806's own change history both point at a section number that was never created here.) |
 | **Type** | `refactor` + `feature` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -168,11 +168,11 @@ pnpm test:e2e
 transcript and show equivalence before flipping any tenant.
 
 ## 6. Definition of Done
-- [ ] Executor walks the compiled lane; legacy path still executable behind the flag
-- [ ] Offsets section-local; multi-document streaming proven
-- [ ] Per-section OCC proven under concurrent flush + clinician edit
-- [ ] Anti-laundering regression green
-- [ ] Trajectory parity demonstrated
+- [x] Executor walks the compiled lane; legacy path still executable behind the flag — `realtime-executor.test.ts` "task 3 — the executor walks the lane in declared order"; `ensureSubstrateResolved` substrate gate (task 13) plus the `maxScope: 'tenant'` rollout flag keep the legacy path live until a tenant is flipped
+- [x] Offsets section-local; multi-document streaming proven — `reanchor-annotations.test.ts:21` "growing an earlier section does not move a later section's offsets"; `realtime-executor.test.ts:461` "produces a transcript, entities, a document and correction proposals in one run"
+- [x] Per-section OCC proven under concurrent flush + clinician edit — `section-store.test.ts:88` "CONCURRENT flush + clinician edit: the compare-and-set makes the flush lose, and it does NOT retry"
+- [x] Anti-laundering regression green — `realtime-executor.test.ts:308-325` "task 6 — anti-laundering: NER cannot receive generated text"
+- [x] Trajectory parity demonstrated — `live-documentation.substrate-gate.test.ts` (task 15)
 
 ## Best Practices — apply to every task here
 

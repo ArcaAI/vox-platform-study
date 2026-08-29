@@ -119,11 +119,11 @@ pnpm test:up:api && pnpm test:e2e
 ```
 
 ## 6. Definition of Done
-- [ ] Selection works and is authorized; 404/403 split correct
-- [ ] Discovery returns governing workflow + input schema
-- [ ] Hook ships with fail-open posture
-- [ ] Credential split documented in both SDK READMEs
-- [ ] `OpenSessionInput.department` untouched
+- [x] Selection works and is authorized; 404/403 split correct — the six-case table in §7 "Authorization model" (404 foreign/unknown/unpublished slug, 403 wrong palette, 400 malformed, 503 unwired dispatcher); `consultation.controller.workflow-discovery.task813.test.ts`, verified by mutation
+- [x] Discovery returns governing workflow + input schema — `GET /api/v1/consultations/:id/workflow` → `ConsultationWorkflowResponse` (§7 "Discovery (D-20)"); `inputSchema` declared and honestly `null` (no invented field)
+- [x] Hook ships with fail-open posture — `useConsultationWorkflow()`: "Fails open: a failed read resolves to `null` and reports on `error`, never rejects... Proven by mutation check, not just by a passing test" (§7 "SDK")
+- [x] Credential split documented in both SDK READMEs — OD-14 credential split landed with the six-point change (§8 Change History, 2026-08-29 row)
+- [x] `OpenSessionInput.department` untouched — six-point-change table row 1: "the `@deprecated department` field is byte-identical" (`consultation.ts:123-144`)
 
 ## Best Practices — apply to every task here
 
@@ -359,8 +359,15 @@ inventory (27 `@Public() /internal/*` routes) is unaffected.
 |---|---|
 | 2026-08-25 | Opened from TASK-806 §7. Carries OD-1 and OD-14. |
 | 2026-08-29 | Implemented on `lane-813-sdk`: six-point change, the 404/403 selector gate, the discovery route + `useConsultationWorkflow()`, OD-14 credential split in both SDK READMEs, five artifacts regenerated. Status → `Review`; merge pending with the orchestrator. |
+| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4034, vox 4235, gen:admin no drift (53 areas/414 routes/379 schemas), portal no drift (admin 618 / business 181 ops), lint 40/40. Authorization gate verified by the orchestrator to run before both the existence lookup and the write; 404 hides existence, 403 only where `GET /workflows` already discloses. `inputSchema` absence independently confirmed against the `WorkflowDefinition` columns. |
+| 2026-08-29 | §9 CLOSED — selectable-set discovery built on `lane-813-discovery` (owner decision: inside TASK-813, not a follow-on). `GET /consultations/workflows`, authorization declaration byte-identical to `POST /consultations/open`; gate, list and dispatch re-verification refactored onto one predicate (`consultationSelectionViolation`) with the visibility filter single-sourced in the repository; `useSelectableConsultationWorkflows()` in `@arcaai/vox`. Merge pending with the orchestrator. |
+| 2026-08-29 | §9 closed. `GET /consultations/workflows` merged (`52960cb19`). Gates: applications 10318, api 4025, vox 4241, admin-console 2137, gen:admin no drift (52/404/371), portal no drift (admin 609, business 182), lint 40/40. Orchestrator independently verified the shared predicate has no duplicate and the manifest parity with `open`. |
+| 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): §6 DoD ticked with evidence; three Change History rows that had been appended after §9's prose (disconnected from this table) moved up here in order; duplicate `§8`/`§8a` headings renumbered to `§9`/`§9a`/`§9b` so each section number is unique; the selector-to-open-consultation behaviour flagged explicitly as an unmade owner decision (§9's "Also recorded" note). No code changed. |
 
-## 8. ~~Recorded gap~~ — **CLOSED 2026-08-29** (`GET /consultations/workflows`)
+## 9. ~~Recorded gap~~ — **CLOSED 2026-08-29** (`GET /consultations/workflows`)
+
+> Renumbered from `§8` (2026-08-29 docs pass) — `§8` is the Change History table above; this
+> addendum and the two below it were appended after it and share no number with it now.
 
 Built on owner instruction; the "own ticket or fold into 816" question is answered — it landed here.
 
@@ -407,7 +414,7 @@ caller-supplied `departmentId`, so the name says which tier it can answer honest
 `{data: []}`,** when the dispatcher is unwired: an empty array is a claim about what the tenant
 authored when the truth is the deployment cannot tell.
 
-## 8a. Original gap statement (for the record)
+## 9a. Original gap statement (for the record)
 
 Raised by the implementing agent, verified by the orchestrator, **not built here.**
 
@@ -432,9 +439,9 @@ Deliberately deferred rather than bolted on — a discovery route is a new autho
 (who may enumerate a tenant's consultation workflows?) and deserves its own decision, not a
 by-product of this ticket. ~~**Owner decision needed** on whether it belongs to a follow-on ticket
 or to TASK-816.~~ **Owner decision, 2026-08-29: built here, inside TASK-813.** Implemented on
-`lane-813-discovery` — see §8a.
+`lane-813-discovery` — see §9b.
 
-## 8a. Selectable-set discovery — BUILT (2026-08-29, branch `lane-813-discovery`)
+## 9b. Selectable-set discovery — BUILT (2026-08-29, branch `lane-813-discovery`)
 
 ### The route
 
@@ -594,7 +601,8 @@ not to add a route-specific rejection this ticket does not own; that is the righ
 means a caller can send a selector, receive `200`, and be governed by something else. If that
 matters to an integrator it needs a deliberate 409, not a silent no-op.
 
-| 2026-08-29 | Merged and closed. Gates on merged `dev-2.2`: applications 10489, api 4034, vox 4235, gen:admin no drift (53 areas/414 routes/379 schemas), portal no drift (admin 618 / business 181 ops), lint 40/40. Authorization gate verified by the orchestrator to run before both the existence lookup and the write; 404 hides existence, 403 only where `GET /workflows` already discloses. `inputSchema` absence independently confirmed against the `WorkflowDefinition` columns. |
-| 2026-08-29 | §8 CLOSED — selectable-set discovery built on `lane-813-discovery` (owner decision: inside TASK-813, not a follow-on). `GET /consultations/workflows`, authorization declaration byte-identical to `POST /consultations/open`; gate, list and dispatch re-verification refactored onto one predicate (`consultationSelectionViolation`) with the visibility filter single-sourced in the repository; `useSelectableConsultationWorkflows()` in `@arcaai/vox`. Merge pending with the orchestrator. |
-
-| 2026-08-29 | §8 closed. `GET /consultations/workflows` merged (`52960cb19`). Gates: applications 10318, api 4025, vox 4241, admin-console 2137, gen:admin no drift (52/404/371), portal no drift (admin 609, business 182), lint 40/40. Orchestrator independently verified the shared predicate has no duplicate and the manifest parity with `open`. |
+**Deferred — owner decision needed, not yet made.** Two options exist and neither has been chosen:
+(a) keep today's documented no-op — authorize the field, silently ignore it once dispatch has
+already happened — or (b) add a deliberate `409 Conflict` when a selector is supplied to a
+consultation dispatch cannot act on. This is tracked here as an open item, not a settled design; a
+future lane should raise it for a decision rather than assume either answer.
