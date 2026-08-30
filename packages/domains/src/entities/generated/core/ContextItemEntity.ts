@@ -384,17 +384,14 @@ export class ContextItemEntity extends BaseTenantEntity {
    * Mark as synced to Qdrant
    */
   markQdrantSynced(): void {
-    this._qdrantSynced = true;
-    this._qdrantSyncedAt = new Date();
     this.setProperty('qdrantSynced', true);
-    this.setProperty('qdrantSyncedAt', this._qdrantSyncedAt);
+    this.setProperty('qdrantSyncedAt', new Date());
   }
 
   /**
    * Mark as needing re-sync to Qdrant (after content update)
    */
   markQdrantNeedsSync(): void {
-    this._qdrantSynced = false;
     this.setProperty('qdrantSynced', false);
   }
 
