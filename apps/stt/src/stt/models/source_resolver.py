@@ -79,6 +79,9 @@ def config_from_settings(settings: Any) -> ModelSourceConfig:
         cache_dir=settings.huggingface_cache_dir,
         hf_cache_dir=settings.huggingface_cache_dir,
         s3_secure=settings.model_s3_secure,
+        # The trust decision is platform-wide (`MINIO_CERT_CHECK`), not a
+        # per-model-source knob: one object store, one answer.
+        s3_cert_check=settings.minio_cert_check,
     )
 
 
@@ -114,6 +117,7 @@ async def config_for_model(model_config: Any, settings: Any) -> ModelSourceConfi
         s3_access_key=s3.access_key_id,
         s3_secret_key=s3.secret,
         s3_secure=base.s3_secure,
+        s3_cert_check=base.s3_cert_check,
     )
 
 
@@ -206,6 +210,12 @@ class ModelSourceConfig:
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
     s3_secure: bool = True
+    # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
+    # `MINIO_CERT_CHECK`): defaults to False — the object store's TLS
+    # certificate is NOT verified, because the platform has no CA to validate
+    # it against and MinIO authenticates with a service-account key pair
+    # instead. Grep `MINIO_CERT_CHECK` for every site to revert when a CA lands.
+    s3_cert_check: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -231,12 +241,19 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
             "s3:// model sources require the 'minio' package to be installed."
         ) from exc
 
-    return Minio(
-        config.s3_endpoint,
-        access_key=config.s3_access_key,
-        secret_key=config.s3_secret_key,
-        secure=config.s3_secure,
-    )
+    client_kwargs: dict[str, Any] = {
+        "access_key": config.s3_access_key,
+        "secret_key": config.s3_secret_key,
+        "secure": config.s3_secure,
+    }
+    if config.s3_secure and not config.s3_cert_check:
+        # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see
+        # `ModelSourceConfig.s3_cert_check` (`MINIO_CERT_CHECK`).
+        import urllib3
+
+        client_kwargs["http_client"] = urllib3.PoolManager(cert_reqs="CERT_NONE")
+
+    return Minio(config.s3_endpoint, **client_kwargs)
 
 
 def _hf_snapshot_download(**kwargs: Any) -> str:

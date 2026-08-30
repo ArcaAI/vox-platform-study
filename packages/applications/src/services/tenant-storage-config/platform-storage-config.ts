@@ -96,6 +96,28 @@ export function minioEndpointFromEnv(env: Record<string, string | undefined>): s
 }
 
 /**
+ * Whether S3/MinIO TLS certificates are VERIFIED, from `MINIO_CERT_CHECK`.
+ *
+ * ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30).
+ * The default is `false` — certificates are NOT verified. That is a statement
+ * about how this platform is deployed TODAY, not about what is safe: there is
+ * no private CA, MinIO serves HTTPS on :9000 with a certificate nothing here
+ * can chain to a trusted root, and authentication is a service account (access
+ * key + secret) rather than the certificate. Defaulting to "verify" would fail
+ * every object-store call closed on day one. PHI hardening is explicitly
+ * de-prioritised for now; when a CA lands, flip this default to `true` (or set
+ * `MINIO_CERT_CHECK=true`) and the four client factories that consult it stop
+ * relaxing — grep `MINIO_CERT_CHECK` for every one of them.
+ *
+ * Only the exact string `true` (case/whitespace-insensitive) turns verification
+ * ON. Anything else — including `1`/`yes` — reads as OFF, so a half-understood
+ * value can never be mistaken for the stricter posture.
+ */
+export function minioCertCheckFromEnv(env: Record<string, string | undefined>): boolean {
+  return (env.MINIO_CERT_CHECK ?? '').trim().toLowerCase() === 'true';
+}
+
+/**
  * Resolve the platform-default storage configuration, most-specific-wins:
  * SYSTEM row → AppSettings `S3_*` → `MINIO_*` env.
  *

@@ -141,17 +141,31 @@ class S3BlobStore:
         secret_key: str,
         region: str,
         secure: bool,
+        cert_check: bool = True,
     ) -> None:
         import boto3  # lazy — hermetic suite never imports this
 
-        self._client: Any = boto3.client(
-            "s3",
-            endpoint_url=endpoint_url,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region,
-            use_ssl=secure,
-        )
+        client_kwargs: dict[str, Any] = {
+            "endpoint_url": endpoint_url,
+            "aws_access_key_id": access_key,
+            "aws_secret_access_key": secret_key,
+            "region_name": region,
+            "use_ssl": secure,
+        }
+        if secure and not cert_check:
+            # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling
+            # 2026-08-30, `MINIO_CERT_CHECK`): MinIO keeps TLS but its
+            # certificate is not verified — the platform has no private CA to
+            # chain it to and authenticates with a service-account key pair
+            # instead. Taken while PHI hardening is de-prioritised; grep
+            # `MINIO_CERT_CHECK` for every site to revert when a CA lands.
+            # NOTE these blobs carry clinical content, so this is the relaxation
+            # with the most at stake — it is scoped to the certificate CHECK and
+            # nothing else: the transport stays TLS, and the store stays
+            # self-hosted (no cloud egress).
+            client_kwargs["verify"] = False
+
+        self._client: Any = boto3.client("s3", **client_kwargs)
 
     async def put(self, bucket: str, key: str, data: bytes, content_type: str) -> None:
         # Content-addressed key ⇒ idempotent write (a Temporal activity retry
@@ -282,6 +296,10 @@ def build_blob_store(
             secret_key=config.secret_key.get_secret_value(),
             region=resolved.region,
             secure=resolved.secure,
+            # Stays on `config`, not on the resolved LOCATION: certificate trust
+            # is a platform-wide deployment fact (`MINIO_CERT_CHECK`), not part
+            # of "which bucket, on which endpoint" that the control plane serves.
+            cert_check=config.cert_check,
         )
     return _MEMORY_STORE
 

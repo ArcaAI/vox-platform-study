@@ -229,6 +229,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row
     // once seeded.
     'minio.endpoint': 'MINIO_ENDPOINT',
+    // Object-store TLS certificate verification. Bare (unprefixed) like
+    // `MINIO_ENDPOINT`, which is also the variable apps/stt already reads.
+    'minio.certCheck': 'MINIO_CERT_CHECK',
     port: 'PORT',
     logLevel: 'LOG_LEVEL',
     // `corsAllowedOrigins` is deliberately ABSENT — the origin-enforcement work removed the

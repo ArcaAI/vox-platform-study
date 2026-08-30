@@ -135,7 +135,18 @@ class Settings(BaseSettings):
     minio_access_key: SecretStr = SecretStr("")
     minio_secret_key: SecretStr = SecretStr("")
     minio_secure: bool = False
-    minio_cert_check: bool = True
+    # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
+    # `MINIO_CERT_CHECK`). Defaults to False — TLS certificates are NOT
+    # verified. That is a statement about how this platform is deployed today,
+    # not about what is safe: there is no private CA, MinIO serves HTTPS on
+    # :9000 with a certificate nothing here can chain to a trusted root, and
+    # MinIO authenticates with a service account (access key + secret) rather
+    # than the certificate. Defaulting to "verify" would fail every object-store
+    # call closed. PHI hardening is explicitly de-prioritised for now; when a CA
+    # lands, set `MINIO_CERT_CHECK=true` (or flip this default) — grep
+    # `MINIO_CERT_CHECK` for every consumer, in this service and in apps/api /
+    # apps/harness.
+    minio_cert_check: bool = False
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
 
