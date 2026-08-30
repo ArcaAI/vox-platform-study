@@ -39,6 +39,12 @@ from collections.abc import Iterator
 
 import pytest
 
+# Refuse to run against another checkout's source (git-worktree false-greens).
+# See scripts/pytest-support/hope_worktree_guard.py.
+from hope_worktree_guard import assert_source_tree
+
+assert_source_tree(["guardrail", "hope_env", "hope_runtime_models"], __file__)
+
 
 @pytest.fixture(autouse=True)
 def _isolate_env_from_dot_env_dev() -> Iterator[None]:

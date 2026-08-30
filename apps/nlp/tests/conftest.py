@@ -2,9 +2,15 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+# Refuse to run against another checkout's source (git-worktree false-greens).
+# See scripts/pytest-support/hope_worktree_guard.py.
+from hope_worktree_guard import assert_source_tree
 from pydantic import SecretStr
 
 import nlp.lifespan  # noqa: F401 — ensure module is importable before patching
+
+assert_source_tree(["nlp", "hope_env", "hope_runtime_models"], __file__)
 
 
 class FakeService:

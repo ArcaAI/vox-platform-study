@@ -6,10 +6,18 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+
+# Refuse to run against another checkout's source (git-worktree false-greens).
+# See scripts/pytest-support/hope_worktree_guard.py.
+from hope_worktree_guard import assert_source_tree
 from httpx import ASGITransport, AsyncClient
 
 from harness.core.config import Settings
 from harness.main import create_app
+
+assert_source_tree(
+    ["harness", "hope_env", "hope_runtime_models", "hope_workflow_contract"], __file__
+)
 
 
 @pytest.fixture(autouse=True)
