@@ -956,11 +956,12 @@ describe('TextCompatController', () => {
   });
 
   describe('Streaming (stream:true)', () => {
-    // Drive a summary stream: primary START ok → task_id, then feed TEXT frames.
+    // Drive a summary stream. TASK-818 §3C.3(1): the POST *is* the stream —
+    // there is no `202 {task_id}` ack and no second `GET /tasks/:id/stream`
+    // hop, so the POST resolves with the SSE body and the frames are fed to it.
     const runSummaryStream = async (frames: string[]) => {
       const textStream = new PassThrough();
-      http.axiosRef.post.mockResolvedValue({ data: { task_id: 't1', status: 'streaming' } });
-      http.axiosRef.get.mockResolvedValue({ data: textStream });
+      http.axiosRef.post.mockResolvedValue({ data: textStream });
       const res = createMockRes();
       // The handler now awaits the stream to completion (required so the
       // pre-content fallback can observe the outcome), so the frames must be
@@ -984,8 +985,10 @@ describe('TextCompatController', () => {
       expect(res.headers['Content-Type']).toBe('text/event-stream');
       expect(res.headers['X-Accel-Buffering']).toBe('no');
       expect(res.flushHeaders).toHaveBeenCalled();
-      // POST carried stream:true.
+      // POST carried stream:true, unbuffered, and was the ONLY upstream hop.
       expect(http.axiosRef.post.mock.calls[0][1].stream).toBe(true);
+      expect(http.axiosRef.post.mock.calls[0][2].responseType).toBe('stream');
+      expect(http.axiosRef.get).not.toHaveBeenCalled();
 
       const deltas = written(res)
         .split('\n\n')
@@ -1002,8 +1005,7 @@ describe('TextCompatController', () => {
 
     it('presummary stream:true emits markdown deltas and a terminal 5-section PreSummaryResponse', async () => {
       const textStream = new PassThrough();
-      http.axiosRef.post.mockResolvedValue({ data: { task_id: 't2' } });
-      http.axiosRef.get.mockResolvedValue({ data: textStream });
+      http.axiosRef.post.mockResolvedValue({ data: textStream });
       const res = createMockRes();
 
       const done = controller.presummary({ current_department: 'Cardiology', stream: true } as PreSummaryRequest, {} as never, res as never);
@@ -1025,8 +1027,7 @@ describe('TextCompatController', () => {
       const textStream = new PassThrough();
       http.axiosRef.post
         .mockRejectedValueOnce({ response: { status: 500 } }) // primary START (before any bytes)
-        .mockResolvedValueOnce({ data: { task_id: 't3' } }); // fallback START ok
-      http.axiosRef.get.mockResolvedValue({ data: textStream });
+        .mockResolvedValueOnce({ data: textStream }); // fallback START ok — the stream itself
       const res = createMockRes();
 
       const done = controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
@@ -1044,7 +1045,7 @@ describe('TextCompatController', () => {
       expect(result.metadata.llm_provider).toBe('azure-openai');
     });
 
-    it('emits a single error event (no task stream opened) when START fails with no fallback', async () => {
+    it('emits a single error event (no second START attempted) when START fails with no fallback', async () => {
       policy.resolveTextFallbackSelection.mockResolvedValue(null);
       http.axiosRef.post.mockRejectedValue({ response: { status: 500 } });
       const res = createMockRes();
@@ -1056,6 +1057,9 @@ describe('TextCompatController', () => {
         .split('\n\n')
         .filter((f) => f.startsWith('event: error'));
       expect(errors).toHaveLength(1);
+      // Under the single-call contract the failed POST *was* the stream open,
+      // so "no stream was opened" is now "no second POST", not "no GET".
+      expect(http.axiosRef.post).toHaveBeenCalledTimes(1);
       expect(http.axiosRef.get).not.toHaveBeenCalled();
       expect(res.end).toHaveBeenCalled();
     });
@@ -1170,8 +1174,7 @@ describe('TextCompatController', () => {
       it('logs on the STREAMING path too', async () => {
         const body = { ...populated(), stream: true } as PreSummaryRequest;
         const textStream = new PassThrough();
-        http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log' } });
-        http.axiosRef.get.mockResolvedValue({ data: textStream });
+        http.axiosRef.post.mockResolvedValue({ data: textStream });
         const res = createMockRes();
 
         const done = controller.presummary(body, {} as never, res as never);
@@ -1295,8 +1298,7 @@ describe('TextCompatController', () => {
       it('logs on the STREAMING path too', async () => {
         const body = { ...populated(), stream: true } as SyncSummaryRequest;
         const textStream = new PassThrough();
-        http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log-summary' } });
-        http.axiosRef.get.mockResolvedValue({ data: textStream });
+        http.axiosRef.post.mockResolvedValue({ data: textStream });
         const res = createMockRes();
 
         const done = controller.summarySync(body, {} as never, res as never);

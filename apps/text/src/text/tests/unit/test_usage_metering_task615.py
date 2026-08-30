@@ -523,7 +523,9 @@ async def test_sync_generate_forwards_guardrail_usage(sync_client):
 
 
 @pytest.mark.asyncio
-async def test_streaming_202_does_not_log_a_zero_token_placeholder(mock_task_manager, monkeypatch):
+async def test_streaming_start_does_not_log_a_zero_token_placeholder(
+    mock_task_manager, monkeypatch
+):
     """The pre-generation ``status="streaming"`` audit record is gone.
 
     It described a generation that had not happened yet, with zero tokens — the
@@ -568,5 +570,6 @@ async def test_streaming_202_does_not_log_a_zero_token_placeholder(mock_task_man
             headers={"X-Tenant-Id": "tenant-stream"},
         )
 
-    assert resp.status_code == 202
+    # TASK-818: the stream is the response now (200 + SSE), not a 202 envelope.
+    assert resp.status_code == 200
     assert [e for e in audit.events if e.status == "streaming"] == []

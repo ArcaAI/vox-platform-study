@@ -12,12 +12,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-from hope_async_contract import decode_resume_token
-from httpx import ASGITransport, AsyncClient
 
-from text.core.config import Settings
 from text.models.stream import StreamChunk
-from text.models.task import TaskState, TaskStatus
 from text.services.task_manager import TaskManager
 
 # ── Helpers ──
@@ -26,59 +22,6 @@ from text.services.task_manager import TaskManager
 def _chunk_json(type_: str, content: str | None = None, data: dict | None = None) -> str:
     chunk = StreamChunk(type=type_, content=content, data=data)
     return chunk.model_dump_json()
-
-
-def _make_task_manager_mock(**overrides) -> AsyncMock:
-    """Build a TaskManager double.
-
-    NOTE: `read_chunks_blocking` overrides are mirrored onto
-    `read_chunk_entries_blocking` (as 3-tuples) so existing call sites that
-    only know the 2-tuple shape keep working after"""
-    tm = AsyncMock(spec=TaskManager)
-    tm.get_task = AsyncMock(
-        return_value=TaskState(
-            task_id="task-123",
-            status=TaskStatus.RUNNING,
-            provider="ollama",
-            model="llama3.2:latest",
-        )
-    )
-    tm.read_chunks_blocking = AsyncMock(return_value=[])
-    # The SSE endpoint now calls the trace-aware variant, which
-    # returns (msg_id, chunk, carrier) triples. Without this the AsyncMock(spec=)
-    # returns a mock instead of a list and the stream loop misbehaves.
-    tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
-    tm.get_chunks = AsyncMock(return_value=[])
-    for k, v in overrides.items():
-        setattr(tm, k, v)
-
-    # A test that overrides the 2-tuple reader must also
-    # drive the 3-tuple one the SSE endpoint actually calls, or the
-    # override is silently ignored and the AsyncMock(spec=) default wins.
-    if "read_chunks_blocking" in overrides and "read_chunk_entries_blocking" not in overrides:
-        _inner = overrides["read_chunks_blocking"]
-
-        async def _as_entries(*a, **kw):
-            return [(mid, ch, {}) for mid, ch in await _inner(*a, **kw)]
-
-        tm.read_chunk_entries_blocking = AsyncMock(side_effect=_as_entries)
-    return tm
-
-
-def _build_app(settings, task_manager):
-    from text.main import create_app
-    from text.providers.base import ProviderRegistry
-
-    app = create_app(settings_override=settings)
-    app.state.provider_registry = ProviderRegistry()
-    app.state.task_manager = task_manager
-    app.state.settings = settings
-    return app
-
-
-@pytest.fixture
-def settings():
-    return Settings(port=5099, log_level="debug")
 
 
 @pytest.fixture
@@ -231,168 +174,88 @@ class TestReadChunksBlocking:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# SSE endpoint tests (using XREAD-based blocking reads)
+# The replay buffer — TASK-818 Lane B
 # ═══════════════════════════════════════════════════════════════════════
+#
+# The SSE endpoint no longer polls `read_chunks_blocking`: it subscribes to a
+# producer that outlives it and replays the durable BACKLOG through
+# `TaskManager.read_events` — batched entries, addressed by sequence number.
+# The `TaskManager` tests above are unchanged and still cover the blocking
+# reader itself; what moved is who calls it.
+#
+# The endpoint's own surface is covered in `test_stream_endpoint.py`, and the
+# live-producer / reconnect guarantees in `test_task818_resumable_streaming.py`.
+# What is kept here is the property this file was written for — a stream written
+# into Redis reads back, in order, addressable by cursor — restated against the
+# batched entries the producer now writes.
 
 
-class TestSSEXreadStreaming:
-    """Tests for the SSE endpoint updated to use read_chunks_blocking()."""
+def _replaying_redis(mock_redis):
+    """Wire xadd/xrange so writes read back, in write order."""
+    writes: list[tuple[str, dict]] = []
+
+    async def _xadd(key, fields, **_kw):
+        writes.append((key, fields))
+        return f"{len(writes)}-0"
+
+    async def _xrange(key, min="-", max="+"):
+        return [(f"{i}-0", f) for i, (k, f) in enumerate(writes, 1) if k == key]
+
+    mock_redis.xadd = AsyncMock(side_effect=_xadd)
+    mock_redis.xrange = AsyncMock(side_effect=_xrange)
+    return writes
+
+
+class TestBatchedEntriesReadBackInOrder:
+    @pytest.mark.asyncio
+    async def test_batched_writes_replay_every_delta_in_order(self, mock_redis):
+        from text.routing.hub import GenerationEvent
+
+        writes = _replaying_redis(mock_redis)
+        tm = TaskManager(redis=mock_redis)
+
+        await tm.append_batch("task-123", [GenerationEvent(1, "chunk", '{"content":"Hello"}')])
+        await tm.append_batch(
+            "task-123",
+            [
+                GenerationEvent(2, "chunk", '{"content":" world"}'),
+                GenerationEvent(3, "done", '{"finish_reason":"stop"}'),
+            ],
+        )
+
+        # Two durable writes for three deltas — the coalescing AC-5 asks for.
+        assert len(writes) == 2
+
+        events = await tm.read_events("task-123")
+        assert [(e.seq, e.event) for e in events] == [(1, "chunk"), (2, "chunk"), (3, "done")]
+        assert events[0].payload == '{"content":"Hello"}'
 
     @pytest.mark.asyncio
-    async def test_sse_streams_chunks_via_xread(self, settings):
-        """SSE endpoint delivers chunks using the new blocking read."""
-        call_count = 0
+    async def test_read_events_resumes_from_a_sequence_cursor(self, mock_redis):
+        from text.routing.hub import GenerationEvent
 
-        async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return [
-                    ("1-0", StreamChunk(type="chunk", content="Hello")),
-                    ("2-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-                ]
-            return []
-
-        tm = _make_task_manager_mock(
-            read_chunks_blocking=AsyncMock(side_effect=_mock_read_blocking),
+        _replaying_redis(mock_redis)
+        tm = TaskManager(redis=mock_redis)
+        await tm.append_batch(
+            "task-789",
+            [GenerationEvent(s, "chunk", f'{{"content":"c{s}"}}') for s in range(1, 6)],
         )
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
 
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/task-123/stream")
-
-        assert resp.status_code == 200
-        body = resp.text
-        assert "Hello" in body
+        assert [e.seq for e in await tm.read_events("task-789", after_seq=3)] == [4, 5]
 
     @pytest.mark.asyncio
-    async def test_sse_includes_message_id(self, settings):
-        """Each SSE event includes the Redis stream message ID."""
+    async def test_a_per_chunk_entry_still_replays_alongside_batches(self, mock_redis):
+        """The terminal frame is written per-chunk; a mixed stream must read back."""
+        from text.models.stream import StreamChunk
+        from text.routing.hub import GenerationEvent
 
-        async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
-            if last_id == "0-0":
-                return [
-                    ("100-0", StreamChunk(type="chunk", content="data")),
-                    ("101-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-                ]
-            return []
-
-        tm = _make_task_manager_mock(
-            read_chunks_blocking=AsyncMock(side_effect=_mock_read_blocking),
+        _replaying_redis(mock_redis)
+        tm = TaskManager(redis=mock_redis)
+        await tm.append_batch(
+            "task-mix",
+            [GenerationEvent(s, "chunk", f'{{"content":"c{s}"}}') for s in (1, 2)],
         )
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
+        await tm.append_chunk("task-mix", StreamChunk(type="done", data={"finish_reason": "stop"}))
 
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/task-123/stream")
-
-        body = resp.text
-        # TASK-717: the SSE `id:` is an opaque resume token wrapping the Redis
-        # message id, not the raw id itself — decode it back to compare.
-        emitted_ids = [
-            line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")
-        ]
-        cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
-        assert cursors == ["100-0", "101-0"]
-
-    @pytest.mark.asyncio
-    async def test_sse_stops_on_done_chunk(self, settings):
-        """SSE stream ends when a 'done' chunk is received."""
-
-        async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
-            if last_id == "0-0":
-                return [
-                    ("1-0", StreamChunk(type="chunk", content="partial")),
-                    ("2-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-                ]
-            return []
-
-        tm = _make_task_manager_mock(
-            read_chunks_blocking=AsyncMock(side_effect=_mock_read_blocking),
-        )
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/task-123/stream")
-
-        body = resp.text
-        assert "partial" in body
-        assert "done" in body
-
-    @pytest.mark.asyncio
-    async def test_sse_stops_on_task_completion(self, settings):
-        """SSE stream ends when task status is COMPLETED and no more chunks."""
-        call_count = 0
-
-        async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return [("1-0", StreamChunk(type="chunk", content="data"))]
-            return []
-
-        completed_task = TaskState(
-            task_id="task-123",
-            status=TaskStatus.COMPLETED,
-            provider="ollama",
-            model="llama3.2:latest",
-        )
-        running_task = TaskState(
-            task_id="task-123",
-            status=TaskStatus.RUNNING,
-            provider="ollama",
-            model="llama3.2:latest",
-        )
-
-        get_task_calls = 0
-
-        async def _mock_get_task(task_id):
-            nonlocal get_task_calls
-            get_task_calls += 1
-            if get_task_calls <= 1:
-                return running_task
-            return completed_task
-
-        tm = _make_task_manager_mock(
-            read_chunks_blocking=AsyncMock(side_effect=_mock_read_blocking),
-            get_task=AsyncMock(side_effect=_mock_get_task),
-        )
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/task-123/stream")
-
-        assert resp.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_sse_resumes_from_last_event_id(self, settings):
-        """When last_event_id is provided, only sends chunks after that ID."""
-
-        async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
-            if last_id == "50-0":
-                return [
-                    ("51-0", StreamChunk(type="chunk", content="resumed")),
-                    ("52-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-                ]
-            return []
-
-        tm = _make_task_manager_mock(
-            read_chunks_blocking=AsyncMock(side_effect=_mock_read_blocking),
-        )
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/task-123/stream?last_event_id=50-0")
-
-        body = resp.text
-        assert "resumed" in body
-        # TASK-717: opaque resume token, not the raw Redis message id.
-        emitted_ids = [
-            line.removeprefix("id: ") for line in body.splitlines() if line.startswith("id: ")
-        ]
-        cursors = [decode_resume_token(token)["cursor"] for token in emitted_ids]
-        assert cursors[0] == "51-0"
+        events = await tm.read_events("task-mix")
+        assert [(e.seq, e.event) for e in events] == [(1, "chunk"), (2, "chunk"), (3, "done")]

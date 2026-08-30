@@ -165,14 +165,15 @@ class TestGenerateEndpointTokenUsage:
         assert call_args.top_p is None
 
     @pytest.mark.asyncio
-    async def test_streaming_generate_returns_202(self, client):
+    async def test_streaming_generate_returns_sse_immediately(self, client):
+        """TASK-818 §3C.3(1): the 202-and-poll indirection is gone."""
         resp = await client.post(
             "/api/v1/generate", json={"prompt": "hello", "model": "test-model", "stream": True}
         )
-        assert resp.status_code == 202
-        data = resp.json()
-        assert data["status"] == "running"
-        assert "stream_url" in data
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert "event: meta" in resp.text
+        assert "generation_id" in resp.text
 
     @pytest.mark.asyncio
     async def test_provider_not_found_returns_404(self, client, mock_registry):

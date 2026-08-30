@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
 import structlog.contextvars
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from opentelemetry import trace
+from sse_starlette.sse import EventSourceResponse
 
 from text.core.config import Settings
 from text.core.dependencies import (
@@ -75,7 +77,6 @@ from text.models.responses import (
     ErrorResponse,
     GenerateBatchAcceptedResponse,
     GenerateResponse,
-    StreamingGenerateResponse,
     TokenUsage,
 )
 from text.models.stats import (
@@ -123,10 +124,24 @@ _IDEMPOTENCY_TTL_S = 86_400  # 24h
 # `from text.api.endpoints.generate import _x` keep resolving.
 # Re-exported for import compatibility: the streaming path moved to
 # `text.routing.streaming` (TASK-818 Wave 0.4).
+from text.api.endpoints.stream import (  # noqa: E402
+    _PING_SECONDS as SSE_PING_SECONDS,
+)
+from text.api.endpoints.stream import (  # noqa: E402
+    _SSE_HEADERS as SSE_HEADERS,
+)
+from text.api.endpoints.stream import (  # noqa: E402
+    stream_generation,
+)
+from text.routing.hub import (  # noqa: E402
+    get_generation_hub,
+    resolve_generation_policy,
+)
 from text.routing.streaming import (  # noqa: E402, F401
     _CB_STATE_MAP,
     _run_streaming_generation,
     _update_cb_metric,
+    run_generation_producer,
 )
 from text.routing.usage import (  # noqa: E402, F401
     _coerce_stats,
@@ -196,6 +211,89 @@ async def _apply_guardrail_gate(
     return None
 
 
+#: Streaming idempotency records live under their own prefix. The non-streaming
+#: path caches a whole ``GenerateResponse`` under ``text:idem:``; a streaming
+#: retry needs a generation id and a payload fingerprint instead, and two
+#: different shapes must never share a key.
+_STREAM_IDEM_PREFIX = "text:idem:stream:"
+
+
+def _payload_fingerprint(request_body: GenerateRequest) -> str:
+    """A stable hash of the request an idempotency key claims to identify.
+
+    Excludes ``provider``, which the degrade-away-from-unhealthy router rewrites
+    in place before this point: the same logical request rerouted to a healthy
+    provider is still the same request, and fingerprinting the rewritten value
+    would turn a successful failover into a spurious 409.
+    """
+    payload = request_body.model_dump(mode="json", exclude={"provider"})
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+async def _resolve_stream_idempotency(
+    redis_client: aioredis.Redis | None,
+    idempotency_key: str | None,
+    request_body: GenerateRequest,
+    generation_id: str,
+) -> str | None:
+    """Map an ``Idempotency-Key`` to a generation id (§3C.6).
+
+    Returns the id of an EXISTING generation when this key has been seen before,
+    or ``None`` when this request should proceed as new. Raises **409
+    ``idempotency_conflict``** when the key was reused with a different payload —
+    the one case where silently returning the first generation would be a lie.
+
+    Best-effort in exactly the same sense as the non-streaming cache above: no
+    key or no Redis means "generate", because a dedup-store outage must degrade
+    to a duplicate generation, never to a refused one.
+    """
+    if not idempotency_key or redis_client is None:
+        return None
+
+    key = f"{_STREAM_IDEM_PREFIX}{idempotency_key}"
+    fingerprint = _payload_fingerprint(request_body)
+    record = json.dumps({"generation_id": generation_id, "fingerprint": fingerprint})
+
+    try:
+        # SET NX is what makes this a race-free claim rather than a
+        # check-then-act: two concurrent retries of the same key cannot both
+        # decide they are the first.
+        claimed = await redis_client.set(key, record, nx=True, ex=3600)
+        if claimed:
+            return None
+        existing = await redis_client.get(key)
+    except Exception as exc:  # noqa: BLE001 — a dedup-store blip degrades to "generate"
+        logger.warning(
+            "generation.stream_idempotency_unavailable",
+            cache_key=key,
+            error=str(exc),
+        )
+        return None
+
+    if existing is None:
+        return None
+    if isinstance(existing, bytes):
+        existing = existing.decode()
+    try:
+        prior = json.loads(existing)
+    except ValueError:
+        return None
+
+    if prior.get("fingerprint") != fingerprint:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "idempotency_conflict",
+                "message": (
+                    "This Idempotency-Key was already used with a different request payload."
+                ),
+            },
+        )
+    return str(prior.get("generation_id") or generation_id)
+
+
 def _platform_moderation_enabled(app_state: Any) -> bool:
     """Whether the control plane says moderation is on.
 
@@ -235,7 +333,7 @@ router = APIRouter(tags=["generate"])
     response_model=None,
     responses={
         200: {"model": GenerateResponse},
-        202: {"model": StreamingGenerateResponse},
+        409: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
         422: {"model": ErrorResponse},
         429: {"model": ErrorResponse},
@@ -245,7 +343,7 @@ router = APIRouter(tags=["generate"])
 )
 async def generate(
     request_body: GenerateRequest,
-    background_tasks: BackgroundTasks,
+    fastapi_request: Request,
     registry: ProviderRegistry = Depends(get_provider_registry),
     task_manager: TaskManager = Depends(get_task_manager),
     generation_audit: GenerationAuditLogger = Depends(get_generation_audit_logger),
@@ -403,34 +501,53 @@ async def generate(
         shutdown_manager.register_task(task.task_id)
 
     if request_body.stream:
-        # The audit event for a streaming generation is logged by
-        # ``_run_streaming_generation`` when the stream ENDS, with the real token
-        # totals. The pre-generation placeholder that used to be logged here
-        # described a generation that had not happened yet and reported zero
-        # tokens for one that then cost thousands — an audit record must
-        # describe what happened, not what is about to.
-        background_tasks.add_task(
-            _run_streaming_generation,
-            task_manager,
-            provider,
-            task.task_id,
-            request_body,
-            provider_name=request_body.provider,
-            model=model,
-            shutdown_manager=shutdown_manager,
-            circuit_breakers=circuit_breakers,
-            generation_audit=generation_audit,
-            tenant_id=x_tenant_id,
-            request_id=ctx.get("request_id", "unknown"),
-            byok=_used_byok_credential(request_body),
+        # 200 + SSE, immediately. The 202-and-poll indirection is gone (§3C.3(1)):
+        # it cost every stream a second HTTP round trip before its first token,
+        # and it made the generation a `BackgroundTasks` callback — which runs
+        # AFTER the response completes and is owned by it. A producer owned by a
+        # response cannot outlive one, and outliving it is the entire point.
+        #
+        # The audit event is still logged by the producer when the stream ENDS,
+        # with the real token totals: an audit record must describe what
+        # happened, not what is about to.
+        hub = get_generation_hub(fastapi_request.app)
+        generation_id = task.task_id
+
+        replayed = await _resolve_stream_idempotency(
+            redis_client, idempotency_key, request_body, generation_id
         )
-        return JSONResponse(
-            status_code=202,
-            content=StreamingGenerateResponse(
-                task_id=task.task_id,
-                status="running",
-                stream_url=f"/api/v1/tasks/{task.task_id}/stream",
-            ).model_dump(mode="json"),
+        if replayed is not None:
+            # A retry of a delivered request. Same id, no second provider call —
+            # the terminal write is keyed by generation id, so replaying it is a
+            # no-op (§3C.6). We simply subscribe to what already exists.
+            generation_id = replayed
+            if shutdown_manager:
+                shutdown_manager.complete_task(task.task_id)
+        else:
+            hub.start(
+                generation_id,
+                lambda producer: run_generation_producer(
+                    producer,
+                    task_manager,
+                    provider,
+                    request_body,
+                    provider_name=request_body.provider,
+                    model=model,
+                    shutdown_manager=shutdown_manager,
+                    circuit_breakers=circuit_breakers,
+                    generation_audit=generation_audit,
+                    tenant_id=x_tenant_id,
+                    request_id=ctx.get("request_id", "unknown"),
+                    byok=_used_byok_credential(request_body),
+                    policy=resolve_generation_policy(app_state, x_tenant_id),
+                ),
+                provider=request_body.provider,
+            )
+
+        return EventSourceResponse(
+            stream_generation(hub, task_manager, generation_id, 0),
+            headers=SSE_HEADERS,
+            ping=SSE_PING_SECONDS,
         )
 
     _SEMAPHORE_ACQUIRE_TIMEOUT = 30.0

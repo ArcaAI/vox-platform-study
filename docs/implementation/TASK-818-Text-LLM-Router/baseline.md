@@ -142,6 +142,64 @@ therefore not like-for-like on that axis.
 
 ---
 
+# After Lane B (resumable streaming) — 2026-08-30
+
+Orchestrator's own run post-merge, same command and host as the baseline. Not the
+lane's figures.
+
+| Concurrency | | **baseline** | **after Lane A** | **after Lane B** |
+|---|---|---|---|---|
+| 10 | AC-3 p50 | 18.40 ms | 21.00 ms | **9.06 ms** |
+| 10 | AC-3 p99 | 71.74 ms | 80.48 ms | **62.64 ms** |
+| 10 | AC-4 p50 | 1.47 ms | 1.52 ms | **0.52 ms** |
+| 10 | requests/4s | 262 | 271 | **468** |
+| 25 | AC-3 p50 | 46.26 ms | 50.00 ms | **21.57 ms** |
+| 25 | AC-3 p99 | 126.39 ms | 113.59 ms | **63.15 ms** |
+| 25 | AC-4 p50 | 3.98 ms | 3.77 ms | **1.26 ms** |
+| 25 | requests/4s | 250 | 256 | **480** |
+
+## The §3C.1 prediction is confirmed
+
+The baseline recorded a falsifiable claim: *"if Lane B lands without moving AC-3,
+the diagnosis in §3C.1 is wrong and should be reopened."* It moved. **p50 halved at
+both concurrency levels, p99 halved at c=25, throughput roughly doubled, and
+inter-token latency fell ~3×.**
+
+The cleanest evidence is **AC-4**, because inter-token latency is independent of how
+many round trips the request took: 1.47 → 0.52 ms and 3.98 → 1.26 ms. That is JSON
+encoding and pydantic validation leaving the per-token path, exactly as §3C.1
+argued. The same saving reappears as throughput — roughly double the requests at
+fixed concurrency.
+
+**And it settles the Lane A question from the other side.** Redis was never the
+bottleneck (≈6% of one node's XADD capacity). The Python tax was. Removing it moved
+the number the client cache could not.
+
+## What is still missed
+
+**AC-3's p99 < 10 ms target is not met in zero-latency mode** — 62–63 ms, still
+6× over. It *is* met in latency-injecting mode (9.97 ms p99 at c=25), which is the
+mode that resembles a real provider.
+
+The residual is no longer streaming. It is **request-path fixed cost**: middleware
+stack, request-body validation, the guardrail gate's network hop, and the
+rate-limit / circuit-breaker / queue lookups. That is the next target and it belongs
+to Lane C, not here.
+
+**AC-2 (per-stream RSS) is unresolved and possibly worse** — 476–3537 KB/stream
+versus 316–1124 before. RSS has not plateaued at these durations (caveat 2), so no
+direction is claimed either way. The hub's ring buffer is ~128 events ≈ 8 KB/stream
+by construction; `RING_CAPACITY` is the dial if AC-2 is pursued.
+
+## Still not measurable
+
+**AC-16 and AC-17** (gateway restart, router restart) are structurally satisfied —
+the gateway holds no state, and unflushed deltas are bounded by one batch and were
+never delivered to anyone — but neither has been proven by an actual rolling-restart
+run. Do not claim them until one exists.
+
+---
+
 # Root cause of `1.000 conn/req` — FOUND AND CLOSED (2026-08-30)
 
 The follow-up flagged in "Harness gap — CLOSED" above is resolved. **Neither the
