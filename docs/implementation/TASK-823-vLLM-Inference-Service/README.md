@@ -562,7 +562,15 @@ the traffic to `10.10.1.102/32`, and the endpoint allow-list (V-2),
 `VLLM_SERVER_DEV_MODE` prohibition (V-1) and log-level controls (V-4) are
 untouched.
 
-**⚠️ OPEN-823-TLS — vLLM cannot currently be told to skip verification, and this
+**✅ OPEN-823-TLS — RESOLVED 2026-08-30 by owner ruling: a publicly-trusted
+certificate goes on the MinIO listener.** No private CA returns and vLLM needs
+no patch; verification succeeds, which is the shape both of its S3 clients
+already support. An operator action outside both repos, not blocking while
+`replicas: 0`, blocking the moment anyone scales to 1. It also lets
+`minio.certCheck` return to `true` and `mc --insecure` come off the sync Job.
+The measurement that forced the ruling is preserved below.
+
+**⚠️ The finding (historical) — vLLM cannot be told to skip verification, and this
 is measured, not suspected.** The weight-load path uses two S3 clients: **boto3**
 (config, tokenizer, shard listing) and the Run:ai C++ SDK (weights). Only the
 second reads `RUNAI_STREAMER_*`; **boto3 has no environment variable that disables

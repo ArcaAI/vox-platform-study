@@ -167,13 +167,34 @@ widened on the assumption that some other service calls the engine directly.
 | Peer | Evidence | Verdict |
 |---|---|---|
 | `hope-text` | The SYSTEM `AiProviderConnection` row's `baseUrl` (`http://hope-lmstudio:1234/v1`); `openai_compat.py` dials it per request | **ALLOW** |
-| `hope-harness` | `base/harness.yaml:110` — `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` | **DENY** — see OPEN-824-HARNESS below |
-| `hope-harness-worker` | `base/harness-worker.yaml:123` — same variable, separate Deployment | **DENY** — same |
+| `hope-harness` | `base/harness.yaml:110` — `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` | **ALLOW** — owner ruling 2026-08-30, see §4A |
+| `hope-harness-worker` | `base/harness-worker.yaml:123` — same variable, separate Deployment | **ALLOW** — same ruling |
 | `hope-guardrail` | `base/guardrail.yaml` sets `TEXT_URL`/`NLP_URL`; its `GUARDRAIL_OPENAI_COMPAT_*` engine config was deleted (`06-python-services.md`) | **DENY** — the "guardrail path" the cutover file mentions is guardrail → text → lmstudio, and `hope-text` is already allowed |
 | `hope-nlp`, `hope-api`, `hope-admin-console` | no `:1234` reference anywhere in the deployment repo or in service code | **DENY** |
 | `prometheus` | LM Studio exposes **no** metrics endpoint (measured: `GET /metrics` → 200 `{"error":"Unexpected endpoint or method"}`) | **DENY** — a scrape rule would imply a signal that does not exist |
 
-### ⚠️ OPEN-824-HARNESS — blocking, must be closed BEFORE the Service cutover
+### ✅ OPEN-824-HARNESS — RESOLVED 2026-08-30 by owner ruling: widen the peer set
+
+**The two harness workloads are admitted to the ingress policy. They keep dialling
+LM Studio directly, and the Service cutover no longer drops them.**
+
+The earlier "through the gateway" ruling was overturned on measurement, not
+preference. The gateway's text surface is BUSINESS-plane: `UnifiedAuthGuard`
+accepts a service-account token, an API key or a JWT, and never
+`X-Service-Token`. Neither harness workload can authenticate to it today, and
+the credential that would let them is tenant-bound with no wildcard in
+`allowedTenantIds`. Holding the narrow peer set would not have routed harness
+through the gateway — it would only have cut its embeddings off.
+
+Two consequences worth stating rather than discovering later. Every entry in
+that list is **unconditional access**: LM Studio has no authentication at all,
+so the policy is the only control, and adding a label grants the full engine.
+And this is an **embeddings** path, not a generation path — it does not go
+through the router, so widening it does not license a generation call.
+
+The historical analysis below is kept as the record of why this was raised.
+
+#### The original finding (historical)
 
 The gateway ruling and the cluster's current configuration disagree, and the
 disagreement is live:

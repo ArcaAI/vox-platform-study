@@ -143,7 +143,25 @@ Reinstatement, per tier:
 
 Neither endpoint line changes.
 
-### 3.4 ⚠️ OPEN-823-TLS — vLLM cannot currently be told to skip verification
+### 3.4 ✅ OPEN-823-TLS — RESOLVED 2026-08-30: put a publicly-trusted certificate on MinIO
+
+**Owner ruling: the MinIO listener gets a publicly-trusted certificate.** No
+private CA is reinstated, and vLLM needs no patch — verification simply
+succeeds, which is the one shape both of its S3 clients already support.
+
+This is an operator action outside both repositories: obtain a certificate for
+the MinIO host from a public issuer and install it on the :9000 listener. It is
+not blocking today — vLLM ships at `replicas: 0` for the hardware reason — but
+it MUST be in place before anyone scales it to 1.
+
+Two follow-on simplifications it unlocks, both one-line: `minio.certCheck` can
+go back to `true` platform-wide (the descriptor exists precisely so this is a
+config change, not a code change), and `mc --insecure` can come off both
+invocations in the sync Job.
+
+The measurement below stands as the reason this ruling was needed.
+
+#### Why verification-off does not work for vLLM (historical, still true)
 
 This is a measurement, not a caveat. vLLM's weight-load path uses **two** S3
 clients:
