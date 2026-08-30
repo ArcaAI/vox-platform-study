@@ -562,7 +562,17 @@ async def generate(
             )
 
         return EventSourceResponse(
-            stream_generation(hub, task_manager, generation_id, 0),
+            # The policy matters on the idempotent-replay path above: that
+            # branch starts NO producer, so if the first delivery ran in another
+            # process this response is a cross-process tail and needs the same
+            # `maxGenerationSeconds` bound a `/generations/{id}/stream` resume gets.
+            stream_generation(
+                hub,
+                task_manager,
+                generation_id,
+                0,
+                resolve_generation_policy(app_state, x_tenant_id),
+            ),
             headers=SSE_HEADERS,
             ping=SSE_PING_SECONDS,
         )
