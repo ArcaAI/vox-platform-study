@@ -325,21 +325,43 @@ validated as one artifact BLOCKs.
    inside one process holds only by luck of routing, so the automaton's state-bearing
    suffix is persisted and replayed on resume.
 
-### ⚠️ The honest limit: the session aggregation cannot be graded today
+### ✅ RESOLVED — the session aggregation can now be graded (TASK-830)
 
-§5.1's arithmetic wants a graded per-window score. **The platform cannot produce one.**
-`apps/nlp`'s guard-classify route returns `results: dict[str, str | list[str]]` —
-LABELS, with no per-label confidence (`apps/nlp/src/nlp/api/v1/rest/guard.py:318-326`;
-`external_nlp_client.classify` passes them through unchanged). So the computable score
-is categorical, and the session mean is a **flag RATE**, not the confidence mean whose
-separation §2.1 measures. The mechanism is correct and the thresholds are per-tenant
-configuration either way, but a threshold calibrated for one statistic is meaningless
-against the other — so every verdict carries `scoreCalibration: "categorical"`.
+**The limit as recorded on 2026-08-30:** §5.1's arithmetic wants a graded per-window
+score, and the platform could not produce one. `apps/nlp`'s guard-classify route
+returned `results: dict[str, str | list[str]]` — LABELS, with no per-label confidence
+(`apps/nlp/src/nlp/api/v1/rest/guard.py:318-326`; `external_nlp_client.classify` passed
+them through unchanged). So the computable score was categorical, the session mean was a
+**flag RATE** rather than the confidence mean whose separation §2.1 measures, and every
+verdict carried `scoreCalibration: "categorical"`.
 
-Making it graded means returning scores from `apps/nlp`'s classify route. That is a
-change to a shared response contract with more than one consumer, and it belongs in
-its own lane. **Until it lands, §5.1 is calibratable only as a flag rate, and Phase 4's
-"calibrate θ/Θ per tenant on real clinical text" cannot be completed.**
+**What TASK-830 found and fixed.** The confidences were never missing — `gliner2`
+computes them (`_extract_classification_result` softmaxes/sigmoids the classifier logits
+into `(label, confidence)` tuples) and `_format_results` DISCARDS them unless the caller
+passes `include_confidence=True`. `apps/nlp` asked on its entity path and did not ask on
+the classify path. `/guard/classify` was also the only unscored classification surface in
+the service: `/classify/text`, `/classify/text/multi-label`, `/classify/tokens`,
+`/guard/pii` and `/guard/entailment` have all always returned numbers.
+
+The fix is ADDITIVE — `results` keeps its exact shape, because three guardrail call sites
+parse it as `str | list[str]` — and the confidences arrive in a sibling
+`scores: dict[str, dict[str, float]]`. Guardrail's realtime plane consumes them through
+`SafetyAnalyzer.classify_tasks_scored` and derives a per-window risk (a non-benign label
+contributes its confidence; a benign one contributes `1 - confidence`, the mass the model
+did not put on "clean").
+
+**`scoreCalibration` is now computed, not asserted.** It reads `graded` only when EVERY
+window folded into the aggregate carried a real confidence, and `categorical` otherwise —
+a peer that reports no scores still gets a correct categorical verdict, and a partially
+scored session understates itself rather than handing Phase 4 calibration data that is
+silently part flag rate. `gradedWindows` sits alongside `windows` in the aggregate so the
+mix is auditable.
+
+**Phase 4 is unblocked**, with one condition: calibrate θ/Θ only against aggregates whose
+`scoreCalibration` reads `graded`. See
+`docs/implementation/TASK-830-Nlp-Guard-Classify-Confidences/README.md` — including the
+noted limit that `1 - P(benign)` is exact for a single-label softmax task and an estimate
+for a multi-label sigmoid one.
 
 ### Measured latency — T0 only
 
@@ -401,5 +423,6 @@ be edited to match, because that hides the contradiction rather than resolving i
 | Date | Change |
 |---|---|
 | 2026-08-29 | Created from the owner's realtime-consultation requirement; two-axis verdict and "gate derivations never the record" confirmed by the owner. |
+| 2026-08-30 | **Phase 4 unblocked by TASK-830** (§12A). `apps/nlp`'s `/guard/classify` now returns per-label confidences (they were computed by `gliner2` all along and dropped for want of `include_confidence=True`), so the session aggregate is a graded mean where the executor scores it. `scoreCalibration` is computed per aggregate — `graded` only when every window carried a confidence — rather than hardcoded `categorical`. |
 | 2026-08-30 | **Phase 1 decision plane implemented in `apps/guardrail`** (§12A). Three corrections to this ticket: §5.1's excess-above-θ sum is blind to sub-θ dispersal and needed the length-invariant mean the cited evidence actually describes; the streaming and consumption tiers must not share an accumulator or a benign encounter over-blocks on its own length; automaton state must survive a replica change or chunking invariance holds only by luck of routing. One honest limit recorded: `apps/nlp` returns labels without confidences, so the session aggregate is a flag rate, not a graded mean, and Phase 4 calibration is blocked on that. |
 | 2026-08-29 | **Rewritten after streaming-guardrail research.** Corrections: overlap is NOT the split-injection defence (§2.2) — replaced by per-session stateful aggregation; verdict split into **three** axes with two cache scopes (§3), since injection risk is not task-agnostic; five safe-trust conditions added (§2); output-side checks made mandatory per task (§7); general harm taxonomies ruled out on clinical text (§2.1); hard no-redaction invariant added (§6). |

@@ -36,7 +36,7 @@ from typing import Any
 
 from guardrail.core.errors import REASON_ENGINE_ERROR, GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
-from guardrail.services.external_nlp_client import NlpGuardClient
+from guardrail.services.external_nlp_client import ClassifiedTasks, NlpGuardClient
 
 logger = get_logger(__name__)
 
@@ -121,6 +121,26 @@ class SafetyAnalyzer:
             )
         results: dict[str, Any] = await self._safety_client.classify(wanted, text)
         return results
+
+    async def classify_tasks_scored(
+        self, task_names: Sequence[str], text: str
+    ) -> ClassifiedTasks:
+        """`classify_tasks`, with the per-label confidences kept (TASK-830).
+
+        The realtime plane's session aggregate needs a GRADED per-window score;
+        `analyze_content` and `services/screening.py` need only the labels and are
+        deliberately left on the label-only seam. One peer call either way — the
+        confidences ride with the labels rather than costing a second pass.
+        """
+        wanted = {name: spec for name, spec in self.policy.tasks.items() if name in task_names}
+        if not wanted:
+            return ClassifiedTasks(labels={}, scores={})
+        if self._safety_client is None:
+            raise GuardrailUndeterminedError(
+                REASON_ENGINE_ERROR,
+                "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
+            )
+        return await self._safety_client.classify_scored(wanted, text)
 
     def model_for(self, check: str) -> str:
         """Which model answers a given check — part of every attributable verdict."""
