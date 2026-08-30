@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `In Progress` — the two in-repo cleanups (tasks 4–5) shipped in `ecab308ef`; the `hope-nlp` cache wiring (tasks 1–3, deployment repo) and the persistence-contract test (task 6) remain |
 | **Type** | `infrastructure` |
 | **Branch** | `dev-2.2` |
 | **Follows** | [TASK-808](../TASK-808-Unblock-TEXT-Generation/README.md) §6.3 |
@@ -137,9 +137,30 @@ effective cache env var disagree — the single most likely way to get this wron
   declaration.
 
 ## 6. Implementation Summary
-_Not started._
+
+**Tasks 4 and 5 (the two in-repo cleanups) shipped in `ecab308ef` (2026-08-28), before this
+section was last written as "not started."**
+
+- Task 4 — `apps/guardrail/Dockerfile`'s vestigial `HF_HOME`, `TRANSFORMERS_OFFLINE`, the
+  `/app/.hf-cache` `mkdir`+`chown`, and the "mount a persistent volume here" comment are gone
+  (F-2). Guarded by `apps/guardrail/src/guardrail/tests/test_no_model_cache_config_task817.py`,
+  which scans the Dockerfile so a copy-paste from a sibling service can't reintroduce it.
+- Task 5 — `apps/stt/docker/Dockerfile:390`'s `HF_HOME` divergence from the live manifest value
+  is now documented in place rather than silently inert (F-3), guarded by
+  `apps/stt/tests/test_hf_home_manifest_divergence_task817.py`.
+
+Both files and both tests are present and unchanged since `ecab308ef` (verified against the
+`dev-2.2` tip: `git merge-base --is-ancestor ecab308ef HEAD` succeeds).
+
+**Not started:** tasks 1–3 (the `hope-nlp` volume + `init-hf-cache` initContainer, the mount-path
+decision, and the live-cluster persistence proof) — these live in the `arca/hope-v2-deployment`
+manifests repo, outside this repo's visibility, and per this ticket's own framing a separate lane
+is landing them. Task 6 (extending `apps/nlp/tests/test_hf_cache_writable_task808.py`, or a
+sibling, to cover the persistence contract rather than just writability) has not been started
+either — no such test exists in `apps/nlp/tests/` as of this writing.
 
 ## 7. Change History
 | Date | Change |
 |---|---|
 | 2026-08-26 | Opened from TASK-808 §6.3. Scope narrowed after verifying against `hope-v2-dev`: `hope-stt` and `hope-tts` already run the target pattern, so this is an application of it to `hope-nlp` rather than a new design. Added F-2 (guardrail's `HF_HOME` is dead since TASK-735 P3), F-3 (stt image/manifest disagree) and F-4 (three conventions for one directory), all found while confirming the pattern. |
+| 2026-08-30 | **Corrected: Status and §6 said `Pending`/"Not started" while two of the three in-scope items had already shipped.** Tasks 4 and 5 (deleting guardrail's dead `HF_HOME` config, and reconciling stt's Dockerfile/manifest `HF_HOME` divergence) landed in `ecab308ef` (2026-08-28), each guarded by a new test (`test_no_model_cache_config_task817.py`, `test_hf_home_manifest_divergence_task817.py`). Status changed to `In Progress`; §6 rewritten to record what shipped and what remains — tasks 1–3 (the `hope-nlp` deployment-repo wiring) and task 6 (the NLP persistence-contract test) are still outstanding. OD-1 is unchanged and still open. |

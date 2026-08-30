@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — awaiting resolution of OPEN-1..3 below |
+| **Status** | In Progress — AC-17 blocker (R-1) resolved 2026-08-30 (see §5 banner); OPEN-1's route rename and OPEN-3's fire-and-forget audit conversion are recorded rulings, not yet implemented (`judge.py`'s route is still `/generate/internal/judge`; `generation_audit.py` is still synchronous); Lane D (the OpenAI-standard surface of D-2, and an `AiRoutingPolicy` client reachable from `apps/text`) never started |
 | **Type** | refactor + infrastructure |
 | **Branch** | `dev-2.2` |
 | **Primary surface** | `apps/text` (port 8862) |
@@ -851,9 +851,19 @@ measured p99 overhead exceeds ~10 ms after Phase 2.** Against a real provider (T
 
 ## 5. Verification Criteria (the numbers this ticket is judged on)
 
-> ### 🔴 STATUS 2026-08-30 — two criteria are NOT met, and one was wrongly reported as met
+> ### 🟡 STATUS 2026-08-30 (updated same day) — AC-17 is now MET; AC-3 remains unproven
 >
-> **AC-17 is UNSATISFIABLE as the code stands (blocker R-1).** `GenerationHub` is
+> ✅ **RESOLVED 2026-08-30 — AC-17 is now MET.** The R-1 fix lane below landed in
+> `6af3ece30` (merged `2bd18c1df`): `stream.py` now distinguishes a finished generation from
+> one running on another process via `XREAD BLOCK` on the replay buffer, exactly as R-1's
+> acceptance criterion specifies. Reproduced RED first (6/20 resumes truncated under real
+> Redis + 4 uvicorn workers, 0.012–0.025s), then GREEN (20/20 terminal frames, a second
+> 20-trial probe showing 0 duplicates and 0 gaps across the seam), locked by
+> `apps/text/src/text/tests/unit/test_task818_cross_process_resume.py`. The paragraph below
+> is kept as the historical record of the defect this fix closes — it no longer describes
+> current behaviour.
+>
+> ~~**AC-17 is UNSATISFIABLE as the code stands (blocker R-1).**~~ `GenerationHub` is
 > process-local and §3C.3(5)'s `XREAD BLOCK` fallback was never implemented, so
 > `stream.py`'s `producer is None` branch cannot tell a FINISHED generation from one
 > RUNNING ON ANOTHER PROCESS and closes with HTTP 200 and no terminal frame. Lane G
@@ -880,7 +890,7 @@ measured p99 overhead exceeds ~10 ms after Phase 2.** Against a real provider (T
 >
 > | Id | Item |
 > |---|---|
-> | **R-1** | *(blocker, lane dispatched)* Distinguish finished from running-elsewhere; `XREAD BLOCK` the replay buffer until terminal. Acceptance: every resume trial at `--workers 4` ends in a terminal frame |
+> | **R-1** | ✅ *(RESOLVED 2026-08-30 — `6af3ece30`/`2bd18c1df`)* Distinguish finished from running-elsewhere; `XREAD BLOCK` the replay buffer until terminal. Acceptance: every resume trial at `--workers 4` ends in a terminal frame — met, 20/20 |
 > | **R-2** | `main.py:296-306` — two hardcoded `30.0` shutdown waits, sequential, neither cancellable. With `terminationGracePeriodSeconds: 600` they should total ≲ 540 s |
 > | **R-3** | Confirm whether `hope-text` is scraped via Service endpoints or pod annotations BEFORE applying G-4; if annotations, it is a no-op and must be recorded as such, never added to the traffic Service |
 > | **OWNER** | **The shutdown budget disagrees with the generation ceiling by 30×.** `main.py` bounds drain at ~60 s (env-tier, boot-time); `maxGenerationSeconds` floors at **1800 s** (`db-config`, tenant→SYSTEM). "How long may one clinical generation run?" currently has two different answers and nothing reconciles them. This is a policy call, not a code change |
@@ -903,7 +913,7 @@ stream terms. All measured against the Lane H harness, both mock modes.
 | AC-5 | Redis writes per streamed token | **≤ 1 per 16–32 deltas or 25 ms**, not per token (§3C.2) | Instrumented |
 | AC-15 | Reconnect after a forced disconnect mid-generation | Resumes at `seq+1`, **no gap, no duplicate** | Kill the client socket at a random point; diff the reassembled output against an uninterrupted run |
 | AC-16 | Gateway pod restart during an active stream | Zero tokens lost; one reconnect stall | Rolling restart under load |
-| AC-17 | Router pod restart during an active stream | All flushed tokens recovered; loss bounded by one batch and never user-visible | Rolling restart under load |
+| AC-17 | Router pod restart during an active stream | All flushed tokens recovered; loss bounded by one batch and never user-visible | Rolling restart under load — ✅ **MET 2026-08-30** (R-1, `6af3ece30`/`2bd18c1df`; 20/20 resumes terminal, cross-process) |
 | AC-18 | A dropped socket never cancels a generation | Producer continues; only an explicit cancel stops it | Contract test |
 | AC-6 | Streams dropped during a rolling restart | **0** | Rolling deploy under AC-1 load |
 | AC-7 | Non-streaming p99 added latency / RPS per core | **< 10 ms / ≥ 500 RPS-core** | Zero-latency mock |
@@ -1263,6 +1273,31 @@ Final message is DATA for the orchestrator. Exactly these fields:
 
 *(to be filled in as phases land)*
 
+### What is genuinely still missing (recorded 2026-08-30, since the ticket never says so plainly)
+
+- **D-2's OpenAI-standard surface was never built.** `main.py`'s router list
+  (`health_router`, `generate_router`, `judge_router`, `tasks_router`, `providers_router`,
+  `stream_router`, `translate_router`, `embeddings_router`) has no `/v1/chat/completions` or
+  any other OpenAI-standard route. Only the existing HOPE contract is served.
+- **Lane D never started.** OPEN-1's recommendation (rename `/generate/internal/judge` to an
+  admission-control lane) was not applied — `judge.py`'s route is still
+  `POST /generate/internal/judge`. OPEN-3's ruling (convert `generation_audit` to a
+  fire-and-forget async event through the sys-event/BullMQ fan-out, via `AiUsageOutbox`) was
+  not applied either — `GenerationAuditLogger.log_generation` in `services/generation_audit.py`
+  is still a plain synchronous `def`. Both OPEN rulings are recorded decisions, not shipped
+  code.
+- **The router has no `AiRoutingPolicy` client.** No file under `apps/text/src/` references
+  `AiRoutingPolicy` or `RoutingPolicy` — the routing-policy plane built in Lanes F′/I′
+  (super-admin default policy + failover chain, tenant override, hard gates — see TASK-818
+  Lane I′ merge `b4d58f732`) is not reachable from `apps/text` today. Requests still resolve
+  through `AiTaskDefault` / `AiProviderConnection` only.
+
+**Landed and worth recording alongside the above:** LM Studio now has its own provider
+identity rather than sharing `OpenAICompatProvider`'s default `openai_compat` name — see
+`apps/text/src/text/providers/lmstudio.py`, commit `a8d85138d`. That fixes AD-1 stats/spans/
+`ProviderInfo` attribution and the previously-dead `_apply_retention_hint` gate for the only
+instance that ever served LM Studio traffic.
+
 ### Connection reuse on the streamed path — landed 2026-08-30
 
 Follow-up to Lane H2's `1.000 conn/req` finding. **The client cache (B-2) and the
@@ -1295,3 +1330,4 @@ free, so it still cannot price what reuse is worth against a remote provider.
 |---|---|
 | 2026-08-29 | Ticket created. Three-agent discovery: serving-capability audit (verdict: text cannot serve a model today), throughput architecture map (12 ranked bottlenecks), external best-practice research (2025–2026 sources). Owner decisions D-1..D-4 recorded. OPEN-1..3 raised for resolution. |
 | 2026-08-30 | Root-caused Lane H2's `1.000 conn/req`: not the B-2 cache or the B-8 pool (both proven to hit on every request), but `openai.AsyncStream` closing a streamed response before EOF. Bounded drain-on-close added at the transport in `providers/pool.py`; regression test `test_task818_stream_close_reuse.py` (RED first). Reuse now measurable in both harness modes. Upstream report drafted, awaiting a human to file. §4.2, §7 and `baseline.md` updated. |
+| 2026-08-30 | **Corrected: the header status and the §5 "🔴 STATUS" banner both predated their own fix.** The R-1 fix lane the banner described as dispatched had already landed (`6af3ece30`, merged `2bd18c1df` — "20/20 intact… 0 duplicates, 0 gaps", locked by `test_task818_cross_process_resume.py`; verified as an ancestor of `dev-2.2`). AC-17 is now MET, not a blocker. Banner retitled, the superseded AC-17 paragraph struck through and kept for history, R-1's open-registration row and the AC-17 criteria-table row both marked resolved. Header status changed from "Pending — awaiting OPEN-1..3" to reflect the actual state. Added to §7: the OpenAI-standard surface of D-2 was never built (no `/v1/chat/completions` in `main.py`'s router list); Lane D never started (OPEN-1's route rename and OPEN-3's async-audit conversion are recorded rulings with no shipped code — `judge.py` is still `/generate/internal/judge`, `generation_audit.py` is still synchronous); and `apps/text` has no `AiRoutingPolicy` client, so the routing-policy plane from Lanes F′/I′ is unreachable from the router. Also recorded as landed: LM Studio's own provider identity (`providers/lmstudio.py`, `a8d85138d`). |
