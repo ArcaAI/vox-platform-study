@@ -53164,7 +53164,7 @@
     },
     "/api/v1/text-generations/tasks/{taskId}/stream": {
       "get": {
-        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`.",
+        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`. Send `Last-Event-ID` to resume an interrupted stream from its cursor; the gateway forwards it upstream and relays `id:` back unchanged.",
         "operationId": "TextProxyController_streamTaskEvents",
         "parameters": [
           {
