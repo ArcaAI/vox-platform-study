@@ -104,6 +104,10 @@ def _build_s3(descriptor: dict[str, Any]) -> S3BlobStorageProvider:
         secret_key=descriptor.get("secret_access_key") or "",
         secure=secure,
         region=region,
+        # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see
+        # `Settings.minio_cert_check` (`MINIO_CERT_CHECK`). The trust decision
+        # is platform-wide, not per descriptor: one object store, one answer.
+        cert_check=get_settings().minio_cert_check,
     )
 
 

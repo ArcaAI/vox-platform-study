@@ -12,6 +12,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Logger, NotFoundException } from '@nestjs/common';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'node:https';
 import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
@@ -41,6 +43,14 @@ export interface S3BlobProviderConfig {
   forcePathStyle?: boolean;
   /** Reported via {@link IBlobStorageProvider.provider}; defaults to MINIO. */
   provider?: StorageProvider;
+  /**
+   * Verify the endpoint's TLS certificate. Omitted ⇒ verify (the SDK default);
+   * an explicit `false` is the deliberate relaxation described on the client
+   * construction below. The env-tier default lives in `minioCertCheckFromEnv`
+   * (`MINIO_CERT_CHECK`) and is applied by the caller, not here — this class
+   * takes an answer, it does not read configuration.
+   */
+  certCheck?: boolean;
 }
 
 /**
@@ -63,6 +73,13 @@ export class S3BlobProvider implements IBlobStorageProvider {
         secretAccessKey: config.secretAccessKey,
       },
       forcePathStyle: config.forcePathStyle ?? true,
+      // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
+      // `MINIO_CERT_CHECK`): MinIO keeps TLS but its certificate is not
+      // verified, because the platform has no private CA to chain it to and
+      // authenticates with a service-account key pair instead. Taken while PHI
+      // hardening is de-prioritised — grep `MINIO_CERT_CHECK` to find every
+      // site that has to be reverted when a CA lands.
+      ...(config.certCheck === false ? { requestHandler: new NodeHttpHandler({ httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }) } : {}),
     });
   }
 

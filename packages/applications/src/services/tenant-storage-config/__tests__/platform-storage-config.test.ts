@@ -12,6 +12,7 @@ import { StorageProviderType, StorageTopologyType, TenantStorageConfigFactory } 
 
 import {
   PLATFORM_STORAGE_CREDENTIALS_REF,
+  minioCertCheckFromEnv,
   minioEndpointFromEnv,
   normalizeStorageProvider,
   resolvePlatformStorageConfig,
@@ -64,6 +65,26 @@ describe('minioEndpointFromEnv', () => {
 
   it('returns null when MINIO_ENDPOINT is absent', () => {
     expect(minioEndpointFromEnv({})).toBeNull();
+  });
+});
+
+describe('minioCertCheckFromEnv', () => {
+  // The DEFAULT is the deployed posture, not the safe one: MinIO serves HTTPS
+  // on :9000 with a certificate no CA in this platform can validate (owner
+  // ruling 2026-08-30 — there is no private CA; MinIO auth is a service
+  // account). Defaulting to "verify" would make every object-store call fail
+  // closed on day one, so absence means OFF and an operator opts back IN.
+  it('defaults to false (certificate verification OFF) when MINIO_CERT_CHECK is unset', () => {
+    expect(minioCertCheckFromEnv({})).toBe(false);
+  });
+
+  it('is true only for an explicit true value', () => {
+    expect(minioCertCheckFromEnv({ MINIO_CERT_CHECK: 'true' })).toBe(true);
+    expect(minioCertCheckFromEnv({ MINIO_CERT_CHECK: '  TRUE  ' })).toBe(true);
+  });
+
+  it.each(['false', 'FALSE', '', '  ', '1', 'yes'])('treats %o as verification OFF', (raw) => {
+    expect(minioCertCheckFromEnv({ MINIO_CERT_CHECK: raw })).toBe(false);
   });
 });
 

@@ -163,4 +163,45 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
       'Deploy-time fallback used ONLY before the SYSTEM storage row exists (first boot / pre-seed). Scheduled for removal one ' +
       'release after the SYSTEM row ships; a WARN is logged whenever it is the tier that supplied the value.',
   },
+  {
+    // Sibling of `minio.endpoint` above, in the same shape and the same tier:
+    // key `minio.certCheck` maps mechanically to `MINIO_CERT_CHECK`, which is
+    // the variable `apps/stt` already reads (its `Settings` carries no
+    // env_prefix) and which `turbo.json#globalEnv` already declares.
+    //
+    // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30).
+    // Absent ⇒ FALSE ⇒ certificates are NOT verified. There is no private CA,
+    // MinIO serves HTTPS on :9000 with a certificate nothing here can chain to
+    // a trusted root, and MinIO authentication is a service account (access key
+    // + secret) rather than the certificate — so "verify" would fail every
+    // object-store call closed. PHI hardening is explicitly de-prioritised for
+    // now; grep `MINIO_CERT_CHECK` for every consumer to revert when a CA lands.
+    //
+    // ENV-TIER, and correctly so: a TLS trust decision is made when the client
+    // socket is built, which is process start — it is the same bootstrap floor
+    // as `minio.endpoint`, not something an admin flips at runtime.
+    key: 'minio.certCheck',
+    tier: 'env',
+    // No `consumedBy`, exactly like `minio.endpoint`: env-tier keys have no
+    // resolver lane, so declaring one would promise a value on the
+    // effective-config pull route that would be served as `null` forever
+    // (`consumed-by-resolvability.governance.test.ts`). Each process reads
+    // `MINIO_CERT_CHECK` from its own environment — apps/api, apps/stt and the
+    // harness worker all do.
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    // env tier ⇒ no write path (see `minio.endpoint` above).
+    editableBy: 'none',
+    category: 'Storage',
+    // Tuning, not selection: an absent value means "the deployed posture",
+    // which is the default below rather than a hard failure.
+    failMode: 'open-to-default',
+    label: 'MINIO_CERT_CHECK (verify object-store TLS certificates)',
+    description:
+      'Verify the S3/MinIO endpoint TLS certificate. Defaults to FALSE: MinIO keeps HTTPS, but the platform has no CA to ' +
+      'validate its certificate against and authenticates with a service-account key pair instead. Set to `true` once a ' +
+      'trusted certificate chain exists.',
+    default: false,
+  },
 ];

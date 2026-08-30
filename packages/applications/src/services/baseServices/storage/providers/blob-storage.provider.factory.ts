@@ -10,7 +10,12 @@ import {
 } from '@arcaai/domains';
 import { IAppSettingsService } from '../../_meta';
 import { SecretsService } from '../../_meta/secrets';
-import { PlatformStorageConfig, PlatformStorageSource, resolvePlatformStorageConfig } from '../../../tenant-storage-config/platform-storage-config';
+import {
+  PlatformStorageConfig,
+  PlatformStorageSource,
+  minioCertCheckFromEnv,
+  resolvePlatformStorageConfig,
+} from '../../../tenant-storage-config/platform-storage-config';
 import { AzureBlobProvider } from './azure-blob.provider';
 import { IBlobStorageProvider, StorageDescriptor } from './IBlobStorageProvider';
 import { S3BlobProvider } from './s3-blob.provider';
@@ -180,6 +185,8 @@ export class BlobStorageProviderFactory {
       secretAccessKey: creds.secretAccessKey ?? '',
       forcePathStyle: config.forcePathStyle,
       provider,
+      // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see `minioCertCheckFromEnv`.
+      certCheck: minioCertCheckFromEnv(process.env),
     });
   }
 
@@ -358,6 +365,8 @@ export class BlobStorageProviderFactory {
       secretAccessKey: creds.secretAccessKey ?? '',
       forcePathStyle: config.forcePathStyle ?? true,
       provider,
+      // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see `minioCertCheckFromEnv`.
+      certCheck: minioCertCheckFromEnv(process.env),
     });
   }
 

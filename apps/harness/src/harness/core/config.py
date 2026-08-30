@@ -279,6 +279,28 @@ class ClaimCheckConfig(BaseSettings):
     secret_key: SecretStr = SecretStr("")
     region: str = "us-east-1"
     secure: bool = False
+    # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30).
+    # Defaults to False — the object store's TLS certificate is NOT verified.
+    # There is no private CA, MinIO serves HTTPS with a certificate nothing here
+    # can chain to a trusted root, and MinIO authenticates with a SERVICE
+    # ACCOUNT (access key + secret) rather than the certificate; defaulting to
+    # "verify" would fail every claim-check read and write closed. PHI hardening
+    # is explicitly de-prioritised for now — grep `MINIO_CERT_CHECK` for every
+    # consumer (here, apps/stt, apps/api) to revert when a CA lands.
+    #
+    # `validation_alias` deliberately ESCAPES the `HARNESS_CLAIM_CHECK_` prefix:
+    # this is one platform-wide trust decision about one object store, and it is
+    # the same bare variable apps/stt reads and `turbo.json#globalEnv` declares.
+    # A `HARNESS_CLAIM_CHECK_CERT_CHECK` of its own would be a second knob that
+    # can disagree with the first about a single fact.
+    # `AliasChoices` and not a bare `validation_alias`: the alias REPLACES the
+    # field name for init as well as for env lookup, so `ClaimCheckConfig(
+    # cert_check=...)` (tests, and any direct construction) would be rejected as
+    # an extra field. Listing both keeps the platform variable authoritative and
+    # the field constructible by name.
+    cert_check: bool = Field(
+        default=False, validation_alias=AliasChoices("MINIO_CERT_CHECK", "cert_check")
+    )
     # There is deliberately no `ttl_seconds` here. It was declared as an "advisory blob
     # lifetime (a bucket lifecycle rule enforces expiry out-of-band)" and read by NOTHING
     # — the expiry really is enforced by the object store, so the field was documentation

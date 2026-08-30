@@ -14,10 +14,13 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'node:https';
 
 import { NotFoundException } from '@arcaai/exceptions';
 import { IAppSettingsService } from '../../_meta/';
 import { SecretsService } from '../../_meta/secrets';
+import { minioCertCheckFromEnv } from '../../../tenant-storage-config/platform-storage-config';
 import { IS3Service } from './IS3Service';
 
 const DEFAULT_PRESIGNED_URL_EXPIRY = 3600;
@@ -267,6 +270,15 @@ export class S3Service implements IS3Service, OnModuleInit {
           // Disable AWS-specific features for MinIO
           disableHostPrefix: true,
         }),
+        // ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling
+        // 2026-08-30, `MINIO_CERT_CHECK`): MinIO keeps TLS but its certificate
+        // is not verified — the platform has no private CA to chain it to and
+        // authenticates with a service-account key pair instead. Taken while
+        // PHI hardening is de-prioritised; grep `MINIO_CERT_CHECK` for every
+        // site to revert when a CA lands.
+        ...(minioCertCheckFromEnv(process.env)
+          ? {}
+          : { requestHandler: new NodeHttpHandler({ httpsAgent: new HttpsAgent({ rejectUnauthorized: false }) }) }),
       });
 
       this.isInitialized = true;

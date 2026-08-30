@@ -90,6 +90,12 @@ class ModelSourceConfig:
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
     s3_secure: bool = True
+    # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30,
+    # `MINIO_CERT_CHECK`): defaults to False — the object store's TLS
+    # certificate is NOT verified, because the platform has no CA to validate
+    # it against and MinIO authenticates with a service-account key pair
+    # instead. Grep `MINIO_CERT_CHECK` for every site to revert when a CA lands.
+    s3_cert_check: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -111,14 +117,17 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
     import boto3
 
     scheme = "https" if config.s3_secure else "http"
-    return _Boto3MinioAdapter(
-        boto3.client(
-            "s3",
-            endpoint_url=f"{scheme}://{config.s3_endpoint}",
-            aws_access_key_id=config.s3_access_key,
-            aws_secret_access_key=config.s3_secret_key,
-        )
-    )
+    client_kwargs: dict[str, Any] = {
+        "endpoint_url": f"{scheme}://{config.s3_endpoint}",
+        "aws_access_key_id": config.s3_access_key,
+        "aws_secret_access_key": config.s3_secret_key,
+    }
+    if config.s3_secure and not config.s3_cert_check:
+        # ⚠️ DELIBERATE, REVERSIBLE SECURITY RELAXATION — see
+        # `ModelSourceConfig.s3_cert_check` (`MINIO_CERT_CHECK`).
+        client_kwargs["verify"] = False
+
+    return _Boto3MinioAdapter(boto3.client("s3", **client_kwargs))
 
 
 class _Boto3MinioAdapter:
