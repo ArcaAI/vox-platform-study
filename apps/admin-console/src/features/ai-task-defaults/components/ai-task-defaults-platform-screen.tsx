@@ -12,7 +12,7 @@ import { TaskDefaultCard } from './task-default-card';
 /**
  * AI task defaults (platform) (/ai-task-defaults, tier
  * 10-19, SUPER_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
- * ALL THREE task keys by pinning `?tenantId=` to the SYSTEM tenant.
+ * all five keys below by pinning `?tenantId=` to the SYSTEM tenant.
  *
  * `nlp.*`/`harness.*` are super-admin-only on write — the service guards
  * those two prefixes (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
@@ -28,6 +28,15 @@ import { TaskDefaultCard } from './task-default-card';
  * (platform-default) row that tenants inherit absent their own selection; a
  * dedicated tenant-facing guardrail picker is not yet built (see
  * `effective-models-table.tsx`, still read-only for guardrail.*).
+ *
+ * `guardrail.pii` / `guardrail.pii.spans` are the exception inside that
+ * prefix: they are SUPER_ADMIN-only by KEY (`SUPER_ADMIN_ONLY_TASK_KEYS`),
+ * because PII redaction is a PHI-protection control where one vetted model per
+ * platform is the point. Owner decision 2026-08-30: they get a real editor
+ * HERE (this screen is exactly the tier-10-19 SYSTEM-row surface for that
+ * class of key) rather than remaining API-only. They stay read-only rows on
+ * the tenant `/ai-configuration` table, which is where tenants SEE the
+ * selection they inherit.
  */
 export function AiTaskDefaultsPlatformScreen() {
   return (
@@ -64,6 +73,18 @@ export function AiTaskDefaultsPlatformScreen() {
           taskKey="guardrail.validate"
           title="Guardrail model — platform default"
           description="Safety validation model used when a tenant has not selected its own. Tenant admins may select their own guardrail model from this platform-approved catalog via the API."
+          tenantId={SYSTEM_TENANT_ID}
+        />
+        <TaskDefaultCard
+          taskKey="guardrail.pii"
+          title="PII redaction model — platform default"
+          description="Span extractor backing guardrail's PII redaction. Super-admin-only: one vetted model serves every tenant (PHI-protection control, no tenant BYO)."
+          tenantId={SYSTEM_TENANT_ID}
+        />
+        <TaskDefaultCard
+          taskKey="guardrail.pii.spans"
+          title="PII span-detection model — platform default"
+          description="Span extractor backing guardrail's PII span reporting. Super-admin-only, same PHI-protection posture as the redaction model."
           tenantId={SYSTEM_TENANT_ID}
         />
         <TaskDefaultCard

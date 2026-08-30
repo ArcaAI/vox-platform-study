@@ -12,11 +12,23 @@
  * so the tenant surface could never show the truth about six of them. Keep the
  * two lists in lockstep — a key added on the backend is invisible here until it
  * is added below.
+ *
+ * The invariant is no longer only a comment: `__tests__/ai-task-keys-lockstep.test.ts`
+ * parses the backend `AI_TASK_KEYS` literal out of that file (text parse, not an
+ * import — the BFF boundary stands) and fails when the two lists differ. That
+ * guard exists because the comment alone did not hold: drift #3 (TASK-799 R6's
+ * `guardrail.pii` / `guardrail.pii.spans`, added below) reached the console with
+ * both PII rows silently dropped from the read-only Effective models table.
  */
 export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
   'guardrail.groundedness',
+  // TASK-799 R6: the platform's PII redaction selections. SUPER_ADMIN-only on
+  // write (`SUPER_ADMIN_ONLY_TASK_KEYS` on the backend), so they belong to the
+  // read-only Effective models table — the gateway already returns both rows.
+  'guardrail.pii',
+  'guardrail.pii.spans',
   'nlp.ner',
   'nlp.classification',
   'nlp.diagnosis',

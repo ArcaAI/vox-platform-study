@@ -44,13 +44,23 @@ function model(overrides: Partial<TaskModelOption> & Pick<TaskModelOption, 'id' 
   };
 }
 
-// widened AI_TASK_KEYS 3 -> 9 to match the backend. The platform
-// screen still edits only the three keys below (the remaining six are covered
-// by the tenant read-only view); this fixture stays deliberately partial.
+// widened AI_TASK_KEYS 3 -> 9 to match the backend, then 15, then 17
+// (TASK-799 R6's two PII keys). The platform screen edits the five keys below
+// (the rest are covered by the tenant read-only view); this fixture stays
+// deliberately partial.
 const OPTIONS: Partial<Record<AiTaskKey, TaskModelOption[]>> = {
   'guardrail.validate': [
     model({ id: 'm-guard-1', slug: 'granite-guardian-4.1-8b', name: 'Granite Guardian 4.1 8B', taskType: 'GUARDRAIL', architecture: 'granite' }),
     model({ id: 'm-guard-2', slug: 'llama-guard-4', name: 'Llama Guard 4', taskType: 'GUARDRAIL' }),
+  ],
+  // Both PII selections are TOKEN_CLASSIFICATION span extractors (GLiNER2) —
+  // the same task type the gateway filters /options by.
+  'guardrail.pii': [
+    model({ id: 'm-pii-1', slug: 'gliner2-privacy-filter-pii-multi', name: 'GLiNER2 Privacy Filter PII', taskType: 'TOKEN_CLASSIFICATION' }),
+    model({ id: 'm-pii-2', slug: 'gliner2-guardrails-pii-multi', name: 'GLiNER2 Guardrails PII', taskType: 'TOKEN_CLASSIFICATION' }),
+  ],
+  'guardrail.pii.spans': [
+    model({ id: 'm-pii-2', slug: 'gliner2-guardrails-pii-multi', name: 'GLiNER2 Guardrails PII', taskType: 'TOKEN_CLASSIFICATION' }),
   ],
   'nlp.ner': [model({ id: 'm-ner-1', slug: 'medical-ner', name: 'Medical NER', taskType: 'TOKEN_CLASSIFICATION', provider: 'built-in' })],
   'nlp.classification': [
@@ -173,6 +183,9 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     // synchronizes with the async card render.
     expect(await screen.findByRole('heading', { name: /guardrail model/i })).toBeDefined();
     expect(screen.getByText(/platform-approved catalog/i)).toBeDefined();
+    // TASK-799 R6 + owner decision 2026-08-30: both PII keys are editable here.
+    expect(screen.getByRole('heading', { name: /pii redaction model/i })).toBeDefined();
+    expect(screen.getByRole('heading', { name: /pii span-detection model/i })).toBeDefined();
     expect(screen.getByRole('heading', { name: /medical ner/i })).toBeDefined();
     expect(screen.getByRole('heading', { name: /classification/i })).toBeDefined();
 
@@ -190,7 +203,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     renderWithProviders(<AiTaskDefaultsPlatformScreen />);
 
     expect((await screen.findAllByText('Granite Guardian 4.1 8B')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('system').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText('system').length).toBeGreaterThanOrEqual(5);
   });
 
   it('saves a new platform default with If-Match from the row read', async () => {
@@ -215,6 +228,33 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     expect(put?.url).toBe(`/api/hope/admin/ai-task-defaults/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`);
     expect(put?.headers.get('if-match')).toBe('"3"');
     expect(put?.body).toEqual({ modelSlug: 'llama-guard-4', expectedVersion: 3 });
+  });
+
+  // The point of giving the PII keys an editor: before this, the platform's PII
+  // model was settable only through the API. Prove the card writes the right
+  // SYSTEM-scoped row for the key with the row read's OCC token.
+  it('saves the platform PII default through the same SYSTEM-scoped OCC write', async () => {
+    const calls = stubFetch({
+      custom: (call) => {
+        if (call.method === 'PUT') {
+          return Response.json(rowOf('guardrail.pii', SYSTEM_TENANT_ID, { modelSlug: 'gliner2-guardrails-pii-multi', version: 4 }), {
+            headers: { etag: '"4"' },
+          });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<AiTaskDefaultsPlatformScreen />);
+
+    const trigger = await screen.findByRole('combobox', { name: /default model for guardrail.pii$/i });
+    await selectOption(trigger, /GLiNER2 Guardrails PII/);
+    fireEvent.click(screen.getByRole('button', { name: /save guardrail.pii default/i }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
+    const put = calls.find((call) => call.method === 'PUT');
+    expect(put?.url).toBe(`/api/hope/admin/ai-task-defaults/row?taskKey=guardrail.pii&tenantId=${SYSTEM_TENANT_ID}`);
+    expect(put?.headers.get('if-match')).toBe('"3"');
+    expect(put?.body).toEqual({ modelSlug: 'gliner2-guardrails-pii-multi', expectedVersion: 3 });
   });
 
   it('surfaces the OCC conflict alert with reload when the PUT returns 412', async () => {
