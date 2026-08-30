@@ -237,7 +237,61 @@ Benchmark (Llama-3-8B, 15 GB safetensors, A10G — 2024, still the canonical mea
 
 **Fallback if the streamer misbehaves**: init-container pre-pull to a PVC — ~2× slower cold start, zero new failure modes. Only worth it if you scale/roll rarely.
 
-> **Unverified:** vLLM's page does not cover CA bundles for self-signed MinIO certs; it defers to the streamer's env docs. Plan on mounting the CA and setting `AWS_CA_BUNDLE`, but **verify**. Safest day-1: terminate MinIO TLS with a cluster-trusted cert, or use the in-cluster endpoint on an isolated network.
+> ~~**Unverified:** vLLM's page does not cover CA bundles for self-signed MinIO certs…~~
+> **VERIFIED in Phase 2 — `AWS_CA_BUNDLE` is the mechanism, and it is mandatory.**
+> Full evidence in `deployment/README.md` §8 and §10. Headlines:
+>
+> - The cluster's MinIO **is** TLS with a private issuer (`CN=ARCAAI Internal CA`),
+>   and the system trust store does not contain it. Without a bundle the load dies at the
+>   first LIST with `botocore.exceptions.SSLError … CERTIFICATE_VERIFY_FAILED`.
+> - A **full 2.483 GiB / 902-tensor AWQ stream** was run end to end against a TLS MinIO
+>   with a private CA, using vLLM's own loader chain (`pull_files` → `list_safetensors` →
+>   `SafetensorsStreamer`) — 10.51 s at 241.8 MiB/s. **No GPU load was performed.**
+> - Pitfall #7's real signature is NOT a DNS error. With virtual-host addressing on, the
+>   C++ streamer fails with the opaque `ValueError: … b'File access error'`, and only
+>   *after* config, tokenizer and shard listing have all succeeded — because those use
+>   boto3 while only the weight read uses the C++ client.
+> - **`--load-format runai_streamer` is confirmed available in `vllm/vllm-openai:v0.11.0`**:
+>   `docker/Dockerfile:529` installs `runai-model-streamer runai-model-streamer[s3]` into
+>   `vllm-openai-base`, which `vllm-openai` derives from. The init-container fallback is
+>   not needed.
+
+## 4B. The MinIO endpoint — resolved (Phase 2, 2026-08-30)
+
+§4 above and the Phase 1 handover both stalled on the same blocker: the only MinIO address
+the platform knew was `hope-secrets.MINIO_ENDPOINT = s3.taphuynh.dev`, a public Cloudflare
+Tunnel hostname with no Access application (TASK-828 §4). Streaming weights through it
+would be an internet round trip out of a PHI namespace, and it made the egress
+NetworkPolicy unwritable.
+
+**There is no MinIO Service, Endpoints or Pod anywhere in the cluster.** MinIO is
+out-of-band infrastructure. The Cloudflare tunnel's own route table says where it lives:
+
+```
+s3.taphuynh.dev  ->  https://10.10.1.102:9000   (originRequest.noTLSVerify: true)
+```
+
+A dedicated LAN host on the same `/24` as the k3s node. Measured from inside
+`hope-v2-dev` (`hope-text`, `GET /minio/health/live`, n=7):
+
+| Path | median | min | max |
+|---|---|---|---|
+| LAN `10.10.1.102:9000` | **2.0 ms** | 1.9 | 8.3 |
+| Tunnel `s3.taphuynh.dev:443` | **495.6 ms** | 387.4 | 1452.6 |
+
+**~248× per request**, and the streamer issues many concurrent ranged GETs.
+
+**Nothing new needs to be created for the endpoint itself**: the leaf's SAN carries
+`IP:10.10.1.102`, so the IP verifies directly, and this matches how `hope-secrets` already
+addresses Postgres (`10.10.1.250:5000`) and Redis (`10.10.1.120:6379`). MinIO was the only
+dependency reached over the public internet. What *does* need creating is the CA ConfigMap
+(`arcaai-internal-ca`) — the ARCAAI Internal CA is published nowhere in the namespace.
+Raised as a ROOT_CONFIG_REQUEST in `deployment/README.md` §9.
+
+**Wider consequence, out of scope here:** `hope-api` and every other MinIO client still use
+`s3.taphuynh.dev` with `MINIO_USE_SSL=true`, so all PHI object traffic currently leaves the
+cluster for the public internet. Same fix, different blast radius — `deployment/README.md`
+§9.3.
 
 ## 4A. Resolving a model — two sources (added 2026-08-29)
 
@@ -443,7 +497,9 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 ## 11. Verification Criteria
 - [ ] `vllm bench serve` at concurrency {10, 25, 50, 100}; TTFT p95 and aggregate tok/s recorded as the baseline
 - [ ] 40 concurrent in-flight generations sustained 10 min with `num_requests_waiting` at 0
-- [ ] Weights load from MinIO via `runai_streamer`; cold start measured and recorded
+- [x] **Weights load from MinIO via `runai_streamer`** — proven Phase 2 against a TLS MinIO
+      with a private CA: 902 tensors / 2.483 GiB in 10.51 s (`deployment/README.md` §10).
+      Cold start on the real node still to be measured (needs the GPU).
 - [ ] `VLLM_SERVER_DEV_MODE` unset — asserted by a test against the running pod's env
 - [ ] `/invocations`, `/pause`, `/abort_requests`, `/update_weights` unreachable from outside the router
 - [ ] No prompt text in pod logs under a full generation at INFO
@@ -460,7 +516,12 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 4. `--enable-log-requests` at DEBUG → PHI prompts in cluster logs.
 5. HPA on CPU; scale events arriving 5 minutes after saturation.
 6. Assuming MLflow promotion deploys something.
-7. `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING` unset → MinIO host-style DNS failures at load.
+7. `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING` unset → the weight read fails. **Corrected in
+   Phase 2:** the symptom is NOT a DNS error but the opaque
+   `ValueError: Could not receive runai_response from libstreamer due to: b'File access error'`,
+   raised only after config, tokenizer and shard listing have all succeeded (those use boto3;
+   only the weight read uses the C++ client). A smoke test that merely lists objects passes
+   with this set wrong.
 8. `gpu-memory-utilization` at 0.97+ → CUDA-graph capture OOM at startup.
 9. Enabling MRV2 + FP8 KV + LoRA on day 1 → nothing is attributable.
 10. Short `terminationGracePeriodSeconds` → dropped generations on every roll.
@@ -470,4 +531,5 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created from research. Sizing derived for 20–40 in-flight; security controls V-1..V-6 recorded; hot-swap ruled out via V-1. |
+| 2026-08-30 (Phase 2) | **MinIO weight path PROVEN, and the endpoint blocker resolved.** Ran vLLM's own loader transport (`pull_files` → `list_safetensors` → `SafetensorsStreamer`) end to end against a TLS MinIO with a private CA: **902 tensors, 2.483 GiB, 10.51 s, 241.8 MiB/s**, with `Qwen/Qwen3-4B-AWQ` verified against HuggingFace's published sha256 before upload. Negative controls prove `AWS_CA_BUNDLE` and `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=0` are both mandatory; corrected pitfall #7's failure signature (opaque `File access error`, not DNS) and the two-S3-clients reason behind it. **No GPU load was performed** — see `deployment/README.md` §10 "What was NOT proven". Resolved the endpoint (new §4B): MinIO is `10.10.1.102:9000` on the LAN, 2.0 ms vs 495.6 ms through the tunnel, with no in-cluster Service existing; repointed `config/vllm.env`, added `AWS_CA_BUNDLE` + CA mount, and **shipped the egress NetworkPolicy** that §4 of the handover previously could not write. Confirmed the image bundles the streamer (Dockerfile:529). Corrected the §2A weight estimate from 3.19 to the measured **2.483 GiB** (the checkpoint ties embeddings), raising honest capacity from ~6.8 to ~8.0 sequences. Two overstatements of my own were caught by the controls and corrected in place: `AWS_ENDPOINT_URL` alone IS sufficient with streamer 0.16.1, and the trailing slash on the model URI is optional. |
 | 2026-08-30 | **§2 superseded by §2A.** Sizing redone against the real hardware (2× RTX 2000 Ada, 16380 MiB, read from the node's GFD labels) instead of the assumed H100 80GB. Verdict: no useful model fits at the 20–40 target — short ~3× on VRAM and ~15× on bandwidth simultaneously; an 8B at BF16 does not load at all. Recorded that MIG/MPS/vGPU are all unavailable, so time-slicing's lack of VRAM isolation has no workaround. Added §5A (the `AiProviderConnection`/`AiTaskDefault` integration contract — the SYSTEM connection row already exists; the lever is `AiTaskDefault`, and there is no priority field). Corrected §8: time-slicing IS applied, the house grace-period max is 90s not 60s, `hope-ollama` is gone. Manifests, config and handover authored under `deployment/`; dev compose `inference` profile extended with the MinIO streaming path and V-2/V-4 controls. Status left **Pending** — enabling is an owner hardware decision. |
