@@ -2088,6 +2088,34 @@ describe('HarnessInternalService', () => {
       expect(contextItemRepository.update).not.toHaveBeenCalled();
     });
 
+    // TASK-825 — the adoption branch shares the empty-write defect
+    // `ContextService.updateContext` had: `encryptStringToCiphertext` returns
+    // `null` for `''`, so `encryptContentIntoEntity` no-ops and the UPDATE omits
+    // `encryptedContent` — the only persisted form of the note — while
+    // `updatedBy` and `_version` move. The fix cannot be "clear it" here: unlike
+    // a clinician emptying their own note, nobody INTENDED this. A model that
+    // returns nothing (or a note that is nothing but citation markers, which
+    // `stripSegmentCitationMarkers` removes) must not blank a note the clinician
+    // can see. `HarnessDraftRequest.content` is `@IsString()` with no
+    // `@IsNotEmpty()`, so `''` reaches here from the internal route directly.
+    it('SKIPS the adoption when the generated note is empty — never blanks the prior draft', async () => {
+      await service.persistDraft('consultation-1', draftBody('FIRST DRAFT') as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      contextItemRepository.updateWithVersion.mockClear();
+      contextItemRepository.encryptContentIntoEntity.mockClear();
+
+      const result = await service.persistDraft('consultation-1', draftBody('') as any, 'run-B:persist_draft');
+
+      // Degrade and continue — the same posture the branch already takes on OCC
+      // drift. The caller still learns the row id; the row itself is untouched.
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(contextItemRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(contextItemRepository.update).not.toHaveBeenCalled();
+      expect(contextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
+      // ...and no second note row was created as a workaround.
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+    });
+
     it('stamps the ownership marker on create so the NEXT execution can find it', async () => {
       await service.persistDraft('consultation-1', draftBody() as any, 'run-A:persist_draft');
 
