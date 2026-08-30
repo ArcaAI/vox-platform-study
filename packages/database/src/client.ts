@@ -208,6 +208,18 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // (rows are immutable; the migration REVOKEs UPDATE/DELETE from the app
   // role), the same shape as HarnessAuditEvent above.
   'WorkflowAssignmentChange',
+  // TASK-816 D-24 — the two POLICY change logs are the same identity-only WORM
+  // shape as WorkflowAssignmentChange directly above (their Prisma models say
+  // "Identity only — NO _version / _metadata / updatedAt / resourceStatus", and
+  // each migration REVOKEs UPDATE/DELETE from the app role), but they were never
+  // listed here. Without the entry the soft-delete extension injects
+  // `resourceStatus: { not: 'DELETED' }` into every findMany/findFirst/count/
+  // aggregate/groupBy and Prisma rejects the query — the AsrPipelineVersion
+  // failure above, armed and waiting for the first caller of
+  // `{Harness,Pipeline}PolicyChangeRepository.listForTenant` (neither has one yet,
+  // which is the only reason this has stayed dormant).
+  'HarnessPolicyChange',
+  'PipelinePolicyChange',
 ]);
 
 /**
