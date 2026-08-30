@@ -18,7 +18,15 @@ for any HOPE service**, which is the one genuinely strong property of this setup
 
 Auth is **per-app OIDC and the coverage is partial**, not a uniform edge gate.
 
-## 1. ⚠️ P1 — Argo CD is internet-reachable with no SSO
+## 1. ✅ CLOSED — Argo CD SSO (owner-assigned 2026-08-30)
+
+> **The owner is configuring Entra SSO for Argo CD directly.** Closed here rather than
+> tracked, so no agent picks it up and no one waits on it. The finding below stays as the
+> record of what was wrong and why it mattered.
+
+### The finding (historical)
+
+**⚠️ P1 — Argo CD was internet-reachable with no SSO**
 
 `argo.taphuynh.dev` is an orange-clouded tunnel route serving the Argo CD UI **directly**. Argo
 has **no `oidcConfig` and no `dexConfig`** (`get_settings`), and **no Cloudflare Access
@@ -104,13 +112,18 @@ The `hope-docker` tunnel is **down** since 2026-03-17 while `minio-hope.taphuynh
 points at it.
 
 Capacity, for planning: 16 CPU / 49 GiB / 110 pods, currently 43 pods and ~10.1 CPU requested.
-**GPU: 2× RTX 2000 Ada, time-sliced ×3 → `allocatable nvidia.com/gpu: 6`**, 2 requested. Relevant
-to TASK-823 — real GPUs exist, but they are 2 physical cards on the same box that runs everything else.
+**GPU: 2× RTX 2000 Ada (~16 GiB each), time-sliced ×3 → `allocatable nvidia.com/gpu: 6`**, 2
+requested. **Owner-confirmed 2026-08-30: those two cards are what is assigned to the cluster.**
+
+Relevant to TASK-823, and the constraint is sharper than "2 cards": `mig.capable=false`,
+`mps.capable=false`, `vgpu.present=false` — **no isolation mechanism exists on this hardware**, so
+time-slicing hands out 6 fungible permits over 2 cards with no VRAM accounting. Two pods on slices
+of the same card contend for the same 16 GiB with nothing to stop them. LM Studio also runs on the
+node host and holds VRAM entirely outside k8s accounting.
 
 ## 8. Suggested order
 
-1. **Put Cloudflare Access in front of Argo CD** (§1) — one Access app against the existing Entra
-   IdP. Minutes of work, closes a cluster-takeover path.
+1. ~~Argo CD~~ — **CLOSED, owner-assigned** (§1).
 2. **Access in front of the data-plane routes** (§4), or remove the routes that need not be public.
 3. **Fix Grafana auth + root_url** (§3).
 4. Bring the tunnel config under git (§6) — `config_src: "local"` with the config in the deploy repo.
