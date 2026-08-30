@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **Phases 1–2 `Completed`** 2026-08-30. Phase 3 (screens) and Phase 4 (drops) remain — but §7 shrinks Phase 4 to TWO COLUMNS. |
+| **Status** | **Phases 1–3 `Completed`** 2026-08-30. Phase 3 retired NOTHING — all three screens are already-retired or sole editors of surviving tiers (§8). Only Phase 4 remains, and §7 shrinks it to TWO COLUMNS. |
 | **Type** | `refactor` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -641,3 +641,110 @@ The control-plane platform tier for thresholds is unreachable on **both** lanes,
 `getEffectivePolicy` conflates "the tenant has an opinion" with "a row exists". Making it reachable is
 a contract change on the internal route, not a Phase 2 edit. Also, both WORM audit trails are written
 and never surfaced — `listForTenant` has no callers anywhere.
+
+---
+
+## 8. Phase 3 — the screens: **nothing left to retire** (lane `lane-816p3-screens`, 2026-08-30)
+
+**Verdict: zero of the three screens can be retired.** One was already retired before this lane
+opened; the other two are each the ONLY editor for a tier Phases 1 and 2 proved survives. No screen
+was deleted, no route was redirected, and no nav entry was removed.
+
+This is the third consecutive phase whose brief was wrong in the same direction. Phase 1 rejected
+five of six proposed `llmBinding` fields; Phase 2 rejected node-config migration for 28 of 29 policy
+columns; Phase 3 rejects all three retirements. The pattern is consistent and worth naming: **"retire
+the legacy authoring screen" kept being read as a consequence of the migration, when the migration
+never covered what those screens actually author.**
+
+### 8a. Screen-by-screen
+
+| Screen | What it still authors | Verdict |
+|---|---|---|
+| `/agents` (tier 30-49) | **nothing — subject deleted.** `DepartmentAgent` was retired by TASK-815 | **already retired**, correctly. No work available |
+| `/agentic-policy` (tier 10-19) | 7 agentic loop knobs + `mcpToolsEnabled`, `maxEditReruns`, `maxRegen`, the three safety/PHI kill-switches, the live-doc engine kill-switch, and the `agentic.*` registry keys | **CANNOT be retired** — sole editor of surviving columns |
+| `/ai-task-defaults` (tier 10-19) | SYSTEM-tenant rows for `guardrail.validate`, `nlp.ner`, `nlp.classification` | **CANNOT be retired** — sole editor of three of §0's fourteen surviving keys |
+
+**`/agentic-policy`.** Every field in `KNOB_GROUPS` (`components/agentic-knobs.ts`) maps to a column
+§8c explicitly marked **reject** — the 7 agentic knobs and `mcpToolsEnabled` ("SYSTEM-only,
+loop-level"), `maxRegen` ("LOOP budget, not per-node"), and `safetyEnabled`/`phiEnabled`/
+`phiFailClosed` ("moving them to node config would hand a tenant graph author a super-admin gate — a
+privilege regression, not a migration"). It authors **none** of the two dead columns
+(`safetyProvider`/`safetyModel` live on `/harness/policy`, not here), so there is not even a partial
+trim available.
+
+It is also load-bearing for a screen that already deferred to it. `/harness/policy` demoted BOTH its
+global-default form and its live-config editor to read-only summaries with `Edit in Agentic policy`
+deep links, on the one-authoritative-editor-per-resource rule in `13-nextjs-apps.md`. Retiring
+`/agentic-policy` would delete the only editor for 22 surviving `HarnessPolicy` columns **and** strand
+two deep links.
+
+**`/ai-task-defaults`.** It edits exactly three task keys, and all three are in §0's fourteen that
+have no node to relocate onto. It edits **zero** of the three node-reachable keys
+(`text.live`/`text.finalize`/`text.test`) — those are the tenant `/ai-configuration` screen's, which
+was never in this phase's scope. So the screen Phase 1 made partially redundant is not one of the
+three this phase was pointed at.
+
+### 8b. The brief's `/prompt-studio` chain warning was already stale
+
+The brief flagged that `/prompt-studio` → `/agents?tab=governance` would become a redirect-to-a-
+redirect once `/agents` retired. It was fixed when `PromptTemplate` got its own route: the live
+target is `/prompt-templates?tab=governance`. Verified across all four `redirect()` pages — every
+target resolves to a real screen, and no `NAV_ENTRIES` route is a redirect.
+
+### 8c. What this lane did ship
+
+Nothing that retires anything. Two verification gaps and one stale comment, all inside the three
+screens' own surface:
+
+- **The `/agents` redirect target was unpinned.** `retired-route-redirects.test.tsx` exists precisely
+  so a typo'd or dropped redirect cannot silently 404 a saved bookmark — and it covered
+  `/prompt-studio` and `/pstudio` but not `/agents`, because that page sits in the `(tenant)` group
+  while the spec sits in `(global)`. TASK-815 shipped the redirect and pinned nothing. Now pinned.
+- **Two structural guards** for the defect class the retirement policy names but nothing enforced:
+  a retired route that forwards to another retired route, and a `NAV_ENTRIES` entry pointing at a
+  redirect. Both hold today by inspection only — which is exactly the state the `/prompt-studio`
+  chain was in before it broke. They matter most in Phase 4, when more routes retire.
+- **A stale `nav-config.ts` comment** still named `/agents` as the home of prompt governance, after
+  `/agents` itself retired — the authoritative route inventory pointing a reader at a redirect. It
+  also carried a mangled `redirect page.:` sentence splice.
+
+All three guards are **mutation-verified**: breaking the `/agents` target, re-creating the
+`/prompt-studio` → `/agents` chain, and re-adding `/agents` to `NAV_ENTRIES` each turn exactly one
+assertion red with the offending route named.
+
+Gates: admin-console test 2147 (249 files) · typecheck clean · build 88/88 pages · `pnpm lint` 40/40,
+and admin-console re-run through `eslint` directly because `turbo run lint` replays cache across
+sibling worktrees.
+
+### 8d. Reported, not closed
+
+- **The console's task-key mirror has drifted a THIRD time.**
+  `features/ai-task-defaults/api/types.ts` carries 15 of the backend's 17 `AI_TASK_KEYS` — missing
+  `guardrail.pii` and `guardrail.pii.spans` (added by TASK-799 R6). `READ_ONLY_TASK_KEYS` is derived
+  from that list and drives the tenant "Effective models" table, which iterates the console list and
+  `byKey.get()`s the response — so the gateway returns 12 platform-managed rows and the table renders
+  **10**, silently dropping both, under a heading that counts 10. The platform's PII model selection
+  is invisible in every console surface. The file's own doc comment declares the invariant it is
+  violating (*"Keep the two lists in lockstep"*) and records the two prior drifts (3-vs-9, then
+  TASK-740 D-2's four keys). Nothing enforces it, which is why it keeps recurring.
+  **Not fixed here**: the render surface is `/ai-configuration` (tier 30-49), outside this phase's
+  three screens, and whether `guardrail.pii` deserves an *editor* rather than a read-only row is an
+  owner call — the backend marks both keys SUPER_ADMIN-only.
+- **The `/ai-task-defaults` platform screen has no axe assertion**, while `/agentic-policy` and the
+  tenant AI-configuration surfaces do. Not introduced here and not touched here.
+- **Phase 3 of this ticket should be closed as "no action possible"** rather than carried. Its two
+  live screens are load-bearing editors; the retirement premise did not survive Phases 1 and 2.
+
+### 8e. What was NOT verified
+
+`pnpm --filter @arcaai/admin-console build` proves these screens compile and prerender; it does not
+prove they render correctly in a browser. **No runtime pass was done** — a worktree cannot start the
+full stack, and the gateway routes these screens depend on were never called. The axe evidence above
+is the existing jsdom suite, which is structurally blind to colour-contrast and scroll-focus rules,
+so **both themes are unverified at runtime**. Nothing in this lane changes a rendered surface (one
+test file, one comment), so that gap is inherited, not introduced.
+
+## 10. Change History (continued)
+| Date | Change |
+|---|---|
+| 2026-08-30 | **Phase 3** (`lane-816p3-screens`): **no screen retired.** `/agents` was already retired by TASK-815; `/agentic-policy` and `/ai-task-defaults` are each the sole editor for tiers §0 and §7c proved survive, so both are hard stops (§8a). Pinned the previously-unpinned `/agents` redirect target and added two mutation-verified structural guards (no redirect chain, no nav entry on a redirect); corrected a stale `nav-config.ts` comment naming the retired `/agents`. Third console task-key drift reported at §8d, not closed. |
