@@ -149,19 +149,27 @@ async def resolve_text_selection(
     return LlmJudgement(policy, policy.text_provider, policy.text_model), None
 
 
-async def resolve_instruction(template_id: Any, tenant_id: str, *, missing_code: str) -> str:
+async def resolve_instruction(
+    template_id: Any, tenant_id: str, *, missing_code: str, api: Any | None = None
+) -> str:
     """The tenant's instruction text, from an APPROVED ``PromptVersion``. Never a default.
 
     ``missing_code`` names the caller's own "nothing was bound" error code so the degrade reads as
     the configuration gap it is.
+
+    ``api`` lets a caller in ANOTHER module pass its OWN api-client accessor (TASK-826). This
+    module's docstring explains why each module binds its own: the accessors are what its tests
+    redirect, so a helper that closed over THIS module's ``_api_client`` would be unpatchable from
+    a caller's suite, and — worse in production terms — one activity would resolve its selection
+    through one client object and its instruction through another. The APPROVAL BAR itself stays
+    here in one place, which is the thing that must not be copied.
     """
     if not isinstance(template_id, str) or not template_id:
         raise InstructionUnavailable(missing_code, "no instruction template is bound to this node")
 
+    client = api if api is not None else _api_client(get_settings())
     try:
-        resolved = await _api_client(get_settings()).get_resolved_prompt_template(
-            template_id, tenant_id=tenant_id
-        )
+        resolved = await client.get_resolved_prompt_template(template_id, tenant_id=tenant_id)
     except ApiServiceError as exc:
         raise InstructionUnavailable(
             "instruction_resolution_unreachable",
