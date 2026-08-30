@@ -156,14 +156,31 @@ So: **hand-author entity, factory, mapper and repository.** Exemplars: `AiTaskDe
 
 ## 6. Worktree protocol
 
-0. **ASSERT YOUR BASE BEFORE YOU WRITE A LINE.** Step zero because this has gone wrong
-   **three times, in two different directions**:
+0. **ASSERT YOUR BASE BEFORE YOU WRITE A LINE — AND KNOW HOW TO FIX IT.** Step zero because
+   this has gone wrong **four times, in three different directions**:
 
    ```bash
    # LOCAL dev-2.2, not origin/dev-2.2 — see the warning below.
-   git merge-base --is-ancestor dev-2.2 HEAD && echo "base OK" || echo "STALE BASE — STOP"
-   git rev-list --count dev-2.2..HEAD    # expect 0, else you are on someone else's work
+   git rev-list --count dev-2.2..HEAD    # commits you have that dev-2.2 lacks
+   git rev-list --count HEAD..dev-2.2    # commits dev-2.2 has that you lack
+   git merge-base HEAD dev-2.2
    ```
+
+   **Then act on which of the three cases you are in.** The earlier version of this step said
+   only "STALE BASE — STOP", and that under-served the common case:
+
+   | Case | Meaning | Do |
+   |---|---|---|
+   | `HEAD..dev-2.2` is 0 | base current | proceed |
+   | `merge-base` **equals HEAD** | strictly BEHIND, not divergent | **`git merge --ff-only dev-2.2`**, then proceed. Report from→to |
+   | `merge-base` is neither | genuinely divergent | **STOP and report.** Do not rebase yourself |
+
+   > A fast-forward of a lane's OWN throwaway worktree branch is **not** a shared-surface
+   > operation — it cannot conflict and cannot lose work. Banning it along with real merges
+   > cost a full Lane F′ dispatch on 2026-08-30: the lane was three commits behind on files it
+   > would never touch, correctly refused to fix its own base because the brief forbade every
+   > branch operation, and returned having written nothing. **Forbid merges INTO `dev-2.2`;
+   > permit `--ff-only` onto the lane's own branch.**
 
    **What went wrong, so the check is understood rather than copied:**
 
@@ -195,7 +212,12 @@ So: **hand-author entity, factory, mapper and repository.** Exemplars: `AiTaskDe
    poppable in every other tree. For a baseline: commit, then `git checkout HEAD~1 -- <path>`.
 5. **Refresh from `dev-2.2` before finishing.** A stale base is the most common source of a
    surprise merge conflict.
-6. **Merge BEFORE cleanup — hard gate.** Finish → lane gates green → orchestrator merges into
+6. **Never build a container image locally** (owner directive, 2026-08-30). GitLab CI is the
+   only builder. A Dockerfile change is authored and argued from the file plus its
+   `.gitlab/ci/*` job; "the image builds" is not evidence, because images are promoted by
+   DIGEST from a CI pipeline and never rebuilt, so a locally-built image can never be the one
+   that ships. Static checks (hadolint, YAML lint, reading published base tags) are fine.
+7. **Merge BEFORE cleanup — hard gate.** Finish → lane gates green → orchestrator merges into
    `dev-2.2` from the primary checkout → **re-run gates after the merge** (a clean merge is not
    a passing build) → only then `git worktree remove`.
    **Never `--force`, never `git worktree prune` "to tidy up".** An abandoned worktree is
