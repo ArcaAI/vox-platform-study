@@ -8,6 +8,7 @@
 | **Depends on** | TASK-822 (MLflow) for the promotion path; independent for first deploy |
 | **Feeds** | TASK-818 (router) — vLLM is provider priority #1 |
 | **Target** | ~200 concurrent users ≈ **20–40 in-flight generations**; GPUs already present on the k3s cluster |
+| **⚠️ Blocked on** | **Hardware.** The cluster's GPUs are 2× RTX 2000 Ada (16 GiB, 224 GB/s), not the H100 §2 assumed. §2A shows the target is unreachable by ~3× on VRAM and ~15× on bandwidth. Manifests are authored and gate-clean but ship at `replicas: 0`; enabling is an owner decision that needs a card in the A100/H100 class. |
 
 ## 1. Requirement Analysis
 
@@ -18,6 +19,14 @@ Stand up a self-hosted **vLLM** OpenAI-compatible inference server as the top-pr
 So this ticket is: **cluster deployment + MinIO weight loading + MLflow promotion + the security posture** — not a new adapter.
 
 ## 2. Sizing — arithmetic, not rules of thumb
+
+> ### ⚠️ SUPERSEDED — this section assumed H100 80GB. The hardware is 16 GiB.
+> Everything in §2 is arithmetically correct **for the GPU it assumed** and is kept
+> only as the record of what changed. The cluster's actual GPUs are **2× NVIDIA
+> RTX 2000 Ada, 16380 MiB each**. Read **§2A**, which redoes the derivation
+> against the real hardware and reaches a materially different conclusion:
+> **nothing useful fits at the 20–40 in-flight target, and the gap is not a
+> tuning gap.**
 
 KV bytes/token = `2 × layers × kv_heads × head_dim × dtype_bytes`.
 
@@ -38,6 +47,169 @@ KV bytes/token = `2 × layers × kv_heads × head_dim × dtype_bytes`.
 Tuning rules from vLLM: `max_num_batched_tokens` ≥ 2048 and **> 8192 for throughput on large GPUs**; smaller (2048) improves inter-token latency, larger improves TTFT; constraint `max_num_batched_tokens >= max_num_seqs`. Frequent preemptions ⇒ raise `gpu_memory_utilization` or lower `max_num_seqs`/`max_num_batched_tokens`. **V1's preemption mode is `RECOMPUTE`, not `SWAP`.**
 
 **Do not declare done without `vllm bench serve`** swept at concurrency {10, 25, 50, 100} against the real prompt/response length distribution.
+
+## 2A. Corrected sizing — the real hardware (2026-08-30)
+
+### 2A.0 Ground truth
+
+Read from the node's own GPU-Feature-Discovery labels and the live API, not from
+documentation:
+
+| Fact | Value | Source |
+|---|---|---|
+| GPU model | NVIDIA RTX 2000 Ada Generation | `nvidia.com/gpu.product` |
+| **VRAM per card** | **16380 MiB = 15.99 GiB** | `nvidia.com/gpu.memory` |
+| Cards | 2, one node | `nvidia.com/gpu.count`, `cluster_list` |
+| Compute capability | 8.9 (Ada) — FP8 supported | `nvidia.com/gpu.compute.major/minor` |
+| **MIG** | **`false`** | `nvidia.com/mig.capable` |
+| **MPS** | **`false`** | `nvidia.com/mps.capable` |
+| **vGPU** | **`false`** | `nvidia.com/vgpu.present` |
+| Sharing | time-slicing, `replicas: 3` → allocatable 6 | `nvidia.com/gpu.sharing-strategy`, node capacity |
+| GPU slots requested | **2 of 6** (`hope-stt`, `hope-stt-worker`, 1 each) | grep of `base/*.yaml` |
+| Node CPU / memory | 16c / 47 GiB; **10.09c / 26 GiB requested** | `kubernetes_capacity` |
+| Node is a VM | `Standard-PC-Q35-ICH9-2009` (QEMU/KVM, passthrough) | `nvidia.com/gpu.machine` |
+| Driver / CUDA runtime | 590.48.01 / 13.1 | `nvidia.com/cuda.*` |
+
+**Two corrections to §8 fall straight out of this**: time-slicing **is applied**
+(§8 says it "is not applied" — `sharing-strategy=time-slicing` and
+`allocatable: 6` say otherwise), and `hope-ollama` is **gone**, so
+`gpu-time-slicing.yaml`'s "3 steady-state consumers" comment is stale at 2.
+
+### 2A.1 Time-slicing is not partitioning
+
+`allocatable: nvidia.com/gpu: 6` means **six scheduling permits over two
+physical cards**, three per card. The device plugin:
+
+- **tracks no VRAM at all** — a slice is a permit to open a CUDA context, not a
+  memory reservation, and nothing enforces the sum on a card;
+- **cannot express "give me a whole card"** — slices are fungible; a request for
+  3 may be satisfied from two different cards
+  (`failRequestsGreaterThanOne: false` permits the request, guarantees nothing);
+- **cannot pin a pod to a specific physical card**;
+- **context-switches compute**, so a neighbour's long prefill directly inflates
+  this pod's TTFT.
+
+And there is **no fallback isolation mechanism on this hardware**: MIG is
+unsupported by AD107, MPS is off, vGPU is absent. NVIDIA's own GPU-Operator docs
+state time-slicing provides no memory isolation; `gpu-time-slicing.yaml` already
+records that a CUDA OOM in one pod can crash every pod sharing the card.
+
+**So `--gpu-memory-utilization` is a fraction of the whole card, applied by a pod
+that cannot know which neighbours it will get.**
+
+### 2A.2 KV arithmetic against 15.99 GiB
+
+`KV bytes/token = 2 × layers × kv_heads × head_dim × dtype_bytes`
+
+For a Qwen3-class 8B (36 layers, 8 KV heads, head_dim 128):
+`2 × 36 × 8 × 128 × 2 = 147,456 B` = **144 KiB/token** at BF16, 72 KiB at FP8.
+Qwen3-4B has the *same* KV geometry — quantizing the model shrinks weights, not
+KV per token.
+
+Weights (vocab 151,936, untied embeddings; AWQ leaves embed/lm_head at FP16):
+
+| Model | BF16 | AWQ W4A16 |
+|---|---|---|
+| Qwen3-8B | 16.38 GB = **15.25 GiB** | 6.10 GB = **5.68 GiB** |
+| Qwen3-4B | 8.04 GB = 7.49 GiB | 3.43 GB = **3.19 GiB** |
+
+**Scenario A — a whole card to itself** (not achievable here; see 2A.1).
+Budget at `util 0.90` = 14.40 GiB; activations + CUDA graphs ≈ 1.2 GiB.
+
+| Model | KV budget | KV tokens | @8k ctx | @4k ctx |
+|---|---|---|---|---|
+| **Qwen3-8B BF16** | **negative** | — | **DOES NOT LOAD** | — |
+| Qwen3-8B AWQ | 7.52 GiB | 54,760 | 6.7 seq | **13.4 seq** |
+| Qwen3-8B AWQ + FP8 KV | 7.52 GiB | 109,520 | 13.4 seq | 26.7 seq |
+| Qwen3-4B AWQ | 10.21 GiB | 74,350 | 9.1 seq | 18.2 seq |
+
+The 8B at BF16 does not merely run short of KV — **its weights alone exceed the
+card**, so it refuses to start. Quantization is the entry ticket here, not an
+optimisation.
+
+To reach **40 sequences @ 4k with an 8B**: `40 × 4096 × 144 KiB` = **23.6 GiB of
+KV**, + 5.68 weights + 1.2 activations = **~30.5 GiB on one device**. That is
+roughly **two whole cards' worth of memory on a single device** — and TP=2
+across the two cards does not deliver it either, because each card must still
+hold its own shard *plus* the STT pods already resident.
+
+**Scenario B — the bandwidth ceiling, which VRAM alone understates.**
+Decode is memory-bandwidth-bound: each step reads all weights plus the KV of
+every sequence in the batch. RTX 2000 Ada = **224 GB/s** (128-bit GDDR6).
+H100 SXM = 3,350 GB/s, **~15×**.
+
+| Batch | Ctx | Bytes/step | Step @224 GB/s | tok/s per user | Aggregate |
+|---|---|---|---|---|---|
+| 1 | 4k | 6.70 GB | 29.9 ms | 33 | 33 |
+| 13 | 4k | 13.95 GB | 62.3 ms | **16** | 209 |
+| **40** | **4k** | **30.3 GB** | **135 ms** | **7.4** | 296 |
+
+These are **ceilings at 100% bandwidth efficiency**; achieved is typically
+60–80%. So at the ticket's own target the card delivers **~5 tok/s per user in
+practice** — below comfortable reading speed, and it would present as a visibly
+stalling stream. Even the 13-sequence point that VRAM permits gives ~11 tok/s
+achieved.
+
+**Scenario C — what the scheduler actually permits.**
+Nothing stops vLLM landing on a card already hosting both STT pods
+(~3.9 + ~3.7 GiB, measured in `gpu-time-slicing.yaml`). That leaves **~8.0 GiB**:
+
+| Model | KV | @4k ctx |
+|---|---|---|
+| Qwen3-8B AWQ | 1.12 GiB | **2.0 seq** |
+| Qwen3-4B AWQ | 3.81 GiB | **6.8 seq** |
+
+And vLLM must be configured for that worst case **permanently** — there is no
+"0.90 when alone, 0.50 when crowded". Any higher value makes the outcome
+scheduling-order-dependent: whichever CUDA context allocates last OOMs, and the
+likely casualty is `hope-stt`, a working production capability.
+
+**The ledger above is optimistic.** LM Studio runs on the node **host**
+(`out-of-band/lmstudio-endpoints.yaml` → `10.10.1.10:1234`) and holds VRAM
+outside k8s accounting entirely; `base/dashboards/gpu.json` already warns that
+GPU work runs outside scheduler control. Real free VRAM must be measured with
+`nvidia-smi` before any number here is trusted.
+
+**Scenario D — the rest of the node.** 5.9 CPU and 21 GiB RAM remain, on a box
+that is *also* the k3s control plane and is itself a VM. One vLLM pod at
+`cpu 2 / mem 8Gi` takes ~34% of the remaining CPU and ~38% of the remaining RAM.
+
+### 2A.3 Verdict
+
+**No useful model fits at the target concurrency, and the shortfall is
+structural, not a matter of flags.** The hardware is short **~3× on VRAM** and
+**~15× on bandwidth simultaneously**; quantization addresses the first and
+barely touches the second, because at batch the KV term dominates the read.
+
+The only self-consistent operating point on this node is a **4B-class AWQ model
+at `--gpu-memory-utilization 0.50`, `--max-model-len 4096`, serving ~7 concurrent
+sequences** — 4–6× short of the 20–40 target, with a model whose clinical
+summarization quality is unestablished. For calibration, the **only vLLM
+`AiModel` row in the seed catalogue** (`vllm-medgemma-1.5-27b-it`) declares
+`memorySizeMb: 55296` — **54 GiB**, about three and a half of these cards for
+weights alone. It cannot run here at all.
+
+**What the target actually requires** (40 in-flight, 4k avg, 8B-class,
+≥25 tok/s/user): **≥ ~31 GiB usable VRAM on one device** and **≥ ~1.2 TB/s** of
+memory bandwidth.
+
+| Option | VRAM | Bandwidth | Meets the target? |
+|---|---|---|---|
+| 2× RTX 2000 Ada (today) | 16 GiB each | 224 GB/s | **No — on either axis** |
+| 1× L40S / RTX 6000 Ada | 48 GB | 864 GB/s | VRAM yes; ~18 tok/s/user at B=40 |
+| **1× A100 80GB** | 80 GB | 2,039 GB/s | **Yes** |
+| **1× H100** | 80 GB | 3,350 GB/s | **Yes, with headroom** |
+
+**A single A100 80GB or H100 replaces both current cards and meets this ticket as
+written.** That is a purchasing decision, and it is the honest answer: the owner
+can buy hardware, and no amount of flag-tuning substitutes for it.
+
+**Recommended disposition** (owner decision): ship the manifests at
+`replicas: 0` — the security posture, the first NetworkPolicy, the MinIO weight
+path and the config are all reviewable and version-controlled, and enabling is a
+one-line change the day the hardware exists. Meanwhile `apps/text` keeps LM
+Studio (TASK-824) as its working backend, which is what the SYSTEM
+`AiTaskDefault` rows already point at.
 
 ## 3. Security posture — non-negotiable for PHI
 
@@ -113,6 +285,77 @@ archived**; and no Argo CD ConfigManagementPlugin resolving MLflow URIs exists. 
 
 Therefore: MLflow alias flip → webhook → CI resolves `models:/name@champion` to an immutable MinIO URI + checksum → commits the URI and `--served-model-name` into the deployment repo → Argo CD rolling update. Details in TASK-822 §Phase 3. **Rollback = repoint the alias + revert the commit.**
 
+## 5A. Integration contract — routing `apps/text` to vLLM with no router change
+
+**The `AiProviderConnection` SYSTEM row already exists and is already enabled.**
+Verified in `packages/database/src/prisma/db_main/seed/17-ai-provider-connection.ts`
+(id `87000000-0000-0000-0000-000000000007`):
+
+| Field | Value | Notes |
+|---|---|---|
+| `tenantId` | `00000000-0000-0000-0000-000000000000` | SYSTEM — the platform-default tier |
+| `service` | `llm` | plain `String` column; no Prisma enum exists |
+| `provider` | `vllm` | **lowercase**; the member is `'vllm'`, not `VLLM` |
+| `baseUrl` | `http://hope-vllm:8000/v1` | **top-level column**, not JSON — and it already matches the Service this ticket ships |
+| `enabled` | `true` | |
+| `encryptedApiKey` | ciphertext of `not-needed` | the platform's self-host placeholder; a **keyless row is dropped** from the `provider_overrides` fold, so this must stay populated |
+
+`provider` is validated app-side against `AI_MODEL_PROVIDERS`
+(`seed/ai-models/shared.ts`), which contains `'vllm'`. `vllm` is deliberately
+**absent** from `CLOUD_BYO_PROVIDERS`, making it a **SYSTEM-tenant-only** engine:
+a tenant row for `(llm, vllm)` is a 403, which is correct — a self-hosted engine
+is platform infrastructure, not a BYO credential.
+
+### There is no "provider priority" field — priority is a model selection
+
+Nothing in the schema or in `apps/text` ranks providers. "vLLM is priority #1"
+is expressed entirely by **which model the winning `AiTaskDefault` row names**.
+Precedence, from `HarnessPolicyService.resolveTextSelection`:
+
+```
+0. workflow node's own llmBinding.modelSlug   (explicit, fails closed)
+1. AiTaskDefault[taskKey], tenant → SYSTEM     ← the lever
+2. legacy HarnessPolicy.textProvider/textModel, tenant → SYSTEM
+```
+
+So the **entire** change is repointing two SYSTEM `AiTaskDefault` rows:
+
+| `taskKey` | current `modelSlug` | target |
+|---|---|---|
+| `text.live` | `lms-gemma-4-e2b-it-qat` | a slug whose `AiModel.provider = 'vllm'` |
+| `text.finalize` | `lms-gemma-4-e2b-it-qat` | same |
+
+The seed is **create-only**, so a re-run of `pnpm db:seed` will not update an
+existing row. Repoint at runtime via
+`PUT /api/v1/admin/ai-task-defaults/text.live`, or author a new seed value with
+a new id.
+
+### ⚠️ `--served-model-name` must equal `AiModel.sourceUri`
+
+`resolveTextSelectionForKey` returns `model: model.sourceUri`, and that string
+goes on the wire as the OpenAI `model` field. If the manifest's
+`VLLM_SERVED_MODEL_NAME` differs from the `sourceUri` of the `AiModel` row that
+`AiTaskDefault` points at, **every generation 404s** — and it fails at request
+time, not at startup, so nothing catches it until traffic arrives. Keep them
+identical.
+
+### Two traps recorded so they are not rediscovered
+
+- **Do not add `TEXT_VLLM_BASE_URL`** (or any `TEXT_VLLM_*` var) to `.env.dev`,
+  `turbo.json#globalEnv` or `Settings`. `apps/text` holds **no endpoint config**:
+  `require_base_url` reads the per-request `AiProviderConnection` the gateway
+  injects, and fails closed with a typed 503 otherwise. The variable was deleted
+  with the engine sub-configs (TASK-736/799) and
+  `test_task799_config_surface.py` rejects reintroducing it structurally — it
+  walks the pydantic field tree against an allow-list, so no spelling gets
+  through. The reference to it in the seed comment describes history.
+- **Enabling `--api-key` is a coupled change.** The row's key is the placeholder
+  `not-needed`. Setting `--api-key` on the engine without simultaneously
+  updating the row via `PUT /api/v1/admin/providers/llm/vllm` produces a 401 on
+  every generation. This ticket therefore ships **without** `--api-key`; the
+  enforcing controls are the nginx allow-list (V-2) and the NetworkPolicy (V-3),
+  and `--api-key` would in any case protect only `/v1`, `/v2` and `/inference`.
+
 ## 6. Multi-model shape
 
 **One vLLM Deployment per base model** is the 2026 default and the fast win: isolated KV cache, independent scaling and rollout, trivially expressed as Argo CD apps. Cost is one GPU floor per model.
@@ -168,6 +411,23 @@ meanwhile so the need is visible.
 Also note: `gpu-time-slicing.yaml` (3 virtual slices per physical GPU) exists in the repo but **is
 not applied**. Any replica count must be checked against that capacity budget, not assumed.
 
+> **Corrections to §8, verified against the live estate 2026-08-30:**
+> - **Time-slicing IS applied.** The node reports
+>   `nvidia.com/gpu.sharing-strategy=time-slicing`, `nvidia.com/gpu.replicas=3`
+>   and `allocatable: nvidia.com/gpu: 6`. The claim above is stale.
+> - **The house grace-period maximum is 90s, not 60s.**
+>   `harness-worker.yaml` sets `terminationGracePeriodSeconds: 90`; `api.yaml`,
+>   `stt.yaml` and `stt-worker.yaml` set 60. The 600s this ticket needs is still
+>   far outside the norm and still needs the justification it now carries in the
+>   manifest, but the stated baseline was wrong.
+> - **`hope-ollama` no longer exists**, so `gpu-time-slicing.yaml`'s "3
+>   steady-state consumers" comment is stale at 2 (`hope-stt`,
+>   `hope-stt-worker`). Slot pressure is lower than that comment implies —
+>   **but slots are not VRAM**, which is the constraint that actually binds
+>   (§2A.1).
+> - **`--max-model-len` and replica count are not the binding constraint here;
+>   VRAM and memory bandwidth are.** See §2A.
+
 ## 9. Metrics and alerts
 `vllm:num_requests_running`, `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc`, `vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:e2e_request_latency_seconds`, `vllm:request_queue_time_seconds`, `vllm:prefix_cache_queries`/`_hits`, `vllm:prompt_tokens_total`, `vllm:generation_tokens_total`, `vllm:request_success_total{finished_reason}`.
 
@@ -210,3 +470,4 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created from research. Sizing derived for 20–40 in-flight; security controls V-1..V-6 recorded; hot-swap ruled out via V-1. |
+| 2026-08-30 | **§2 superseded by §2A.** Sizing redone against the real hardware (2× RTX 2000 Ada, 16380 MiB, read from the node's GFD labels) instead of the assumed H100 80GB. Verdict: no useful model fits at the 20–40 target — short ~3× on VRAM and ~15× on bandwidth simultaneously; an 8B at BF16 does not load at all. Recorded that MIG/MPS/vGPU are all unavailable, so time-slicing's lack of VRAM isolation has no workaround. Added §5A (the `AiProviderConnection`/`AiTaskDefault` integration contract — the SYSTEM connection row already exists; the lever is `AiTaskDefault`, and there is no priority field). Corrected §8: time-slicing IS applied, the house grace-period max is 90s not 60s, `hope-ollama` is gone. Manifests, config and handover authored under `deployment/`; dev compose `inference` profile extended with the MinIO streaming path and V-2/V-4 controls. Status left **Pending** — enabling is an owner hardware decision. |
