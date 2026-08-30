@@ -88,6 +88,12 @@ def _make_task_manager(**overrides):
     )
     tm.get_chunks = AsyncMock(return_value=[])
     tm.read_chunks_blocking = AsyncMock(return_value=[])
+    # TASK-818: the replay-buffer half. These MUST be stubbed explicitly — a
+    # bare AsyncMock returns a truthy MagicMock, so `stream_exists` would
+    # report a buffer for every id and the "unknown id" paths would never fire.
+    tm.read_events = AsyncMock(return_value=[])
+    tm.stream_exists = AsyncMock(return_value=False)
+    tm.is_cancel_requested = AsyncMock(return_value=False)
     tm.append_chunk = AsyncMock()
     for k, v in overrides.items():
         setattr(tm, k, v)
@@ -358,4 +364,10 @@ class TestStreamingGenerationBackground:
 
         tm.update_task.assert_any_call("t-1", status=TaskStatus.RUNNING)
         tm.update_task.assert_any_call("t-1", status=TaskStatus.COMPLETED)
-        assert tm.append_chunk.call_count == 2
+        # TASK-818: deltas are coalesced into `append_batch`; the terminal frame
+        # keeps its own `append_chunk` write (once per generation, and it is the
+        # frame the gateway meters from).
+        assert tm.append_chunk.call_count == 1
+        assert tm.append_chunk.call_args.args[1].type == "done"
+        batched = [e for call in tm.append_batch.call_args_list for e in call.args[1]]
+        assert [e.event for e in batched] == ["chunk"]

@@ -131,7 +131,7 @@ interface TextStreamFrame {
 }
 
 /**
- * Terminal state of a single `pumpTaskStream` run.
+ * Terminal state of a single `pumpGenerationStream` run.
  * - `completed`         — a `done` frame resolved a result to the client.
  * - `error_pre_content` — the task stream failed BEFORE any `delta` reached the
  *   client; `res` is left open so the caller may restart on a fallback provider.
@@ -885,7 +885,9 @@ export class TextCompatController {
 
   /**
    * Headers for every gateway→Text hop out of this v1-compat controller
-   * (`/generate`, `/translate`, `GET /tasks/:id/stream`).
+   * (`/generate` — streaming and not — and `/translate`. The streaming
+   * `GET /tasks/:id/stream` hop is gone: under TASK-818 §3C.3(1) the POST is
+   * the stream).
    *
    * TASK-737: `X-Tenant-Id` was omitted UNCONDITIONALLY here, so Text resolved
    * `x_tenant_id=None` and fell back to the platform default — never applying the
@@ -935,26 +937,31 @@ export class TextCompatController {
   }
 
   /**
-   * POST to TEXT `/api/v1/generate` with `stream:true`, returning the accepted
-   * `task_id`. Shares the connect-phase retry with the non-stream path; throws
-   * the RAW transport error on exhaustion (so the streaming START can classify it
-   * for the per-tenant fallback).
+   * Open a streaming TEXT generation and return the SSE body itself.
+   *
+   * TASK-818 §3C.3(1) — the SINGLE-CALL contract. `POST /generate` with
+   * `stream:true` now answers **200 + `text/event-stream` immediately**; the
+   * 202-and-poll indirection, and with it the `task_id` this method used to
+   * read, are gone. There is no second `GET /tasks/{id}/stream` hop: the POST
+   * response IS the stream, so the first token can arrive without a second round
+   * trip.
+   *
+   * Shares the connect-phase retry with the non-stream path; throws the RAW
+   * transport error on exhaustion (so the streaming START can classify it for the
+   * per-tenant fallback).
    */
-  private async postGenerateStream(request: TextGenerateRequest, label: string, tenantId: string): Promise<string> {
-    const data = (await this.postGenerateRaw({ ...request, stream: true }, label, tenantId)) as { task_id?: string };
-    const taskId = data?.task_id;
-    if (!taskId) {
-      throw new Error('TEXT did not return a task_id for the streaming request');
-    }
-    return taskId;
+  private async openGenerateStream(request: TextGenerateRequest, label: string, tenantId: string): Promise<Readable> {
+    return (await this.postGenerateRaw({ ...request, stream: true }, label, tenantId, true)) as Readable;
   }
 
   /**
    * POST `/api/v1/generate`, retrying ONLY on connect-phase failures (the request
    * provably never reached TEXT — safe for the non-idempotent billable call).
-   * Returns the raw response body; throws the RAW transport error on exhaustion.
+   * Returns the raw response body — a parsed object, or the undecoded SSE
+   * `Readable` when `streaming` is set; throws the RAW transport error on
+   * exhaustion.
    */
-  private async postGenerateRaw(request: TextGenerateRequest, label: string, tenantId: string): Promise<unknown> {
+  private async postGenerateRaw(request: TextGenerateRequest, label: string, tenantId: string, streaming = false): Promise<unknown> {
     const base = this.getTextBaseUrl();
     const maxRetries = 2;
 
@@ -962,8 +969,10 @@ export class TextCompatController {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const response = await this.httpService.axiosRef.post(`${base}/api/v1/generate`, request, {
-          headers: this.getForwardHeaders(tenantId),
-          timeout: 120_000,
+          headers: streaming ? { ...this.getForwardHeaders(tenantId), Accept: 'text/event-stream' } : this.getForwardHeaders(tenantId),
+          // A streaming response must NOT be buffered (axios would accumulate the
+          // whole generation into a string), and it outlives the 120 s body budget.
+          ...(streaming ? { responseType: 'stream' as const, timeout: STREAM_READ_TIMEOUT_MS } : { timeout: 120_000 }),
         });
         return response.data;
       } catch (err) {
@@ -1016,25 +1025,27 @@ export class TextCompatController {
       if (!res.writableEnded) res.write(':keepalive\n\n');
     }, SSE_HEARTBEAT_INTERVAL_MS);
 
-    // START phase: POST /generate (stream:true). A pre-stream failure may retry
-    // once on the tenant fallback (summary only); an exhausted START → error.
-    let taskId: string | undefined;
+    // START phase: POST /generate (stream:true), which under TASK-818 §3C.3(1)
+    // returns the SSE stream itself rather than a `task_id` to go and fetch. A
+    // pre-stream failure may retry once on the tenant fallback (summary only);
+    // an exhausted START → error.
+    let upstream: Readable | undefined;
     let startedRequest = textRequest;
     let usedFallback = false;
     try {
-      taskId = await this.postGenerateStream(textRequest, label, tenantId);
+      upstream = await this.openGenerateStream(textRequest, label, tenantId);
     } catch (primaryError) {
       const fallbackRequest = resolveStartFallback ? await resolveStartFallback(primaryError, textRequest) : null;
       if (fallbackRequest) {
         try {
-          taskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
+          upstream = await this.openGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
           startedRequest = fallbackRequest;
           usedFallback = true;
         } catch {
           // fall through to the error emit below
         }
       }
-      if (taskId === undefined) {
+      if (upstream === undefined) {
         this.logStreamFailure(label, primaryError);
         this.writeSse(res, 'error', { detail: `${label} failed: upstream error` });
         this.endStream(res, heartbeatTimer);
@@ -1042,19 +1053,18 @@ export class TextCompatController {
       }
     }
 
-    // PUMP phase. TEXT accepts a streaming `/generate` with 202 BEFORE the provider
-    // runs, so a down PRIMARY (e.g. LM Studio) surfaces as an TEXT `error` frame
-    // AFTER the 202 — the START-phase fallback above never sees it. When that
+    // PUMP phase. The 200 that opened the stream is sent BEFORE the provider
+    // produces anything, so a down PRIMARY (e.g. LM Studio) still surfaces as a
+    // TEXT `error` frame the START-phase fallback above never sees. When that
     // error (or an empty stream) arrives with NOTHING yet streamed to the client,
     // the stream is safely restartable: retry ONCE on the tenant fallback, at
     // parity with the non-stream path. Retry is disabled once we are already on a
     // fallback provider or none is configured.
     const allowRetry = !!resolveStartFallback && !usedFallback;
-    let outcome = await this.pumpTaskStream(
+    let outcome = await this.pumpGenerationStream(
       res,
-      taskId,
+      upstream,
       label,
-      tenantId,
       (content) => buildResult(content, startedRequest),
       heartbeatTimer,
       allowRetry,
@@ -1070,13 +1080,12 @@ export class TextCompatController {
       let retried = false;
       if (fallbackRequest && fallbackRequest.provider !== textRequest.provider) {
         try {
-          const fallbackTaskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
+          const fallbackStream = await this.openGenerateStream(fallbackRequest, `${label} (tenant fallback)`, tenantId);
           startedRequest = fallbackRequest;
-          outcome = await this.pumpTaskStream(
+          outcome = await this.pumpGenerationStream(
             res,
-            fallbackTaskId,
+            fallbackStream,
             label,
-            tenantId,
             (content) => buildResult(content, startedRequest),
             heartbeatTimer,
             false,
@@ -1094,39 +1103,28 @@ export class TextCompatController {
   }
 
   /**
-   * Open the held-open TEXT task stream and re-emit its frames to the client.
+   * Re-emit an already-open TEXT generation stream to the client as v1 SSE.
    * `chunk` → `event: delta { text }` (accumulating); `done` → `event: result`
    * carrying `buildResult(accumulated)`; `error`/parse/mapping failure →
    * `event: error` (PHI-redacted — never echo upstream content).
+   *
+   * TASK-818 §3C.3(1): the stream is handed in, because opening it and starting
+   * the generation are now the SAME call. There is no `GET /tasks/{id}/stream`
+   * hop left to fail on its own.
+   *
+   * Tearing the upstream down here — on a client disconnect or on a
+   * pre-content fallback — drops ONLY this subscription. It is never a cancel
+   * (§3C.4): the producer is owned by TEXT's generation hub and runs to its
+   * terminal frame regardless.
    */
-  private async pumpTaskStream(
+  private async pumpGenerationStream(
     res: Response,
-    taskId: string,
+    stream: Readable,
     label: string,
-    tenantId: string,
     buildResult: (content: string) => object,
     heartbeatTimer: ReturnType<typeof setInterval>,
     allowPreContentRetry: boolean,
   ): Promise<PumpOutcome> {
-    const base = this.getTextBaseUrl();
-
-    let upstream;
-    try {
-      upstream = await this.httpService.axiosRef.get(`${base}/api/v1/tasks/${taskId}/stream`, {
-        headers: { ...this.getForwardHeaders(tenantId), Accept: 'text/event-stream' },
-        responseType: 'stream',
-        timeout: STREAM_READ_TIMEOUT_MS,
-      });
-    } catch (err) {
-      // Opening the task stream failed before any content reached the client.
-      if (allowPreContentRetry) return 'error_pre_content';
-      this.logStreamFailure(label, err);
-      this.writeSse(res, 'error', { detail: `${label} failed: upstream error` });
-      this.endStream(res, heartbeatTimer);
-      return 'error_final';
-    }
-
-    const stream = upstream.data as Readable;
     return await new Promise<PumpOutcome>((resolve) => {
       let buffer = '';
       let accumulated = '';

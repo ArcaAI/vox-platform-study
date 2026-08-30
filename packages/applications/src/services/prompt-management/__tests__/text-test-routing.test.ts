@@ -11,6 +11,7 @@
  *     there is no `text.finalize` fallback, and a MISS (fail-closed 400) is
  *     distinguished from a lookup ERROR (rethrown).
  */
+import { EventEmitter } from 'node:events';
 import { describe, it, expect, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { ModelTaskType } from '@arcaai/domains';
@@ -60,7 +61,22 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     getEffective: ReturnType<typeof vi.fn>;
     post?: ReturnType<typeof vi.fn>;
   }) => {
-    const post = opts.post ?? vi.fn().mockResolvedValue({ data: { task_id: 'task-1', stream_url: '/api/v1/tasks/task-1/stream' } });
+    // TASK-818 Lane E-stream: `POST /generate` with `stream:true` now answers 200 +
+    // text/event-stream, not a 202 ack. `readGenerationId` reads the id off the first
+    // frame, so the mock must be a real stream — a plain object fails on `stream.on`.
+    // Mirrors `streamingGenerateAck` in prompt-management.service.test.ts.
+    const streamingGenerateAck = (generationId: string) => {
+      const stream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+      stream.destroy = vi.fn();
+      stream.on('newListener', (event) => {
+        if (event !== 'data') return;
+        setImmediate(() =>
+          stream.emit('data', Buffer.from(`event: meta\ndata: {"generation_id":"${generationId}"}\nid: ${generationId}:0\n\n`)),
+        );
+      });
+      return stream;
+    };
+    const post = opts.post ?? vi.fn().mockImplementation(async () => ({ data: streamingGenerateAck('task-1') }));
     const clsService = {
       get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : key === 'userAbility' ? { can: () => true } : null)),
       set: vi.fn(),

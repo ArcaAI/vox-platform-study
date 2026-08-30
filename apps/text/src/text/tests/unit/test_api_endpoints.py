@@ -172,7 +172,13 @@ class TestGenerateEndpoint:
         assert data["content"] == "Generated text!"
 
     @pytest.mark.asyncio
-    async def test_generate_streaming_returns_task_urls(self, client):
+    async def test_generate_streaming_returns_sse_immediately(self, client):
+        """TASK-818 §3C.3(1): 200 + SSE, not a 202 pointing at a second request.
+
+        The generation id the caller needs to reconnect arrives in the FIRST
+        event rather than in a JSON envelope — that is what lets a client
+        persist it before any token exists.
+        """
         resp = await client.post(
             "/api/v1/generate",
             json={
@@ -182,11 +188,10 @@ class TestGenerateEndpoint:
                 "stream": True,
             },
         )
-        assert resp.status_code == 202
-        data = resp.json()
-        assert "task_id" in data
-        assert "stream_url" in data
-        assert "ws_url" not in data
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert "generation_id" in resp.text
+        assert "stream_url" not in resp.text
 
     @pytest.mark.asyncio
     async def test_generate_empty_prompt_returns_422(self, client):

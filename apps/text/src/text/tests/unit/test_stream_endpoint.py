@@ -1,30 +1,35 @@
-"""Tests for the SSE stream endpoint (api/endpoints/stream.py).
+"""Tests for the SSE subscription endpoints (api/endpoints/stream.py).
 
-These tests exercise the event_generator coroutine logic:
-- yielding chunks via XREAD BLOCK (read_chunk_entries_blocking)
+**Rewritten for TASK-818 Lane B.** The endpoint is no longer a poller over
+``read_chunk_entries_blocking``; it is a *subscriber* onto a producer that is
+already running (§3C.3). What is exercised here therefore changed shape:
 
-Entries are ``(msg_id, chunk, carrier)``; the carrier is ``{}`` when the
-producer was untraced. Stubbing the older two-tuple ``read_chunks_blocking``
-instead leaves the real method unstubbed on the AsyncMock, which then returns a
-MagicMock — truthy, but it iterates empty — so the generator loops forever and
-the process is eventually OOM-killed rather than failing.
-- stopping on done/error
-- stopping on completed/failed/cancelled task with no new chunks
-- resume via last_event_id
+* the cursor is a **sequence number**, not a Redis message id — the id a client
+  holds must survive a router restart, and a Redis id does not;
+* the ``id:`` is ``{generation_id}:{seq}`` (§3C.3(4)), replacing the TASK-717
+  opaque resume token on this path, because that token wrapped a Redis cursor
+  which is no longer what a client resumes from;
+* the backlog comes from batched entries via ``TaskManager.read_events``.
+
+``/tasks/{id}/stream`` keeps its 404 for an unknown id (the gateway still calls
+it); ``/generations/{gid}/stream`` returns 204, per the spec. Live-producer
+behaviour, reconnection and the no-gap/no-duplicate guarantee are covered in
+``test_task818_resumable_streaming.py``; this file covers the endpoint surface.
 """
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from hope_async_contract import decode_resume_token
 from httpx import ASGITransport, AsyncClient
 
+from text.api.endpoints.stream import parse_cursor
 from text.core.config import Settings
-from text.models.stream import StreamChunk
 from text.models.task import TaskState, TaskStatus
 from text.providers.base import ProviderRegistry
+from text.routing.hub import GenerationEvent
 
 
 @pytest.fixture
@@ -42,224 +47,169 @@ def _build_app(settings, task_manager):
     return app
 
 
-class TestStreamEndpointSSE:
+def _task_manager(events: list[GenerationEvent], *, state: TaskState | None) -> AsyncMock:
+    """A TaskManager double with no live producer — the pure-replay path."""
+    tm = AsyncMock()
+    tm.get_task = AsyncMock(return_value=state)
+    tm.stream_exists = AsyncMock(return_value=bool(events))
+
+    async def _read_events(_gid: str, after_seq: int = 0) -> list[GenerationEvent]:
+        return [event for event in events if event.seq > after_seq]
+
+    tm.read_events = AsyncMock(side_effect=_read_events)
+    return tm
+
+
+def _running(task_id: str = "t1") -> TaskState:
+    return TaskState(task_id=task_id, status=TaskStatus.RUNNING, provider="p", model="m")
+
+
+def _chunk(seq: int, content: str) -> GenerationEvent:
+    return GenerationEvent(seq=seq, event="chunk", payload=f'{{"content":"{content}"}}')
+
+
+def _frames(text: str) -> list[tuple[str, str, str]]:
+    out = []
+    for block in text.replace("\r\n", "\n").split("\n\n"):
+        event_id = event = data = ""
+        for line in block.split("\n"):
+            if line.startswith("id: "):
+                event_id = line[4:]
+            elif line.startswith("event: "):
+                event = line[7:]
+            elif line.startswith("data: "):
+                data = line[6:]
+        if event:
+            out.append((event_id, event, data))
+    return out
+
+
+async def _get(app: Any, url: str, **kwargs: Any):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.get(url, **kwargs)
+
+
+class TestStreamEndpointReplay:
     @pytest.mark.asyncio
-    async def test_stream_yields_chunks_and_done(self, settings):
-        """When chunks exist including a 'done', the SSE stream should emit them and close."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(
-            return_value=[
-                ("1-0", StreamChunk(type="chunk", content="Hello"), {}),
-                ("2-0", StreamChunk(type="chunk", content=" world"), {}),
-                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"}), {}),
-            ]
-        )
+    async def test_stream_yields_backlog_and_done(self, settings):
+        events = [
+            _chunk(1, "Hello"),
+            _chunk(2, " world"),
+            GenerationEvent(3, "done", '{"finish_reason":"stop"}'),
+        ]
+        app = _build_app(settings, _task_manager(events, state=_running()))
+        resp = await _get(app, "/api/v1/tasks/t1/stream")
 
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
         assert resp.status_code == 200
-        body = resp.text
-        assert "Hello" in body
-        assert " world" in body
-        assert "done" in body
+        assert [e for _i, e, _d in _frames(resp.text)] == ["meta", "chunk", "chunk", "done"]
+        assert "Hello" in resp.text
+        assert " world" in resp.text
 
     @pytest.mark.asyncio
-    async def test_stream_stops_on_error_chunk(self, settings):
-        """When an error chunk is encountered, the stream should stop."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(
-            return_value=[
-                ("1-0", StreamChunk(type="chunk", content="partial"), {}),
-                ("2-0", StreamChunk(type="error", data={"error": "provider crashed"}), {}),
-            ]
-        )
+    async def test_stream_stops_at_the_error_frame(self, settings):
+        events = [
+            _chunk(1, "partial"),
+            GenerationEvent(2, "error", '{"error":"provider crashed"}'),
+            _chunk(3, "never delivered"),
+        ]
+        app = _build_app(settings, _task_manager(events, state=_running()))
+        resp = await _get(app, "/api/v1/tasks/t1/stream")
 
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
-        assert resp.status_code == 200
         assert "partial" in resp.text
-        assert "error" in resp.text
+        assert "provider crashed" in resp.text
+        assert "never delivered" not in resp.text
 
     @pytest.mark.asyncio
-    async def test_stream_completes_when_task_done_no_chunks(self, settings):
-        """When task is COMPLETED and there are no new chunks, stream should end."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(
-                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
-            )
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
+    async def test_finished_task_with_no_events_closes_cleanly(self, settings):
+        state = TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+        app = _build_app(settings, _task_manager([], state=state))
+        resp = await _get(app, "/api/v1/tasks/t1/stream")
 
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
         assert resp.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_stream_completes_when_task_failed_no_chunks(self, settings):
-        """When task is FAILED and there are no new chunks, stream should end."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.FAILED, provider="p", model="m")
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
-
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
-        assert resp.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_stream_completes_when_task_cancelled_no_chunks(self, settings):
-        """When task is CANCELLED and there are no new chunks, stream should end."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(
-                task_id="t1", status=TaskStatus.CANCELLED, provider="p", model="m"
-            )
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
-
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
-        assert resp.status_code == 200
+        assert [e for _i, e, _d in _frames(resp.text)] == ["meta"]
 
     @pytest.mark.asyncio
     async def test_stream_resumes_from_last_event_id_header(self, settings):
-        """A Last-Event-ID header should be used as the resume cursor when no query param is given."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(
-            return_value=[
-                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"}), {}),
-            ]
-        )
+        events = [_chunk(1, "a"), _chunk(2, "b"), GenerationEvent(3, "done", "{}")]
+        app = _build_app(settings, _task_manager(events, state=_running()))
+        resp = await _get(app, "/api/v1/tasks/t1/stream", headers={"Last-Event-ID": "t1:2"})
 
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream", headers={"Last-Event-ID": "2-0"})
-        assert resp.status_code == 200
-        tm.read_chunk_entries_blocking.assert_any_call("t1", last_id="2-0", block_ms=5000)
+        frames = _frames(resp.text)
+        assert [e for _i, e, _d in frames] == ["meta", "done"]
+        assert '"a"' not in resp.text and '"b"' not in resp.text
 
     @pytest.mark.asyncio
-    async def test_stream_404_for_nonexistent_task(self, settings):
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=None)
+    async def test_ids_are_generation_id_and_sequence(self, settings):
+        """§3C.3(4). The cursor is a sequence number, so it survives a restart."""
+        events = [_chunk(1, "a"), GenerationEvent(7, "done", "{}")]
+        app = _build_app(settings, _task_manager(events, state=_running()))
+        resp = await _get(app, "/api/v1/tasks/t1/stream")
 
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/nope/stream")
+        assert [i for i, _e, _d in _frames(resp.text)] == ["t1:0", "t1:1", "t1:7"]
+
+    @pytest.mark.asyncio
+    async def test_first_frame_carries_the_generation_id(self, settings):
+        app = _build_app(settings, _task_manager([_chunk(1, "a")], state=_running()))
+        resp = await _get(app, "/api/v1/tasks/t1/stream")
+
+        first_id, first_event, first_data = _frames(resp.text)[0]
+        assert first_event == "meta"
+        assert first_data == '{"generation_id":"t1"}'
+        assert first_id == "t1:0"
+
+
+class TestUnknownIdStatus:
+    @pytest.mark.asyncio
+    async def test_task_route_keeps_its_404(self, settings):
+        """The gateway's error handling depends on it; migrating it is Lane E's."""
+        app = _build_app(settings, _task_manager([], state=None))
+        resp = await _get(app, "/api/v1/tasks/nope/stream")
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_stream_emits_chunks_then_stops_on_completed_task(self, settings):
-        """First call returns chunks; second call returns nothing and task is completed -> stream ends."""
-        call_count = 0
-
-        async def _read_blocking(task_id, last_id="0-0", block_ms=5000):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return [("1-0", StreamChunk(type="chunk", content="data"), {})]
-            return []
-
-        async def _get_task(task_id):
-            if call_count >= 2:
-                return TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
-            return TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
-
-        tm = AsyncMock()
-        tm.get_task = _get_task
-        tm.read_chunk_entries_blocking = _read_blocking
-
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
-        assert resp.status_code == 200
-        assert "data" in resp.text
-
-
-class TestStreamEndpointResumeTokenTask717:
-    """TASK-717: the SSE `id:` is an opaque resume token; `Last-Event-ID` accepts both forms."""
+    async def test_generation_route_returns_204(self, settings):
+        """§3C.3(5): nothing to stream is not an error."""
+        app = _build_app(settings, _task_manager([], state=None))
+        resp = await _get(app, "/api/v1/generations/nope/stream")
+        assert resp.status_code == 204
 
     @pytest.mark.asyncio
-    async def test_emitted_ids_are_resume_tokens_wrapping_the_redis_cursor(self, settings):
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(
-            return_value=[("7-0", StreamChunk(type="done", data={}), {})]
-        )
-
+    async def test_a_buffer_without_task_state_is_still_replayable(self, settings):
+        """Task state expires before the replay buffer does; either one counts."""
+        tm = _task_manager([_chunk(1, "survivor"), GenerationEvent(2, "done", "{}")], state=None)
         app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream")
-
-        emitted = next(
-            line.removeprefix("id: ") for line in resp.text.splitlines() if line.startswith("id: ")
-        )
-        decoded = decode_resume_token(emitted)
-        assert decoded == {"transport": "redis-stream", "cursor": "7-0"}
-
-    @pytest.mark.asyncio
-    async def test_legacy_raw_last_event_id_still_resumes(self, settings):
-        """A caller storing an OLD raw Redis message id keeps working during rollout."""
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(
-                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
-            )
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
-
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream", headers={"last-event-id": "42-0"})
+        resp = await _get(app, "/api/v1/generations/t1/stream")
 
         assert resp.status_code == 200
-        tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)
+        assert "survivor" in resp.text
 
-    @pytest.mark.asyncio
-    async def test_opaque_resume_token_decodes_to_its_cursor(self, settings):
-        """A caller storing the NEW opaque token resumes from the wrapped cursor."""
-        from hope_async_contract import encode_resume_token
 
-        tm = AsyncMock()
-        tm.get_task = AsyncMock(
-            return_value=TaskState(
-                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
-            )
-        )
-        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
+class TestCursorParsing:
+    """``Last-Event-ID`` is canonical, ``?from_seq=`` the header-stripped fallback."""
 
-        token = encode_resume_token("redis-stream", "42-0")
-        app = _build_app(settings, tm)
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/tasks/t1/stream", headers={"last-event-id": token})
+    def test_qualified_id_is_parsed(self):
+        assert parse_cursor("gen-1", "gen-1:42", None) == 42
 
-        assert resp.status_code == 200
-        tm.read_chunk_entries_blocking.assert_awaited_with("t1", last_id="42-0", block_ms=5000)
+    def test_bare_sequence_is_accepted(self):
+        assert parse_cursor("gen-1", "42", None) == 42
+
+    def test_id_from_another_generation_still_yields_its_sequence(self):
+        assert parse_cursor("gen-1", "gen-9:7", None) == 7
+
+    def test_from_seq_is_the_fallback(self):
+        assert parse_cursor("gen-1", None, 12) == 12
+
+    def test_header_wins_over_the_query_fallback(self):
+        assert parse_cursor("gen-1", "gen-1:3", 99) == 3
+
+    def test_unparseable_replays_from_the_beginning_rather_than_skipping(self):
+        """Replaying costs a discardable duplicate; guessing "now" loses tokens."""
+        assert parse_cursor("gen-1", "not-a-cursor", None) == 0
+        assert parse_cursor("gen-1", "gen-1:garbage", None) == 0
+
+    def test_negative_values_clamp_to_zero(self):
+        assert parse_cursor("gen-1", "gen-1:-5", None) == 0
+        assert parse_cursor("gen-1", None, -5) == 0
+
+    def test_absent_cursor_is_the_beginning(self):
+        assert parse_cursor("gen-1", None, None) == 0

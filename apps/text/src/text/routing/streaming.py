@@ -1,14 +1,23 @@
-"""The streaming generation path.
+"""The streaming generation path — the producer half of the split.
 
-Moved verbatim from `api/endpoints/generate.py` (TASK-818 Wave 0.4). This is the
-concern TASK-818 Lane B owns: today it produces one Redis entry per chunk, and
-the resumable-streaming design (§3C) restructures it into a producer that
-outlives the response with coalesced durable writes. Isolating it here means
-that work no longer collides with every other change to the generate endpoint.
+TASK-818 Lane B (§3C.3). This module owns the provider socket and nothing else
+owns it. It runs as a detached task registered with :class:`GenerationHub`, so:
+
+* the HTTP response that started it is just the first subscriber, and killing it
+  changes nothing here;
+* deltas reach attached subscribers **before** anything durable happens, so the
+  client's latency never waits on Redis;
+* the durable write is coalesced into one ``XADD`` per batch (AC-5);
+* the only thing that ends this loop early is an **explicit** cancel or a
+  configured abandonment deadline — never a socket event (§3C.4).
+
+The metering, audit and metric behaviour of the pre-split implementation is
+preserved verbatim; only the delivery mechanism changed.
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -34,6 +43,7 @@ from text.models.stream import StreamChunk
 from text.models.task import TaskStatus
 from text.models.usage import build_usage_detail, raw_usage_from_stats
 from text.providers.base import LLMProvider
+from text.routing.hub import BatchFlusher, GenerationEvent, GenerationPolicy, Producer
 from text.routing.usage import _extract_stream_usage
 from text.services.circuit_breaker import CircuitBreaker, CircuitState
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
@@ -42,7 +52,12 @@ from text.services.task_manager import TaskManager
 
 logger = get_logger(__name__)
 
-__all__ = ["_CB_STATE_MAP", "_run_streaming_generation", "_update_cb_metric"]
+__all__ = [
+    "_CB_STATE_MAP",
+    "_run_streaming_generation",
+    "_update_cb_metric",
+    "run_generation_producer",
+]
 
 
 _CB_STATE_MAP = {
@@ -51,15 +66,21 @@ _CB_STATE_MAP = {
     CircuitState.HALF_OPEN: 2,
 }
 
+#: How often the persisted cancel flag and the abandonment deadline are
+#: re-checked. "Between batches" (§3C.4) in wall-clock terms — bounded so a
+#: cancel lands promptly, gated so a long generation does not cost one Redis read
+#: per token.
+_CONTROL_POLL_INTERVAL_S = 0.5
+
 
 def _update_cb_metric(provider_name: str, cb: CircuitBreaker) -> None:
     CIRCUIT_BREAKER_STATE.labels(provider=provider_name).set(_CB_STATE_MAP.get(cb.state, 0))
 
 
-async def _run_streaming_generation(
+async def run_generation_producer(
+    producer: Producer,
     task_manager: TaskManager,
     provider: LLMProvider,
-    task_id: str,
     request_body: GenerateRequest,
     *,
     provider_name: str = "unknown",
@@ -70,11 +91,68 @@ async def _run_streaming_generation(
     tenant_id: str | None = None,
     request_id: str | None = None,
     byok: bool = False,
+    policy: GenerationPolicy | None = None,
 ) -> None:
-
+    """Drive one generation to its terminal frame. Never raises to the hub."""
+    generation_id = producer.generation_id
     resolved_model = model or request_body.model
     resolved_provider = provider_name or request_body.provider
-    await task_manager.update_task(task_id, status=TaskStatus.RUNNING)
+    effective_policy = policy or GenerationPolicy()
+
+    flusher = BatchFlusher(
+        generation_id=generation_id,
+        provider=resolved_provider,
+        write=lambda batch: task_manager.append_batch(
+            generation_id, batch, tenant_id=tenant_id, correlation_id=request_id
+        ),
+    )
+    flush_task = asyncio.create_task(flusher.run(), name=f"text-flush-{generation_id}")
+
+    def emit(chunk: StreamChunk) -> None:
+        """Publish one delta: subscribers first, durability second.
+
+        The wire JSON is built exactly once here and reused by every subscriber
+        and by the durable write — the single encode that replaces the two JSON
+        passes and two pydantic validations the per-chunk path spent per token.
+        """
+        event = GenerationEvent(
+            seq=producer.next_seq(), event=chunk.type, payload=chunk.model_dump_json()
+        )
+        producer.publish(event)
+        flusher.offer(event)
+
+    async def emit_terminal(chunk: StreamChunk) -> None:
+        """Publish the terminal frame and make it durable **immediately**.
+
+        Deliberately NOT coalesced. Coalescing exists to amortise a per-token
+        cost and there is exactly one of these per generation; meanwhile it
+        carries the usage block the gateway meters from, so it wants its own
+        envelope and its own idempotency key, and a client reconnecting the
+        instant it sees ``done`` must find it already in the buffer.
+
+        Written after the coalescer has drained, so the replay order is deltas
+        then terminal — which is also what makes its sequence number line up:
+        the batch entries carry seqs 1..N explicitly, and this entry lands at
+        N+1 from both sides.
+        """
+        flusher.close()
+        try:
+            await flush_task
+        except Exception as exc:  # noqa: BLE001 — durability is best-effort
+            logger.warning(
+                "streaming_generation.flush_drain_failed",
+                generation_id=generation_id,
+                error=str(exc),
+            )
+        event = GenerationEvent(
+            seq=producer.next_seq(), event=chunk.type, payload=chunk.model_dump_json()
+        )
+        producer.publish(event)
+        await task_manager.append_chunk(
+            generation_id, chunk, tenant_id=tenant_id, correlation_id=request_id
+        )
+
+    await task_manager.update_task(generation_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=resolved_provider).inc()
     # Cross-service per-model running gauge (streaming path).
     MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).inc()
@@ -86,6 +164,8 @@ async def _run_streaming_generation(
     reported_total_tokens: int | None = None
     raw_usage: dict[str, Any] | None = None
     stream_finish_reason: str | None = None
+    stopped_reason: str | None = None
+    next_control_poll = start + _CONTROL_POLL_INTERVAL_S
     # The provider's own ``done`` frame, held back so the usage block can be
     # folded into it. The SSE reader STOPS at the first ``done``/``error``, so a
     # usage frame appended after one would never be delivered.
@@ -93,7 +173,7 @@ async def _run_streaming_generation(
 
     def _usage_detail(*, interrupted: bool) -> dict[str, Any]:
         return build_usage_detail(
-            task_id=task_id,
+            task_id=generation_id,
             request_id=request_id,
             provider=resolved_provider,
             model=resolved_model or "",
@@ -130,6 +210,33 @@ async def _run_streaming_generation(
             )
         )
 
+    async def _should_stop() -> str | None:
+        """Explicit cancel, or a configured deadline. Never a socket state.
+
+        Polled on a wall-clock gate rather than per delta: the in-memory flag is
+        free and is what a same-pod cancel sets, the persisted flag costs one
+        Redis read per :data:`_CONTROL_POLL_INTERVAL_S` and is what makes a
+        cancel work across pods.
+        """
+        nonlocal next_control_poll
+        if producer.cancelled:
+            return "cancelled"
+        now = time.monotonic()
+        if now < next_control_poll:
+            return None
+        next_control_poll = now + _CONTROL_POLL_INTERVAL_S
+        try:
+            if await task_manager.is_cancel_requested(generation_id):
+                producer.request_cancel()
+                return "cancelled"
+        except Exception as exc:  # noqa: BLE001 — a flag-store blip must not kill a generation
+            logger.warning(
+                "streaming_generation.cancel_probe_failed",
+                generation_id=generation_id,
+                error=str(exc),
+            )
+        return producer.should_abandon(effective_policy, now)
+
     try:
         async for chunk in provider.generate_stream(request_body):
             if not first_chunk_recorded:
@@ -153,7 +260,17 @@ async def _run_streaming_generation(
                 # Hold it back; it is re-emitted below carrying the usage block.
                 pending_done = chunk
                 continue
-            await task_manager.append_chunk(task_id, chunk)
+            emit(chunk)
+
+            stopped_reason = await _should_stop()
+            if stopped_reason:
+                logger.info(
+                    "streaming_generation.stopped_early",
+                    generation_id=generation_id,
+                    reason=stopped_reason,
+                )
+                break
+
         latency_ms = int((time.monotonic() - start) * 1000)
         # stamp normalized stop-reason + decode-throughput fleet
         # metrics from the streamed native finish reason / token counts. Never
@@ -178,21 +295,31 @@ async def _run_streaming_generation(
                 stop_reason=stream_stats.stop_reason,
             ).inc()
         except Exception as exc:  # noqa: BLE001 — telemetry must never fail the stream
-            logger.warning("streaming_generation.stats_degraded", task_id=task_id, error=str(exc))
+            logger.warning(
+                "streaming_generation.stats_degraded",
+                generation_id=generation_id,
+                error=str(exc),
+            )
 
         # The terminal frame, carrying the usage block the gateway meters from.
         # A provider that emitted no ``done`` of its own still gets one, so the
-        # frame the gateway keys on is always present.
+        # frame the gateway keys on is always present. An early stop is terminal
+        # too — the tokens it already burned are reported, never dropped.
         done_data: dict[str, Any] = dict(
             pending_done.data if pending_done and isinstance(pending_done.data, dict) else {}
         )
-        done_data.setdefault("finish_reason", stream_finish_reason or "stop")
-        done_data["usage"] = _usage_detail(interrupted=False)
-        await task_manager.append_chunk(task_id, StreamChunk(type="done", data=done_data))
+        done_data.setdefault("finish_reason", stopped_reason or stream_finish_reason or "stop")
+        if stopped_reason:
+            done_data["stopped_reason"] = stopped_reason
+        done_data["usage"] = _usage_detail(interrupted=bool(stopped_reason))
+        await emit_terminal(StreamChunk(type="done", data=done_data))
 
-        await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
+        terminal_status = TaskStatus.CANCELLED if stopped_reason else TaskStatus.COMPLETED
+        await task_manager.update_task(generation_id, status=terminal_status)
         GENERATION_TOTAL.labels(
-            provider=resolved_provider, model=resolved_model, status="completed"
+            provider=resolved_provider,
+            model=resolved_model,
+            status="cancelled" if stopped_reason else "completed",
         ).inc()
         GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(
             latency_ms / 1000
@@ -213,29 +340,33 @@ async def _run_streaming_generation(
             cb.record_success()
             _update_cb_metric(resolved_provider, cb)
         _log_audit(
-            status="completed",
+            status="cancelled" if stopped_reason else "completed",
             latency_ms=latency_ms,
-            finish_reason=stream_finish_reason or "stop",
+            finish_reason=stopped_reason or stream_finish_reason or "stop",
             error=None,
         )
     except Exception as exc:
         latency_ms = int((time.monotonic() - start) * 1000)
-        logger.error("streaming_generation.failed", task_id=task_id, error=str(exc), exc_info=True)
-        await task_manager.update_task(task_id, status=TaskStatus.FAILED, error=str(exc))
+        logger.error(
+            "streaming_generation.failed",
+            generation_id=generation_id,
+            error=str(exc),
+            exc_info=True,
+        )
+        await task_manager.update_task(generation_id, status=TaskStatus.FAILED, error=str(exc))
         # The interrupted stream still burned whatever tokens it had already
         # reported — emit them. Dropping the tail here is the bug
         # class: the provider bills for work whose only record we threw away.
-        # The block carries the SAME ``task_id`` a clean completion would, so the
+        # The block carries the SAME id a clean completion would, so the
         # gateway's idempotency key converges instead of double-billing.
-        await task_manager.append_chunk(
-            task_id,
+        await emit_terminal(
             StreamChunk(
                 type="error",
                 data={
                     "error": "Generation failed due to an internal error.",
                     "usage": _usage_detail(interrupted=True),
                 },
-            ),
+            )
         )
         _log_audit(
             status="failed",
@@ -254,7 +385,40 @@ async def _run_streaming_generation(
             cb.record_failure()
             _update_cb_metric(resolved_provider, cb)
     finally:
+        # ``emit_terminal`` normally drains the coalescer; this covers the paths
+        # that never reached one (a cancellation propagating in, say). Both are
+        # idempotent, so draining twice is free.
+        flusher.close()
+        if not flush_task.done():
+            try:
+                await flush_task
+            except Exception as exc:  # noqa: BLE001 — durability is best-effort
+                logger.warning(
+                    "streaming_generation.flush_drain_failed",
+                    generation_id=generation_id,
+                    error=str(exc),
+                )
+        producer.finish()
         ACTIVE_GENERATIONS.labels(provider=resolved_provider).dec()
         MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=resolved_model).dec()
         if shutdown_manager:
-            shutdown_manager.complete_task(task_id)
+            shutdown_manager.complete_task(generation_id)
+
+
+async def _run_streaming_generation(
+    task_manager: TaskManager,
+    provider: LLMProvider,
+    task_id: str,
+    request_body: GenerateRequest,
+    **kwargs: Any,
+) -> None:
+    """Run one generation to completion with **no hub and no subscribers**.
+
+    The producer body does not require a hub — a hub only decides who can watch.
+    This entry point runs it standalone and awaits it, which is what a caller
+    that just wants the generation performed (and its terminal frame persisted)
+    actually needs. Retained under its pre-split name and signature because that
+    is exactly its contract.
+    """
+    producer = Producer(task_id, provider=kwargs.get("provider_name") or "unknown")
+    await run_generation_producer(producer, task_manager, provider, request_body, **kwargs)
