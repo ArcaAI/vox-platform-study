@@ -16,6 +16,7 @@ import {
   buildLlmUsageInput,
   parseTextUsageDetail,
   parseStorageUri,
+  readGenerationId,
   SecretsService,
   isSuperAdmin,
   TextRequestEnrichmentService,
@@ -59,6 +60,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
+import type { Readable } from 'node:stream';
 
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
@@ -156,6 +158,10 @@ const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENO
 // never retry on them (duplicate billing + divergent drafts).
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+// Read budget for an OPEN SSE hop (both the relayed subscription and the
+// single-call `POST /generate` that now answers with the stream itself). A
+// clinical generation runs for minutes; the 120 s body timeout would kill it.
+const STREAM_READ_TIMEOUT_MS = 300_000;
 // Cap extracted attachment text injected into a summarization prompt so a large
 // document can't blow the TEXT context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
@@ -572,20 +578,7 @@ export class TextProxyController {
     await this.applyTextModelSelection(body);
 
     try {
-      const response = await this.withRetry(
-        () =>
-          this.httpService.axiosRef.post(`${base}/api/v1/generate`, body, {
-            headers: this.getForwardHeaders(),
-            timeout: body.stream ? 30_000 : 120_000,
-          }),
-        'TEXT generate',
-        // /generate is non-idempotent (billable generation):
-        // retry ONLY when the request provably never reached TEXT.
-        2,
-        (err) => this.isConnectPhaseFailure(err),
-      );
-
-      return response.data;
+      return await this.postTextGenerate(base, body, 'TEXT generate');
     } catch (err) {
       const upstreamStatus = (err as AxiosError)?.response?.status;
       this.logger.error({
@@ -596,6 +589,54 @@ export class TextProxyController {
       });
       throw this.buildUpstreamException(err, 'TEXT service unavailable');
     }
+  }
+
+  /**
+   * `POST /api/v1/generate` under the TASK-818 §3C.3(1) single-call contract,
+   * returning what this gateway's TWO-CALL surface promises its callers.
+   *
+   * Non-streaming is unchanged: the JSON body, passed through.
+   *
+   * Streaming is the migration. TEXT no longer answers `202 {task_id,
+   * stream_url}`; it answers **200 + `text/event-stream` immediately**, with the
+   * generation id in the first frame's `data` (§3C.3(4)). Buffering that (which
+   * is what axios does by default, and what this method used to get) would
+   * accumulate an entire clinical generation into a string, hand it back as if
+   * it were a JSON ack, and time out at 30 s. So we stream it, take the id off
+   * the first frame, and drop this subscription.
+   *
+   * Dropping it is NOT a cancel (§3C.4): the producer is owned by TEXT's
+   * generation hub, not by this response, so it runs on and every delta lands in
+   * the replay buffer. The caller's own `GET .../stream` then replays from seq 0
+   * — no gap, and this gateway holds no state (§3C.3(6)).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async postTextGenerate(base: string, payload: TextGenerateRequest, label: string): Promise<any> {
+    const streaming = payload.stream === true;
+    const response = await this.withRetry(
+      () =>
+        this.httpService.axiosRef.post(`${base}/api/v1/generate`, payload, {
+          headers: streaming ? { ...this.getForwardHeaders(), Accept: 'text/event-stream' } : this.getForwardHeaders(),
+          ...(streaming ? { responseType: 'stream' as const, timeout: STREAM_READ_TIMEOUT_MS } : { timeout: 120_000 }),
+        }),
+      label,
+      // /generate is non-idempotent (billable generation):
+      // retry ONLY when the request provably never reached TEXT.
+      2,
+      (err) => this.isConnectPhaseFailure(err),
+    );
+
+    if (!streaming) return response.data;
+
+    const taskId = await readGenerationId(response.data as Readable);
+    return {
+      task_id: taskId,
+      status: 'streaming',
+      // Gateway-relative, not the service-relative path TEXT used to report:
+      // the caller talks to the gateway, with a `text_task:<taskId>` ticket.
+      stream_url: `text-generations/tasks/${encodeURIComponent(taskId)}/stream`,
+      created_at: new Date().toISOString(),
+    };
   }
 
   @Get('tasks/:taskId')
@@ -652,13 +693,36 @@ export class TextProxyController {
     }
   }
 
+  /**
+   * The gateway KEEPS its two-call surface, deliberately (TASK-818 Lane E).
+   *
+   * TEXT moved to a single call — `POST /generate` IS the stream — and this
+   * gateway now speaks that contract upstream (`postTextGenerate`). It does not
+   * expose it downstream, for three reasons that are properties of the browser
+   * hop rather than preferences:
+   *
+   *  1. **The stream ticket is scoped to a path param.** `@StreamScope({
+   *     namespace: 'text_task', param: 'taskId' })` mints and checks
+   *     `text_task:<taskId>`. A POST-that-is-the-stream has no id until its
+   *     first frame, so there is nothing to scope a ticket to.
+   *  2. **`EventSource` cannot POST** and cannot set `Authorization` — which is
+   *     precisely why the ticket-in-query design exists (§3C.3(7) makes the same
+   *     observation about browsers).
+   *  3. The console and `PromptManagementService` both hand a browser a GET URL
+   *     to open; neither owns a `fetch`-based SSE reader.
+   *
+   * Upstream retains `GET /tasks/{id}/stream` as an alias of the resume
+   * endpoint, so this costs nothing: the gateway stays a stateless relay over a
+   * generation TEXT already owns, and the id round-trip through `postTextGenerate`
+   * loses nothing because the producer outlives every subscriber.
+   */
   @Get('tasks/:taskId/stream')
   @Authorize()
   @StreamScope({ namespace: 'text_task', param: 'taskId' })
   @ApiOperation({
     summary: 'Stream task chunks via SSE from TEXT',
     description:
-      'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`.',
+      'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`. Send `Last-Event-ID` to resume an interrupted stream from its cursor; the gateway forwards it upstream and relays `id:` back unchanged.',
   })
   @ApiParam({ name: 'taskId', description: 'Task ID to stream' })
   async streamTaskEvents(
@@ -745,13 +809,24 @@ export class TextProxyController {
     };
 
     try {
+      // TASK-818 §3C.3(6) — forward the cursor upstream. `Last-Event-ID` is the
+      // CANONICAL form and is what TEXT's `parse_cursor` reads first; the
+      // `?last_event_id=` query is kept alongside it because TEXT accepts both
+      // and a stripped header would resume the generation from seq 0 SILENTLY,
+      // which is indistinguishable from working until a clinician notices the
+      // duplicated prefix. (The upstream docstring says `?from=`; the parameter
+      // FastAPI actually binds is `from_seq` — neither is what we send.)
       const streamUrl = lastEventId
         ? `${base}/api/v1/tasks/${taskId}/stream?last_event_id=${encodeURIComponent(lastEventId)}`
         : `${base}/api/v1/tasks/${taskId}/stream`;
       const upstream = await this.httpService.axiosRef.get(streamUrl, {
-        headers: { ...this.getForwardHeaders(), Accept: 'text/event-stream' },
+        headers: {
+          ...this.getForwardHeaders(),
+          Accept: 'text/event-stream',
+          ...(lastEventId ? { 'Last-Event-ID': lastEventId } : {}),
+        },
         responseType: 'stream',
-        timeout: 300_000,
+        timeout: STREAM_READ_TIMEOUT_MS,
       });
 
       const stream = upstream.data;
@@ -788,9 +863,15 @@ export class TextProxyController {
 
       res.on('close', () => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
-        // The client hung up. TEXT keeps generating in its background task, but
-        // whatever usage already crossed the wire is real and must be recorded.
+        // The client hung up. Whatever usage already crossed the wire is real
+        // and must be recorded.
         emitUsageOnce();
+        // TASK-818 §3C.3(6) — drop ONLY our own upstream subscription. This is
+        // deliberately NOT a cancel: TEXT's producer outlives every subscriber
+        // (§3C.3(1)) and cancellation is an explicit `POST .../cancel` (§3C.4),
+        // so the generation runs on and the client resumes it gaplessly from its
+        // `Last-Event-ID`. Calling the cancel route from here would destroy the
+        // resumability this relay exists to carry.
         stream.destroy();
       });
     } catch (err) {
@@ -844,20 +925,11 @@ export class TextProxyController {
     const base = this.getTextBaseUrl();
 
     try {
-      const response = await this.withRetry(
-        () =>
-          this.httpService.axiosRef.post(`${base}/api/v1/generate`, textPayload, {
-            headers: this.getForwardHeaders(),
-            timeout: textPayload.stream ? 30_000 : 120_000,
-          }),
-        'TEXT assembled generate',
-        // Same single-delivery contract as `generate()`.
-        2,
-        (err) => this.isConnectPhaseFailure(err),
-      );
+      // Same single-call contract and same single-delivery retry as `generate()`.
+      const data = await this.postTextGenerate(base, textPayload, 'TEXT assembled generate');
 
       return {
-        ...response.data,
+        ...data,
         _debug: {
           assembled: true,
           type: body.type,

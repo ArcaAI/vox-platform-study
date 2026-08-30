@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SysEventType, ResourceStatusType, PromptTemplateFactory } from '@arcaai/domains';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -1742,11 +1743,24 @@ describe('PromptManagementService', () => {
   // ─── prompt quality/score test run ──────────────────────
 
   describe('prompt test run (BUG-018 two-call: start + finalize)', () => {
-    // TEXT now acks a STREAMING job on POST /generate and serves the finished
-    // text on GET /tasks/:id. Both live on the same axios mock.
+    // TASK-818 §3C.3(1) — TEXT no longer ACKS a streaming `POST /generate` with
+    // `202 {task_id, stream_url}`. It answers **200 + text/event-stream**, and
+    // the id arrives in the first frame's `data`. The POST mock therefore
+    // returns an SSE body rather than a JSON ack; `GET /tasks/:id` (the
+    // finalize read) is unchanged.
+    const streamingGenerateAck = (generationId: string) => {
+      const stream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+      stream.destroy = vi.fn();
+      stream.on('newListener', (event) => {
+        if (event !== 'data') return;
+        setImmediate(() => stream.emit('data', Buffer.from(`event: meta\ndata: {"generation_id":"${generationId}"}\nid: ${generationId}:0\n\n`)));
+      });
+      return stream;
+    };
+
     const createTextHttpMock = (taskOutput: string, taskOverrides: Record<string, unknown> = {}) => ({
       axiosRef: {
-        post: vi.fn().mockResolvedValue({ data: { task_id: 'task-1', status: 'pending', stream_url: '/api/v1/tasks/task-1/stream' } }),
+        post: vi.fn().mockImplementation(async () => ({ data: streamingGenerateAck('task-1') })),
         get: vi.fn().mockResolvedValue({ data: { task_id: 'task-1', status: 'completed', content: taskOutput, ...taskOverrides } }),
       },
     });
@@ -1868,6 +1882,30 @@ describe('PromptManagementService', () => {
       expect(httpMock.axiosRef.get).not.toHaveBeenCalled();
       expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
       expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    // ── TASK-818 §3C.3(1): the id comes off the stream, and letting go of that
+    //    stream is not a cancel ──
+    it('takes the generation id off the SSE body and drops only its own subscription', async () => {
+      const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+      mockTemplateRepo.findById.mockResolvedValue(existing);
+      const { svc, httpMock } = buildTextService(wordsOfLength(60));
+
+      const ack = await svc.startPromptTemplateTest('tpl-1', {} as never);
+
+      // The POST is the STREAM — buffering it would accumulate a whole
+      // generation into a string instead of yielding an id.
+      const [, , config] = httpMock.axiosRef.post.mock.calls[0];
+      expect((config as { responseType?: string }).responseType).toBe('stream');
+      expect(ack.taskId).toBe('task-1');
+
+      // We let the stream go once the id is known. That is deliberate and is
+      // NOT a cancel: TEXT's producer outlives every subscriber, so the browser
+      // that opens `streamUrl` next replays from seq 0 with no gap. Exactly one
+      // POST left the gateway — nothing was cancelled.
+      const body = await httpMock.axiosRef.post.mock.results[0].value;
+      expect(body.data.destroy).toHaveBeenCalled();
+      expect(httpMock.axiosRef.post).toHaveBeenCalledTimes(1);
     });
 
     // ── BUG-018 test 3: the outgoing request is tenant-attributed + enriched ──
