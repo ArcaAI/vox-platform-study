@@ -7,6 +7,7 @@ dependency injection, endpoints, task manager, and Redis together.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -92,8 +93,19 @@ class TestGenerateLifecycle:
 class TestStreamingLifecycle:
     """POST /generate with stream=true lifecycle."""
 
-    async def test_streaming_generate_returns_202(self, integration_client):
-        """POST /generate with stream=true → 202 with task_id and stream_url."""
+    # TASK-818 §3C.3(1): `POST /generate` with `stream=true` now answers 200 +
+    # SSE directly. The 202-and-poll envelope (`task_id` + `stream_url`) is
+    # gone, and the generation id arrives in the first event instead — early
+    # enough for a client to persist it before any token exists.
+
+    @staticmethod
+    def _generation_id(body: str) -> str:
+        for line in body.replace("\r\n", "\n").split("\n"):
+            if line.startswith("data: ") and "generation_id" in line:
+                return str(json.loads(line[6:])["generation_id"])
+        raise AssertionError(f"no generation id in stream: {body[:200]!r}")
+
+    async def test_streaming_generate_returns_sse_immediately(self, integration_client):
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
@@ -104,14 +116,13 @@ class TestStreamingLifecycle:
                 "stream": True,
             },
         )
-        assert resp.status_code == 202
-        body = resp.json()
-        assert body["task_id"]
-        assert body["status"] == "running"
-        assert "/stream" in body["stream_url"]
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert self._generation_id(resp.text)
+        assert "event: done" in resp.text
 
     async def test_streaming_task_completes(self, integration_client):
-        """After streaming background task runs, task status=completed in Redis."""
+        """The generation reaches `completed` in Redis, readable by its id."""
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
@@ -122,8 +133,8 @@ class TestStreamingLifecycle:
                 "stream": True,
             },
         )
-        assert resp.status_code == 202
-        task_id = resp.json()["task_id"]
+        assert resp.status_code == 200
+        task_id = self._generation_id(resp.text)
 
         task_resp = None
         for _ in range(30):
@@ -136,7 +147,7 @@ class TestStreamingLifecycle:
         assert task_resp.json()["status"] == "completed"
 
     async def test_streaming_chunks_in_redis(self, integration_client, redis_client):
-        """After streaming, chunks are stored in Redis stream."""
+        """The replay buffer is populated, so a reconnect has something to read."""
         client, _ = integration_client
         resp = await client.post(
             "/api/v1/generate",
@@ -147,8 +158,8 @@ class TestStreamingLifecycle:
                 "stream": True,
             },
         )
-        assert resp.status_code == 202
-        task_id = resp.json()["task_id"]
+        assert resp.status_code == 200
+        task_id = self._generation_id(resp.text)
 
         for _ in range(30):
             await asyncio.sleep(0.1)
@@ -159,19 +170,34 @@ class TestStreamingLifecycle:
         entries = await redis_client.xrange(f"text:stream:{task_id}")
         assert len(entries) > 0
 
-        import json
+        # And it replays: the same stream is available again from the beginning.
+        replay = await client.get(f"/api/v1/generations/{task_id}/stream")
+        assert replay.status_code == 200
+        assert "event: done" in replay.text
 
-        chunk_types = []
+        # TASK-818: an entry is a coalesced BATCH of deltas plus the terminal
+        # frame's own entry, so the per-entry `type` is the envelope's, not a
+        # chunk's. What the buffer must still contain is every delta and a
+        # terminal — asserted through the reader that replays them.
+        entry_types = []
         for _msg_id, fields in entries:
             raw = fields.get("data") or fields.get(b"data")
             if raw:
                 if isinstance(raw, bytes):
                     raw = raw.decode()
-                chunk = json.loads(raw)
-                chunk_types.append(chunk["type"])
+                entry_types.append(json.loads(raw)["type"])
 
-        assert "chunk" in chunk_types
-        assert "done" in chunk_types
+        assert "text.stream.batch" in entry_types
+        assert "text.stream.done" in entry_types
+
+        replayed = [
+            json.loads(line[6:])
+            for line in replay.text.replace("\r\n", "\n").split("\n")
+            if line.startswith("data: ")
+        ]
+        assert any("content" in event for event in replayed), "no delta replayed"
+        # `or {}` because a delta carries an explicit `"data": null`.
+        assert any("finish_reason" in (event.get("data") or {}) for event in replayed)
 
 
 # ---------------------------------------------------------------------------

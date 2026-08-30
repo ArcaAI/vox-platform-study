@@ -44,9 +44,12 @@ class TestOpenAPIResponseSchemas:
         ref_200 = responses["200"]["content"]["application/json"]["schema"].get("$ref", "")
         assert "GenerateResponse" in ref_200
 
-        assert "202" in responses, "generate endpoint must declare a 202 response schema"
-        ref_202 = responses["202"]["content"]["application/json"]["schema"].get("$ref", "")
-        assert "StreamingGenerateResponse" in ref_202
+        # TASK-818 §3C.3(1): the 202-and-poll envelope is gone — a streaming
+        # request gets 200 + `text/event-stream`, which has no JSON schema to
+        # declare. What replaced it in the contract is the 409 an
+        # `Idempotency-Key` reused with a different payload returns (§3C.6).
+        assert "202" not in responses, "the 202-and-poll indirection was removed"
+        assert "409" in responses, "generate endpoint must declare idempotency_conflict"
 
     def test_generate_error_responses_in_openapi(self, openapi_schema):
         gen_op = openapi_schema["paths"]["/api/v1/generate"]["post"]

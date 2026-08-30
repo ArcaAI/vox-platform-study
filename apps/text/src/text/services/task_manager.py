@@ -1,9 +1,27 @@
-"""TaskManager — Redis-backed task state + Redis Streams for chunk persistence."""
+"""TaskManager — Redis-backed task state + Redis Streams as the replay buffer.
+
+Two concerns, deliberately kept in one class because they share a key space and
+a TTL:
+
+* **Task state** — ``text:task:{id}``, the lifecycle record. Unchanged.
+* **The replay buffer** — ``text:stream:{id}``, from which a reconnecting client
+  resumes. TASK-818 Lane B restructured this half (§3C): a durable entry is now a
+  **coalesced batch** of deltas rather than one entry per token, and the batch
+  readers hand back the producer's already-encoded wire JSON instead of
+  re-validating every delta through pydantic on the way out.
+
+The per-chunk API (:meth:`append_chunk`, :meth:`get_chunks`,
+:meth:`read_chunks_blocking`, :meth:`read_chunk_entries_blocking`) is retained
+unchanged: it is how the terminal frame is written, and it is the typed view of a
+stream. The batch readers below understand **both** entry shapes, so a stream
+written by either path replays correctly.
+"""
 
 from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -19,11 +37,19 @@ from uuid_extensions import uuid7
 
 from text.models.stream import StreamChunk
 from text.models.task import TaskState, TaskStatus
+from text.routing.hub import GenerationEvent
 
 logger = structlog.get_logger(__name__)
 
 _TASK_KEY_PREFIX = "text:task:"
 _STREAM_KEY_PREFIX = "text:stream:"
+_CANCEL_KEY_PREFIX = "text:gen:cancel:"
+
+#: Compact separators so a replayed delta is **byte-identical** to the one the
+#: live subscriber received. ``StreamChunk.model_dump_json()`` emits no spaces;
+#: matching it here is what lets AC-15 diff a resumed stream against an
+#: uninterrupted one and get an exact match rather than a whitespace diff.
+_COMPACT = (",", ":")
 
 _UPDATE_TASK_LUA = """
 local key = KEYS[1]
@@ -192,6 +218,166 @@ class TaskManager:
                 raise ValueError("enveloped text stream chunk carries no inline payload")
             return StreamChunk.model_validate(envelope.payload)
         return StreamChunk.model_validate_json(raw)
+
+    # ── The replay buffer (TASK-818 Lane B, §3C.2) ───────────────────────
+    #
+    # One entry per coalesced BATCH. Everything below is on the resume path or
+    # the flush task — never between the provider and the client.
+
+    async def append_batch(
+        self,
+        task_id: str,
+        events: Sequence[GenerationEvent],
+        *,
+        tenant_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> str | None:
+        """Write one batch of deltas as a **single** ``XADD`` (AC-5).
+
+        The deltas are stored as their decoded dicts under a ``deltas`` key,
+        alongside the batch's first sequence number. Envelope and trace-carrier
+        semantics are the per-chunk path's, unchanged — they are properties of an
+        *entry*, and a batch is still one entry.
+        """
+        if not events:
+            return None
+
+        payload = {
+            "seq": events[0].seq,
+            "deltas": [
+                {"seq": e.seq, "event": e.event, "payload": json.loads(e.payload)} for e in events
+            ],
+        }
+        fields: dict[str, str] = {
+            "data": self._encode_batch_data(task_id, payload, tenant_id, correlation_id)
+        }
+        fields.update(inject_trace_carrier())
+        msg_id = await self._redis.xadd(
+            self._stream_key(task_id),
+            fields,
+            maxlen=self._stream_max_len,
+        )
+        return cast(str, msg_id)
+
+    def _encode_batch_data(
+        self,
+        task_id: str,
+        payload: dict[str, Any],
+        tenant_id: str | None,
+        correlation_id: str | None,
+    ) -> str:
+        """Envelope a batch when a tenant is resolved; bare JSON otherwise.
+
+        Mirrors :meth:`_encode_chunk_data` exactly — the only differences are the
+        event ``type`` and that the payload holds N deltas. The idempotency key
+        is derived from the batch's FIRST sequence number, so a replayed batch
+        converges on the same key rather than minting a new one.
+        """
+        if tenant_id is None:
+            return json.dumps(payload, separators=_COMPACT)
+
+        envelope = AsyncEnvelope(
+            schema_version=ASYNC_ENVELOPE_SCHEMA_VERSION,
+            id=str(uuid7()),
+            tenant_id=tenant_id,
+            type="text.stream.batch",
+            occurred_at=datetime.now(UTC).isoformat(),
+            correlation_id=correlation_id or task_id,
+            causation_id=None,
+            idempotency_key=AsyncIdempotencyKey.text_chunk(task_id, int(payload["seq"])),
+            payload=payload,
+        )
+        return envelope.model_dump_json(by_alias=True, exclude_unset=True)
+
+    @staticmethod
+    def _decode_batch_data(raw: str) -> list[GenerationEvent]:
+        """Decode one entry into its events — batch shape **or** per-chunk shape.
+
+        No pydantic on the delta path: the stored dict is re-encoded straight
+        back to the wire form the live subscriber saw. A per-chunk entry (written
+        by :meth:`append_chunk`, e.g. the terminal frame) decodes to a single
+        event whose sequence is unknown here — ``seq=0`` marks it, and the caller
+        assigns the running cursor.
+        """
+        doc = json.loads(raw)
+        if isinstance(doc, dict) and "schemaVersion" in doc:
+            envelope = parse_async_envelope(doc)
+            if envelope is None:
+                raise ValueError(
+                    f"unrecognized async envelope schemaVersion in stream data: {doc.get('schemaVersion')!r}"
+                )
+            if envelope.payload is None:
+                raise ValueError("enveloped text stream entry carries no inline payload")
+            doc = envelope.payload
+
+        if isinstance(doc, dict) and "deltas" in doc:
+            return [
+                GenerationEvent(
+                    seq=int(delta["seq"]),
+                    event=str(delta["event"]),
+                    payload=json.dumps(delta["payload"], separators=_COMPACT),
+                )
+                for delta in doc["deltas"]
+            ]
+
+        # A per-chunk entry: `{"type": ..., "content": ..., "data": ...}`.
+        return [
+            GenerationEvent(
+                seq=0,
+                event=str(doc.get("type", "chunk")),
+                payload=json.dumps(doc, separators=_COMPACT),
+            )
+        ]
+
+    async def read_events(self, task_id: str, after_seq: int = 0) -> list[GenerationEvent]:
+        """The durable backlog after ``after_seq`` — ``XRANGE`` over whole batches.
+
+        Reads from the start of the stream rather than from a Redis message id:
+        the client's cursor is a **sequence number**, which is stable across a
+        router restart, whereas a Redis id is not a thing the client should ever
+        have to hold. ``MAXLEN`` bounds the scan.
+        """
+        entries = await self._redis.xrange(self._stream_key(task_id), min="-", max="+")
+        events: list[GenerationEvent] = []
+        cursor = 0
+        for _msg_id, fields in entries:
+            raw = fields.get(b"data") or fields.get("data")
+            if not raw:
+                continue
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            for event in self._decode_batch_data(raw):
+                # A per-chunk entry carries no sequence of its own; number it
+                # from the running cursor so mixed streams stay monotonic.
+                seq = event.seq or cursor + 1
+                cursor = max(cursor, seq)
+                if seq > after_seq:
+                    events.append(
+                        GenerationEvent(seq=seq, event=event.event, payload=event.payload)
+                    )
+        return events
+
+    async def stream_exists(self, task_id: str) -> bool:
+        """Whether any replay buffer exists for this id.
+
+        Distinguishes "finished a while ago, here is the backlog" from "never
+        heard of it", which is the **204** in §3C.3(5).
+        """
+        return bool(await self._redis.exists(self._stream_key(task_id)))
+
+    # ── Explicit cancellation (§3C.4) ────────────────────────────────────
+    #
+    # Persisted, so a producer on another pod (or after a restart) observes it.
+    # A dropped socket never writes this flag.
+
+    def _cancel_key(self, task_id: str) -> str:
+        return f"{_CANCEL_KEY_PREFIX}{task_id}"
+
+    async def request_cancel(self, task_id: str) -> None:
+        await self._redis.set(self._cancel_key(task_id), "1", ex=self._task_ttl)
+
+    async def is_cancel_requested(self, task_id: str) -> bool:
+        return bool(await self._redis.get(self._cancel_key(task_id)))
 
     async def get_chunks(self, task_id: str, after_id: str | None = None) -> list[StreamChunk]:
         start = f"({after_id}" if after_id else "-"
