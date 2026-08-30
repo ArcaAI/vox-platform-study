@@ -79,6 +79,15 @@ class TestGenerateRequestEdgeCases:
         assert req.context["a"]["b"] == [1, 2, 3]
 
     def test_provider_defaults_to_lm_studio(self):
+        """PINS A KNOWN DEFECT — do not read this as the intended contract.
+
+        `model` has no default and fail-closes with a 422; `provider` silently
+        defaults to a hardcoded engine, so a caller that pins a model and omits
+        the provider is routed to LM Studio whatever engine that model lives on.
+        `models/requests.py::_HARDCODED_DEFAULT_PROVIDER` records why removal is
+        blocked (two callers outside `apps/text`) and names this test as the one
+        that must flip once the gateway stamps the provider unconditionally.
+        """
         req = GenerateRequest(prompt="hi")
         assert req.provider == "lm-studio"
 

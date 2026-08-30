@@ -233,13 +233,28 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: { note: 'Base URL from TEXT_OLLAMA_BASE_URL (env-tier connection identity).' },
   },
   {
-    // LM Studio — the default local OpenAI-compatible engine
-    // (`TEXT_OPENAI_COMPAT_BASE_URL`).
+    // LM Studio — the platform's default local OpenAI-compatible engine, and
+    // since TASK-824 a CONTAINERISED service rather than a developer's desktop
+    // app. The address is therefore the k3s Service name, matching every other
+    // platform-run self-host engine below (`hope-vllm`, `hope-llama-cpp`) —
+    // `http://localhost:1234/v1` described one workstation and could never be
+    // right for a cluster.
+    //
+    // LM Studio has NO headless authentication of any kind: its `/v1` surface
+    // accepts any bearer token, including none. `apiKeyPlaintext` is therefore
+    // the non-secret `not-needed` PLACEHOLDER (see §"Why a keyless row is not
+    // enough"), never a credential — the engine's protection is network
+    // reachability, not authentication.
+    //
+    // CREATE-ONLY (see the header): a developer running LM Studio natively keeps
+    // whatever endpoint their existing row already carries, and points a fresh
+    // dev database at the desktop app by editing the row — the admin action this
+    // table exists for — rather than by the seed guessing which host it is on.
     id: '87000000-0000-0000-0000-000000000002',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
     provider: 'lm-studio',
-    baseUrl: 'http://localhost:1234/v1',
+    baseUrl: 'http://hope-lmstudio:1234/v1',
     region: null,
     apiVersion: null,
     deploymentName: null,
@@ -247,7 +262,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
-    metaData: { note: 'Base URL from TEXT_OPENAI_COMPAT_BASE_URL (env-tier connection identity).' },
+    metaData: { note: 'LM Studio k3s Service (env-tier connection identity); admin-tunable.' },
   },
   {
     // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and

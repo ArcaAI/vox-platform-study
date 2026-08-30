@@ -99,10 +99,17 @@ class TestLifespan:
                 assert app.state.provider_registry is not None
 
     @pytest.mark.asyncio
-    async def test_lifespan_registers_lm_studio_compatibility_alias(self):
-        # both keys are AVAILABLE from the connection-gated lazy factory
-        # (LM Studio always has a default base_url), and resolving either key builds
-        # and shares ONE instance.
+    async def test_lifespan_registers_lm_studio_and_the_generic_wire_adapter(self):
+        """Both keys are AVAILABLE from the connection-gated lazy factories, and
+        they are now DISTINCT adapters.
+
+        They used to share one instance built with the DEFAULT
+        ``provider_name``, which is how a request that named ``lm-studio`` came
+        to be served by an object reporting ``openai_compat`` — and why LM
+        Studio's `ttl` retention hint, gated on that name, never fired.
+        ``openai_compat`` stays registered as the generic OpenAI-wire
+        portability adapter.
+        """
         from text.main import create_app
 
         settings = Settings(port=5099, log_level="debug")
@@ -119,7 +126,9 @@ class TestLifespan:
                 assert "lm-studio" in registry.list_providers()
                 # Lazy: not built until first resolution.
                 assert registry.is_instantiated("lm-studio") is False
-                assert registry.get("lm-studio") is registry.get("openai_compat")
+                assert registry.get("lm-studio") is not registry.get("openai_compat")
+                assert registry.get("lm-studio")._provider_name == "lm-studio"
+                assert registry.get("openai_compat")._provider_name == "openai_compat"
 
     @pytest.mark.asyncio
     async def test_lifespan_preserves_injected_state(self, settings):

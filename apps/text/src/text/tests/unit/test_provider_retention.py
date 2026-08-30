@@ -5,8 +5,15 @@ therefore propagates as a per-request hint rather than an in-process cache:
 
   * LM Studio — `ttl` (seconds) ferried through the OpenAI SDK's sanctioned
                `extra_body` escape hatch. ONLY for LM Studio: the openai-compat
-               class is shared with vLLM and generic endpoints, which reject
+               BASE class is shared with vLLM and generic endpoints, which reject
                unknown body fields.
+
+The hint now lives on `LMStudioProvider`, the adapter `main.py` actually
+registers under the `lm-studio` key, rather than on a `provider_name` guard
+inside the shared base class. That guard was written here against a hand-built
+``OpenAICompatProvider(provider_name="lm-studio")`` — a construction production
+never performed — so it passed while the registered instance sent nothing. The
+registry-level proof is `tests/unit/test_lmstudio_provider.py`.
 
 RED: written before the implementation.
 """
@@ -26,9 +33,9 @@ from text.tests.conftest import stub_client
 class TestLmStudioTtl:
     @pytest.mark.asyncio
     async def test_lm_studio_generate_sends_extra_body_ttl(self):
-        from text.providers.openai_compat import OpenAICompatProvider
+        from text.providers.lmstudio import LMStudioProvider
 
-        provider = OpenAICompatProvider(provider_name="lm-studio")
+        provider = LMStudioProvider()
         provider.apply_retention({"ttl_seconds": 900})
 
         create = AsyncMock(return_value=_completion())
@@ -68,9 +75,9 @@ class TestLmStudioTtl:
 
     @pytest.mark.asyncio
     async def test_lm_studio_stream_sends_extra_body_ttl(self):
-        from text.providers.openai_compat import OpenAICompatProvider
+        from text.providers.lmstudio import LMStudioProvider
 
-        provider = OpenAICompatProvider(provider_name="lm-studio")
+        provider = LMStudioProvider()
         provider.apply_retention({"ttl_seconds": 300})
 
         async def _stream(*_args, **_kwargs):
@@ -88,9 +95,9 @@ class TestLmStudioTtl:
         assert create.await_args.kwargs["extra_body"] == {"ttl": 300}
 
     def test_lm_studio_ttl_is_clamped(self):
-        from text.providers.openai_compat import OpenAICompatProvider
+        from text.providers.lmstudio import LMStudioProvider
 
-        provider = OpenAICompatProvider(provider_name="lm-studio")
+        provider = LMStudioProvider()
         provider.apply_retention({"ttl_seconds": 99999})
         assert provider._retention_ttl_s == 3600
 

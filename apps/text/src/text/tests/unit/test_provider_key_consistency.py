@@ -92,17 +92,26 @@ class TestMainLifespanProviderKeys:
         assert "azure-openai" in registry.list_providers()
         assert "azure" in registry.list_providers()
 
-    def test_openai_compat_factory_registered_under_lm_studio_key(self):
-        """The lazy factory is registered under both the 'lm-studio' key and the
-        'openai_compat' alias, and both resolve to ONE shared instance."""
+    def test_lm_studio_and_openai_compat_are_registered_as_distinct_adapters(self):
+        """Both keys are registered as lazy factories, and they are NOT aliases.
+
+        They were: one `OpenAICompatProvider` built with the DEFAULT
+        ``provider_name`` answered to both, so a `lm-studio` request was served
+        by an object that reported ``openai_compat``. `lm-studio` now has its own
+        adapter (`providers/lmstudio.py`) and `openai_compat` stays the generic
+        OpenAI-wire portability adapter — see
+        `tests/unit/test_lmstudio_provider.py`.
+        """
         from text.main import _register_provider_factories
         from text.providers.base import ProviderRegistry
+        from text.providers.lmstudio import LMStudioProvider
 
         registry = ProviderRegistry()
         _register_provider_factories(registry, MagicMock())
         assert "lm-studio" in registry.list_providers()
         assert "openai_compat" in registry.list_providers()
-        assert registry.get("lm-studio") is registry.get("openai_compat")
+        assert isinstance(registry.get("lm-studio"), LMStudioProvider)
+        assert registry.get("lm-studio") is not registry.get("openai_compat")
 
     def test_unconfigured_azure_registers_but_fails_closed_on_use(self, monkeypatch):
         """Unconfigured Azure is REGISTERED but unusable — fail-closed moved.

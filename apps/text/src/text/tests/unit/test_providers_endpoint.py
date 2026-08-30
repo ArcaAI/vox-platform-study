@@ -105,9 +105,10 @@ class TestProbeContract:
     async def test_entry_name_is_the_registry_key(self, client):
         """The registry key is the provider identity the gateway merges on.
 
-        `main.py` registers the LM Studio instance under BOTH `lm-studio` and
-        `openai_compat`, and the shared instance reports `openai_compat` for
-        both — so the endpoint must stamp the key it iterated.
+        `ProviderInfo.name` is the ADAPTER's own engine name and a registration
+        may legitimately disagree with it (an alias, or a test double), so the
+        endpoint must stamp the key it iterated rather than the name the probe
+        reported.
         """
         shared = AsyncMock()
         shared.get_info = AsyncMock(return_value=_info("openai_compat"))
@@ -120,10 +121,14 @@ class TestProbeContract:
 
 class TestLmStudioNativeEnrichment:
     def _provider(self, native_handler):
-        from text.providers import openai_compat as mod
-        from text.providers.openai_compat import OpenAICompatProvider
+        # The native `/api/v0/models` listing is LM Studio's, so it lives on LM
+        # Studio's adapter — not on the generic OpenAI-wire class, which used to
+        # carry it behind a two-name frozenset and therefore probed generic
+        # endpoints on a route only LM Studio serves.
+        from text.providers import lmstudio as mod
+        from text.providers.lmstudio import LMStudioProvider
 
-        provider = OpenAICompatProvider()
+        provider = LMStudioProvider()
 
         class _Model:
             def __init__(self, mid: str) -> None:
@@ -197,9 +202,11 @@ class TestLmStudioNativeEnrichment:
         provider, mod, _ = self._provider(lambda r: httpx.Response(404))
         provider._client.models.list = AsyncMock(side_effect=RuntimeError("engine down"))  # type: ignore[union-attr]
 
+        from text.providers import openai_compat as compat
+
         events: list[tuple[str, dict]] = []
         monkeypatch.setattr(
-            mod,
+            compat,
             "logger",
             type(
                 "L",
