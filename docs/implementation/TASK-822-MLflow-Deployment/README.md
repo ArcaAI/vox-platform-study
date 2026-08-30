@@ -571,6 +571,61 @@ per-tenant metric labels and infrastructure topology, and it is the precedent a
 future service will copy. Whoever adopts cert-manager should fix Grafana in the same
 change.
 
+### 9.4c ✅ RULING — Cloudflare Tunnel + Cloudflare Access with the existing Entra IdP
+
+**Verified against the LIVE estate 2026-08-30** (Cloudflare API, Rancher/k3s, Argo CD, GitLab),
+not against the manifests. Supersedes §9.4b entirely.
+
+**How every sibling is actually reached:** a proxied CNAME → the single Cloudflare Tunnel
+`arca-dev` (`e917ee9e-c140-47d1-9c34-f9e555bc3095.cfargotunnel.com`) → a **k3s NodePort on
+`10.10.1.10`**. Traefik is bypassed; the cluster's only `Ingress` (`grafana`, host
+`grafana.local`) is targeted by no tunnel route and is dead. **No public origin IP is exposed.**
+
+**⚠️ Correction to the premise.** The pattern is *per-app OIDC with partial coverage*, not a
+uniform edge gate: **GitLab** has omniauth OIDC with Azure AD and **Rancher** has the native
+Azure AD provider — but **Argo CD has NO SSO at all** (no `oidcConfig`, no `dexConfig`, no Access
+app; built-in `admin` only) and **Grafana has none either**. So "expose it the same way as Argo"
+would mean *exposing it unauthenticated*. See **TASK-828 §1** — that is a P1 finding in its own
+right and more urgent than this ticket.
+
+**MLflow has no OIDC of its own**, so the GitLab/Rancher per-app pattern is unavailable to it.
+The correct mechanism is the one the account already has an IdP registered for.
+
+#### The recipe, in order
+
+1. **Service** — `type: NodePort` in `hope-v2-dev`, port 5000 → pod 5000, on an unused port
+   (30300/30081/30082/30088 are taken; **30500** is free). **No Ingress** — the only one in the
+   estate is dead. `deployment/k8s/base/mlflow.yaml` + `kustomization.yaml`, digest-pinned via the
+   promote flow, with `imagePullSecrets` (the deployment-repo CI gates both).
+2. **Tunnel route** — add to tunnel `arca-dev`: `hostname: mlflow.taphuynh.dev` →
+   `service: http://10.10.1.10:30500`, **before** the terminal `http_status:404` rule.
+   ⚠️ This tunnel is `config_src: "cloudflare"` — edited via dashboard/API, **not** through either
+   Git repo (TASK-828 §6 flags that as a governance gap).
+3. **DNS** — `CNAME mlflow.taphuynh.dev → e917ee9e-….cfargotunnel.com`, **proxied = true**, exactly
+   like `grafana-dev`.
+4. **Auth — Cloudflare Access self-hosted application** for `mlflow.taphuynh.dev`:
+   `allowed_idps: ["25722ca1-8f8a-4ccf-be82-8272c60dd3e2"]` (the **existing** azureAD IdP), one
+   `allow` policy, `auto_redirect_to_identity: true`. Then set
+   `originRequest.access = {required: true, teamName: "taphuynh", audTag: [<app AUD>]}` on the
+   tunnel rule, so the origin **rejects anything that did not traverse Access**.
+   **Nothing needs creating first** — the Entra IdP and the `taphuynh` team domain already exist.
+5. **Backing stores** — Postgres and the MinIO bucket per §4/§9.3D. Credentials go to **Vault, not
+   a k8s Secret**: the `hope-v2-dev` AppProject **blacklists `Secret`**, so a materialized Secret
+   will not sync.
+
+#### Worth stating plainly
+
+This makes MLflow **the account's second Access application and the first with
+`originRequest.access.required = true`** — i.e. **stricter than every sibling**, not a copy of one.
+That is the correct outcome for a registry that can hold evaluation datasets built from real
+consultations (S-9), but it should be recorded as a deliberate raising of the bar rather than
+described as "matching the existing pattern", because the existing pattern is weaker.
+
+#### What §9.4b got right, and keep
+
+Nothing about the auth argument survives. The one durable point: **`--app-name basic-auth` stays
+off for now** and is enabled later as the *second* layer behind Access, never as the only one.
+
 ### 9.5 NetworkPolicy draft (do not apply until the two blockers are cleared)
 
 ```yaml
