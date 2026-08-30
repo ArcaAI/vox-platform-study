@@ -19,16 +19,29 @@ but its own ``last_seq`` is not.
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from hope_otel.trace_propagation import inject_trace_carrier
 from pydantic import AliasChoices
 from sse_starlette.sse import EventSourceResponse
 
 from text.core.dependencies import get_task_manager
-from text.routing.hub import GenerationEvent, GenerationHub, dedupe_by_seq, get_generation_hub
+from text.models.task import TaskStatus
+from text.routing.hub import (
+    GenerationEvent,
+    GenerationHub,
+    GenerationPolicy,
+    dedupe_by_seq,
+    get_generation_hub,
+    resolve_generation_policy,
+)
 from text.services.task_manager import TaskManager
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["stream"])
 
@@ -93,11 +106,146 @@ def _frame(generation_id: str, event: GenerationEvent) -> dict[str, str]:
     }
 
 
+#: How long one ``XREAD`` blocks before the tail re-checks its deadline and the
+#: task's status. An algorithmic constant in the same class as the hub's
+#: ``FLUSH_INTERVAL_S`` and the producer's ``_CONTROL_POLL_INTERVAL_S`` — it
+#: expresses no engine, model, endpoint or threshold, so it is a named constant
+#: rather than `db-config`. The heartbeat does NOT depend on it: sse-starlette
+#: pings from its own task, not from this generator.
+_TAIL_BLOCK_MS = 1000
+
+
+async def _replay_then_tail(
+    task_manager: TaskManager,
+    generation_id: str,
+    after_seq: int,
+    policy: GenerationPolicy,
+) -> AsyncIterator[dict[str, str]]:
+    """Replay the durable buffer, then tail it until the generation ends.
+
+    Used when no producer lives in THIS process. One ``XREAD`` loop starting at
+    ``"0-0"`` serves as both the replay and the tail, which is the point: an
+    ``XRANGE`` backlog followed by an ``XREAD`` tail have a seam between them, and
+    a seam is where a gap hides. Reading the whole stream through the same cursor
+    makes a gap structurally impossible, and the sequence-number filter below
+    makes the resulting overlap harmless — the same bargain :func:`dedupe_by_seq`
+    strikes on the live path.
+
+    Two cursors, kept separate:
+
+    * ``seq_cursor`` NUMBERS events, counting every event in the stream whether or
+      not this subscriber emits it. A per-chunk entry — which is how the terminal
+      frame is written (``append_chunk``) — is stored with no sequence of its own,
+      so it is numbered from that running total. This is deliberately the SAME
+      rule :meth:`TaskManager.read_events` applies on the ``XRANGE`` path: the two
+      readers must agree on what a frame's sequence is, or a client that switched
+      between them would see the terminal frame renumbered.
+    * ``emit_cursor`` DELIVERS. It starts at the client's resume point and only
+      advances, so nothing at or before it is re-sent and nothing is skipped.
+
+    In practice the two converge as soon as anything is emitted, so collapsing
+    them would not change observable behaviour today (measured by mutation). They
+    are kept apart because the numbering rule belongs to the STREAM and the
+    delivery rule belongs to the CLIENT, and only the first has to match
+    ``read_events``. What is genuinely load-bearing is the ``or seq_cursor + 1``
+    itself: without it the terminal frame keeps ``seq=0``, is filtered as already
+    seen, and the tail runs to its deadline having delivered no terminal frame —
+    which is the original defect wearing a different hat.
+    """
+    seq_cursor = 0
+    emit_cursor = after_seq
+    last_id = "0-0"
+    deadline = await _tail_deadline(task_manager, generation_id, policy)
+    # A producer that died without writing its terminal frame leaves the task
+    # RUNNING forever, and the deadline alone would hold this reader open for
+    # `max_generation_seconds`. Observing a terminal STATUS and then reading
+    # nothing new bounds that to one block instead. It has to be two-step: the
+    # failure path writes `status=FAILED` BEFORE it appends the `error` frame
+    # (`routing/streaming.py`), so stopping the moment the status flips would
+    # race the very frame we are waiting for.
+    saw_terminal_status = False
+
+    while True:
+        last_id, raw_events = await task_manager.read_events_blocking(
+            generation_id, last_id, block_ms=_TAIL_BLOCK_MS
+        )
+        for raw in raw_events:
+            seq = raw.seq or seq_cursor + 1
+            seq_cursor = max(seq_cursor, seq)
+            if seq <= emit_cursor:
+                continue
+            emit_cursor = seq
+            event = GenerationEvent(seq=seq, event=raw.event, payload=raw.payload)
+            yield _frame(generation_id, event)
+            if event.is_terminal:
+                # Same contract as the live path: stop at the first done/error.
+                return
+
+        if raw_events:
+            # Progress. Anything we knew about the task's status is stale, and a
+            # generation that is still producing is by definition not over.
+            saw_terminal_status = False
+            continue
+
+        if saw_terminal_status:
+            return
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "generation.tail_deadline_exceeded",
+                generation_id=generation_id,
+                max_generation_seconds=policy.max_generation_seconds,
+            )
+            return
+        saw_terminal_status = await _task_is_terminal(task_manager, generation_id)
+
+
+async def _tail_deadline(
+    task_manager: TaskManager, generation_id: str, policy: GenerationPolicy
+) -> float:
+    """When this tail must give up, as a ``time.monotonic()`` stamp.
+
+    Derived from the generation's OWN ceiling — ``maxGenerationSeconds``, resolved
+    tenant → SYSTEM by :func:`resolve_generation_policy` — measured from when the
+    generation started, not from when this reader attached. A subscriber must not
+    be able to outlive the work it is watching, and a second reconnect must not
+    buy the generation another full budget.
+
+    The task record is the only cross-process clock available here: ``Producer``
+    keeps ``started_at`` as a process-local monotonic, which means nothing in this
+    process. A record that has aged out leaves the reader with the budget measured
+    from now, which is the conservative direction — it bounds the wait without
+    truncating a generation that may still be running.
+    """
+    now = time.monotonic()
+    state = await task_manager.get_task(generation_id)
+    started = state.started_at or state.created_at if state else None
+    if started is None:
+        return now + policy.max_generation_seconds
+    elapsed = max(0.0, (datetime.now(UTC) - started).total_seconds())
+    return now + max(0.0, policy.max_generation_seconds - elapsed)
+
+
+async def _task_is_terminal(task_manager: TaskManager, generation_id: str) -> bool:
+    """Whether the task record says this generation is over.
+
+    Never sufficient on its own to stop a tail — see the caller. A record that has
+    aged out reads as terminal, which is right: there is nothing left to wait for.
+    """
+    state = await task_manager.get_task(generation_id)
+    if state is None:
+        return True
+    return state.status in _TERMINAL_STATUSES
+
+
+_TERMINAL_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED})
+
+
 async def stream_generation(
     hub: GenerationHub,
     task_manager: TaskManager,
     generation_id: str,
     after_seq: int,
+    policy: GenerationPolicy | None = None,
 ) -> AsyncIterator[dict[str, str]]:
     """Replay from ``after_seq``, then tail. No gap, no duplicate (AC-15).
 
@@ -113,8 +261,12 @@ async def stream_generation(
     Backlog and ring overlap by construction; :func:`dedupe_by_seq` makes the
     overlap harmless. Doing step 2 before step 1 would lose whatever arrived
     between them.
+
+    ``policy`` bounds the cross-process tail below; it is unused when a producer
+    lives here, because that path already ends when the producer does.
     """
     producer = hub.get(generation_id)
+    policy = policy or GenerationPolicy()
 
     # The client must be able to persist the id BEFORE any token arrives (§3C.3(4)),
     # so it can reconnect to a generation it has not yet seen output from.
@@ -125,17 +277,20 @@ async def stream_generation(
     }
 
     if producer is None:
-        # Nothing live here — a finished generation, or one whose producer is on
-        # another pod. Either way the durable buffer is the whole story.
-        backlog, _ = dedupe_by_seq(await task_manager.read_events(generation_id), after_seq)
-        for event in backlog:
-            yield _frame(generation_id, event)
-            if event.is_terminal:
-                # The reader's contract is "stops at the first done/error", and
-                # it has to hold on the replay path too — otherwise a stream
-                # that errored and then wrote more would deliver, on reconnect,
-                # content the live subscriber never saw.
-                return
+        # No producer HERE. That is two different states, and conflating them is
+        # what truncated cross-process resumes: a FINISHED generation, whose
+        # durable buffer really is the whole story — or one still RUNNING in
+        # another process (another `--workers` worker, another pod), whose buffer
+        # is only the prefix written so far. The second case used to fall through
+        # this branch and close with HTTP 200 and no terminal frame, in ~2 ms.
+        #
+        # `_replay_then_tail` handles both by the same rule: replay everything
+        # durable, and keep tailing until a terminal frame arrives or the
+        # generation's own deadline passes. For a finished generation the
+        # terminal frame is already in the buffer, so it returns immediately —
+        # the old behaviour, unchanged.
+        async for frame in _replay_then_tail(task_manager, generation_id, after_seq, policy):
+            yield frame
         return
 
     subscriber, ring_replay = producer.attach(after_seq)
@@ -196,8 +351,13 @@ async def _subscribe(
         headers["traceresponse"] = carrier["traceparent"]
         headers["Access-Control-Expose-Headers"] = "traceresponse"
 
+    # Resolved tenant → SYSTEM, exactly as the producer does at `POST /generate`,
+    # so a reconnect is bounded by the SAME `maxGenerationSeconds` ceiling the
+    # generation itself runs under rather than by a number invented here.
+    policy = resolve_generation_policy(request.app.state, request.headers.get("x-tenant-id"))
+
     return EventSourceResponse(
-        stream_generation(hub, task_manager, generation_id, after_seq),
+        stream_generation(hub, task_manager, generation_id, after_seq, policy),
         headers=headers,
         ping=_PING_SECONDS,
     )

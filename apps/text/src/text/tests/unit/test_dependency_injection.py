@@ -185,6 +185,12 @@ class TestStreamUsesInjectedTaskManager:
         # accumulating mock call records until the OOM killer took the process
         # (~15 min of silence, then exit 137 in CI).
         mock_task_manager.read_chunk_entries_blocking = AsyncMock(return_value=[])
+        # ...and the same trap one path over. The cross-process resume fix made
+        # the no-producer branch TAIL the buffer via `read_events_blocking`
+        # instead of reading it once, so leaving that name unstubbed hands the
+        # endpoint an auto-created MagicMock it then tries to unpack. Stubbing it
+        # is what keeps this test about dependency injection.
+        mock_task_manager.read_events_blocking = AsyncMock(return_value=("0-0", []))
         resp = await client.get("/api/v1/tasks/task-123/stream")
         assert resp.status_code == 200
 

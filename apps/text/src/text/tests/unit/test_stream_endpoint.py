@@ -48,7 +48,14 @@ def _build_app(settings, task_manager):
 
 
 def _task_manager(events: list[GenerationEvent], *, state: TaskState | None) -> AsyncMock:
-    """A TaskManager double with no live producer — the pure-replay path."""
+    """A TaskManager double with no live producer — the cross-process path.
+
+    Models ``XREAD``, not ``XRANGE``: since the cross-process fix the endpoint
+    tails the buffer rather than reading it once, so a double that only answers
+    ``read_events`` would exercise a code path the service no longer takes. The
+    buffer here is exhausted after one read and then reports empty forever, which
+    is what a real ``XREAD BLOCK`` does for a stream nobody is writing to.
+    """
     tm = AsyncMock()
     tm.get_task = AsyncMock(return_value=state)
     tm.stream_exists = AsyncMock(return_value=bool(events))
@@ -56,7 +63,15 @@ def _task_manager(events: list[GenerationEvent], *, state: TaskState | None) -> 
     async def _read_events(_gid: str, after_seq: int = 0) -> list[GenerationEvent]:
         return [event for event in events if event.seq > after_seq]
 
+    async def _read_events_blocking(
+        _gid: str, last_id: str = "0-0", block_ms: int = 1000
+    ) -> tuple[str, list[GenerationEvent]]:
+        if last_id != "0-0":
+            return last_id, []
+        return "1-0", list(events)
+
     tm.read_events = AsyncMock(side_effect=_read_events)
+    tm.read_events_blocking = AsyncMock(side_effect=_read_events_blocking)
     return tm
 
 
@@ -149,7 +164,11 @@ class TestStreamEndpointReplay:
 
     @pytest.mark.asyncio
     async def test_first_frame_carries_the_generation_id(self, settings):
-        app = _build_app(settings, _task_manager([_chunk(1, "a")], state=_running()))
+        # COMPLETED, not RUNNING: this asserts the meta frame, and a RUNNING task
+        # whose buffer holds no terminal frame is now (correctly) tailed rather
+        # than closed, which would just make this test wait for no reason.
+        state = TaskState(task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m")
+        app = _build_app(settings, _task_manager([_chunk(1, "a")], state=state))
         resp = await _get(app, "/api/v1/tasks/t1/stream")
 
         first_id, first_event, first_data = _frames(resp.text)[0]
