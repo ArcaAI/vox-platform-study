@@ -158,6 +158,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // (super-admin-only per owner expectation); tenantId is
   // carried for the house template + forward compatibility.
   'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
+  // ai-routing-policy.prisma (1) — config-plane core (TASK-818 §3A.3). The
+  // ORDERED N-way candidate chain per (tenant, taskKey, policyVersion): which
+  // providers serve a task, in what order, and what may happen on failure.
+  // SYSTEM row = platform default; a tenant row wins on presence. Carries no
+  // secret (a candidate names a connection by reference; the credential stays
+  // in AiProviderConnection). Also a SYSTEM-shared read model — see the
+  // SYSTEM_SHARED_READ_MODELS entry below.
+  'AiRoutingPolicy',
   // entitlement.prisma (1) — rolling-monthly usage meters. The
   // reconcile job reads/writes these via the UNSCOPED `baseClient` (explicit
   // tenantId filters, no CLS — same escape hatch as the audit-retention
@@ -431,6 +439,16 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // read by every tenant's injection cascade at request time. No secrets on
   // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
   'AiRuntimeProfile',
+  // The provider ROUTING policy (TASK-818 §3A.3). The SYSTEM-tenant row is the
+  // platform default candidate chain every tenant without its own row must
+  // resolve — the identical "tenant row → SYSTEM row" shape as AiTaskDefault
+  // above, and the resolver runs under the caller's own tenant CLS at request
+  // time, so without the widening it reads nothing and every such tenant fails
+  // closed. READS widen to [caller, SYSTEM]; WRITES are NOT widened (policy
+  // authoring under SYSTEM is super-admin-only at the service layer, the
+  // AiTaskDefault precedent). No secrets on the model — candidates reference a
+  // connection, they do not carry its credential.
+  'AiRoutingPolicy',
   // the MCP external-tools registry: server rows are registered by a
   // super admin under the SYSTEM tenant and every tenant's harness run must
   // READ the shared registry to resolve a server it references (server metadata
