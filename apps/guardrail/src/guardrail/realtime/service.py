@@ -20,18 +20,22 @@ bounds is how much goes in VERBATIM (§5.2 mechanism 3) — the earlier prefix i
 represented by a rolling summary that is itself a validated artifact — and that
 is a caller obligation this module reports on rather than silently performs.
 
-**⚠️ The honest limit of the session aggregation today.** §5.1's arithmetic wants
-a graded per-window score. The platform's classification plane does not produce
-one: ``apps/nlp``'s guard-classify surface returns
-``results: dict[str, str | list[str]]`` — LABELS, with no per-label confidence —
-so the score this module can compute is categorical (flagged / not flagged), and
-the session mean is therefore a **flag RATE**, not the confidence mean whose
-"0.32 benign -> 0.628 flagged" separation §5.1 cites. The mechanism is correct
-and the thresholds are per-tenant configuration either way, but a threshold
-calibrated for one statistic is meaningless against the other. Every verdict
-therefore carries ``scoreCalibration`` so nobody reads a categorical aggregate as
-a graded one. Making it graded means returning scores from ``apps/nlp``'s
-classify route — a change to a shared response contract, and a separate lane.
+**Which statistic the session aggregate is, and why the verdict says so.**
+§5.1's arithmetic wants a graded per-window score. ``apps/nlp``'s guard-classify
+surface used to answer with LABELS alone, so the only computable score was
+categorical (flagged / not flagged) and the session mean was a **flag RATE** —
+not the confidence mean whose "0.32 benign -> 0.628 flagged" separation §5.1
+cites. TASK-830 added per-label confidences to that surface, so when the executor
+reports them each window contributes a real graded risk and the mean is the
+statistic §5.1 describes.
+
+Both cases remain reachable — a peer that reports no confidence still gets a
+correct categorical verdict — so ``scoreCalibration`` is computed per aggregate
+rather than asserted: ``graded`` only when EVERY window folded in carried a
+confidence, ``categorical`` otherwise, with ``gradedWindows`` alongside
+``windows`` so a partial session is auditable. A threshold calibrated for one
+statistic is meaningless against the other, which is the whole reason the field
+exists; per-tenant θ/Θ calibration must be done against a ``graded`` aggregate.
 """
 
 from __future__ import annotations
@@ -269,7 +273,7 @@ class RealtimeValidator:
 
         for offset, window in _windows(clean, policy.window_chars, policy.overlap_chars):
             windows += 1
-            results = await self._analyzer.classify_tasks(policy.axes.all_tasks, window)
+            results, confidences = await self._classify(policy.axes.all_tasks, window)
             harm = self._flagged(results, policy.axes.content_harm)
             injection = self._flagged(results, policy.axes.injection_risk)
             harm_labels.update(harm)
@@ -284,8 +288,18 @@ class RealtimeValidator:
                         span=(offset, offset + len(window)),
                     )
                 )
-            # CATEGORICAL, and the verdict says so. See the module docstring.
-            artifact_state.observe(1.0 if (harm or injection) else 0.0)
+            # GRADED when the executor reported confidences, CATEGORICAL when it
+            # did not — and `scoreCalibration` below says which. See §5.1.
+            graded_score = self._graded_risk(
+                results,
+                confidences,
+                (*policy.axes.content_harm, *policy.axes.injection_risk),
+                policy.benign_labels,
+            )
+            if graded_score is None:
+                artifact_state.observe(1.0 if (harm or injection) else 0.0)
+            else:
+                artifact_state.observe(graded_score, graded=True)
 
         if not complete:
             await self._save_session(session_id, session_state, session_matcher)
@@ -314,7 +328,16 @@ class RealtimeValidator:
         injection_positive = decision != "PASS"
 
         aggregate = artifact_state.to_dict()
-        aggregate["scoreCalibration"] = CALIBRATION_CATEGORICAL
+        # GRADED only when EVERY window folded into this aggregate carried a real
+        # confidence. A mix is neither statistic, and calling it graded would hand
+        # Phase 4 calibration data that is silently part flag rate — so a partial
+        # session understates itself. `gradedWindows` (in `to_dict`) is there so
+        # the mix is auditable rather than merely conservative.
+        aggregate["scoreCalibration"] = (
+            CALIBRATION_GRADED
+            if artifact_state.windows and artifact_state.graded_windows == artifact_state.windows
+            else CALIBRATION_CATEGORICAL
+        )
         aggregate["deterministicHits"] = summarise(t0_matches)
         aggregate["windowsThisArtifact"] = windows
         if complete:
@@ -362,6 +385,76 @@ class RealtimeValidator:
         )
 
     # -- helpers ------------------------------------------------------------
+
+    async def _classify(
+        self, tasks: Sequence[str], window: str
+    ) -> tuple[Mapping[str, Any], Mapping[str, Mapping[str, float]]]:
+        """One classification pass — with confidences when the analyzer has them.
+
+        The scored seam is OPTIONAL by design. An analyzer that predates
+        TASK-830 (or a peer `apps/nlp` that still answers with labels alone)
+        keeps working and is reported as `categorical`; nothing is synthesised to
+        make the graded path look available when it is not.
+        """
+        scored = getattr(self._analyzer, "classify_tasks_scored", None)
+        if callable(scored):
+            answer = await scored(tasks, window)
+            return answer.labels, answer.scores
+        return await self._analyzer.classify_tasks(tasks, window), {}
+
+    def _graded_risk(
+        self,
+        results: Mapping[str, Any],
+        confidences: Mapping[str, Mapping[str, float]],
+        tasks: Sequence[str],
+        benign: frozenset[str],
+    ) -> float | None:
+        """This window's graded risk in [0, 1], or None when nothing scored it.
+
+        Per label: a NON-BENIGN label contributes its own confidence, and a
+        benign one contributes `1 - confidence` — the mass the model did NOT put
+        on "clean". The window takes the max across the gating tasks.
+
+        `1 - P(benign)` is exact for a single-label softmax task, which is the
+        shape `prompt_safety` / `jailbreak_detection` use: with one benign label
+        in the taxonomy it IS the total probability on the harmful ones. For a
+        multi-label sigmoid task it is an estimate rather than a bound — the
+        executor returns the labels it selected, not a distribution over the whole
+        taxonomy — but it moves monotonically with detector confidence, which is
+        the property §5.1's aggregate actually needs. It is deliberately computed
+        HERE and not in `apps/nlp`: `benign_labels` is guardrail's policy, and the
+        executor must keep returning raw numbers it does not interpret.
+
+        Returns None unless EVERY task that answered was scored. A max taken over
+        a subset silently understates the window — a task with no confidence
+        cannot contribute — so a partly-scored window is reported as unscored
+        rather than as a number that looks complete.
+        """
+        risk = 0.0
+        answered = 0
+        scored = 0
+        for task in tasks:
+            value = results.get(task)
+            if value is None:
+                continue
+            answered += 1
+            per_label = confidences.get(task) or {}
+            labels = [value] if isinstance(value, str) else [str(v) for v in value]
+            task_risk: float | None = None
+            for label in labels:
+                confidence = per_label.get(label)
+                if confidence is None:
+                    continue
+                harmful = label.casefold() not in benign
+                contribution = confidence if harmful else 1.0 - confidence
+                task_risk = contribution if task_risk is None else max(task_risk, contribution)
+            if task_risk is None:
+                continue
+            scored += 1
+            risk = max(risk, task_risk)
+        if not answered or scored != answered:
+            return None
+        return risk
 
     def _flagged(self, results: Mapping[str, Any], tasks: Sequence[str]) -> list[str]:
         benign = self._policy.benign_labels

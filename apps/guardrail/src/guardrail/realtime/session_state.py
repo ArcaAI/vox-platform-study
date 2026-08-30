@@ -71,6 +71,7 @@ class SessionRiskState:
         "consecutive",
         "max_consecutive",
         "windows",
+        "graded_windows",
         "_score_total",
     )
 
@@ -80,14 +81,27 @@ class SessionRiskState:
         self.consecutive = 0
         self.max_consecutive = 0
         self.windows = 0
+        #: How many of `windows` carried a real per-label CONFIDENCE rather than
+        #: a 1/0 flag (TASK-830). The caller reports the calibration from this;
+        #: the state only counts, because "which statistic is this" is a claim
+        #: about the whole aggregate and belongs with the verdict.
+        self.graded_windows = 0
         self._score_total = 0.0
 
     # -- observation --------------------------------------------------------
 
-    def observe(self, window_score: float) -> None:
-        """Fold one window's score into the session."""
+    def observe(self, window_score: float, *, graded: bool = False) -> None:
+        """Fold one window's score into the session.
+
+        `graded=False` (the default) means the score is CATEGORICAL — 1.0 or 0.0
+        from a flagged/not-flagged decision. It is the default because a caller
+        that has not thought about calibration must not accidentally claim its
+        aggregate is a confidence mean.
+        """
         score = float(window_score)
         self.windows += 1
+        if graded:
+            self.graded_windows += 1
         self._score_total += score
         if score > self._policy.noise_floor:
             self.excess_risk += score - self._policy.noise_floor
@@ -123,11 +137,12 @@ class SessionRiskState:
     # -- audit --------------------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        """PHI-free: four numbers and the reasons. Never a window's content."""
+        """PHI-free: the counters and the reasons. Never a window's content."""
         return {
             "excessRisk": round(self.excess_risk, 6),
             "meanScore": round(self.mean_score, 6),
             "windows": self.windows,
+            "gradedWindows": self.graded_windows,
             "maxConsecutive": self.max_consecutive,
             "fired": self.fired,
             "fireReasons": list(self.fire_reasons),
@@ -141,6 +156,7 @@ class SessionRiskState:
             "consecutive": float(self.consecutive),
             "maxConsecutive": float(self.max_consecutive),
             "windows": float(self.windows),
+            "gradedWindows": float(self.graded_windows),
             "total": self._score_total,
         }
 
@@ -154,5 +170,6 @@ class SessionRiskState:
             state.consecutive = int(float(snapshot.get("consecutive", 0)))
             state.max_consecutive = int(float(snapshot.get("maxConsecutive", 0)))
             state.windows = int(float(snapshot.get("windows", 0)))
+            state.graded_windows = int(float(snapshot.get("gradedWindows", 0)))
             state._score_total = float(snapshot.get("total", 0.0))
         return state
