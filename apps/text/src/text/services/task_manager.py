@@ -357,6 +357,51 @@ class TaskManager:
                     )
         return events
 
+    async def read_events_blocking(
+        self, task_id: str, last_id: str = "0-0", block_ms: int = 1000
+    ) -> tuple[str, list[GenerationEvent]]:
+        """``XREAD BLOCK`` over the replay buffer, decoded as :class:`GenerationEvent`.
+
+        The batch-aware sibling of :meth:`read_chunk_entries_blocking`. That one
+        decodes the **per-chunk** shape (``_decode_chunk_data``) and returns
+        ``StreamChunk``s, which is the wrong shape for the coalesced batches
+        :meth:`append_batch` writes — so this is a new method rather than a change
+        to that one, whose two-tuple/three-tuple contracts other callers still hold.
+
+        Returns ``(last_id, events)``. ``last_id`` is where the next call resumes;
+        pass ``"0-0"`` on the first call to read the whole buffer from the start,
+        which is what makes an ``XRANGE`` backlog followed by an ``XREAD`` tail
+        unnecessary — one mechanism covers both, so the two cannot leave a gap
+        between them.
+
+        ``seq`` is left EXACTLY as decoded, including the ``0`` a per-chunk entry
+        carries: only the caller knows the running cursor a per-chunk entry must
+        be numbered from. :meth:`read_events` does that assignment for the
+        ``XRANGE`` path, and the tailing caller does the identical thing.
+        """
+        result = await self._redis.xread(
+            {self._stream_key(task_id): last_id},
+            block=block_ms,
+            count=100,
+        )
+        if not result:
+            return last_id, []
+
+        events: list[GenerationEvent] = []
+        cursor = last_id
+        for _stream_name, entries in result:
+            for msg_id, fields in entries:
+                if isinstance(msg_id, bytes):
+                    msg_id = msg_id.decode()
+                cursor = msg_id
+                raw = fields.get(b"data") or fields.get("data")
+                if not raw:
+                    continue
+                if isinstance(raw, bytes):
+                    raw = raw.decode()
+                events.extend(self._decode_batch_data(raw))
+        return cursor, events
+
     async def stream_exists(self, task_id: str) -> bool:
         """Whether any replay buffer exists for this id.
 
