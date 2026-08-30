@@ -19,8 +19,9 @@ structural rather than conventional:
   ``GuardrailRecursionError`` if a future edit ever routes it here.
 * **Resources.** Its own semaphore and circuit breaker per provider
   (``app.state.judge_semaphores`` / ``judge_circuit_breakers``, sized by
-  ``TEXT_JUDGE_*``). A saturated user-facing pool cannot starve a judgement, and
-  a wedged judgement cannot consume the user-facing budget. The judge lane also
+  `AiRuntimeProfile`, floored by `JUDGE_LANE_FLOOR`). A saturated user-facing
+  pool cannot starve a judgement, and a wedged judgement cannot consume the
+  user-facing budget. The judge lane also
   deliberately consults NO rate limiter and NO request queue: a tenant that has
   exhausted its own generation rate limit must not be able to throttle the
   safety plane, and queueing a call that is already on a user-facing request's
