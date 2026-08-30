@@ -29,10 +29,23 @@ class ProviderTimeoutError(ProviderError):
 
 
 class RateLimitError(TextError):
-    """Rate limit exceeded."""
+    """Rate limit exceeded.
 
-    def __init__(self, message: str = "Rate limit exceeded", *, retry_after: float | None = None):
+    ``remaining`` is the RFC 9239-style budget left in the current window, surfaced
+    as ``RateLimit-Remaining`` (TASK-818 §4.4). It is ``None`` when the limiter
+    cannot say — and ``None`` must NOT be reported as ``0``: a confident zero tells
+    a client to stop sending, which is a different instruction from "unknown".
+    """
+
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        *,
+        retry_after: float | None = None,
+        remaining: int | None = None,
+    ):
         self.retry_after = retry_after
+        self.remaining = remaining
         super().__init__(message, error_code="RATE_LIMITED")
 
 
