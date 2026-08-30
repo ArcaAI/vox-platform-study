@@ -408,15 +408,30 @@ written in this lane** — seeding is a `packages/database` change and is listed
 | Admin-console alert surfaces (§9) | Console work; the plane emits machine NOTICE CODES, never prose, so the copy rules stay testable where the copy lives |
 | T2 LLM judge | Phase 1 is explicitly T0+T1 only |
 
-### Defect found in the base branch (not introduced here)
+### Defect found in the base branch (not introduced here) — ✅ RESOLVED 2026-08-30, stale test name below
 
-`apps/guardrail/src/guardrail/tests/test_task799_config_plane.py::test_the_prod_reference_that_described_the_phantom_plane_is_gone`
-**fails on `dev-2.2` itself.** TASK-799 (`a40158536`) deleted `apps/guardrail/.env.prod`
-and locked the deletion with that test; a later commit,
-`2a1bfcc97 docs(env): give text and guardrail the .env.prod every other service has`,
-re-added the file. The file is tracked and present at the `dev-2.2` tip. Two commits
-disagree about whether it should exist. **Not touched here** — the assertion should not
-be edited to match, because that hides the contradiction rather than resolving it.
+**Superseded.** This item named a test, `test_the_prod_reference_that_described_the_phantom_plane_is_gone`,
+that does not exist in `apps/guardrail/src/guardrail/tests/test_task799_config_plane.py` — no
+match anywhere in the repo. The actual test at that location is
+`test_the_prod_reference_exists_and_does_not_resurrect_the_phantom_plane`, and it asserts the
+**opposite** of what this item's name implies: that `.env.prod` **exists** and is honest, not
+that it is gone. The contradiction this item recorded was real (TASK-799 deleted the file and
+pinned the deletion; a later commit re-added it), but it was reconciled in `d8f21ef01
+fix(guardrail): pin the prod reference's honesty, not its absence` — the test now pins honesty
+of content rather than absence, `.env.prod` is a deliberately-tracked operator-facing template
+(`.gitignore:102`, `.gitleaks.toml:149`, `scripts/env-sync.mts` `READER_CHECKED_FILES` all
+sanction it), and the guardrail suite is green on this point. `d8f21ef01` is confirmed an
+ancestor of `dev-2.2`.
+
+Original text, kept for history rather than deleted:
+
+> `apps/guardrail/src/guardrail/tests/test_task799_config_plane.py::test_the_prod_reference_that_described_the_phantom_plane_is_gone`
+> **fails on `dev-2.2` itself.** TASK-799 (`a40158536`) deleted `apps/guardrail/.env.prod`
+> and locked the deletion with that test; a later commit,
+> `2a1bfcc97 docs(env): give text and guardrail the .env.prod every other service has`,
+> re-added the file. The file is tracked and present at the `dev-2.2` tip. Two commits
+> disagree about whether it should exist. **Not touched here** — the assertion should not
+> be edited to match, because that hides the contradiction rather than resolving it.
 
 ## 13. Change History
 
@@ -428,3 +443,4 @@ be edited to match, because that hides the contradiction rather than resolving i
 | 2026-08-29 | **Rewritten after streaming-guardrail research.** Corrections: overlap is NOT the split-injection defence (§2.2) — replaced by per-session stateful aggregation; verdict split into **three** axes with two cache scopes (§3), since injection risk is not task-agnostic; five safe-trust conditions added (§2); output-side checks made mandatory per task (§7); general harm taxonomies ruled out on clinical text (§2.1); hard no-redaction invariant added (§6). |
 | 2026-08-30 | **§12's "a policy change invalidates every affected verdict" was not true on the fan-out read path.** The consumer handle `gr:rt:seg:<tenant>:<segment>` is keyed by tenant and segment id and by nothing else, so `read_segment_verdict` served verdicts computed under a superseded policy for the whole `realtimeVerdictTtlSeconds` window. The config-invalidation channel was already correct and is not the gap — it drops the CONFIG cache, so the next request resolves the new policy; nothing dropped the VERDICTS the old policy had produced. Worst case is the one that matters most: an operator TIGHTENING a threshold mid-incident kept getting the pre-change PASS verdicts. Fixed by stamping each stored verdict with `RealtimePolicy.stamp` and treating a mismatch as a MISS on read (recompute, never serve stale). The stamp is a **property derived from the resolved policy**, not a constructor argument, so no construction site can forget it or pass one that disagrees; it covers the four declared versions **plus** the behavioural inputs that decide a verdict but carry no version of their own — the axis map, the deterministic phrases, the capability sets, the session thresholds, window geometry, benign labels, lexicons and policy provenance. `ttl_s` is deliberately excluded (how long a verdict may be reused is not part of what it says). `DeterministicRuleSet` gained a `declaration_digest` because rule ids are stable by design, so a phrase edited under an existing id changed every verdict while leaving `rule_ids` identical. 14 tests added (`test_task829_verdict_invalidation.py`), including the negative control that an UNCHANGED policy still hits — over-invalidating would silently restore the N-classifications-per-segment cost this design exists to remove. |
 | 2026-08-30 | **Correction to §12A's "Not done" table: harness is NOT a §4 violation.** Both `GuardrailClient.analyze()` call sites in `apps/harness` (`temporal/interpreter/nodes/guardrail_check.py`, `temporal/activities.py:583` `_safety_screen_client`) screen **generated/bound text**, not a transcript the realtime plane produced a verdict for — `guardrail_check` explicitly degrades with `no_bound_text` when no *generated* text is bound. §4's "consumers read the verdict, never call guardrail directly" governs the transcript fan-out (partial summarization, NER, grammar reading a partial transcript); text a model has just produced has no pre-existing segment verdict to read, and checking it is §7 output-side work (Phase 3). Migrating those call sites to `read_segment_verdict` would hand an output-side check an input-side verdict about different text, and was therefore NOT done. The genuine consumer wiring remains blocked on the `TranscriptSegment.validationRef` column (Prisma migration) and the `apps/stt` segment-finalization hook, as already recorded. |
+| 2026-08-30 | **Corrected: §12A's "Defect found in the base branch" named a test that does not exist.** It cited `test_the_prod_reference_that_described_the_phantom_plane_is_gone`; no such test is in `test_task799_config_plane.py` or anywhere in the repo. The actual test, `test_the_prod_reference_exists_and_does_not_resurrect_the_phantom_plane`, asserts the opposite of the cited name — that `.env.prod` exists — and the underlying contradiction it recorded (TASK-799 deleted the file and pinned the deletion; a later commit re-added it) was reconciled in `d8f21ef01 fix(guardrail): pin the prod reference's honesty, not its absence`, confirmed an ancestor of `dev-2.2`. Marked resolved; original text kept for history rather than deleted. |
