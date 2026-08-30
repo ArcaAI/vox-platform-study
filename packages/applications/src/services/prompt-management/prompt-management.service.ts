@@ -7,7 +7,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 // Server-side prompt-version diff. Same `diff` (jsdiff)
 // engine the SDK used client-side, so the combined line diff is byte-identical.
 import { diffLines, createPatch } from 'diff';
+import type { Readable } from 'node:stream';
 import { TENANTLESS, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
+import { readGenerationId } from '../text-request/text-stream-open';
 import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import {
   PromptTemplateRepository,
@@ -1329,6 +1331,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * The generation itself is consumed by the caller over SSE
    * (`GET text/tasks/:taskId/stream`, which is where the ledger row is emitted)
    * and then finalized through {@link finalizePromptTemplateTest}.
+   *
+   * TASK-818 §3C.3(1) — the SINGLE-CALL contract. TEXT no longer answers a
+   * streaming `POST /generate` with `202 {task_id, stream_url}`; it answers
+   * **200 + `text/event-stream`**, with the id in the first frame's `data`.
+   * There is therefore no ack body to read: we open the stream, take the id off
+   * the meta frame, and drop our subscription.
+   *
+   * Dropping it is NOT a cancel (§3C.4) — the producer is owned by TEXT's hub,
+   * not by this response — so nothing is lost between here and the browser's own
+   * subscription: it replays from seq 0 out of the replay buffer. This service
+   * still holds no stream state, which is what keeps the id round-trip honest.
    */
   private async submitTextGenerationJob(prompt: string, provider: string, model: string): Promise<{ taskId: string; streamUrl: string }> {
     if (!this.httpService) {
@@ -1340,12 +1353,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
       await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     }
 
-    let data: { task_id?: string; stream_url?: string };
+    let taskId: string;
     try {
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
-        headers: await this.textHeaders(),
+        headers: { ...(await this.textHeaders()), Accept: 'text/event-stream' },
+        responseType: 'stream',
       });
-      data = response.data ?? {};
+      taskId = await readGenerationId(response.data as Readable);
     } catch (error) {
       // TASK-768: was `BadRequestException(\`Failed to call TEXT service: ${error}\`)`.
       // That is the exact body the TASK-764 evidence captured — a 400 naming
@@ -1359,13 +1373,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
       throw error;
     }
 
-    const taskId = data.task_id;
-    if (!taskId) {
-      throw new BadRequestException('TEXT did not return a task id for the streaming generation job.');
-    }
-    // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), not the
-    // service-relative `stream_url` TEXT reports — the browser talks to the
-    // gateway, with a `text_task:<taskId>`-scoped single-use ticket.
+    // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), never a
+    // service-relative one — the browser talks to the gateway, with a
+    // `text_task:<taskId>`-scoped single-use ticket. TEXT used to report its own
+    // `stream_url` in the 202 ack; under TASK-818 §3C.3(1) there is no ack, so
+    // this path is composed here from the id and nowhere else.
     return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
   }
 
