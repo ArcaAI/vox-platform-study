@@ -1007,6 +1007,35 @@ Read **§3C in full** before starting; it is the specification.
 new contract with justification; `test_generate_idempotency` must stay green **unmodified**.
 AC-5 and AC-15..AC-18 are this lane's.
 
+> **⚠ SUPERSEDED 2026-08-30 — Lane F and Lane I collided; split by LAYER instead.**
+>
+> As written, Lane F owns `packages/database/**` + `packages/domains/**` +
+> `packages/applications/**`, and §3A.9's Lane I owns "the `RoutingPolicy` Prisma model +
+> domain trio". **Both lanes claim the same model.** That is an ownership collision in this
+> plan, not a sequencing detail — two writers on one file is the failure §14.3 exists to
+> prevent.
+>
+> Re-grounded against the repo on 2026-08-30: `RoutingPolicy` does **not** exist in any form
+> (apparent grep hits are Storybook bundles of a `systemd` syntax definition), and none of
+> F-1's vocabulary — `fallbackChain`, `providerWeight`, `stickyRouting`, `affinityKey`,
+> `maxConcurrentStreams`, `tokensPerMinute` — exists anywhere. So F-1's "extend the config
+> plane" and Lane I's "add the RoutingPolicy model" are not two pieces of work. F-1's limits
+> are **fields on §3A.3's schema**, and building a second config model beside it would be
+> speculative abstraction.
+>
+> Replaced by three sequential lanes, each disjoint from the others and reviewable on its own:
+>
+> | Lane | Owns | Delivers |
+> |---|---|---|
+> | **F′** | `packages/database/src/prisma/db_main/**`, `packages/domains/src/**` | `AiRoutingPolicy` model (named for the `Ai*` family, not §3A.3's shorthand), hand-authored entity/factory/mapper/repository, `ResourceType` in both places, allow-lists, migration SQL **prepared not applied** |
+> | **I′** | `packages/applications/**`, `apps/api/src/modules/**` | tenant→SYSTEM resolution, §3A.4's three hard gates, audit trail (§3A.8), admin controller, simulate endpoint |
+> | **I″** | `apps/text/src/text/routing/policy.py` | the router-side client and the §3A.4 response headers |
+>
+> F′ cannot run DB commands (the orchestrator owns them) but verifies fully without one:
+> `db:generate` is offline codegen, and the domain suite mocks its repositories. Lane E-stream
+> taught us that a lane which runs **zero** gates ships broken code, so "cannot reach a
+> database" must not become "cannot verify".
+
 #### Lane F — Tenant config and routing policy *(owns `packages/database/**`, `packages/domains/**`, `packages/applications/**`)*
 
 - **F-1** — Extend the config plane for router semantics: per-tenant **fallback chains**,
