@@ -92,6 +92,60 @@ describe('ContextItemRepository.encryptContentIntoEntity (Phase 3B)', () => {
     expect(entity.contentKeyVersion ?? null).toBeNull();
   });
 
+  // TASK-825 — `encryptStringToCiphertext` collapses THREE different
+  // meanings into one `null`, and the old guard treated all three as "nothing to
+  // do". On a `ContextItem` that is wrong for exactly one of them: there is no
+  // plaintext `content` column, so `encryptedContent` is the ONLY place a
+  // deletion can be recorded. Returning early left the OLD ciphertext on a row
+  // whose `currentVersionNumber` and `updatedBy` had already advanced past it —
+  // the caller got `200` and the deleted text came back on reload.
+  it('an EMPTY STRING clears encryptedContent and contentKeyVersion as a pair', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const entity = makeEntity({
+      content: '',
+      encryptedContent: Buffer.from('vault:v1:the-old-body', 'utf8'),
+      contentKeyVersion: 1,
+    });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+
+    expect(secrets.encrypt).not.toHaveBeenCalled();
+    expect(entity.encryptedContent).toBeNull();
+    // Cleared as a PAIR — a null body with a stale key version is incoherent.
+    expect(entity.contentKeyVersion).toBeNull();
+    // Both must be in the change set, or the UPDATE omits the columns entirely.
+    expect(entity.changes).toMatchObject({ encryptedContent: null, contentKeyVersion: null });
+  });
+
+  it('UNDEFINED content is NOT a deletion — a column-reconstituted row keeps its body', async () => {
+    // This is the case that must stay a no-op: a row read back from columns has
+    // no `content` to hydrate, so treating absence as a deletion would blank the
+    // body of every item touched by a write that never mentioned it.
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const existing = Buffer.from('vault:v1:the-old-body', 'utf8');
+    const entity = makeEntity({ content: undefined, encryptedContent: existing, contentKeyVersion: 1 });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+
+    expect(entity.encryptedContent).toBe(existing);
+    expect(entity.contentKeyVersion).toBe(1);
+    expect(entity.changes).not.toHaveProperty('encryptedContent');
+  });
+
+  it('NULL content is NOT a deletion either (media rows arrive this way)', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    const existing = Buffer.from('vault:v1:the-old-body', 'utf8');
+    const entity = makeEntity({ content: null, encryptedContent: existing, contentKeyVersion: 1 });
+
+    await repo.encryptContentIntoEntity(entity, secrets);
+
+    expect(entity.encryptedContent).toBe(existing);
+    expect(entity.contentKeyVersion).toBe(1);
+  });
+
   it('does NOT clear the transient plaintext content (kept in memory, never persisted)', async () => {
     const secrets: SecretsServiceLike = {
       encrypt: vi.fn(async (b: Buffer) => `vault:v1:${b.toString('base64')}`),
