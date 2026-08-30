@@ -391,10 +391,141 @@ banner on its parent README.
 - [ ] Transit keys re-created and the undecryptable rows triaged — **blocked on §7 step 7**
 - [ ] VMs snapshotted, then destroyed, with the three monitoring edits in one commit — **blocked on §8**
 
+## 10b. The Vault UI and the reset signal (owner asks, 2026-08-30)
+
+Two follow-on asks landed on top of the seal change. Both are in `hope-v2-deployment`.
+
+### 10b.1 The Vault UI — already enabled; the question was access
+
+`ui = true` has been in `vault.hcl` since `28aa2a8`. Verified against the real
+`hashicorp/vault:1.18.3`: `GET /ui/` → **200** (Ember app, 996 KB), `GET /` → **307** to
+`/ui/`. **No manifest change was needed to enable it.**
+
+**Recommendation: `kubectl port-forward pod/hope-vault-0 8200:8200`, documented in
+`docs/vault-seal-migration.md` §12. Do not add a tunnel hostname.** The reasoning is the
+estate's, not a general preference:
+
+* `hope-vault` is a **headless** Service with no NodePort, LoadBalancer or Ingress, and the
+  Cloudflare Tunnel reaches this cluster through NodePorts (TASK-828 §0). A
+  `vault.taphuynh.dev` is not a re-point of an existing route — it means **publishing a new
+  Service for Vault**, i.e. adding exposure that does not exist today.
+* **Cloudflare Access covers exactly ONE application in the entire estate** (TASK-828 §2).
+  Every other HOPE route — including Postgres and Redis over TCP — has no edge identity check.
+  A route added the way the existing ones were added puts the secrets plane of a PHI platform
+  on the internet behind nothing.
+* Argo CD already sits on the internet with full write to this namespace behind one local
+  `admin` password until the owner's Entra SSO lands (TASK-828 §1). Adding a second
+  internet-reachable path to the same blast radius in the same week is the wrong direction.
+* `port-forward` adds **no** attack surface: authenticated by Rancher's Azure AD, point-to-point,
+  alive only while the command runs.
+
+One detail that matters in practice and is documented: **forward the POD, not the Service.**
+The readiness probe answers 503 while Vault is sealed, so the headless Service publishes no
+endpoint in precisely the state where the UI is most wanted.
+
+If a tunnel route is ever wanted it needs three things landing together — a NodePort/Ingress
+Service, a Cloudflare Access application over it bound to the Entra IdP *before* the route is
+enabled, and TLS to the origin (Vault runs `tls_disable = true` today). §12.3 records that.
+
+### 10b.2 "Initialise Vault" was incomplete — the sidecar now provisions the surface
+
+The ask was for one signal covering Vault init, database reset and re-seed. Splitting it by
+lifecycle rather than by wish produced a smaller, safer answer.
+
+**Vault initialisation must stay automatic, and it was not complete.** A freshly initialised
+Vault has no `secret/` mount, no `transit/`, no `approle/` and no policies — so §5 of the
+runbook was ten hand-typed `vault` commands, and until they ran, `SECRETS_PROVIDER=vault` put
+field encryption in required mode with no key to use: **every write to any of the 20 encrypted
+repositories raises.** That work is machine work with no decisions in it, it needs the root
+token, and the only actor legitimately holding the root token is the bootstrap sidecar in the
+seconds after `sys/init`. It now lives there (`provision_surface()`), creating: kv-v2 at
+`secret/`, `transit/` + `hope-globalsetting` + `hope-phi`, `approle/`, the `hope-app` policy
+(from new ConfigMap `hope-vault-policies`), the `hope-app` role, and Secret
+`hope-vault-approle` carrying the gateway's credentials.
+
+It is idempotent (checks before every create), self-healing (Secret `hope-vault-approle` is
+both the output and the "already provisioned" marker), and it **ends in a canary rather than an
+assumption** — it logs in with the credentials it just minted and encrypts under
+`transit/hope-phi`. A failed canary writes no marker, so the next pass retries.
+
+Runbook §5 is now "watch the log"; §7 collapsed from a port-forward plus four `vault` commands
+to one `kubectl patch`.
+
+**Deliberately NOT moved into the sidecar:** reading `hope-secrets`. The Role is narrowed
+specifically to keep the Vault pod away from the database URL and MinIO credentials, so the
+AppRole is published to its own Secret and the operator copies it across.
+
+### 10b.3 `hope-reset` — the deliberate switch
+
+`deployment/k8s/out-of-band/hope-reset.yaml`. One Job: validate the seed mode → prove Vault can
+encrypt PHI under `hope-api`'s own AppRole → drop schema `core` and the Prisma ledger → `exec`
+the same `migrate.sh` the ordinary `hope-db-migrate` Job runs.
+
+**Why it cannot fire by accident.** `out-of-band/` is in no kustomization, so Argo never
+renders, syncs or prunes it — safety is a property of where the file lives, not of a flag
+someone must remember to unset. Beyond that the committed file is inert twice over: `image:` is
+the literal `DATABASE_IMAGE` (unresolvable, so no pod starts) and `RESET_CONFIRM` is
+`REPLACE-ME`, while step 0 accepts only `RESET <the namespace the pod is running in>`, built
+from the downward API — so a confirmation typed for dev cannot run in staging or prod. Both
+dangerous values are supplied at invocation and neither is stored. `backoffLimit: 0`.
+
+An in-`base/` Job gated on a ConfigMap was rejected: the gate would live in Git, and a leftover
+"approved" ConfigMap means the *next ordinary sync* wipes the database. An Argo PreSync hook was
+rejected because a failing wave-hook wedges the whole Application — the failure that blocked
+every Git change to this cluster for days in 2026-08.
+
+**Why it fails closed.** Nothing is destroyed until two checks pass. (1) The Job asks the real
+rule (`seed-mode.ts`, invoked from the image's own `dist/`) whether this `RUN_SEED` is permitted
+under this `NODE_ENV` — so `RUN_SEED=all` in staging/prod refuses instead of leaving an empty
+database. (2) It logs in with the AppRole from `hope-secrets` and encrypts under
+`transit/hope-phi`. That makes the worst ordering — **database wiped, Vault broken** —
+structurally impossible, and it catches the post-rebuild state where Vault is healthy but
+`hope-secrets` still holds the previous Vault's credentials. `VAULT_ROLE_ID`/`VAULT_SECRET_ID`
+are **required** here (they are `optional` on `hope-db-migrate`), so a missing AppRole stops the
+pod starting rather than seeding `AiProviderConnection` rows with no key material.
+
+**Recovery from any partial failure is the same command.** Steps 3–4 are re-runnable: the drops
+are `IF EXISTS` and a re-run re-drops, so a failed seed is recovered from the same clean state
+rather than by driving a half-seeded database forward (not all 25 phases are create-only).
+
+**`prisma migrate reset` is deliberately not used.** Measured against prisma 7.9.1: it carries
+an AI-agent guard that refuses based on ambient environment variables — a recovery path must not
+depend on a heuristic *not* firing — and Prisma 7 dropped `--skip-seed`/`--skip-generate`, so it
+would run a second, differently-gated seed of its own. Explicit SQL is used instead:
+`DROP SCHEMA IF EXISTS "core" CASCADE` plus `DROP TABLE IF EXISTS public."_prisma_migrations"`.
+**`public` is not dropped** — it owns the `vector`, `timescaledb` and `timescaledb_toolkit`
+extensions, and only `vector` is recreated by the migrations.
+
+**What it deliberately does not do:** initialise or wipe Vault (init is automatic and must stay
+so; wiping the PVC scales a StatefulSet and deletes Secrets, and is a once-ever act on an
+already-lost store — runbook §3), and re-seed the 23 platform KV secrets (their values exist
+nowhere in the cluster; `vault-seed-secrets.sh` reads them from the operator's `.env.dev`).
+
+### 10b.4 Verification — measured, not asserted
+
+Against the real `hashicorp/vault:1.18.3` driven by `alpine/kubectl:1.34.1`'s busybox `wget`,
+and against a throwaway PostgreSQL 18 (`timescale/timescaledb-ha:pg18-all`):
+
+| Check | Result |
+|---|---|
+| `GET /ui/` on vault:1.18.3 with `ui = true` | `200`; `GET /` → `307 /ui/` |
+| Rendered sidecar script, fresh Vault | init → 2 Secrets → unseal → 2 mounts + 2 transit keys + approle + policy + role → **canary OK** → `hope-vault-approle` written. No human step. |
+| Sidecar restart, healthy Vault | logs only `started` — no re-init, no re-provision |
+| `provision_surface()` re-run | creates nothing; canary passes again |
+| `hope-app.hcl` through the busybox JSON escape | round-trips byte-identical (read back from `sys/policies/acl/hope-app`) |
+| ConfigMap copy vs monorepo source | `diff` clean |
+| `DROP SCHEMA core CASCADE` + ledger drop | `core` 108 → 0 tables; `vector` + `timescaledb` intact |
+| `migrate deploy` after the drop | `core` 0 → 107 tables, 21 ledger rows, canary leftover gone |
+| `resolveSeedMode()` preflight | `all`+development → `all`; `all`+production → **throws**; `bogus` → **throws** |
+| `sh -n` on both rendered scripts (busybox) | OK |
+| `kubectl kustomize` dev / staging / prod | all build, 107 objects each |
+| `gitleaks dir` (monorepo `.gitleaks.toml`) | no leaks found, both repos |
+
 ## 11. Change History
 
 | Date | Change |
 |---|---|
+| 2026-08-30 | **Owner asks: usable Vault UI + a deliberate reset signal (§10b).** Found `ui = true` was already committed and serving (verified 200 on `/ui/` against vault:1.18.3) — the gap was access, and the recommendation is `port-forward` to the POD, not a tunnel route, on TASK-828 §0/§2/§4 grounds (Access covers 1 app in the estate; `hope-vault` is headless with no NodePort, so a route would ADD exposure). Found "initialise Vault" was incomplete: a fresh Vault has no mounts, transit keys, approle or policy, so field encryption fails closed on first write — moved all of it into `provision_surface()` in the `vault-bootstrap` sidecar, ending in an AppRole transit canary, with the AppRole published to new Secret `hope-vault-approle` (runbook §5 becomes "watch the log", §7 becomes one `kubectl patch`). Added `deployment/k8s/out-of-band/hope-reset.yaml` — one Job, inert as committed, gated on `RESET <namespace>`, fail-closed behind a seed-mode preflight and the Vault canary so "DB wiped, Vault broken" cannot occur. Rejected `prisma migrate reset` (7.9.1 AI-agent guard + dropped flags). **Argo CD still cannot deliver anything** — the repo-server has been unreachable since 2026-08-29T16:43:29Z, so none of this is on the cluster. |
 | 2026-08-30 | Opened from the TASK-808 §9 diagnosis, on the owner's directive. |
 | 2026-08-30 | Seal decision made (Shamir + in-cluster `vault-bootstrap` sidecar); manifests committed as `28aa2a8` in `hope-v2-deployment` (unpushed); runbook added. Found and fixed a duplicate-`-config` entrypoint bug that would have shipped a Vault unable to start. Found that `10.10.1.134` also seals the Vault HA Raft cluster, down from the same event. Corrected the ticket's "Raft data" premise: the backend is `storage "file"`. |
 | 2026-08-30 | **Review pass → `9425643` + `ccb35a4`.** Reproduced a data-loss bug in the sidecar (a failed Secret write after `sys/init` discarded the shares and left the store permanently unrecoverable) plus a 67s→2s cold-start regression and a missing pre-flight; all three fixed and re-verified. Added resources to both containers. **Found that the runbook's re-init path could not have worked**: a fresh non-dev Vault has no `secret/`, `transit/`, `approle/` or policies, and `vault-seed-secrets.sh` creates none of them — runbook §5 added. **Found that the wipe destroys the `hope-phi`/`hope-globalsetting` transit keys**, which encrypt columns across 20 repositories, and that their only backup lives on the VMs approved for destruction — snapshot gate added. Owner confirmed Path F (re-initialise) as the only path; runbook rewritten around the wipe, with an explicit verified-empty check. Annotated the three monitoring configs that would otherwise alert forever, and marked `infrastructure/single-deployment/vault/` retired. | Finally, found that `28aa2a8` was already pushed and that **Argo CD cannot sync `hope-v2-dev` at all** — repo-server down, and a `hope-db-migrate` `Replace=true` defect that has failed every sync since 2026-08-25. The manifests are proven but undeliverable until that is repaired; status moved to `Blocked` and the runbook now gates the wipe on it. |
