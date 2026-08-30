@@ -77,6 +77,42 @@ Two tunnel routes (`rb`, `ha-db`) set `originRequest.access.required = false` �
 disabled. On a platform whose Postgres holds PHI, a tunnel-exposed database port with no edge
 identity check is the finding that would end an audit conversation early.
 
+## 4b. ⚠️ P1 — ALL PHI object traffic currently exits to the internet
+
+Found by TASK-823 Phase 2 while proving vLLM's weight loading, 2026-08-30.
+
+**There is no MinIO `Service`, `Endpoints` or `Pod` anywhere in the cluster.** Every
+in-cluster client reaches object storage through `s3.taphuynh.dev` — the public
+Cloudflare Tunnel hostname from §4, which has no Access application.
+
+So **every consultation recording, generated document and stored artifact leaves the
+cluster, crosses the internet to Cloudflare's edge, and comes back** — for a service
+sitting on the *same LAN* as the node.
+
+**A LAN path already exists and needs no new Kubernetes object.** The tunnel itself
+resolves to `https://10.10.1.102:9000`, a host on the k3s node's own `/24`, and the
+MinIO leaf certificate's SAN already carries `IP:10.10.1.102`. This is precisely how
+`hope-secrets` already addresses Postgres and Redis.
+
+Measured from inside `hope-text`:
+
+| Path | Latency |
+|---|---|
+| `s3.taphuynh.dev` (tunnel, via the internet) | **495.6 ms** |
+| `10.10.1.102:9000` (LAN) | **2.0 ms** |
+
+**~248× slower, for traffic that never needed to leave the building.** TASK-823 has
+already switched its own manifests; **every other MinIO consumer is still on the
+tunnel.**
+
+Two consequences beyond latency: PHI transits a third party on every object
+operation, and any egress `NetworkPolicy` becomes unwritable, because the rule would
+have to allow Cloudflare's entire edge range. On the LAN path it is a single `/32`.
+
+**Fix:** repoint every in-cluster MinIO consumer at `https://10.10.1.102:9000`,
+mounting the internal CA. Needs its own ticket — it touches every service that
+stores an object.
+
 ## 5. P2 — Zone TLS posture
 
 `ssl: flexible` (set 2025-01-31), `always_use_https: off`, `min_tls_version: 1.0`.
@@ -124,9 +160,10 @@ node host and holds VRAM entirely outside k8s accounting.
 ## 8. Suggested order
 
 1. ~~Argo CD~~ — **CLOSED, owner-assigned** (§1).
-2. **Access in front of the data-plane routes** (§4), or remove the routes that need not be public.
-3. **Fix Grafana auth + root_url** (§3).
-4. Bring the tunnel config under git (§6) — `config_src: "local"` with the config in the deploy repo.
+2. **Repoint in-cluster MinIO consumers to the LAN path** (§4b) — PHI is crossing the internet today, the fix needs no new k8s object, and it is ~248× faster.
+3. **Access in front of the data-plane routes** (§4), or remove the routes that need not be public.
+4. **Fix Grafana auth + root_url** (§3).
+5. Bring the tunnel config under git (§6) — `config_src: "local"` with the config in the deploy repo.
 5. Turn off `allow_force_push` on `hope-v2-deployment@main` (§6).
 6. Reconcile the Argo Application with its Git declaration (§6).
 7. NetworkPolicies (§6), zone TLS posture (§5), then availability (§7).
