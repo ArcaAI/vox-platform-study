@@ -132,6 +132,25 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
     expect(meta.preSummaryIds).toEqual(['ctx-snapshot']);
   });
 
+  it('stamps the prompt version for a `default`-tier session, which carries NO agent id', async () => {
+    // The governed SYSTEM live default (and, since TASK-815, any session with no
+    // live-bound workflow node) freezes `agentId: null` by contract. That is a
+    // real agent tier serving a pinned, immutable PromptVersion — the lineage
+    // must survive into finalize, with only the id column left null.
+    withSnapshot({
+      subType: 'LIVE_SOAP_SNAPSHOT',
+      agent: { ...LINEAGE, agentId: null, agentName: null, resolvedFrom: 'default' },
+    });
+
+    await service.generateSummary('c-1', {} as never, 'user-1');
+
+    const meta = createdMeta();
+    expect(meta.sessionAgentId).toBeNull();
+    expect(meta.sessionAgentPromptVersion).toBe('tpl-live@4');
+    expect(meta.preSummaryIds).toEqual(['ctx-snapshot']);
+    expect(assembleParams().pinnedAgentId).toBeUndefined();
+  });
+
   it('ADDITIVE PROOF — a snapshot with no agent block behaves exactly as before C5', async () => {
     withSnapshot({ subType: 'LIVE_SOAP_SNAPSHOT' });
 
