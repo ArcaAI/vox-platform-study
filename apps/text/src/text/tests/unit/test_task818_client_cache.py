@@ -558,24 +558,18 @@ class TestPooledTransport:
         assert pool._keepalive_expiry == 4.0
 
     def test_http2_is_requested_when_the_policy_asks_for_it(self):
+        # Asserted on the TRANSPORT, which is the object that actually
+        # negotiates it — an `AsyncClient` handed an explicit transport ignores
+        # its own `http2=`, so spying on the client's kwargs would pass on a
+        # value with no effect. Same seam the limits test above inspects.
         from text.providers import pool as pool_mod
 
         pool_mod.apply_pool_policy(
             _snapshot([{"provider": "vllm", "modelSlug": "", "http2": True}])
         )
-        seen: dict[str, object] = {}
-        real = httpx.AsyncClient
+        client = pool_mod.pooled_http_client("vllm", timeout_s=30)
 
-        def _spy(**kwargs):
-            seen.update(kwargs)
-            # The REAL class, captured before patching: calling the patched name
-            # here would recurse forever.
-            return real()
-
-        with patch.object(pool_mod.httpx, "AsyncClient", side_effect=_spy):
-            pool_mod.pooled_http_client("vllm", timeout_s=30)
-
-        assert seen.get("http2") is pool_mod.http2_supported()
+        assert client._transport._pool._http2 is pool_mod.http2_supported()
 
     def test_a_missing_h2_package_degrades_to_http1_instead_of_raising(self):
         """`http2=True` raises `ImportError` when `h2` is absent. An egress proxy

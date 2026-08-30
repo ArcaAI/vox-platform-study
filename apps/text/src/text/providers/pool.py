@@ -67,7 +67,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import threading
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -309,6 +309,104 @@ def apply_pool_policy(snapshot: EffectiveConfigSnapshot) -> set[str]:
     return changed
 
 
+# ── Draining close: what actually returns a streamed socket to the pool ──────
+#
+# One client per upstream (4.2) buys nothing if every STREAM still ends in a
+# fresh handshake, and until this wrapper existed every one did — measured at
+# `1.000 conn/req` by `tests/bench/harness.py --tls --connections-per-request`,
+# at concurrency 1, with the B-2 client cache and the B-8 pooled transport both
+# confirmed hitting on every request.
+#
+# The drop is one layer below either cache. `openai`'s `AsyncStream.__stream__`
+# `break`s out of its SSE loop on `data: [DONE]` and then closes the response in
+# its `finally`. No application bytes remain at that point — but the HTTP
+# END-OF-BODY marker (the chunked terminator) has not been read, so httpcore
+# sees a partially-consumed response and tears the connection down rather than
+# parking it for reuse. Reading those remaining zero bytes to EOF before the
+# close is the whole fix; the non-streaming path never had the problem because
+# it reads its body to completion.
+#
+# This lives at the TRANSPORT rather than in `openai_compat`, because the seam
+# that leaks is `Response.aclose()` — by the time the adapter's `async for`
+# returns, the SDK's `finally` has already closed and the socket is gone. Every
+# adapter on a pooled client gets the fix for the same reason.
+
+#: Bytes the close-time drain will read before giving up. A stream that ended
+#: normally has ~0 left; a genuinely ABORTED one (consumer disconnected mid
+#: generation) has the whole rest of the generation, and must NOT be read to
+#: completion just to save a socket. A floor in the same sense as the pool
+#: values above: it bounds the cost of the pathological case, it is not a
+#: tuning knob.
+DRAIN_ON_CLOSE_MAX_BYTES = 64 * 1024
+
+#: Seconds the same drain may take. The normal case completes in one already
+#: buffered read; anything slower is an abort wearing a drain's clothes.
+DRAIN_ON_CLOSE_TIMEOUT_S = 0.25
+
+
+class _DrainOnCloseMixin:
+    """Read a response body to EOF (bounded) before closing it.
+
+    Mixed into each HTTP family's own `AsyncByteStream` — httpx asserts the
+    transport hands back one of ITS base class, and the two families are not
+    interchangeable (module docstring).
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._iterator: Any = None
+        self._at_eof = False
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        # Keep the iterator: a consumer that `break`s leaves it SUSPENDED rather
+        # than closed, which is exactly what makes the close-time drain possible.
+        self._iterator = self._inner.__aiter__()
+        async for part in self._iterator:
+            yield part
+        self._at_eof = True
+
+    async def aclose(self) -> None:
+        try:
+            if not self._at_eof and self._iterator is not None:
+                await self._drain()
+        finally:
+            # The close must happen even if the drain is cancelled or raises —
+            # never leak a connection trying to save one.
+            await self._inner.aclose()
+
+    async def _drain(self) -> None:
+        read = 0
+        try:
+            async with asyncio.timeout(DRAIN_ON_CLOSE_TIMEOUT_S):
+                async for part in self._iterator:
+                    read += len(part)
+                    if read >= DRAIN_ON_CLOSE_MAX_BYTES:
+                        return
+        except Exception:
+            # A drain is an optimisation. Timing out, or a transport that
+            # refuses to be resumed, costs a handshake — never a request.
+            return
+
+
+def _draining_transport(base_cls: Any, family_module: Any) -> Any:
+    """An `AsyncHTTPTransport` for one family whose responses drain on close."""
+
+    class _Stream(_DrainOnCloseMixin, family_module.AsyncByteStream):
+        pass
+
+    class _Transport(base_cls):
+        async def handle_async_request(self, request: Any) -> Any:
+            response = await super().handle_async_request(request)
+            response.stream = _Stream(response.stream)
+            return response
+
+    return _Transport
+
+
+_HTTPX2_DRAINING_TRANSPORT = _draining_transport(httpx2.AsyncHTTPTransport, httpx2)
+_HTTPX_DRAINING_TRANSPORT = _draining_transport(httpx.AsyncHTTPTransport, httpx)
+
+
 def _build_client(
     provider: str, policy: PoolPolicy, family: TransportFamily, timeout_s: float
 ) -> httpx.AsyncClient | httpx2.AsyncClient:
@@ -322,16 +420,17 @@ def _build_client(
         )
         want_http2 = False
 
+    # `limits` and `http2` go to the TRANSPORT, not the client: an `AsyncClient`
+    # given an explicit transport ignores both, so passing them twice would read
+    # as configuration that is in fact inert.
     if family is TransportFamily.HTTPX2:
         return httpx2.AsyncClient(
-            limits=policy.limits2(),
             timeout=httpx2.Timeout(float(timeout_s)),
-            http2=want_http2,
+            transport=_HTTPX2_DRAINING_TRANSPORT(limits=policy.limits2(), http2=want_http2),
         )
     return httpx.AsyncClient(
-        limits=policy.limits(),
         timeout=httpx.Timeout(float(timeout_s)),
-        http2=want_http2,
+        transport=_HTTPX_DRAINING_TRANSPORT(limits=policy.limits(), http2=want_http2),
     )
 
 
