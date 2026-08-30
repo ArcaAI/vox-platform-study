@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import pytest
 
+from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.realtime.consumption import (
     ACTION_ALLOW,
     ACTION_BLOCK,
@@ -110,15 +111,15 @@ def _verdict(
 
 
 def _request(**over: object) -> ConsumptionRequest:
-    base: dict[str, object] = dict(
-        tenant_id="tenant-a",
-        cumulative_content_hash=content_hash(CUMULATIVE),
-        consumer_window_chars=len(CUMULATIVE),
-        assembly_template_id="summarize.partial@3",
-        capability_set_id="readonly-text",
-        declared_capabilities=("text.read",),
-        source_artifact_count=1,
-    )
+    base: dict[str, object] = {
+        "tenant_id": "tenant-a",
+        "cumulative_content_hash": content_hash(CUMULATIVE),
+        "consumer_window_chars": len(CUMULATIVE),
+        "assembly_template_id": "summarize.partial@3",
+        "capability_set_id": "readonly-text",
+        "declared_capabilities": ("text.read",),
+        "source_artifact_count": 1,
+    }
     base.update(over)
     return ConsumptionRequest(**base)  # type: ignore[arg-type]
 
@@ -261,7 +262,7 @@ def test_an_undeclared_capability_set_is_refused_rather_than_assumed_readonly() 
 
 
 def test_an_empty_capability_declaration_cannot_be_built() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(GuardrailUndeterminedError, match="capability"):
         CapabilityPolicy.from_declaration({})
 
 
