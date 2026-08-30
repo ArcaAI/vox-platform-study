@@ -107,6 +107,24 @@ class GuardClassifyResponse(BaseModel):
     #: task name → a single label (single-label) or a list (multi-label). Only
     #: the tasks that were REQUESTED appear; nothing is invented.
     results: dict[str, str | list[str]]
+    #: task name → {label: confidence} for the labels present in `results`
+    #: (TASK-830). ADDITIVE: `results` is unchanged, because three guardrail
+    #: call sites parse it as `str | list[str]` and a reshape would have them
+    #: comparing `str(dict)` against their benign-label set.
+    #:
+    #: NOT a distribution over the whole taxonomy. `gliner2` returns the argmax
+    #: label for a single-label task and only the labels at/above `cls_threshold`
+    #: for a multi-label one, so what is scored here is exactly what was
+    #: RETURNED. Deriving a risk number from it (e.g. `1 - confidence` when the
+    #: winning label is benign) is the CALLER's policy, as every threshold on
+    #: this surface already is.
+    #:
+    #: A task the runtime reported without a confidence is simply absent — never
+    #: a substituted 0.0, which would read as "the model was certain of nothing".
+    scores: dict[str, dict[str, float]] = Field(
+        default_factory=dict,
+        description="task → {label: confidence} for the labels in `results`. Absent ⇒ unscored.",
+    )
     model_version: str
 
 
