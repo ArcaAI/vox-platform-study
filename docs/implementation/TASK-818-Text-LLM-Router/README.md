@@ -644,12 +644,12 @@ force T2 always); it can never go below the SYSTEM floor. A symmetric per-tenant
 customer-facing off-switch for safety — indefensible for PHI, and it breaks "entitlements bound,
 they never supply".
 
-### 3B.7b Realtime consultation — see TASK-827
+### 3B.7b Realtime consultation — see TASK-829
 
 The realtime-consultation application of this gate (validate a partial transcript once at the STT
 boundary, fan out to summarization / NER / grammar; two independent verdict axes; alerts to the
-clinician) is specified separately in **TASK-827**, because it spans `apps/{stt,guardrail,harness,nlp,text}`
-and the admin console rather than `apps/text` alone. §3B here remains the policy; TASK-827 is its
+clinician) is specified separately in **TASK-829**, because it spans `apps/{stt,guardrail,harness,nlp,text}`
+and the admin console rather than `apps/text` alone. §3B here remains the policy; TASK-829 is its
 realtime instance.
 
 ### 3B.8 PHI and audit obligations on the guardrail hop
