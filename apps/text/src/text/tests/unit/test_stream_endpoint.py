@@ -199,6 +199,25 @@ class TestCursorParsing:
     def test_from_seq_is_the_fallback(self):
         assert parse_cursor("gen-1", None, 12) == 12
 
+    @pytest.mark.parametrize("spelling", ["from", "from_seq"])
+    def test_both_query_spellings_bind_to_the_cursor(self, spelling: str):
+        """`?from=` and `?from_seq=` must BOTH resolve.
+
+        They did not always. The docstring advertised `?from=` while FastAPI bound
+        only `from_seq` — `from` is a Python keyword and no alias was declared — so a
+        client following the documentation was silently ignored and resumed from 0.
+        A resume that quietly restarts looks like success until a clinician sees a
+        duplicated prefix, which is why this is pinned rather than left to the
+        docstring. Found by TASK-818 Lane E-stream.
+        """
+        import inspect
+
+        from text.api.endpoints.stream import stream_generation_events, stream_task
+
+        for route in (stream_generation_events, stream_task):
+            alias = inspect.signature(route).parameters["from_seq"].default.validation_alias
+            assert spelling in alias.choices, f"{route.__name__} does not accept ?{spelling}="
+
     def test_header_wins_over_the_query_fallback(self):
         assert parse_cursor("gen-1", "gen-1:3", 99) == 3
 
