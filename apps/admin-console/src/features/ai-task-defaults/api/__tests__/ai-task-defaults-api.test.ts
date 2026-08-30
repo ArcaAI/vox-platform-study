@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getEffectiveTaskDefault, getEffectiveTaskDefaults, getTaskDefaultRow, getTaskModelOptions, putTaskDefaultRow } from '../client';
 import { aiTaskDefaultKeys } from '../keys';
-import { AI_TASK_KEYS, SYSTEM_TENANT_ID } from '../types';
+import { SYSTEM_TENANT_ID } from '../types';
 
 interface RecordedCall {
   url: string;
@@ -38,38 +38,14 @@ afterEach(() => {
 });
 
 describe('task keys', () => {
-  // This mirror had drifted to 3 keys while the backend carried 9; then
-  // added the two text-generation fallback keys (11 total); then TASK-740 D-2
-  // added the four that were still missing — `nlp.sentiment`, `nlp.toxicity`,
-  // `text.test` and `vlm.extract` — bringing both lists to 15. It must stay in
-  // lockstep with AI_TASK_KEYS in
-  // packages/applications/src/services/ai-task-default/constants.ts.
-  //
-  // Compared as a SET: the two lists carry the same keys but group them in a
-  // different order (the backend keeps the fallbacks next to their primaries,
-  // the console mirror groups them with the other tenant-editable keys). Order
-  // is not part of the contract here — membership is — so asserting the sorted
-  // keys keeps this a real drift guard without failing on a harmless reordering.
-  it('mirrors all backend task keys (incl. the text-generation fallback keys) and the SYSTEM tenant id', () => {
-    expect([...AI_TASK_KEYS].sort()).toEqual(
-      [
-        'guardrail.validate',
-        'guardrail.safety',
-        'guardrail.groundedness',
-        'nlp.ner',
-        'nlp.classification',
-        'nlp.diagnosis',
-        'nlp.sentiment',
-        'nlp.toxicity',
-        'text.live',
-        'text.finalize',
-        'text.live.fallback',
-        'text.finalize.fallback',
-        'text.test',
-        'harness.judge',
-        'vlm.extract',
-      ].sort(),
-    );
+  // The backend-mirror invariant itself is asserted in
+  // `ai-task-keys-lockstep.test.ts`, which PARSES `AI_TASK_KEYS` out of
+  // packages/applications/src/services/ai-task-default/constants.ts. This block
+  // used to re-declare the expected 15 keys as a literal — which made it a
+  // third copy of the same list, drifting alongside the mirror it guarded
+  // (TASK-799 R6's `guardrail.pii` / `guardrail.pii.spans` were missing from
+  // both). Only the constant that has no backend counterpart is checked here.
+  it('pins the SYSTEM tenant id', () => {
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');
   });
 });
