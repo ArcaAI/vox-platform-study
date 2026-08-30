@@ -196,7 +196,10 @@ class TestOpenAiWireDiscovery:
                 self.models = AsyncMock()
                 self.models.list = AsyncMock(return_value=_List())
 
-        def _fake_openai(*, api_key: str, base_url: str, timeout: float) -> Any:
+        # `**_` absorbs `http_client`: TASK-818 Lane A hands every OpenAI-wire
+        # client this upstream's pooled transport (B-2/B-8). This test is about
+        # WHICH ENDPOINT the probe reaches, which is unchanged.
+        def _fake_openai(*, api_key: str, base_url: str, timeout: float, **_: Any) -> Any:
             built.append((base_url, api_key))
             return _Client()
 
@@ -233,10 +236,14 @@ class TestOpenAiWireDiscovery:
                 self.models = AsyncMock()
                 self.models.list = AsyncMock(return_value=_List())
 
+        # `**_` absorbs `http_client` — see the note in the sibling test above.
         monkeypatch.setattr(
             mod,
             "AsyncOpenAI",
-            lambda *, api_key, base_url, timeout: (built.append((base_url, api_key)), _Client())[1],
+            lambda *, api_key, base_url, timeout, **_: (
+                built.append((base_url, api_key)),
+                _Client(),
+            )[1],
         )
 
         info = await provider.discover_models(ProbeConnection(base_url="http://keyless.test/v1"))

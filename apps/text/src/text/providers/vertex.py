@@ -35,6 +35,7 @@ from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.usage import vertex_usage_dict
 from text.providers.base import CredentialPosture, require_model
+from text.providers.clients import CLIENT_CACHE, client_key
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -132,8 +133,10 @@ class VertexProvider:
                 "the service-account key on the AiProviderConnection row.",
                 provider=_PROVIDER_NAME,
             )
+        secret = override.api_key.get_secret_value()
+        location = override.location or self.DEFAULT_LOCATION
         try:
-            credentials = _credentials_from_service_account(override.api_key.get_secret_value())
+            credentials = _credentials_from_service_account(secret)
         except Exception as exc:  # noqa: BLE001 — never leak the key
             logger.warning(
                 "vertex.override_client_build_failed",
@@ -147,11 +150,18 @@ class VertexProvider:
                 "credential, which would misattribute the spend.",
                 provider=_PROVIDER_NAME,
             ) from exc
-        return genai.Client(
-            vertexai=True,
-            project=project,
-            location=override.location or self.DEFAULT_LOCATION,
-            credentials=credentials,
+        # A Vertex client is bound to a (project, location) as well as a
+        # credential, so all three are part of its identity: one service account
+        # used in two regions is two clients, not one reused across them.
+        key = client_key(_PROVIDER_NAME, f"{project}|{location}", secret)
+        return CLIENT_CACHE.get_or_create(
+            key,
+            lambda: genai.Client(
+                vertexai=True,
+                project=project,
+                location=location,
+                credentials=credentials,
+            ),
         )
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:

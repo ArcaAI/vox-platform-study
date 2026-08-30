@@ -25,6 +25,7 @@ from text.core.defaults import apply_generation_defaults
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.guardrail_posture import platform_posture
 from text.core.runtime_defaults import LANE_FLOORS, USER_LANE_FLOOR
+from text.providers.pool import apply_pool_policy
 from text.services.resizable_semaphore import ResizableSemaphore
 
 logger = structlog.get_logger(__name__)
@@ -179,6 +180,13 @@ async def refresh_runtime_limits(state: Any) -> None:
 
         apply_lane_budgets(snapshot, state)
         apply_platform_posture(snapshot, state)
+        # Egress transport shape: per-upstream httpx pool limits, the HTTP/2
+        # posture, and the size of the Bedrock stream thread pool (TASK-818
+        # Lane A, B-2/B-3/B-8). Same channel, same fail-safe posture, same
+        # floor-is-the-fallback rule as everything above; the pool objects live
+        # in `providers/pool.py` rather than on `app.state` because an adapter
+        # builds its client with no request-scoped state to reach through.
+        apply_pool_policy(snapshot)
     except Exception as exc:  # noqa: BLE001 — a config refresh may never break a request
         logger.warning(
             "text.effective_config.apply_error", error=str(exc), error_type=type(exc).__name__

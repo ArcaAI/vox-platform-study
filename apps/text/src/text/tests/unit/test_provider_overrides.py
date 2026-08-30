@@ -20,7 +20,7 @@ surface at all. There is now nothing to fall back TO, and these tests say so.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -98,10 +98,17 @@ class TestAzureProviderOverrideConsumption:
 
         assert content == "byo response"
         # The tenant credential reached the SDK client constructor...
+        #
+        # `http_client` is ANY because TASK-818 Lane A hands the SDK this
+        # upstream's pooled transport (B-2/B-8): the identity of that transport is
+        # asserted in `test_task818_client_cache.py`, and pinning it here would
+        # only couple this test — which is about the CREDENTIAL reaching the
+        # constructor — to an unrelated contract.
         mock_ctor.assert_called_once_with(
             api_key="byo-secret-value",
             azure_endpoint="https://tenant.openai.azure.com",
             api_version="2025-01-01",
+            http_client=ANY,
         )
         # ...and the deployment override won model resolution.
         call_kwargs = override_client.chat.completions.create.call_args.kwargs
