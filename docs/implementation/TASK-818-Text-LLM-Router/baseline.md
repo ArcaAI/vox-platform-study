@@ -92,12 +92,45 @@ the **202-and-poll indirection** and its Redis round trips. That is Lane B's
 scope, not Lane A's. **AC-3 movement should be expected from Lane B, and if Lane B
 lands without moving it, the diagnosis in §3C.1 is wrong and should be reopened.**
 
-## Harness gap to close before the next measurement
+## Harness gap — CLOSED (Lane H2, 2026-08-30)
 
-Lane H's mock should gain a **TLS mode** (self-signed, on a non-loopback address
-if practical) so connection-reuse benefits become measurable. Until then, Lane A's
-value is asserted by its unit tests — which do prove one client is constructed per
-credential rather than per request — and not by this benchmark.
+Lane H's mock has gained a **TLS mode** (`--tls`, self-signed cert generated
+fresh into a temp dir at start-up; loopback, not a non-loopback address — see
+`bench/README.md`'s "TLS mode" section for why that's a real but not total
+narrowing of the gap) and a **`--connections-per-request` diagnostic** that
+counts new connections independent of latency. Full write-up:
+`apps/text/tests/bench/README.md` §"TLS mode measurement (Lane H2, TASK-818)".
+
+**The result is not the one this note originally hoped for.** With a real TLS
+handshake now in the loop, connection reuse is directly measurable — and at
+every concurrency tested (1, 10, 25), the real request path shows
+**`1.000 conn/req`**: every single generation opens a new connection, exactly
+as if the client cache were not in the path at all. Calling
+`CLIENT_CACHE.get_or_create()` / `pooled_http_client()` by hand, with the
+same key the bench sends, correctly returns the SAME objects every time — so
+the cache and pool primitives are not broken in isolation (their own unit
+tests already established this). Something between an incoming generation
+request and that cached client is not resulting in end-to-end reuse. This is
+a genuine, actionable finding, not a harness artifact: an isolated
+`httpx2.AsyncClient` reused directly against the same TLS mock shows `0` new
+connections across 6 sequential requests, proving the mock and the counter
+are sound.
+
+**Consequently: Lane A's value is still asserted only by its unit tests, not
+by this benchmark** — but the reason has changed. It is no longer "the
+harness cannot see TLS overhead" (fixed); it is "the harness now sees TLS
+overhead on every call, which means whatever benefit the cache provides is
+not reaching the request path in a way this end-to-end measurement can
+observe." Root-causing which layer of `apps/text/src/**` fails to reuse the
+cached client is out of Lane H2's `tests/bench/**` ownership and is flagged
+as follow-up work, not fixed here.
+
+No A/B (with-cache vs. without) comparison was possible: `providers/clients.py`
+has no env-var kill switch for the cache (a bare module-level singleton), and
+adding one would mean editing `apps/text/src/**`, which this lane does not
+own. Given the `1.000 conn/req` result, a with/without comparison may not
+have been very informative anyway — a cache that isn't observably reused
+cannot be distinguished from no cache by this measurement.
 
 ## Also unmeasured
 

@@ -49,8 +49,6 @@ const harnessRow = (version = 7): HarnessPolicy =>
     safetyEnabled: true,
     phiEnabled: true,
     phiFailClosed: true,
-    safetyProvider: 'lm-studio',
-    safetyModel: 'granite-guardian-4.1-8b',
     textProvider: null,
     textModel: null,
     maxRegen: 2,

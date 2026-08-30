@@ -21,9 +21,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * HarnessPolicyChange table is append-only (the migration REVOKEs UPDATE/DELETE
  * from the app role), so only INSERTs happen here.
  *
- * Scope guard: this seed touches NO gating/threshold/safety columns
- * and does not change safetyModel (granite-guardian remains the schema
- * default). It only sets the two TEXT columns.
+ * Scope guard: this seed touches NO gating/threshold/safety columns. It only sets the
+ * two TEXT columns.
  */
 
 /** The agreed TEXT system default (overrides the NULL "service chooses"). */
@@ -35,7 +34,7 @@ export const SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS = {
 } as const;
 
 /**
- * The 16 HarnessPolicy runtime knobs, with their code defaults. Kept in
+ * The HarnessPolicy runtime knobs, with their code defaults. Kept in
  * lock-step with `HARNESS_POLICY_DEFAULTS` (@arcaai/domains) + the Prisma column
  * `@default`s in harness.prisma so the WORM snapshot has the same shape the
  * runtime service writes. The seed lives in @arcaai/database and must not import
@@ -50,8 +49,6 @@ const HARNESS_POLICY_KNOB_DEFAULTS = {
   safetyEnabled: true,
   phiEnabled: true,
   phiFailClosed: true,
-  safetyProvider: 'lm-studio',
-  safetyModel: 'granite-guardian-4.1-8b',
   textProvider: null as string | null,
   textModel: null as string | null,
   maxRegen: 2,

@@ -29,8 +29,6 @@ export interface AgenticPolicy {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  safetyProvider: string;
-  safetyModel: string;
   textProvider: string | null;
   textModel: string | null;
   maxRegen: number;
@@ -67,8 +65,6 @@ export interface UpdateAgenticPolicyRequest {
   safetyEnabled?: boolean;
   phiEnabled?: boolean;
   phiFailClosed?: boolean;
-  safetyProvider?: string;
-  safetyModel?: string;
   textProvider?: string | null;
   textModel?: string | null;
   maxRegen?: number;

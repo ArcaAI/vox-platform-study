@@ -28,8 +28,6 @@ function policy(overrides: Partial<HarnessPolicy> = {}): HarnessPolicy {
     safetyEnabled: true,
     phiEnabled: true,
     phiFailClosed: true,
-    safetyProvider: 'lm-studio',
-    safetyModel: 'granite-guardian-4.1-8b',
     textProvider: 'lm-studio',
     textModel: 'gemma-4-medical',
     maxRegen: 2,
@@ -280,19 +278,15 @@ describe('HarnessPolicyScreen', () => {
    */
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
-    // `Safety provider`/`Safety model` were already in
-    // SUPER_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
-    // still offered them as editable inputs whose save could only 403 — the
-    // same defect A-1c fixes for the three toggles.
     // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered
     // label. TASK-740 D-3 locked textProvider/textModel too — both sit in the
     // backend's SUPER_ADMIN_ONLY_POLICY_KEYS, so a tenant edit could only 403.
+    // `Safety provider`/`Safety model` are absent because TASK-816 Phase 4 deleted the
+    // controls with their columns — see ../policy-fields.ts and policy-fields.test.ts.
     const LOCKED = [
       'Safety guardrail',
       'PHI detection',
       'PHI fail-closed',
-      'Safety provider',
-      'Safety model',
       'Text-generation provider',
       'Text-generation model',
     ];

@@ -23,6 +23,55 @@ this harness's `time.monotonic()` timestamp (recorded in ITS process).
 processes ON THE SAME MACHINE read comparable values — verified empirically
 for this environment (see the ticket report). This technique is NOT valid
 across two different physical hosts; both processes here always run on one.
+
+## `--tls`: closing the harness's own blind spot (baseline.md, "Harness gap")
+
+Lane A's pooled egress-client cache is supposed to save TLS handshakes, DNS
+and connection setup — and the mock upstream was plain HTTP on loopback, so
+there was nothing for connection reuse to save; the harness could not price
+the thing Lane A fixed. `--tls` serves the mock over HTTPS with a self-signed
+cert `mock_upstream.py` generates fresh into a temp dir at start-up (never
+committed — see its `ensure_self_signed_cert`).
+
+**The trust story, stated plainly, because a green run here must never read
+as "this is fine in production":** the REAL, unmodified `apps/text` process
+(`text_service_process.py`) is started with `SSL_CERT_FILE` pointed at that
+one temp cert. `httpx` and `httpx2` (the two transport libraries the OpenAI
+SDK and this service's adapters use — see `providers/pool.py`'s module
+docstring) both read `SSL_CERT_FILE` before falling back to their default
+trust store (verified against the installed `httpx==0.28.1` / `httpx2==2.10.0`
+`create_ssl_context()`), so this achieves "trust one extra self-signed CA"
+with ZERO changes to `apps/text/src/**` — consistent with this harness's
+standing rule that measuring the real code means never patching it.
+
+`SSL_CERT_FILE` is a **process-wide, benchmark-only affordance**, never a
+production pattern: it would make that process trust ONLY the named file for
+EVERY TLS connection it makes, silently dropping every publicly-trusted CA
+(a real deployment's Azure/Bedrock/vendor calls would go from "verified
+against the public CA set" to "verified against this one file" — a
+regression, not a config option, if it ever leaked into a real environment
+variable). It is set here, and ONLY here, in a throwaway subprocess this
+harness owns start-to-finish.
+
+This narrows the harness's blind spot; it does not erase every difference
+from a real TLS endpoint on the public internet (this is still loopback: zero
+network RTT, zero DNS lookup, one physical host). See `--connections-per-request`
+below for the number that actually settles whether pooling helped, independent
+of how much of the difference TLS vs plain-HTTP loopback can show in
+latency alone.
+
+## `--connections-per-request`: the number latency noise cannot hide
+
+AC-3's p50/p95/p99 deltas are a few tens of milliseconds wide even before
+concurrency is added, which is the same order of magnitude the client cache
+is trying to save — noise can hide a real win or manufacture a fake one.
+`--connections-per-request` sidesteps that by asking the mock directly: how
+many NEW connections did you accept at this concurrency level, versus how
+many requests did you serve? A cache that is doing its job reports a ratio
+well under 1 (many requests share few connections); a cache doing nothing
+reports close to 1 (a new connection every request). See `mock_upstream.py`'s
+module docstring ("Connection-count instrumentation") for how the count is
+taken.
 """
 
 from __future__ import annotations
@@ -30,9 +79,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import socket
+import ssl
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -42,6 +94,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from mock_upstream import TLS_CERT_FILENAME  # noqa: E402
 from stats import Sample, summarize  # noqa: E402
 
 _TENANT_ID = "11111111-1111-1111-1111-111111111111"
@@ -98,13 +151,19 @@ class ProcHandle:
                 self.proc.wait(timeout=5)
 
 
-def start_mock(mode: str, token_count: int) -> ProcHandle:
+def start_mock(
+    mode: str, token_count: int, *, tls: bool = False, tls_cert_dir: str | None = None
+) -> ProcHandle:
     port = _free_port()
     env = {
         "BENCH_MOCK_PORT": str(port),
         "BENCH_MOCK_TOKEN_COUNT": str(token_count),
         **_MODE_PRESETS[mode],
     }
+    if tls:
+        env["BENCH_MOCK_TLS"] = "1"
+        if tls_cert_dir:
+            env["BENCH_MOCK_TLS_CERT_DIR"] = tls_cert_dir
     proc = subprocess.Popen(
         [sys.executable, str(_MOCK_ENTRYPOINT)],
         cwd=_BENCH_DIR,
@@ -112,10 +171,11 @@ def start_mock(mode: str, token_count: int) -> ProcHandle:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    return ProcHandle("mock-upstream", proc, f"http://127.0.0.1:{port}", "/health")
+    scheme = "https" if tls else "http"
+    return ProcHandle("mock-upstream", proc, f"{scheme}://127.0.0.1:{port}", "/health")
 
 
-def start_text() -> ProcHandle:
+def start_text(*, ssl_cert_file: str | None = None) -> ProcHandle:
     import os
 
     port = _free_port()
@@ -127,6 +187,12 @@ def start_text() -> ProcHandle:
         "SERVICE_TOKEN": "",
         "TEXT_OTEL_EXPORTER_ENDPOINT": "",
     }
+    if ssl_cert_file:
+        # `--tls`: makes the REAL, unmodified `openai_compat` adapter's
+        # httpx/httpx2 transport trust the mock's self-signed cert. See the
+        # module docstring's "--tls" section for why this is a benchmark-only
+        # affordance and never a production pattern.
+        env["SSL_CERT_FILE"] = ssl_cert_file
     proc = subprocess.Popen(
         [sys.executable, str(_TEXT_ENTRYPOINT)],
         cwd=_BENCH_DIR,
@@ -309,6 +375,7 @@ class LevelReport:
     rss_baseline_kb: float | None
     rss_plateau_kb: float | None
     rss_per_stream_kb: float | None
+    new_connections: int | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -324,6 +391,7 @@ class LevelReport:
             "rss_baseline_kb": self.rss_baseline_kb,
             "rss_plateau_kb": self.rss_plateau_kb,
             "rss_per_stream_kb": self.rss_per_stream_kb,
+            "new_connections": self.new_connections,
         }
 
 
@@ -338,6 +406,7 @@ async def run_level(
     stream: bool,
     model: str,
     protocol: str = "sse",
+    track_connections: bool = False,
 ) -> LevelReport:
     await mock_client.post("/__bench__/reset")
     rss_baseline = await sample_rss(text_pid)
@@ -406,6 +475,14 @@ async def run_level(
     if rss_baseline is not None and rss_plateau is not None and concurrency > 0:
         rss_per_stream = (rss_plateau - rss_baseline) / concurrency
 
+    new_connections: int | None = None
+    if track_connections:
+        # `--connections-per-request`: the number that proves or disproves
+        # connection reuse independent of latency noise (module docstring).
+        # Reset happened at the top of THIS level, so this is scoped to it.
+        conn_resp = await mock_client.get("/__bench__/connections")
+        new_connections = conn_resp.json().get("new_connections")
+
     return LevelReport(
         concurrency=concurrency,
         requests=len(results),
@@ -419,6 +496,7 @@ async def run_level(
         rss_baseline_kb=rss_baseline,
         rss_plateau_kb=rss_plateau,
         rss_per_stream_kb=rss_per_stream,
+        new_connections=new_connections,
     )
 
 
@@ -445,59 +523,105 @@ def print_report(mode: str, stream: bool, reports: list[LevelReport]) -> None:
             )
         else:
             print("  AC-2 RSS/stream  : n/a (ps sampling unavailable)")
+        if r.new_connections is not None:
+            ratio = (r.new_connections / r.requests) if r.requests else float("nan")
+            print(
+                f"  connections      : new={r.new_connections} requests={r.requests} "
+                f"({ratio:.3f} conn/req)  <- proves/disproves reuse"
+            )
         print()
 
 
 async def main_async(args: argparse.Namespace) -> list[LevelReport]:
-    mock = start_mock(args.mode, args.tokens)
-    text = start_text()
+    tls_dir: str | None = None
+    tls_cert_path: Path | None = None
+    if args.tls:
+        tls_dir = tempfile.mkdtemp(prefix="bench-tls-")
+        tls_cert_path = Path(tls_dir) / TLS_CERT_FILENAME
+
+    mock = start_mock(args.mode, args.tokens, tls=args.tls, tls_cert_dir=tls_dir)
+    text = start_text(ssl_cert_file=str(tls_cert_path) if tls_cert_path else None)
     reports: list[LevelReport] = []
-    async with httpx.AsyncClient() as boot_client:
-        try:
-            await asyncio.gather(mock.wait_healthy(boot_client), text.wait_healthy(boot_client))
+    # `--tls`: THIS harness's own diagnostic clients (never the real
+    # `text_service_process.py` — that one trusts the cert via `SSL_CERT_FILE`,
+    # see the module docstring) need to trust the mock's self-signed cert too,
+    # to reach its plain `/health` and `/__bench__/*` endpoints over HTTPS.
+    # The mock writes the cert as one of its first start-up actions, before it
+    # opens its listening socket — but "spawned" is not "written yet", so wait
+    # for the file rather than racing it.
+    verify: bool | ssl.SSLContext = True
+    if tls_cert_path:
+        deadline = time.monotonic() + 20.0
+        while not tls_cert_path.exists():
+            if mock.proc.poll() is not None:
+                raise RuntimeError(
+                    f"mock-upstream exited early with code {mock.proc.returncode} "
+                    "before writing its TLS cert"
+                )
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"mock-upstream did not write {tls_cert_path} in 20s")
+            await asyncio.sleep(0.1)
+        verify = ssl.create_default_context(cafile=str(tls_cert_path))
+    try:
+        async with httpx.AsyncClient(verify=verify) as boot_client:
+            try:
+                await asyncio.gather(mock.wait_healthy(boot_client), text.wait_healthy(boot_client))
 
-            limits = httpx.Limits(
-                max_connections=max(args.levels) * 2 + 10,
-                max_keepalive_connections=max(args.levels) * 2 + 10,
-            )
-            async with (
-                httpx.AsyncClient(base_url=text.base_url, limits=limits) as client,
-                httpx.AsyncClient(base_url=mock.base_url) as mock_client,
-            ):
-                # Warm-up: the FIRST real requests into a freshly-started
-                # process pay one-time costs this harness must not attribute
-                # to "proxy overhead" — provider adapter classes imported
-                # lazily on first use (`main.py::_register_provider_factories`
-                # docstring), the OpenAI SDK's own client construction, and
-                # CPython's own import/bytecode-cache warm-up. Discarded, not
-                # reported; every measured level below starts from a warm
-                # process.
-                for _ in range(args.warmup):
-                    await run_one(
-                        client,
-                        mock.base_url,
-                        stream=not args.no_stream,
-                        model=args.model,
-                        protocol=args.protocol,
-                    )
-                await mock_client.post("/__bench__/reset")
+                limits = httpx.Limits(
+                    max_connections=max(args.levels) * 2 + 10,
+                    max_keepalive_connections=max(args.levels) * 2 + 10,
+                )
+                async with (
+                    httpx.AsyncClient(base_url=text.base_url, limits=limits) as client,
+                    # `keepalive_expiry=None`: this client's own connection to
+                    # the mock must never expire and reopen mid-run — a
+                    # reopen would increment `/__bench__/connections` itself
+                    # and corrupt the exact number `--connections-per-request`
+                    # exists to report cleanly.
+                    httpx.AsyncClient(
+                        base_url=mock.base_url,
+                        verify=verify,
+                        limits=httpx.Limits(keepalive_expiry=None),
+                    ) as mock_client,
+                ):
+                    # Warm-up: the FIRST real requests into a freshly-started
+                    # process pay one-time costs this harness must not attribute
+                    # to "proxy overhead" — provider adapter classes imported
+                    # lazily on first use (`main.py::_register_provider_factories`
+                    # docstring), the OpenAI SDK's own client construction, and
+                    # CPython's own import/bytecode-cache warm-up. Discarded, not
+                    # reported; every measured level below starts from a warm
+                    # process.
+                    for _ in range(args.warmup):
+                        await run_one(
+                            client,
+                            mock.base_url,
+                            stream=not args.no_stream,
+                            model=args.model,
+                            protocol=args.protocol,
+                        )
+                    await mock_client.post("/__bench__/reset")
 
-                for level in args.levels:
-                    report = await run_level(
-                        client=client,
-                        mock_base=mock.base_url,
-                        mock_client=mock_client,
-                        text_pid=text.proc.pid,
-                        concurrency=level,
-                        duration_s=args.duration,
-                        stream=not args.no_stream,
-                        model=args.model,
-                        protocol=args.protocol,
-                    )
-                    reports.append(report)
-        finally:
-            text.stop()
-            mock.stop()
+                    for level in args.levels:
+                        report = await run_level(
+                            client=client,
+                            mock_base=mock.base_url,
+                            mock_client=mock_client,
+                            text_pid=text.proc.pid,
+                            concurrency=level,
+                            duration_s=args.duration,
+                            stream=not args.no_stream,
+                            model=args.model,
+                            protocol=args.protocol,
+                            track_connections=args.connections_per_request,
+                        )
+                        reports.append(report)
+            finally:
+                text.stop()
+                mock.stop()
+    finally:
+        if tls_dir:
+            shutil.rmtree(tls_dir, ignore_errors=True)
     return reports
 
 
@@ -537,6 +661,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--no-stream", action="store_true", help="Exercise stream=false (AC-7).")
+    parser.add_argument(
+        "--tls",
+        action="store_true",
+        help="Serve the mock upstream over HTTPS with a self-signed cert generated at "
+        "start-up, and trust it in the real text-service via SSL_CERT_FILE — a "
+        "benchmark-only affordance, never a production pattern (see module docstring). "
+        "Closes the harness gap in docs/implementation/TASK-818-Text-LLM-Router/baseline.md: "
+        "a plain-HTTP loopback mock gives connection pooling nothing to save.",
+    )
+    parser.add_argument(
+        "--connections-per-request",
+        action="store_true",
+        help="Query the mock's new-connection counter after each level and report "
+        "new_connections/requests — the number that proves or disproves connection "
+        "reuse independent of latency noise.",
+    )
     parser.add_argument("--out", type=Path, default=None, help="Write JSON report to this path.")
     return parser.parse_args(argv)
 
