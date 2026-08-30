@@ -1,10 +1,15 @@
-import { IsString, IsOptional, IsObject, IsInt, Min } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsInt, Min, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CONTEXT_CONTENT_MAX_LENGTH } from './add-context.request';
 
 export class UpdateContextRequest {
+  // Same cap as `AddContextRequest.content` (F-03): the update path feeds the
+  // identical harness prompt, so an uncapped PATCH would trivially bypass the
+  // create-path bound.
   @ApiPropertyOptional({ description: 'Updated content text' })
   @IsOptional()
   @IsString()
+  @MaxLength(CONTEXT_CONTENT_MAX_LENGTH)
   content?: string;
 
   @ApiPropertyOptional({ description: 'Updated DNA Writing Style ID' })
