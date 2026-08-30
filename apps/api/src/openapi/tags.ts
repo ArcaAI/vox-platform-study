@@ -201,6 +201,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'Runtime tuning profiles applied to inference requests.',
   },
   {
+    name: 'admin-ai-routing-policies',
+    displayName: 'AI Routing Policies',
+    plane: 'admin',
+    description:
+      'Super-admin-authored provider routing and failover policies: the ordered candidate chain per AI task, its gated fallback contract, and the resolved decision.',
+  },
+  {
     name: 'admin-ai-services',
     displayName: 'AI Services',
     plane: 'admin',
