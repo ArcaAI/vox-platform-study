@@ -1,5 +1,42 @@
 # HOPE — Vault HA on Self-Hosted k3s (TASK-312 Phase C)
 
+> # ⛔ RETIRED — SUPERSEDED, AND THE HARDWARE IS BEING DESTROYED (TASK-833, 2026-08-30)
+>
+> **Do not follow this blueprint. Nothing in HOPE runs on it any more, and after the
+> VM teardown nothing can.**
+>
+> This described a 3-node Raft cluster with Transit auto-unseal — deployed on Proxmox
+> VMs **430/431/432** (`vault-1/2/3`) with the seal Vault on **434** (`vault-seal`). On
+> 2026-08-28 VM 434 sealed itself and took the entire HOPE Vault estate down with it:
+> all three Raft peers stopped auto-unsealing, `hope-vault-0` in `hope-v2-dev`
+> CrashLoopBackOff'd, and `hope-api` was `0/2` for two days. VM 434's Shamir shares are
+> unavailable, so none of it can be brought back. The owner has approved destroying all
+> four VMs.
+>
+> **What replaces it.** One Vault, in-cluster, with no dependency outside the cluster:
+> `hope-vault` in `hope-v2-dev`, `storage "file"` on a PVC, a **Shamir seal unsealed by
+> an in-pod `vault-bootstrap` sidecar**. Manifest and rationale:
+> `arca/hope-v2-deployment` → `deployment/k8s/base/vault.yaml`. Operator procedure:
+> `docs/vault-seal-migration.md` in that same repo.
+>
+> **Why this tree is kept rather than deleted.** It is the only written record of a
+> reviewed, `kind`-tested HA Vault design, and three parts of it are still live assets:
+>
+> | Still used | Where |
+> |---|---|
+> | `bootstrap/configure-app-auth.sh` | the reference for the KV-v2 + Transit + AppRole surface `hope-api` needs — the in-cluster rebuild re-provisions exactly this (runbook §5) |
+> | the per-service Vault policies it binds | mirrored by `infrastructure/docker/configs/vault/policies/` |
+> | `monitoring/`, `manifests/service-monitor.yaml` | never applied; the in-cluster Vault still has **no** seal alerting, which is why the August outage ran for two days |
+>
+> **What is lost by retiring it**: HA. `hope-vault` is a single replica on a single node
+> with a single PVC — a node loss is an outage, and there is no quorum, no Raft snapshot
+> (`storage "file"` has none — a backup is a copy of the directory). That is an accepted
+> trade for a dev namespace and **must not be carried into staging or production**, where
+> the seal belongs on a KMS the cluster authenticates to with a workload identity it
+> cannot exfiltrate (`hope-v2-deployment/docs/aws-eks/02-kms-and-secrets.md`).
+>
+> Everything below this banner describes hardware that will not exist.
+
 Production blueprint for running HashiCorp Vault as a 3-node, highly-available,
 auto-unsealing secrets backend on HOPE's self-hosted Proxmox **k3s** cluster.
 

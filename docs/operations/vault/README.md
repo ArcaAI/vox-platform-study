@@ -1,5 +1,24 @@
 # HOPE Vault — Operator Runbook (k3s deployment)
 
+> # ⛔ RETIRED (TASK-833, 2026-08-30) — this page describes VMs that are being destroyed
+>
+> Both Vaults this page has ever targeted are gone or going: the `vault-system` Helm
+> deployment was never deployed, and the VM cluster it was replaced by (Proxmox
+> 430/431/432 + seal VM 434) is being torn down after VM 434 sealed itself on 2026-08-28
+> and took the whole Vault estate — including `hope-api` — down for two days. Its Shamir
+> shares are unavailable, so it cannot be recovered.
+>
+> **The live Vault is `hope-vault` in namespace `hope-v2-dev`**: single instance,
+> `storage "file"` on a PVC, Shamir seal unsealed in-pod by the `vault-bootstrap`
+> sidecar, no dependency outside the cluster. Its manifest is
+> `arca/hope-v2-deployment` → `deployment/k8s/base/vault.yaml` and **its operator
+> procedure — rebuild, wipe, re-seed, verification — is `docs/vault-seal-migration.md`
+> in that repo.** Go there.
+>
+> This page and [`vm-cluster-seal-unseal.md`](./vm-cluster-seal-unseal.md) are kept as
+> history and as design references for rotation, GitLab OIDC, Kubernetes auth and audit
+> retention. Every operational command below targets hardware that will not exist.
+
 > ## ⚠️ Check which Vault you are looking at before running anything here
 >
 > This page targets the **k3s/Helm** Vault — `kubectl exec`, pods `vault-0..2`, namespace

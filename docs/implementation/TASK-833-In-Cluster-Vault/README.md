@@ -1,12 +1,12 @@
-# TASK-833 — Move the Vault seal in-cluster and retire the VM seal node
+# TASK-833 — Move the Vault seal in-cluster and retire the VM Vault estate
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — manifests committed (not pushed); **an operator step is required to end the outage** (§7) |
+| **Status** | `Review` — manifests committed (not pushed); **operator steps required to end the outage** (§7) |
 | **Type** | `infrastructure` |
 | **Severity** | **Dev is DOWN** — this is the fix for the TASK-808 §9 outage |
-| **Repos** | `arca/hope-v2` (this ticket) · **`arca/hope-v2-deployment`** (the manifests, commit `4fa3ab2` on `main`, **unpushed**) |
-| **Owner directive** | 2026-08-30: *"we need in-cluster vault, lets ignore the vault deployed using vm cluster and switch to use the in-cluster vault"* |
+| **Repos** | `arca/hope-v2` (this ticket) · **`arca/hope-v2-deployment`** (the manifests: `28aa2a8` then `9f87939` on `main`, **unpushed**) |
+| **Owner directives** | 2026-08-30: *"we need in-cluster vault, lets ignore the vault deployed using vm cluster and switch to use the in-cluster vault"* · later same day: VM 434's Shamir shares are **unavailable** → **re-initialise, do not migrate**; all four VMs approved for destruction once the in-cluster Vault is verified healthy |
 | **Operator runbook** | `hope-v2-deployment/docs/vault-seal-migration.md` |
 
 ## 1. Why
@@ -19,8 +19,8 @@ error parsing Seal configuration … PUT https://10.10.1.134:8200/v1/transit/enc
 → Code: 503 … * Vault is sealed
 ```
 
-`hope-vault-0` → `CrashLoopBackOff` (restartCount **517** as of 2026-08-30, unready since
-**2026-08-28T11:52:20Z**) → Service has no endpoint → DNS fails → `hope-api` fail-closes
+`hope-vault-0` → `CrashLoopBackOff` (restartCount **541** as of 2026-08-30T10:43Z, unready
+since **2026-08-28T11:52:20Z**) → Service has no endpoint → DNS fails → `hope-api` fail-closes
 (`getaddrinfo ENOTFOUND hope-vault`) → **`0/2` for two days**.
 
 **TASK-804 adopted the transit seal so that *"unsealing needs no keys and no human"*.** That is
@@ -30,18 +30,15 @@ repo can recover it.
 
 ### 1.1 Two corrections to the ticket as opened
 
-**The storage backend is `storage "file"`, not Raft.** The brief asked whether "the existing Raft
-data" can be kept. There is no Raft here and no `vault operator raft snapshot` — a backup is a
-copy of the PVC directory. The seal question is unaffected (a file backend stores a
-seal-wrapped root key exactly as Raft does), but the backup procedure is different and the
-runbook says so.
+**The storage backend is `storage "file"`, not Raft.** There is no `vault operator raft snapshot`
+— a backup is a copy of the PVC directory. The seal question is unaffected; the backup procedure
+is different and the runbook says so.
 
 **The outage is bigger than `hope-api`.** `10.10.1.134` holds **two** transit keys:
-`hope-vault-k3s` (for `hope-vault-0`) and `autounseal` (for the 3-node Vault HA Raft cluster,
-`vault-1/2/3` on `10.10.1.130/131/132`). Prometheus shows all three Raft nodes unreachable —
-last successful scrape `2026-08-28 04:56:57Z`, first failed scrape `2026-08-28 11:56:57Z`,
-bracketing `hope-vault-0`'s `11:52:20Z`. **One VM sealing took down the entire HOPE Vault estate
-in the same window.** TASK-833 frees only `hope-vault-0`; see §8.
+`hope-vault-k3s` (for `hope-vault-0`) and `autounseal` (for the 3-node Raft cluster,
+`vault-1/2/3` on VMs 430-432). Prometheus shows all three Raft nodes unreachable — last
+successful scrape `2026-08-28 04:56:57Z`, first failed `2026-08-28 11:56:57Z`, bracketing
+`hope-vault-0`'s `11:52:20Z`. **One VM sealing took down the entire HOPE Vault estate.**
 
 ## 2. The decision
 
@@ -50,245 +47,309 @@ in the same window.** TASK-833 frees only `hope-vault-0`; see §8.
 | Option | Verdict |
 |---|---|
 | **Shamir + in-cluster unseal** | **CHOSEN.** Everything needed to start Vault is inside the namespace. Cost: shares in an etcd Secret. |
-| A second in-cluster Vault as transit seal | **REJECTED.** It renames the question rather than answering it — something must still unseal the sealer — and rebuilds the exact failure shape we are fixing (one Vault that cannot start until another Vault is up) *inside* one namespace, with a second storage backend and a boot-ordering dependency. Two failure domains, one of which still ends in "keys in a Secret". |
-| Shamir, manual unseal | **REJECTED.** Every pod restart, node reboot and eviction becomes an outage that waits for a human, and the shares get lost — which is what happened before TASK-804 and what it was right to flee. It trades one two-day outage for an unbounded number of shorter ones. |
+| A second in-cluster Vault as transit seal | **REJECTED.** It renames the question rather than answering it — something must still unseal the sealer — and rebuilds the exact failure shape we are fixing, *inside* one namespace. |
+| Shamir, manual unseal | **REJECTED.** Every pod restart, node reboot and eviction becomes an outage that waits for a human, and the shares get lost — which is what happened before TASK-804. |
 
-**Sidecar, not a Job** — and the retired `hope-vault-init` Job is deleted, because its shape could
-not do this work and twice caused an incident of its own:
-
-* a Job runs **once** (its own comment conceded it was "load-bearing exactly ONCE"), while
-  unsealing is needed on **every** pod start;
-* as an Argo `hook: Sync` at wave 1, a failure does not fail alone — it **wedges the whole
-  Application**, which it did for days in August 2026 on a withdrawn base image;
-* it waited on `http://hope-vault:8200`, a name the headless Service does not publish while the
-  only pod is NotReady — and an uninitialised Vault answers 501 on the readiness probe, so it is
-  never Ready before init. **It could never have bootstrapped a fresh namespace.** On `127.0.0.1`
-  that deadlock cannot arise.
+**Sidecar, not a Job** — the `hope-vault-init` Job is deleted. A Job runs **once** while unsealing
+is needed on **every** pod start; as an Argo `hook: Sync` at wave 1 a failure **wedges the whole
+Application** (it did, for days, in August 2026); and it waited on `http://hope-vault:8200`, a
+name the headless Service does not publish while the only pod is NotReady — so **it could never
+have bootstrapped a fresh namespace at all.** On `127.0.0.1` that deadlock cannot arise.
 
 ### 2.1 Residual risk — recorded at the manifest, not only here
 
-The unseal shares live in Secret `hope-vault-unseal` in `hope-v2-dev`, so anyone who can read
-Secrets in that namespace can unseal this Vault. Accepted **for a dev namespace**, on two grounds:
+The unseal shares live in Secret `hope-vault-unseal` in `hope-v2-dev`. Accepted **for a dev
+namespace** because it widens nothing: **verified against the live cluster 2026-08-30** —
+Secret `hope-vault-init` already exists (created `2026-08-25T08:36:27Z`, `manager: kubectl-create`)
+with data keys `init.json` and **`root_token`**. Anyone who can read Secrets there could already
+read every secret out of a running Vault. The root token is the larger exposure; §6 revokes it.
 
-1. **It widens nothing.** Secret `hope-vault-init` in the same namespace *already* holds the
-   initial **root token** (written automatically since TASK-804). Anyone who can read it can read
-   every secret out of a running Vault directly. Against that, possession of the unseal shares is
-   not a new capability — the root token is the larger exposure, and §6 recommends revoking it.
-2. The alternative is not "no keys in etcd", it is "a human unseals it by hand", which is the
-   rejected option above.
-
-**Staging and production must not inherit this.** There the seal belongs on a KMS the cluster
-authenticates to with a workload identity it cannot exfiltrate (AWS KMS via IRSA —
-`hope-v2-deployment/docs/aws-eks/02-kms-and-secrets.md`), so no unseal material exists in etcd.
+**Staging and production must not inherit this** — there the seal belongs on a KMS the cluster
+authenticates to with a workload identity it cannot exfiltrate.
 
 ### 2.2 Interaction with TASK-828
 
-TASK-828 §1 is **now CLOSED** — the owner is configuring Entra SSO for Argo CD directly — so the
-brief's framing ("Argo CD is exposed with no SSO") describes a window that is being closed rather
-than a standing state. Until it lands, `argo.taphuynh.dev` is internet-reachable behind one local
-`admin` password, and an Argo admin can reach any Secret in `hope-v2-dev`. That password is
-therefore also the control standing between the internet and these shares.
-
-This seal choice **does not create that exposure and does not depend on it being fixed** — the
-root token in `hope-vault-init` was already reachable the same way. But the two should be
-sequenced together, and the Argo SSO work should land before or alongside this. Note that the dev
-`AppProject` **blacklists `Secret` outright**, so Argo cannot sync unseal material from Git even
-if someone tried — the material is out-of-band by construction, exactly like `hope-secrets`.
+TASK-828 §1 is **CLOSED** (Entra SSO for Argo is being configured). Until it lands,
+`argo.taphuynh.dev` is internet-reachable behind one local `admin` password, and an Argo admin
+can reach any Secret in `hope-v2-dev`. This seal choice does not create that exposure and does
+not depend on it being fixed — the root token was already reachable the same way — but the two
+should be sequenced together. The dev `AppProject` **blacklists `Secret` outright**, so unseal
+material is out-of-band by construction.
 
 ## 3. What was built
 
-`hope-v2-deployment` commit `4fa3ab2` on `main` (**not pushed**):
+### 3.1 `28aa2a8` — the seal change
 
 | File | Change |
 |---|---|
-| `deployment/k8s/base/vault.yaml` | Transit seal removed → Shamir. New `vault-bootstrap` sidecar (init + perpetual unseal). `hope-vault-init` Job deleted. Role narrowed with `resourceNames`. `serviceAccountName: hope-vault-init` on the StatefulSet. |
+| `deployment/k8s/base/vault.yaml` | Transit seal removed → Shamir. New `vault-bootstrap` sidecar. `hope-vault-init` Job deleted. Role narrowed with `resourceNames`. `serviceAccountName: hope-vault-init` on the StatefulSet. |
 | `deployment/secrets.dev.yaml.example` | Documents `hope-vault-unseal`; retires `hope-vault-seal`. |
-| `docs/vault-seal-migration.md` | **New.** The operator runbook — both recovery paths, verification, VM-retirement gate. |
+| `docs/vault-seal-migration.md` | The operator runbook. |
 
-Three details that are load-bearing and easy to undo by accident:
+**`command: ["vault"]` is explicit on purpose.** `hashicorp/vault`'s entrypoint rewrites `server`
+to always prepend `-config="$VAULT_CONFIG_DIR"`, so passing an explicit `-config=<file>` through
+it loads the config **twice** and Vault dies on a duplicate listener (`bind: address already in
+use`). **Re-verified in this review** against `hashicorp/vault:1.18.3`: exactly one
+`Listener 1: tcp (addr: "0.0.0.0:8200" …)`, clean start.
 
-* **`command: ["vault"]` is explicit on purpose.** `hashicorp/vault`'s entrypoint rewrites
-  `server` to always prepend `-config="$VAULT_CONFIG_DIR"`, so passing an explicit
-  `-config=<file>` through it loads the config **twice** and Vault dies on a duplicate listener
-  (`bind: address already in use`). The previous revision escaped this only because its
-  `/bin/sh -c` wrapper replaced the entrypoint too. Caught by the end-to-end test in §5 — it
-  would have shipped as a new, self-inflicted outage.
-* **Shares are mounted as FILES, not env.** A Secret injected as an env var is fixed for the
-  container's lifetime, so a sidecar started before the Secret existed would never see it.
-* **`optional: true` on that volume is not defensive habit.** Without it the pod cannot start
-  until the Secret exists, and the Secret cannot exist until the sidecar initialises a Vault that
-  cannot start — a fresh namespace would deadlock on first boot.
+### 3.2 `9f87939` — the review pass (§4)
 
-## 4. Existing state — what happens to each piece
+## 4. Review findings against `28aa2a8`
 
-| Object | Disposition |
-|---|---|
-| **PVC `hope-vault-data`** | **Kept, untouched.** It is the store. Initialised 2026-08-25 under the transit seal. |
-| **Secret `hope-vault-seal`** (transit token + CA) | Becomes unreferenced. Argo never managed it (Secrets are blacklisted). Delete after the VM is retired; revoke the token first. |
-| **Secret `hope-vault-init`** (recovery keys + root token) | **Kept — and it is the key to path M.** Its `recovery_keys_b64` are what `unseal -migrate` consumes. Afterwards: copy off-cluster, then **revoke the root token**. |
-| **Secret `hope-vault-unseal`** | **New.** Not in Git. Written by the sidecar (fresh init) or by the operator (after migration). |
-| **Job `hope-vault-init` + pod `…-5q6dn`** | Removed from Git. **`prune: false` means Argo will NOT delete the live objects** — they linger, Completed and inert, until deleted by hand. |
-| **Pods `hope-vault-wipe`, `hope-vault-wipe-2`** | Untouched by this change (never in Git). `Completed` since 2026-08-25; delete as cleanup. |
+The seal decision and the shape of the change are sound. Three defects in the sidecar were not,
+and the runbook was missing the half of the procedure the owner has now chosen to run.
 
-### 4.1 Do the existing secrets survive? — **conditionally yes**
+| # | Finding | Verdict |
+|---|---|---|
+| **R-1** | **Data-loss bug.** On any failure of the Secret write after `sys/init`, the script logged `will retry` and then did not — it fell through to `unset result`, and the next iteration took the `initialized:true` branch. Vault ends up initialised, sealed, shares discarded: **permanently unrecoverable.** That is the 2026-08 "shares were lost" incident, recreated by the mechanism written to prevent it. | **CONFIRMED, reproduced, fixed** |
+| **R-2** | **Cold start depended on kubelet timing.** After init the sidecar fell through to the *mounted-file* path, but the `unseal` volume is `optional: true` and did not exist at admission, so kubelet populates it up to a `syncFrequency` later. Measured: **67s** sealed on a fresh namespace, all of it `hope-api` downtime. | **CONFIRMED, fixed → 2s** |
+| **R-3** | **No pre-flight.** A broken Role meant `sys/init` ran anyway and the shares had nowhere to go. Initialising is the one irreversible act in the script and it was performed before proving it could be recorded. | **CONFIRMED, fixed** |
+| **R-4** | **BestEffort QoS** (`resources: {}`) on the pod that holds the only copy of the unseal shares in memory for a few seconds, on a node with a prior DiskPressure eviction wave. | **CONFIRMED, fixed** |
+| **R-5** | *"It widens nothing — `hope-vault-init` already holds the root token"* | **VERIFIED TRUE** against the live cluster (§2.1). Recommendation to revoke carried through into runbook §10. |
+| **R-6** | `prune: false` → the deleted Job and its pod linger | **CONFIRMED.** Enumerated as operator actions in runbook §10, including `hope-vault-init-5q6dn`, both `hope-vault-wipe*` pods and `hope-vault-seal`. |
+| **R-7** | Readiness probe, `command: ["vault"]`, unreferenced `hope-vault-seal` | **CONFIRMED SOUND.** Probe correctly leaves a sealed Vault NotReady; no `livenessProbe` (which would kill it mid-unseal) is correct; the `seal-ca` volume and `VAULT_TRANSIT_SEAL_TOKEN` env var are both gone, so `hope-vault-seal` is genuinely unreferenced. |
+| **R-8** | **The runbook understated Path F by an order of magnitude** (§5). | **CORRECTED** |
+| **R-9** | Two writers: the StatefulSet uses a **static** PVC, not a `volumeClaimTemplate`, so `scale --replicas=2` puts two Vault processes on one file store. Pre-existing, not introduced here. | **DOCUMENTED**, not changed (no in-manifest guard exists) |
 
-The store's root key is encrypted by the transit key on `10.10.1.134`. Recovery keys do **not**
-unseal an auto-unsealed Vault, and a PVC backup is useless without that key. HashiCorp is
-explicit: *"the seal migration operation requires both the old and new seals to be available"*,
-and if the seal mechanism is permanently lost *"the Vault cluster cannot be recovered, even from
-backups."*
+### 4.1 R-1 reproduced, and then fixed — actual output
 
-So:
+Faithful harness: the real `hashicorp/vault:1.18.3` and `alpine/kubectl:1.34.1` images, `vault.hcl`
+and the sidecar script extracted **verbatim** from the committed manifest, sharing a network
+namespace so `127.0.0.1` is Vault (as in the pod), with a stand-in kubectl whose writes can be
+made to fail.
 
-* **If `10.10.1.134` can be unsealed once → Path M → every secret survives.** Verified end to
-  end (§5), including destroying the transit vault afterwards.
-* **If it cannot → Path R → the store is unrecoverable**, and 23 platform secrets plus the
-  gateway's AppRole must be re-created.
+**The committed `28aa2a8` script, with the API server refusing writes:**
 
-**The owner is very likely already going to unseal that VM**, because it is also the only way the
-Raft cluster comes back (§1.1). If it is being unsealed anyway, **Path M costs nothing extra**,
-and it should be the default plan.
-
-## 5. Verification — actual output, not assertions
-
-Tested against `hashicorp/vault:1.18.3` with the **verbatim** `vault.hcl` and sidecar script
-extracted from the committed manifest.
-
-**Parsing logic, in busybox (the shell `alpine/kubectl` actually runs) — 11/11:**
-`uninit detected · inited not misdetected · sealed detected · unsealed not misdetected ·
-keys_base64 present · share count · share 1 (base64, not raw) · share 3 · root token ·
-short-share guard · unseal payload`. `sh -n` clean; `shellcheck -s sh` clean.
-
-**Fresh bootstrap — no human action:**
 ```
 [vault-bootstrap] uninitialised - performing Shamir init (5 shares, threshold 3)
-[vault-bootstrap] unseal shares 1-3 stored in Secret hope-vault-unseal
-[vault-bootstrap] full bundle + root token stored in Secret hope-vault-init
-[vault-bootstrap] sealed - submitting shares
-{"type":"shamir","initialized":true,"sealed":false,"t":3,"n":5,...}
+[vault-bootstrap] FAILED to write Secret hope-vault-unseal - will retry
+[vault-bootstrap] FAILED to write Secret hope-vault-init - will retry
+[vault-bootstrap] sealed, but no shares are mounted … - waiting     ← forever, even after recovery
+sys/init     → {"initialized":true}
+seal-status  → "sealed":true
+Secrets stored: 0                                                    ← the store is now unrecoverable
 ```
 
-**DoD "survives a deliberate pod delete" — both containers destroyed, PVC + Secret kept:**
+**The fixed script, same failure, same recovery:**
+
 ```
-UNSEALED after ~3s
+[vault-bootstrap] FAILED to write Secret hope-vault-init (attempt 1) - retrying in 10s; material still held in memory
+[vault-bootstrap] FAILED to write Secret hope-vault-init (attempt 2) - retrying in 10s; material still held in memory
+[vault-bootstrap] FAILED to write Secret hope-vault-init (attempt 3) - retrying in 10s; material still held in memory
+>>> API server recovers <<<
+[vault-bootstrap] Secret hope-vault-init written
+[vault-bootstrap] Secret hope-vault-unseal written
+[vault-bootstrap] unsealing with the freshly generated shares
+[vault-bootstrap] UNSEALED
+```
+
+The three fixes: `store_or_retry()` retries until the write lands and never discards the material;
+the **raw** bundle is written to `hope-vault-init` *before* the shares are parsed, so a parse
+failure can no longer throw away a generated bundle; and a `kubectl apply --dry-run=server`
+pre-flight runs the real authorization path *before* `sys/init`.
+
+**R-3, pre-flight, with RBAC denied from the start:**
+
+```
+[vault-bootstrap] REFUSING TO INITIALISE: cannot write Secrets hope-vault-unseal / hope-vault-init.
+sys/init → {"initialized":false}      /vault/data entries: 0      ← nothing damaged, retries every 15s
+```
+
+## 5. ⚠️ What the wipe actually costs — the finding that changes the plan
+
+The owner's Path F decision makes this load-bearing, and `28aa2a8`'s runbook did not state it.
+
+**`scripts/vault-seed-secrets.sh` restores the 23 KV secrets and nothing else.** It writes
+`secret/data/hope/<NAME>` for every `vault-kv` descriptor in `PLATFORM_SECRET_SETTINGS`
+(derived, never hardcoded — it fails rather than falling back to a stale list). It does **not**
+create mounts, transit keys, auth methods or policies.
+
+**A freshly initialised non-dev Vault has none of those.** No `secret/` mount, no `transit/`, no
+`approle/`, no policies. So the previous runbook's "R4. Re-seed" would have failed on the first
+`vault kv put`, and `hope-api` could not have logged in at all. Runbook **§5 is new** and
+provisions the whole surface (`kv-v2` at `secret/`, `transit/` + both keys, `approle` + the
+`hope-app` policy from `infrastructure/docker/configs/vault/policies/hope-app.hcl` + the role).
+
+**And the part that is not recoverable at all:** the wipe destroys the transit keys
+`hope-phi` and `hope-globalsetting`. They are referenced by **20 repositories**
+(`packages/domains/src/repositories/generated/core/*.encryption.ts` — `AuditLog`, `ContextItem`,
+`ContextItemVersion`, `DnaWritingStyle*`, `GlobalSetting`, `Highlight`, `KnowledgeChunk`,
+`NamedEntity`, `Notification`, `PromptTemplate`, `SummaryMeta`, `TranscriptionJob`, …), and
+`base/api.yaml` sets `SECRETS_PROVIDER: "vault"`, which puts `phi-field-encryption.ts` in
+**required (fail-closed)** mode — so those columns are genuinely written encrypted here.
+`hope-v2-deployment/docs/deployment-runbook.md` §11 records a real
+`ContextItem.encryptedContent` row of 1681 bytes decrypting to 1225 bytes of clinical transcript.
+
+A new key of the same name is **different key material**. Every `vault:vN:…` value already in
+Postgres becomes permanently undecryptable, and the read path raises rather than degrading — so
+this needs a deliberate decision per model (null the column vs. delete the row) *before*
+`hope-api` serves those endpoints. Runbook §8.
+
+**The only backup of those two keys is `secret/hope-recovery/*` inside the Proxmox HA cluster on
+VMs 430-432** (`deployment-runbook.md` §11.1 — a verified, round-tripped backup). It is currently
+unreachable because that cluster auto-unseals against VM 434. **Runbook §11.1 therefore asks for a
+Proxmox disk snapshot of all four VMs before they are destroyed.** "The shares are lost" and "the
+disks are gone" are different claims, and only one of them is reversible.
+
+Third category, easy to miss: any secret **rotated inside Vault and never written back to
+`.env.dev`** is gone (§6 seeds the env-file value over it), as is the operator-written JSON at
+`platform/storage/minio` — a `vault-kv` descriptor the seed script deliberately excludes because
+its *value* is a KV path, not credential material.
+
+## 6. Verification — actual output, not assertions
+
+All against the real `hashicorp/vault:1.18.3` and `alpine/kubectl:1.34.1`, using `vault.hcl` and
+the sidecar script extracted verbatim from the committed manifest.
+
+**Cold start from an empty volume — the Path F proof:**
+
+```
+volume entries before start: 0
+Vault: Listener 1: tcp (addr "0.0.0.0:8200" …)   ← exactly one; command:["vault"] is correct
+[vault-bootstrap] uninitialised - performing Shamir init (5 shares, threshold 3)
+[vault-bootstrap] Secret hope-vault-init written
+[vault-bootstrap] Secret hope-vault-unseal written
+[vault-bootstrap] unsealing with the freshly generated shares
+[vault-bootstrap] UNSEALED
+### UNSEALED after 2s
+{"type":"shamir","initialized":true,"sealed":false,"t":3,"n":5,…,"storage_type":"file"}
+/vault/unseal at that moment: 0 entries      ← proves no dependency on kubelet propagation
+readinessProbe GET /v1/sys/health?standbyok=true → HTTP/1.1 200 OK
+```
+
+**Survives a pod delete with no re-init and no human** (both containers destroyed, PVC + Secret
+kept — the DoD acceptance test):
+
+```
+### RE-UNSEALED after 2s, no human action
 [vault-bootstrap] started; seal is shamir, shares are read from /vault/unseal
-[vault-bootstrap] sealed - submitting shares          ← note: NO re-init
-readiness probe: HTTP/1.1 200 OK                      ← pod goes Ready, DNS returns, hope-api can boot
+[vault-bootstrap] sealed - submitting shares from /vault/unseal
+[vault-bootstrap] unsealed                     ← note: NO "performing Shamir init"
+readinessProbe → HTTP/1.1 200 OK
+canary read back through the restarted Vault: COLD-START-CANARY
 ```
 
-**The live failure reproduced verbatim** (transit vault sealed, same request path):
-```
-URL: PUT http://transitvault:8200/v1/transit/encrypt/hope-vault-k3s
-Code: 503. Errors: * Vault is sealed
-```
+**Fail-closed, re-verified after the review changes** — a store initialised under a transit seal,
+started with the committed pure-Shamir config:
 
-**This commit landing on the current transit-sealed store — fails safe:**
 ```
 Error initializing core: cannot seal migrate from "transit" to Shamir, no disabled seal in configuration
-files: 34    store checksum: 6920ad09a7b68da5239a2b3a9a8b2a70c7b2652c   ← unchanged
+exit code 1
+/vault/data: 34 files, md5 c39d7bf33bcfae5eff9e83dac1f9c3ff   ← identical before and after
+             …and still identical after four consecutive crash-loop restarts
 ```
 
-**Path M, end to end, with a canary secret:**
+**Build + rules + secret hygiene:**
+
 ```
-canary written under the transit seal:            CANARY-SURVIVED
-migration config (transit disabled=true):         Seal Type shamir · Sealed true
-unseal -migrate share 1:  Unseal Progress 1/3 · Seal Migration in Progress true
-unseal -migrate share 2:  Unseal Progress 2/3 · Seal Migration in Progress true
-unseal -migrate share 3:  Sealed false
->>> transit vault (10.10.1.134 equivalent) DESTROYED <<<
-pure-Shamir config start errors: 0 · old recovery keys unseal it · Sealed false
-★ CANARY, VM destroyed, in-cluster Shamir seal:   CANARY-SURVIVED
+kubectl kustomize deployment/k8s/overlays/{dev,staging,prod}  →  all BUILD OK (dev: 106 resources)
+  rendered: StatefulSet/hope-vault has containers [vault, vault-bootstrap] with resources set,
+            serviceAccountName hope-vault-init, and NO Job/hope-vault-init
+promtool check rules  →  SUCCESS: 35 rules found
+promtool test rules   →  SUCCESS  (the repo's own alert-rules.test.yml)
+gitleaks 8.30.1 dir . -c <monorepo .gitleaks.toml>  →  no leaks found
+gitleaks 8.30.1 dir . (stock default config)        →  1: secrets.dev.yaml.example:52
 ```
 
-**Build + secret hygiene:**
-```
-kubectl kustomize deployment/k8s/overlays/dev  →  BUILD OK (106 resources)
-grep -rn '10\.10\.1\.134' deployment/k8s/base/vault.yaml  →  historical comments only, no config
-gitleaks 8.30.1 detect --no-git  →  leaks found: 1   (was 2 before this change)
-```
-The single remaining finding is **pre-existing and untouched**: `secrets.dev.yaml.example:52`,
-the seeded dev `API_GATEWAY_KEY` fixture the file deliberately documents (removing it breaks the
-documented dev provisioning path — that belongs to TASK-832 §7, not here). `git diff` touches it
-zero times. The second finding, a false positive on a `vault token create -policy=…` comment, is
-gone because that comment was removed.
-
-## 6. What Argo will do when this is pushed
-
-`main` auto-syncs; `prune: false`, `selfHeal: false`.
-
-| Resource | Argo action | Effect |
-|---|---|---|
-| ConfigMap `hope-vault-config` | patched | seal stanza gone |
-| StatefulSet `hope-vault` | patched (`spec.template` is mutable) | `hope-vault-0` recreated with 2 containers |
-| Role `hope-vault-init` | patched | narrowed to `resourceNames` |
-| ServiceAccount / RoleBinding / Service / PVC | unchanged | — |
-| Job `hope-vault-init` | **not deleted** — `prune: false` | Completed Job + pod linger; remove by hand |
-| Secrets (`hope-vault-seal`, `hope-secrets`, `hope-vault-unseal`) | **never touched** | the dev AppProject blacklists `Secret` |
-
-Then `hope-vault-0` fails with `cannot seal migrate from "transit" to Shamir…` and stays in
-CrashLoopBackOff. **That is expected.** It is strictly better than today's failure — local rather
-than a network call to a VM that may never return, self-describing, and verified non-destructive.
-
-**Pushing is safe and reversible. Only destroying the VM is irreversible.**
+The single stock-config finding is **pre-existing and untouched** — the seeded dev
+`API_GATEWAY_KEY` fixture the file deliberately documents. `git diff` touches that file's line 52
+zero times. The deployment repo has no `.gitleaks.toml` of its own; under the monorepo's config
+(the repo-owned ruleset) it is clean.
 
 ## 7. Handover — what the owner must do
 
-Full procedure: `hope-v2-deployment/docs/vault-seal-migration.md`.
+Full procedure: `hope-v2-deployment/docs/vault-seal-migration.md`. It is ordered and each step is
+verified; the summary is:
 
-1. **Back up first**: Secrets `hope-vault-init`, `hope-vault-seal`, `hope-secrets`, plus a tar of
-   the PVC (file backend — there is no raft snapshot).
-2. **Decide**: can `10.10.1.134` be unsealed once? → **Path M** (secrets preserved) or **Path R**
-   (re-init + re-seed 23 secrets + re-mint the `hope-app` AppRole and patch `hope-secrets`;
-   note `API_KEY_PEPPER` changing invalidates every issued API key at once).
-3. **Verify before retiring anything** — six checks in the runbook, the acceptance one being
-   `kubectl delete pod hope-vault-0` → back Ready with no human action, then `hope-api` `2/2`.
-4. **Cloudflare tunnel: point it at nothing.** `hope-vault` is a **headless** Service
-   (`clusterIP: None`) with no NodePort, LoadBalancer or Ingress, and the tunnel reaches this
-   cluster via NodePorts on `10.10.1.10`. Re-pointing would mean *adding* a new exposure, not
-   redirecting an existing one — and per TASK-828 §4 most HOPE tunnel routes have no Access
-   application, so it would put a PHI platform's secrets plane on the internet behind nothing.
-   In-cluster consumers use `http://hope-vault:8200`; an operator uses
-   `kubectl port-forward -n hope-v2-dev svc/hope-vault 8200:8200`, already behind Rancher's
-   Azure AD. **Retire the route rather than re-pointing it.**
-5. **Do not destroy the VM yet** — see §8.
+1. **Back up** (§2): Secrets `hope-vault-init` / `hope-vault-seal` / `hope-secrets`, plus a tar of
+   the PVC. Cheap, and the only thing that keeps Appendix A alive.
+2. **Confirm §1 with the owner in writing** — specifically §1.2 (the transit keys) and the "was
+   anything rotated in Vault and not written back to `.env.dev`?" question.
+3. **Wipe** (§3): scale to 0 → wait for `NotFound` → delete both bootstrap Secrets → wipe pod →
+   **verify `entries=0`** with a separate pod. Do not scale up on a partially wiped store.
+4. **Cold start** (§4): scale to 1; the sidecar inits and unseals itself. `hope-vault-0` is
+   **`2/2`**, not `1/1` — the sidecar is a second container. Copy `hope-vault-init` off-cluster.
+5. **Re-provision** (§5): mounts, both transit keys, AppRole + policy. Decide `exportable`
+   deliberately — it is irreversible once on.
+6. **Re-seed** (§6) and **re-credential `hope-api`** (§7). Note `API_KEY_PEPPER` changing
+   invalidates every issued API key at once.
+7. **Triage the undecryptable rows** (§8) before serving traffic.
+8. **Verify** (§9) — seven checks; the acceptance one is `kubectl delete pod hope-vault-0` → back
+   Ready with no human action and **no** `performing Shamir init` in the log.
+9. **Clean up by hand** (§10) — `prune: false` means Argo deletes nothing.
+10. **Then, and only then, the VMs** (§11) — snapshot first, and move the three monitoring edits
+    in one commit.
 
-## 8. ⚠️ Follow-up required before `10.10.1.134` is destroyed
+## 8. ⚠️ Before `10.10.1.130/131/132/134` are destroyed
 
-TASK-833 frees `hope-vault-0` and **nothing else**. The VM also holds the `autounseal` transit key
-for the 3-node Vault HA Raft cluster (`vault-1/2/3`, VMs 430–432), which per
-`docs/operations/vault/vm-cluster-seal-unseal.md` is Shamir-sealed and *"never auto-unseals"* —
-*"there is exactly one manual step in any recovery: unseal VM 434."*
+Two things, both in runbook §11 and neither undoable:
 
-All three Raft nodes are currently unreachable to Prometheus, from the same 2026-08-28 window.
-**Destroying the VM after this ticket would permanently break that cluster's auto-unseal**, repeating
-this incident at larger scale. Either migrate the Raft cluster off the VM too, or formally
-decommission it. **That is a separate ticket and is not in TASK-833's scope.**
+* **Snapshot all four VM disks.** 430-432 hold `secret/hope-recovery/*`, the only backup of the
+  two transit keys in §5.
+* **Move the monitoring configuration in the same commit as the destruction**, or it alerts
+  forever:
 
-Two smaller follow-ups, deliberately not done here to keep the change surgical:
-* `hope-vault-0` is **BestEffort** (`resources: {}`) — the secrets plane is first to be evicted
-  under node memory pressure. It should carry requests/limits.
-* `alert-rules.yaml`'s `VaultSealed` remediation text points at `10.10.1.134`. It targets the
-  **Raft** cluster, not `hope-vault-0`, so it is correct today and must be updated as part of §8,
-  not this ticket.
+| Config | If left pointing at dead hosts |
+|---|---|
+| `observability-config.yaml` scrape job `vault` → `10.10.1.130/131/132:8200` | `TargetDown` (severity `ticket`) fires **permanently, ×3** |
+| `alert-rules.yaml` `VaultSealed` / `VaultQuorumRisk` | Series disappears → they go **silently inert**. The `vault_storage` group then looks like coverage and provides none |
+| `alert-rules.yaml` `ExpectedTargetCountMismatch` (`count(count by (job)(up)) < 26`) | Removing the scrape job drops the count to 25 → **fires permanently** unless changed to `< 25` in the same commit |
 
-## 9. Definition of Done
+Both live files are now annotated in place with exactly this, so the instruction is at the code
+and not only in a document.
+
+**There is no alert on `hope-vault` itself.** It is not scraped at all; `vault_core_unsealed` only
+ever described the VMs. After the teardown the only Vault alerting in the platform is the generic
+`PodCrashLooping` / `ContainerWaitingOnError` / `DeploymentReplicasUnavailable`. That is how this
+outage ran for two days. **Closing it is a follow-up ticket** (Vault telemetry stanza +
+`unauthenticated_metrics_access` + a `HopeVaultSealed` rule).
+
+Two smaller follow-ups deliberately not done here:
+* `hope-vault` is a single replica on a static PVC (R-9): `scale --replicas=2` would put two Vault
+  processes on one file store. Pre-existing; no in-manifest guard exists.
+* HA is genuinely lost by retiring the VM cluster — single node, single PVC, no quorum, no Raft
+  snapshot. Accepted for dev; **must not** be carried to staging/prod.
+
+## 9. `infrastructure/single-deployment/vault/` — retired, not deleted
+
+The 3-node Raft blueprint targets VMs that will not exist. It is **kept** rather than deleted, and
+marked with a retirement banner, because it is the only written record of a reviewed,
+`kind`-tested HA Vault design and three of its parts are still live assets:
+`bootstrap/configure-app-auth.sh` (the reference for the exact Vault surface runbook §5
+re-provisions), the per-service policy set (mirrored in
+`infrastructure/docker/configs/vault/policies/`), and the never-applied `monitoring/` rules — which
+are precisely the gap §8 describes.
+
+Banners added to `infrastructure/single-deployment/README.md`,
+`infrastructure/single-deployment/vault/README.md` and `docs/operations/vault/README.md`; the
+inventory line in `infrastructure/README.md` now says RETIRED and points at the in-cluster
+manifest. Left alone deliberately: `docs/archive/**` and `docs/research/**` (off-limits this
+sprint) and `docs/operations/vault/vm-cluster-seal-unseal.md`, which is reached through the
+banner on its parent README.
+
+## 10. Definition of Done
 
 - [x] Seal mechanism chosen, justified, alternatives rejected in writing (§2, and at the manifest)
-- [x] Residual risk stated at the manifest, not only in the ticket (§2.1)
+- [x] Residual risk stated at the manifest, and the "widens nothing" claim **verified** (§2.1)
 - [x] TASK-828 interaction stated explicitly (§2.2)
-- [x] No unseal material in Git; gitleaks run and reported (§5)
-- [x] Fate of every pre-existing object recorded (§4)
-- [x] Whether existing secrets survive, answered with evidence (§4.1, §5)
-- [x] Exact Argo behaviour stated (§6)
-- [x] Owner handover: tunnel, verification, re-init path (§7, runbook)
-- [ ] `hope-vault-0` Ready with no external dependency — **blocked on the §7 operator step**
-- [ ] Survives a deliberate pod delete **in the cluster** (proven in a faithful harness, §5)
+- [x] No unseal material in Git; gitleaks run with the repo-owned config and reported (§6)
+- [x] Fate of every pre-existing object recorded, incl. what an operator must delete by hand (§7, runbook §10)
+- [x] Adversarial review of `28aa2a8`; data-loss path found, reproduced and fixed (§4)
+- [x] **Cold start from an empty PVC proven**: init → self-unseal → Ready, no human (§6)
+- [x] **Survives a pod delete with no re-init and no human** — proven in a faithful harness (§6)
+- [x] Landing the commit is non-destructive: fail-closed, `/vault/data` byte-identical (§6)
+- [x] What re-seeding does and does **not** restore, stated precisely (§5, runbook §1)
+- [x] `infrastructure/single-deployment/vault/` marked retired, losses named (§9)
+- [x] Monitoring targets that would alert forever identified and annotated in place (§8)
+- [ ] `hope-vault-0` Ready **in the cluster** with no external dependency — **blocked on §7**
 - [ ] `hope-api` reaches `2/2` — follows from the above
-- [ ] VM confirmed safe to destroy — **blocked on §8 (Raft cluster)**
+- [ ] Transit keys re-created and the undecryptable rows triaged — **blocked on §7 step 7**
+- [ ] VMs snapshotted, then destroyed, with the three monitoring edits in one commit — **blocked on §8**
 
-## 10. Change History
+## 11. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-30 | Opened from the TASK-808 §9 diagnosis, on the owner's directive. |
-| 2026-08-30 | Seal decision made (Shamir + in-cluster `vault-bootstrap` sidecar); manifests committed as `4fa3ab2` in `hope-v2-deployment` (unpushed); runbook `docs/vault-seal-migration.md` added. Found and fixed a duplicate-`-config` entrypoint bug that would have shipped a Vault unable to start. Found that `10.10.1.134` also seals the Vault HA Raft cluster, which is down from the same event — §8 raised. Corrected the ticket's "Raft data" premise: the backend is `storage "file"`. |
+| 2026-08-30 | Seal decision made (Shamir + in-cluster `vault-bootstrap` sidecar); manifests committed as `28aa2a8` in `hope-v2-deployment` (unpushed); runbook added. Found and fixed a duplicate-`-config` entrypoint bug that would have shipped a Vault unable to start. Found that `10.10.1.134` also seals the Vault HA Raft cluster, down from the same event. Corrected the ticket's "Raft data" premise: the backend is `storage "file"`. |
+| 2026-08-30 | **Review pass → `9f87939`.** Reproduced a data-loss bug in the sidecar (a failed Secret write after `sys/init` discarded the shares and left the store permanently unrecoverable) plus a 67s→2s cold-start regression and a missing pre-flight; all three fixed and re-verified. Added resources to both containers. **Found that the runbook's re-init path could not have worked**: a fresh non-dev Vault has no `secret/`, `transit/`, `approle/` or policies, and `vault-seed-secrets.sh` creates none of them — runbook §5 added. **Found that the wipe destroys the `hope-phi`/`hope-globalsetting` transit keys**, which encrypt columns across 20 repositories, and that their only backup lives on the VMs approved for destruction — snapshot gate added. Owner confirmed Path F (re-initialise) as the only path; runbook rewritten around the wipe, with an explicit verified-empty check. Annotated the three monitoring configs that would otherwise alert forever, and marked `infrastructure/single-deployment/vault/` retired. |
