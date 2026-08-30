@@ -468,12 +468,43 @@ verify-lmstudio-runtime:
       docker run --rm --entrypoint cat "$img" /home/llmster/.lmstudio/hope-build-info.json
 
       echo "── installed inference engines ──"
+      # /data is a VOLUME and /data/models is the target of the
+      # ~/.lmstudio/models symlink, but ONLY entrypoint.sh:90 ever creates it.
+      # This job deliberately runs with --entrypoint /bin/sh, so without this
+      # mkdir the daemon starts against a DANGLING symlink. /data is chowned to
+      # 10001 in the Dockerfile, so the unprivileged user can create it.
+      #
+      # The substitution is NOT under `set -e`: an assignment takes the exit
+      # status of its command substitution, so a failing daemon aborted this
+      # job BEFORE the echo and the CUDA check below. That left a trace ending
+      # bare at this header, unable to distinguish "the image is CPU-only" --
+      # the one thing this gate exists to catch -- from "the probe broke".
+      # Capture the status, print it, and let the checks below decide.
+      #
+      # stderr is no longer sent to /dev/null: command substitution captures
+      # stdout only, so letting stderr through puts the daemon's own complaint
+      # in the job log instead of discarding it.
+      set +e
       engines=$(docker run --rm --entrypoint /bin/sh "$img" -c \
-        'lms daemon up >/dev/null 2>&1 || true;
+        'mkdir -p /data/models /data/staging;
+         lms daemon up >/dev/null || true;
          i=0; while [ $i -lt 60 ]; do
            lms daemon status 2>/dev/null | grep -q "is running" && break; i=$((i+1)); sleep 1; done;
-         lms runtime ls 2>/dev/null')
+         lms runtime ls')
+      rc=$?
+      set -e
+      echo "docker run exit status: $rc"
       echo "$engines"
+
+      # An empty result is a BROKEN PROBE, not a CPU-only image. Fail with a
+      # different message so the two can never be confused again.
+      if [ -z "$engines" ]; then
+        echo "FATAL: \`lms runtime ls\` produced no output (exit $rc)." >&2
+        echo "This does NOT mean the image is CPU-only -- it means the probe" >&2
+        echo "could not answer, so the accelerator is UNVERIFIED. Check the" >&2
+        echo "daemon's stderr above. Do not promote on an unverified result." >&2
+        exit 1
+      fi
 
       # `lms` exits 0 whether or not the thing you asked about is true
       # (measured: `lms daemon status` exits 0 for "LM Studio is not running").
