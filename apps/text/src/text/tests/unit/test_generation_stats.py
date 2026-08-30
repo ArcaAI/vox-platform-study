@@ -434,8 +434,14 @@ class TestGenerateEndpointStats:
     async def test_stats_never_fail_generation(self, client):
         """A stats-mapper failure must degrade to a best-effort stats object,
         log a warning, and still return a 200 with the generated content."""
+        # TASK-818 Wave 0.4: `_coerce_stats` — and with it the
+        # `build_generation_stats` call this patches — moved to
+        # `text.routing.usage`. Patching by module path names a LOCATION, so a
+        # relocation is exactly what invalidates it. Behaviour under test is
+        # unchanged: a mapper that raises must still degrade to best-effort
+        # stats and return 200.
         with patch(
-            "text.api.endpoints.generate.build_generation_stats",
+            "text.routing.usage.build_generation_stats",
             side_effect=RuntimeError("mapper boom"),
         ):
             resp = await client.post(
