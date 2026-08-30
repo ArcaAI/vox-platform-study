@@ -269,6 +269,20 @@ ignore_missing_imports = true
 # pytest configuration
 [tool.pytest.ini_options]
 minversion = "9.0"
+# `pythonpath` is resolved relative to rootdir, i.e. relative to the checkout the
+# suite was invoked from, and is applied at `pytest_load_initial_conftests` —
+# earlier than anything that could import the service. That ordering is what makes
+# a run inside a git worktree exercise THAT worktree's source instead of the
+# primary checkout the conda env's `__editable__.*.pth` files point at.
+# `scripts/pytest-support` carries the guard that proves it held; see
+# scripts/pytest-support/hope_worktree_guard.py.
+pythonpath = [
+    "src",
+    "../../packages/py-env/src",
+    "../../packages/py-otel/src",
+    "../../packages/py-runtime-models/src",
+    "../../scripts/pytest-support",
+]
 # Note: Coverage options moved to Makefile/CI to avoid requiring pytest-cov for basic test runs
 # Use `make test-cov` or `pytest --cov=stt` when coverage is needed
 addopts = [
