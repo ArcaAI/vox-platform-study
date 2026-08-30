@@ -138,3 +138,131 @@ cannot be distinguished from no cache by this measurement.
 `httpx.AsyncClient(http2=True)` raised `ImportError` and the pool degraded to
 HTTP/1.1. Fixed in `7311a82bc`; any future comparison against these two runs is
 therefore not like-for-like on that axis.
+
+
+---
+
+# Root cause of `1.000 conn/req` — FOUND AND CLOSED (2026-08-30)
+
+The follow-up flagged in "Harness gap — CLOSED" above is resolved. **Neither the
+client cache nor the pooled transport was at fault** — both hit on every single
+request, end to end, in the real request path. The connection was being destroyed
+one layer below them, by the OpenAI SDK.
+
+## What the instrumentation showed
+
+`ClientCache.get_or_create`, `pooled_http_client`, `apply_pool_policy` and
+`openai_compat._client_at` were instrumented and the harness re-run
+(`--tls --connections-per-request`, `--levels 1`, 208 requests):
+
+```
+_client_at.result sdk_id=4727751440 http_id=4727761360 http_closed=False   # identical, all 208
+clientcache.HIT × 207   ·   clientcache.MISS × 1   ·   pool.MISS × 1
+pool.apply_pool_policy ok=False n_profiles=0                               # early-returns, every request
+```
+
+One `AsyncOpenAI`, one `httpx2.AsyncClient`, one adapter instance, for every
+request — and still a fresh handshake per generation. This also **proves** the
+`refresh_runtime_limits` reasoning that was previously only read, not measured:
+the snapshot is negative-cached (`ok=False`), `apply_pool_policy` returns
+immediately, and nothing is ever evicted.
+
+## The actual cause: the SDK closes a streamed response before its body is at EOF
+
+`openai/_streaming.py::AsyncStream.__stream__`:
+
+```python
+async for sse in iterator:
+    if sse.data.startswith("[DONE]"):
+        break            # <- leaves the body suspended, not at EOF
+finally:
+    await response.aclose()
+```
+
+No *application* bytes remain after `data: [DONE]` — measured, exactly `0` — but
+the HTTP **end-of-body marker** (the chunked terminator) has not been read. httpcore
+sees a partially-consumed response and tears the connection down instead of parking
+it in the keepalive pool. The non-streaming path never had the problem, because it
+reads its body to completion.
+
+Isolated against the same TLS mock, five requests each:
+
+| case | new connections |
+|---|---|
+| raw `httpx2`, default limits, streamed, drained to EOF | **1** |
+| raw `httpx2`, **exact pool-floor limits** + `Timeout(300)`, drained | **1** — rules out the pool policy |
+| raw `httpx2`, `break` on `[DONE]` then close | **5** — reproduces it with no SDK in the path |
+| raw `httpx2`, `break` on `[DONE]` **then drain**, then close | **1** — the fix |
+| `AsyncOpenAI` over the pooled client, `stream=True`, fully drained | **5** |
+| `AsyncOpenAI` over the pooled client, **non-streaming** | **1** |
+
+This is **not a mock artifact**: every OpenAI-wire engine (LM Studio, vLLM, OpenAI,
+Azure) terminates its SSE the same way, and the behaviour is unchanged on
+`openai-python` `main` (verified 2026-08-30). Raised upstream — see
+`upstream-openai-python-stream-reuse.md`.
+
+## The fix
+
+`providers/pool.py` — a transport wrapper that reads a response to EOF, **bounded**
+(64 KB / 250 ms), before closing it. It lives at the transport, not in
+`openai_compat`, because the seam that leaks is `Response.aclose()`: by the time the
+adapter's `async for` returns, the SDK's `finally` has already closed the socket.
+Every adapter on a pooled client is covered for the same reason. A genuinely
+aborted stream (consumer disconnected mid-generation) hits the bound and closes
+exactly as before — the drain never becomes "read the rest of a generation nobody
+is listening to".
+
+Locked by `src/text/tests/unit/test_task818_stream_close_reuse.py`, which drives a
+loopback HTTP/1.1 server counting **accepted connections** through the real
+`pooled_http_client` + `AsyncOpenAI`. Confirmed RED first:
+`expected one connection for five streamed generations, saw 5`.
+
+## Measurements — both modes, as §4.8 requires
+
+Same host, same session, interleaved before/after, three repetitions of the
+zero-latency pair.
+
+**Zero-latency mock** (isolates proxy overhead):
+
+| c | conn/req before → after | AC-3 p50 before | AC-3 p50 after |
+|---|---|---|---|
+| 1 | 1.000 → **0.000** | 1.49 / 2.01 / 1.76 ms *(3 runs)* | 3.64 / 3.40 / 3.26 ms *(3 runs)* |
+| 10 | 1.000 → **0.036** | 17.16 ms *(1 run)* | 29.15 ms *(1 run)* |
+| 25 | 1.000 → **0.066–0.087** | 40.89 / 41.11 / 41.87 ms *(3 runs)* | 82.11 / 62.90 / 63.19 ms *(3 runs)* |
+
+**Latency-injecting mock** (800 ms TTFT, ~30 tok/s — the mode §4.8 calls the
+realistic one, and the one that exposes connection-hold behaviour):
+
+| c | conn/req before → after | AC-3 p50/p95/p99 before | AC-3 p50/p95/p99 after |
+|---|---|---|---|
+| 10 | 1.020 → **0.200** | 4.96 / 11.67 / 14.16 ms | **3.97 / 8.86 / 9.42 ms** |
+| 25 | 1.008 → **0.128** | 3.85 / 87.16 / 93.40 ms | **3.76 / 76.59 / 86.09 ms** |
+
+**Read both numbers, and do not quote the zero-latency AC-3 row as a regression
+caused by the wrapper.** A third configuration settles that: with the wrapper
+INSTALLED but the drain disabled — so every per-chunk cost of the wrapper is
+present and no reuse happens — AC-3 returns to **1.46 ms @ c=1 / 40.04 ms @ c=25**,
+i.e. the "before" numbers exactly. **The wrapper itself costs nothing measurable.**
+The zero-latency delta is the cost of *reuse* under that specific load shape.
+
+Most likely explanation, consistent with both modes but **not independently
+proven**: with 0 ms TTFT and 0 ms inter-token the harness issues back-to-back
+requests with no think-time, so releasing the previous response (drain included)
+lands on the *next* request's critical path on that same connection — whereas a
+brand-new connection per request pushed the old one's teardown off the critical
+path entirely. Give the client any real inter-request gap and the release finishes
+during idle time, which is what the latency-injecting rows show.
+
+## What this means for the harness caveat above
+
+The harness gap has moved, not closed. It went from *"cannot see a TLS handshake"*
+to *"sees the handshake, but a handshake to `127.0.0.1` is nearly free"*. A remote
+provider's handshake is 2 RTTs plus certificate verification — orders of magnitude
+above anything measurable here. **This harness still cannot price connection reuse;
+it can now only prove that reuse HAPPENS.** That is what it is being used for, and
+the claim should not be stretched further.
+
+Standing consequence for A-3 (HTTP/2): HTTP/1.1 gives one in-flight request per
+connection, so the release path is on the critical path whenever a client has no
+think-time. HTTP/2 multiplexing removes that coupling on self-hosted engines. This
+is an argument for measuring A-3, not for assuming it.

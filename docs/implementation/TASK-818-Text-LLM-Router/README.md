@@ -719,6 +719,14 @@ measured p99 overhead exceeds ~10 ms after Phase 2.** Against a real provider (T
   mismatches upstream idle timeouts, handing you reaped sockets. Size keepalive to real
   concurrency; set `keepalive_expiry` **below** the provider/LB idle timeout; use **one client
   per upstream**, not one global. <https://www.python-httpx.org/api/>
+- **A pooled client is not enough: a streamed response must reach EOF before it is closed,
+  or its connection is DESTROYED rather than parked.** `openai`'s `AsyncStream.__stream__`
+  `break`s on `data: [DONE]` and closes in its `finally`, leaving the chunked terminator
+  unread — httpcore then tears the connection down. Measured cost: **1.000 conn/req** with a
+  verified-hitting client cache AND a verified-hitting per-upstream pool in the path. Drain
+  (bounded) before close. Full evidence in `baseline.md` §"Root cause of `1.000 conn/req`";
+  upstream report in `upstream-openai-python-stream-reuse.md`. **Any SDK that stops reading an
+  SSE body at a sentinel has this bug — check before assuming a pool is working.**
 - httpx ≥0.28: the param is `proxy=` (not `proxies=`); per-request `stream=` is gone — use
   `client.stream()`.
 - **Granian** (Rust ASGI) showed ~35% plaintext throughput over uvicorn with a tighter
@@ -1186,8 +1194,35 @@ Final message is DATA for the orchestrator. Exactly these fields:
 
 *(to be filled in as phases land)*
 
+### Connection reuse on the streamed path — landed 2026-08-30
+
+Follow-up to Lane H2's `1.000 conn/req` finding. **The client cache (B-2) and the
+per-upstream pool (B-8) were both innocent** — instrumentation proved they hit on every
+request in the real request path, same `AsyncOpenAI` and same `httpx2.AsyncClient` object
+across 208 consecutive generations. The connection was destroyed one layer below them, by
+`openai`'s `AsyncStream.__stream__`, which closes a streamed response before its body reaches
+EOF.
+
+| | |
+|---|---|
+| **Fixed in** | `apps/text/src/text/providers/pool.py` — a transport wrapper that drains a response to EOF, bounded (64 KB / 250 ms), before closing it |
+| **Why the transport** | The leaking seam is `Response.aclose()`; by the time `openai_compat._stream`'s `async for` returns, the SDK's `finally` has already closed the socket. Every adapter on a pooled client is covered by the same wrapper |
+| **Locked by** | `src/text/tests/unit/test_task818_stream_close_reuse.py` — accepted-connection count through the real `pooled_http_client` + `AsyncOpenAI`; confirmed RED first (5 connections for 5 streams) |
+| **Also touched** | `test_task818_client_cache.py::test_http2_is_requested_when_the_policy_asks_for_it` now asserts on `client._transport._pool._http2`. `limits`/`http2` moved to the transport, and an `AsyncClient` given an explicit transport ignores its own copies — the old kwarg spy would have passed on an inert value |
+| **Result** | zero-latency `1.000 → 0.000 / 0.036 / 0.066` conn/req @ c=1/10/25 · latency-injecting `1.02 → 0.20` @ c=10, `1.01 → 0.13` @ c=25 |
+| **Upstream** | Drafted, **not filed** — `upstream-openai-python-stream-reuse.md`. Not a duplicate of openai/openai-python#763, which fixed connection *release* and left *reuse* broken; present on `main` as of 2026-08-30 |
+
+**Read `baseline.md` before quoting AC-3 from this.** In the zero-latency mode AC-3 gets
+*worse* (≈ +1.5 ms @ c=1, ≈ +20 ms @ c=25), and a third configuration proves the wrapper is
+not the cost: wrapper installed with the drain disabled reproduces the "before" numbers
+exactly. In the latency-injecting mode — the realistic one per §4.8 — AC-3 **improves** at
+both levels. The harness gap has moved rather than closed: it can now prove reuse *happens*,
+but a handshake to `127.0.0.1` is nearly free, so it still cannot price what reuse is worth
+against a remote provider.
+
 ## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created. Three-agent discovery: serving-capability audit (verdict: text cannot serve a model today), throughput architecture map (12 ranked bottlenecks), external best-practice research (2025–2026 sources). Owner decisions D-1..D-4 recorded. OPEN-1..3 raised for resolution. |
+| 2026-08-30 | Root-caused Lane H2's `1.000 conn/req`: not the B-2 cache or the B-8 pool (both proven to hit on every request), but `openai.AsyncStream` closing a streamed response before EOF. Bounded drain-on-close added at the transport in `providers/pool.py`; regression test `test_task818_stream_close_reuse.py` (RED first). Reuse now measurable in both harness modes. Upstream report drafted, awaiting a human to file. §4.2, §7 and `baseline.md` updated. |
