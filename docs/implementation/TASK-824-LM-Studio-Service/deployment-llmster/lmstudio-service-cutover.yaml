@@ -1,0 +1,96 @@
+# =============================================================================
+# TASK-824 — the LM Studio Service CUTOVER. READ ALL OF THIS BEFORE APPLYING.
+# =============================================================================
+# STAGED, NOT APPLIED. Eventual destination in `hope-v2-deployment`:
+#     deployment/k8s/base/lmstudio.yaml   (appended to the workload file)
+#
+# ⚠️ DO NOT REGISTER THIS OBJECT IN base/kustomization.yaml AT THE SAME TIME AS
+#    lmstudio.yaml. It is separated from the workload file for one reason: it is
+#    the only step in this migration that can take production down, and it must
+#    be gated on a human, not on a sync.
+#
+# ── WHY IT IS DANGEROUS ─────────────────────────────────────────────────────
+# `hope-lmstudio` ALREADY EXISTS in hope-v2-dev. Today it is a SELECTOR-LESS
+# Service plus hand-written Endpoints pointing at the node host 10.10.1.10:1234,
+# applied OUTSIDE kustomize and Argo:
+#     deployment/k8s/out-of-band/lmstudio-service.yaml
+#     deployment/k8s/out-of-band/lmstudio-endpoints.yaml
+# It currently carries BOTH the summarization path and the safety/guardrail
+# path.
+#
+# The Service below has the SAME NAME. Applying it REPLACES that object and
+# adds a selector, at which point the endpoints controller takes ownership and
+# discards the hand-written 10.10.1.10 subset.
+#
+# The Deployment in lmstudio.yaml ships at `replicas: 0`.
+#
+#   ⇒ Applying this Service while the Deployment is still at 0 replicas points
+#     `hope-lmstudio` at NOTHING. Summarization and guardrail both break
+#     immediately, and the failure looks like an LLM outage rather than a
+#     networking change.
+#
+# That is the same class of failure as the 2026-08-09 outage, whose cause the
+# out-of-band files document at length: `base/kustomization.yaml`'s legacy
+# `commonLabels:` transformer applies to `Service.spec.selector` with
+# create:true, INVENTING a selector on a selector-less Service. It matched every
+# pod in the namespace and requests round-robined into connection-refused,
+# non-deterministically.
+#
+# NOTE: that specific transformer hazard does NOT apply to the Service below,
+# because this one HAS a selector — commonLabels adds to an existing selector,
+# which is what it is designed to do, and it applies the same labels to the
+# Deployment's pod template, so they still match. This file is safe to live in
+# the kustomize tree. It is the CUTOVER ORDER that is dangerous, not the
+# transformer.
+#
+# ── THE ORDER, AND IT IS NOT NEGOTIABLE ─────────────────────────────────────
+#  1. Merge lmstudio.yaml ONLY. Register it in base/kustomization.yaml. Nothing
+#     serves; replicas: 0 and the sync Job fails closed on SET-AT-PUBLISH.
+#  2. Publish the models into s3://hope-models/ and fill models.tsv (R-3).
+#     Let the PreSync Job run and write .ready.
+#  3. Read real free VRAM on the node, and stop or account for the LM Studio
+#     instance running on the HOST — it holds VRAM the scheduler cannot see.
+#  4. Scale the Deployment to 1. Wait for Ready. The readiness probe proves the
+#     model is actually resident, not merely that the process is up.
+#  5. Verify the POD directly, bypassing the Service, from inside the namespace:
+#        kubectl -n hope-v2-dev exec deploy/hope-lmstudio -- \
+#          curl -fsS http://127.0.0.1:1234/api/v1/models
+#     Confirm every key in imports.tsv appears with a non-empty
+#     loaded_instances[] for the one you preloaded.
+#  6. ONLY NOW apply this Service. Cutover is a single object replace.
+#  7. Delete the retired out-of-band files from the deployment repo:
+#        deployment/k8s/out-of-band/lmstudio-service.yaml
+#        deployment/k8s/out-of-band/lmstudio-endpoints.yaml
+#     Deleting them is part of this ticket, not later cleanup — leaving them
+#     means the next person re-applies a hand-written Endpoints object over a
+#     working selector and reproduces the 2026-08-09 outage exactly.
+#
+# ROLLBACK, if step 6 goes wrong: re-apply the two out-of-band files. They point
+# back at the host instance, which is why step 3 says "stop or ACCOUNT FOR" —
+# do not uninstall the host instance until this has soaked.
+#
+# ── WHY THE NAME AND PORT ARE UNCHANGED ─────────────────────────────────────
+# Keeping `hope-lmstudio:1234` makes the AiProviderConnection row a NO-OP: the
+# DNS name and port `apps/text` already dials stay identical, so there is no
+# config change to coordinate with the cutover and no window where the row and
+# the cluster disagree. See deployment-llmster/README.md §5 — the row must be
+# VERIFIED, and is expected to need no edit.
+# =============================================================================
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-lmstudio
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # A REAL selector. This is the entire point of the migration: it retires the
+  # selector-less Service + hand-written Endpoints indirection.
+  selector:
+    app: hope-lmstudio
+  ports:
+    - name: http
+      port: 1234
+      targetPort: http
+      protocol: TCP

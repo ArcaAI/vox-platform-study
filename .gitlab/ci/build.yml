@@ -46,12 +46,14 @@ warm-up-base-images:
       # Derive with:
       #   grep -rhoE '(ghcr.io/astral-sh/uv|python|node|nginx|nvidia/cuda):[^ ]*' \
       #     apps/*/Dockerfile apps/stt/docker/Dockerfile packages/database/Dockerfile \
-      #     infrastructure/docker/python-base/Dockerfile | sort -u
+      #     infrastructure/docker/python-base/Dockerfile \
+      #     infrastructure/docker/lmstudio/Dockerfile | sort -u
       # Entries that drift out of sync are pure waste: a stale entry burns runner
       # disk on an image no build consumes, a missing one costs a cold pull.
       images="
         nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
         nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
+        nvidia/cuda:12.8.1-runtime-ubuntu24.04
         ghcr.io/astral-sh/uv:0.11.33
         python:3.11-slim-trixie
         node:24-slim
@@ -70,6 +72,9 @@ warm-up-base-images:
       echo "All base images warm"
   rules:
     - !reference [.build-common-rules, rules]
+    # `ALL-` already covers build-lmstudio, which is the only consumer of the
+    # ubuntu24.04 CUDA base added above; it has no service tag of its own (see
+    # build-lmstudio's own note on the closed <SVC> grammar).
     - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
 
 # ── Shared Python base image ─────────────────────────────────────────────────
@@ -365,6 +370,124 @@ build-database:
     SERVICE_NAME: database
     DOCKER_CONTEXT: .
     DOCKERFILE: packages/database/Dockerfile
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ── LM Studio (`llmster`) GGUF serving tier ─────────────────────────────────
+# TASK-824. Owner decision 2026-08-30 (ticket §0): LM Studio + vLLM.
+#
+# CI IS THE ONLY BUILDER FOR THIS IMAGE. It embeds a proprietary binary fetched
+# from a vendor CDN and is pushed to the INTERNAL registry only — we hold no
+# redistribution right (ticket §0 risk A-5, §5 L-2). $REGISTRY is internal, so
+# the existing push path is already correct; do not add a public mirror.
+#
+# ── WHY THIS JOB DOES NOT USE `curl install.sh | bash` ──────────────────────
+# The Dockerfile fetches ONE pinned URL and verifies a pinned SHA-512, because
+# the upstream installer picks its bundle from the BUILD HOST and this runner
+# has no GPU. Verified against the live script 2026-08-30:
+#
+#   install.sh:594  get_linux_x86_full_bundle_suffix()
+#                     -> "+cuda12" only if supports_cuda_12_4_or_newer()
+#   install.sh:447  no `nvidia-smi`  -> "" (CPU bundle)
+#   install.sh:442  no `timeout`     -> "" (CPU bundle) — a SECOND trigger,
+#                                        which fires EVEN ON A GPU HOST
+#
+# A CPU-only image starts, serves and answers requests. On this runner the
+# installer would produce one every single time. The pinned SHA-512 makes that
+# impossible: the CPU and CUDA bundles are provably different artifacts
+# (published .sha512 files, fetched 2026-08-30) —
+#   full+cuda12.tar.gz  145d84440b8797614edb39b1019085c90fbc215c...
+#   full.tar.gz         29464e0cc52bdf31f6feb9d280d1f499cbef494f...
+# so a CPU tarball cannot satisfy `sha512sum -c` and the build aborts.
+#
+# ── NO SERVICE RELEASE TAG YET ──────────────────────────────────────────────
+# `<SVC>` in the release grammar is a CLOSED set
+# (packages/utils/src/version-grammar.ts): ALL API ADMIN COMPAT GUARD HARNESS
+# NLP TEXT STT TTS. There is no LMS/LMSTUDIO member, and adding one edits
+# packages/**, which is outside this lane's boundary. So this job triggers on
+# branch pushes and `ALL-` only — the same shape as build-qdrant-init and
+# build-database. Adding `LMS-` to the grammar is ROOT_CONFIG_REQUEST R-6 in
+# docs/implementation/TASK-824-LM-Studio-Service/deployment-llmster/README.md.
+
+build-lmstudio:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+  variables:
+    SERVICE_NAME: lmstudio
+    # Context is the image directory itself, not the repo root: this image
+    # copies exactly two files and needs none of the monorepo. Same shape as
+    # build-python-base.
+    DOCKER_CONTEXT: infrastructure/docker/lmstudio
+    DOCKERFILE: infrastructure/docker/lmstudio/Dockerfile
+  # The bundle download is ~1.5 GB on top of a 2 GB CUDA base.
+  timeout: 45m
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ── The gate that makes the CUDA guarantee real ─────────────────────────────
+# The pinned checksum proves we downloaded the CUDA TARBALL. It does NOT prove
+# the resulting image can actually offload, and ticket §8.4 establishes that a
+# CPU-only deployment is UNDETECTABLE OVER HTTP: /api/v1/models reports
+# `format: "gguf"` — a weights format, not an accelerator — and no
+# /api/v1/(runtime|engine|system|server) path exists. Runtime introspection
+# lives only on the WebSocket RPC channel, surfaced by `lms runtime`.
+#
+# So this job runs the image CI just built and asserts, via `lms runtime ls`,
+# that an accelerated engine is present. If the wrong bundle ever ships, the
+# image is already pushed but this job goes red and it never promotes.
+#
+# WHAT THIS JOB CANNOT PROVE, and must not be read as proving: that a GPU
+# EXISTS. Build runners have no NVIDIA device, and `lms runtime select`
+# succeeds on a GPU-less host (measured). GPU PRESENCE is asserted at pod
+# start by entrypoint.sh A-2, which fails closed with exit 78. The two checks
+# are complementary and neither substitutes for the other.
+verify-lmstudio-runtime:
+  stage: build
+  tags: [build]
+  image: docker:28
+  timeout: 20m
+  interruptible: true
+  needs:
+    - job: build-lmstudio
+  before_script:
+    - !reference [.buildx-registry-login, before_script]
+  script:
+    - |
+      set -eu
+      img="$REGISTRY/$CI_PROJECT_PATH/lmstudio@${DIGEST}"
+      echo "verifying $img"
+      docker pull "$img"
+
+      echo "── build identity ──"
+      docker run --rm --entrypoint cat "$img" /app/build-info.json
+      echo "── bundle provenance (which tarball actually landed) ──"
+      docker run --rm --entrypoint cat "$img" /home/llmster/.lmstudio/hope-build-info.json
+
+      echo "── installed inference engines ──"
+      engines=$(docker run --rm --entrypoint /bin/sh "$img" -c \
+        'lms daemon up >/dev/null 2>&1 || true;
+         i=0; while [ $i -lt 60 ]; do
+           lms daemon status 2>/dev/null | grep -q "is running" && break; i=$((i+1)); sleep 1; done;
+         lms runtime ls 2>/dev/null')
+      echo "$engines"
+
+      # `lms` exits 0 whether or not the thing you asked about is true
+      # (measured: `lms daemon status` exits 0 for "LM Studio is not running").
+      # So this matches OUTPUT, never $?. Do not "simplify" it.
+      if ! echo "$engines" | grep -iq 'cuda'; then
+        echo "FATAL: no CUDA engine in this image — it is CPU-ONLY." >&2
+        echo "It would start, serve and answer requests at a fraction of the" >&2
+        echo "throughput, and no HTTP endpoint could reveal it. Do not promote." >&2
+        exit 1
+      fi
+      echo "OK: an accelerated engine is present in the image."
+      echo "NOTE: this proves the BUNDLE only. GPU presence is asserted at pod"
+      echo "      start by entrypoint.sh A-2 (exit 78), because this runner has"
+      echo "      no NVIDIA device and 'lms runtime select' succeeds without one."
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
