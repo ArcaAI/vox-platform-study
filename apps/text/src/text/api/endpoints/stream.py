@@ -21,8 +21,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from hope_otel.trace_propagation import inject_trace_carrier
+from pydantic import AliasChoices
 from sse_starlette.sse import EventSourceResponse
 
 from text.core.dependencies import get_task_manager
@@ -49,6 +50,13 @@ _SSE_HEADERS = {
 
 def parse_cursor(generation_id: str, last_event_id: str | None, from_seq: int | None) -> int:
     """Resolve the resume cursor: ``Last-Event-ID`` is canonical, ``?from=`` the fallback.
+
+    **Both spellings of the query fallback are accepted** — ``?from=`` and
+    ``?from_seq=``. They were not always: this docstring advertised ``?from=``
+    while FastAPI bound only ``from_seq`` (``from`` is a Python keyword, and no
+    alias was declared). A client following the documentation was silently
+    ignored and resumed from **0** — which looks like success until a clinician
+    sees a duplicated prefix. Found by TASK-818 Lane E-stream.
 
     ``?from=`` exists because header-stripping proxies are real and
     ``Last-Event-ID`` does not survive a page reload — the SSE spec gives each new
@@ -211,7 +219,11 @@ async def stream_generation_events(
     generation_id: str,
     request: Request,
     last_event_id: str | None = None,
-    from_seq: int | None = None,
+    from_seq: int | None = Query(
+        None,
+        validation_alias=AliasChoices("from", "from_seq"),
+        description="Resume cursor as a sequence number. Accepts `from` or `from_seq`.",
+    ),
     task_manager: TaskManager = Depends(get_task_manager),
 ) -> Response:
     """Resume an in-flight or finished generation from a sequence cursor.
@@ -234,7 +246,11 @@ async def stream_task(
     task_id: str,
     request: Request,
     last_event_id: str | None = None,
-    from_seq: int | None = None,
+    from_seq: int | None = Query(
+        None,
+        validation_alias=AliasChoices("from", "from_seq"),
+        description="Resume cursor as a sequence number. Accepts `from` or `from_seq`.",
+    ),
     task_manager: TaskManager = Depends(get_task_manager),
 ) -> Response:
     """The same stream under its pre-split name.
