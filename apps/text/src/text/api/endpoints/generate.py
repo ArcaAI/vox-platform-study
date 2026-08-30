@@ -104,7 +104,7 @@ from text.services.pool_router import resolve_pool_route
 from text.services.provider_queue import ProviderQueue, QueueFullError
 from text.services.rate_limiter import RateLimitTracker, estimate_tokens
 from text.services.resizable_semaphore import ResizableSemaphore
-from text.services.retry_handler import calculate_backoff, should_retry
+from text.services.retry_handler import calculate_backoff, retry_after_from, should_retry
 from text.services.runtime_limits import lane_budget
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
@@ -319,6 +319,28 @@ def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) 
     return float(served) if served else float(PROVIDER_TIMEOUT_FLOOR_S)
 
 
+# NOTE — TASK-818 C-4 ("`ORJSONResponse` as `default_response_class`") was tried
+# here and DELIBERATELY NOT KEPT. Two measurements killed it:
+#
+#   * the win is 3 microseconds. Rendering a real `GenerateResponse` (770 bytes):
+#     `jsonable_encoder` 0.0230 ms + stdlib `json.dumps` 0.0033 ms = 0.0263 ms,
+#     versus 0.0230 + orjson 0.0003 = 0.0234 ms. `ORJSONResponse` does not avoid
+#     `jsonable_encoder`, which is 87% of the cost — and the whole of it is 0.03%
+#     of this request's ~8.3 ms CPU budget.
+#   * FastAPI 0.141 DEPRECATES it: "ORJSONResponse is deprecated, FastAPI now
+#     serializes data directly to JSON bytes via Pydantic when a return type or
+#     response model is set, which is faster and doesn't need a custom response
+#     class." Setting it emits that warning on every response.
+#
+# The non-deprecated fast path needs a declared response model, which this route
+# cannot have: it returns EITHER a `GenerateResponse` OR an `EventSourceResponse`
+# (hence `response_model=None`). Splitting the streaming branch onto its own route
+# would unlock it — a real option, but a CONTRACT change, not an encoder swap.
+# The error path reached the same verdict for the same reasons; see
+# `core/exception_handlers.ERROR_RESPONSE_CLASS`.
+#
+# The request-path win was elsewhere entirely: `api/middleware/*` became pure
+# ASGI, worth ~28% of per-request CPU.
 router = APIRouter(tags=["generate"])
 
 
@@ -553,7 +575,11 @@ async def generate(
     _SEMAPHORE_ACQUIRE_TIMEOUT = 30.0
 
     semaphore = provider_semaphores.get(request_body.provider)
-    if semaphore:
+
+    async def _take_permit() -> None:
+        """Acquire the provider's concurrency permit, or refuse with a typed 503."""
+        if semaphore is None:
+            return
         try:
             await asyncio.wait_for(semaphore.acquire(), timeout=_SEMAPHORE_ACQUIRE_TIMEOUT)
         except TimeoutError:
@@ -562,6 +588,17 @@ async def generate(
                 provider=request_body.provider,
             ) from None
         CONCURRENT_REQUESTS.labels(provider=request_body.provider).inc()
+
+    def _drop_permit() -> None:
+        if semaphore is None:
+            return
+        CONCURRENT_REQUESTS.labels(provider=request_body.provider).dec()
+        semaphore.release()
+
+    await _take_permit()
+    #: Whether THIS request currently holds the permit. It is handed back across
+    #: retry backoff (see the loop below), so the outer `finally` cannot assume it.
+    holds_permit = semaphore is not None
 
     await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
     ACTIVE_GENERATIONS.labels(provider=request_body.provider).inc()
@@ -604,16 +641,35 @@ async def generate(
             if not should_retry(error_type, retry_on, attempt, max_retries):
                 break
 
-            backoff = calculate_backoff(attempt)
+            # C-6: the wait the upstream itself asked for wins over the computed
+            # exponential delay — and is jittered either way, because an exact
+            # `Retry-After` hands every limited caller the SAME deadline.
+            asked_for = retry_after_from(last_exc) if last_exc is not None else None
+            backoff = calculate_backoff(attempt, retry_after=asked_for)
             logger.warning(
                 "generation.retry",
                 attempt=attempt + 1,
                 max_retries=max_retries,
                 backoff_s=round(backoff, 2),
+                retry_after_s=asked_for,
                 error_type=error_type,
                 task_id=task.task_id,
             )
+
+            # C-5 (B-5): hand the provider's concurrency permit BACK for the
+            # duration of the backoff. Holding it across `sum(backoffs) +
+            # attempts x timeout` is how one degrading provider converts its own
+            # slowness into capacity starvation for every other request — and
+            # every other tenant — queued behind the same semaphore.
+            if holds_permit:
+                _drop_permit()
+                holds_permit = False
             await asyncio.sleep(backoff)
+            # Re-entering the lane is admission control again, not a formality:
+            # if capacity is gone, this request waits its turn or is refused with
+            # the same typed 503 the first acquire would have raised.
+            await _take_permit()
+            holds_permit = semaphore is not None
 
         if last_exc is not None:
             raise last_exc
@@ -805,6 +861,21 @@ async def generate(
         ).inc()
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
         raise
+    except ConcurrencyLimitError:
+        # Raised by the re-acquire between retry attempts (C-5): capacity was
+        # handed back for the backoff and could not be reclaimed inside the
+        # admission timeout. Same reasoning as the credentials arm above — this is
+        # a CAPACITY refusal, not evidence that the provider is unhealthy, so do
+        # NOT record a circuit-breaker failure and do NOT collapse it into a 502.
+        # Re-raise so the shared handler maps it to 503 + `Retry-After`.
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.FAILED, error="Concurrency limit reached"
+        )
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="concurrency_limit"
+        ).inc()
+        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
+        raise
     except Exception as exc:
         if cb:
             cb.record_failure()
@@ -847,9 +918,12 @@ async def generate(
     finally:
         ACTIVE_GENERATIONS.labels(provider=request_body.provider).dec()
         MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).dec()
-        if semaphore:
-            CONCURRENT_REQUESTS.labels(provider=request_body.provider).dec()
-            semaphore.release()
+        # `holds_permit`, not `if semaphore`: the retry loop hands the permit back
+        # across backoff, so an unconditional release here would release a permit
+        # this request no longer owns — `ResizableSemaphore.release()` raises on
+        # an over-release, which would replace the real error with a RuntimeError.
+        if holds_permit:
+            _drop_permit()
         if shutdown_manager:
             shutdown_manager.complete_task(task.task_id)
 
