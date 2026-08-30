@@ -1209,16 +1209,16 @@ EOF.
 | **Why the transport** | The leaking seam is `Response.aclose()`; by the time `openai_compat._stream`'s `async for` returns, the SDK's `finally` has already closed the socket. Every adapter on a pooled client is covered by the same wrapper |
 | **Locked by** | `src/text/tests/unit/test_task818_stream_close_reuse.py` — accepted-connection count through the real `pooled_http_client` + `AsyncOpenAI`; confirmed RED first (5 connections for 5 streams) |
 | **Also touched** | `test_task818_client_cache.py::test_http2_is_requested_when_the_policy_asks_for_it` now asserts on `client._transport._pool._http2`. `limits`/`http2` moved to the transport, and an `AsyncClient` given an explicit transport ignores its own copies — the old kwarg spy would have passed on an inert value |
-| **Result** | zero-latency `1.000 → 0.000 / 0.036 / 0.066` conn/req @ c=1/10/25 · latency-injecting `1.02 → 0.20` @ c=10, `1.01 → 0.13` @ c=25 |
+| **Result** | zero-latency `1.000 → 0.000 / 0.015 / 0.007` conn/req @ c=1/10/25 · latency-injecting `1.02 → 0.20` @ c=10, `1.01 → 0.13` @ c=25. Three handshakes for 405 generations at c=25 |
 | **Upstream** | Drafted, **not filed** — `upstream-openai-python-stream-reuse.md`. Not a duplicate of openai/openai-python#763, which fixed connection *release* and left *reuse* broken; present on `main` as of 2026-08-30 |
 
-**Read `baseline.md` before quoting AC-3 from this.** In the zero-latency mode AC-3 gets
-*worse* (≈ +1.5 ms @ c=1, ≈ +20 ms @ c=25), and a third configuration proves the wrapper is
-not the cost: wrapper installed with the drain disabled reproduces the "before" numbers
-exactly. In the latency-injecting mode — the realistic one per §4.8 — AC-3 **improves** at
-both levels. The harness gap has moved rather than closed: it can now prove reuse *happens*,
-but a handshake to `127.0.0.1` is nearly free, so it still cannot price what reuse is worth
-against a remote provider.
+**Reuse is unambiguous; AC-3 is a wash — do not quote a latency win from this.** Measured on
+the merged base (Lane B + Lane E-stream in the path), AC-3 moves 1–3 ms p50 either way, inside
+this harness's run-to-run spread. An earlier zero-latency regression measured on the
+pre-Lane-B 202-and-poll path does **not** reproduce here; `baseline.md` records it, and the
+attribution experiment showing the wrapper itself costs nothing. The harness gap has moved
+rather than closed: it can now prove reuse *happens*, but a handshake to `127.0.0.1` is nearly
+free, so it still cannot price what reuse is worth against a remote provider.
 
 ## 8. Change History
 

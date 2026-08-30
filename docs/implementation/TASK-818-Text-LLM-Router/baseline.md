@@ -277,39 +277,47 @@ loopback HTTP/1.1 server counting **accepted connections** through the real
 
 ## Measurements — both modes, as §4.8 requires
 
-Same host, same session, interleaved before/after, three repetitions of the
-zero-latency pair.
+**Measured on the MERGED base** — i.e. with Lane B's resumable streaming and Lane
+E-stream's single-call contract in the path, which is what ships. Same host, same
+session, interleaved before/after. "before" = the drain-on-close disabled, nothing
+else changed.
 
 **Zero-latency mock** (isolates proxy overhead):
 
-| c | conn/req before → after | AC-3 p50 before | AC-3 p50 after |
+| c | conn/req before → after | AC-3 p50 before → after | AC-3 p95 before → after |
 |---|---|---|---|
-| 1 | 1.000 → **0.000** | 1.49 / 2.01 / 1.76 ms *(3 runs)* | 3.64 / 3.40 / 3.26 ms *(3 runs)* |
-| 10 | 1.000 → **0.036** | 17.16 ms *(1 run)* | 29.15 ms *(1 run)* |
-| 25 | 1.000 → **0.066–0.087** | 40.89 / 41.11 / 41.87 ms *(3 runs)* | 82.11 / 62.90 / 63.19 ms *(3 runs)* |
+| 1 | 1.000 → **0.000** | 4.13 → 4.16 ms | 4.62 → 4.67 ms |
+| 10 | 1.000 → **0.015** | 15.10 → 16.37 ms | 26.17 → 33.21 ms |
+| 25 | 1.000 → **0.007** | 29.63 → 32.18 ms | 58.97 → 59.62 ms |
 
 **Latency-injecting mock** (800 ms TTFT, ~30 tok/s — the mode §4.8 calls the
 realistic one, and the one that exposes connection-hold behaviour):
 
-| c | conn/req before → after | AC-3 p50/p95/p99 before | AC-3 p50/p95/p99 after |
+| c | conn/req before → after | AC-3 p50 before → after | AC-3 p95 before → after |
 |---|---|---|---|
-| 10 | 1.020 → **0.200** | 4.96 / 11.67 / 14.16 ms | **3.97 / 8.86 / 9.42 ms** |
-| 25 | 1.008 → **0.128** | 3.85 / 87.16 / 93.40 ms | **3.76 / 76.59 / 86.09 ms** |
+| 10 | 1.020 → **0.200** | 3.00 → **2.28 ms** | 7.88 → 10.17 ms |
+| 25 | 1.008 → **0.128** | 3.92 → **2.68 ms** | 8.92 → 9.37 ms |
 
-**Read both numbers, and do not quote the zero-latency AC-3 row as a regression
-caused by the wrapper.** A third configuration settles that: with the wrapper
-INSTALLED but the drain disabled — so every per-chunk cost of the wrapper is
-present and no reuse happens — AC-3 returns to **1.46 ms @ c=1 / 40.04 ms @ c=25**,
-i.e. the "before" numbers exactly. **The wrapper itself costs nothing measurable.**
-The zero-latency delta is the cost of *reuse* under that specific load shape.
+**Reuse is unambiguous; AC-3 is a wash.** Connection reuse goes from "never" to
+"almost always" (`0.007` conn/req at c=25 means three handshakes for 405
+generations). AC-3 moves by 1–3 ms p50 either way, which is inside this harness's
+run-to-run spread — do not quote a latency win OR a latency loss from these rows.
 
-Most likely explanation, consistent with both modes but **not independently
-proven**: with 0 ms TTFT and 0 ms inter-token the harness issues back-to-back
-requests with no think-time, so releasing the previous response (drain included)
-lands on the *next* request's critical path on that same connection — whereas a
-brand-new connection per request pushed the old one's teardown off the critical
-path entirely. Give the client any real inter-request gap and the release finishes
-during idle time, which is what the latency-injecting rows show.
+### A correction worth recording
+
+On the **pre-Lane-B** base (202-and-poll), the same fix showed a real, reproducible
+zero-latency AC-3 *regression*: ~+1.5 ms p50 at c=1 and ~+20 ms p50 at c=25 across
+three interleaved repetitions. **It does not reproduce on the merged base**, and the
+tables above supersede it.
+
+The attribution experiment run at the time is still worth keeping, because it rules
+out the obvious suspect: with the wrapper INSTALLED but the drain disabled — every
+per-chunk cost present, no reuse — AC-3 returned to the "before" numbers exactly
+(1.46 ms @ c=1 / 40.04 ms @ c=25). **The wrapper itself costs nothing measurable.**
+The old regression was the cost of *reuse* under a zero-think-time client on the
+202-and-poll path, where releasing response N landed on request N+1's critical path
+on the same connection. Lane B removed that round trip and the per-token Python tax,
+and the effect went with it.
 
 ## What this means for the harness caveat above
 
