@@ -54,6 +54,44 @@ _JITTER_FRACTION = 0.10
 #: Provider-default rows carry service-level capacity; model-specific rows do not.
 _PROVIDER_DEFAULT_SLUG = ""
 
+#: Other process-wide caches that must be dropped on the SAME signal.
+#:
+#: The snapshot is not the only thing a control-plane write can invalidate: the
+#: egress client cache (`providers/clients.py`) holds SDK clients built from
+#: resolved connections, so a rotated credential must not leave one authenticated
+#: with the revoked key holding warm sockets. Rule 09 "Config caches" is explicit
+#: that invalidation is the propagation path and the TTL only a bounded-staleness
+#: net, so every such cache belongs on this signal rather than on its own timer.
+#:
+#: A REGISTRY rather than a direct call so this module keeps its one job and
+#: acquires no dependency on the provider layer; registration happens where the
+#: cache lives.
+_INVALIDATION_HOOKS: list[Callable[[], object]] = []
+
+
+def register_invalidation_hook(hook: Callable[[], object]) -> None:
+    """Register a cache to drop whenever config invalidation arrives.
+
+    Idempotent, so a module re-imported under a different name cannot register
+    the same hook twice.
+    """
+    if hook not in _INVALIDATION_HOOKS:
+        _INVALIDATION_HOOKS.append(hook)
+
+
+def _run_invalidation_hooks() -> None:
+    """Drop every registered cache. Never raises: one misbehaving hook must not
+    stop the others, and must not kill the pub/sub listener task."""
+    for hook in _INVALIDATION_HOOKS:
+        try:
+            hook()
+        except Exception as exc:  # noqa: BLE001 — the snapshot eviction already happened
+            logger.warning(
+                "text.effective_config.invalidation_hook_failed",
+                hook=getattr(hook, "__qualname__", repr(hook)),
+                error=type(exc).__name__,
+            )
+
 
 @dataclass(frozen=True)
 class EffectiveConfigSnapshot:
@@ -302,6 +340,7 @@ class EffectiveConfigClient:
         Returns True when the cache was dropped.
         """
         self.clear_cache()
+        _run_invalidation_hooks()
 
         key: str | None = None
         try:

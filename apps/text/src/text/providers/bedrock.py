@@ -23,6 +23,8 @@ from text.models.requests import GenerateRequest, ImageContentPart, ProviderOver
 from text.models.stats import GenerationStats, stats_from_bedrock
 from text.models.stream import StreamChunk
 from text.providers.base import CredentialPosture, require_model
+from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import bedrock_stream_executor, run_in_bedrock_executor
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -145,10 +147,13 @@ class BedrockProvider:
                 "on the AiProviderConnection row.",
                 provider="bedrock",
             )
-        return _bearer_client(
-            "bedrock-runtime",
-            token=override.api_key.get_secret_value(),
-            region=region,
+        token = override.api_key.get_secret_value()
+        # Region is part of the identity: a boto3 client is bound to one, so the
+        # same credential in two regions is two clients.
+        key = client_key("bedrock", region, token)
+        return CLIENT_CACHE.get_or_create(
+            key,
+            lambda: _bearer_client("bedrock-runtime", token=token, region=region),
         )
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
@@ -212,7 +217,12 @@ class BedrockProvider:
             params = self._build_converse_params(request)
             client = self._client_for(request)
             start = time.monotonic()
-            response = await asyncio.to_thread(client.converse, **params)
+            # Same boundary as the streaming path below, for the same reason:
+            # `asyncio.to_thread` runs on the DEFAULT executor, and a
+            # non-streaming Bedrock generation holds its thread for the whole
+            # generation — seconds, not milliseconds. Bedrock's blocking work
+            # draws on Bedrock's own budget or it draws on everyone's.
+            response = await run_in_bedrock_executor(lambda: client.converse(**params))
             total_ms = int((time.monotonic() - start) * 1000)
 
             stop_reason = response.get("stopReason", "")
@@ -276,7 +286,15 @@ class BedrockProvider:
                 except Exception as exc:
                     loop.call_soon_threadsafe(queue.put_nowait, exc)
 
-            thread_future = loop.run_in_executor(None, _iterate_stream)
+            # NOT the default executor (B-3). `_iterate_stream` holds its thread
+            # for the ENTIRE stream, not for one call, so on asyncio's default
+            # pool (`min(32, cpu + 4)`) roughly 32 concurrent Bedrock generations
+            # stall every other `asyncio.to_thread` caller in the process — a
+            # ceiling Bedrock imposes on everybody else. The dedicated pool is
+            # sized from the same control-plane `maxConcurrent` that bounds this
+            # provider's semaphore, so it is never the binding constraint and
+            # never anyone else's problem. See `providers/pool.py`.
+            thread_future = loop.run_in_executor(bedrock_stream_executor(), _iterate_stream)
 
             # DRAIN to completion (AD-1): the ``messageStop`` (stopReason) event
             # arrives BEFORE the ``metadata`` (usage) event, so yielding ``done``

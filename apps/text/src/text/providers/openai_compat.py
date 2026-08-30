@@ -22,6 +22,8 @@ from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
 from text.providers.base import CredentialPosture
+from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import TransportFamily, pooled_http_client
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -105,6 +107,42 @@ class OpenAICompatProvider:
         """
         return self._last_base_url
 
+    def _client_at(self, base_url: str, api_key: str = "") -> AsyncOpenAI:
+        """The ONE place this adapter builds a client, and it takes its endpoint
+        as an ARGUMENT.
+
+        V-6 (TASK-818 A-5) is about exactly this seam. `_last_base_url` is a
+        process-wide memo of the endpoint this process last SERVED from — accurate
+        for a platform engine with one SYSTEM-tenant row, and meaningless the
+        moment two tenants front their own. It was never used to route a
+        generation, but the only thing preventing that was that no construction
+        site happened to read it. Now none *can*: this function does not see the
+        memo, and every caller — generation, admin probe, connection-scoped
+        discovery — states the endpoint it means.
+
+        Clients are cached (B-2). `openai_compat` is `SELF_HOST`, so a KEYLESS row
+        (the normal local shape) keys on `base_url` alone and has no BYOK cost to
+        pay. When the row DOES carry a tenant credential — which this adapter
+        documents that it honours — the credential is part of the key, because two
+        tenants fronting one endpoint with different credentials sharing a client
+        would be a cross-tenant credential substitution on the cheapest path in
+        the service.
+        """
+        key = client_key(self._provider_name, base_url, api_key)
+        return CLIENT_CACHE.get_or_create(
+            key,
+            lambda: AsyncOpenAI(
+                api_key=api_key or "not-needed",
+                base_url=base_url,
+                timeout=float(self._timeout_s),
+                http_client=pooled_http_client(
+                    self._provider_name,
+                    timeout_s=self._timeout_s,
+                    family=TransportFamily.HTTPX2,
+                ),
+            ),
+        )
+
     def _probe_client(self) -> AsyncOpenAI | None:
         """A client for the last-observed endpoint, or ``None`` if none was seen.
 
@@ -112,14 +150,17 @@ class OpenAICompatProvider:
         question: `_client_for` serves a REQUEST and therefore has a connection
         to build from, while the admin probes have neither. Keeping it a method
         also gives tests one place to stand a fake engine up.
+
+        The memo is read HERE, at the one call site that legitimately has no
+        request — never inside `_client_at`.
         """
         probe_url = self._probe_url()
         if probe_url is None:
             return None
-        return AsyncOpenAI(api_key="not-needed", base_url=probe_url, timeout=float(self._timeout_s))
+        return self._client_at(probe_url)
 
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
-        """Request-scoped, fail-closed client resolution.
+        """Connection-scoped, fail-closed client resolution.
 
         A self-hosted engine needs no VENDOR credential, but it does need an
         address, and Text no longer holds one. The connection row supplies both;
@@ -136,12 +177,10 @@ class OpenAICompatProvider:
                 f"No base_url on the resolved connection for " f"'{self._provider_name}'.",
                 provider=self._provider_name,
             )
+        # The memo is WRITTEN here (the admin probes have no other source) but is
+        # never read back by the construction seam above.
         self._last_base_url = base_url
-        return AsyncOpenAI(
-            api_key=connection.api_key.get_secret_value() or "not-needed",
-            base_url=base_url,
-            timeout=float(self._timeout_s),
-        )
+        return self._client_at(base_url, connection.api_key.get_secret_value())
 
     def apply_retention(self, retention: dict[str, int]) -> None:
         """Adopt the control-plane idle-retention TTL.
@@ -472,9 +511,4 @@ class OpenAICompatProvider:
         """
         base_url = connection.base_url.strip()
         key = connection.api_key.get_secret_value() if connection.api_key else ""
-        client = AsyncOpenAI(
-            api_key=key or "not-needed",
-            base_url=base_url,
-            timeout=float(self._timeout_s),
-        )
-        return await self._list_models(client, base_url)
+        return await self._list_models(self._client_at(base_url, key), base_url)
