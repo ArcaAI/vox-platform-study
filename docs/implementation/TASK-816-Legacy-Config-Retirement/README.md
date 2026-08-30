@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **Phases 1–3 `Completed`** 2026-08-30. Phase 3 retired NOTHING — all three screens are already-retired or sole editors of surviving tiers (§8). Only Phase 4 remains, and §7 shrinks it to TWO COLUMNS. |
+| **Status** | **All four phases `Completed`** 2026-08-30 — code merged. **The Phase 4 migration is authored and drift-proven but NOT applied to any shared database** (§9). |
 | **Type** | `refactor` |
 | **Branch** | `dev-2.2` |
 | **Architecture** | <https://claude.ai/code/artifact/b6b68b73-3cb9-4cec-89f3-8afd1553c13b> |
@@ -815,3 +815,59 @@ nothing, not a capability.
 | Date | Entry |
 |---|---|
 | 2026-08-30 | **Phase 4** (`lane-816p4-drop`): dropped `HarnessPolicy.safetyProvider`/`.safetyModel` — schema, migration, entity/factory/model, both DTOs, service knobs + `SUPER_ADMIN_ONLY_POLICY_KEYS`, seed mirror, SDK hook, the admin-console controls/display/type declarations, and the two pydantic fields. §7c's "no reader" was runtime-only: the console's GLOBAL tab **did** write both, and the gateway persisted them (§11a) — so the surface went with the columns. Runtime absence re-verified independently (§11b). Migration authored + drift-proven on a throwaway shadow DB; **not applied to dev or test**. Two hardcoded literals (`lm-studio`, `granite-guardian-4.1-8b`) retired from the schema defaults, the factory, the seed mirror and `models.py`. |
+
+## 9. Phase 4 — the drop (code merged 2026-08-30; migration NOT applied)
+
+### 9a. §7c's "no reader" was true of the RUNTIME and false of the SURFACE
+The orchestrator caught this before anything dropped, and the reality was worse than "the console
+displays them" — **the console EDITED them:**
+
+| Surface | Behaviour |
+|---|---|
+| `policy-fields.ts:80-81` | both declared `kind: 'text'` — **editable inputs** |
+| tenant tab | `TENANT_LOCKED_POLICY_KEYS` lists both → read-only |
+| **global tab** | passes **no** `lockedKeys` → a super admin types, `buildSparsePatch` sends |
+| gateway | both on `UpdateHarnessPolicyRequest` and in `SUPER_ADMIN_ONLY_POLICY_KEYS` → PATCH returns **200 and persists** |
+
+So a super admin could save a guardrail provider/model that nothing read, and two console surfaces
+then reported it as the live selection. **The columns were not merely unused — they were actively
+misleading.** That is a stronger justification for the drop than the ticket had.
+
+### 9b. No runtime reader — re-verified independently, not inherited
+`_safety_screen_client` (`activities.py:583-604`) builds its client from settings, not policy ·
+`GuardrailClient.analyze` posts only `{text, guardrail_type}` + request id · `egress.py:131`'s
+`safety_provider` parameter is passed hardcoded `None` at its sole call site (`activities.py:2115`) ·
+`inferential_corpus_eval.py:336`'s `safety_screen.model` comes from the guardrail RESPONSE, not the
+policy · none of the 17 replay fixtures carry the fields.
+
+### 9c. Two references both the orchestrator's list and the lane's first sweep missed
+1. **`agentic-instructions.service.ts:120`** — a **server-side** read feeding an API response:
+   `` detail: `${policy.safetyProvider}/${policy.safetyModel}` ``. Judged a SURFACE, not a consumer:
+   it selects, routes and gates nothing, and reported a value no backend consulted. Set to
+   `detail: null`. **This is an API-visible change** — the field now returns null. Resolving the real
+   selection needs `AiTaskDefaultService` injected plus a decision on what a fail-closed key shows
+   when unresolved; that is a feature, left to a ticket that wants it, with a comment at the call site.
+   **This is the one judgement call to reverse if the owner disagrees.**
+2. `packages/agentic-sdk-v2/src/hooks/useHarnessAdmin.ts` — two optional type fields, removed.
+
+### 9d. The migration — AUTHORED, DRIFT-PROVEN, NOT APPLIED
+```sql
+ALTER TABLE "core"."HarnessPolicy" DROP COLUMN "safetyModel",
+DROP COLUMN "safetyProvider";
+```
+`npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script` →
+`-- This is an empty migration.` on a throwaway shadow, which was then dropped.
+
+**Verified after the work:** the dev DB still has both columns, its `_prisma_migrations` ledger is
+still absent (as rule 02 states it is for `db push`-managed local dev), and no shadow database
+remains. No `db:push`, `db:migrate`, `test:db:reset` or `infra:*` was run.
+
+**Applying it is a separate, owner-approved step.**
+
+Untouched and verified by empty diff: both policy mappers' Phase 2 `FIELDS_NOT_WRITABLE = ['version']`
+guard, the entire compat fence, `HarnessPolicyChange` (its WORM JsonB snapshots keep the keys for
+historical rows), and the `granite-guardian-4.1-8b` `AiModel` row — `apps/guardrail` still selects it
+through `guardrail.safety`.
+
+Gates: database 1747 · domains 1865 · applications 10550 · api 4048 · admin-console 2154 ·
+harness 1728 · gen:check no-drift ×3 · all five artifacts regenerated · lint 40/40.
