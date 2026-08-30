@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`In Progress`** (2026-08-29 docs pass — was stale at `Pending`) — **MASTER ticket**; nine sub-tickets, TASK-808…816 (§7.1a). **Eight of nine are `Completed`** (808, 809, 810, 811, 812, 813, 814, 815); **TASK-816 (Legacy Config Retirement) is still `Pending`** and is the one blocker left on this ticket. The root-cause finding in §2.1 is closed (`startRecording` gates on the governing-engine marker; the realtime lane is graph-driven) — see §9 Change History, 2026-08-28/29 rows, for what actually landed. Do not read this as "all nine sub-tickets closed"; it is eight of nine. |
+| **Status** | **`Completed`** 2026-08-30 — all nine sub-tickets closed. See §10 for what the programme actually concluded. |
 | **Type** | `refactor` + `feature` (multi-phase program) |
 | **Branch** | `dev-2.2` |
 | **Opened** | 2026-08-25 |
@@ -664,7 +664,7 @@ README with scope boundary, TDD test list, verification commands, per-layer chec
 | 813 | [SDK Workflow Selection](../TASK-813-SDK-Workflow-Selection/README.md) | **`Completed`** |
 | 814 | [Playground Clinical Surface](../TASK-814-Playground-Clinical-Surface/README.md) | **`Completed`** |
 | 815 | [`DepartmentAgent` Retirement](../TASK-815-DepartmentAgent-Retirement/README.md) | **`Completed`** |
-| 816 | [Legacy Config Retirement](../TASK-816-Legacy-Config-Retirement/README.md) | `Pending` |
+| 816 | [Legacy Config Retirement](../TASK-816-Legacy-Config-Retirement/README.md) | **`Completed`** |
 
 ### 7.2 Sequencing
 
@@ -746,7 +746,7 @@ carries its own detailed Implementation Summary and evidence.
 | 813 | Session-open workflow selection (OD-1) + selectable-set/governing-workflow discovery | `Completed` |
 | 814 | Tenant-admin-impersonates-clinician playground surface (OD-2), D-17/D-18/DD-3 | `Completed` |
 | 815 | `DepartmentAgent` deletion (205 files, 21,092 deletions), eval gate repointed (OD-11), `AgentPromotion` rewritten (OD-10) | `Completed` |
-| 816 | Legacy config retirement | `Pending` — the one remaining blocker on this ticket |
+| 816 | Legacy config retirement | **`Completed`** 2026-08-30 — all four phases |
 
 Root cause (§2.1) is closed: `startRecording` now gates on the `Consultation.metadata.governingEngine`
 marker before running the hardcoded live loop, and the realtime lane is graph-driven behind a
@@ -772,3 +772,36 @@ finalization chain is not seeded).
 | 2026-08-25 | **`@arcaai/vox-node` lane added** (owner: "one missing thing: Vox-node SDK"). R2 split across the two SDK packages (AC-2.4/2.5/2.6); §2.5 records the existing generated admin plane; §2.6 records that `.claude/rules/05-nestjs-api.md:155` still says "four artifacts" and omits `gen:admin` — the omission that turned TASK-805's pipeline #990 red (I-3, commit `5daca9ddd`). Regenerate steps added to Phases 2, 3, 4, 6; Phase 7 rewritten to cover both packages; three risks and OD-5 added. |
 | 2026-08-29 | **812, 813, 814 and 815 also `Completed` and merged** — eight of the nine sub-tickets (808-815) are now done; only TASK-816 (Legacy Config Retirement) remains `Pending`. Header and §8 Implementation Summary were stale (header still read `Pending`/"can start immediately"; §8 still read "Not started — awaiting owner answers") and are corrected in this pass. |
 | 2026-08-29 | Docs reconciliation pass (Lane G, TASK-806 programme): header status corrected from stale `Pending` to `In Progress` with an accurate 8-of-9 count; §8 Implementation Summary given real content (a map to the sub-tickets) in place of the stale "Not started" placeholder; the 811 §9a cross-reference above corrected to point at the section that actually exists (§7). No code changed. |
+
+## 10. What the programme concluded (2026-08-30)
+
+All nine sub-tickets closed: 808–816, plus the follow-ons 819, 820, 821, 825, 826, 827 opened from
+findings along the way.
+
+### 10a. The recurring pattern — the retirement goal kept shrinking under evidence
+| Phase | Proposed | Rejected on evidence |
+|---|---|---|
+| 816 P1 | 6 `llmBinding` fields | **5** — each value already had a governed home |
+| 816 P1 | drop `AiTaskDefault` | **withdrawn** — only 3 of 17 task keys are node-reachable; 14 serve `apps/guardrail`, `apps/nlp`, `harness.judge`, `vlm.extract` |
+| 816 P2 | migrate 29 policy columns | **28** — `PipelinePolicy` IS the `db-config` tier, with a doctor scope `WorkflowAssignment` cannot express |
+| 816 P3 | retire 3 screens | **3** — `/agentic-policy` is the sole editor of 22 surviving columns; `/ai-task-defaults` edits only non-node keys; `/agents` was already retired by TASK-815 |
+| 816 P4 | drop 2 columns | **shipped** — and for a better reason than the ticket had (§9a) |
+
+"Retire the legacy config" was repeatedly read as a CONSEQUENCE of the migration. The migration never
+covered what those surfaces author. **Ending scope: two columns.**
+
+### 10b. Live defects found that no ticket was looking for
+- **The graph lane silently discarded four tenant safety thresholds** (816 P2 §7a). Hidden because one
+  of five worked — a partial success disguises far better than a total failure.
+- **A second recording session published nothing** (TASK-811 §9b) — `forget()` existed for exactly this
+  with zero production callers.
+- **The clinician's consultation list rendered permanently empty** (TASK-814 §9 R-1) — a paused
+  TanStack retry renders neither skeleton nor error.
+- **Two silent-data-loss paths on encrypted clinical content** (819, 820) and **the same defect on
+  `ContextItem`** (825), which additionally wrote an immutable version row asserting a change that
+  never happened.
+- **Two hardcoded LLM prompts** (826, 827) where the sibling capability was governed.
+
+### 10c. What is left, and why it is not code
+TASK-808's three remaining DoD items are **deploy-gated** — a live flush check, an NLP image rebuild,
+and a 30-minute readiness soak. They need a build/promote, not an edit.
