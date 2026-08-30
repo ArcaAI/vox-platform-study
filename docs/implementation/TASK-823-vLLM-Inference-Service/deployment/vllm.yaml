@@ -1,0 +1,632 @@
+# ══════════════════════════════════════════════════════════════════════════
+# hope-vllm — self-hosted vLLM OpenAI-compatible inference (TASK-823)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ SHIPS AT `replicas: 0`. THIS IS A HARDWARE DECISION, NOT AN OVERSIGHT.
+#
+# This node's GPUs are 2x NVIDIA RTX 2000 Ada, 16380 MiB each
+# (`nvidia.com/gpu.memory=16380`, `gpu.count=2` — read from the node's own
+# GPU-Feature-Discovery labels, 2026-08-30). The KV-cache arithmetic in
+# TASK-823 §2A shows that:
+#
+#   - an 8B-class model at BF16 does not LOAD at all (15.25 GiB of weights on a
+#     15.99 GiB card);
+#   - an 8B AWQ model with a WHOLE card to itself serves ~13 concurrent
+#     sequences at 4k context — one third of the 20-40 in-flight target;
+#   - a whole card cannot be reserved, because this node has NO VRAM isolation
+#     mechanism of any kind: `mig.capable=false`, `mps.capable=false`,
+#     `vgpu.present=false`, `sharing-strategy=time-slicing`, `replicas=3`.
+#     Time-slicing advertises 3 FUNGIBLE scheduling slices per physical card
+#     and tracks no memory whatsoever;
+#   - sharing a card with the two existing GPU consumers (hope-stt ~3.9 GiB,
+#     hope-stt-worker ~3.7 GiB, both measured — see gpu-time-slicing.yaml)
+#     leaves ~8.0 GiB, which is ~2 concurrent sequences for an 8B AWQ.
+#
+# Raising `gpu-memory-utilization` high enough to be useful makes the outcome
+# scheduling-order-dependent: whichever CUDA context allocates last OOMs. On
+# this node that casualty is very likely hope-stt — a working production
+# capability — taken down for an experimental one. That is why this is 0 and
+# not 1.
+#
+# TO ENABLE (owner decision), two changes, in this order:
+#   1. Confirm real free VRAM on the node with `nvidia-smi`. The scheduler
+#      ledger UNDERSTATES usage: LM Studio runs on the node HOST
+#      (out-of-band/lmstudio-endpoints.yaml -> 10.10.1.10:1234) and holds VRAM
+#      outside k8s accounting entirely. base/dashboards/gpu.json already warns
+#      that GPU work runs outside scheduler control.
+#   2. Set `replicas: 1` here (or patch it in the dev overlay) and size
+#      VLLM_GPU_MEMORY_UTILIZATION in config/vllm.env for the WORST-CASE
+#      co-tenancy, never for an empty card.
+#
+# SECURITY (TASK-823 §3). Two controls are enforced structurally below and are
+# the reason this manifest is not just "the compose service in YAML":
+#
+#   V-1  VLLM_SERVER_DEV_MODE is NEVER set. It exposes /collective_rpc
+#        (arbitrary RPC execution). Consequence: vLLM Sleep-Mode hot-swap is
+#        off the table; model updates are rolling re-deploys.
+#   V-2  vLLM binds 127.0.0.1 ONLY and is fronted by an nginx allow-list
+#        sidecar. `--api-key` is NOT sufficient: it protects /v1, /v2 and
+#        /inference only, and leaves /invocations, /pause, /abort_requests and
+#        /update_weights open. CVE-2026-22778 (CVSS 9.8) is a pre-auth RCE
+#        reachable on /invocations. The sidecar 404s everything that is not
+#        /health, /metrics or /v1/*, and nothing can bypass it because vLLM has
+#        no externally-reachable listener.
+#   V-4  `--enable-log-requests` is NEVER passed and log level is INFO. At
+#        DEBUG vLLM logs prompt text and token ids — PHI in cluster logs.
+#   V-6  Non-root 1000:1000, read-only rootfs, all caps dropped except
+#        SYS_NICE (CUDA/NCCL thread priority).
+#
+# V-3 (ingress only from the router) is the NetworkPolicy at the bottom of this
+# file — the FIRST NetworkPolicy in this repo. See its header for the
+# convention it establishes and the enforcement check that must pass before it
+# is trusted.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # See the file header. Not a placeholder — a sizing verdict.
+  replicas: 0
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    # House convention (maxUnavailable 0 / maxSurge 1) is kept HERE so staging
+    # and prod inherit zero-downtime semantics. On dev it must be inverted to
+    # maxSurge 0 / maxUnavailable 1, exactly as the dev overlay already does for
+    # hope-stt and hope-stt-worker: a surge pod is a SECOND full VRAM
+    # allocation on a node that cannot spare one. The dev patch is in
+    # ../README.md and must land with this file.
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-vllm
+  template:
+    metadata:
+      labels:
+        app: hope-vllm
+      annotations:
+        # Annotation-based scrape: this repo has NO Prometheus Operator and no
+        # ServiceMonitor anywhere. The `kubernetes-pods` job in
+        # observability-config.yaml discovers pods that opt in with these three
+        # annotations, in its OWN namespace only.
+        #
+        # Migration discipline (observability-config.yaml): never annotate a
+        # workload that also has a hand-written static_config job, or it is
+        # scraped twice. hope-vllm has no static job — annotating is safe.
+        #
+        # Port 8000 is the nginx sidecar, which forwards /metrics to vLLM.
+        # vLLM's /metrics carries token COUNTS only, never prompt text.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      runtimeClassName: nvidia
+      # 600s, and it is the longest in this repo by a wide margin (the previous
+      # maximum is hope-harness-worker at 90s). Justification, because a number
+      # this far outside house norms needs one:
+      #
+      #   A rolling update must not truncate an in-flight generation. Worst-case
+      #   drain = (max output tokens / worst-case per-stream decode rate) +
+      #   preStop. On THIS card, decode is memory-bandwidth-bound at 224 GB/s;
+      #   at full batch a single stream sustains roughly 7-16 tok/s (TASK-823
+      #   §2A Scenario B). 600s therefore covers ~2048 output tokens at a
+      #   pessimistic 3.5 tok/s, with margin.
+      #
+      # RE-DERIVE THIS if max_tokens, max-model-len or the GPU changes. It is an
+      # arithmetic result, not a round number chosen for comfort.
+      terminationGracePeriodSeconds: 600
+      imagePullSecrets:
+        - name: hope-registry-creds
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # soft spread only; dev/staging are a single shared node
+      # (see cluster-monitoring.yaml), so `required` would strand replicas
+      # Pending forever.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: hope-vllm
+      containers:
+        # ── V-2 enforcement: the ONLY listener reachable from the network ────
+        # vLLM's own HTTP server is on 127.0.0.1:8001 in this same network
+        # namespace and is unreachable from outside the pod. Every request must
+        # pass this allow-list.
+        - name: endpoint-guard
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # nginx must outlive vLLM during drain so in-flight generations can
+          # complete; it is trivially fast to stop, so a short sleep suffices.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 15"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: nginx-tmp
+              mountPath: /tmp
+        # ── the engine ───────────────────────────────────────────────────────
+        - name: vllm
+          # Pinned to the SAME tag this repo's dev compose already pins
+          # (infrastructure/docker/docker-compose.dev.yml, `inference` profile).
+          # Keeping one version across dev and cluster is what makes a failure
+          # attributable. NOT `:latest` — image-hygiene bans it in rendered
+          # output, and a mutable tag defeats GitOps identity.
+          #
+          # ⚠️ VERIFY BEFORE FIRST DEPLOY: that this tag's image bundles the
+          # `runai-model-streamer` + `runai-model-streamer-s3` extras. If it
+          # does not, `--load-format runai_streamer` fails at startup and the
+          # fallback is an init-container pre-pull onto the node hostPath, the
+          # same shape hope-stt already uses for its model cache.
+          image: vllm/vllm-openai:v0.11.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--host"
+            # V-2: loopback only. The nginx sidecar is the sole ingress.
+            - "127.0.0.1"
+            - "--port"
+            - "8001"
+            - "--model"
+            - "$(VLLM_MODEL_URI)"
+            - "--served-model-name"
+            # MUST equal the `sourceUri` of the AiModel row that the SYSTEM
+            # AiTaskDefault for text.live/text.finalize points at. apps/text
+            # puts AiModel.sourceUri on the wire as the OpenAI `model` field
+            # (HarnessPolicyService.resolveTextSelectionForKey), so a mismatch
+            # is a 404 on every generation. See ../README.md §5.
+            - "$(VLLM_SERVED_MODEL_NAME)"
+            # Weights stream directly from MinIO. `runai_streamer` accepts an
+            # s3:// path natively — no download step, no PVC.
+            - "--load-format"
+            - "runai_streamer"
+            - "--model-loader-extra-config"
+            - '{"concurrency":16,"memory_limit":5368709120}'
+            # NEVER the model's advertised maximum — pitfall #1. The advertised
+            # max multiplies KV per sequence and collapses concurrency.
+            - "--max-model-len"
+            - "$(VLLM_MAX_MODEL_LEN)"
+            # Fraction of the WHOLE card, not of what is free. Under
+            # time-slicing this value must be sized for worst-case co-tenancy
+            # (see the file header), because nothing enforces the sum.
+            - "--gpu-memory-utilization"
+            - "$(VLLM_GPU_MEMORY_UTILIZATION)"
+            - "--max-num-seqs"
+            - "$(VLLM_MAX_NUM_SEQS)"
+            - "--max-num-batched-tokens"
+            - "$(VLLM_MAX_NUM_BATCHED_TOKENS)"
+            # Set EXPLICITLY: the engine-args reference and the V1 guide
+            # disagree about the default, so the flag removes the ambiguity.
+            - "--enable-prefix-caching"
+            - "--tensor-parallel-size"
+            - "1"
+            # V-4: keep the access log off. `--enable-log-requests` is
+            # deliberately ABSENT and must stay absent — at DEBUG it writes
+            # prompt text and token ids into cluster logs.
+            - "--disable-uvicorn-access-log"
+          env:
+            # ── model identity (non-optional refs) ──────────────────────────
+            # Promoted out of envFrom to explicit NON-OPTIONAL configMapKeyRefs,
+            # following api.yaml's TEXT_URL/STT_URL precedent, for two reasons:
+            # CI's check-config-refs.py can only see explicit refs, and an
+            # unset key here does NOT fail — `$(VLLM_MODEL_URI)` would be passed
+            # to vLLM as a literal string and the pod would crash-loop on an
+            # unparseable model path. A missing key must fail loudly as
+            # CreateContainerConfigError instead.
+            - name: VLLM_MODEL_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_MODEL_URI
+            - name: VLLM_SERVED_MODEL_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_SERVED_MODEL_NAME
+            # ── sizing knobs ────────────────────────────────────────────────
+            - name: VLLM_MAX_MODEL_LEN
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_MAX_MODEL_LEN
+            - name: VLLM_GPU_MEMORY_UTILIZATION
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_GPU_MEMORY_UTILIZATION
+            - name: VLLM_MAX_NUM_SEQS
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_MAX_NUM_SEQS
+            - name: VLLM_MAX_NUM_BATCHED_TOKENS
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_MAX_NUM_BATCHED_TOKENS
+            # ── MinIO / S3 for runai_streamer ───────────────────────────────
+            # PATH-STYLE ADDRESSING IS MANDATORY FOR MinIO. Unset, the streamer
+            # builds virtual-host-style URLs (`<bucket>.<host>`) and every
+            # weight load dies on DNS. This is pitfall #7.
+            - name: RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING
+              value: "0"
+            # No IMDS on this cluster; without this the SDK burns its retry
+            # budget probing 169.254.169.254 before falling back to static keys.
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AWS_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_S3_ENDPOINT_URL
+            # A literal, not a ConfigMap key: MinIO ignores the region entirely
+            # and the AWS SDK only requires that one be set. Making it
+            # environment-tunable would add a non-optional ref that can fail the
+            # pod, for a value that never legitimately varies.
+            - name: AWS_REGION
+              value: "us-east-1"
+            # Reuses the MinIO credentials already present in hope-secrets for
+            # hope-stt. No new secret key is introduced by this workload.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_ACCESS_KEY
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MINIO_SECRET_KEY
+            # ── runtime hygiene ─────────────────────────────────────────────
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
+            # V-4: INFO, never DEBUG. DEBUG logs prompt text.
+            - name: VLLM_LOGGING_LEVEL
+              value: "INFO"
+            # readOnlyRootFilesystem needs every cache redirected to a writable
+            # emptyDir, or the engine dies on first compile.
+            - name: HOME
+              value: /home/vllm
+            - name: HF_HOME
+              value: /home/vllm/.cache/huggingface
+            - name: VLLM_CACHE_ROOT
+              value: /home/vllm/.cache/vllm
+            - name: TRITON_CACHE_DIR
+              value: /tmp/triton
+            - name: TORCHINDUCTOR_CACHE_DIR
+              value: /tmp/inductor
+            - name: OUTLINES_CACHE_DIR
+              value: /tmp/outlines
+            # NOTE: VLLM_SERVER_DEV_MODE is deliberately, permanently ABSENT
+            # (V-1). Setting it to "1" exposes /collective_rpc — arbitrary RPC
+            # execution — in a PHI namespace. There is no configuration in this
+            # repo that should ever add it.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              # CUDA/NCCL raise worker-thread scheduling priority.
+              add: ["SYS_NICE"]
+          lifecycle:
+            preStop:
+              exec:
+                # The Service endpoint is removed asynchronously; sleeping first
+                # lets in-flight requests finish being routed elsewhere before
+                # the engine begins shutting down.
+                command: ["sh", "-c", "sleep 15"]
+          # Cold start = weight stream from MinIO + engine init + CUDA-graph
+          # capture. 5s x 72 = 360s of tolerance before the kubelet gives up.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8001
+              host: 127.0.0.1
+            periodSeconds: 5
+            failureThreshold: 72
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+              host: 127.0.0.1
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+              host: 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            # Generous: a saturated engine can be slow to answer /health while
+            # still healthy. Restarting it would cost another cold start and
+            # drop every in-flight generation.
+            failureThreshold: 6
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: "2"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "6"
+              # Must cover the 2Gi /dev/shm emptyDir below: a `medium: Memory`
+              # emptyDir is charged to the container's memory limit.
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: vllm-home
+              mountPath: /home/vllm
+            - name: vllm-tmp
+              mountPath: /tmp
+      volumes:
+        # vLLM needs a large /dev/shm for worker IPC. The container default of
+        # 64Mi is not enough even at tensor-parallel-size 1.
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: vllm-home
+          emptyDir: {}
+        - name: vllm-tmp
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-conf
+          configMap:
+            name: hope-vllm-endpoint-guard
+---
+# ══════════════════════════════════════════════════════════════════════════
+# V-2 — the endpoint allow-list
+# ══════════════════════════════════════════════════════════════════════════
+#
+# A plain ConfigMap, NOT a configMapGenerator entry: it is nginx config, not
+# service configuration, and it must not carry a content hash that rolls the
+# GPU pod (and pays another multi-minute cold start) on an unrelated edit.
+#
+# DENY-BY-DEFAULT. Only three route shapes reach vLLM. Everything else — most
+# importantly /invocations, /pause, /abort_requests, /update_weights,
+# /collective_rpc, /sleep, /wake_up, /reset_prefix_cache, /load_lora_adapter —
+# gets a 404 and never touches the engine.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hope-vllm-endpoint-guard
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+data:
+  default.conf: |
+    server {
+      listen 8000;
+      server_name _;
+
+      # Generations are long and streamed. Buffering them would break SSE
+      # token streaming and a short read timeout would sever live requests.
+      proxy_http_version 1.1;
+      proxy_buffering off;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+
+      # kubelet probes.
+      location = /health {
+        proxy_pass http://127.0.0.1:8001/health;
+      }
+
+      # Prometheus scrape. Token counts only — no prompt text.
+      location = /metrics {
+        proxy_pass http://127.0.0.1:8001/metrics;
+      }
+
+      # The OpenAI-compatible surface apps/text actually calls.
+      location ^~ /v1/ {
+        proxy_pass http://127.0.0.1:8001;
+      }
+
+      # Everything else, including every administrative and SageMaker-shaped
+      # route vLLM exposes. `--api-key` does NOT cover these; this does.
+      location / {
+        return 404;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+spec:
+  selector:
+    app: hope-vllm
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+# base-level HPA, deliberately inert (minReplicas == maxReplicas), following
+# the hope-stt precedent verbatim in intent.
+#
+# The upstream-recommended answer for vLLM is a KEDA Prometheus scaler on
+# `vllm:num_requests_waiting`, because CPU is the wrong signal twice over: a
+# saturated vLLM pod is CPU-IDLE while its token queue fills, and a new pod
+# needs minutes to pull the image, stream weights and capture CUDA graphs — so
+# a CPU-triggered scale-up arrives long after the saturation that caused it.
+#
+# But there is no KEDA in this cluster and no ScaledObject anywhere in this
+# repo. Installing one is a platform decision with its own operator, RBAC and
+# failure modes; it does not ride in on this ticket. So this follows the HOUSE
+# precedent instead: a real HPA object so the primitive exists uniformly, with
+# min == max so it can never change the replica count.
+#
+# Note the interaction with `replicas: 0` above: an HPA does not act on a
+# workload scaled to zero, so this object is inert twice over today. If someone
+# raises the Deployment to 1, this pins it at 1 — which is the intended
+# behaviour, because a second replica is a second full VRAM allocation that
+# this node's 2x16 GiB cannot serve (see the file header).
+#
+# When KEDA arrives, the metric to scale on is `vllm:num_requests_waiting`, not
+# CPU. Until then, alert on it so the need is visible rather than silent
+# (TASK-823 §9).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hope-vllm
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+---
+# base-level PDB. `minAvailable: 0` matches hope-stt's rationale: it is the only
+# value below the workload's replica floor, so it is a structural placeholder
+# rather than an availability guarantee. Raising it requires a second standing
+# GPU replica, which this node's VRAM cannot provide.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hope-vllm
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: hope-vllm
+---
+# ══════════════════════════════════════════════════════════════════════════
+# V-3 — ingress restriction. THE FIRST NetworkPolicy IN THIS REPOSITORY.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# There are ZERO NetworkPolicies in hope-v2-dev today (TASK-828 §6), so this
+# establishes a convention rather than following one. The convention, stated so
+# the next workload can copy it:
+#
+#   1. A NetworkPolicy lives in the SAME file as the workload it protects, not
+#      in a shared netpol.yaml. Isolation is a property of the workload.
+#   2. Name it after the workload plus the direction: `hope-<svc>-ingress`.
+#   3. INGRESS-ONLY to start, and NEVER a namespace-wide default-deny. This
+#      namespace has 43 pods that have never run under a policy; a default-deny
+#      would break DNS, the Prometheus scrape, Argo's health checks and the
+#      tunnel NodePort paths simultaneously, and the blast radius would be the
+#      whole platform. Per-workload allow-lists compose safely; a namespace
+#      default-deny does not.
+#   4. A policy with only an `ingress:` section denies all OTHER ingress to the
+#      selected pods and leaves egress untouched. That is the intended scope.
+#   5. ALWAYS include the Prometheus allow rule. This repo scrapes pod-to-pod
+#      from a plain Prometheus Deployment via pod annotations — an ingress
+#      policy that forgets it silently deletes the workload's metrics, which is
+#      the exact failure this platform spent a ticket fixing.
+#
+# ⚠️ MUST VERIFY BEFORE TRUSTING THIS: that k3s is actually ENFORCING
+# NetworkPolicy. k3s ships a NetworkPolicy controller with its default flannel
+# CNI, but it is disabled by `--disable-network-policy`, and the server flags
+# are not readable through the API. An unenforced policy is WORSE than no
+# policy, because it looks like a control. The check is cheap: with hope-vllm
+# running, exec into any pod that is not hope-text or prometheus and
+# `curl --max-time 5 http://hope-vllm:8000/health`. It must TIME OUT. If it
+# returns 200, this policy is decorative — say so loudly rather than leaving it
+# in place.
+#
+# EGRESS is deliberately NOT restricted here, and that is a gap, not an
+# omission by accident. An egress policy is what would make "weights come only
+# from MinIO" enforced rather than aspirational — and it is the control that
+# would structurally prevent a runtime HuggingFace pull out of a PHI namespace
+# (TASK-823 §4A). It is not shipped because MinIO is NOT in-cluster (it is a
+# VM-hosted service, see observability-config.yaml's note that the
+# postgres/redis/vault/minio exporters "can never move here — they are not
+# pods"), so the rule needs an `ipBlock` CIDR that this authoring session could
+# not read. The exact policy, with the one unknown marked, is in ../README.md
+# §4. Shipping a guessed CIDR would either break weight loading or silently
+# permit the whole subnet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-vllm-ingress
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels:
+      app: hope-vllm
+  policyTypes:
+    - Ingress
+  ingress:
+    # The router is the ONLY consumer. apps/text reaches vLLM per-request using
+    # the baseUrl on the SYSTEM AiProviderConnection row; nothing else in the
+    # platform has a reason to open a socket to an inference engine.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: hope-text
+      ports:
+        - protocol: TCP
+          port: 8000
+    # Metrics. Without this rule the pod annotations above become a no-op and
+    # every vllm:* series disappears with no error anywhere.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
