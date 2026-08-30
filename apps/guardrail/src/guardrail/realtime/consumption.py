@@ -74,6 +74,12 @@ class CapabilityPolicy:
 
     sets: Mapping[str, frozenset[str]]
 
+    def fingerprint(self) -> str:
+        """Which capabilities each set confers — C-3's model, as one string."""
+        return ";".join(
+            name + "=" + ",".join(sorted(caps)) for name, caps in sorted(self.sets.items())
+        )
+
     @classmethod
     def from_declaration(cls, declaration: Mapping[str, Any] | None) -> CapabilityPolicy:
         if not declaration:

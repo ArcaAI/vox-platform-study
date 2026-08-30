@@ -40,6 +40,7 @@ exists; per-tenant θ/Θ calibration must be done against a ``graded`` aggregate
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
@@ -90,6 +91,13 @@ class AxisTasks:
     injection_risk: tuple[str, ...]
     clinical: tuple[str, ...]
 
+    def fingerprint(self) -> str:
+        """Which task feeds which axis — i.e. which signals GATE (C-1)."""
+        return "|".join(
+            ",".join(sorted(axis))
+            for axis in (self.content_harm, self.injection_risk, self.clinical)
+        )
+
     @classmethod
     def from_declaration(cls, declaration: Mapping[str, Any] | None) -> AxisTasks:
         blob = declaration or {}
@@ -137,6 +145,55 @@ class RealtimePolicy:
     taxonomy_version: str = ""
     threshold_set: str = "default"
     source_tenant_id: str | None = None
+
+    @property
+    def stamp(self) -> str:
+        """Everything a verdict computed under this policy DEPENDED ON.
+
+        The four declared versions are not enough on their own. They are operator-
+        maintained integers and strings, while the values that actually decide a
+        verdict — the noise floor, the declared phrases, the capability sets, the
+        axis map, the window geometry — live on `_metadata` and can all be edited
+        without touching any of them. A cache keyed on the declared versions alone
+        therefore keeps serving pre-change verdicts after a change, which is worst
+        exactly when it matters most: an operator TIGHTENING the guardrail during
+        an incident gets the old answers until the TTL expires.
+
+        So the stamp is derived from the resolved policy rather than asserted
+        beside it, and it is a PROPERTY rather than a constructor argument — a
+        future construction site cannot forget to pass it, and cannot pass one
+        that disagrees with the policy it accompanies.
+
+        `ttl_s` is deliberately absent: how long a verdict may be reused is not
+        part of what the verdict SAYS, so changing it must not throw away a
+        warm cache.
+        """
+        parts: tuple[str, ...] = (
+            str(self.policy_version),
+            self.classifier_version,
+            self.taxonomy_version,
+            self.threshold_set,
+            # Provenance: a tenant taking over from SYSTEM is a governance event,
+            # and a safety cache should re-derive across it rather than inherit.
+            str(self.source_tenant_id or ""),
+            self.axes.fingerprint(),
+            self.rules.declaration_digest,
+            self.capabilities.fingerprint(),
+            f"{self.session.noise_floor}",
+            f"{self.session.excess_risk_threshold}",
+            f"{self.session.consecutive_limit}",
+            f"{self.session.mean_score_threshold}",
+            f"{self.session.min_windows_for_mean}",
+            f"{self.window_chars}",
+            f"{self.overlap_chars}",
+            f"{self.ceiling_chars}",
+            "\x1f".join(sorted(self.benign_labels)),
+            "\x1f".join(
+                f"{name}={','.join(sorted(str(t) for t in terms))}"
+                for name, terms in sorted(self.lexicons.items())
+            ),
+        )
+        return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 
 
 def _windows(text: str, size: int, overlap: int) -> Iterator[tuple[int, str]]:
@@ -189,14 +246,39 @@ class RealtimeValidator:
         # The handle consumers read the verdict BY, so a fan-out of three tasks
         # is three store reads and one classification — not three classifications
         # producing three verdicts on the same text.
-        await self._store.put(
-            segment_key(self._tenant_id, segment_id), verdict.to_dict(), self._policy.ttl_s
-        )
+        stored = verdict.to_dict()
+        # The policy this verdict was computed under, so a reader can tell whether
+        # it is still the policy in force. The store key cannot carry this: a
+        # consumer reads by segment id and holds no policy to key with.
+        stored["policyStamp"] = self._policy.stamp
+        await self._store.put(segment_key(self._tenant_id, segment_id), stored, self._policy.ttl_s)
         return verdict
 
     async def read_segment_verdict(self, segment_id: str) -> dict[str, Any] | None:
-        """What a consumer calls instead of guardrail. Tenant-scoped by key."""
-        return await self._store.get(segment_key(self._tenant_id, segment_id))
+        """What a consumer calls instead of guardrail. Tenant-scoped by key.
+
+        A verdict computed under a policy that is no longer in force is a MISS,
+        not a hit: the caller revalidates under the current policy rather than
+        acting on an answer the platform has since changed its mind about. This
+        is the read-side half of invalidation — the config-invalidation channel
+        drops the CONFIG cache so the new policy is resolved, and this drops the
+        VERDICTS that the old one produced. Without it, tightening a threshold
+        mid-incident has no effect until the TTL expires.
+
+        Recomputing is cheap (T0 is ~0.03 ms per utterance) and correct; serving
+        a stale safety verdict is neither.
+        """
+        held = await self._store.get(segment_key(self._tenant_id, segment_id))
+        if held is None:
+            return None
+        if held.get("policyStamp") != self._policy.stamp:
+            logger.info(
+                "guardrail.realtime.verdict_stale",
+                segment_id=segment_id,
+                reason="policy_changed_since_validation",
+            )
+            return None
+        return held
 
     async def validate_cumulative(
         self,
