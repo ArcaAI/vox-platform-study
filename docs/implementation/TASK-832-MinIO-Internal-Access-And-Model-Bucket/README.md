@@ -1,4 +1,4 @@
-# TASK-831 — Internalize every MinIO reference, and lay out the model bucket
+# TASK-832 — Internalize every MinIO reference, and lay out the model bucket
 
 | | |
 |---|---|
@@ -8,12 +8,15 @@
 | **Source** | TASK-828 §4b (problem statement), TASK-823 §8–9 (the proven MinIO access path) |
 | **Second repo** | `hope-v2-deployment@main` — read-only here; changes authored in `./deployment/` for the orchestrator to commit |
 
-> ### ⚠️ Ticket number
-> The brief assigned **TASK-830**, but `docs/implementation/TASK-830-Nlp-Guard-Classify-Confidences/`
-> already exists and is unrelated (it is merged on `dev-2.2` as of `d6cd6a57b`).
-> Renumbered to **TASK-831**, the next free number. If the orchestrator's ledger
-> says otherwise, this directory is the thing to rename — nothing references the
-> number programmatically.
+> ### ⚠️ Ticket number — renumbered TWICE
+> The brief assigned **TASK-830**. That was already taken by
+> `TASK-830-Nlp-Guard-Classify-Confidences` (merged on `dev-2.2` at `d6cd6a57b`),
+> so this became **TASK-831** — and then `TASK-831-Model-Catalogue-Alignment`
+> landed on `dev-2.2` mid-session (`7ea166404`). Now **TASK-832**.
+>
+> Two collisions in one session means numbers are being allocated concurrently
+> without a lock. If the orchestrator's ledger disagrees, rename this directory —
+> nothing references the number programmatically.
 
 ---
 
@@ -287,6 +290,8 @@ s3://hope-models/<slug>/<version>/
 | **No `llm/` vs `embeddings/` split** | Role is a `manifest.json` field. A prefix split buys nothing a field does not, breaks the published URI, and diverges from `models/{slug}/{revision}/{filename}`, the shape `apps/stt`'s `path_resolver.py` already builds |
 | **`primaryObject` in the manifest** | Pointing a llama.cpp-family server at any shard but the first yields `illegal split file idx`; there is no discovery. Recording shard `-00001-of-000NN` explicitly removes the inference |
 | **`shardCount` in the manifest** | A partial sync that lands shard 2 first fails **silently** — the prefix looks populated. `shardCount` makes completeness checkable before serving |
+| **`projectorObject` in the manifest** | Added after reconciling with TASK-831 (below). The Gemma pair ships a separate `*-mmproj.gguf`, and `llama-server -m <weights>` **without `--mmproj` is a text-only server** — only the `-hf` shorthand auto-pairs, and a MinIO-served model never uses `-hf` |
+| **`engine.minVersion` is a correctness floor, not a compatibility note** | Between llama.cpp `b8630` and `b9383`, two bugs (projector post-norm vs pre-norm; audio RMS-norm eps `1e-5` vs `1e-6`) produced plausible-but-wrong multimodal output **with no error at all**. Recording the floor lets a consumer refuse to start rather than quietly degrade |
 | **Versioning + object lock ON** | A published weight prefix must never change under a running pod |
 | **Versioning OFF on `mlflow`** | Opposite requirement, same product. `mlflow gc` is MLflow's only hard-delete path and therefore its only right-to-erasure mechanism; with versioning on, `gc` writes a **delete marker** and erasure silently becomes retention (TASK-822 F-4) |
 | **Reader SA with no `PutObject`** | Object lock protects bytes already written and versioning makes a mistake recoverable, but **a credential that cannot write is what makes the overwrite impossible in the first place.** Three layers because each covers a different failure: malice, accident, misconfiguration |
@@ -294,6 +299,26 @@ s3://hope-models/<slug>/<version>/
 The five models: `gemma4-e2b-it-qat`, `gemma4-e4b-it-qat`,
 `granite-guardian-4.1-8b`, `qwen3.5-4b` (llm) and
 `text-embedding-embeddinggemma-300m-qat` (embeddings).
+
+### 6.1 Reconciled with TASK-831 (Model Catalogue Alignment)
+
+That ticket landed on `dev-2.2` mid-session and changes two things here:
+
+1. **The engine is llama.cpp, not vLLM.** vLLM's in-tree GGUF support is
+   deprecated and out-of-tree, at ~0.1% usage. The flat-prefix rule survives
+   unchanged but now rests on two independent reasons rather than one — stated
+   that way in the layout doc so it survives the next engine change.
+2. **The Gemma pair is multimodal and ships a projector companion**
+   (`*-mmproj.gguf`, ~990 MB each). That is a multi-file model that is **not**
+   a shard, which the original manifest schema had no way to express. Added
+   `projectorObject` and a per-object `role`, and promoted `engine.minVersion`
+   from a nice-to-have to a required correctness floor (build `b9383`).
+
+Also carried across: **slug normalization** is now stated explicitly
+(`qwen3.5-4B` → key `qwen3.5-4b`; S3 keys are case-sensitive), and the Gemma
+**provenance window** — Google re-uploaded those repos on 2026-07-17, so any
+copy mirrored between 15–17 July 2026 is poisoned and must be re-verified
+against publisher digests before staging.
 
 **Object lock is creation-only.** `mc mb --with-lock` cannot be applied
 retroactively, and `mb --ignore-existing --with-lock` against an existing bucket
@@ -356,7 +381,7 @@ Setting bucket policies...
 mc: Please use 'mc anonymous'
 mc: Please use 'mc anonymous'
 Configuring at-rest SSE (TASK-369 Phase 1)...
-Provisioning least-privilege hope-models identities (TASK-831)...
+Provisioning least-privilege hope-models identities (TASK-832)...
 Created policy `hope-models-reader` successfully.
 Created policy `hope-models-publisher` successfully.
 Added user `hope-models-reader` successfully.

@@ -1,4 +1,4 @@
-# TASK-831 — changes for `hope-v2-deployment` (HANDOVER, not applied)
+# TASK-832 — changes for `hope-v2-deployment` (HANDOVER, not applied)
 
 Authored in the app repo; **the orchestrator makes every commit to
 `hope-v2-deployment`** (EXECUTION-PLAN §14.5). Nothing here has been applied
@@ -54,7 +54,7 @@ correctness no longer depends on their doing so.
 ```diff
 -MINIO_USE_SSL=true
 +MINIO_USE_SSL=true
-+# TASK-831: the LAN address of the MinIO host, replacing the public Cloudflare
++# TASK-832: the LAN address of the MinIO host, replacing the public Cloudflare
 +# Tunnel hostname that hope-secrets.MINIO_ENDPOINT still carries. Not a secret —
 +# it is a LAN address, and it belongs in Git where it can be reviewed.
 +# Referenced as a NON-OPTIONAL configMapKeyRef in api.yaml, so a missing key is
@@ -67,7 +67,7 @@ correctness no longer depends on their doing so.
 ```diff
  MINIO_AUDIO_BUCKET=hope-audio
  MINIO_CHUNK_BUCKET=hope-audio-chunks
-+# TASK-831 — see api.env for the rationale.
++# TASK-832 — see api.env for the rationale.
 +MINIO_ENDPOINT=10.10.1.102:9000
 +# ⚠️ MINIO_SECURE was "false" while MINIO_ENDPOINT was a PUBLIC hostname, so the
 +# MinIO SDK built http://s3.taphuynh.dev — plaintext PHI audio across the public
@@ -83,7 +83,7 @@ correctness no longer depends on their doing so.
 ### 1.3 `deployment/k8s/base/config/harness.env`
 
 ```diff
-+# TASK-831 — the claim-check store IS platform object storage. Bootstrap-floor
++# TASK-832 — the claim-check store IS platform object storage. Bootstrap-floor
 +# values only; the admin-managed source of truth is the SYSTEM
 +# TenantStorageConfig row (see the parent README §Operator procedure, step 5),
 +# which the resolver applies over these.
@@ -105,7 +105,7 @@ CI's `patch-hygiene` job **bans index-based JSON6902** (`/env/5/value`).
 -                secretKeyRef:
 -                  key: MINIO_ENDPOINT
 -                  name: hope-secrets
-+                # TASK-831. NOT hope-secrets: an endpoint is not a secret, and a
++                # TASK-832. NOT hope-secrets: an endpoint is not a secret, and a
 +                # stale secret value fails OPEN onto the public tunnel. No
 +                # `optional:` — a missing key must be CreateContainerConfigError.
 +                configMapKeyRef:
@@ -124,7 +124,7 @@ the origin. Going direct removes both crutches.
 
 ```diff
            volumeMounts:
-+            # TASK-831 — internal CA for direct TLS to MinIO. NOT optional: the
++            # TASK-832 — internal CA for direct TLS to MinIO. NOT optional: the
 +            # pod must fail to start rather than talk to a PHI object store it
 +            # cannot verify. There is deliberately no skip-verify option.
 +            - name: arcaai-internal-ca

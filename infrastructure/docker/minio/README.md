@@ -12,7 +12,7 @@ convention that governs the `hope-models` bucket in **every** environment.
 > | **Cluster (`hope-v2-dev`)** | **nobody — a human, out of band** | MinIO is a standalone LAN host, `10.10.1.102`. It is not a pod, has no `Service`, and no manifest in `hope-v2-deployment` creates or configures it. |
 >
 > The cluster procedure is written out in
-> `docs/implementation/TASK-831-MinIO-Internal-Access-And-Model-Bucket/README.md`
+> `docs/implementation/TASK-832-MinIO-Internal-Access-And-Model-Bucket/README.md`
 > §Operator procedure. Editing the compose file below does **not** change the
 > cluster. Keep the two in step by hand.
 
@@ -151,27 +151,49 @@ s3://hope-models/
     └── <version>/                           # IMMUTABLE. Never written twice.
         ├── manifest.json                    # the Merkle root — see §5.3
         ├── SHA256SUMS                       # same digests, `shasum -c` / `mc` interop
-        ├── <slug>.<QUANT>.gguf              # single-file (preferred), OR
-        ├── <slug>.<QUANT>-00001-of-000NN.gguf   # shard 1 — the ONLY one a server is pointed at
-        ├── <slug>.<QUANT>-00002-of-000NN.gguf
+        ├── <name>.gguf                      # PRIMARY — single-file (preferred), OR
+        ├── <name>-00001-of-000NN.gguf       # shard 1 — the ONLY one a server is pointed at
+        ├── <name>-00002-of-000NN.gguf
+        ├── <name>-mmproj.gguf               # COMPANION projector (multimodal only)
         ├── config.json                      # when the engine needs it
         └── tokenizer.json / tokenizer_config.json / vocab.json / merges.txt
 ```
 
 **Flat within the version prefix. Do not nest `model/` or
-`components/tokenizer/` subdirectories** — vLLM's `pull_files()` /
-`list_safetensors()` walk the prefix and expect the config, tokenizer and
-weights side by side (TASK-823 §8.4, derived from `vllm/config/model.py:701-728`).
+`components/tokenizer/` subdirectories.** Two independent reasons, so the rule
+survives an engine change:
+
+- **llama.cpp** (the engine for all five GGUF models) is pointed at one file
+  path and, for multimodal, one `--mmproj` path. Nesting buys nothing and makes
+  every reference longer.
+- **vLLM** (still the engine for the existing `qwen3-4b-awq` safetensors prefix)
+  actively requires it: `pull_files()` / `list_safetensors()` walk the prefix and
+  expect config, tokenizer and weights side by side (TASK-823 §8.4, derived from
+  `vllm/config/model.py:701-728`).
 
 ### 5.1 The five models
 
-| Slug | Role | Format |
-|---|---|---|
-| `gemma4-e2b-it-qat` | llm | GGUF, 4-bit QAT |
-| `gemma4-e4b-it-qat` | llm | GGUF, 4-bit QAT |
-| `granite-guardian-4.1-8b` | llm (safety) | GGUF, 4-bit |
-| `qwen3.5-4b` | llm | GGUF, 4-bit |
-| `text-embedding-embeddinggemma-300m-qat` | embeddings | GGUF, 4-bit QAT |
+Artifact facts below are TASK-831's (Model Catalogue Alignment) verified inventory.
+**The engine for all five is llama.cpp, not vLLM** — vLLM's in-tree GGUF support
+is deprecated and out-of-tree. Build floor **`b9383`** for the Gemma pair.
+
+| Slug | Role | Primary object | Companion |
+|---|---|---|---|
+| `gemma4-e2b-it-qat` | llm (multimodal) | `gemma-4-E2B_q4_0-it.gguf` (3.35 GB) | **`gemma-4-E2B-it-mmproj.gguf` (987 MB)** |
+| `gemma4-e4b-it-qat` | llm (multimodal) | `gemma-4-E4B_q4_0-it.gguf` (5.15 GB) | **`gemma-4-E4B-it-mmproj.gguf` (992 MB)** |
+| `granite-guardian-4.1-8b` | llm (safety) | Q4_K_M, 4.77 GiB | — |
+| `qwen3.5-4b` | llm | Q4_K_M, 2.81 GiB | — |
+| `text-embedding-embeddinggemma-300m-qat` | embeddings | Q4_0, 278 MB | — |
+
+**Slug normalization.** The catalogue names the fourth model `qwen3.5-4B`; the
+S3 key is `qwen3.5-4b`. S3 keys are case-sensitive, so the rule is stated rather
+than left to chance: **lowercase the catalogue id to form the slug.** Dots are
+kept (`qwen3.5-4b`) — see below.
+
+> ⚠️ The Gemma pair also has a **provenance window**: Google re-uploaded these
+> repos on 2026-07-17 to fix a bad checkpoint. Any copy cached or mirrored
+> between 15–17 July 2026 is poisoned. Verify digests against the current
+> publisher blobs before staging into MinIO — which is what §5.5 step 0 does.
 
 **There is no `llm/` vs `embeddings/` top-level split, and that is a decision,
 not an oversight.** Role is recorded in `manifest.json`. A prefix split would
@@ -230,14 +252,22 @@ model before serving it.
     "revision": "<upstream git sha>",
     "license": "gemma"
   },
-  "primaryObject": "gemma4-e4b-it-qat.Q4_K_M.gguf",
+  "primaryObject": "gemma-4-E4B_q4_0-it.gguf",
   "shardCount": 1,
-  "totalBytes": 4471234560,
+  "projectorObject": "gemma-4-E4B-it-mmproj.gguf",
+  "totalBytes": 6142000000,
   "objects": [
     {
-      "path": "gemma4-e4b-it-qat.Q4_K_M.gguf",
-      "bytes": 4471234560,
+      "path": "gemma-4-E4B_q4_0-it.gguf",
+      "role": "weights",
+      "bytes": 5150000000,
       "sha256": "3f9a1c7d2e05…"
+    },
+    {
+      "path": "gemma-4-E4B-it-mmproj.gguf",
+      "role": "projector",
+      "bytes": 992000000,
+      "sha256": "b71c04e9aa18…"
     }
   ],
   "publishedAt": "2026-08-30T00:00:00Z",
@@ -255,12 +285,14 @@ Every field earns its place:
 | `contextLength` | The engine will happily start with a smaller window than the caller assumes and truncate prompts silently. |
 | `engine.minVersion` | A GGUF written by a newer converter fails to load on an older `llama.cpp` with an unhelpful error. Recording the floor turns that into a pre-flight check. |
 | **`primaryObject`** | **See §5.4 — this is the one that bites.** |
+| **`projectorObject`** | **See §5.4.** A multimodal model's `mmproj` is a separate file that no engine auto-pairs from a plain path. |
 | `shardCount` | Lets a syncer assert completeness *before* serving. |
+| `engine.minVersion` (again) | For the Gemma pair this is a **correctness** floor, not a compatibility one — see §5.4 item 3. |
 
-### 5.4 Sharding — `primaryObject` and the two silent failures
+### 5.4 The three ways a multi-file model fails quietly
 
-Single-file GGUF is preferred. Where a model must be sharded, two failure modes
-are specific enough to design against:
+Single-file GGUF is preferred. Three failure modes are specific enough to design
+against, and the manifest fields above exist precisely to remove each one:
 
 1. **Pointing a llama.cpp-family server at any shard other than the first**
    yields `illegal split file idx`. The server derives the whole set from shard
@@ -271,7 +303,22 @@ are specific enough to design against:
    prefix looks populated, `mc ls` shows objects, and the load fails later with
    an error that points at the model rather than at the transfer. `shardCount`
    plus the per-object digest list makes completeness a checkable property:
-   a consumer asserts `len(objects with .gguf) == shardCount` before it starts.
+   a consumer asserts `len(objects with role "weights") == shardCount` before it
+   starts.
+
+3. **The multimodal projector is a separate file that nothing auto-pairs.** The
+   Gemma 4 pair ships `*-mmproj.gguf` alongside the weights, and
+   `llama-server -m <weights>.gguf` **without `--mmproj` is a text-only server**
+   — only the `-hf` shorthand auto-pairs, and a MinIO-served model never uses
+   `-hf`. `projectorObject` records the path so the launch argument is derived,
+   not remembered. `llama-server` at least fails loudly on an image with no
+   projector; **the version floor is the part that fails silently.** Two bugs
+   (projector post-norm vs pre-norm, and audio RMS-norm eps `1e-5` vs `1e-6`)
+   produced plausible-but-wrong multimodal output with no error at all between
+   roughly build `b8630` and `b9383`. That is why `engine.minVersion` is a
+   required field and not documentation: a consumer can refuse to start on an
+   older runtime instead of quietly degrading. Use the **BF16** projector; other
+   quantizations are known-degraded.
 
 ### 5.5 Publish procedure
 
