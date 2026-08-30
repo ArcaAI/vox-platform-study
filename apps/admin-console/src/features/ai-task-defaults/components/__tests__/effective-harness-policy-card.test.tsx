@@ -25,8 +25,6 @@ function policy(overrides: Partial<HarnessPolicySummary> = {}): HarnessPolicySum
     safetyEnabled: true,
     phiEnabled: true,
     phiFailClosed: true,
-    safetyProvider: 'azure',
-    safetyModel: 'content-safety',
     textProvider: null,
     textModel: null,
     maxRegen: 2,
@@ -62,10 +60,11 @@ describe('EffectiveHarnessPolicyCard', () => {
 
     expect(await screen.findByText('Entity faithfulness threshold')).toBeDefined();
     expect(screen.getByText('0.8')).toBeDefined();
-    expect(screen.getByText('Safety provider')).toBeDefined();
-    expect(screen.getByText('azure')).toBeDefined();
+    expect(screen.getByText('Safety guardrail')).toBeDefined();
     expect(screen.getAllByText('tenant').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('super admin').length).toBe(7); // TENANT_LOCKED_POLICY_KEYS count (TASK-740 D-3 added textProvider + textModel)
+    // TENANT_LOCKED_POLICY_KEYS count: 3 safety/PHI toggles + textProvider/textModel
+    // (TASK-740 D-3). Safety provider/model left with their columns in TASK-816 Phase 4.
+    expect(screen.getAllByText('super admin').length).toBe(5);
   });
 
   it('is read-only — no inputs, switches or save controls anywhere on the card', async () => {

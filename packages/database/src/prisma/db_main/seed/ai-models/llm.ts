@@ -48,7 +48,8 @@ import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, 
  */
 export const LLM_AI_MODELS: AiModelSeed[] = [
   // =========================================================================
-  // Guardrail / Safety (kept — slug continuity with HarnessPolicy.safetyModel)
+  // Guardrail / Safety (slug continuity with the `guardrail.safety` AiTaskDefault, which is
+  // what apps/guardrail resolves its engine + model from since TASK-735/736)
   // =========================================================================
   {
     id: '80000000-0000-0000-0005-000000000060',

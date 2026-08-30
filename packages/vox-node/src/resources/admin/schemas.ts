@@ -2179,10 +2179,6 @@ export interface HarnessPolicyResponse {
   retrievalEnabled?: boolean | null;
   /** Master safety-guardrail toggle. */
   safetyEnabled: boolean;
-  /** Safety-guard model id. */
-  safetyModel: string;
-  /** Safety-guard provider id. */
-  safetyProvider: string;
   /** Where the effective policy was resolved from. */
   source: 'tenant' | 'system-default' | 'code-default';
   /** Owning tenant id of the resolved policy row (SYSTEM tenant for the global default). */
@@ -4975,10 +4971,6 @@ export interface UpdateHarnessPolicyRequest {
   retrievalEnabled?: boolean | null;
   /** Master safety-guardrail toggle. */
   safetyEnabled?: boolean;
-  /** Safety-guard model id. */
-  safetyModel?: string;
-  /** Safety-guard provider id. */
-  safetyProvider?: string;
   /** TEXT generation model id (null = let the TEXT service choose). */
   textModel?: string | null;
   /** TEXT generation provider id (null = let the TEXT service choose). */

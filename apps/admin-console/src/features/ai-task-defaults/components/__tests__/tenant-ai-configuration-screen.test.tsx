@@ -92,8 +92,6 @@ function harnessPolicySummary() {
     safetyEnabled: true,
     phiEnabled: true,
     phiFailClosed: true,
-    safetyProvider: 'azure',
-    safetyModel: 'content-safety',
     textProvider: null,
     textModel: null,
     maxRegen: 2,

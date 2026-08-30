@@ -1,0 +1,36 @@
+-- TASK-816 Phase 4 — drop `HarnessPolicy.safetyProvider` / `.safetyModel`.
+--
+-- These two columns selected NOTHING. The safety screen is built from
+-- `settings.guardrail_base_url` alone (`activities.py::_safety_screen_client`) and
+-- `GuardrailClient.analyze` POSTs only `{text, guardrail_type, request_id}`;
+-- `apps/guardrail` resolves its own provider and model tenant-first from the
+-- `guardrail.safety` AiTaskDefault, fail-closed. That has been the correct home for the
+-- guardrail selection since TASK-735/736, and is exactly why these two had nothing left
+-- to do. Phase 2 pinned the absence of a reader with a mutation-verified grep gate
+-- (`test_policy_dead_fields_task816.py`); Phase 4 acts on it.
+--
+-- They were also the last hardcoded engine name (`lm-studio`) and model id
+-- (`granite-guardian-4.1-8b`) sitting in a column `@default` in this model, which
+-- `00-project-context.md` §Configuration Principles rule 1 forbids.
+--
+-- DATA LOSS IS INTENDED AND BOUNDED. Every stored value was one of the two defaults or a
+-- super-admin's edit through the admin console's global tab — an edit that changed no
+-- behaviour, because nothing read the column back. No tenant loses a working setting.
+--
+-- WHAT IS DELIBERATELY ABSENT FROM THIS FILE
+--
+--   1. `HarnessPolicyChange` is NOT touched. Its `beforeJson`/`afterJson` snapshots are
+--      `JsonB` and still contain `safetyProvider`/`safetyModel` for historical rows. That
+--      table is an append-only WORM audit trail (the app role has UPDATE/DELETE REVOKEd);
+--      rewriting it to erase a retired key would falsify records of edits that really
+--      happened. New snapshots simply stop carrying the keys.
+--   2. No `AiModel` row is removed. `granite-guardian-4.1-8b` remains in the catalog: it is
+--      the model `apps/guardrail` still selects through `guardrail.safety`, so its slug
+--      continuity matters more now, not less.
+--   3. No backfill. There is no destination to move these values to — the tenant-first
+--      `AiTaskDefault` cascade already holds the live selection, and copying a dead column
+--      into it would overwrite a governed value with an unread one.
+
+-- AlterTable
+ALTER TABLE "core"."HarnessPolicy" DROP COLUMN "safetyModel",
+DROP COLUMN "safetyProvider";
