@@ -10,6 +10,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import 'reflect-metadata';
+import { API_KEY_FORBIDDEN, SERVICE_ACCOUNT_FORBIDDEN, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
 import { AiRoutingPolicyAdminController } from '../ai-routing-policy-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
@@ -150,5 +153,33 @@ describe('effective-route query coercion', () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: 't1' });
     await controller.getEffective('text.finalize', undefined, undefined, undefined, 'azure', '1');
     expect(service.getEffective).toHaveBeenCalledWith('t1', 'text.finalize', expect.objectContaining({ allowFallbacks: false }));
+  });
+});
+
+/**
+ * The credential-class declarations are DECLARATIVE, so they regress silently:
+ * nothing in this controller's own logic changes if a decorator is dropped, and
+ * the failure surfaces only as a boot-time refusal (TASK-762/773 assertion G) or,
+ * worse, as a machine identity quietly gaining reach it was never granted.
+ *
+ * The class header records the decision: routing policy is machine-CLOSED,
+ * because a policy write redirects PHI to a different vendor. `@ForbidApiKey()`
+ * states it for the API-key class; `@ForbidServiceAccount()` must state it for
+ * the service-account class, exactly as MonitoringController does — a comment
+ * alone is not a declaration, and the boot audit refuses to start without one.
+ */
+describe('credential classes', () => {
+  const reflector = new Reflector();
+
+  it('forbids API keys at the class level (the admin-plane rule)', () => {
+    expect(reflector.get(API_KEY_FORBIDDEN, AiRoutingPolicyAdminController)).toBe(true);
+  });
+
+  it('forbids service accounts at the class level — a routing write redirects PHI to another vendor', () => {
+    expect(reflector.get(SERVICE_ACCOUNT_FORBIDDEN, AiRoutingPolicyAdminController)).toBe(true);
+  });
+
+  it('declares NO svc:* scope — opening this area is a new owner decision, not a code-review call', () => {
+    expect(reflector.get(SERVICE_ACCOUNT_REQUIRED_SCOPES, AiRoutingPolicyAdminController)).toBeUndefined();
   });
 });
