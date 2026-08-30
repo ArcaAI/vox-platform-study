@@ -433,6 +433,90 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
     )
 
 
+async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
+    """Build the TASK-829 realtime plane for one tenant.
+
+    Reuses `build_safety_analyzer` verbatim — one selection path, one taxonomy,
+    one fail-closed posture — and adds the realtime declarations that live
+    alongside it on the SAME registry row, resolved by the SAME two-tier
+    `request tenant -> SYSTEM` cascade.
+
+    Every realtime declaration is fail-CLOSED, and each for its own reason:
+
+    * ``realtime.axes`` — which signals GATE and which merely inform a clinician
+      is the C-1 decision. Guessing it either lets a self-harm disclosure stop a
+      note being written, or lets an injection through as "informational".
+    * ``realtime.deterministicPatterns`` — an empty automaton reports every
+      stream clean.
+    * ``realtime.capabilitySets`` — C-3 cannot be checked against an undeclared
+      capability model.
+
+    ``realtime.protectedLexicons`` is the one that is NOT fail-closed at build
+    time, because its absence degrades a specific output check to ``skipped``
+    rather than silently passing it — the distinction `_check_pii_leak` already
+    makes.
+    """
+    from guardrail.core.policy import GuardrailPolicy
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+    from guardrail.realtime.consumption import CapabilityPolicy
+    from guardrail.realtime.deterministic import DeterministicRuleSet
+    from guardrail.realtime.service import AxisTasks, RealtimePolicy, RealtimeValidator
+    from guardrail.realtime.session_state import SessionRiskPolicy
+    from guardrail.realtime.store import RedisRealtimeStore
+
+    analyzer = await build_safety_analyzer(app_state, tenant_id)
+    safety_cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    taxonomy = _taxonomy(safety_cfg)
+    realtime = taxonomy.get("realtime")
+    if not isinstance(realtime, dict) or not realtime:
+        raise SelectionUnavailableError(
+            "the guardrail.safety model row declares no `labelTaxonomy.realtime` — the "
+            "realtime consultation plane is configuration and has no code default "
+            "(fail-closed)."
+        )
+    policy_blob = GuardrailPolicy.from_blob(
+        getattr(safety_cfg, "policy", None),
+        source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
+    )
+
+    benign = taxonomy.get("benignLabels")
+    realtime_policy = RealtimePolicy(
+        axes=AxisTasks.from_declaration(realtime.get("axes")),
+        rules=DeterministicRuleSet.from_declaration(realtime.get("deterministicPatterns")),
+        capabilities=CapabilityPolicy.from_declaration(realtime.get("capabilitySets")),
+        session=SessionRiskPolicy(
+            noise_floor=policy_blob.number("realtimeNoiseFloor"),
+            excess_risk_threshold=policy_blob.number("realtimeExcessRiskThreshold"),
+            consecutive_limit=int(policy_blob.number("realtimeConsecutiveLimit")),
+            mean_score_threshold=policy_blob.number("realtimeMeanScoreThreshold"),
+            min_windows_for_mean=int(policy_blob.number("realtimeMinWindowsForMean")),
+        ),
+        lexicons=realtime.get("protectedLexicons") or {},
+        benign_labels=(
+            frozenset(str(b).casefold() for b in benign)
+            if isinstance(benign, list) and benign
+            else frozenset()
+        ),
+        window_chars=policy_blob.realtime_window_chars,
+        overlap_chars=policy_blob.realtime_window_overlap_chars,
+        ceiling_chars=policy_blob.realtime_cumulative_ceiling_chars,
+        ttl_s=policy_blob.realtime_verdict_ttl_seconds,
+        # The verdict must die when any of these change (§3B.4 condition 3): the
+        # stamp is a cache entry, and it dies when its key components do.
+        policy_version=int(getattr(safety_cfg, "version", 0) or 0),
+        classifier_version=str(getattr(safety_cfg, "model", "") or ""),
+        taxonomy_version=str(realtime.get("version") or taxonomy.get("version") or ""),
+        threshold_set=str(realtime.get("thresholdSet") or "default"),
+        source_tenant_id=policy_blob.source_tenant_id,
+    )
+    return RealtimeValidator(
+        analyzer=analyzer,
+        policy=realtime_policy,
+        tenant_id=tenant_id,
+        store=RedisRealtimeStore(app_state.redis),
+    )
+
+
 @asynccontextmanager
 async def pinned_safety_analyzer(
     app_state: Any, tenant_id: str | None = None, analyzer: Any = None

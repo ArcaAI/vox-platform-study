@@ -84,6 +84,34 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # one checkpoint is meaningless against another. Resolving it through the same
     # cascade that chose the model keeps the two in step by construction.
     "groundednessEntailmentThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
+    # --- realtime consultation plane (TASK-829) -------------------------------
+    #
+    # The four session-aggregation numbers. §5.1 is explicit that these must be
+    # "calibrated per tenant on clinical text, never on a general corpus" — which
+    # is precisely why they are declared here, on the cascade that already
+    # resolves per tenant, rather than as constants next to the arithmetic.
+    #
+    # The defaults below are STARTING POINTS for a tenant that has not calibrated
+    # yet, not recommendations. A general-corpus threshold applied to clinical
+    # text flags roughly three-quarters of safe conversation (§2.1).
+    "realtimeNoiseFloor": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.2, 0.0, 1.0),
+    "realtimeExcessRiskThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 1.0, 0.0, 1_000.0),
+    "realtimeConsecutiveLimit": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2.0, 1.0, 100.0),
+    "realtimeMeanScoreThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
+    "realtimeMinWindowsForMean": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 10_000.0),
+    # The classifier's inspection window, and the modest overlap that covers a
+    # phrase straddling two windows. The overlap is for CONTIGUOUS straddle only
+    # and is not the split-injection defence (§2.2) — that is the session
+    # aggregation above.
+    "realtimeWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, 200_000.0),
+    "realtimeWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 50_000.0),
+    # The hard cumulative ceiling (§5.2 mechanism 3). Beyond it the earlier prefix
+    # must be represented by a rolling summary that is ITSELF a validated
+    # artifact; the deterministic automaton's state stays whole-stream regardless.
+    "realtimeCumulativeCeilingChars": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, 120_000.0, 1_000.0, 10_000_000.0
+    ),
+    "realtimeVerdictTtlSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 3_600.0, 60.0, 86_400.0),
 }
 
 
@@ -163,3 +191,21 @@ class GuardrailPolicy:
     @property
     def max_untrusted_chars(self) -> int:
         return int(self.number("maxUntrustedChars"))
+
+    # -- realtime consultation plane ---------------------------------------
+
+    @property
+    def realtime_window_chars(self) -> int:
+        return int(self.number("realtimeWindowChars"))
+
+    @property
+    def realtime_window_overlap_chars(self) -> int:
+        return int(self.number("realtimeWindowOverlapChars"))
+
+    @property
+    def realtime_cumulative_ceiling_chars(self) -> int:
+        return int(self.number("realtimeCumulativeCeilingChars"))
+
+    @property
+    def realtime_verdict_ttl_seconds(self) -> int:
+        return int(self.number("realtimeVerdictTtlSeconds"))
