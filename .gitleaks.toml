@@ -40,7 +40,14 @@ tags = ["jwt", "session", "secret"]
 [[rules]]
 id = "hope-s3-credentials"
 description = "S3 access/secret committed (non-placeholder)"
-regex = '''(?i)(S3_ACCESS_KEY|S3_SECRET_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|MINIO_ROOT_PASSWORD)\s*[:=]\s*["']?[A-Za-z0-9+/=]{16,}["']?'''
+# TASK-832: two holes, both found by a lane that read the file the rule missed.
+#   1. The separator was `[:=]` only. Ruby hash-rocket form —
+#      `'aws_access_key_id' => 'REAL'` — puts a CLOSING QUOTE between the name and
+#      the `=`, so the rule could not match it. Real MinIO credentials sat in
+#      docs/research/configs/gitlab/gitlab.rb and this rule reported "no leaks".
+#   2. The name list assumed env-var spellings. GitLab's registry block uses the
+#      bare keys `accesskey` / `secretkey`, which no alternation covered.
+regex = '''(?i)(S3_ACCESS_KEY|S3_SECRET_KEY|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|MINIO_ROOT_PASSWORD|MINIO_ACCESS_KEY|MINIO_SECRET_KEY|\baccesskey\b|\bsecretkey\b)["']?\s*(=>|[:=])\s*["']?[A-Za-z0-9+/=]{16,}["']?'''
 tags = ["s3", "aws", "minio"]
 
 [[rules]]
@@ -214,7 +221,21 @@ paths = [
   '''research/deploy-.*\.md$''',
   '''research/proxmox-.*\.md$''',
   '''research/setup-.*\.md$''',
-  '''research/configs/.*''',
+  # TASK-832: was `research/configs/.*` — UNBOUNDED, so it excluded every file
+  # type under that tree, not just prose. docs/research/configs/gitlab/gitlab.rb
+  # carries REAL MinIO credentials and this entry is why the gate reported clean.
+  # Narrowed to prose, matching every sibling entry in this block.
+  '''research/configs/.*\.md$''',
+  # ⚠️ TASK-828 §7 — TEMPORARY, PER-FILE, AND DATED. These three files contain
+  # LIVE credentials (MinIO keys, four GitLab runner auth tokens, an Azure AD
+  # client secret, a Langfuse DB password). The remediation is ROTATION, not an
+  # allowlist — this exists ONLY so the gate is not permanently red while that
+  # happens, exactly as this file's CI comment argues about history mode.
+  # REMOVE EACH LINE AS ITS FILE IS ROTATED. Unlike the unbounded
+  # `research/configs/.*` it replaces, a NEW file in this tree is now caught.
+  '''research/configs/gitlab/gitlab\.rb$''',
+  '''research/configs/gitlab-runner/config\.toml$''',
+  '''research/configs/langfuse/docker-compose\.yml$''',
   '''knowledge/.*\.md$''',
   '''packages/.*/README\.md$''',
   '''packages/database/README\.md$''',

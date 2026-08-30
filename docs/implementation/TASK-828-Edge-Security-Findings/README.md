@@ -113,6 +113,55 @@ have to allow Cloudflare's entire edge range. On the LAN path it is a single `/3
 mounting the internal CA. Needs its own ticket — it touches every service that
 stores an object.
 
+## 4c. ⚠️ P1 — `hope-stt` sends PHI audio over PLAINTEXT HTTP across the internet
+
+Found by TASK-832, 2026-08-30. **This is the live counter-example to §5's conclusion
+below, and it invalidates that reassurance for this client.**
+
+The live Deployment sets `MINIO_ENDPOINT` ← `s3.taphuynh.dev` (the public tunnel) **and
+`MINIO_SECURE: "false"`**. The MinIO SDK composes the scheme from `secure`, so it builds
+**`http://s3.taphuynh.dev` on port 80** — and the zone has `always_use_https: off`, so
+nothing upgrades it.
+
+§5 argues the `flexible` SSL mode is not "PHI in the clear" because every HOPE hostname
+is a *tunnel* route and tunnel transport is encrypted independently. **That holds only
+for clients that speak HTTPS to the tunnel.** `hope-stt` does not. Consultation audio —
+the most directly identifying artifact this platform handles — leaves the cluster
+unencrypted.
+
+**Fix:** the LAN endpoint of §4b plus `MINIO_SECURE: "true"`. Both are in TASK-832.
+
+## 7. ⚠️ P1 — Live credentials committed, and the gate was configured not to see them
+
+Found by TASK-832 while verifying the GitLab↔MinIO integration.
+
+**38 real findings across three tracked files**, every one inside
+`docs/research/configs/`:
+
+| File | Contains |
+|---|---|
+| `gitlab/gitlab.rb` | MinIO access/secret keys, **an Azure AD client secret** (L332) |
+| `gitlab-runner/config.toml` | **4 GitLab runner authentication tokens**, 10 S3 credential lines |
+| `langfuse/docker-compose.yml` | a database password |
+
+**Two independent reasons the gate reported clean**, both now fixed:
+
+1. **An unbounded path allowlist** — `research/configs/.*` excluded *every file type*
+   in that tree, sitting in a block documented as covering "documentation that
+   legitimately references rotated/example values". It was excluding live config.
+2. **The `hope-s3-credentials` regex could not match Ruby.** Its separator was `[:=]`,
+   but hash-rocket form (`'aws_access_key_id' => '…'`) puts a **closing quote between
+   the name and the `=`**. The name list also assumed env-var spellings and missed
+   GitLab's bare `accesskey` / `secretkey`.
+
+**Current state:** the regex is widened, the unbounded path is narrowed to `.md`, and a
+**temporary, per-file, dated** allowlist keeps the gate usable for exactly those three
+files. Verified: a **new** file in that tree is now caught.
+
+**Remediation is ROTATION, not the allowlist.** The Azure AD client secret is the most
+urgent — it is the same tenant used for GitLab and Rancher SSO. Each allowlist line is
+removed as its file is rotated.
+
 ## 5. P2 — Zone TLS posture
 
 `ssl: flexible` (set 2025-01-31), `always_use_https: off`, `min_tls_version: 1.0`.
@@ -160,7 +209,9 @@ node host and holds VRAM entirely outside k8s accounting.
 ## 8. Suggested order
 
 1. ~~Argo CD~~ — **CLOSED, owner-assigned** (§1).
-2. **Repoint in-cluster MinIO consumers to the LAN path** (§4b) — PHI is crossing the internet today, the fix needs no new k8s object, and it is ~248× faster.
+2. **Rotate the three files' credentials** (§7) — the Azure AD client secret first; it shares the tenant with GitLab and Rancher SSO.
+3. **Fix `hope-stt`'s plaintext PHI path** (§4c) — LAN endpoint plus `MINIO_SECURE: "true"`.
+4. **Repoint in-cluster MinIO consumers to the LAN path** (§4b) — PHI is crossing the internet today, the fix needs no new k8s object, and it is ~248× faster.
 3. **Access in front of the data-plane routes** (§4), or remove the routes that need not be public.
 4. **Fix Grafana auth + root_url** (§3).
 5. Bring the tunnel config under git (§6) — `config_src: "local"` with the config in the deploy repo.
