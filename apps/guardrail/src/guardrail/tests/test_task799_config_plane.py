@@ -478,7 +478,15 @@ def _operator_facing_files() -> list[Any]:
     from pathlib import Path
 
     app_root = Path(__file__).resolve().parents[3]
-    return [app_root / ".env.sample", app_root / "docker-compose.yml"]
+    # `.env.prod` is here because it is the file that actually regressed. It is a
+    # tracked ops reference (see the test below), so the honesty checks that
+    # cover `.env.sample` have to cover it too — that, not its absence, is the
+    # property worth pinning.
+    return [
+        app_root / ".env.sample",
+        app_root / "docker-compose.yml",
+        app_root / ".env.prod",
+    ]
 
 
 def test_no_operator_facing_file_sets_a_phantom_engine_var() -> None:
@@ -492,13 +500,29 @@ def test_no_operator_facing_file_sets_a_phantom_engine_var() -> None:
                 assert prefix not in stripped, f"{path.name} sets {prefix}"
 
 
-def test_the_prod_reference_that_described_the_phantom_plane_is_gone() -> None:
+def test_the_prod_reference_exists_and_does_not_resurrect_the_phantom_plane() -> None:
+    """The prod reference must exist and must not lie — and those are two claims.
+
+    This replaces an `assert not (...).exists()`. That assertion was a PROXY:
+    the file TASK-799 deleted was entirely the engine plane TASK-735/736 had
+    already removed, so "no file" and "no lie" were the same thing at the time.
+    They are not the same thing in general, and they came apart the moment the
+    file was rewritten as an honest one.
+
+    Absence is the wrong invariant to pin, because `apps/*/.env.prod` is a
+    governed artifact rather than an accident: `.gitignore` un-ignores it
+    explicitly, `.gitleaks.toml` sanctions it as a committed template, and
+    `scripts/env-sync.mts` (`READER_CHECKED_FILES`) gates all seven of them so a
+    key with no reader fails `pnpm env:sync --check`. Nothing LOADS it —
+    production is configured from host env only — but plenty CONSUMES it.
+
+    So honesty is what gets pinned: `_operator_facing_files()` now includes
+    `.env.prod`, aiming the two checks above at it.
+    """
     from pathlib import Path
 
     app_root = Path(__file__).resolve().parents[3]
-    # Every line of it was the deleted engine plane. Production reads host env
-    # only; a committed prod reference that lies is worse than none.
-    assert not (app_root / ".env.prod").exists()
+    assert (app_root / ".env.prod").exists()
 
 
 def test_no_operator_facing_file_declares_a_var_with_no_reader() -> None:
