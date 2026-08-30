@@ -25,8 +25,6 @@ export interface HarnessPolicy {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  safetyProvider: string;
-  safetyModel: string;
   textProvider: string | null;
   textModel: string | null;
   maxRegen: number;
@@ -52,8 +50,6 @@ export interface UpdateHarnessPolicyRequest {
   safetyEnabled?: boolean;
   phiEnabled?: boolean;
   phiFailClosed?: boolean;
-  safetyProvider?: string;
-  safetyModel?: string;
   textProvider?: string | null;
   textModel?: string | null;
   maxRegen?: number;

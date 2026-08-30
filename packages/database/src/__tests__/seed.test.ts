@@ -2888,7 +2888,7 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
       version: 1,
       textProvider: null,
       textModel: null,
-      safetyModel: 'granite-guardian-4.1-8b',
+      maxRegen: 5,
     });
     const result = await seedHarnessPolicy(client as never);
 
@@ -2904,8 +2904,8 @@ describe('Phase 2 — seedHarnessPolicy (TEXT default + WORM)', () => {
     const change = changes[0].data;
     expect((change.beforeJson as Record<string, unknown>).textModel).toBeNull();
     expect((change.afterJson as Record<string, unknown>).textModel).toBe('gemma-4-e2b-it-qat');
-    // The audit snapshot preserves untouched knobs (granite safety model).
-    expect((change.afterJson as Record<string, unknown>).safetyModel).toBe('granite-guardian-4.1-8b');
+    // The audit snapshot preserves untouched knobs (the regen budget).
+    expect((change.afterJson as Record<string, unknown>).maxRegen).toBe(5);
   });
 });
 

@@ -377,8 +377,6 @@ _POLICY_JSON = {
     "safetyEnabled": False,
     "phiEnabled": False,
     "phiFailClosed": False,
-    "safetyProvider": "ollama",
-    "safetyModel": "granite-guardian-x",
     "textProvider": "azure",
     "textModel": "gpt-4o",
     "maxRegen": 4,
