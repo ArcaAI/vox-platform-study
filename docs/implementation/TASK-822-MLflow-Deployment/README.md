@@ -498,6 +498,56 @@ silent skipping is the trap the map exists to prevent — worth a one-line comme
 | **`--app-name basic-auth`** (S-4) | Not enabled: it creates a default admin at first boot and needs `MLFLOW_FLASK_SERVER_SECRET_KEY` + a rotation step. With no Ingress there is no unauthenticated exposure to defend, and the ticket is explicit that basic-auth is "a second layer, never the only one". Enable it together with the Ingress decision, not before. |
 | **Webhooks / Phase 3–4** | Out of this lane's scope. Note for whoever picks it up: `MLFLOW_WEBHOOK_ALLOW_PRIVATE_IPS` is off by default, so an in-cluster CI target fails silently (pitfall #7). |
 
+### 9.4b RULING — no Ingress. ClusterIP + port-forward is the fast win. (owner asked 2026-08-30)
+
+**Confirmed after checking what the cluster actually has.** There is no oauth2-proxy,
+and the correct response is not to substitute a different HTTP-exposed auth — it is
+to not expose MLflow over HTTP at all.
+
+**Verified on `hope-v2-deployment@main`:** no cert-manager, no `ClusterIssuer`, **no
+`tls:` block on any Ingress**, and **no Traefik `Middleware` CRD used anywhere**.
+Grafana is the only Ingress in the repo and it is unauthenticated plain HTTP on
+`grafana.local`.
+
+That single fact disqualifies every HTTP-exposed option, because **without TLS,
+every one of them puts credentials in cleartext on the wire** in front of a registry
+that can hold evaluation datasets built from real consultations (S-9):
+
+| Option | Why not, today |
+|---|---|
+| Traefik `BasicAuth` middleware | One CRD, no new Deployment — genuinely cheap. But plain HTTP ⇒ the credential is sent in cleartext on every request. Cheap and wrong. |
+| MLflow `--app-name basic-auth` | Same cleartext problem, plus a second auth system to operate, a default admin to rotate at first boot, and an RBAC model with **no explicit-deny override**. MLflow's own docs say it is "a second layer, never the only one". |
+| NodePort (the `hope-api` pattern) | **Strictly worse than an Ingress** — `hope-api` authenticates every request; MLflow would authenticate none. |
+| oauth2-proxy + cert-manager | The correct end state, and **two new platform components**. On a cluster with no TLS anywhere, this is a project, not a configuration step. |
+
+**Ruling: `type: ClusterIP`, no Ingress, no NodePort. Access is**
+
+```bash
+kubectl -n hope-v2-dev port-forward svc/hope-mlflow 5000:5000
+```
+
+**Why this is the fast win and not a cop-out.** It costs zero new components, adds
+zero attack surface, and needs no cert-manager. It is also *strictly more secure
+than the "proper" oauth2-proxy path would be on day one*, because that path is only
+meaningful once TLS terminates in front of it. And it fits the users: MLflow is
+**platform-admin-only and never tenant-facing** (R-4), so its entire population is a
+handful of people who already hold cluster credentials. `port-forward` authenticates
+them with the credential they already have — the cluster's own RBAC — which is a
+stronger control than any basic-auth password would be.
+
+**The trigger to revisit** is not "someone finds port-forward annoying". It is either
+of: a non-cluster-admin needs access, or MLflow starts holding something a
+port-forward user should not see. At that point the order is **cert-manager first,
+then oauth2-proxy forward-auth, then the Ingress** — and enabling
+`--app-name basic-auth` alongside, as the second layer S-4 describes. Doing them in
+any other order ships an exposure.
+
+**Pre-existing finding, NOT this ticket's to fix but worth naming:** Grafana's
+Ingress is unauthenticated plain HTTP. Grafana holds no PHI, but it does expose
+per-tenant metric labels and infrastructure topology, and it is the precedent a
+future service will copy. Whoever adopts cert-manager should fix Grafana in the same
+change.
+
 ### 9.5 NetworkPolicy draft (do not apply until the two blockers are cleared)
 
 ```yaml

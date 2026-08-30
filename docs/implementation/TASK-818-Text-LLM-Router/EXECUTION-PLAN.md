@@ -226,6 +226,10 @@ Never pre-emptively raise the whole fleet.
 > `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2`, branch **`dev-2.2`**.
 > Working directory: **[worktree path or "main tree"]**.
 >
+> **Before anything else**, run `git merge-base --is-ancestor origin/dev-2.2 HEAD && echo "base OK"`.
+> If it does not print `base OK`, your worktree is on the wrong base — **stop and report it**
+> rather than working (§6 step 0; this has already happened twice).
+>
 > **Read first:** `docs/implementation/TASK-818-Text-LLM-Router/EXECUTION-PLAN.md` (this plan),
 > `docs/implementation/[TICKET]/README.md`, and rules `[NN, NN]`.
 > You inherit **none** of the orchestrator's context — the brief and those files are your world.
