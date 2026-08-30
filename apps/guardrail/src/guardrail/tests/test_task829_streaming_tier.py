@@ -116,13 +116,13 @@ def test_no_pattern_phrase_is_spelled_in_python() -> None:
 
 
 def _policy(**over: float) -> SessionRiskPolicy:
-    base: dict[str, float] = dict(
-        noise_floor=0.2,
-        excess_risk_threshold=1.0,
-        consecutive_limit=2,
-        mean_score_threshold=0.5,
-        min_windows_for_mean=4,
-    )
+    base: dict[str, float] = {
+        "noise_floor": 0.2,
+        "excess_risk_threshold": 1.0,
+        "consecutive_limit": 2,
+        "mean_score_threshold": 0.5,
+        "min_windows_for_mean": 4,
+    }
     base.update(over)
     return SessionRiskPolicy(**base)  # type: ignore[arg-type]
 

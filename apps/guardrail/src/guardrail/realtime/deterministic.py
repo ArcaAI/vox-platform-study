@@ -58,6 +58,8 @@ class DeterministicRuleSet:
 
     root: _Node
     rule_ids: tuple[str, ...]
+    #: Longest declared phrase — sizes the resume tail (see :class:`StreamMatcher`).
+    max_phrase_len: int = 1
 
     @classmethod
     def from_declaration(cls, declaration: Sequence[Any] | None) -> DeterministicRuleSet:
@@ -79,6 +81,7 @@ class DeterministicRuleSet:
 
         root = _Node()
         ids: list[str] = []
+        longest = 1
         for entry in entries:
             rule_id = str(entry.get("id") or "").strip()
             phrase = str(entry.get("phrase") or "").strip().casefold()
@@ -92,6 +95,7 @@ class DeterministicRuleSet:
             for char in phrase:
                 node = node.children.setdefault(char, _Node())
             node.outputs.append((rule_id, len(phrase)))
+            longest = max(longest, len(phrase))
             ids.append(rule_id)
 
         # Breadth-first failure links: the classic Aho-Corasick construction.
@@ -113,7 +117,11 @@ class DeterministicRuleSet:
                 child.outputs.extend(child.fail.outputs)
                 queue.append(child)
 
-        return cls(root=root, rule_ids=tuple(sorted(set(ids))))
+        return cls(
+            root=root,
+            rule_ids=tuple(sorted(set(ids))),
+            max_phrase_len=max(longest, 1),
+        )
 
 
 class StreamMatcher:
@@ -123,13 +131,40 @@ class StreamMatcher:
     result of ``feed(a); feed(b)`` is byte-for-byte the result of ``feed(a + b)``.
     """
 
-    __slots__ = ("_rules", "_node", "_offset", "_matches")
+    __slots__ = ("_rules", "_node", "_offset", "_matches", "_tail", "_tail_len")
 
-    def __init__(self, rules: DeterministicRuleSet) -> None:
+    def __init__(
+        self,
+        rules: DeterministicRuleSet,
+        *,
+        resume_tail: str = "",
+        start_offset: int = 0,
+    ) -> None:
         self._rules = rules
         self._node = rules.root
         self._offset = 0
         self._matches: list[RuleMatch] = []
+        self._tail_len = rules.max_phrase_len - 1 if rules.max_phrase_len > 1 else 0
+        self._tail = ""
+        if resume_tail:
+            # RESUMING ACROSS PROCESSES. Automaton state is fully determined by
+            # the last (longest_phrase - 1) characters, so replaying that tail
+            # reconstructs it exactly. Matches completed inside the tail were
+            # already reported by whichever replica saw them, so they are
+            # discarded here rather than re-emitted.
+            #
+            # Without this, chunking invariance would hold only within one
+            # replica's memory — which means it would hold by luck of routing,
+            # and a guardrail that is invariant only when the load balancer
+            # cooperates is not invariant.
+            self.feed(resume_tail)
+            self._matches.clear()
+        self._offset = start_offset
+
+    @property
+    def tail(self) -> str:
+        """The state-bearing suffix. Persist this to resume on another replica."""
+        return self._tail
 
     @property
     def consumed_chars(self) -> int:
@@ -162,6 +197,8 @@ class StreamMatcher:
                     node = node.fail or root
                 self._node = node.children.get(step, root)
             self._offset += 1
+            if self._tail_len:
+                self._tail = (self._tail + char)[-self._tail_len :]
             for rule_id, length in self._node.outputs:
                 match = RuleMatch(
                     rule_id=rule_id, start=self._offset - length, end=self._offset

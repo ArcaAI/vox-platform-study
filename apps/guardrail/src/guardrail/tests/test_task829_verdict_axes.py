@@ -33,14 +33,14 @@ from guardrail.realtime.verdict import (
 
 
 def _scope(**over: object) -> VerdictScope:
-    base = dict(
-        content_hash="sha256:abc",
-        policy_version=7,
-        classifier_version="clf-1",
-        taxonomy_version="clinical-v3",
-        threshold_set="default",
-        tenant_id="tenant-a",
-    )
+    base = {
+        "content_hash": "sha256:abc",
+        "policy_version": 7,
+        "classifier_version": "clf-1",
+        "taxonomy_version": "clinical-v3",
+        "threshold_set": "default",
+        "tenant_id": "tenant-a",
+    }
     base.update(over)
     return VerdictScope(**base)  # type: ignore[arg-type]
 
@@ -119,19 +119,23 @@ def test_injection_key_differs_per_assembly_and_per_capability_set() -> None:
 
 
 def _verdict(**over: object) -> TranscriptSegmentVerdict:
-    base: dict[str, object] = dict(
-        segment_id="0198-seg",
-        scope=_scope(),
-        content_harm=ContentHarm(categories=(), confidence=0.0, classifier_version="clf-1"),
-        injection_risk=InjectionRisk(
+    base: dict[str, object] = {
+        "segment_id": "0198-seg",
+        "scope": _scope(),
+        "content_harm": ContentHarm(
+            categories=(), confidence=0.0, classifier_version="clf-1"
+        ),
+        "injection_risk": InjectionRisk(
             decision="PASS",
             assembly_template_id="summarize.partial@3",
             capability_set_id="readonly-text",
             confidence=0.0,
         ),
-        clinical=(),
-        window=WindowAssertion(inspected_chars=10, consumer_window_chars=0, complete=False),
-    )
+        "clinical": (),
+        "window": WindowAssertion(
+            inspected_chars=10, consumer_window_chars=0, complete=False
+        ),
+    }
     base.update(over)
     return TranscriptSegmentVerdict(**base)  # type: ignore[arg-type]
 
