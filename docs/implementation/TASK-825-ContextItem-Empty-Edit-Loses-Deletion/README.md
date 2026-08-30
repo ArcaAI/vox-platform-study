@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **`Review`** 2026-08-30 — committed on `lane-825-contextitem`, NOT merged |
+| **Status** | **`Completed`** 2026-08-30 — merged to `dev-2.2`. Three layers, three different questions; two corrections to the brief in §7. |
 | **Type** | `bugfix` |
 | **Severity** | **High — silent loss of clinical content, plus a false immutable history row** |
 | **Found by** | TASK-820 lane, 2026-08-30 |
@@ -196,3 +196,51 @@ shifted line numbers — the `eslint-disable` count is 8 on `HEAD` and 8 now.
 |---|---|
 | 2026-08-30 | Opened from the TASK-820 lane's probe. Orchestrator independently confirmed the identical guard at `ContextItemRepository.encryption.ts:94`. |
 | 2026-08-30 | Reproduced independently at the Prisma-payload level; three brief corrections recorded (§7). Fixed across three layers — refuse (service), clear (repository), skip (harness). Each fix reverted individually to prove its test catches the bug. |
+
+## 8. Three layers, and why the repository alone was not enough
+
+**The orchestrator's brief was wrong about WHY TASK-820's fix is not a template.** It said blast
+radius. The real reason is a **domain difference**:
+
+| | `DocumentSection` | `ContextItem` |
+|---|---|---|
+| Deletion path | none — emptying **is** the deletion | first-class `DELETE` → soft delete |
+| Is empty legal? | yes (TASK-811 §8b) | **no** — `addContext` already throws *"Content is required for non-media types"*, and `ContextItemEntity.validate()` agrees |
+
+Clearing here would persist a row **the create path would have refused to create**. That
+create/update asymmetry IS the bug.
+
+| Layer | Question it answers |
+|---|---|
+| `ContextService.updateContext` | refuses an empty body on a `requiresContent` item, with the create path's message verbatim, BEFORE `getLatestVersionNumber`. Media types still clear |
+| `ContextItemRepository.encryptContentIntoEntity` | `''` clears both columns as a pair; `undefined`/`null` still no-op. Needed because there are **14 production call sites** and the harness never goes through `updateContext` |
+| `HarnessInternalService.persistDraft` | skips an empty adoption |
+
+**The harness guard is the one that matters most, and the brief would have caused a regression
+without it.** `HarnessDraftRequest.content` is `@IsString()` with no `@IsNotEmpty()`, and
+`stripSegmentCitationMarkers` can reduce a marker-only note to `''`. A repository-only clear would
+have taken that lane from "silently keeps the old note" to **"blanks a clinician-visible clinical
+note"**. Nobody intended that deletion, so it skips and logs.
+
+The DTO was the wrong seam: `@IsNotEmpty()` covers only the HTTP lane, cannot tell media from
+non-media, and leaves the repository contract broken for every other caller.
+
+## 9. Two corrections to the brief
+
+1. **The `ContextItemVersion` row does NOT lie.** The snapshot records the new (empty) content
+   correctly; it is the ITEM row that keeps the old text. So "a repository-only fix leaves a lying
+   version row" was not the reason to go wider.
+2. **The Qdrant marker is never written at all.** `markQdrantNeedsSync()` assigns
+   `this._qdrantSynced = false` and THEN calls `setProperty` with the same value, so `Object.is`
+   records nothing (`ContextItemEntity.ts:397-398`; orchestrator-verified). No stale vector — nothing
+   reads it — but the API response contradicts the row. Filed separately.
+
+Each of the three fixes was **reverted individually** to prove it load-bearing, and every RED was the
+bug COMMITTING, not a stub rejecting. Tests use the real service/repository/encryptor/mapper with
+only the Prisma delegate doubled — the sibling suite mocks `encryptContentIntoEntity` and could never
+have caught this.
+
+## 10. Also found, filed separately
+`UpdateContextRequest.content` has **no `@MaxLength`** while `AddContextRequest.content` carries the
+200k cap — the same create/update asymmetry, bypassing a bound that exists to limit the harness
+prompt-injection surface.
