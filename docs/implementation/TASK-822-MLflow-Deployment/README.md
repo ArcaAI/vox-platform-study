@@ -498,7 +498,30 @@ silent skipping is the trap the map exists to prevent — worth a one-line comme
 | **`--app-name basic-auth`** (S-4) | Not enabled: it creates a default admin at first boot and needs `MLFLOW_FLASK_SERVER_SECRET_KEY` + a rotation step. With no Ingress there is no unauthenticated exposure to defend, and the ticket is explicit that basic-auth is "a second layer, never the only one". Enable it together with the Ingress decision, not before. |
 | **Webhooks / Phase 3–4** | Out of this lane's scope. Note for whoever picks it up: `MLFLOW_WEBHOOK_ALLOW_PRIVATE_IPS` is off by default, so an in-cluster CI target fails silently (pitfall #7). |
 
-### 9.4b RULING — no Ingress. ClusterIP + port-forward is the fast win. (owner asked 2026-08-30)
+### 9.4b ~~RULING — no Ingress~~ **SUPERSEDED 2026-08-30. DO NOT ACT ON THIS SECTION.**
+
+> ## ⛔ This ruling was made on incomplete information and is WRONG.
+>
+> **Owner correction, 2026-08-30:** MLflow is exposed exactly like every other internal
+> service — **behind Cloudflare, on its own domain, authenticated with Azure Entra OAuth**,
+> the same as GitLab, Argo CD and Rancher.
+>
+> **How I got it wrong, recorded so the mistake is not repeated:** I reviewed the Kustomize
+> manifests in `hope-v2-deployment` and nothing else. Finding no cert-manager, no `tls:`, no
+> oauth2-proxy and no Traefik middleware, I concluded no safe exposure existed. **The edge is
+> not in that repo** — Cloudflare and Entra are configured outside git, so the manifests were
+> silently a partial view. The domain pattern was visible all along (`git.`, `grafana.`,
+> `rancher.`, `registry.`, `minio.` — all `*.taphuynh.dev`) and I read it as incidental.
+>
+> The reasoning below is retained ONLY as a record of the error. Its central premise — "no
+> TLS, therefore every exposed option leaks credentials in cleartext" — **is false**: TLS
+> terminates at Cloudflare. The correct recipe is in §9.4c.
+>
+> *(One line from it does survive and is worth keeping: whatever the edge does, a
+> Cloudflare **SSL/TLS mode of "Flexible" would still mean plaintext Cloudflare→origin**,
+> which on a PHI platform is a finding in its own right. That is being verified.)*
+
+#### Superseded reasoning (historical record only)
 
 **Confirmed after checking what the cluster actually has.** There is no oauth2-proxy,
 and the correct response is not to substitute a different HTTP-exposed auth — it is
