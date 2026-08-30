@@ -225,6 +225,12 @@ describe('modelHasSoftDelete', () => {
       // consultation's document. Emptying a section is a CONTENT update under
       // the section state machine, never a row delete.
       'DocumentSection',
+      // TASK-816 D-24 — the two POLICY change logs, the same identity-only WORM
+      // shape as WorkflowAssignmentChange above (no `resourceStatus` column;
+      // rows immutable, UPDATE/DELETE REVOKEd by their migrations). They had
+      // been omitted since they were introduced.
+      'HarnessPolicyChange',
+      'PipelinePolicyChange',
     ];
 
     expected.forEach((model) => {
