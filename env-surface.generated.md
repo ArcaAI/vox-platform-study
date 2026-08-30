@@ -13,10 +13,10 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 135 |
+| Declared keys (distinct) | 136 |
 | … of which required (`failMode: closed`) | 29 |
 | … of which secret | 28 |
-| … tier `env` | 102 |
+| … tier `env` | 103 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 24 |
 | Python declared fields | 352 |
@@ -78,6 +78,7 @@ disagree with those declarations.
 | `METRICS_COLLECT_INTERVAL` | `env` | no | `15000` | `apps/api` | Interval of the simplified monitoring collector. |
 | `METRICS_PREFIX` | `env` | no | — | `apps/api` | Prefix for Prometheus metric names; defaults to the sanitized service name. |
 | `MINIO_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 access key for platform object storage. NOTE: the per-tenant / platform-default STORAGE CONFIG (endpoint, region, path style, prefix) is a separate concern owned by `TenantStorageConfig`; only the credential lives here, referenced by `credentialsRef`. |
+| `MINIO_CERT_CHECK` | `env` | no | `false` | `apps/api` | Verify the S3/MinIO endpoint TLS certificate. Defaults to FALSE: MinIO keeps HTTPS, but the platform has no CA to validate its certificate against and authenticates with a service-account key pair instead. Set to `true` once a trusted certificate chain exists. |
 | `MINIO_ENDPOINT` | `env` | no | — | `apps/api` | Deploy-time fallback used ONLY before the SYSTEM storage row exists (first boot / pre-seed). Scheduled for removal one release after the SYSTEM row ships; a WARN is logged whenever it is the tier that supplied the value. |
 | `MINIO_REGION` | `env` | no | `us-east-1` | `apps/api` | Region passed to the S3-compatible client. |
 | `MINIO_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 secret key for platform object storage. |
