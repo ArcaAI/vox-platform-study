@@ -1,6 +1,6 @@
 {
   "readme": [
-    "TASK-693 §4.1 — the SINGLE source of truth for the buildable service inventory.",
+    "TASK-693 \u00a74.1 \u2014 the SINGLE source of truth for the buildable service inventory.",
     "",
     "Before this file, the same list was hand-maintained in five places: the build-*",
     "job set in .gitlab/ci/build.yml, the SERVICES= line in .gitlab/ci/promote.sh,",
@@ -10,7 +10,7 @@
     "",
     "tests/contracts/services-manifest.contract.test.ts enforces agreement between",
     "this file, build.yml, promote.sh and version-grammar.ts. It fails on drift in",
-    "EITHER direction — an entry here with no build job, and a build job with no",
+    "EITHER direction \u2014 an entry here with no build job, and a build job with no",
     "entry here.",
     "",
     "JSON has no comments, which is why this key exists. Consumers read `.services`.",
@@ -22,7 +22,7 @@
     "  tagPrefixes   Release-tag prefixes that build this image, EXCLUDING 'ALL'.",
     "                'ALL' is implicit everywhere (the platform train builds all),",
     "                so listing it is rejected by the contract test. An empty array",
-    "                means ALL-only — the image has no release tag family of its own.",
+    "                means ALL-only \u2014 the image has no release tag family of its own.",
     "  dockerfile    Repo-relative path.",
     "  context       Docker build context, repo-relative.",
     "  target        --target stage, or null for the final stage.",
@@ -35,29 +35,57 @@
     "                A manifest that lies about the present is worse than one silent",
     "                about the future. P4 edits this field; nothing else reads intent.",
     "  paths         Change-filter globs. Ported from the .rules-* anchors in",
-    "                .gitlab/ci/rules.yml, plus two corrections noted per entry."
+    "                .gitlab/ci/rules.yml, plus two corrections noted per entry.",
+    "",
+    "lmstudio (TASK-824) is deliberately tagPrefixes: [] and promotable: false.",
+    "Its build job reacts only to ALL-, which this contract treats as implicit and",
+    "forbids listing explicitly. A dedicated LMS prefix is an OPEN OWNER DECISION",
+    "(TASK-824 R-6) and would also require editing SERVICE_TAG_PREFIXES, so it is",
+    "deferred rather than guessed. Promotion is by digest against a tag prefix this",
+    "service does not yet have, and its deployment is parked at replicas: 0 with the",
+    "Service held back behind a cutover. Flip promotable together with R-6 \u2014 not",
+    "before, or promote.sh will skip it with a warning nobody reads, which is the",
+    "exact silent partial deployment this file exists to prevent."
   ],
   "services": [
     {
-      "name": "hope-python-base",
-      "tagPrefixes": ["GUARD", "HARNESS", "NLP", "TEXT", "STT", "TTS"],
-      "dockerfile": "infrastructure/docker/python-base/Dockerfile",
-      "context": "infrastructure/docker/python-base/",
+      "name": "admin-console",
+      "tagPrefixes": [
+        "ADMIN"
+      ],
+      "dockerfile": "apps/admin-console/Dockerfile",
+      "context": ".",
       "target": null,
       "pythonBase": false,
-      "promotable": false,
-      "platforms": ["linux/amd64"],
-      "paths": ["infrastructure/docker/python-base/**"]
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "buildArgs": {
+        "NEXT_PUBLIC_API_HOST": "env:NEXT_PUBLIC_API_HOST"
+      },
+      "paths": [
+        "apps/admin-console/**",
+        "packages/ui/**",
+        "packages/room/**",
+        "packages/stt/**",
+        "packages/agentic-sdk-v2/**",
+        "pnpm-lock.yaml"
+      ]
     },
     {
       "name": "api",
-      "tagPrefixes": ["API"],
+      "tagPrefixes": [
+        "API"
+      ],
       "dockerfile": "apps/api/Dockerfile",
       "context": ".",
       "target": null,
       "pythonBase": false,
       "promotable": true,
-      "platforms": ["linux/amd64"],
+      "platforms": [
+        "linux/amd64"
+      ],
       "paths": [
         "apps/api/**",
         "packages/database/**",
@@ -76,34 +104,21 @@
       ]
     },
     {
-      "name": "admin-console",
-      "tagPrefixes": ["ADMIN"],
-      "dockerfile": "apps/admin-console/Dockerfile",
-      "context": ".",
-      "target": null,
-      "pythonBase": false,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "buildArgs": { "NEXT_PUBLIC_API_HOST": "env:NEXT_PUBLIC_API_HOST" },
-      "paths": [
-        "apps/admin-console/**",
-        "packages/ui/**",
-        "packages/room/**",
-        "packages/stt/**",
-        "packages/agentic-sdk-v2/**",
-        "pnpm-lock.yaml"
-      ]
-    },
-    {
       "name": "compat-playground",
-      "tagPrefixes": ["COMPAT"],
+      "tagPrefixes": [
+        "COMPAT"
+      ],
       "dockerfile": "apps/compat-playground/Dockerfile",
       "context": ".",
       "target": null,
       "pythonBase": false,
       "promotable": true,
-      "platforms": ["linux/amd64"],
-      "buildArgs": { "VITE_API_BASE_URL": "env:NEXT_PUBLIC_API_HOST" },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "buildArgs": {
+        "VITE_API_BASE_URL": "env:NEXT_PUBLIC_API_HOST"
+      },
       "paths": [
         "apps/compat-playground/**",
         "packages/ui/**",
@@ -117,94 +132,6 @@
       ]
     },
     {
-      "name": "text",
-      "tagPrefixes": ["TEXT"],
-      "dockerfile": "apps/text/Dockerfile",
-      "context": ".",
-      "target": null,
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/text/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "guardrail",
-      "tagPrefixes": ["GUARD"],
-      "dockerfile": "apps/guardrail/Dockerfile",
-      "context": ".",
-      "target": "production",
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/guardrail/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "nlp",
-      "tagPrefixes": ["NLP"],
-      "dockerfile": "apps/nlp/Dockerfile",
-      "context": ".",
-      "target": null,
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/nlp/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "tts",
-      "tagPrefixes": ["TTS"],
-      "dockerfile": "apps/tts/Dockerfile",
-      "context": ".",
-      "target": "production",
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/tts/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "harness",
-      "tagPrefixes": ["HARNESS"],
-      "dockerfile": "apps/harness/Dockerfile",
-      "context": ".",
-      "target": "production",
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/harness/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "harness-worker",
-      "tagPrefixes": ["HARNESS"],
-      "dockerfile": "apps/harness/Dockerfile",
-      "context": ".",
-      "target": "worker",
-      "pythonBase": true,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/harness/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "stt-ml-runtime",
-      "tagPrefixes": ["STT"],
-      "dockerfile": "apps/stt/docker/Dockerfile",
-      "context": ".",
-      "target": "ml-runtime",
-      "pythonBase": false,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/stt/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
-      "name": "stt-worker",
-      "tagPrefixes": ["STT"],
-      "dockerfile": "apps/stt/docker/Dockerfile",
-      "context": ".",
-      "target": "worker",
-      "pythonBase": false,
-      "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["apps/stt/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
-    },
-    {
       "name": "database",
       "tagPrefixes": [],
       "dockerfile": "packages/database/Dockerfile",
@@ -212,8 +139,134 @@
       "target": null,
       "pythonBase": false,
       "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["packages/database/**", "pnpm-lock.yaml"]
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "packages/database/**",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "name": "guardrail",
+      "tagPrefixes": [
+        "GUARD"
+      ],
+      "dockerfile": "apps/guardrail/Dockerfile",
+      "context": ".",
+      "target": "production",
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/guardrail/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "harness",
+      "tagPrefixes": [
+        "HARNESS"
+      ],
+      "dockerfile": "apps/harness/Dockerfile",
+      "context": ".",
+      "target": "production",
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/harness/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "harness-worker",
+      "tagPrefixes": [
+        "HARNESS"
+      ],
+      "dockerfile": "apps/harness/Dockerfile",
+      "context": ".",
+      "target": "worker",
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/harness/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "hope-python-base",
+      "tagPrefixes": [
+        "GUARD",
+        "HARNESS",
+        "NLP",
+        "TEXT",
+        "STT",
+        "TTS"
+      ],
+      "dockerfile": "infrastructure/docker/python-base/Dockerfile",
+      "context": "infrastructure/docker/python-base/",
+      "target": null,
+      "pythonBase": false,
+      "promotable": false,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "infrastructure/docker/python-base/**"
+      ]
+    },
+    {
+      "name": "lmstudio",
+      "tagPrefixes": [],
+      "dockerfile": "infrastructure/docker/lmstudio/Dockerfile",
+      "context": "infrastructure/docker/lmstudio/",
+      "target": null,
+      "pythonBase": false,
+      "promotable": false,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "infrastructure/docker/lmstudio/**"
+      ]
+    },
+    {
+      "name": "nlp",
+      "tagPrefixes": [
+        "NLP"
+      ],
+      "dockerfile": "apps/nlp/Dockerfile",
+      "context": ".",
+      "target": null,
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/nlp/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
     },
     {
       "name": "qdrant-init",
@@ -223,8 +276,96 @@
       "target": null,
       "pythonBase": false,
       "promotable": true,
-      "platforms": ["linux/amd64"],
-      "paths": ["infrastructure/docker/qdrant-init/**"]
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "infrastructure/docker/qdrant-init/**"
+      ]
+    },
+    {
+      "name": "stt-ml-runtime",
+      "tagPrefixes": [
+        "STT"
+      ],
+      "dockerfile": "apps/stt/docker/Dockerfile",
+      "context": ".",
+      "target": "ml-runtime",
+      "pythonBase": false,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/stt/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "stt-worker",
+      "tagPrefixes": [
+        "STT"
+      ],
+      "dockerfile": "apps/stt/docker/Dockerfile",
+      "context": ".",
+      "target": "worker",
+      "pythonBase": false,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/stt/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "text",
+      "tagPrefixes": [
+        "TEXT"
+      ],
+      "dockerfile": "apps/text/Dockerfile",
+      "context": ".",
+      "target": null,
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/text/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
+      "name": "tts",
+      "tagPrefixes": [
+        "TTS"
+      ],
+      "dockerfile": "apps/tts/Dockerfile",
+      "context": ".",
+      "target": "production",
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "apps/tts/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
     }
   ]
 }
