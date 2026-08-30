@@ -527,9 +527,71 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 10. Short `terminationGracePeriodSeconds` → dropped generations on every roll.
 11. Assuming hot model swap exists.
 
+## 12A. Implementation Summary — deployability pass (2026-08-30)
+
+This pass did not change what vLLM *is*; it changed what it *depends on*, so that
+the manifest can actually be applied. Three changes and one cancellation.
+
+| Change | Before | After |
+|---|---|---|
+| **Transport to MinIO** | `https://10.10.1.102:9000` + mounted private CA | `https://10.10.1.102:9000` — **scheme unchanged**, CA removed, certificate verification turned OFF |
+| **Credential** | `hope-secrets.MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` — the platform-wide read/**write** pair that can also reach the PHI buckets | `hope-models-reader` Secret (`accessKeyId` / `secretAccessKey`) — a MinIO **service account** narrowed by the committed `hope-models-reader` policy: read-only, `hope-models` only |
+| **Endpoint's home** | already a ConfigMap key here; the rest of the platform still reads it from `hope-secrets` | unchanged here, and the runbook records why an endpoint is `env`-tier config and not a secret |
+| **`ROOT_CONFIG_REQUEST R-1`** (create ConfigMap `arcaai-internal-ca`) | BLOCKING | **CANCELLED by owner decision** — recorded struck-through in `deployment/README.md` §9.1, never silently dropped |
+
+**Net effect on the operator's job:** `vllm.yaml` previously required an object
+that did not exist and could not be obtained from the cluster (a private CA PEM
+that had to be fetched off the MinIO host). It now requires exactly **one**
+hand-created object, the `hope-models-reader` Secret — and that same Secret is
+what TASK-824's LM Studio sync Job already uses, so one service account serves
+both serving tiers.
+
+**Owner directive recorded in full:** *no CA at all*; MinIO authentication is a
+service account and nothing else; **PHI hardening is explicitly de-prioritised
+for now**. Crucially, **"no CA" settles AUTHENTICATION, not TRANSPORT** — the
+scheme stays `https://`, because MinIO serves TLS on :9000 and one port serves one
+scheme, so plain HTTP would have forced pgBackRest, GitLab, Loki, Tempo,
+Prometheus and both cloudflared origins to be re-pointed as collateral. What
+replaces the CA is **certificate verification turned off**, explicitly, with a
+comment where it happens.
+
+What that relaxes: an unverified TLS connection encrypts the wire but does **not**
+authenticate the peer — it defeats passive capture on `10.10.1.0/24`, not an
+on-path attacker. What it does not relax: the egress NetworkPolicy still confines
+the traffic to `10.10.1.102/32`, and the endpoint allow-list (V-2),
+`VLLM_SERVER_DEV_MODE` prohibition (V-1) and log-level controls (V-4) are
+untouched.
+
+**⚠️ OPEN-823-TLS — vLLM cannot currently be told to skip verification, and this
+is measured, not suspected.** The weight-load path uses two S3 clients: **boto3**
+(config, tokenizer, shard listing) and the Run:ai C++ SDK (weights). Only the
+second reads `RUNAI_STREAMER_*`; **boto3 has no environment variable that disables
+verification** — `verify=False` is a client-construction argument and vLLM builds
+the client itself. Phase 2's lab ran exactly this shape as variant 2 (https +
+private CA + no `AWS_CA_BUNDLE`) and it **failed** `CERTIFICATE_VERIFY_FAILED` on
+the first LIST (`deployment/README.md` §10).
+
+So vLLM is expected to fail at startup under the no-CA directive unless (a) the CA
+is reinstated for vLLM only, (b) MinIO presents a publicly-trusted certificate, or
+(c) vLLM's loader is patched upstream. All three are owner decisions. **Not
+blocking today** — the workload is at `replicas: 0` for the unrelated hardware
+reason in §2A — but blocking the moment anyone scales it to 1. The manifest
+carries `RUNAI_STREAMER_S3_VERIFY_SSL=0` for the C++ half, clearly marked as an
+**unverified** variable name (no vLLM image was available to this lane; an
+unrecognised env var is inert, so it is safe to carry but must not be recorded as
+"verification disabled" until a real pod proves it).
+
+**Deployment runbook:** `docs/operations/inference/serving-tier-cluster-deployment.md`
+— prerequisites, the objects an operator must create by hand, the ordered
+LM Studio Service cutover, verification, rollback, and the known-unprovable list.
+
+**`replicas: 0` is unchanged and the hardware blocker is unchanged.** Nothing in
+this pass makes vLLM runnable on 2× RTX 2000 Ada; see §2A.
+
 ## 13. Change History
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created from research. Sizing derived for 20–40 in-flight; security controls V-1..V-6 recorded; hot-swap ruled out via V-1. |
 | 2026-08-30 (Phase 2) | **MinIO weight path PROVEN, and the endpoint blocker resolved.** Ran vLLM's own loader transport (`pull_files` → `list_safetensors` → `SafetensorsStreamer`) end to end against a TLS MinIO with a private CA: **902 tensors, 2.483 GiB, 10.51 s, 241.8 MiB/s**, with `Qwen/Qwen3-4B-AWQ` verified against HuggingFace's published sha256 before upload. Negative controls prove `AWS_CA_BUNDLE` and `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=0` are both mandatory; corrected pitfall #7's failure signature (opaque `File access error`, not DNS) and the two-S3-clients reason behind it. **No GPU load was performed** — see `deployment/README.md` §10 "What was NOT proven". Resolved the endpoint (new §4B): MinIO is `10.10.1.102:9000` on the LAN, 2.0 ms vs 495.6 ms through the tunnel, with no in-cluster Service existing; repointed `config/vllm.env`, added `AWS_CA_BUNDLE` + CA mount, and **shipped the egress NetworkPolicy** that §4 of the handover previously could not write. Confirmed the image bundles the streamer (Dockerfile:529). Corrected the §2A weight estimate from 3.19 to the measured **2.483 GiB** (the checkpoint ties embeddings), raising honest capacity from ~6.8 to ~8.0 sequences. Two overstatements of my own were caught by the controls and corrected in place: `AWS_ENDPOINT_URL` alone IS sufficient with streamer 0.16.1, and the trailing slash on the model URI is optional. |
 | 2026-08-30 | **§2 superseded by §2A.** Sizing redone against the real hardware (2× RTX 2000 Ada, 16380 MiB, read from the node's GFD labels) instead of the assumed H100 80GB. Verdict: no useful model fits at the 20–40 target — short ~3× on VRAM and ~15× on bandwidth simultaneously; an 8B at BF16 does not load at all. Recorded that MIG/MPS/vGPU are all unavailable, so time-slicing's lack of VRAM isolation has no workaround. Added §5A (the `AiProviderConnection`/`AiTaskDefault` integration contract — the SYSTEM connection row already exists; the lever is `AiTaskDefault`, and there is no priority field). Corrected §8: time-slicing IS applied, the house grace-period max is 90s not 60s, `hope-ollama` is gone. Manifests, config and handover authored under `deployment/`; dev compose `inference` profile extended with the MinIO streaming path and V-2/V-4 controls. Status left **Pending** — enabling is an owner hardware decision. |
+| 2026-08-30 (Phase 3) | **Deployability pass — the CA is gone, the credential is least-privilege, and the manifest now depends on ONE hand-created object (§12A).** Per owner directive: no private CA anywhere, authentication is a MinIO SERVICE ACCOUNT and nothing else, PHI hardening explicitly de-prioritised. **"No CA" settles authentication, not transport** — the endpoint stays `https://10.10.1.102:9000` (MinIO serves TLS on :9000 and one port serves one scheme; plain HTTP would have forced pgBackRest, GitLab, Loki, Tempo, Prometheus and both cloudflared origins to be re-pointed as collateral), and what replaces the CA is **certificate verification turned OFF**, commented at the point it happens. Removed `AWS_CA_BUNDLE`, the `VLLM_S3_CA_BUNDLE` ConfigMap key, the `/etc/ssl/arcaai` mount and the `arcaai-internal-ca` volume from `deployment/vllm.yaml`; **`ROOT_CONFIG_REQUEST R-1` is recorded as CANCELLED, struck through rather than deleted**, so it can be reinstated when PHI hardening returns. Switched the credential from `hope-secrets.MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` — the platform-wide read/WRITE pair that can also reach the PHI buckets — to the dedicated `hope-models-reader` Secret (`accessKeyId`/`secretAccessKey`), the SAME Secret TASK-824's sync Job already reads, so one service account serves both serving tiers (new §9.1b). **Raised OPEN-823-TLS, which is a measurement rather than a caveat:** vLLM's load path has TWO S3 clients and only the Run:ai C++ one reads `RUNAI_STREAMER_*`; **boto3 has NO environment variable that disables verification** (`verify=False` is a construction argument vLLM owns), and Phase 2's variant 2 measured exactly this shape failing `CERTIFICATE_VERIFY_FAILED` on the first LIST. So vLLM is expected to fail at startup until the owner picks one of: reinstate the CA for vLLM only, put a publicly-trusted cert on MinIO, or patch the loader upstream. Not blocking today (`replicas: 0` for the hardware reason), blocking the moment anyone scales it to 1. `RUNAI_STREAMER_S3_VERIFY_SSL=0` is carried for the C++ half and marked UNVERIFIED — no vLLM image was available to this lane, and an unrecognised env var is inert. Validated on a throwaway single-node k8s namespace: `kubeconform -strict` 17/17 valid and `kubectl apply --dry-run=server` clean on all 7 objects; against a stand-in MinIO serving TLS with a self-signed leaf, the `hope-models-reader` policy JSON proved list/get ALLOWED and put/delete/other-bucket DENIED, and a MinIO service account was created end to end (MinIO rejects an access key longer than 20 characters — measured). Also measured the three transport controls that settle the scheme question: plain HTTP against a TLS listener returns `Client sent an HTTP request to an HTTPS server`; https without a CA fails `x509: certificate signed by unknown authority`; https with verification disabled works. Wrote the operator runbook `docs/operations/inference/serving-tier-cluster-deployment.md`. **`replicas: 0` and the hardware blocker are unchanged.** |
