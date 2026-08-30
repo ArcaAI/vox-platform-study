@@ -335,34 +335,72 @@ spec:
                 configMapKeyRef:
                   name: hope-vllm-config
                   key: VLLM_S3_ENDPOINT_URL
-            # MinIO presents a leaf issued by "ARCAAI Internal CA", which is NOT
-            # in any system trust store. Without this the load dies at the very
-            # first LIST with CERTIFICATE_VERIFY_FAILED (reproduced in a lab
-            # mirroring the real cert's SAN shape). There is deliberately no
-            # "skip verification" escape hatch: this is a PHI data store.
-            - name: AWS_CA_BUNDLE
-              valueFrom:
-                configMapKeyRef:
-                  name: hope-vllm-config
-                  key: VLLM_S3_CA_BUNDLE
+            # ══ TLS VERIFICATION IS DELIBERATELY DISABLED HERE ══════════════
+            # ⚠️ AWS_CA_BUNDLE WAS HERE AND IS GONE (owner directive 2026-08-30).
+            #
+            # The transport is STILL https:// — MinIO serves TLS on :9000 and one
+            # port serves one scheme, so plain HTTP was not an option without
+            # re-pointing pgBackRest, GitLab, Loki, Tempo, Prometheus and both
+            # cloudflared origins. What changed is TRUST: the private "ARCAAI
+            # Internal CA" is removed from this workload entirely, certificate
+            # verification is turned OFF, and the ONLY authentication to MinIO is
+            # the service-account key pair below. `ROOT_CONFIG_REQUEST R-1` (the
+            # `arcaai-internal-ca` ConfigMap) is CANCELLED — ../README.md §9.1.
+            #
+            # THIS IS A DELIBERATE, REVERSIBLE RELAXATION, taken because PHI
+            # hardening is de-prioritised for now. An unverified TLS connection
+            # encrypts but does NOT authenticate the peer: it stops passive
+            # capture, not an on-path attacker on 10.10.1.0/24. To reinstate:
+            # restore AWS_CA_BUNDLE + the VLLM_S3_CA_BUNDLE key + the CA volume
+            # (procedure preserved verbatim in ../README.md §9.1) and delete the
+            # variable below.
+            #
+            # ⚠️ OPEN-823-TLS — this does not fully work yet, and it is measured,
+            # not suspected. vLLM has TWO S3 clients: boto3 (config, tokenizer,
+            # shard listing) and the Run:ai C++ SDK (weights). Only the second
+            # reads RUNAI_STREAMER_*. **boto3 has no environment variable that
+            # disables verification** — `verify=False` is a construction argument
+            # and vLLM builds the client itself. Phase 2 measured exactly this
+            # shape (https + private CA + no AWS_CA_BUNDLE) and it failed
+            # `CERTIFICATE_VERIFY_FAILED` on the first LIST (../README.md §10,
+            # variant 2). Resolution is an owner decision — see config/vllm.env.
+            #
+            # The variable below is the C++-side half. ITS NAME IS UNVERIFIED
+            # against the streamer source (no vLLM image was available to this
+            # lane); an unrecognised variable is inert, so it is safe to carry,
+            # but do NOT record it as "verification disabled" until a real pod
+            # has proven it.
+            - name: RUNAI_STREAMER_S3_VERIFY_SSL
+              value: "0"
+            #
             # A literal, not a ConfigMap key: MinIO ignores the region entirely
             # and the AWS SDK only requires that one be set. Making it
             # environment-tunable would add a non-optional ref that can fail the
             # pod, for a value that never legitimately varies.
             - name: AWS_REGION
               value: "us-east-1"
-            # Reuses the MinIO credentials already present in hope-secrets for
-            # hope-stt. No new secret key is introduced by this workload.
+            # ── the ONLY authentication to MinIO: a MinIO SERVICE ACCOUNT ───
+            # A dedicated access key / secret pair created under the
+            # `hope-models-reader` policy — ListBucket + GetObject +
+            # GetObjectVersion on `hope-models` ONLY, and no DeleteObject
+            # (infrastructure/docker/minio/policies/hope-models-reader.json).
+            #
+            # CHANGED 2026-08-30: this used to reuse hope-secrets.MINIO_ACCESS_KEY
+            # / MINIO_SECRET_KEY, which is the platform-wide read/WRITE pair that
+            # can also reach the PHI buckets. A weight fetch has no business
+            # holding a credential that can write `recordings`. The Secret name
+            # and keys match what TASK-824's model-sync Job already references,
+            # so ONE service account serves both serving tiers.
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: hope-secrets
-                  key: MINIO_ACCESS_KEY
+                  name: hope-models-reader
+                  key: accessKeyId
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: hope-secrets
-                  key: MINIO_SECRET_KEY
+                  name: hope-models-reader
+                  key: secretAccessKey
             # ── runtime hygiene ─────────────────────────────────────────────
             - name: NVIDIA_DRIVER_CAPABILITIES
               value: "compute,utility"
@@ -449,11 +487,9 @@ spec:
               mountPath: /home/vllm
             - name: vllm-tmp
               mountPath: /tmp
-            # The private CA that signed MinIO's leaf. Mounted read-only at the
-            # path AWS_CA_BUNDLE names (VLLM_S3_CA_BUNDLE in the ConfigMap).
-            - name: arcaai-ca
-              mountPath: /etc/ssl/arcaai
-              readOnly: true
+            # (The /etc/ssl/arcaai CA mount was removed on 2026-08-30 — the
+            # transport is still https:// but verification is disabled rather
+            # than pointed at a CA. See the TLS block in the env section above.)
       volumes:
         # vLLM needs a large /dev/shm for worker IPC. The container default of
         # 64Mi is not enough even at tensor-parallel-size 1.
@@ -470,19 +506,16 @@ spec:
         - name: nginx-conf
           configMap:
             name: hope-vllm-endpoint-guard
-        # ⚠️ MUST EXIST BEFORE THIS POD CAN START. The ARCAAI Internal CA is
-        # published NOWHERE in hope-v2-dev today (there is no CA ConfigMap or
-        # Secret in the namespace — only kube-root-ca.crt, which is the
-        # cluster's own CA and unrelated). Creating it is a ROOT_CONFIG_REQUEST;
-        # ../README.md §8 carries the exact procedure. NOT marked optional on
-        # purpose: a missing CA must fail the pod, never silently degrade to an
-        # unverified TLS connection to a PHI object store.
-        - name: arcaai-ca
-          configMap:
-            name: arcaai-internal-ca
-            items:
-              - key: ca.crt
-                path: ca.crt
+        # ⚠️ THE `arcaai-internal-ca` VOLUME WAS REMOVED ON 2026-08-30.
+        # It was the only object this workload needed that did not exist yet, and
+        # the owner cancelled it: the transport stays https:// but certificate
+        # verification is disabled, and the ONLY authentication to MinIO is the
+        # service-account key pair. This pod therefore depends on exactly ONE
+        # hand-created object — the `hope-models-reader` Secret — and on nothing
+        # that has to be minted from a private PKI.
+        # Re-adding this volume is the REINSTATEMENT path when PHI hardening is
+        # re-prioritised (and see OPEN-823-TLS in the env block: it may be needed
+        # sooner than that, because boto3 cannot be told to skip verification).
 ---
 # ══════════════════════════════════════════════════════════════════════════
 # V-2 — the endpoint allow-list
