@@ -11,24 +11,16 @@ pollable via the existing `GET /tasks/{task_id}` (no duplicate status route).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from text.core.dependencies import (
     get_embedding_registry,
-    get_task_manager,
-    get_worker_pool_queue,
 )
-from text.core.metrics import WORKER_POOL_TASKS_TOTAL
 from text.models.embedding import (
-    EmbeddingBatchAcceptedResponse,
-    EmbeddingBatchRequest,
     EmbeddingRequest,
     EmbeddingResponse,
 )
-from text.models.worker_task import WorkerTaskEnvelope, WorkerTaskType
 from text.providers.embedding import EmbeddingProviderNotFoundError, EmbeddingProviderRegistry
-from text.services.task_manager import TaskManager
-from text.services.worker_pool_queue import WorkerPoolQueue
 
 router = APIRouter(tags=["embeddings"])
 
@@ -53,34 +45,3 @@ async def create_embeddings(
         model=request_body.model or "",
         dim=len(vectors[0]) if vectors else 0,
     )
-
-
-@router.post(
-    "/embeddings/batch",
-    status_code=202,
-    response_model=EmbeddingBatchAcceptedResponse,
-)
-async def submit_batch_embedding(
-    request_body: EmbeddingBatchRequest,
-    worker_pool_queue: WorkerPoolQueue = Depends(get_worker_pool_queue),
-    task_manager: TaskManager = Depends(get_task_manager),
-    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> EmbeddingBatchAcceptedResponse:
-    # Task STATE is TaskManager's job (unchanged, extended not replaced);
-    # `provider`/`model` are informational labels here, same as every other
-    # TaskManager caller.
-    task = await task_manager.create_task(provider=request_body.provider, model="embedding-batch")
-    envelope = WorkerTaskEnvelope(
-        task_id=task.task_id,
-        task_type=WorkerTaskType.EMBEDDING,
-        tenant_id=x_tenant_id,
-        idempotency_key=idempotency_key,
-        payload={"texts": request_body.texts, "provider": request_body.provider},
-    )
-    # ShutdownError (503) propagates unwrapped to the shared TextError handler
-    # when the control plane is draining — see WorkerPoolQueue.submit
-    # (TASK-725 Task 6).
-    await worker_pool_queue.submit(envelope)
-    WORKER_POOL_TASKS_TOTAL.labels(task_type="embedding", status="submitted").inc()
-    return EmbeddingBatchAcceptedResponse(task_id=task.task_id, status="queued")
