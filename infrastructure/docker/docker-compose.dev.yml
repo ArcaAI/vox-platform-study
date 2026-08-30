@@ -469,21 +469,73 @@ services:
     restart: unless-stopped
     # vLLM needs a large /dev/shm for its NCCL/worker IPC.
     ipc: host
+    # LOOPBACK ONLY (TASK-823 V-2). vLLM is UNAUTHENTICATED by default, and
+    # `--api-key` protects only /v1, /v2 and /inference — NOT /invocations,
+    # /pause, /abort_requests or /update_weights. CVE-2026-22778 (CVSS 9.8) is a
+    # pre-auth RCE reachable on /invocations. In the cluster an nginx
+    # allow-list sidecar fronts the engine; compose has no sidecar, so the
+    # equivalent control is to not publish the port beyond the host. Other
+    # containers are unaffected: they reach `http://vllm:8000` over hope-network
+    # by service name, which never traverses a published port.
     ports:
-      - '${TEXT_VLLM_PORT:-8000}:8000'
+      - '127.0.0.1:${TEXT_VLLM_PORT:-8000}:8000'
     environment:
       # A gated model download needs a token; ungated models ignore it.
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HOME: /data
+      # V-4: INFO, never DEBUG. At DEBUG vLLM logs prompt text and token ids.
+      VLLM_LOGGING_LEVEL: ${VLLM_LOGGING_LEVEL:-INFO}
+      # ── MinIO weight streaming (TASK-823 §4) ─────────────────────────────
+      # Inert while VLLM_MODEL is a HuggingFace repo id. Set VLLM_MODEL to an
+      # `s3://hope-models/...` URI and VLLM_LOAD_FORMAT=runai_streamer to stream
+      # weights from the local MinIO instead — the `hope-models` bucket is
+      # already created (and versioned) by minio-setup in docker-compose.yml.
+      #
+      # PATH-STYLE ADDRESSING IS MANDATORY FOR MinIO: unset, the streamer builds
+      # virtual-host-style URLs (`<bucket>.<host>`) and every load dies on DNS.
+      RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING: "0"
+      # No instance metadata service here; without this the SDK burns its retry
+      # budget probing 169.254.169.254 before falling back to static keys.
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_ENDPOINT_URL: ${VLLM_S3_ENDPOINT_URL:-http://minio:9000}
+      AWS_REGION: ${VLLM_S3_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_admin}
+      # NOTE: VLLM_SERVER_DEV_MODE is deliberately, permanently ABSENT (V-1).
+      # Setting it to "1" exposes /collective_rpc — arbitrary RPC execution.
+      # It is also why there is no Sleep-Mode hot-swap: model changes are
+      # restarts, here and in the cluster.
     command:
+      # ⚠️ The default below is a HuggingFace pull of an 8B model at BF16, which
+      # needs ~16.4 GB for WEIGHTS ALONE. It will not load on a 16 GB card (the
+      # cluster's RTX 2000 Ada, and many dev boxes) — it OOMs at load, before
+      # any KV cache exists. On a 16 GB card use a 4B-class AWQ checkpoint and
+      # see TASK-823 §2A for the arithmetic that decides what fits.
       - "--model"
       - "${VLLM_MODEL:-Qwen/Qwen3-8B}"
       - "--served-model-name"
       - "${VLLM_SERVED_MODEL_NAME:-${VLLM_MODEL:-Qwen/Qwen3-8B}}"
+      # `auto` keeps the HuggingFace path. `runai_streamer` reads an s3:// URI
+      # directly from MinIO with no download step and no volume.
+      - "--load-format"
+      - "${VLLM_LOAD_FORMAT:-auto}"
+      # NEVER the model's advertised max — that multiplies KV per sequence and
+      # collapses concurrency.
       - "--max-model-len"
       - "${VLLM_MAX_MODEL_LEN:-8192}"
       - "--gpu-memory-utilization"
       - "${VLLM_GPU_MEM_UTIL:-0.90}"
+      # A CEILING, not achieved concurrency: the KV cache is the real bound.
+      - "--max-num-seqs"
+      - "${VLLM_MAX_NUM_SEQS:-64}"
+      # vLLM requires >= 2048 and >= max-num-seqs.
+      - "--max-num-batched-tokens"
+      - "${VLLM_MAX_NUM_BATCHED_TOKENS:-8192}"
+      # Set EXPLICITLY: the engine-args reference and the V1 guide disagree
+      # about this default, so passing the flag removes the ambiguity.
+      - "--enable-prefix-caching"
+      # V-4. `--enable-log-requests` is deliberately absent and must stay absent.
+      - "--disable-uvicorn-access-log"
     volumes:
       - vllm-cache:/data
     # First boot downloads weights, so the startup window is generous. The
