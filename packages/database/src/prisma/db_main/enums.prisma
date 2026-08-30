@@ -760,3 +760,75 @@ enum DocumentSectionState {
 
   @@schema("core")
 }
+
+// TASK-818 §3A.3 — governance lifecycle of an `AiRoutingPolicy` row. The same
+// three-member governance triple as `DocumentTemplateStatus` above, and for the
+// same reason: a routing policy is AUTHORED, then made live, then superseded.
+//
+//   DRAFT     editable, never resolved at runtime. This is what the dry-run
+//             (`/simulate`) endpoint replays recorded traffic against.
+//   ACTIVE    the row the runtime resolver serves for its (tenant, taskKey).
+//   ARCHIVED  a superseded revision, kept addressable for one-click rollback
+//             and for the HIPAA §164.312(b) before/after audit trail (§3A.8).
+//
+// Supersede-only: an ACTIVE row is not edited in place, it is replaced by a
+// higher `policyVersion` and demoted to ARCHIVED. That is why `policyVersion`
+// is a column of its own and is NOT the `_version` OCC counter.
+enum AiRoutingPolicyStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@schema("core")
+}
+
+// TASK-818 §3A.3 — how the router picks among the candidates of one rank tier.
+// The vocabulary is the common denominator of the gateways surveyed in §3A.2
+// (LiteLLM Router, Portkey, Envoy AI Gateway, Kong AI Proxy Advanced,
+// OpenRouter, Cloudflare AI Gateway).
+//
+//   PRIORITY        strict candidate order; `rank` decides, weights ignored.
+//   WEIGHTED        weighted split WITHIN a rank tier.
+//   LEAST_BUSY      fewest in-flight requests.
+//   LOWEST_LATENCY  best observed TTFT.
+//   LOWEST_COST     cheapest per the `AiPriceBook` row effective now.
+//
+// Deliberately NOT a member: any learned / prompt-difficulty strategy. §3A.6(4)
+// rules quality-aware routing out for day one — the space has no reproducible
+// evaluation yet, so a member here would be a promise the resolver cannot keep.
+enum AiRoutingStrategy {
+  PRIORITY
+  WEIGHTED
+  LEAST_BUSY
+  LOWEST_LATENCY
+  LOWEST_COST
+
+  @@schema("core")
+}
+
+// TASK-818 §3A.4 — what happens when a request NAMES a provider and that
+// provider is down. The platform default is STRICT, which deliberately inverts
+// the industry default (OpenRouter and Cloudflare default `allow_fallbacks` to
+// true; LiteLLM fires configured fallbacks by default).
+//
+//   STRICT                  503 `provider_unavailable`. No silent substitution.
+//   STRICT_UNLESS_OPTED_IN  hard-fail unless the request itself carried
+//                           `allow_fallbacks: true`.
+//   POLICY_MAY_OVERRIDE     the policy chain may re-route without the caller
+//                           asking.
+//
+// The justification is clinical, not stylistic: BAA coverage is per-vendor AND
+// per-model, so one fallback hop can move PHI outside BAA coverage; RFC 9111
+// obsoleted the `Warning` header, so there is no standard way to tell a caller
+// a substitution happened; and under BYOK a hop onto a SYSTEM credential
+// silently flips the metering class. Whatever this mode says, the three hard
+// gates (same residency class, BAA-covered target, same funding tier) are
+// enforced in CODE, not in policy text — a hop crossing any of them is a
+// rejection, not a fallback.
+enum AiExplicitProviderMode {
+  STRICT
+  STRICT_UNLESS_OPTED_IN
+  POLICY_MAY_OVERRIDE
+
+  @@schema("core")
+}

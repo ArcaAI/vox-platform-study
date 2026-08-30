@@ -146,7 +146,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // dropped. `AgentPromotion` STAYS: the promotable moved to a
     // `WorkflowDefinition` version, but the WORM record is still the target
     // tenant's own row.
-    expect(TENANT_SCOPED_MODELS.size).toBe(87);
+    // +1 (88): AiRoutingPolicy (TASK-818) — the config-plane routing policy.
+    // SYSTEM row = platform default, tenant row wins on presence; also a
+    // SYSTEM_SHARED_READ_MODEL (see that suite below).
+    expect(TENANT_SCOPED_MODELS.size).toBe(88);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -437,6 +440,13 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'ChangelogEntry',
         'AiProviderConnection',
         'AiRuntimeProfile',
+        // AiRoutingPolicy's SYSTEM row is the platform-default candidate
+        // chain (TASK-818 §3A.3). Same "tenant row → SYSTEM row" shape as
+        // AiTaskDefault; the resolver runs under the caller's own CLS, so
+        // without the widening every tenant lacking its own row fails closed.
+        // No secrets — candidates reference an AiProviderConnection rather
+        // than carrying its credential.
+        'AiRoutingPolicy',
         // TenantStorageConfig's SYSTEM row (bucketId IS NULL) is the platform
         // storage default every tenant's upload path resolves under its own
         // CLS; writes stay super-admin only. Carries a Vault `credentialsRef`
