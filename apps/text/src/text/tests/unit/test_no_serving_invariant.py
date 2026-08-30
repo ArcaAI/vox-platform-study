@@ -97,11 +97,46 @@ def _imported_top_level_modules(path: Path) -> set[str]:
     return names
 
 
+#: Sibling HOPE services that legitimately own an inference runtime. If ANY of them is
+#: importable, this interpreter is the SHARED conda env (`arcaenv`), not apps/text's own
+#: dependency closure — see the skip reasoning in `test_runtime_is_not_installed`.
+_SIBLING_SERVICES = ("stt", "nlp", "guardrail", "harness", "tts")
+
+
+def _is_shared_dev_env() -> bool:
+    return any(importlib.util.find_spec(pkg) is not None for pkg in _SIBLING_SERVICES)
+
+
 class TestNoInferenceRuntimeIsReachable:
     """Layer one: the capability cannot be imported, because it is not installed."""
 
     @pytest.mark.parametrize("runtime", _INFERENCE_RUNTIMES)
     def test_runtime_is_not_installed(self, runtime: str) -> None:
+        # An ambient import check can only answer "is this runtime reachable in THIS
+        # interpreter" — which equals "apps/text could load weights" ONLY when the
+        # interpreter holds apps/text's own closure. That is true in CI, which builds
+        # each service with `uv sync --frozen --package text`. It is false in local
+        # development, where all six services share one conda env (`arcaenv`) and
+        # stt/nlp legitimately install torch, transformers, onnxruntime and
+        # ctranslate2 into it.
+        #
+        # Before this guard these four assertions failed on EVERY local run, for a
+        # violation that did not exist. A fence that always cries wolf is one people
+        # learn to step over, so the skip protects the fence rather than weakening it:
+        # the environment-independent half of the invariant
+        # (`test_runtime_is_not_a_declared_dependency`, plus the four other layers in
+        # this file) still runs everywhere and is what actually holds the line.
+        # Skip ONLY the cases this env genuinely cannot attribute: a runtime that is
+        # actually present here. A runtime that is absent is still proof, so it keeps
+        # asserting locally and keeps its signal.
+        if importlib.util.find_spec(runtime) is not None and _is_shared_dev_env():
+            pytest.skip(
+                f"{runtime!r} is present, but a sibling service is importable, so this is "
+                "the shared conda env and ambient imports "
+                "cannot attribute a runtime to apps/text. The declared-dependency and "
+                "source-import layers below still enforce the invariant here; this "
+                "check is authoritative in CI, where each service is installed alone."
+            )
         assert importlib.util.find_spec(runtime) is None, (
             f"{runtime!r} is importable from apps/text. An inference runtime in the "
             "closure means this service can load weights in-process. Route to "
