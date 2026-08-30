@@ -20,7 +20,7 @@ that reads as "nothing found"), and an absent tenant is 428.
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -195,6 +195,66 @@ async def _submit_classify(
         _publish_depths()
 
 
+def _label_and_score(item: Any) -> tuple[str, float | None]:
+    """One classification verdict → ``(label, confidence | None)``.
+
+    ``gliner2`` reports ``{"label": …, "confidence": …}`` when asked with
+    ``include_confidence=True`` and a bare label string when not. Both are
+    accepted, and a confidence that is not a real number is DROPPED rather than
+    coerced — an unparseable score must not become a number a caller can
+    threshold against.
+    """
+    if isinstance(item, Mapping):
+        label = item.get("label")
+        raw_score = item.get("confidence", item.get("score"))
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            score = None
+        return str(label if label is not None else ""), score
+    return str(item), None
+
+
+def _split_verdict(value: Any) -> tuple[str | list[str] | None, dict[str, float]]:
+    """Split one task's runtime verdict into its LABELS and its CONFIDENCES.
+
+    `results` must keep the exact `str | list[str]` shape it has always had:
+    guardrail parses it in three places as "a string, or a sequence I will
+    ``str()`` element-wise", so a reshape would have it comparing
+    ``"{'label': 'unsafe', …}"`` against its benign-label set. The confidences
+    therefore travel in a SEPARATE map (TASK-830).
+
+    This function is also what makes ``include_confidence=True`` safe to turn on.
+    The previous inline reduction accepted only ``str`` and ``list``/``tuple``;
+    a mapping fell through both branches and the task was silently OMITTED — and
+    an omitted task reads downstream as "this check did not run". Flipping the
+    flag without this would have blanked the moderation plane.
+
+    A 2-tuple is treated as a two-element label SEQUENCE, not as
+    ``(label, confidence)``: with ``format_results=True`` (always, here) gliner2
+    never emits a raw pair, whereas a genuine two-label multi-label result is
+    routine, and misreading one as the other would invent a label.
+    """
+    if value is None:
+        return None, {}
+
+    if isinstance(value, (str, Mapping)):
+        label, score = _label_and_score(value)
+        return label, ({label: score} if score is not None else {})
+
+    if isinstance(value, (list, tuple)):
+        labels: list[str] = []
+        scores: dict[str, float] = {}
+        for item in value:
+            label, score = _label_and_score(item)
+            labels.append(label)
+            if score is not None:
+                scores[label] = score
+        return labels, scores
+
+    return None, {}
+
+
 @router.post("/pii", response_model=GuardPiiResponse)
 async def guard_pii(
     request: GuardPiiRequest,
@@ -316,14 +376,17 @@ async def guard_classify(
         raise HTTPException(status_code=503, detail="safety classification failed") from exc
 
     results: dict[str, str | list[str]] = {}
+    scores: dict[str, dict[str, float]] = {}
     for name in request.tasks:
         value = (raw or {}).get(name)
-        if isinstance(value, str):
-            results[name] = value
-        elif isinstance(value, (list, tuple)):
-            results[name] = [str(v) for v in value]
-        # An absent task is OMITTED, never defaulted to a benign label.
-    return GuardClassifyResponse(results=results, model_version=model_name)
+        verdict, confidences = _split_verdict(value)
+        if verdict is None:
+            # An absent task is OMITTED, never defaulted to a benign label.
+            continue
+        results[name] = verdict
+        if confidences:
+            scores[name] = confidences
+    return GuardClassifyResponse(results=results, scores=scores, model_version=model_name)
 
 
 @router.post("/entailment", response_model=GuardEntailmentResponse)

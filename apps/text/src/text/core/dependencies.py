@@ -1,4 +1,35 @@
-"""FastAPI dependency injection using app.state."""
+"""FastAPI dependency injection using app.state.
+
+**Every provider here is `async def`, and that is load-bearing — not style.**
+
+FastAPI's `solve_dependencies` branches on one thing: whether the dependency
+callable is a coroutine function. An `async def` provider is awaited inline on
+the event loop; a plain `def` provider is shipped to anyio's worker threadpool
+(`run_in_threadpool`), costing a thread handoff, a GIL round trip and a
+scheduler wakeup — per request, per dependency.
+
+These providers do nothing but read an attribute off `app.state`. There is no
+I/O here to move off the loop, so the handoff buys nothing and all of it is
+overhead. `/generate` alone declares 13 of them.
+
+Measured (TASK-818 Lane C, real service against the `tests/bench` mock upstream,
+zero-latency mode, streaming, concurrency 10): **13 handoffs per request**, worth
+**-0.39 ms of process CPU per request (-4.5%)** when removed.
+
+A caveat worth carrying, because it nearly caused a wrong conclusion: a
+wall-clock profile priced these handoffs at 16.8 ms p50 / 62.0 ms p99. That
+number was mostly QUEUEING, not work — each handoff is an `await` point, and on
+a loop running at 96-98% of one core an `await` measures how long the request
+waited to be resumed, not what it cost. The honest figure is the CPU one above,
+taken with `getrusage` inside the process. Real, cheap to keep, and ~40x smaller
+than the wall-clock profile implied.
+
+So: **a new provider in this module is `async def`.** If one ever needs
+genuinely blocking work, that work goes behind an explicit `run_in_threadpool`
+at the call site where it is visible, rather than being smuggled in by dropping
+the `async`. `tests/unit/test_task818_lane_c_request_path.py` fails the build if
+a provider regresses to sync.
+"""
 
 from __future__ import annotations
 
@@ -27,64 +58,64 @@ if TYPE_CHECKING:
     from text.translation.base import TranslateProviderRegistry
 
 
-def get_settings(request: Request) -> Settings:
+async def get_settings(request: Request) -> Settings:
     """Retrieve settings from app.state (set during lifespan)."""
     return cast("Settings", request.app.state.settings)
 
 
-def get_http_client(request: Request) -> httpx.AsyncClient:
+async def get_http_client(request: Request) -> httpx.AsyncClient:
     """Retrieve shared httpx AsyncClient from app.state."""
     return cast("httpx.AsyncClient", request.app.state.http_client)
 
 
-def get_redis(request: Request) -> aioredis.Redis:
+async def get_redis(request: Request) -> aioredis.Redis:
     """Retrieve shared Redis client from app.state."""
     return cast("aioredis.Redis", request.app.state.redis)
 
 
-def get_provider_registry(request: Request) -> ProviderRegistry:
+async def get_provider_registry(request: Request) -> ProviderRegistry:
     """Retrieve provider registry from app.state."""
     return cast("ProviderRegistry", request.app.state.provider_registry)
 
 
-def get_task_manager(request: Request) -> TaskManager:
+async def get_task_manager(request: Request) -> TaskManager:
     """Retrieve task manager from app.state."""
     return cast("TaskManager", request.app.state.task_manager)
 
 
-def get_translate_registry(request: Request) -> TranslateProviderRegistry:
+async def get_translate_registry(request: Request) -> TranslateProviderRegistry:
     """Retrieve the translate-provider registry from app.state."""
     return cast("TranslateProviderRegistry", request.app.state.translate_registry)
 
 
-def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:
+async def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:
     """Retrieve a GenerationAuditLogger instance."""
     from text.services.generation_audit import GenerationAuditLogger
 
     return GenerationAuditLogger()
 
 
-def get_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
+async def get_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
     """Retrieve per-provider circuit breakers from app.state."""
     return cast("dict[str, CircuitBreaker]", request.app.state.circuit_breakers)
 
 
-def get_shutdown_manager(request: Request) -> ShutdownManager | None:
+async def get_shutdown_manager(request: Request) -> ShutdownManager | None:
     """Retrieve shutdown manager from app.state."""
     return cast("ShutdownManager | None", request.app.state.shutdown_manager)
 
 
-def get_rate_limiters(request: Request) -> dict[str, RateLimitTracker]:
+async def get_rate_limiters(request: Request) -> dict[str, RateLimitTracker]:
     """Retrieve per-provider rate limiters from app.state."""
     return getattr(request.app.state, "rate_limiters", {})
 
 
-def get_provider_queues(request: Request) -> dict[str, ProviderQueue]:
+async def get_provider_queues(request: Request) -> dict[str, ProviderQueue]:
     """Retrieve per-provider request queues from app.state."""
     return getattr(request.app.state, "provider_queues", {})
 
 
-def get_provider_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
+async def get_provider_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     """Retrieve per-provider concurrency semaphores from app.state.
 
     These are `ResizableSemaphore`s whose capacity tracks the control
@@ -95,7 +126,7 @@ def get_provider_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     return getattr(request.app.state, "provider_semaphores", {})
 
 
-def get_judge_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
+async def get_judge_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     """Per-provider concurrency semaphores for the INTERNAL judge lane.
 
     A SEPARATE keyspace from ``provider_semaphores`` above, deliberately: the
@@ -114,7 +145,7 @@ def get_judge_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     return cast("dict[str, ResizableSemaphore]", state.judge_semaphores)
 
 
-def get_judge_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
+async def get_judge_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
     """Per-provider circuit breakers for the INTERNAL judge lane.
 
     Separate instances from ``circuit_breakers``: a judge engine failing must not
@@ -128,7 +159,7 @@ def get_judge_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
     return cast("dict[str, CircuitBreaker]", state.judge_circuit_breakers)
 
 
-def get_effective_config_client(request: Request) -> EffectiveConfigClient | None:
+async def get_effective_config_client(request: Request) -> EffectiveConfigClient | None:
     """Retrieve the control-plane pull client from app.state (None if unwired)."""
     return getattr(request.app.state, "effective_config_client", None)
 
@@ -146,7 +177,7 @@ async def get_runtime_limits(request: Request) -> dict[str, int]:
     return getattr(request.app.state, "provider_timeouts", {}) or {}
 
 
-def get_app_state(request: Request) -> Any:
+async def get_app_state(request: Request) -> Any:
     """The live app state, for the values the control plane REPLACES at runtime.
 
     A route that reads a resolved posture or lane budget must read it when the
@@ -156,12 +187,12 @@ def get_app_state(request: Request) -> Any:
     return request.app.state
 
 
-def get_guardrail_client(request: Request) -> ExternalGuardrailClient | None:
+async def get_guardrail_client(request: Request) -> ExternalGuardrailClient | None:
     """Retrieve the external guardrail client from app.state (None if unwired)."""
     return getattr(request.app.state, "guardrail_client", None)
 
 
-def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
+async def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
     """Retrieve the degrade-routing health cache from app.state (TASK-725 Task 2).
 
     Always present (constructed eagerly in ``create_app()``, not lazily in
@@ -172,11 +203,11 @@ def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
     return cast("PoolHealthTracker", request.app.state.pool_health_tracker)
 
 
-def get_embedding_registry(request: Request) -> EmbeddingProviderRegistry:
+async def get_embedding_registry(request: Request) -> EmbeddingProviderRegistry:
     """Retrieve the embedding-provider registry from app.state (TASK-725 Task 4)."""
     return cast("EmbeddingProviderRegistry", request.app.state.embedding_registry)
 
 
-def get_worker_pool_queue(request: Request) -> WorkerPoolQueue:
+async def get_worker_pool_queue(request: Request) -> WorkerPoolQueue:
     """Retrieve the async worker-pool dispatch queue from app.state (TASK-725)."""
     return cast("WorkerPoolQueue", request.app.state.worker_pool_queue)

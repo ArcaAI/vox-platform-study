@@ -332,3 +332,79 @@ Standing consequence for A-3 (HTTP/2): HTTP/1.1 gives one in-flight request per
 connection, so the release path is on the critical path whenever a client has no
 think-time. HTTP/2 multiplexing removes that coupling on self-hosted engines. This
 is an argument for measuring A-3, not for assuming it.
+
+
+---
+
+# After Lane C (request-path cost) — 2026-08-30
+
+## ✅ AC-3 is MET in latency-injecting mode
+
+Orchestrator's own post-merge run, `--mode latency-injecting --levels 10,25 --duration 8`:
+
+| Concurrency | AC-3 p50 / p95 / **p99** | Target |
+|---|---|---|
+| 10 | 3.80 / 8.19 / **8.33 ms** | **p99 < 10 ms** ✅ |
+| 25 | 2.08 / 5.07 / **7.21 ms** | ✅ |
+
+This is the mode §4.8 calls realistic — it injects 800 ms TTFT and ~30 tok/s, which
+is what a real provider looks like. **AC-3's acceptance criterion is satisfied
+there.**
+
+## ⚠️ And AC-3 got WORSE in zero-latency mode. Both are true.
+
+Lane C measured p50 rising 16.4 → 28.5 ms in zero-latency mode and **did not claim a
+win there**. The explanation is structural, not excusable-away: the harness is
+**closed-loop with zero think time**, so any capacity the change frees is
+immediately consumed by more in-flight requests and latency re-pins at saturation.
+Throughput rose 42–54% and total per-request latency fell 88 → 58 ms by Little's
+Law, but the p50 headline went the wrong way.
+
+**Report both numbers. Neither alone is honest.**
+
+## The profile disproved three of the four suspects
+
+| Suspect the plan named | Measured |
+|---|---|
+| request-body pydantic validation | **0.008 ms** |
+| guardrail gate | 0.003 ms |
+| rate-limit / breaker / queue lookups | < 0.01 ms |
+| response serialisation | 0.05 ms |
+
+Under 0.1 ms of an ~8 ms budget. **C-1's premise does not hold** — msgspec would
+have saved microseconds, so it was deliberately not adopted. And the **guardrail hop
+is not in the benchmarked path at all** (`GUARDRAIL_ENABLED_FLOOR = False`), so this
+harness structurally cannot price it. Do not read a guardrail cost off these runs.
+
+**The real cost was three layers of `BaseHTTPMiddleware` — 2.21 ms/request, 28%** —
+because each runs its request in its own anyio task group with a pair of memory
+object streams. It was not on the suspect list.
+
+## The methodological catch — worth more than the fix
+
+A **wall-clock** profile put FastAPI dependency resolution at 16.9 ms p50. Re-measured
+as **process CPU**, it is worth 0.39 ms. Thirteen sync `Depends()` callables were
+being shipped to anyio's threadpool, and **on a saturated loop an `await` measures
+waiting, not work.** Lane C flagged its own first profile as misleading rather than
+reporting the 16 ms.
+
+**Consequence for anyone using this harness: use CPU time, not wall clock, when the
+loop is saturated.**
+
+## ⚠️ Host noise — read before quoting any percentile here
+
+Lane C's "before" reproduced at **16.4 ms where this document earlier recorded 9.06 ms
+on identical code**, with a load average of 9.5 on 16 cores from unrelated desktop
+processes. **Latency percentiles from this host are not a reliable instrument.** The
+load-insensitive measurements are the ones to trust:
+
+- **CPU per request: −35.8%**
+- **AC-4 p50: 0.48 → 0.01 ms** (−98%)
+- Throughput: +42–54%
+
+## What is left, and why micro-optimisation cannot reach it
+
+AC-3 in **zero-latency** mode sits near 35 ms p99, and **no further micro-optimisation
+can reach 10 ms while one core is 96–99% busy.** The service is CPU-bound on a single
+event loop. The remaining lever is **more event loops — uvicorn `--workers`, which is
+G-1 and belongs to Lane G**, not to another pass over the request path.

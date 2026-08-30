@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress — Phase 1 decision plane merged; wiring outstanding |
 | **Type** | feature |
 | **Branch** | `dev-2.2` |
 | **Spans** | `apps/stt` · `apps/guardrail` · `apps/harness` · `apps/nlp` · `apps/text` · `apps/admin-console` |
@@ -273,9 +273,156 @@ where no single step trips an alarm. LlamaFirewall (arXiv:2505.03574) is the ope
 - [ ] Every NER entity maps to a source span; unmappable entities dropped
 - [ ] Alert copy contains no moderation vocabulary; override rate instrumented per category; axe clean, both themes
 
+## 12A. Implementation Summary — Phase 1 decision plane (`apps/guardrail`)
+
+**What shipped.** The whole of §3, §5.1, §5.2's correctness rules, §7's deterministic
+half, and the §6 invariant, as a self-contained plane in `apps/guardrail`. 3,717 lines
+across 18 files, all under `apps/guardrail/` — nothing else in the monorepo is touched.
+
+| Module | Condition it carries |
+|---|---|
+| `realtime/verdict.py` | C-1 (three axes, two cache scopes), C-5 structurally |
+| `realtime/deterministic.py` | T0 — Aho-Corasick with persistent state; chunking invariance |
+| `realtime/session_state.py` | §5.1 aggregation |
+| `realtime/consumption.py` | **C-2**, C-3 |
+| `realtime/output_checks.py` | C-4 |
+| `realtime/service.py`, `store.py` | composition, cross-replica session state |
+| `api/endpoints/realtime.py` | 4 routes on `/api/v1/guardrail/realtime/*` |
+| `core/policy.py`, `core/dependencies.py` | 9 governed tuning keys; fail-closed taxonomy resolution |
+
+**94 new tests; 397 pass in the guardrail suite; realtime modules 97-100% covered.**
+The one failure in that suite is pre-existing — see the Defect note below.
+
+### The per-delta regression test (C-2)
+
+`test_clean_segment_verdicts_never_compose_into_a_cumulative_pass` hands the gate a
+COMPLETE set of PASS segment verdicts that concatenate to exactly the cumulative
+window, and requires refusal anyway. The module has no compose/merge/fold helper and
+a second test asserts that absence, so the cheaper wrong answer is not reachable.
+`test_the_same_payload_is_caught_when_the_cumulative_artifact_is_validated` shows the
+consequence end to end: five utterances each PASS individually; the identical text
+validated as one artifact BLOCKs.
+
+### Three corrections to this ticket, all load-bearing
+
+1. **§5.1's aggregation cannot catch what it was introduced for.** With
+   `excess_risk += max(0, score - θ)`, evidence dispersed BELOW θ contributes exactly
+   zero from every window — and dispersal below the per-window threshold IS the attack
+   (§2.1: confidence collapsing 0.99 → 0.03). The evidence §5.1 itself cites, "0.32
+   benign → 0.628 flagged", is a length-invariant MEAN, not a sum of excesses. A third
+   signal — the session mean, gated behind a minimum window count — is tracked
+   alongside the two §5.1 specifies.
+2. **The two tiers must not share an accumulator, or the plane over-blocks.** The
+   consumption tier re-reads the whole transcript at every checkpoint, so folding its
+   windows into the persistent session state counts the prefix once per checkpoint:
+   `excess_risk` grows with the square of the encounter and a 60-minute benign
+   consultation eventually trips the session alarm on its own length. Over-blocking a
+   clinician is a patient-safety failure (§3B.2), so the streaming tier owns the
+   persistent accumulation and the consumption tier scores its artifact afresh.
+   Pinned by a 20-checkpoint benign-session test and an idempotence test.
+3. **§2.2's correction needed one more step.** Overlap is not the split-injection
+   defence, and neither is a per-replica automaton. Chunking invariance that holds only
+   inside one process holds only by luck of routing, so the automaton's state-bearing
+   suffix is persisted and replayed on resume.
+
+### ✅ RESOLVED — the session aggregation can now be graded (TASK-830)
+
+**The limit as recorded on 2026-08-30:** §5.1's arithmetic wants a graded per-window
+score, and the platform could not produce one. `apps/nlp`'s guard-classify route
+returned `results: dict[str, str | list[str]]` — LABELS, with no per-label confidence
+(`apps/nlp/src/nlp/api/v1/rest/guard.py:318-326`; `external_nlp_client.classify` passed
+them through unchanged). So the computable score was categorical, the session mean was a
+**flag RATE** rather than the confidence mean whose separation §2.1 measures, and every
+verdict carried `scoreCalibration: "categorical"`.
+
+**What TASK-830 found and fixed.** The confidences were never missing — `gliner2`
+computes them (`_extract_classification_result` softmaxes/sigmoids the classifier logits
+into `(label, confidence)` tuples) and `_format_results` DISCARDS them unless the caller
+passes `include_confidence=True`. `apps/nlp` asked on its entity path and did not ask on
+the classify path. `/guard/classify` was also the only unscored classification surface in
+the service: `/classify/text`, `/classify/text/multi-label`, `/classify/tokens`,
+`/guard/pii` and `/guard/entailment` have all always returned numbers.
+
+The fix is ADDITIVE — `results` keeps its exact shape, because three guardrail call sites
+parse it as `str | list[str]` — and the confidences arrive in a sibling
+`scores: dict[str, dict[str, float]]`. Guardrail's realtime plane consumes them through
+`SafetyAnalyzer.classify_tasks_scored` and derives a per-window risk (a non-benign label
+contributes its confidence; a benign one contributes `1 - confidence`, the mass the model
+did not put on "clean").
+
+**`scoreCalibration` is now computed, not asserted.** It reads `graded` only when EVERY
+window folded into the aggregate carried a real confidence, and `categorical` otherwise —
+a peer that reports no scores still gets a correct categorical verdict, and a partially
+scored session understates itself rather than handing Phase 4 calibration data that is
+silently part flag rate. `gradedWindows` sits alongside `windows` in the aggregate so the
+mix is auditable.
+
+**Phase 4 is unblocked**, with one condition: calibrate θ/Θ only against aggregates whose
+`scoreCalibration` reads `graded`. See
+`docs/implementation/TASK-830-Nlp-Guard-Classify-Confidences/README.md` — including the
+noted limit that `1 - P(benign)` is exact for a single-label softmax task and an estimate
+for a multi-label sigmoid one.
+
+### Measured latency — T0 only
+
+Apple arm64, Python 3.11.15, 40 declared phrases, synthetic clinical prose:
+
+| Artifact | T0 whole-artifact median | T0 per-utterance p95 |
+|---|---|---|
+| 2,000 chars | 0.40 ms | 0.026 ms |
+| 16,000 chars | 3.11 ms | 0.025 ms |
+| 120,000 chars | 24.09 ms | 0.025 ms |
+
+Per-utterance T0 is ~0.03 ms, comfortably inside the ~1 ms budget, and the
+whole-artifact pass at the 120K ceiling is 24 ms — consistent with §5.1's cited NFA
+figures. **T1 was NOT measured and no claim is made about it**: it requires a live
+`apps/nlp` with a resolved model, and infrastructure commands were out of scope for
+this lane. **The §3B budget of `T0+T1 p95 ≤ 120 ms` is therefore UNVERIFIED.**
+
+### Configuration this plane requires before it can serve a request
+
+All fail-closed — an unresolved declaration raises rather than substituting a default.
+On `AiModel._metadata.labelTaxonomy.realtime` of the `guardrail.safety` selection:
+
+| Key | Why fail-closed |
+|---|---|
+| `axes` (`contentHarm` / `injectionRisk` / `clinical` task lists) | Which signals GATE and which merely inform is the C-1 decision |
+| `deterministicPatterns` | An empty automaton reports every stream clean |
+| `capabilitySets` | C-3 cannot be checked against an undeclared capability model |
+| `protectedLexicons` | *Not* fail-closed — absence makes its output check `skipped`, never `pass` |
+
+Plus nine bounded tuning keys on `_metadata.policy` (`realtimeNoiseFloor`,
+`realtimeExcessRiskThreshold`, `realtimeConsecutiveLimit`, `realtimeMeanScoreThreshold`,
+`realtimeMinWindowsForMean`, `realtimeWindowChars`, `realtimeWindowOverlapChars`,
+`realtimeCumulativeCeilingChars`, `realtimeVerdictTtlSeconds`). **No seed row was
+written in this lane** — seeding is a `packages/database` change and is listed below.
+
+### Not done, and why
+
+| Outstanding | Blocker |
+|---|---|
+| Persisting the verdict + `validationRef` on `TranscriptSegment` | Needs a Prisma model/column and therefore a migration. Authoring one requires a throwaway shadow DB (`02-database-prisma.md`), and DB/infra commands were out of scope. `TranscriptSegment` already carries `_metadata` JSONB, but stashing a safety artifact in an unmodelled JSON blob is not the right answer for an EU AI Act Article 12 record |
+| Durable audit record (Art. 12, 6-month retention) | Same blocker. The Redis store here is a CACHE and explicitly does not satisfy it |
+| STT hook at segment finalization | `apps/stt` publishes per-utterance to Redis Streams inside `process_utterance` and persists only at `_finalize_session`; there is no per-segment persistence to attach a `validationRef` to. Attaching one means extending `SegmentResult` before its publish — a real change to the streaming contract, not a hook |
+| Harness/applications adopting the consumption gate | `apps/harness` calls `GuardrailClient.analyze()` DIRECTLY today (`temporal/interpreter/nodes/guardrail_check.py`, `temporal/activities.py:583`), which §4's "consumers never call guardrail directly" already contradicts. Migrating it is a behaviour change to a Temporal activity with replay-compatibility implications |
+| Admin-console alert surfaces (§9) | Console work; the plane emits machine NOTICE CODES, never prose, so the copy rules stay testable where the copy lives |
+| T2 LLM judge | Phase 1 is explicitly T0+T1 only |
+
+### Defect found in the base branch (not introduced here)
+
+`apps/guardrail/src/guardrail/tests/test_task799_config_plane.py::test_the_prod_reference_that_described_the_phantom_plane_is_gone`
+**fails on `dev-2.2` itself.** TASK-799 (`a40158536`) deleted `apps/guardrail/.env.prod`
+and locked the deletion with that test; a later commit,
+`2a1bfcc97 docs(env): give text and guardrail the .env.prod every other service has`,
+re-added the file. The file is tracked and present at the `dev-2.2` tip. Two commits
+disagree about whether it should exist. **Not touched here** — the assertion should not
+be edited to match, because that hides the contradiction rather than resolving it.
+
 ## 13. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-29 | Created from the owner's realtime-consultation requirement; two-axis verdict and "gate derivations never the record" confirmed by the owner. |
+| 2026-08-30 | **Phase 4 unblocked by TASK-830** (§12A). `apps/nlp`'s `/guard/classify` now returns per-label confidences (they were computed by `gliner2` all along and dropped for want of `include_confidence=True`), so the session aggregate is a graded mean where the executor scores it. `scoreCalibration` is computed per aggregate — `graded` only when every window carried a confidence — rather than hardcoded `categorical`. |
+| 2026-08-30 | **Phase 1 decision plane implemented in `apps/guardrail`** (§12A). Three corrections to this ticket: §5.1's excess-above-θ sum is blind to sub-θ dispersal and needed the length-invariant mean the cited evidence actually describes; the streaming and consumption tiers must not share an accumulator or a benign encounter over-blocks on its own length; automaton state must survive a replica change or chunking invariance holds only by luck of routing. One honest limit recorded: `apps/nlp` returns labels without confidences, so the session aggregate is a flag rate, not a graded mean, and Phase 4 calibration is blocked on that. |
 | 2026-08-29 | **Rewritten after streaming-guardrail research.** Corrections: overlap is NOT the split-injection defence (§2.2) — replaced by per-session stateful aggregation; verdict split into **three** axes with two cache scopes (§3), since injection risk is not task-agnostic; five safe-trust conditions added (§2); output-side checks made mandatory per task (§7); general harm taxonomies ruled out on clinical text (§2.1); hard no-redaction invariant added (§6). |
