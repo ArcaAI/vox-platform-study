@@ -425,3 +425,41 @@ Baseline captured for comparison: `hope-api` `readyReplicas: 1` at the time of w
 | 2026-08-26 | Task 8: root cause was `apps/nlp/Dockerfile` never setting `HF_HOME` (base image uses `--no-create-home`), NOT a missing volume in the deployment repo — the three sibling Python services already set it. Fixed in-repo with a pytest guard. |
 | 2026-08-26 | Task 9: readiness flapping traced to the kubelet probes sharing the anonymous `tenant:null` 30 req/min throttle bucket — a remote unauthenticated way to evict the pod from Endpoints, matching the observed 1-minute flap with no restart. Fixed with `@SkipThrottle()` on the three probes; `/health` keeps its cap. |
 | 2026-08-26 | Opened [TASK-817](../TASK-817-NLP-Persistent-Model-Cache/README.md) for the ephemeral-cache follow-up noted in §6.3. |
+
+## 9. Why the three items could never pass — dev has been DOWN since 2026-08-28
+
+Diagnosed 2026-08-30 against the live cluster. The three open DoD items are not blocked on a deploy;
+they are blocked on an **outage that predates it by two days**.
+
+### The chain, each link verified
+1. **`vault-seal` (external, `10.10.1.134:8200`) is SEALED.** `hope-vault-0`'s crash log:
+   `error parsing Seal configuration … PUT https://10.10.1.134:8200/v1/transit/encrypt/hope-vault-k3s
+   → Code: 503 … * Vault is sealed`
+2. **`hope-vault-0` therefore cannot transit-auto-unseal** → `CrashLoopBackOff`, **restartCount 507**,
+   unready since `2026-08-28T11:52:20Z`. StatefulSet `0/1`, Degraded.
+3. **The `hope-vault` Service has no ready endpoint**, so cluster DNS does not resolve the name.
+4. **`hope-api` fail-closes** — `VaultSecretsProvider.boot() FATAL: cannot authenticate to Vault
+   (http://hope-vault:8200) — getaddrinfo ENOTFOUND hope-vault. Refusing to start without a Vault
+   session.` Deployment `0/2`, 2 unavailable, Progressing.
+
+**The refusal is correct behaviour**, not a bug: a PHI gateway must not start without its secrets
+backend. Every other workload in `hope-v2-dev` is Healthy — the blast radius is exactly `hope-api`
+and whatever depends on it.
+
+### What this means for the three items
+- *Live flush shows `textFailed:false`* — unreachable; the API is not serving.
+- *NLP `/classify/tokens` returns 200* — the rebuilt image exists (pipeline #1006 built it), but the
+  route is reached **through** the gateway.
+- *`hope-api` readiness stable over 30 min* — currently 0/2.
+
+### The fix is an operator action, not a deploy
+**`vault-seal` at `10.10.1.134:8200` must be unsealed.** That needs unseal keys — a credential
+operation, and the host is outside the cluster (the `proxmox-mcp-plus` MCP is refusing connections
+from this session). Nothing in the repo, the pipeline, or Argo can resolve it.
+
+Note the irony recorded in `hope-vault-init`'s own script: TASK-804 moved to a transit seal precisely
+so that *"unsealing needs no keys and no human"* — which is true of `hope-vault-0`, and false of the
+**seal Vault it depends on**. The single point of failure moved rather than disappearing.
+
+**This is an availability dependency worth a ticket of its own**: dev's entire secrets plane, and
+therefore its API, rests on one external Vault that must be manually unsealed after any restart.
