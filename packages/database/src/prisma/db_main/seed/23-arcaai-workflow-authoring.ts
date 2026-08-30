@@ -370,7 +370,20 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
       onError: 'degrade',
     },
   },
-  { id: 'n_suggest', type: 'consultation.suggestions', config: { onError: 'degrade' } },
+  // ⚠ TASK-827 — `promptTemplateId` is NOT optional decoration, for the same reason it is not on
+  // `n_correct` below. The activity resolves its system prompt from this binding and DEGRADES when
+  // it is absent; it used to run on a Python constant (`_SUGGESTION_SYSTEM_PROMPT`), which is the
+  // hardcoded configuration `00-project-context.md` §Configuration Principles forbids and which no
+  // tenant could read, change or version-pin.
+  //
+  // It binds its OWN row rather than reusing either correction body: those two review existing
+  // words for error and may add nothing, while this node's whole purpose is to raise what is
+  // absent. A tenant admin overrides it by binding its own template here.
+  {
+    id: 'n_suggest',
+    type: 'consultation.suggestions',
+    config: { promptTemplateId: TEMPLATE_IDS.LIVE_SUGGESTIONS_SYSTEM, onError: 'degrade' },
+  },
   // Proposes spelling / medical-term / drug-name corrections and applies none of them — the
   // clinician accepts. `externalWrite: false` on this node is a safety property, not a perf one.
   //

@@ -32,9 +32,10 @@ from harness.temporal.interpreter.nodes import consultation_realtime as rt
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = {"consultationId": "c1", "externalPatientId": "p1", "userId": "u1"}
-#: A bound prompt template id. TASK-826 — `consultation.proposeCorrections` resolves its
-#: system prompt from this binding, so a correction test that omits it exercises the
-#: unconfigured-node degrade rather than the behaviour it means to assert.
+#: A bound prompt template id. TASK-826 / TASK-827 — `consultation.proposeCorrections` and
+#: `consultation.suggestions` BOTH resolve their system prompt from this binding, so a test of
+#: either that omits it exercises the unconfigured-node degrade rather than the behaviour it
+#: means to assert.
 _TEMPLATE = "11111111-1111-1111-1111-111111111111"
 
 
@@ -67,7 +68,7 @@ class _FakeApi:
         model="a-model",
         found=True,
         approved=True,
-        prompt_content="TENANT CORRECTION INSTRUCTION",
+        prompt_content="TENANT INSTRUCTION",
     ):
         self.provider = provider
         self.model = model
@@ -249,7 +250,7 @@ class TestSuggestions:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "patient reports a rash after antibiotics"}},
             )
         )
@@ -275,7 +276,7 @@ class TestSuggestions:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "something"}},
             )
         )
@@ -294,7 +295,11 @@ class TestSuggestions:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live", "maxSuggestions": 2},
+                config={
+                    "taskKey": "text.live",
+                    "maxSuggestions": 2,
+                    "promptTemplateId": _TEMPLATE,
+                },
                 bound_inputs={"in": {"text": "something"}},
             )
         )
@@ -310,7 +315,7 @@ class TestSuggestions:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "something"}},
             )
         )
@@ -604,12 +609,176 @@ class TestCorrectionInstructionIsGoverned:
 
         source = inspect.getsource(rt)
         assert "_CORRECTION_SYSTEM_PROMPT" not in source
-        # The deleted constant's own giveaway phrases. Deliberately CORRECTION-specific rather
-        # than a generic "no prompt prose in this module" sweep: `_SUGGESTION_SYSTEM_PROMPT`
-        # (W2, `consultation.suggestions`) is still a literal in this same file. That is the same
-        # defect class on a different node, reported under TASK-826 rather than fixed here —
-        # widening this assertion would make an unrelated node's fix a prerequisite for this one.
+        # The deleted constant's own giveaway phrases. TASK-826 scoped this deliberately to
+        # CORRECTION-specific prose because `_SUGGESTION_SYSTEM_PROMPT` was still a literal in
+        # this same file, and widening it then would have made an unrelated node's fix a
+        # prerequisite for this one. TASK-827 removed that literal, so the narrowing is retired
+        # and the sibling is guarded by its own assertion below.
         for phrase in ("You review clinical text", "medical-term and drug-name errors"):
+            assert phrase not in source
+
+
+# ---------------------------------------------------------------------------
+# TASK-827 — the suggestion instruction is GOVERNED CONFIGURATION, never a literal
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestionInstructionIsGoverned:
+    """W2's system prompt comes from its OWN ``promptTemplateId`` binding.
+
+    The identical defect TASK-826 fixed one node over, in the same file:
+    ``_SUGGESTION_SYSTEM_PROMPT`` was a module-level Python constant, so a tenant could not read,
+    change or version-pin how suggestions were put to its clinicians —
+    ``00-project-context.md`` §Configuration Principles, *"a ... prompt ... is NOT a literal in
+    code"*.
+
+    The load-bearing assertion is the unbound one. This node proposes clinical questions and
+    checks to a clinician mid-consultation, so a silent in-code default would mean the platform
+    deciding what every tenant's clinicians are prompted to ask. An unbound template must stop
+    the node VISIBLY and must never reach a model.
+    """
+
+    _SOURCE = "patient reports a rash after antibiotics"
+
+    @pytest.mark.asyncio
+    async def test_the_system_prompt_is_the_bound_templates_content_verbatim(self, monkeypatch):
+        api = _FakeApi(prompt_content="Suggest for THIS tenant, this way.")
+        text = _FakeText('{"suggestions": [{"text": "Ask about penicillin allergy"}]}')
+        monkeypatch.setattr(rt, "_api_client", lambda s: api)
+        monkeypatch.setattr(rt, "_text_client", lambda s: text)
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert api.resolved_ids == [_TEMPLATE]
+        assert text.calls[0]["system_prompt"] == "Suggest for THIS tenant, this way."
+
+    @pytest.mark.asyncio
+    async def test_an_unbound_instruction_DEGRADES_and_never_falls_back_to_a_default(
+        self, monkeypatch
+    ):
+        """THE mutation target. Re-introducing any in-code default turns this red."""
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi())
+        monkeypatch.setattr(
+            rt,
+            "_text_client",
+            lambda s: pytest.fail("must not generate without a tenant instruction"),
+        )
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live"},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "no instruction template is bound" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_an_unapproved_instruction_DEGRADES(self, monkeypatch):
+        """DRAFT content never reaches a model — the same bar every governed prompt is held to."""
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi(approved=False))
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate on an unapproved prompt")
+        )
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "no approved version" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_a_missing_template_DEGRADES(self, monkeypatch):
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi(found=False))
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate on a missing prompt")
+        )
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "not found" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_an_empty_instruction_DEGRADES(self, monkeypatch):
+        """An APPROVED but empty body is still no instruction, and must not reach a model."""
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi(prompt_content="   "))
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate on an empty prompt")
+        )
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+
+    @pytest.mark.asyncio
+    async def test_resolution_precedes_the_policy_call_so_a_misconfigured_node_is_always_visible(
+        self, monkeypatch
+    ):
+        """Configuration validity is not conditional on a peer service being reachable.
+
+        Resolving after `_resolve_selection` would make an unbound node report
+        `policy_fetch_unreachable` whenever the policy call failed too — the configuration gap
+        masked by a transient one, and invisible on exactly the runs an operator investigates.
+        """
+
+        class _NoPolicyApi(_FakeApi):
+            async def get_policy(self, *a, **k):
+                raise ApiServiceError("policy plane down")
+
+        monkeypatch.setattr(rt, "_api_client", lambda s: _NoPolicyApi())
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate without an instruction")
+        )
+
+        result = await rt.interpreter_consultation_suggestions(
+            _payload(
+                "consultation.suggestions",
+                config={"taskKey": "text.live"},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "no instruction template is bound" in result.reason
+
+    def test_the_module_holds_no_suggestion_prompt_literal(self):
+        """The source-level half of the mutation guard, as TASK-826 established for W3.
+
+        The behavioural tests catch a fallback that is REACHED; this catches one merely
+        re-introduced. Neither is sufficient alone — TASK-826 recorded a mutation where a
+        paraphrased default kept a grep-only guard green.
+        """
+        import inspect
+
+        source = inspect.getsource(rt)
+        assert "_SUGGESTION_SYSTEM_PROMPT" not in source
+        for phrase in (
+            "You assist a clinician during a live consultation",
+            "propose the most useful next questions",
+            "Never state a diagnosis as fact",
+        ):
             assert phrase not in source
 
 
