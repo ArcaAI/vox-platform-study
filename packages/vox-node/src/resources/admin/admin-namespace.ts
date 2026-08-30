@@ -76,6 +76,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
  *
  * - `AdminHealthServicesController` (2 routes)
  * - `AdminImpersonationController` (1 route)
+ * - `AiRoutingPolicyAdminController` (7 routes)
  * - `ConsentGrantController` (3 routes)
  * - `MonitoringController` (4 routes)
  * - `ServiceAccountController` (7 routes)
