@@ -270,18 +270,21 @@ class TestBedrockGenAISpans:
             "stopReason": "end_turn",
         }
 
-        if True:
-            provider = BedrockProvider()
-            provider._client = stub_client(provider, MagicMock())
+        # Stub the SDK CALL, not asyncio. This used to patch
+        # `text.providers.bedrock.asyncio` wholesale and swap in a fake
+        # `to_thread`, which coupled a span-attribute test to the precise
+        # mechanism by which the adapter offloads blocking work. TASK-818 Lane A
+        # changed that mechanism (`asyncio.to_thread` runs on the DEFAULT
+        # executor, which a Bedrock generation holds for seconds - B-3), so the
+        # test now stubs the boto3 client it is actually standing in for and no
+        # longer cares which threads the call runs on.
+        provider = BedrockProvider()
+        provider._client = stub_client(provider, MagicMock())
+        provider._client.converse.return_value = mock_boto_response
 
-            async def _fake_to_thread(fn, *args, **kwargs):
-                return mock_boto_response
-
-            with patch("text.providers.bedrock.asyncio") as mock_asyncio:
-                mock_asyncio.to_thread = _fake_to_thread
-                content, _reasoning, usage = await provider.generate(
-                    GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
-                )
+        content, _reasoning, usage = await provider.generate(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+        )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "aws_bedrock"]
@@ -297,18 +300,14 @@ class TestBedrockGenAISpans:
             "stopReason": "end_turn",
         }
 
-        if True:
-            provider = BedrockProvider()
-            provider._client = stub_client(provider, MagicMock())
+        # Stub the SDK call, not asyncio - see the sibling test above.
+        provider = BedrockProvider()
+        provider._client = stub_client(provider, MagicMock())
+        provider._client.converse.return_value = mock_boto_response
 
-            async def _fake_to_thread(fn, *args, **kwargs):
-                return mock_boto_response
-
-            with patch("text.providers.bedrock.asyncio") as mock_asyncio:
-                mock_asyncio.to_thread = _fake_to_thread
-                await provider.generate(
-                    GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
-                )
+        await provider.generate(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+        )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_span = next(s for s in spans if s.attributes.get("gen_ai.system") == "aws_bedrock")

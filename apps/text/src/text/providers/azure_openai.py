@@ -12,6 +12,7 @@ from openai import AsyncAzureOpenAI, BadRequestError
 from text.core.connection import resolve_connection
 from text.core.defaults import resolve_request_defaults
 from text.core.exceptions import ProviderConnectionMissingError, ProviderCredentialsError
+from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import get_tracer
 from text.models.provider import ProviderInfo
 from text.models.requests import GenerateRequest, ProviderOverride
@@ -19,11 +20,21 @@ from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
 from text.providers.base import CredentialPosture, require_model
+from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import TransportFamily, pooled_http_client
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
 logger = structlog.get_logger(__name__)
+
+#: The S-4 provider identity, which is what an `AiRuntimeProfile` row is keyed by
+#: and therefore what the connection pool must be named after. Deliberately NOT
+#: the ``azure_openai`` spelling used in this module's error messages and spans:
+#: those are user-facing text and telemetry with their own history, while THIS
+#: string has to match the vocabulary a platform admin types into the config
+#: plane, or the pool silently never receives its tuning.
+_POOL_NAME = "azure-openai"
 
 
 def _get_tracer() -> Tracer:
@@ -74,9 +85,11 @@ class AzureOpenAIProvider:
         connection of its own: endpoint, credential and api-version all arrive
         per request as a gateway-resolved ``ProviderOverride`` (tenant → SYSTEM).
 
-        There is therefore no shared client. Every request builds its own, so
-        two tenants can never race on one, and a request with no resolved
-        connection raises rather than 401-ing an empty-keyed client downstream.
+        There is no client on this INSTANCE. Clients live in the process-wide
+        `CLIENT_CACHE`, keyed by `(provider, endpoint, credential fingerprint)`,
+        so two tenants still never share one while two requests on the same
+        Azure resource reuse one (B-2). A request with no resolved connection
+        still raises rather than 401-ing an empty-keyed client downstream.
         """
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
@@ -110,11 +123,25 @@ class AzureOpenAIProvider:
                 "travels with the credential on the AiProviderConnection row.",
                 provider="azure_openai",
             )
+        secret = override.api_key.get_secret_value()
+        api_version = override.api_version or self.ADAPTER_API_VERSION
+        # `api_version` is part of the client's identity, not just a header: two
+        # connections on the same resource pinned to different versions speak
+        # different wires and must not be collapsed onto one client.
+        key = client_key(_POOL_NAME, f"{endpoint}|{api_version}", secret)
         try:
-            return AsyncAzureOpenAI(
-                api_key=override.api_key.get_secret_value(),
-                azure_endpoint=endpoint,
-                api_version=override.api_version or self.ADAPTER_API_VERSION,
+            return CLIENT_CACHE.get_or_create(
+                key,
+                lambda: AsyncAzureOpenAI(
+                    api_key=secret,
+                    azure_endpoint=endpoint,
+                    api_version=api_version,
+                    http_client=pooled_http_client(
+                        _POOL_NAME,
+                        timeout_s=PROVIDER_TIMEOUT_FLOOR_S,
+                        family=TransportFamily.HTTPX2,
+                    ),
+                ),
             )
         except Exception as exc:  # noqa: BLE001 — never leak the key
             # A MALFORMED override is refused, not degraded onto another
