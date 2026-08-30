@@ -53,10 +53,12 @@ pnpm stack:dev -- text worker
 - **Health**: http://127.0.0.1:8862/api/v1/health
 - **Metrics**: http://127.0.0.1:8862/metrics
 
-Env: `TEXT_PORT` (8862), `TEXT_URL` (gateway → this service), `TEXT_SERVICE_TOKEN`
-(`X-Service-Token`; empty = local-dev bypass). Copy `apps/text/.env.sample` for the full
-`TEXT_*` / per-provider set. Host env wins; production loads host env only (`apps/text/.env.prod`
-is ops reference, not auto-loaded).
+Env is the BOOTSTRAP FLOOR only: `TEXT_PORT` (8862), `TEXT_URL` (gateway → this service),
+`TEXT_SERVICE_TOKEN` (`X-Service-Token`; empty = local-dev bypass). Copy `apps/text/.env.sample`
+for the full set — nine fields, and **no provider block, model id, endpoint or credential**
+(`core/config.py`, locked by `test_task799_config_surface.py`). Provider connections and model
+selection are DB/Vault-tier, resolved per request; there is no `.env.prod`. Host env wins;
+CI and production read no env file at all.
 
 ## Project layout
 

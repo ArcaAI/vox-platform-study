@@ -445,10 +445,13 @@ services:
   # LM Studio + Ollama remain the default local engines. hope-vllm needs NVIDIA;
   # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
-  # Wire TEXT to them via .env.dev (see apps/text/.env.prod for the production
-  # reference values):
-  #   TEXT_VLLM_BASE_URL=http://localhost:8000/v1
-  #   TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080
+  # Wire TEXT to them by seeding a SYSTEM-tenant `AiProviderConnection` row per
+  # engine, carrying the `baseUrl` (see packages/applications/.../ai-provider-connection).
+  # There is NO env-var wiring: `TEXT_VLLM_BASE_URL` / `TEXT_LLAMA_CPP_BASE_URL`
+  # were deleted with the engine sub-configs (TASK-736/799) and are BANNED BY NAME
+  # in test_task799_config_surface.py — setting one has no effect at all.
+  # Every self-hosted adapter is fail-closed on a caller-supplied base_url
+  # (`text.core.connection.require_base_url`); it holds no endpoint of its own.
   #
   # Images are PINNED (no `latest`). vLLM + llama.cpp roll fast; bump to a build
   # you have validated on your hardware (see docs/operations/inference/README.md).

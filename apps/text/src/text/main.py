@@ -177,9 +177,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         translate_registry.register_factory("sarvam", SarvamTranslateProvider)
 
     # Embedding capability (TASK-725 Task 4) — a SEPARATE registry namespace
-    # from the LLM `provider_registry` above (design-notes.md §(a)). `tei-embed`
-    # always carries a topology-level default `base_url`, same convention as
-    # the other local engines, so it registers unconditionally.
+    # from the LLM `provider_registry` above (design-notes.md §(a)). Registration
+    # is unconditional because the registry is LAZY — registering a name costs
+    # nothing and opens no connection. `tei-embed` carries NO default endpoint:
+    # like every self-hosted adapter it is fail-closed on a caller-supplied
+    # base_url (`providers/tei_embed.py` → `require_base_url`).
     if not hasattr(app.state, "embedding_registry") or app.state.embedding_registry is None:
         from text.providers.embedding import EmbeddingProviderRegistry
 
