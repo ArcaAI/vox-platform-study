@@ -194,6 +194,22 @@ through the router, so widening it does not license a generation call.
 
 The historical analysis below is kept as the record of why this was raised.
 
+**Measured after the change (2026-08-30, single-node k8s v1.35.6, throwaway
+namespace).** Both halves of the peer set, against a live server pod on :1234:
+
+```
+hope-text              ALLOWED (HTTP 200)
+hope-harness           ALLOWED (HTTP 200)
+hope-harness-worker    ALLOWED (HTTP 200)
+hope-nlp               BLOCKED (timeout)
+hope-guardrail         BLOCKED (timeout)
+```
+
+The deny half matters as much as the allow half: widening the rule for harness
+did not widen it for anything else. Note this was measured on a DIFFERENT CNI
+from k3s, so it proves the POLICY is correct, not that the target cluster
+enforces it — R-5 stays open.
+
 #### The original finding (historical)
 
 The gateway ruling and the cluster's current configuration disagree, and the
