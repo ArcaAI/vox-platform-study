@@ -165,6 +165,20 @@ export const TEMPLATE_IDS = {
   // resolves its system prompt from the node's `promptTemplateId` and THROWS when it is unbound,
   // so an unbound node degrades on every flush — "runs for nobody" in a different costume.
   LIVE_GRAMMAR_SYSTEM: '71000000-0000-0000-0000-000000000043',
+  // TASK-826 — the DURABLE note-level correction instruction, and the same tier for the same
+  // reason.
+  //
+  // `consultation.proposeCorrections` ran on `_CORRECTION_SYSTEM_PROMPT`, a Python constant, while
+  // the realtime sibling of the SAME engine already resolved a governed template. A tenant could
+  // not read, change or version-pin how its own notes were corrected.
+  //
+  // It is a SEPARATE row from LIVE_GRAMMAR_SYSTEM rather than a shared one, and the difference is
+  // the material each pass reviews. `agent.grammar.in` is `transcript` — a PARTIAL one that grows
+  // between turns, which is why that body says "do not correct a word that is merely cut off at
+  // the end". `consultation.proposeCorrections.in` is `text`, and in both seeded graphs it is fed
+  // from `consultation.synthesize`: a FINISHED, complete note. An instruction telling a model the
+  // note is still growing would be wrong about the only thing it needs to be right about.
+  NOTE_CORRECTIONS_SYSTEM: '71000000-0000-0000-0000-000000000044',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
@@ -1346,6 +1360,42 @@ Transcript:
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['live-grammar', 'system', 'platform-default'],
+  },
+  {
+    id: TEMPLATE_IDS.NOTE_CORRECTIONS_SYSTEM,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
+    name: 'Clinical Note Corrections (platform default)',
+    description:
+      'Platform-default instruction for the `consultation.proposeCorrections` node — the DURABLE pass over a written clinical note. A tenant admin overrides it by binding their own template on the node.',
+    // Same two cares as the grammar body, and one more that is specific to reviewing a NOTE.
+    //
+    // The three CATEGORIES are a closed WIRE VOCABULARY (`_verified_proposals` drops any proposal
+    // whose category it does not recognise), not a clinical taxonomy — naming a protocol is not
+    // the platform deciding a clinical question on a tenant's behalf.
+    //
+    // It must never be told it may APPLY anything: this pass proposes, the clinician accepts.
+    //
+    // And it must not be told the text is still growing. That instruction belongs to the LIVE
+    // pass over a partial transcript; here the input is a finished note, so a "wait, it may be
+    // cut off" caveat would suppress a correction at the end of the note that is genuinely wrong.
+    content:
+      'You review a WRITTEN clinical note for spelling, medical-term and drug-name errors. You propose corrections; you never apply them.\n\n' +
+      'You are given a JSON object with `text` (the complete note) and `entities` (character spans a detector already recognised, as hints about where clinical terms are).\n\n' +
+      'Return ONLY a JSON object of this shape:\n' +
+      '{"proposals":[{"start":<int>,"end":<int>,"original":"<the exact text at [start,end)>","proposed":"<your replacement>","category":"spelling|medicalTerm|drugName","confidence":<0.0-1.0>,"rationale":"<one short sentence>"}]}\n\n' +
+      'Rules:\n' +
+      '- `original` MUST be exactly the characters of `text` between `start` and `end`. A proposal whose span does not match its own `original` is discarded.\n' +
+      '- Never change a dose, a number, a unit, a date or a name. Correct how a term is SPELLED, never what it says.\n' +
+      '- Propose only for spans that are genuinely wrong. Do not restyle the note, do not re-order or re-word its sections, and do not summarise.\n' +
+      '- Do not add clinical content, and do not remove any. A correction replaces a misspelling with the same term spelled correctly, and nothing more.\n' +
+      '- If nothing is wrong, return {"proposals":[]}. An empty list is a correct answer.\n' +
+      '- Return the JSON object and nothing else.',
+    category: 'SYSTEM',
+    variables: {},
+    currentVersionNumber: 1,
+    departmentId: null,
+    tags: ['note-corrections', 'system', 'platform-default'],
   },
 ];
 

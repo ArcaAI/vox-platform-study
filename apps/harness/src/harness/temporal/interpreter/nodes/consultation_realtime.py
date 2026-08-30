@@ -78,6 +78,10 @@ from harness.temporal.activities import (
 )
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import bound_text, run_identity
+from harness.temporal.interpreter.nodes._llm_policy import (
+    InstructionUnavailable,
+    resolve_instruction,
+)
 from harness.temporal.interpreter.nodes._shared import (
     STATUS_DEGRADED,
     STATUS_ERROR,
@@ -558,16 +562,21 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
 # ---------------------------------------------------------------------------
 
 
-_CORRECTION_SYSTEM_PROMPT = (
-    "You review clinical text for spelling, medical-term and drug-name errors. "
-    "You are given the text and the character spans of detected clinical entities. "
-    "Propose corrections ONLY for spans that are genuinely wrong. "
-    'Reply ONLY with JSON of the form {"proposals": [{"start": 0, "end": 0, '
-    '"original": "...", "proposed": "...", "category": "spelling|medicalTerm|drugName", '
-    '"confidence": 0.0, "rationale": "..."}]}. '
-    "Never change a dose, a number or a unit. Copy `original` exactly as it appears in the "
-    "text at [start, end). If nothing is wrong, return an empty list."
-)
+# TASK-826 — the system prompt used to live HERE, as a module-level Python constant. It is now
+# the node's own bound ``promptTemplateId``, resolved APPROVED through the gateway, with NO
+# fallback. Two reasons, and the second is the one that makes it worth a ticket:
+#
+#  1. ``00-project-context.md`` §Configuration Principles — "an engine name, model id, endpoint,
+#     credential, threshold, PROMPT, taxonomy or label set is NOT a literal in code". A tenant
+#     could not read, change or version-pin how its own clinical text was corrected.
+#  2. The realtime caller of THIS SAME ENGINE already resolved a governed template and threw when
+#     it could not (``LiveDocumentationService.resolveGovernedNodePrompt``). One capability with
+#     two opposite configuration postures is worse than either posture consistently applied — a
+#     reviewer comparing them learns the platform's prompt governance is decorative.
+#
+# The platform default is a SYSTEM-tenant ``PromptTemplate`` (``07-prompt-template.ts``,
+# ``NOTE_CORRECTIONS_SYSTEM``), which is the sanctioned platform tier rather than a fallback this
+# module reaches for: a tenant with an opinion binds its own id on the node instead.
 
 
 @activity.defn(name="interpreter.consultation_propose_corrections")
@@ -601,6 +610,23 @@ async def interpreter_consultation_propose_corrections(
         return NodeActivityResult(
             status="DEGRADED", reason="no text bound from an upstream node to review"
         )
+
+    # BEFORE detection, deliberately. Configuration validity is not conditional on what the
+    # detector happened to find: resolving after the "no entities" early return would let a node
+    # with no bound instruction report SUCCEEDED with zero proposals on every quiet run, which is
+    # indistinguishable from a working one — the "runs for nobody" failure TASK-815 §14a names.
+    try:
+        instruction = await resolve_instruction(
+            config.get("promptTemplateId"),
+            payload.tenant_id,
+            missing_code="no_correction_instruction_bound",
+            api=_api_client(get_settings()),
+        )
+    except InstructionUnavailable as exc:
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code=exc.error_code
+        )
+        return NodeActivityResult(status="DEGRADED", reason=exc.reason)
 
     identity = run_identity(payload.run_payload)
     try:
@@ -660,7 +686,7 @@ async def interpreter_consultation_propose_corrections(
             user_prompt, provider=provider, policy=policy, settings=settings, redactor=redactor
         )
         safe_system = _screen(
-            _CORRECTION_SYSTEM_PROMPT,
+            instruction,
             provider=provider,
             policy=policy,
             settings=settings,
