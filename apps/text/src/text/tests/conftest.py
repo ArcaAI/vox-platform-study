@@ -154,6 +154,29 @@ def stub_endpoint(provider, url: str = "http://engine.local"):
     return url
 
 
+@pytest.fixture(autouse=True)
+def _isolate_egress_client_cache():
+    """Reset the process-wide egress client cache and pool policy per test.
+
+    `providers/clients.py` memoizes built SDK clients by `(provider, base_url,
+    credential fingerprint)`, and `providers/pool.py` holds one httpx pool per
+    upstream plus the Bedrock thread pool. Both are deliberately PROCESS-level —
+    that is what makes connection reuse survive `ProviderRegistry` rebuilding an
+    adapter — which means that without this fixture a client built by one test
+    would be served to the next, and any test asserting on a patched constructor's
+    `call_count` would see zero calls for reasons that have nothing to do with the
+    code under test.
+
+    Autouse rather than opt-in on purpose: the tests that would break are not the
+    ones that know about the cache.
+    """
+    from text.providers.pool import reset_pooled_clients
+
+    reset_pooled_clients()
+    yield
+    reset_pooled_clients()
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings with service auth off.

@@ -31,6 +31,8 @@ from text.models.stats import GenerationStats, build_generation_stats
 from text.models.stream import StreamChunk
 from text.models.usage import anthropic_usage_dict
 from text.providers.base import CredentialPosture, require_model
+from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import pooled_http_client
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -66,8 +68,14 @@ class AnthropicProvider:
     def __init__(self) -> None:
         """No configuration. Anthropic is BYOK-only and Text holds no connection
         of its own: the credential (and any proxy base URL) arrive per request as
-        a gateway-resolved ``ProviderOverride``. Every request builds its own
-        client, so two tenants can never race on one.
+        a gateway-resolved ``ProviderOverride``.
+
+        There is no client on this INSTANCE: clients live in the process-wide
+        `CLIENT_CACHE`, keyed by `(provider, base_url, credential fingerprint)`,
+        so two tenants still never share one while two requests on the same
+        connection reuse one (B-2). Anthropic is also the adapter where reuse
+        matters most beyond TLS: its prompt cache is byte-exact on the prefix
+        (4.4), so a stable connection is part of keeping cache reads warm.
         """
         self._timeout_s = PROVIDER_TIMEOUT_FLOOR_S
 
@@ -81,9 +89,9 @@ class AnthropicProvider:
         return resolve_connection(request)
 
     def _client_for(self, request: GenerateRequest) -> AsyncAnthropic:
-        """Request-scoped, fail-closed client resolution. A MALFORMED override
-        raises rather than degrading onto a process-wide credential. The key is
-        NEVER logged."""
+        """Connection-scoped, fail-closed client resolution. A MALFORMED override
+        raises rather than degrading onto a process-wide credential, and a failed
+        build is never cached. The key is NEVER logged."""
         override = self._resolve_override(request)
         if override is None:
             raise ProviderConnectionMissingError(
@@ -93,11 +101,17 @@ class AnthropicProvider:
                 "There is no env fallback.",
                 provider=_PROVIDER_NAME,
             )
+        secret = override.api_key.get_secret_value()
+        key = client_key(_PROVIDER_NAME, override.base_url, secret)
         try:
-            return AsyncAnthropic(
-                api_key=override.api_key.get_secret_value(),
-                base_url=override.base_url or None,
-                timeout=float(self._timeout_s),
+            return CLIENT_CACHE.get_or_create(
+                key,
+                lambda: AsyncAnthropic(
+                    api_key=secret,
+                    base_url=override.base_url or None,
+                    timeout=float(self._timeout_s),
+                    http_client=pooled_http_client(_PROVIDER_NAME, timeout_s=self._timeout_s),
+                ),
             )
         except Exception as exc:  # noqa: BLE001 — never leak the key
             logger.warning(

@@ -30,6 +30,8 @@ from text.models.stats import GenerationStats, stats_from_openai_usage
 from text.models.stream import StreamChunk
 from text.models.usage import openai_usage_dict
 from text.providers.base import CredentialPosture, require_model
+from text.providers.clients import CLIENT_CACHE, client_key
+from text.providers.pool import TransportFamily, pooled_http_client
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -53,8 +55,12 @@ class OpenAIProvider:
         its own: the credential and (for an OpenAI-compatible gateway) the base
         URL arrive per request as a gateway-resolved ``ProviderOverride``.
 
-        There is therefore no shared client — every request builds its own, so
-        two tenants can never race on one.
+        There is no client on this INSTANCE. Clients live in the process-wide
+        `CLIENT_CACHE`, keyed by `(provider, base_url, credential fingerprint)` —
+        so two tenants still never share one, while two requests on the same
+        connection reuse one instead of paying a fresh TLS handshake each
+        (B-2). See `providers/clients.py` for why that key is the exact
+        predicate the isolation property needs.
         """
         self._timeout_s = PROVIDER_TIMEOUT_FLOOR_S
 
@@ -72,12 +78,16 @@ class OpenAIProvider:
         return resolve_connection(request)
 
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
-        """Request-scoped, fail-closed client resolution.
+        """Connection-scoped, fail-closed client resolution.
 
-        There is no shared platform client to degrade onto any more, so a
-        MALFORMED override raises instead of silently running the request on a
-        process-wide credential — the outcome that made a revoked tenant key look
-        like it still worked. The key is NEVER logged.
+        There is no shared platform client to degrade onto, so a MALFORMED
+        override raises instead of silently running the request on a process-wide
+        credential — the outcome that made a revoked tenant key look like it still
+        worked. The key is NEVER logged, and never becomes part of a cache key
+        (`clients.py` fingerprints it).
+
+        A build failure is deliberately NOT cached, so a transient failure cannot
+        become a permanent one.
         """
         override = self._resolve_override(request)
         if override is None:
@@ -88,11 +98,21 @@ class OpenAIProvider:
                 "fallback.",
                 provider=_PROVIDER_NAME,
             )
+        secret = override.api_key.get_secret_value()
+        key = client_key(_PROVIDER_NAME, override.base_url, secret)
         try:
-            return AsyncOpenAI(
-                api_key=override.api_key.get_secret_value(),
-                base_url=override.base_url or None,
-                timeout=float(self._timeout_s),
+            return CLIENT_CACHE.get_or_create(
+                key,
+                lambda: AsyncOpenAI(
+                    api_key=secret,
+                    base_url=override.base_url or None,
+                    timeout=float(self._timeout_s),
+                    http_client=pooled_http_client(
+                        _PROVIDER_NAME,
+                        timeout_s=self._timeout_s,
+                        family=TransportFamily.HTTPX2,
+                    ),
+                ),
             )
         except Exception as exc:  # noqa: BLE001 — never leak the key
             logger.warning(
