@@ -851,6 +851,46 @@ measured p99 overhead exceeds ~10 ms after Phase 2.** Against a real provider (T
 
 ## 5. Verification Criteria (the numbers this ticket is judged on)
 
+> ### 🔴 STATUS 2026-08-30 — two criteria are NOT met, and one was wrongly reported as met
+>
+> **AC-17 is UNSATISFIABLE as the code stands (blocker R-1).** `GenerationHub` is
+> process-local and §3C.3(5)'s `XREAD BLOCK` fallback was never implemented, so
+> `stream.py`'s `producer is None` branch cannot tell a FINISHED generation from one
+> RUNNING ON ANOTHER PROCESS and closes with HTTP 200 and no terminal frame. Lane G
+> measured **4 of 8 resumes truncating at ~6%** of the generation under `--workers 4`.
+> The trigger is a second *process*, not `--workers`, so `replicas > 1` has it today and
+> **every rolling restart has it at one replica**. §3C.8's row "router pod restart →
+> everything recovered" therefore describes the intent, not the behaviour. This lands
+> squarely on the owner's "nothing may be lost", so it is a blocker, not a backlog item.
+> A fix lane is dispatched.
+>
+> **AC-3 is UNPROVEN — the earlier "met" was retracted.** It came from an 8-second run
+> (~40 samples at c=10), so its "p99" was the second-worst of a handful. An identical
+> rerun measured 17.83 / 33.87 ms against the published 8.33 / 7.21 ms, and no 30-second
+> run in any mode has cleared 10 ms. See `baseline.md` §RETRACTED. **Standing rule: no p99
+> from a run under 30 s, and print N beside any tail statistic.**
+>
+> **Multi-worker is not the lever anyway.** In latency-injecting mode at c=100, 1 worker
+> and 4 workers deliver identical (provider-paced) throughput and one worker uses **0.51
+> cores**. Recommendation: uvicorn, single worker now, `--workers 2` only after R-1 lands.
+> Granian is not worth trialling — it would inherit the same defect, which lives in
+> `GenerationHub`, not in the server.
+>
+> ### Open registrations
+>
+> | Id | Item |
+> |---|---|
+> | **R-1** | *(blocker, lane dispatched)* Distinguish finished from running-elsewhere; `XREAD BLOCK` the replay buffer until terminal. Acceptance: every resume trial at `--workers 4` ends in a terminal frame |
+> | **R-2** | `main.py:296-306` — two hardcoded `30.0` shutdown waits, sequential, neither cancellable. With `terminationGracePeriodSeconds: 600` they should total ≲ 540 s |
+> | **R-3** | Confirm whether `hope-text` is scraped via Service endpoints or pod annotations BEFORE applying G-4; if annotations, it is a no-op and must be recorded as such, never added to the traffic Service |
+> | **OWNER** | **The shutdown budget disagrees with the generation ceiling by 30×.** `main.py` bounds drain at ~60 s (env-tier, boot-time); `maxGenerationSeconds` floors at **1800 s** (`db-config`, tenant→SYSTEM). "How long may one clinical generation run?" currently has two different answers and nothing reconciles them. This is a policy call, not a code change |
+>
+> `--timeout-graceful-shutdown` was measured **inert** (11.20 s exit either way) and
+> deliberately NOT added. The nginx buffering annotations of G-5 were NOT written: this
+> cluster has no nginx controller (Cloudflare Tunnel → NodePort, Traefik bypassed), and
+> the tunnel is `config_src: cloudflare` — outside both repos, CI and Argo.
+
+
 D-3 selected **concurrent streams** as the target, so the acceptance criteria are stated in
 stream terms. All measured against the Lane H harness, both mock modes.
 
