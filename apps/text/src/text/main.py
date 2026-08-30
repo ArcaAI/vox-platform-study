@@ -269,17 +269,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.shutdown_manager = ShutdownManager()
 
-    # Async worker-pool dispatch queue (TASK-725) — cross-pod, Redis-Streams
-    # backed; distinct from the in-process `provider_queues` above (see
-    # services/worker_pool_queue.py module docstring). Constructed AFTER
-    # `shutdown_manager` so submission can fail closed during drain (Task 6).
-    if not hasattr(app.state, "worker_pool_queue") or app.state.worker_pool_queue is None:
-        from text.services.worker_pool_queue import WorkerPoolQueue
-
-        app.state.worker_pool_queue = WorkerPoolQueue(
-            redis=redis_client, shutdown_manager=app.state.shutdown_manager
-        )
-
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above (already
     # closed on shutdown below) rather than opening a second one.
@@ -298,6 +287,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("text.started", providers=registry.list_providers())
     yield
+
+    # TASK-818 Lane B: drain generation producers FIRST, and before the redis
+    # client closes below — a producer still coalescing its final batch needs the
+    # replay buffer to write to, or the tail of a generation a client could still
+    # resume is lost. Producers also register with `shutdown_manager`, so this is
+    # a refinement of the drain below rather than the only one.
+    generation_hub = getattr(app.state, "generation_hub", None)
+    if generation_hub is not None:
+        with contextlib.suppress(Exception):
+            await generation_hub.drain(timeout=30.0)
 
     shutdown_mgr = app.state.shutdown_manager
     if shutdown_mgr is not None:
@@ -352,7 +351,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.provider_registry = None
     app.state.translate_registry = None
     app.state.embedding_registry = None
-    app.state.worker_pool_queue = None
     app.state.rate_limiters = {}
     app.state.circuit_breakers = {}
     app.state.provider_queues = {}
@@ -374,6 +372,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from text.services.pool_health import PoolHealthTracker
 
     app.state.pool_health_tracker = PoolHealthTracker()
+
+    # TASK-818 Lane B: the generation hub owns producers that deliberately
+    # OUTLIVE the HTTP response subscribed to them — that is what makes a
+    # reconnect resumable. Constructed eagerly for the same reason as the tracker
+    # above (no I/O, and tests build the app without lifespan), and drained on
+    # shutdown below so a rolling restart does not abandon in-flight producers.
+    from text.routing.hub import GenerationHub
+
+    app.state.generation_hub = GenerationHub()
     # Control-plane overrides; empty ⇒ every provider keeps its safety floor.
     app.state.provider_timeouts = {}
     # `(provider, lane)` -> served budget overrides; empty ⇒ the lane floors.
@@ -418,7 +425,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from text.api.endpoints.stream import router as stream_router
     from text.api.endpoints.tasks import router as tasks_router
     from text.api.endpoints.translate import router as translate_router
-    from text.api.endpoints.worker_pools import router as worker_pools_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(generate_router, prefix="/api/v1")
@@ -431,7 +437,6 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(stream_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
     app.include_router(embeddings_router, prefix="/api/v1")
-    app.include_router(worker_pools_router, prefix="/api/v1")
 
     if settings.otel_enabled:
         from text.core.observability import setup_opentelemetry

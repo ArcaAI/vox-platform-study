@@ -54,7 +54,6 @@ if TYPE_CHECKING:
     from text.services.resizable_semaphore import ResizableSemaphore
     from text.services.shutdown_manager import ShutdownManager
     from text.services.task_manager import TaskManager
-    from text.services.worker_pool_queue import WorkerPoolQueue
     from text.translation.base import TranslateProviderRegistry
 
 
@@ -206,8 +205,3 @@ async def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
 async def get_embedding_registry(request: Request) -> EmbeddingProviderRegistry:
     """Retrieve the embedding-provider registry from app.state (TASK-725 Task 4)."""
     return cast("EmbeddingProviderRegistry", request.app.state.embedding_registry)
-
-
-async def get_worker_pool_queue(request: Request) -> WorkerPoolQueue:
-    """Retrieve the async worker-pool dispatch queue from app.state (TASK-725)."""
-    return cast("WorkerPoolQueue", request.app.state.worker_pool_queue)

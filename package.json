@@ -142,7 +142,6 @@
     "text:setup:gpu": "./scripts/setup-python-env.sh --install --service text --gpu",
     "text:dev": "./scripts/dev-service.sh text",
     "text:dev:watch": "./scripts/dev-service.sh text --watch",
-    "text:worker:dev": "./scripts/dev-service.sh text-worker",
     "text:test": "conda run -n arcaenv --no-capture-output pytest apps/text/src/text/tests/ -v --tb=short",
     "text:test:unit": "conda run -n arcaenv --no-capture-output pytest apps/text/src/text/tests/unit/ -v --tb=short",
     "text:test:integration": "conda run -n arcaenv --no-capture-output pytest apps/text/src/text/tests/integration/ -v --tb=short",
