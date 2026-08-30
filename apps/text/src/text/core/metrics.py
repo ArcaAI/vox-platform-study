@@ -123,18 +123,6 @@ CONCURRENT_REQUESTS = Gauge(
 # prefixed metric next to them would be its own drift.
 # ---------------------------------------------------------------------------
 
-WORKER_POOL_QUEUE_DEPTH = Gauge(
-    "text_worker_pool_queue_depth",
-    "Pending async worker-pool tasks per pool (queue depth for KEDA's Prometheus scaler)",
-    ["task_type"],
-)
-
-WORKER_POOL_TASKS_TOTAL = Counter(
-    "text_worker_pool_tasks_total",
-    "Async worker-pool tasks, by pool and outcome",
-    ["task_type", "status"],
-)
-
 # ---------------------------------------------------------------------------
 # Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------

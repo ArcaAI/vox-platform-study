@@ -16,10 +16,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from text.core.exceptions import ShutdownError
-from text.models.worker_task import WorkerTaskEnvelope, WorkerTaskType
 from text.services.shutdown_manager import ShutdownManager
-from text.services.worker_pool_queue import WorkerPoolQueue
 
 
 @pytest.fixture
@@ -30,33 +27,9 @@ def mock_redis():
 
 
 class TestSigtermMidDrain:
-    @pytest.mark.asyncio
-    async def test_in_flight_sync_task_completes_while_new_async_submission_is_rejected(
-        self, mock_redis
-    ):
-        shutdown_manager = ShutdownManager()
-        queue = WorkerPoolQueue(redis=mock_redis, shutdown_manager=shutdown_manager)
-
-        # A generation already in flight when SIGTERM lands.
-        shutdown_manager.register_task("in-flight-task-1")
-        assert shutdown_manager.active_count == 1
-
-        # SIGTERM: begin draining.
-        shutdown_manager.initiate_shutdown()
-        assert shutdown_manager.is_shutting_down is True
-
-        # New async work is rejected — never queued into a draining pod.
-        with pytest.raises(ShutdownError):
-            await queue.submit(
-                WorkerTaskEnvelope(task_type=WorkerTaskType.EMBEDDING, payload={"texts": ["x"]})
-            )
-        mock_redis.xadd.assert_not_awaited()
-
-        # The in-flight task is UNAFFECTED by the new-submission rejection —
-        # it finishes normally.
-        shutdown_manager.complete_task("in-flight-task-1")
-        assert shutdown_manager.active_count == 0
-
+    # TASK-818 B-10: the async-submission-rejected half went with the worker-pool
+    # plane it exercised. `wait_for_shutdown` is the drain `main.py` actually awaits
+    # on every shutdown, so it survives and still earns its place.
     @pytest.mark.asyncio
     async def test_wait_for_shutdown_resolves_once_in_flight_task_completes(self):
         """The drain the lifespan shutdown handler (`main.py`) awaits: it does

@@ -30,7 +30,6 @@ from text.core.dependencies import (
     get_runtime_limits,
     get_shutdown_manager,
     get_task_manager,
-    get_worker_pool_queue,
 )
 from text.core.dependencies import (
     get_settings as get_dep_settings,
@@ -68,14 +67,12 @@ from text.core.metrics import (
     STOP_REASON_TOTAL,
     TOKENS_PER_SECOND,
     TOKENS_TOTAL,
-    WORKER_POOL_TASKS_TOTAL,
 )
 from text.core.observability import set_generation_span_attributes
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
-from text.models.requests import GenerateBatchRequest, GenerateRequest
+from text.models.requests import GenerateRequest
 from text.models.responses import (
     ErrorResponse,
-    GenerateBatchAcceptedResponse,
     GenerateResponse,
     TokenUsage,
 )
@@ -90,7 +87,6 @@ from text.models.usage import (
     guardrail_usage_from_verdict,
     raw_usage_from_stats,
 )
-from text.models.worker_task import WorkerTaskEnvelope, WorkerTaskType
 from text.providers.base import ProviderNotFoundError, ProviderRegistry
 from text.services.circuit_breaker import CircuitBreaker
 from text.services.external_guardrail import (
@@ -108,7 +104,6 @@ from text.services.retry_handler import calculate_backoff, retry_after_from, sho
 from text.services.runtime_limits import lane_budget
 from text.services.shutdown_manager import ShutdownManager
 from text.services.task_manager import TaskManager
-from text.services.worker_pool_queue import WorkerPoolQueue
 
 logger = get_logger(__name__)
 
@@ -926,63 +921,3 @@ async def generate(
             _drop_permit()
         if shutdown_manager:
             shutdown_manager.complete_task(task.task_id)
-
-
-@router.post(
-    "/generate/batch",
-    status_code=202,
-    response_model=GenerateBatchAcceptedResponse,
-)
-async def submit_batch_generation(
-    request_body: GenerateBatchRequest,
-    registry: ProviderRegistry = Depends(get_provider_registry),
-    worker_pool_queue: WorkerPoolQueue = Depends(get_worker_pool_queue),
-    task_manager: TaskManager = Depends(get_task_manager),
-    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> GenerateBatchAcceptedResponse:
-    """Async submission for the ``BATCH_GENERATION`` worker-pool task type
-    (TASK-725 §7 residual close-out — ``worker.py::_handle_batch_generation``
-    dispatch existed with nothing in this repo enqueuing it end-to-end).
-
-    Mirrors ``POST /embeddings/batch``: same module layout (submission
-    endpoint lives alongside its synchronous counterpart), same 202
-    accepted-envelope shape, same ``WorkerPoolQueue.submit`` dispatch path
-    (``ShutdownError`` propagates unwrapped to the shared ``TextError``
-    handler while the control plane is draining, exactly as it does there).
-
-    Two additions beyond a literal mirror, both deliberate:
-    - ``X-Tenant-Id`` is REQUIRED (the 428 + ``tenantless:<reason>`` precondition
-      the auth middleware applies to every route) rather than merely
-      forwarded — batch generation drives the same billable
-      ``LLMProvider.generate()`` call the synchronous path does, so it carries
-      the same per-request tenant-attribution requirement (owner directive,
-      2026-08-16: `X-Tenant-Id` is mandatory on tenant-scoped internal work).
-    - The provider name is validated against ``ProviderRegistry`` at
-      submission (the same ``registry.get()`` / ``ProviderNotFoundError`` →
-      404 check ``/generate`` performs) so an unknown provider fails fast
-      here instead of only at worker dispatch (``_handle_batch_generation``
-      also fails closed with the same error, defense-in-depth for a task
-      submitted directly onto the queue outside this endpoint).
-    """
-    try:
-        registry.get(request_body.provider)
-    except ProviderNotFoundError:
-        raise DomainProviderNotFoundError(
-            f"Provider '{request_body.provider}' not found",
-            provider=request_body.provider,
-        ) from None
-
-    task = await task_manager.create_task(
-        provider=request_body.provider, model=request_body.model or ""
-    )
-    envelope = WorkerTaskEnvelope(
-        task_id=task.task_id,
-        task_type=WorkerTaskType.BATCH_GENERATION,
-        tenant_id=x_tenant_id,
-        idempotency_key=idempotency_key,
-        payload=request_body.model_dump(exclude_none=True),
-    )
-    await worker_pool_queue.submit(envelope)
-    WORKER_POOL_TASKS_TOTAL.labels(task_type="batch_generation", status="submitted").inc()
-    return GenerateBatchAcceptedResponse(task_id=task.task_id, status="queued")

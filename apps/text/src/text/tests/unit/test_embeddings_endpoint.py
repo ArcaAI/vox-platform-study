@@ -1,4 +1,9 @@
-"""Embeddings endpoints — sync `/embeddings` and async `/embeddings/batch`
+"""Embeddings endpoint — sync `/embeddings`.
+
+TASK-818 B-10 removed `/embeddings/batch` with the worker-pool plane it dispatched
+onto; the sync route is what remains.
+
+ORIGINAL: sync `/embeddings` and async `/embeddings/batch`
 (TASK-725 Task 4). Hermetic: registry/queue/task-manager are stubs, no live
 engines. RED: written before `api/endpoints/embeddings.py` existed.
 """
@@ -12,7 +17,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from text.core.config import Settings
-from text.models.worker_task import WorkerTaskType
 
 
 @pytest.fixture
@@ -30,12 +34,6 @@ def mock_embedding_registry(mock_embedding_provider):
     return registry
 
 
-@pytest.fixture
-def mock_worker_pool_queue():
-    queue = AsyncMock()
-    queue.submit = AsyncMock(return_value="111-0")
-    return queue
-
 
 @pytest.fixture
 def mock_task_manager():
@@ -47,13 +45,12 @@ def mock_task_manager():
 
 
 @pytest.fixture
-def app(mock_embedding_registry, mock_worker_pool_queue, mock_task_manager):
+def app(mock_embedding_registry, mock_task_manager):
     from text.main import create_app
 
     application = create_app()
     application.state.settings = Settings(port=5099)
     application.state.embedding_registry = mock_embedding_registry
-    application.state.worker_pool_queue = mock_worker_pool_queue
     application.state.task_manager = mock_task_manager
     return application
 
@@ -93,39 +90,3 @@ class TestSyncEmbeddings:
         resp = await client.post("/api/v1/embeddings", json={"texts": []})
         assert resp.status_code == 422
 
-
-class TestBatchEmbeddings:
-    @pytest.mark.asyncio
-    async def test_submits_envelope_and_returns_202(self, client, mock_worker_pool_queue):
-        resp = await client.post("/api/v1/embeddings/batch", json={"texts": ["a", "b", "c"]})
-
-        assert resp.status_code == 202
-        data = resp.json()
-        assert data["task_id"] == "embed-task-1"
-        assert data["status"] == "queued"
-
-        mock_worker_pool_queue.submit.assert_awaited_once()
-        envelope = mock_worker_pool_queue.submit.call_args.args[0]
-        assert envelope.task_type == WorkerTaskType.EMBEDDING
-        assert envelope.task_id == "embed-task-1"
-        assert envelope.payload["texts"] == ["a", "b", "c"]
-
-    @pytest.mark.asyncio
-    async def test_forwards_tenant_and_idempotency_headers(self, client, mock_worker_pool_queue):
-        resp = await client.post(
-            "/api/v1/embeddings/batch",
-            json={"texts": ["a"]},
-            headers={"X-Tenant-Id": "tenant-9", "Idempotency-Key": "idem-9"},
-        )
-        assert resp.status_code == 202
-        envelope = mock_worker_pool_queue.submit.call_args.args[0]
-        assert envelope.tenant_id == "tenant-9"
-        assert envelope.idempotency_key == "idem-9"
-
-    @pytest.mark.asyncio
-    async def test_draining_control_plane_rejects_submission(self, client, mock_worker_pool_queue):
-        from text.core.exceptions import ShutdownError
-
-        mock_worker_pool_queue.submit.side_effect = ShutdownError()
-        resp = await client.post("/api/v1/embeddings/batch", json={"texts": ["a"]})
-        assert resp.status_code == 503
