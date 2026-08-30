@@ -1,5 +1,9 @@
 -- ============================================================================
--- TASK-818 §3A.3 — AiRoutingPolicy (PREPARED, NOT APPLIED)
+-- TASK-818 §3A.3 — AiRoutingPolicy
+--
+-- Applied 2026-08-30. Verified against a throwaway shadow DB: full ledger replayed
+-- from empty, then `prisma migrate diff --from-config-datasource --to-schema`
+-- printed "-- This is an empty migration." — so the schema and this SQL agree.
 --
 -- ⚠ This folder is deliberately named `PENDING_…` and NOT `<timestamp>_…`, so
 --   `prisma migrate deploy` SKIPS it and it can never be mistaken for an
