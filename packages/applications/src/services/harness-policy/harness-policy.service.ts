@@ -126,8 +126,6 @@ export interface HarnessPolicyKnobs {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  safetyProvider: string;
-  safetyModel: string;
   textProvider: string | null;
   textModel: string | null;
   maxRegen: number;
@@ -169,8 +167,6 @@ export interface HarnessPolicyKnobs {
  * not deleted — removing a key here restores the tenant row's effect).
  */
 const SUPER_ADMIN_ONLY_POLICY_KEYS = [
-  'safetyProvider',
-  'safetyModel',
   'textProvider',
   'textModel',
   'optimisticDeliveryEnabled',
@@ -201,8 +197,6 @@ function entityToKnobs(e: HarnessPolicyEntity): HarnessPolicyKnobs {
     safetyEnabled: e.safetyEnabled,
     phiEnabled: e.phiEnabled,
     phiFailClosed: e.phiFailClosed,
-    safetyProvider: e.safetyProvider,
-    safetyModel: e.safetyModel,
     textProvider: e.textProvider ?? null,
     textModel: e.textModel ?? null,
     maxRegen: e.maxRegen,

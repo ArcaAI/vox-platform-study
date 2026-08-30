@@ -1,5 +1,5 @@
 /**
- * The 16 HarnessPolicy knobs (verified against HarnessPolicyResponse /
+ * The HarnessPolicy knobs (verified against HarnessPolicyResponse /
  * UpdateHarnessPolicyRequest in @arcaai/applications), grouped for the
  * settings grid and the OCC save form. One descriptor list keeps the grid,
  * the form and the sparse-patch builder in lockstep.
@@ -36,18 +36,16 @@ export interface PolicyFieldGroup {
  * actually renders — the remaining locked keys (TEXT routing, agentic loop
  * knobs) have no tenant-tab control, so there is nothing to disable.
  *
- * `safetyProvider`/`safetyModel` were locked server-side before this change,
- * but the tenant tab still rendered them as editable text inputs whose save
- * could only ever 403. An e2e spec had even encoded that impossible save as
- * expected behaviour. Adding them here fixes the same defect class A-1c was
- * written for, and is why that spec now edits a genuinely tenant-writable field.
+ * `safetyProvider`/`safetyModel` are NOT in this list because TASK-816 Phase 4 removed
+ * their controls outright. Locking is the right answer for a key the tenant may not write
+ * but a super admin may; those two backed dropped columns, so the GLOBAL tab — which passes
+ * no locked keys — would have patched a column that no longer exists. A control nobody may
+ * successfully use is deleted, not disabled.
  */
 export const TENANT_LOCKED_POLICY_KEYS = [
   'safetyEnabled',
   'phiEnabled',
   'phiFailClosed',
-  'safetyProvider',
-  'safetyModel',
   // TASK-740 D-3: both are in the backend's `SUPER_ADMIN_ONLY_POLICY_KEYS`, so
   // the tenant PATCH rejects them with a 403. They were rendered unlocked with
   // no super-admin hint, and because the patch is sparse the 403 fired exactly
@@ -77,8 +75,6 @@ export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
       { key: 'safetyEnabled', label: 'Safety guardrail', kind: 'switch' },
       { key: 'phiEnabled', label: 'PHI detection', kind: 'switch' },
       { key: 'phiFailClosed', label: 'PHI fail-closed', kind: 'switch' },
-      { key: 'safetyProvider', label: 'Safety provider', kind: 'text' },
-      { key: 'safetyModel', label: 'Safety model', kind: 'text' },
     ],
   },
   {

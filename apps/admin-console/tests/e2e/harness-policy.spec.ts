@@ -78,10 +78,10 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
   });
 
   /**
-   * "Safety provider" is a `SUPER_ADMIN_ONLY_POLICY_KEYS` key, so a tenant
-   * PATCH against it always 403s — this spec instead edits a genuinely
-   * tenant-writable knob (clinical gate SLA); the two safety inputs render
-   * read-only alongside the safety/PHI toggles.
+   * Edits a genuinely tenant-writable knob (clinical gate SLA). The safety/PHI toggles are
+   * `SUPER_ADMIN_ONLY_POLICY_KEYS`, so a tenant PATCH against one always 403s and they
+   * render read-only. (The former "Safety provider"/"Safety model" inputs are gone
+   * entirely — TASK-816 Phase 4 dropped their columns.)
    */
   test('editing and reverting a tenant-writable field round-trips with no net mutation', async ({ page }) => {
     await page.goto('/harness/policy');
@@ -144,10 +144,9 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
   });
 
   /**
-   * "Safety model" is another super-admin-only key the tenant tab renders
-   * read-only (see the round-trip spec above). Dirty-state is a property of
-   * the FORM, so any tenant-writable field proves it — this uses the
-   * gate-escalation knob.
+   * Dirty-state is a property of the FORM, so any tenant-writable field proves it — this
+   * uses the gate-escalation knob rather than a super-admin-only one (see the round-trip
+   * spec above).
    */
   test('the dirty-state indicator appears on edit and clears after reset', async ({ page }) => {
     await page.goto('/harness/policy');

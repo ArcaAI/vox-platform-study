@@ -347,13 +347,20 @@ model HarnessPolicy {
   numericDoseThreshold        Float @default(1.0)
   groundednessThreshold       Float @default(0.8)
 
-  // Guardrail toggles + engine selection. Defaults mirror SafetyGuardConfig
+  // Guardrail + PHI toggles. Defaults mirror SafetyGuardConfig
   // (apps/harness/src/harness/core/config.py) + PhiConfig.
-  safetyEnabled  Boolean @default(true)
-  phiEnabled     Boolean @default(true)
-  phiFailClosed  Boolean @default(true)
-  safetyProvider String  @default("lm-studio")
-  safetyModel    String  @default("granite-guardian-4.1-8b")
+  //
+  // TASK-816 Phase 4 dropped `safetyProvider`/`safetyModel` from this model. They selected
+  // nothing: the safety screen is built from `settings.guardrail_base_url` alone
+  // (`activities.py::_safety_screen_client`) and `GuardrailClient.analyze` POSTs only
+  // `{text, guardrail_type, request_id}` — `apps/guardrail` resolves its own provider and
+  // model tenant-first from the `guardrail.safety` AiTaskDefault, fail-closed, which is the
+  // correct home for that selection since TASK-735/736. Their `@default`s were also the last
+  // hardcoded engine name + model id in this model, which rule 00 §Configuration Principles
+  // forbids. Do not reintroduce them here; the selection belongs in `AiTaskDefault`.
+  safetyEnabled Boolean @default(true)
+  phiEnabled    Boolean @default(true)
+  phiFailClosed Boolean @default(true)
 
   // Text-generation defaults (null => let the text service choose). Mirrors
   // Settings.text_provider / text_model.

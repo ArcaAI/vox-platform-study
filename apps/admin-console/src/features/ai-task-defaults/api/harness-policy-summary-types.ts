@@ -25,8 +25,6 @@ export interface HarnessPolicySummary {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  safetyProvider: string;
-  safetyModel: string;
   textProvider: string | null;
   textModel: string | null;
   maxRegen: number;
@@ -47,10 +45,14 @@ export interface HarnessPolicyFieldControl {
 }
 
 /**
- * All 16 HarnessPolicy runtime knobs, each labeled with WHO can write it. The
- * 5 in `controlledBy: 'super-admin'` are `TENANT_LOCKED_POLICY_KEYS` on the
- * tenant PATCH route (`harness-policy.service.ts` `SUPER_ADMIN_ONLY_POLICY_KEYS`);
- * the rest are tenant-writable from `/harness/policy`.
+ * The HarnessPolicy runtime knobs, each labeled with WHO can write it. The ones in
+ * `controlledBy: 'super-admin'` are `TENANT_LOCKED_POLICY_KEYS` on the tenant PATCH route
+ * (`harness-policy.service.ts` `SUPER_ADMIN_ONLY_POLICY_KEYS`); the rest are tenant-writable
+ * from `/harness/policy`.
+ *
+ * `safetyProvider`/`safetyModel` are absent since TASK-816 Phase 4 dropped the columns: the
+ * guardrail engine and model are resolved by `apps/guardrail` from the `guardrail.safety`
+ * AiTaskDefault, so there is no HarnessPolicy row here to attribute to an audience.
  */
 export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
   { key: 'entityFaithfulnessThreshold', label: 'Entity faithfulness threshold', controlledBy: 'tenant' },
@@ -61,8 +63,6 @@ export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
   { key: 'safetyEnabled', label: 'Safety guardrail', controlledBy: 'super-admin' },
   { key: 'phiEnabled', label: 'PHI detection', controlledBy: 'super-admin' },
   { key: 'phiFailClosed', label: 'PHI fail-closed', controlledBy: 'super-admin' },
-  { key: 'safetyProvider', label: 'Safety provider', controlledBy: 'super-admin' },
-  { key: 'safetyModel', label: 'Safety model', controlledBy: 'super-admin' },
   // TASK-740 D-3: both are `SUPER_ADMIN_ONLY_POLICY_KEYS` on the backend — the
   // tenant PATCH 403s them — so labelling them tenant-controlled was a lie in
   // the second of the two places that made it.

@@ -16,7 +16,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
+import { HARNESS_POLICY_DEFAULTS, HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessPolicyService } from '../harness-policy.service';
 
@@ -74,8 +74,8 @@ function makeServiceWithAiTaskDefault(): HarnessPolicyService {
 function systemDefaultEntity() {
   return HarnessPolicyFactory.CreateHarnessPolicy({
     tenantId: SYSTEM_TENANT_ID,
-    // A non-default safetyModel proves the create path inherits the system row.
-    safetyModel: 'system-default-guardian',
+    // A non-default gate SLA proves the create path inherits the system row.
+    gateSlaSeconds: 12_345,
   });
 }
 
@@ -118,7 +118,7 @@ describe('HarnessPolicyService', () => {
       const result = await service.getEffectivePolicy();
 
       expect(result.source).toBe('system-default');
-      expect(result.safetyModel).toBe('system-default-guardian');
+      expect(result.gateSlaSeconds).toBe(12_345);
       expect(result.version).toBe(1);
     });
 
@@ -562,12 +562,12 @@ describe('HarnessPolicyService', () => {
       const created = policyRepository.create.mock.calls[0][0] as {
         tenantId: string;
         coverageThreshold: number;
-        safetyModel: string;
+        gateSlaSeconds: number;
       };
       expect(created.tenantId).toBe(TENANT);
       expect(created.coverageThreshold).toBe(0.5);
       // Unpatched field inherited from the SYSTEM default (not the code default).
-      expect(created.safetyModel).toBe('system-default-guardian');
+      expect(created.gateSlaSeconds).toBe(12_345);
 
       const change = policyChangeRepository.create.mock.calls[0][0] as { beforeJson: unknown; afterJson: { coverageThreshold: number } };
       expect(change.beforeJson).toBeNull();
@@ -629,6 +629,34 @@ describe('HarnessPolicyService', () => {
       expect(result.groundednessThreshold).toBe(0.9);
       const change = policyChangeRepository.create.mock.calls[0][0] as { tenantId: string };
       expect(change.tenantId).toBe(SYSTEM_TENANT_ID);
+    });
+  });
+  /**
+   * TASK-816 Phase 4 — `safetyProvider`/`safetyModel` were dropped from the schema.
+   *
+   * `KNOB_KEYS` derives from `HARNESS_POLICY_DEFAULTS`, so a stale key there would put a
+   * dropped column back into every merge / apply / WORM snapshot the service writes — the
+   * shape that would 500 against the migrated table. Nothing read either value (Phase 2,
+   * mutation-proven); the guardrail selection lives in the `guardrail.safety` AiTaskDefault,
+   * resolved by apps/guardrail tenant-first.
+   */
+  describe('the retired safety selection knobs', () => {
+    it.each(['safetyProvider', 'safetyModel'])('is not a policy knob default: %s', (key) => {
+      expect(Object.keys(HARNESS_POLICY_DEFAULTS)).not.toContain(key);
+    });
+
+    it('never writes a retired key into the WORM change snapshot', async () => {
+      const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, coverageThreshold: 0.8 });
+      policyRepository.findForExactTenant.mockResolvedValue(own);
+      policyRepository.updateWithVersion.mockImplementation(async (_id: string, entity: unknown) => entity);
+
+      await service.updatePolicy({ maxRegen: 3 }, 1);
+
+      const change = policyChangeRepository.create.mock.calls[0][0] as { afterJson: Record<string, unknown>; beforeJson: Record<string, unknown> };
+      for (const key of ['safetyProvider', 'safetyModel']) {
+        expect(Object.keys(change.afterJson)).not.toContain(key);
+        expect(Object.keys(change.beforeJson)).not.toContain(key);
+      }
     });
   });
 });

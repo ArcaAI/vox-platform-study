@@ -51,12 +51,6 @@ export class HarnessPolicyResponse {
   @ApiProperty({ description: 'PHI fail-closed behaviour.', example: true })
   phiFailClosed: boolean;
 
-  @ApiProperty({ description: 'Safety-guard provider id.', example: 'lm-studio' })
-  safetyProvider: string;
-
-  @ApiProperty({ description: 'Safety-guard model id.', example: 'granite-guardian-4.1-8b' })
-  safetyModel: string;
-
   @ApiPropertyOptional({ description: 'TEXT generation provider id (null = let the TEXT service choose).', nullable: true })
   textProvider: string | null;
 
