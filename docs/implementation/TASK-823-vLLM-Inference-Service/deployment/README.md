@@ -233,7 +233,22 @@ The IP is simpler, needs nothing new, and matches how Postgres and Redis are
 already addressed. Prefer it.
 </details>
 
-### 8.2 TLS — a private CA, and it is mandatory
+### 8.2 TLS — a private CA, and it is mandatory ⟵ **SUPERSEDED 2026-08-30**
+
+> **The MEASUREMENT below is still true, and still the reason the scheme is
+> `https://`. What was overridden is "so mount the CA".**
+> The owner directed on 2026-08-30 that the private CA be removed entirely and
+> that a service-account credential be the only authentication (§9.1). The
+> transport did NOT change — MinIO serves TLS on :9000 and one port serves one
+> scheme, so this section's certificate reading remains the operative fact. What
+> changed is that **certificate verification is now turned off** instead of
+> pointed at a bundle.
+>
+> ⚠️ For vLLM specifically that is easier said than done — see OPEN-823-TLS in
+> `config/vllm.env`: variant 2 of the §10 lab (https + private CA + no
+> `AWS_CA_BUNDLE`) is EXACTLY the new configuration, and it FAILED
+> `CERTIFICATE_VERIFY_FAILED` on the first LIST, because boto3 has no env var
+> that disables verification. Resolution is an owner decision.
 
 Read off the wire from inside `hope-v2-dev` on 2026-08-30:
 
@@ -316,6 +331,14 @@ nothing depends on it.
 
 ### 8.5 Upload procedure
 
+> ⚠️ **AMENDED 2026-08-30.** The `https://10.10.1.102:9000` endpoint below is
+> unchanged. Under the owner's no-CA directive, replace `export SSL_CERT_FILE=…`
+> with **`mc --insecure`** on every `mc` invocation (the flag is evaluated per
+> call, not remembered by the alias). Everything else — checksum-before-upload,
+> `SHA256SUMS`, versioned bucket, never overwrite a prefix — is unchanged and
+> still mandatory. The `SSL_CERT_FILE` form is retained because it is the
+> reinstatement procedure; see §9.1.
+
 `mc` is a Go binary: it honours **`SSL_CERT_FILE`** for a private CA. Dropping
 the PEM into `<config-dir>/certs/CAs/` did **not** take effect (tested).
 
@@ -355,8 +378,17 @@ mc ls --recursive hope/hope-models/qwen3-4b-awq/v1/
 
 ### 8.6 Credentials
 
-No new secret. `vllm.yaml` reuses `hope-secrets.MINIO_ACCESS_KEY` /
-`MINIO_SECRET_KEY`, already present for `hope-stt`.
+> ⚠️ **CHANGED 2026-08-30.** `vllm.yaml` no longer reuses
+> `hope-secrets.MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`. It reads the dedicated
+> **`hope-models-reader`** Secret (keys `accessKeyId` / `secretAccessKey`),
+> holding a MinIO SERVICE ACCOUNT scoped by the committed `hope-models-reader`
+> policy — read-only, `hope-models` only. See §9.1b. The paragraph below records
+> what was there before and why it was wrong.
+
+~~No new secret. `vllm.yaml` reuses `hope-secrets.MINIO_ACCESS_KEY` /
+`MINIO_SECRET_KEY`, already present for `hope-stt`.~~ That pair is the
+platform-wide read/**write** credential and can reach the PHI buckets; TASK-824's
+sync Job had already moved to a least-privilege reader, so vLLM was the outlier.
 
 > **Aside, for whoever owns TASK-828.** `hope-secrets` carries a
 > `kubectl.kubernetes.io/last-applied-configuration` annotation containing the
@@ -373,10 +405,48 @@ No new secret. `vllm.yaml` reuses `hope-secrets.MINIO_ACCESS_KEY` /
 These are outside this ticket's write boundary. The manifests are authored
 against them and **fail closed** until they exist.
 
-### 9.1 Publish the ARCAAI Internal CA into `hope-v2-dev` (BLOCKING)
+### 9.1 ~~Publish the ARCAAI Internal CA into `hope-v2-dev`~~ — **CANCELLED 2026-08-30**
 
-`vllm.yaml` mounts ConfigMap `arcaai-internal-ca`, key `ca.crt`. It does not
-exist; the namespace has no CA material at all. Without it the pod stops at
+> **CANCELLED BY OWNER DECISION, 2026-08-30. Recorded, not deleted.**
+>
+> The directive: *"No CA. At all."* For vLLM and LM Studio, every trace of the
+> private "ARCAAI Internal CA" is removed — the `arcaai-internal-ca` ConfigMap
+> volume, `AWS_CA_BUNDLE`, `VLLM_S3_CA_BUNDLE`, the `/etc/ssl/arcaai/ca.crt`
+> mount, and `mc`'s CA flags. **Authentication to MinIO is a MinIO service
+> account — an access key and a secret — and nothing else.**
+>
+> **"No CA" is about AUTHENTICATION, not TRANSPORT.** The endpoint stays
+> `https://10.10.1.102:9000` — MinIO serves TLS on :9000 and one port serves one
+> scheme, so plain HTTP would have forced pgBackRest, GitLab, Loki, Tempo,
+> Prometheus and both cloudflared origins to be re-pointed as collateral. What
+> replaces the CA is **certificate verification turned OFF at the client**.
+>
+> The accompanying directive is that **PHI hardening is explicitly
+> DE-PRIORITISED for now**. This request is the single largest thing that
+> de-prioritisation removes, so it is left here struck through rather than
+> deleted: when PHI hardening is re-prioritised, THIS is the item to reinstate,
+> and the collapsed block below is still the procedure.
+>
+> **What it cost.** An unverified TLS connection encrypts the wire but does NOT
+> authenticate the peer: it defeats passive capture on `10.10.1.0/24`, not an
+> on-path attacker. The egress NetworkPolicy still confines the traffic to a
+> single `/32`.
+>
+> **⚠️ FOR vLLM THIS DOES NOT CURRENTLY WORK — OPEN-823-TLS.** vLLM's load path
+> has two S3 clients and only the Run:ai C++ one reads `RUNAI_STREAMER_*`;
+> **boto3 has no environment variable that disables verification**. §10's lab
+> variant 2 (https + private CA + no `AWS_CA_BUNDLE`) IS this configuration and
+> it failed `CERTIFICATE_VERIFY_FAILED` on the first LIST. Resolution is an owner
+> decision: reinstate the CA for vLLM only (procedure below), put a
+> publicly-trusted certificate on the MinIO listener, or patch the loader
+> upstream. Not blocking while `replicas: 0`; blocking the moment it is scaled
+> to 1. LM Studio is unaffected — `mc --insecure` is a real, verified control.
+
+<details>
+<summary>The original (cancelled) request, kept for reinstatement</summary>
+
+`vllm.yaml` mounted ConfigMap `arcaai-internal-ca`, key `ca.crt`. It does not
+exist; the namespace has no CA material at all. Without it the pod stopped at
 `CreateContainerConfigError` — deliberately, rather than talking to a PHI
 object store without verifying it.
 
@@ -405,6 +475,40 @@ openssl verify -CAfile ./arcaai-ca.crt <(openssl s_client -connect 10.10.1.102:9
 This belongs in the deployment repo as a committed manifest, not a one-off
 `kubectl create` — a CA cert is public material, so there is no reason for it to
 live outside Git. It expires **2028-03-21**; put that in whatever tracks renewals.
+</details>
+
+### 9.1b Create the `hope-models-reader` Secret (BLOCKING — replaces 9.1)
+
+This is now the **only** hand-created object `vllm.yaml` depends on, and it is
+shared with TASK-824's LM Studio sync Job — create it once.
+
+`vllm.yaml` reads `hope-models-reader`, keys `accessKeyId` / `secretAccessKey`.
+The credential is a **MinIO service account** narrowed by the committed policy
+`infrastructure/docker/minio/policies/hope-models-reader.json` (ListBucket +
+GetObject + GetObjectVersion on `hope-models` only; no `PutObject`, no
+`DeleteObject`, no other bucket).
+
+```sh
+mc admin policy create hope hope-models-reader \
+  infrastructure/docker/minio/policies/hope-models-reader.json
+mc admin user svcacct add hope <parent-user> \
+  --access-key <19-char-key> --secret-key <secret> \
+  --policy infrastructure/docker/minio/policies/hope-models-reader.json
+kubectl -n hope-v2-dev create secret generic hope-models-reader \
+  --from-literal=accessKeyId=<key> --from-literal=secretAccessKey=<secret>
+```
+
+⚠️ **MinIO rejects an access key longer than 20 characters** (`access key length
+should be between 3 and 20`) — measured, not guessed.
+
+This deliberately REPLACES the previous "reuse `hope-secrets.MINIO_ACCESS_KEY` /
+`MINIO_SECRET_KEY`" arrangement (old §8.6): that pair is the platform-wide
+read/WRITE credential that can also reach the PHI buckets, and a weight fetch has
+no business holding a credential that can write `recordings`.
+
+The full operator procedure, with the four verification commands that prove the
+policy denies writes, is in
+`docs/operations/inference/serving-tier-cluster-deployment.md` §4.
 
 ### 9.2 Create the `hope-models` bucket (BLOCKING for a real load)
 
