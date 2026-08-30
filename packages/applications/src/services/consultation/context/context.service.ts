@@ -474,11 +474,33 @@ export class ContextService extends BaseService implements IContextService {
       validatedContent = validated?.content;
     }
 
+    // TASK-825 — an EMPTY body is not an edit, it is a deletion, and a
+    // `ContextItem` has a first-class one (`deleteContext` → soft delete). The
+    // CREATE path already refuses an empty body for a non-media type (see
+    // `addContext`: *"Content is required for non-media types"*), and
+    // `ContextItemEntity.validate()` states the same invariant structurally —
+    // the rule was simply ABSENT here, which is exactly the asymmetry
+    // `resolveContextKind`'s contract warns against ("a rule can never be
+    // present on one write path and missing on the other").
+    //
+    // It has to be refused HERE, before `getLatestVersionNumber`, because
+    // everything downstream is irreversible: an immutable `ContextItemVersion`
+    // row recording the empty body, the `currentVersionNumber` bump, the
+    // `updatedBy` stamp. Pre-fix all three committed while `encryptedContent` —
+    // the ONLY persisted form of the body — was silently left holding the old
+    // text, so the history asserted a deletion that never landed.
+    //
+    // A media item (`requiresContent` false) legitimately carries no body, so an
+    // empty write there is allowed and genuinely CLEARS the ciphertext (the
+    // repository half of the fix, in `encryptContentIntoEntity`).
+    const newContent = validatedContent !== undefined ? validatedContent : request.content;
+    if (newContent !== undefined && !newContent && contextItem.requiresContent) {
+      throw new BadRequestException('Content is required for non-media types');
+    }
+
     // Apply changes to the entity first
-    if (validatedContent !== undefined) {
-      contextItem.content = validatedContent;
-    } else if (request.content !== undefined) {
-      contextItem.content = request.content;
+    if (newContent !== undefined) {
+      contextItem.content = newContent;
     }
     if (request.dnaWritingStyleId !== undefined) {
       contextItem.dnaWritingStyleId = request.dnaWritingStyleId;

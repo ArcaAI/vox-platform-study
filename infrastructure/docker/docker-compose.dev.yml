@@ -563,3 +563,154 @@ services:
     volumes:
       - tei-embed-data:/data
 
+
+  # ==========================================================================
+  # MLflow — model registry, experiment tracking, lineage (TASK-822)
+  # ==========================================================================
+  # OPT-IN tier, gated behind the `mlflow` profile. Start with:
+  #   pnpm infra:dev:up -- -m          (or --mlflow)
+  # `pnpm infra:dev:down` tears it down too — `mlflow` is in dev-infra.sh's
+  # ALL_PROFILES, so it never lingers as an orphan.
+  #
+  #   MLflow UI: http://localhost:5000
+  #
+  # This block mirrors the CLUSTER manifests exactly where it matters — same
+  # image DIGEST, same server flags, same migrate-then-serve ordering — and
+  # differs only in endpoints. Keep them in step: the shipped manifests are
+  # docs/implementation/TASK-822-MLflow-Deployment/deployment/mlflow*.yaml.
+  #
+  # ⚠️ IMAGE: the `-full` variant, NOT the plain one. `ghcr.io/mlflow/mlflow`
+  # ships mlflow + SQLAlchemy + alembic and NOTHING ELSE — no psycopg2, no
+  # boto3, no prometheus_flask_exporter — so it cannot reach Postgres, cannot
+  # reach MinIO and cannot serve --expose-prometheus. Verified 2026-08-30 by
+  # importing all three in both images. `-full` carries all of them.
+  #
+  # PHI (S-1): nothing here enables GenAI tracing. MLflow 3 captures full
+  # prompts and responses BY DEFAULT, and masking is opt-in + client-side, so
+  # `log_traces=False` at every autolog call site is the control — not redaction.
+  # No clinical-text path may autolog against this server.
+  mlflow-migrate:
+    container_name: hope-mlflow-migrate
+    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647}
+    profiles: ["mlflow"]
+    networks:
+      - hope-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    # The compose analogue of the PreSync migration Job. `mlflow` below waits on
+    # service_completed_successfully, so the server can never start against a
+    # stale schema — it hard-fails there, and that failure reads like a bad
+    # connection string rather than a missing migration.
+    #
+    # Creating the database is part of this one-shot on purpose: MLflow gets its
+    # OWN `mlflow` database, never the Prisma-managed one (Alembic's ledger and
+    # Prisma's drift detection must not share a schema). It cannot be a
+    # /docker-entrypoint-initdb.d script — that only runs on FIRST init, and
+    # every existing developer already has a populated hope-postgres-data-pg18
+    # volume, so it would silently never run for them.
+    #
+    # The pg_isready retry loop is load-bearing: timescaledb-ha answers
+    # pg_isready over the LOCAL SOCKET while Patroni is still starting, so
+    # `service_healthy` fires before the server accepts TCP.
+    entrypoint: ['/bin/bash', '-c']
+    command:
+      - |
+        set -euo pipefail
+        export PGPASSWORD="${POSTGRES_PASSWORD:-postgres}"
+        for i in $$(seq 1 60); do
+          python3 -c "import socket,sys; s=socket.create_connection(('postgres',5432),2); s.close()" 2>/dev/null && break
+          echo "mlflow-migrate: waiting for postgres TCP ($$i/60)"; sleep 2
+        done
+        python3 - <<'PY'
+        import os, psycopg2
+        from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+        c = psycopg2.connect(host="postgres", port=5432,
+                             user=os.environ.get("POSTGRES_USER", "postgres"),
+                             password=os.environ["PGPASSWORD"], dbname="postgres")
+        c.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cur = c.cursor()
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = 'mlflow'")
+        if cur.fetchone() is None:
+            cur.execute("CREATE DATABASE mlflow")
+            print("mlflow-migrate: created database 'mlflow'")
+        else:
+            print("mlflow-migrate: database 'mlflow' already present")
+        PY
+        mlflow db upgrade "$$MLFLOW_BACKEND_STORE_URI"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/mlflow
+
+  mlflow:
+    container_name: hope-mlflow
+    image: ${HOPE_MLFLOW_IMAGE:-ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647}
+    profiles: ["mlflow"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${HOPE_MLFLOW_PORT:-5000}:5000'
+    depends_on:
+      mlflow-migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    # Matches the cluster pod's securityContext (runAsUser 1000,
+    # readOnlyRootFilesystem true), so a permission problem surfaces here rather
+    # than on first deploy. --expose-prometheus needs a WRITABLE multiprocess
+    # dir, which is what the /tmp tmpfs is for.
+    user: '1000:1000'
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # Artifact-store credentials live SERVER-SIDE ONLY (R-1, proxied mode).
+      # Clients get a tracking URI and nothing else — that is the whole point:
+      # direct mode would mean issuing MinIO credentials to every client.
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_admin}
+      AWS_DEFAULT_REGION: us-east-1
+      MLFLOW_S3_IGNORE_TLS: 'false'
+      MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD: 'true'
+      MLFLOW_MULTIPART_UPLOAD_MINIMUM_FILE_SIZE: '524288000'
+      MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE: '104857600'
+      MLFLOW_PRESIGNED_DOWNLOAD_URL_TTL_SECONDS: '300'
+      HOME: /tmp
+      PROMETHEUS_MULTIPROC_DIR: /tmp/metrics
+      MLFLOW_BACKEND_STORE_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/mlflow
+    # `--artifacts-destination`, NOT `--default-artifact-root`: the latter is the
+    # DIRECT-access knob and silently puts you in direct mode, where clients need
+    # MinIO credentials nobody issued them.
+    #
+    # `--allowed-hosts` is MANDATORY. Its default is "localhost + private IPs",
+    # matched on the IP literal, so ANY client reaching the server by DNS name
+    # (`http://hope-mlflow:5000` from another container) gets
+    #   403 'Invalid Host header - possible DNS rebinding attack detected'
+    # on every call. Both bare name and name:port are listed because the Host
+    # header carries the port.
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >
+        mlflow server
+        --host 0.0.0.0 --port 5000 --workers 4
+        --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"
+        --serve-artifacts
+        --artifacts-destination s3://mlflow/artifacts
+        --expose-prometheus /tmp/metrics
+        --allowed-hosts hope-mlflow,hope-mlflow:5000,mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+    healthcheck:
+      test: ['CMD', 'python3', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M

@@ -1,0 +1,144 @@
+# ── MLflow garbage collection (TASK-822, S-7) ───────────────────────────────
+#
+# DESTINATION: hope-v2-deployment, `deployment/k8s/base/mlflow-gc.yaml`.
+#
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║ THIS IS THE REPOSITORY'S FIRST CronJob.                                   ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+# There was no naming, annotation, scheduling or history convention to copy, so
+# this file establishes one. The choices below and their reasons ARE the
+# convention; the next CronJob should copy them or argue with them.
+#
+#   1. Named `hope-<service>-<verb>` (`hope-mlflow-gc`), matching the Job
+#      convention already set by `hope-db-migrate` / `hope-qdrant-init`.
+#   2. NOT an Argo hook. Hooks fire per-sync; this is a recurring schedule that
+#      Kubernetes owns. It syncs as an ordinary resource — and unlike a Job it
+#      needs no `Replace=true`, because `CronJob.spec.jobTemplate` is mutable
+#      where `Job.spec.template` is not.
+#   3. `concurrencyPolicy: Forbid`. gc walks the backend store and deletes from
+#      the object store; two overlapping runs is not a scenario anyone has
+#      reasoned about.
+#   4. `failedJobsHistoryLimit` > 0, deliberately. See the MANDATORY note below —
+#      a misconfigured gc fails rather than half-deletes, and that failure must
+#      leave a Pod behind to look at. Do not set it to 0 "to keep things tidy".
+#   5. `startingDeadlineSeconds` set, so a missed window after a node outage is
+#      skipped rather than stampeding.
+#   6. UTC, stated explicitly via `timeZone` rather than inherited from whatever
+#      the control plane happens to run.
+#
+# ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+# MLflow SOFT-deletes. `mlflow gc` is the ONLY hard-deletion path it has, and is
+# therefore the platform's only right-to-erasure mechanism for anything logged
+# here — including evaluation datasets built from real consultations, which are
+# PHI at rest in Postgres (S-9). A broken gc is not a housekeeping problem.
+#
+# ── MANDATORY: MLFLOW_TRACKING_URI ──────────────────────────────────────────
+# With artifact proxying enabled, gc cannot resolve `mlflow-artifacts:` URIs
+# without a tracking URI. MLflow's own docs say the artifact deletion is then
+# "bypassed" while gc "continues" — i.e. a silent half-delete.
+#
+# Verified on 3.15.2 (2026-08-30): this build is BETTER than documented — it
+# raises `MlflowException: Tracking URL is not set` and exits non-zero, deleting
+# nothing at all. Confirmed with the tracking URI set: the run row went to 0 in
+# `runs` and the artifact bytes were removed from MinIO.
+#
+# Two consequences, both encoded here:
+#   * `MLFLOW_TRACKING_URI` is not optional. Losing it fails every run.
+#   * That failure is only visible if failed Pods are retained — hence (4).
+#
+# ── WHY gc CAN NEVER TOUCH SERVED WEIGHTS (§5A.5) ───────────────────────────
+# gc deletes "all files in the run's artifact location". Because R-2 keeps
+# served weights OUTSIDE the run artifact tree, in the separate `hope-models`
+# bucket that MLflow only references by tag, gc structurally cannot reach them.
+# MinIO object-lock on that bucket is the backstop. Do not undo this by moving
+# weights into MLflow artifacts — it would put multi-GB production weights
+# inside gc's blast radius AND break vLLM (see the invariant in mlflow.yaml).
+#
+# ── AND WHY THE `mlflow` BUCKET IS NOT VERSIONED ────────────────────────────
+# Verified 2026-08-30: with versioning enabled on the artifact bucket, gc's
+# delete becomes a DELETE MARKER and the artifact bytes survive as a non-current
+# version — invisible to `mc ls`, fully recoverable, and erasure silently
+# becomes retention. Versioning + object lock belong on `hope-models`, where
+# immutability is the goal; they must NOT be enabled on `mlflow`.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hope-mlflow-gc
+  labels:
+    app: hope-mlflow-gc
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # Weekly, Sunday 03:15 UTC — off-peak, and offset from the top of the hour so
+  # it does not coincide with any hourly cron the cluster may grow later.
+  schedule: "15 3 * * 0"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  # Deliberately > 0 — see convention note (4) in the header.
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app: hope-mlflow-gc
+        spec:
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: hope-registry-creds
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          automountServiceAccountToken: false
+          containers:
+            - name: gc
+              # Same image and digest as the server it garbage-collects for; the
+              # overlay `images:` stanza rewrites all three objects at once.
+              image: ghcr.io/mlflow/mlflow:v3.15.2-full
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              env:
+                - name: HOME
+                  value: "/tmp"
+                # NOT optional — see the MANDATORY note in the header.
+                - name: MLFLOW_TRACKING_URI
+                  value: "http://hope-mlflow:5000"
+                - name: MLFLOW_BACKEND_STORE_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: hope-secrets
+                      key: MLFLOW_BACKEND_STORE_URI
+              command: ["/bin/bash", "-c"]
+              args:
+                # `--older-than 30d` is a grace period, not a retention policy:
+                # it bounds how long an accidental soft-delete stays recoverable.
+                # An erasure REQUEST is served by running gc by hand with
+                # `--run-ids`, not by waiting for this schedule.
+                - |
+                  set -euo pipefail
+                  test -n "${MLFLOW_TRACKING_URI:-}" || {
+                    echo "MLFLOW_TRACKING_URI is empty: gc cannot resolve proxied artifact URIs." >&2
+                    exit 1
+                  }
+                  mlflow gc --older-than 30d --backend-store-uri "$MLFLOW_BACKEND_STORE_URI"
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+          volumes:
+            - name: tmp
+              emptyDir: {}

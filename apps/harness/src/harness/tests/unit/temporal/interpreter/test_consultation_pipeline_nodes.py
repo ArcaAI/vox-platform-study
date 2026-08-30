@@ -457,6 +457,17 @@ class TestSynthesize:
 
 
 class TestSensors:
+    @pytest.fixture(autouse=True)
+    def _stub_policy(self, monkeypatch):
+        """TASK-816 Phase 2 — this node now reads the tenant's clinical thresholds off the
+        effective policy (it used to drop them; see `test_sensor_thresholds_task816.py`). Stub
+        the fetch so these adapter tests stay hermetic BY CONSTRUCTION rather than by relying on
+        an unreachable gateway to produce the degrade-to-platform path."""
+        monkeypatch.setattr(verify, "get_settings", lambda: object())
+        monkeypatch.setattr(
+            verify, "_api_client", lambda _s: _Obj(get_policy=AsyncMock(return_value={}))
+        )
+
     @pytest.mark.asyncio
     async def test_publishes_scores_and_citations(self, monkeypatch):
         monkeypatch.setattr(

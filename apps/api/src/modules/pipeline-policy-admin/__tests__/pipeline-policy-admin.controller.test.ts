@@ -9,6 +9,8 @@
  * max-scope 400 lives in the service (unit-tested there); here we assert the
  * controller faithfully forwards the scope/scopeId and propagates the rejection.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PipelinePolicyScope } from '@arcaai/domains';
@@ -159,5 +161,34 @@ describe('PipelinePolicyAdminController — row PUT (OCC + max-scope)', () => {
     const { controller, policyService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.updateRow({ tenantId: 't2' }, {} as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
     expect(policyService.upsertRow).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * TASK-816 Phase 2 — the `globalOnly` lock must be visible AT the route.
+ *
+ * `05-nestjs-api.md` §Imperative Privilege Checks names "the `globalOnly` descriptor lock
+ * (PipelinePolicy)" as one of its canonical examples, and requires every such route to carry a
+ * standardized `// AUTH-NOTE:` marker — because `@Authorize(['manage','PipelinePolicy'])`
+ * UNDERSTATES the real gate: a tenant admin legitimately holds `manage` for every other toggle,
+ * yet `harnessEnabled` and `autoNerEnabled` are super-admin-only and 403 from inside the service.
+ * The marker was missing, so the only in-code signpost to that boundary was in a different package.
+ *
+ * This is a 403 PRIVILEGE boundary, not the 404-over-403 cross-tenant posture — a cross-tenant id
+ * on this route still returns 403/404 by the tenant check above, and the two are not the same rule.
+ */
+describe('PipelinePolicyAdminController — the imperative globalOnly boundary is signposted', () => {
+  it('carries the AUTH-NOTE marker naming the service-side check', () => {
+    const source = readFileSync(join(__dirname, '..', 'pipeline-policy-admin.controller.ts'), 'utf-8');
+    expect(source).toContain('AUTH-NOTE:');
+    // Name the enforcement point, so the marker cannot rot into a vague comment.
+    expect(source).toMatch(/assertGlobalOnlyToggles/);
+  });
+
+  it('propagates the service globalOnly 403 for a non-super-admin (the gate the decorator hides)', async () => {
+    const { controller, policyService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    policyService.upsertRow.mockRejectedValue(new ForbiddenException('Pipeline toggles [harnessEnabled] are managed by super administrators only.'));
+
+    await expect(controller.updateRow({}, { harnessEnabled: true } as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

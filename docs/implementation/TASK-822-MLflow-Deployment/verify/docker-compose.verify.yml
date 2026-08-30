@@ -1,0 +1,190 @@
+# ============================================================================
+# TASK-822 — MLflow verification harness (THROWAWAY, ISOLATED)
+# ============================================================================
+# This is NOT the dev stack. It is a self-contained rig used to produce the
+# evidence in §6 of the ticket without touching the shared `hope-infra` project:
+# its own compose project name, its own network, its own volumes, and ports in
+# the 55xxx/59xxx range that no HOPE service uses.
+#
+# It mirrors the SHIPPED configuration exactly where it matters — same image
+# digest, same server flags, same migrate-then-serve ordering, same separate
+# `mlflow` database — and differs only in endpoints and credentials.
+#
+#   Run:   docs/implementation/TASK-822-MLflow-Deployment/verify/run-verification.sh
+#   Down:  docker compose -p hope-mlflow-verify -f <this file> down -v
+#
+# Credentials below are THROWAWAY PLACEHOLDERS for a rig that is destroyed at
+# the end of the run. Nothing here is a real secret.
+# ============================================================================
+
+name: hope-mlflow-verify
+
+networks:
+  mlflow-verify:
+    name: mlflow-verify
+
+volumes:
+  verify-pg:
+  verify-minio:
+
+services:
+  # Same image as the platform's Postgres, so "works on Postgres 18" means the
+  # Postgres 18 we actually run — not a generic one.
+  postgres:
+    container_name: mlflow-verify-postgres
+    image: timescale/timescaledb-ha:pg18-all
+    networks: [mlflow-verify]
+    ports: ['55432:5432']
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: verify_only_not_a_secret
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+    volumes:
+      - verify-pg:/home/postgres/pgdata
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the SEPARATE `mlflow` database (§4 Phase 1 item 2, pitfall #9).
+  #
+  # The retry loop is load-bearing, not defensive padding (finding P-12):
+  # `timescale/timescaledb-ha` answers `pg_isready` over the LOCAL SOCKET while
+  # Patroni is still bringing the cluster up, so `service_healthy` fires before
+  # the server accepts TCP. Without the loop this one-shot dies with
+  # "connection to server at postgres (…), port 5432 failed: Connection refused"
+  # on a cold volume, and takes the whole `up --wait` down with exit 2.
+  mlflow-createdb:
+    container_name: mlflow-verify-createdb
+    image: timescale/timescaledb-ha:pg18-all
+    networks: [mlflow-verify]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: 'no'
+    environment:
+      PGPASSWORD: verify_only_not_a_secret
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        for i in $$(seq 1 60); do
+          pg_isready -h postgres -p 5432 -U postgres >/dev/null 2>&1 && break
+          echo "createdb: waiting for postgres TCP ($$i/60)"; sleep 2
+        done
+        psql -h postgres -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='mlflow'" | grep -q 1 \
+          || psql -h postgres -U postgres -d postgres -c "CREATE DATABASE mlflow"
+        echo "createdb: mlflow database present"
+
+  minio:
+    container_name: mlflow-verify-minio
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    networks: [mlflow-verify]
+    ports: ['59000:9000', '59001:9001']
+    environment:
+      MINIO_ROOT_USER: verifyminio
+      MINIO_ROOT_PASSWORD: verify_only_not_a_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - verify-minio:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Mirrors the ONE line added to the EXISTING hope minio-setup entrypoint.
+  minio-setup:
+    container_name: mlflow-verify-minio-setup
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    networks: [mlflow-verify]
+    depends_on:
+      minio: {condition: service_healthy}
+    restart: 'no'
+    # ⚠️ NO `mc version enable` on this bucket, deliberately (finding P-13).
+    # Object versioning here DEFEATS `mlflow gc`: the delete becomes a delete
+    # MARKER and the artifact bytes remain as a non-current version, invisible to
+    # `mc ls` but fully recoverable. `mlflow gc` is the ONLY hard-deletion path
+    # and therefore the only right-to-erasure mechanism (S-7), so versioning it
+    # silently converts erasure into retention. Versioning + object lock belong on
+    # the SEPARATE `hope-models` weights bucket (§5A.4), where immutability is the
+    # goal and erasure is not.
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set local http://minio:9000 verifyminio verify_only_not_a_secret; do sleep 2; done;
+      /usr/bin/mc mb local/mlflow --ignore-existing;
+      echo 'minio-setup: mlflow bucket ready (unversioned, by design)';
+      "
+
+  # ── The compose analogue of the PreSync migration Job (§4 item 4) ─────────
+  # Same image AND same digest as the server. `restart: no` plus the server's
+  # service_completed_successfully dependency is what keeps dev and prod honest:
+  # the server never starts against an unmigrated schema (pitfall #3).
+  mlflow-migrate:
+    container_name: mlflow-verify-migrate
+    image: ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647
+    networks: [mlflow-verify]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mlflow-createdb: {condition: service_completed_successfully}
+    restart: 'no'
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - 'set -e; mlflow db upgrade "postgresql://postgres:verify_only_not_a_secret@postgres:5432/mlflow"'
+
+  mlflow:
+    container_name: mlflow-verify-server
+    image: ghcr.io/mlflow/mlflow:v3.15.2-full@sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647
+    networks: [mlflow-verify]
+    ports: ['55000:5000']
+    depends_on:
+      mlflow-migrate: {condition: service_completed_successfully}
+      minio-setup: {condition: service_completed_successfully}
+    restart: 'no'
+    # Proves the k8s `readOnlyRootFilesystem: true` + `runAsUser: 1000` posture
+    # is actually satisfiable by this image, and that --expose-prometheus still
+    # works with a writable /tmp (pitfall #8).
+    user: '1000:1000'
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # ── Artifact store: SERVER-SIDE ONLY. Clients never receive these. ────
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: verifyminio
+      AWS_SECRET_ACCESS_KEY: verify_only_not_a_secret
+      AWS_DEFAULT_REGION: us-east-1
+      MLFLOW_S3_IGNORE_TLS: 'false'
+      MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD: 'true'
+      MLFLOW_MULTIPART_UPLOAD_MINIMUM_FILE_SIZE: '524288000'
+      MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE: '104857600'
+      MLFLOW_PRESIGNED_DOWNLOAD_URL_TTL_SECONDS: '300'
+      HOME: /tmp
+      PROMETHEUS_MULTIPROC_DIR: /tmp/metrics
+    # NOTE `--artifacts-destination`, NOT `--default-artifact-root` (pitfall #1:
+    # the latter is the DIRECT-access knob and silently requires client creds).
+    #
+    # `--allowed-hosts` is MANDATORY, not cosmetic (finding P-11). Its default is
+    # "localhost + private IPs", which matches on the IP literal only — a client
+    # reaching the server by its DNS NAME (`http://mlflow:5000` here,
+    # `http://hope-mlflow:5000` in-cluster) is refused with
+    #   403 'Invalid Host header - possible DNS rebinding attack detected'
+    # on EVERY call. Both the bare name and name:port are listed because the Host
+    # header carries the port for a non-default port.
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >
+        mlflow server
+        --host 0.0.0.0 --port 5000 --workers 2
+        --backend-store-uri postgresql://postgres:verify_only_not_a_secret@postgres:5432/mlflow
+        --serve-artifacts
+        --artifacts-destination s3://mlflow/artifacts
+        --expose-prometheus /tmp/metrics
+        --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+    healthcheck:
+      test: ['CMD', 'python3', '-c', "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/health').status==200 else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
