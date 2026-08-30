@@ -1,0 +1,10 @@
+# Build context for the LM Studio (`llmster`) serving image.
+#
+# The context is this directory ONLY (see .gitlab/ci/build.yml
+# `build-lmstudio` -> DOCKER_CONTEXT), so it is already tiny. This file keeps it
+# that way and, more importantly, guarantees that nothing which could carry a
+# secret or a model blob is ever sent to the daemon — this image is pushed to a
+# registry and embeds a proprietary binary, so context hygiene is not cosmetic.
+*
+!Dockerfile
+!entrypoint.sh
