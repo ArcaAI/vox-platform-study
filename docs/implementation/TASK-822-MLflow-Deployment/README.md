@@ -186,8 +186,20 @@ Write weights to `s3://hope-models/<name>/<version>/<sha256>/…` and **never ov
 in place is the failure that breaks everything at once: running pods keep serving stale cached
 weights, new pods get different bytes under an identical URI, the MLflow version no longer describes
 what is stored, and rollback is impossible because the prior bytes are gone — with **zero signal**
-that anything changed. Enable MinIO object versioning and object locking so an accidental overwrite
-is recoverable.
+that anything changed. Enable MinIO object versioning and object locking **on `hope-models` only**,
+so an accidental overwrite is recoverable.
+
+> ### ⚠️ Never enable versioning on the `mlflow` artifact bucket (F-4)
+> Versioning and erasure are in direct tension, and this section and S-7 pulled in opposite
+> directions until the lane caught it. With versioning on, **`mlflow gc`'s delete becomes a delete
+> marker and the bytes survive as a non-current version** — and since gc is the *only*
+> right-to-erasure path (S-7), versioning silently converts erasure into retention. That is a
+> compliance failure with no error message.
+>
+> The two buckets have opposite requirements and must be configured separately:
+> **`hope-models`** holds immutable weights → versioning + object lock **ON**.
+> **`mlflow`** holds artifacts that must be erasable → versioning **OFF**.
+> Verified by a test asserting no version of a gc'd run remains.
 
 **The sync job verifies, it does not trust**: recompute sha256 against the tag; for GGUF additionally
 run `gguf-dump.py --no-tensors --json` and assert `general.file_type` and `<arch>.context_length`
