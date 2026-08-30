@@ -28,6 +28,16 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.15.0",
     "httpx>=0.28.1",
+    # TASK-818 Lane A: `providers/pool.py` imports httpx2 DIRECTLY. It arrives
+    # transitively via `openai>=3` (which migrated to it) while `anthropic` is
+    # still on httpx — two structurally identical, NOT interchangeable client
+    # libraries in one process. Depending on a transitive import for a direct
+    # one is how that breaks silently on an unrelated bump.
+    "httpx2>=2.10.0",
+    # HTTP/2 for self-hosted upstreams (Lane A A-3). Without it
+    # `httpx.AsyncClient(http2=True)` raises ImportError and the pool silently
+    # degrades to HTTP/1.1 — the code is complete, this is the only gate.
+    "h2>=4.1.0",
     "redis>=8.1.0,<9.0",
     "structlog>=25.5.0",
     "python-dotenv>=1.2.0",
