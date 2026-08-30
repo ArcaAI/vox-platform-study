@@ -8,9 +8,15 @@ from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+
+# Refuse to run against another checkout's source (git-worktree false-greens).
+# See scripts/pytest-support/hope_worktree_guard.py.
+from hope_worktree_guard import assert_source_tree
 from httpx import ASGITransport, AsyncClient
 
 from tts.core.config import Settings
+
+assert_source_tree(["tts", "hope_env", "hope_runtime_models"], __file__)
 
 # `tts.main` builds a module-level `app = create_app()` for the uvicorn
 # entrypoint (`uvicorn tts.main:app` — see apps/tts/Dockerfile and
