@@ -1,0 +1,374 @@
+# TASK-824 — MinIO -> PVC model warm sync.
+#
+# STAGED, NOT APPLIED. Destination in `hope-v2-deployment`:
+#   deployment/k8s/base/llama-cpp-models.yaml
+#
+# ============================================================================
+# THIS FILE DEFERS TO TASK-832. It does not define a bucket layout.
+# ============================================================================
+# TASK-832 landed while this lane was in flight and made
+# `infrastructure/docker/minio/README.md` the authoritative convention for the
+# `hope-models` bucket in every environment. An earlier draft of this file
+# carried its own `<publisher>/<repo>/<quant>/` keys — inherited from TASK-824
+# §3.1, which chose that shape because *LM Studio* resolves models from a
+# `<publisher>/<model>/` directory tree. That constraint died with the engine
+# recommendation (§2A): llama-server is pointed at a file path.
+#
+# The authoritative layout is now:
+#
+#     s3://hope-models/<slug>/<version>/            # flat within the version
+#         manifest.json     <- the Merkle root (schema: minio/README.md §5.3)
+#         SHA256SUMS        <- same digests, shasum -c interop
+#         <name>.gguf       <- primaryObject
+#         <name>-mmproj.gguf<- projectorObject, multimodal only
+#
+# `<version>` is CONTENT-ADDRESSED — `<quant>-<sha256-12>` of `manifest.json`
+# — so it cannot be known until the model is published. It is therefore an
+# INPUT to this Job, not a constant in it (see `models.tsv` below).
+#
+# ============================================================================
+# WHAT CHANGED VERSUS TASK-824 §3.3
+# ============================================================================
+# §3.3 step 3 mandated `lms import <file> --user-repo <publisher>/<model> -y -L`
+# INSIDE the container, because §4.10 established — three independent ways —
+# that LM Studio has NO rescan API and NO rescan CLI, so a GGUF dropped on the
+# volume is simply not visible. That step carried its own trap: `lms import`
+# MOVES the file by default, so omitting `-L`/`-c` silently empties staging.
+#
+# With llama-server that entire step does not exist. There is no catalogue and
+# no indexer to inform. So this Job's contract is:
+#
+#     fetch prefix -> verify SHA256SUMS -> flatten -> flip .ready
+#
+# with NO in-container registration step, NO layout requirement of its own, and
+# no exec into a serving pod.
+#
+# **Digests are NOT duplicated here.** The Job verifies against the prefix's own
+# `SHA256SUMS`, which the publisher wrote from the bytes it uploaded. Copying
+# digests into this ConfigMap would create a second source of truth that can
+# drift from the bucket; `upstream.json` below is a provenance RECORD for the
+# publisher, deliberately not an input to the sync.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hope-llama-models
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  accessModes:
+    # Consumers mount it read-only; the Job needs RWO to write. On single-node
+    # k3s with local-path RWX is silently downgraded, which is acceptable HERE
+    # (every consumer is on the one node) and nowhere else.
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Four models, vision on: 14.79 GiB (TASK-831 §6.3, digests re-verified
+      # against the live HuggingFace blobs by `verify-manifest.py --remote`).
+      # 40Gi leaves room to stage a replacement prefix before deleting the old
+      # one — which is mandatory, since promotion is a NEW prefix, never an
+      # overwrite (minio/README.md §5.5).
+      storage: 40Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hope-llama-model-manifest
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+data:
+  # ==========================================================================
+  # WHAT TO SYNC. One row per model version.
+  #   slug <TAB> version <TAB> role
+  #
+  # `slug` values are TASK-832's (minio/README.md §5.1), NOT the catalogue ids:
+  # slugs are lowercased. `qwen3.5-4b` is deliberately absent — TASK-831 §4.2
+  # recommends dropping it from day one (no first-party GGUF, a retired slug
+  # that must not be reused, and it is what collapses the KV budget on the card
+  # hosting the guardrail model).
+  #
+  # ⚠️ THE `version` VALUES BELOW ARE PLACEHOLDERS AND THE JOB WILL REFUSE TO
+  # RUN WITH THEM. They are content-addressed (`<quant>-<sha256-12>` of each
+  # prefix's manifest.json) and are only knowable AFTER publication. The
+  # publisher fills them in — see deployment/README.md ROOT_CONFIG_REQUESTS R-3.
+  # Failing closed on a placeholder is deliberate: a silently-wrong version
+  # would sync a DIFFERENT model with no error anywhere.
+  models.tsv: |
+    gemma4-e2b-it-qat	SET-AT-PUBLISH	llm
+    gemma4-e4b-it-qat	SET-AT-PUBLISH	llm
+    granite-guardian-4.1-8b	SET-AT-PUBLISH	llm
+    text-embedding-embeddinggemma-300m-qat	SET-AT-PUBLISH	embeddings
+
+  # ==========================================================================
+  # UPSTREAM PROVENANCE RECORD — for the PUBLISHER, not for the sync.
+  #
+  # minio/README.md §5.5 step 0 says: verify against the publisher BEFORE
+  # anything is uploaded. This is that reference, and every sha256 was read
+  # from the HuggingFace blob API on 2026-08-30 and re-verified by
+  # `deployment/verify-manifest.py --remote`.
+  #
+  # WHY IT MATTERS FOR THESE EXACT FILES: LM Studio bug #2169 reported Google's
+  # Gemma 4 GGUFs crashing on load "regardless of whether an mmproj file is
+  # present". It was resolved not by an engine fix but by GOOGLE RE-UPLOADING
+  # on 2026-07-17 ("Upload validated QAT GGUF checkpoint (280 sequence length,
+  # corrected vocabulary)"). Any copy cached or mirrored between 15-17 July 2026
+  # is POISONED. Both Gemma repos below report lastModified 2026-07-17T21:23Z —
+  # these digests are the POST-re-upload, known-good blobs.
+  upstream.json: |
+    {
+      "schemaVersion": 1,
+      "ticket": "TASK-824",
+      "verifiedAt": "2026-08-30",
+      "note": "Provenance reference for the publisher (minio/README.md §5.5 step 0). NOT read by sync.sh — the sync verifies against each prefix's own SHA256SUMS.",
+      "models": [
+        {
+          "slug": "gemma4-e2b-it-qat",
+          "role": "llm",
+          "repo": "google/gemma-4-E2B-it-qat-q4_0-gguf",
+          "revision": "675cff42a74c774d6cb76f76d8eacb49b48c9b93",
+          "quantization": "Q4_0",
+          "primaryObject": "gemma-4-E2B_q4_0-it.gguf",
+          "projectorObject": "gemma-4-E2B-it-mmproj.gguf",
+          "shardCount": 1,
+          "objects": [
+            { "path": "gemma-4-E2B_q4_0-it.gguf", "role": "weights", "bytes": 3349516256,
+              "sha256": "fa401b55b07ee70a54c6dae3903c783a6e65064312529ea57175cb5f8dec6634" },
+            { "path": "gemma-4-E2B-it-mmproj.gguf", "role": "projector", "bytes": 986833664,
+              "sha256": "021059cce659fe7f9170d5599761d7bbaf644b798dab9503aca30dc43e6beb14",
+              "note": "BF16 projector carrying BOTH vision (gemma4v) and audio (gemma4a) encoders. VERIFIED: with --mmproj, GET /props reports modalities {vision,video,audio} all true. PR #21421 warns non-BF16 projectors have degraded performance." }
+          ]
+        },
+        {
+          "slug": "gemma4-e4b-it-qat",
+          "role": "llm",
+          "repo": "google/gemma-4-E4B-it-qat-q4_0-gguf",
+          "revision": "4b4a2c1d584be7264f87aac328a1bc739ce81b6c",
+          "quantization": "Q4_0",
+          "primaryObject": "gemma-4-E4B_q4_0-it.gguf",
+          "projectorObject": "gemma-4-E4B-it-mmproj.gguf",
+          "shardCount": 1,
+          "objects": [
+            { "path": "gemma-4-E4B_q4_0-it.gguf", "role": "weights", "bytes": 5154941280,
+              "sha256": "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee" },
+            { "path": "gemma-4-E4B-it-mmproj.gguf", "role": "projector", "bytes": 991552256,
+              "sha256": "7498a37cb619e55f2fcf87eb931f56e99389ed6d432e4c5c66110694c0d65578" }
+          ]
+        },
+        {
+          "slug": "granite-guardian-4.1-8b",
+          "role": "llm",
+          "repo": "ibm-granite/granite-guardian-4.1-8b-GGUF",
+          "revision": "bc78f0995361543a70438fe44a60bb7613fed2f0",
+          "quantization": "Q4_K_M",
+          "primaryObject": "granite-guardian-4.1-8b-Q4_K_M.gguf",
+          "shardCount": 1,
+          "objects": [
+            { "path": "granite-guardian-4.1-8b-Q4_K_M.gguf", "role": "weights", "bytes": 5116703808,
+              "sha256": "979114c9e6a589a1e37c2d597677555d3eb78c2856e920ed4ec97f7bded787a4",
+              "note": "Q4_K_M = 4.77 GiB measured. TASK-831 §7.1 flags that the seed row says computeType 'q4_k_s'; Q4_K_S is a DIFFERENT file (4.53 GiB, sha f713dd82...). Reconcile the row to whichever is staged." }
+          ]
+        },
+        {
+          "slug": "text-embedding-embeddinggemma-300m-qat",
+          "role": "embeddings",
+          "repo": "ggml-org/embeddinggemma-300M-qat-q4_0-GGUF",
+          "revision": "8dd0ca2a66a8f14470acb0e2a71f801afbc5fb73",
+          "quantization": "Q4_0",
+          "primaryObject": "embeddinggemma-300M-qat-Q4_0.gguf",
+          "shardCount": 1,
+          "objects": [
+            { "path": "embeddinggemma-300M-qat-Q4_0.gguf", "role": "weights", "bytes": 277852192,
+              "sha256": "50d28e22432a148f6f8a86eab3700f92add5d1f54baf7790675a2a4dadbccf26",
+              "note": "The 278 MB ggml-org build, NOT the 229 MB lmstudio-community one — TASK-831 §5 attributes the delta to the optional SentenceTransformers dense modules, whose omission degrades embedding quality. VERIFIED: serves /v1/embeddings, 768-dim, L2=1.000000, n_ctx_train=2048." }
+          ]
+        }
+      ]
+    }
+
+  sync.sh: |
+    #!/bin/sh
+    # Fetch each published model prefix from MinIO, verify it against the
+    # prefix's own SHA256SUMS, flatten the .gguf files onto the volume, and only
+    # then flip the readiness sentinel.
+    #
+    # POSIX sh with NO jq — `minio/mc` ships neither jq nor a package manager to
+    # add one. Found by running this script in that image, where an earlier
+    # draft died on `jq: command not found`. Verifying against the plain-text
+    # SHA256SUMS instead of a JSON manifest is what makes that a non-issue.
+    #
+    # Idempotent: a prefix whose files are already present and correct is
+    # skipped, so this is safe as an ArgoCD PreSync hook.
+    set -eu
+
+    DEST="${DEST:-/models}"
+    MODELS="${MODELS:-/manifest/models.tsv}"
+    BUCKET="${BUCKET:-hope-models}"
+
+    echo "sync: endpoint=${AWS_ENDPOINT_URL} bucket=${BUCKET} dest=${DEST}"
+
+    # The sentinel goes FIRST. If this Job dies midway the volume stays un-ready
+    # and every serving pod refuses to start (entrypoint assertion A-1 + the
+    # initContainer gate) rather than serving a half-synced model.
+    rm -f "${DEST}/.ready"
+    mkdir -p "${DEST}/staging"
+
+    fail=0
+    # Read from a redirected FILE, not a pipe: `cmd | while read` runs the body
+    # in a SUBSHELL, so `fail=1` would be discarded at the end of the loop and a
+    # checksum mismatch would report a successful sync.
+    while IFS="$(printf '\t')" read -r slug version role; do
+      [ -n "${slug:-}" ] || continue
+
+      # Fail closed on an unfilled placeholder. A wrong version silently syncs a
+      # DIFFERENT model — content-addressed prefixes make that undetectable
+      # downstream, so it has to be caught here.
+      if [ "$version" = "SET-AT-PUBLISH" ] || [ -z "${version:-}" ]; then
+        echo "  FATAL ${slug}: version is unset. The prefix is content-addressed"
+        echo "        (<quant>-<sha256-12> of manifest.json) and is only known after"
+        echo "        publication. Fill models.tsv — see deployment/README.md R-3."
+        fail=1; continue
+      fi
+
+      prefix="${slug}/${version}"
+      stage="${DEST}/staging/${slug}"
+      echo "  syncing s3://${BUCKET}/${prefix}  (role=${role})"
+      mkdir -p "$stage"
+
+      # `mc mirror` over the LAN endpoint. TASK-828 §4b / TASK-832: the public
+      # tunnel hostname s3.taphuynh.dev is ~248x slower (495.6 ms vs 2.0 ms),
+      # puts PHI-adjacent traffic on the public internet, and makes the egress
+      # NetworkPolicy unwritable — the rule would have to allow Cloudflare's
+      # whole edge range instead of a single /32.
+      if ! mc mirror --quiet --overwrite "hope/${BUCKET}/${prefix}/" "$stage/"; then
+        echo "  FETCH FAILED ${prefix}"; fail=1; continue
+      fi
+
+      # --- the verification gate ---------------------------------------------
+      # SHA256SUMS is written by the publisher from the bytes it uploaded
+      # (minio/README.md §5.5 step 1) and shipped in the prefix precisely for
+      # `shasum -c` interop. Verifying against it — rather than against digests
+      # copied into this ConfigMap — keeps ONE source of truth.
+      if [ ! -f "${stage}/SHA256SUMS" ]; then
+        echo "  NO SHA256SUMS in ${prefix} — refusing to trust this prefix"
+        fail=1; continue
+      fi
+      if ! ( cd "$stage" && sha256sum -c SHA256SUMS ); then
+        echo "  CHECKSUM MISMATCH in ${prefix}"
+        fail=1; continue
+      fi
+      echo "  verified ${prefix}"
+    done < "$MODELS"
+
+    if [ "$fail" -ne 0 ]; then
+      echo "sync: FAILED — sentinel NOT written; serving pods will refuse to start."
+      exit 1
+    fi
+
+    # Publish: hard-link every verified .gguf into the FLAT serving directory the
+    # preset file and the --model flags reference.
+    #
+    # Hard links, not moves — the same discipline §4.10 demanded of `lms import
+    # -L`, and for the same reason: a move empties staging, so the next run
+    # re-downloads everything and an interrupted move leaves neither copy intact.
+    for f in "${DEST}"/staging/*/*.gguf; do
+      [ -e "$f" ] || continue
+      ln -f "$f" "${DEST}/$(basename "$f")"
+    done
+
+    date -u +%Y-%m-%dT%H:%M:%SZ > "${DEST}/.ready"
+    echo "sync: OK — $(ls -1 "${DEST}"/*.gguf 2>/dev/null | wc -l) objects on the volume, sentinel written"
+    ls -la "${DEST}"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hope-llama-model-sync
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+  annotations:
+    # PreSync so the volume is warm and verified BEFORE the serving Deployments
+    # roll. Wave -1 matches the db-migrate.yaml shape (EXECUTION-PLAN §14.4 item 9).
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: hope-llama-cpp
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      restartPolicy: OnFailure
+      # §14.4 item 4 — required on EVERY pod spec, Jobs included, or CI's
+      # `pull-secrets` job fails the pipeline.
+      imagePullSecrets:
+        - name: hope-registry-creds
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: sync
+          # Pinned, no :latest (CI's image-hygiene job bans it).
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              mc --quiet config host add hope "$AWS_ENDPOINT_URL" \
+                 "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" --api S3v4
+              exec /bin/sh /scripts/sync.sh
+          env:
+            # LAN endpoint, never the public tunnel — TASK-828 §4b, TASK-832.
+            - name: AWS_ENDPOINT_URL
+              value: "https://10.10.1.102:9000"
+            # `hope-models-reader` — ListBucket/GetObject/GetObjectVersion on
+            # hope-models ONLY, and no DeleteObject (minio/README.md §4). This
+            # Job must never hold the root key or the publisher key.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: hope-models-reader, key: accessKeyId }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: hope-models-reader, key: secretAccessKey }
+            # MinIO's leaf cert is issued by the private "ARCAAI Internal CA".
+            # `mc` reads SSL_CERT_FILE; its certs/CAs/ path does NOT work
+            # (minio/README.md §5.5 step 2 states this explicitly).
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/arcaai/ca.crt
+            - name: MC_CONFIG_DIR
+              value: /home/hope/.mc
+          volumeMounts:
+            - { name: models,    mountPath: /models }
+            - { name: manifest,  mountPath: /manifest, readOnly: true }
+            - { name: scripts,   mountPath: /scripts,  readOnly: true }
+            - { name: arcaai-ca, mountPath: /etc/ssl/arcaai, readOnly: true }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "2Gi" }
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: hope-llama-models
+        - name: manifest
+          configMap:
+            name: hope-llama-model-manifest
+            items:
+              - { key: models.tsv,    path: models.tsv }
+              - { key: upstream.json, path: upstream.json }
+        - name: scripts
+          configMap:
+            name: hope-llama-model-manifest
+            items: [{ key: sync.sh, path: sync.sh }]
+        - name: arcaai-ca
+          configMap:
+            # Required by TASK-823 and TASK-832 too. Deliberately fails closed
+            # (CreateContainerConfigError) rather than skipping TLS verification
+            # against the object store.
+            name: arcaai-internal-ca
+            items: [{ key: ca.crt, path: ca.crt }]

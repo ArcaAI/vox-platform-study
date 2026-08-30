@@ -1,0 +1,654 @@
+# TASK-824 — the GGUF serving tier.
+#
+# STAGED, NOT APPLIED. Destination in `hope-v2-deployment`:
+#   deployment/k8s/base/llama-cpp.yaml
+#
+# ============================================================================
+# SHAPE, AND THE CONSTRAINT THAT DICTATES IT
+# ============================================================================
+# `AiProviderConnection` is UNIQUE on (tenantId, service, provider):
+#     @@unique([tenantId, service, provider])   ai-provider-connection.prisma:84
+#
+# So the SYSTEM tenant gets exactly ONE baseUrl per (service, provider) pair.
+# The chat catalogue has THREE models (Gemma 4 E2B, E4B, Granite Guardian) and
+# they must all be reachable at ONE endpoint, because they share the pair
+# ('SYSTEM', 'llm', 'lm-studio'). Three separate single-model Deployments
+# CANNOT satisfy that without either a new provider name (a `packages/**`
+# change, out of scope for this ticket and the wrong fix anyway) or a router.
+#
+# llama-server build b9853 ships a ROUTER MODE that resolves this exactly:
+# one supervisor process, a preset file declaring per-model flags, children
+# spawned on demand, dispatch on the OpenAI `model` field.
+#
+#   VERIFIED LOCALLY (build b9853, CPU image):
+#     * `--models-preset` INI parses; the SECTION NAME becomes the served id
+#       (server-models.cpp sets LLAMA_ARG_ALIAS from it), so the served name is
+#       ours to choose and can be made to equal `AiModel.sourceUri` exactly —
+#       which is the whole of the §7.4 "every generation 404s" trap.
+#     * `GET /v1/models` lists presets with a status; a model starts `unloaded`
+#       and flips to `loaded` on first request (autoload verified end to end).
+#     * `GET /models?reload=1` RE-READS the preset file — a real rescan.
+#     * `POST /models/load` / `POST /models/unload` exist.
+#
+# >>> ROUTER MODE SELF-REPORTS AS EXPERIMENTAL. Verbatim, at every startup:
+# >>>   "NOTE: router mode is experimental"
+# >>>   "it is not recommended to use this mode in untrusted environments"
+# >>> That is recorded, not buried. The mitigation is that this pod is not IN an
+# >>> untrusted environment: ingress is restricted to hope-text by NetworkPolicy
+# >>> below, and --api-key-file adds a credential LM Studio cannot have at all
+# >>> (§5 L-1: grepping lms/src for apiToken|requireAuth|createToken|bearer
+# >>> returns zero hits). If the owner judges "experimental" unacceptable on the
+# >>> PHI path, the documented fallback is in deployment/README.md §Fallback —
+# >>> it costs one model on the chat plane, not a redesign.
+#
+# The EMBEDDING plane is deliberately NOT in the router: it is a separate
+# (service='embeddings') connection anyway, it is 0.26 GiB, and keeping it in
+# plain single-model mode means the platform's embedding path never depends on
+# an experimental code path. See the second Deployment below.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hope-llama-presets
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+data:
+  # ==========================================================================
+  # ROUTER PRESETS
+  # ==========================================================================
+  # Format, from common/preset.cpp (the serializer at lines 82-93):
+  #     [section-name]                 -> becomes --alias, i.e. the served id
+  #     <long-option-minus-dashes> = <value>
+  # Boolean flags take a truthy value (`mmproj-offload = true`), because
+  # `to_args()` drops the flag entirely when the value is falsey.
+  #
+  # SECTION NAMES ARE THE CONTRACT WITH THE CATALOGUE. Each one must equal the
+  # `sourceUri` of its `AiModel` row. `resolveTextSelectionForKey` returns
+  # `model: model.sourceUri` and that string goes on the wire as the OpenAI
+  # `model` field; if it does not match a preset name, every generation 404s.
+  #
+  # ---- ON --ctx-size, WHICH IS NOT WHAT IT LOOKS LIKE ----------------------
+  # VERIFIED: `--ctx-size` is the TOTAL KV budget and is DIVIDED across
+  # `--parallel` slots. Running `-c 2048 -np 4` logs:
+  #     srv load_model: initializing, n_slots = 4, n_ctx_slot = 512
+  # So per-sequence context = ctx-size / parallel. Sizing `-c 8192 -np 8`
+  # expecting "8 concurrent 8k sequences" actually yields 1k each and silently
+  # truncates. Every ctx-size below is written as parallel x per-seq on purpose.
+  #
+  # ---- KV arithmetic (TASK-831 §6.2 geometry, applied to these numbers) ----
+  #   E2B      15-18 KiB/tok x 65536 =  0.94 - 1.13 GiB
+  #   E4B      48-56 KiB/tok x 32768 =  1.50 - 1.75 GiB
+  #   Guardian    160 KiB/tok x  8192 =  1.25 GiB
+  # Guardian is capped hard at 2k/seq because it is a CLASSIFIER emitting
+  # yes/no against a short template: it is 160 KiB/token, >3x E4B and ~10x E2B,
+  # and inheriting its 131072 default would spend the node's scarcest resource
+  # on context it never uses.
+  presets.ini: |
+    ; ------------------------------------------------------------------
+    ; Gemma 4 E2B — platform default text/summarization model, vision+audio.
+    ; 8 slots x 8192 tokens.
+    ; ------------------------------------------------------------------
+    [gemma-4-e2b-it-qat]
+    model = /models/gemma-4-E2B_q4_0-it.gguf
+    ; MANDATORY. TASK-831 §4.1 condition 2: `-m` does NOT auto-pair the
+    ; projector — only `-hf` does. Without this line the model loads and serves
+    ; TEXT ONLY. llama-server then errors loudly on an image/audio request
+    ; ("image input is not supported - hint: ... you may need to provide the
+    ; mmproj", server-common.cpp:1217) rather than degrading silently, but the
+    ; failure lands at REQUEST time, in production, not at boot.
+    ; Assert it with GET /props -> modalities {"vision":true,"audio":true}.
+    mmproj = /models/gemma-4-E2B-it-mmproj.gguf
+    mmproj-offload = true
+    ctx-size = 65536
+    parallel = 8
+    flash-attn = on
+    ; Chat template comes from the GGUF itself. This is why these models are
+    ; addressed through the openai_compat adapter and NOT through the catalogue's
+    ; `llama-cpp` provider, whose native /completion path is raw-prompt and
+    ; applies no template at all.
+    jinja = true
+    ; ⚠️ GEMMA 4 EMITS REASONING. VERIFIED against b9853: a chat completion
+    ; returns `message.content = ""` and puts the thinking text in
+    ; `message.reasoning_content` until thinking finishes. A consumer that reads
+    ; only `content` sees an EMPTY STRING, not an error — and a low max_tokens
+    ; truncates mid-thought and never produces content at all
+    ; (finish_reason "length", content ""). `--reasoning-format` /
+    ; `--reasoning-budget` control this; left at the default here so nothing is
+    ; hidden, but apps/text consumers must be sized and written for it.
+
+    ; ------------------------------------------------------------------
+    ; Gemma 4 E4B — larger summarization / judge model, vision+audio.
+    ; 4 slots x 8192 tokens.
+    ; ------------------------------------------------------------------
+    [gemma-4-e4b-it-qat]
+    model = /models/gemma-4-E4B_q4_0-it.gguf
+    mmproj = /models/gemma-4-E4B-it-mmproj.gguf
+    mmproj-offload = true
+    ctx-size = 32768
+    parallel = 4
+    flash-attn = on
+    jinja = true
+
+    ; ------------------------------------------------------------------
+    ; Granite Guardian 4.1 8B — safety classifier. Text only, no projector.
+    ; 4 slots x 2048 tokens — deliberately capped (see KV note above).
+    ; ------------------------------------------------------------------
+    [granite-guardian-4.1-8b]
+    model = /models/granite-guardian-4.1-8b-Q4_K_M.gguf
+    ctx-size = 8192
+    parallel = 4
+    flash-attn = on
+    jinja = true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # ==========================================================================
+  # SHIPS AT ZERO, DELIBERATELY. Same posture as TASK-823's vllm.yaml.
+  # ==========================================================================
+  # TASK-831 §6.4 concludes the four-model catalogue FITS (14.79 GiB of weights
+  # against ~24.4 GiB free). But §6.4's own two caveats bound that conclusion:
+  #
+  #   1. "Placement cannot be guaranteed." Time-slicing hands out fungible
+  #      permits; nothing pins a model to a card. The per-card table in §6.4 is
+  #      a plan, not something the scheduler will enforce — and this manifest
+  #      cannot make it so. What IS controllable is TOTAL residency, which is
+  #      what --models-max and the context caps above bound.
+  #   2. "Measure before trusting." LM Studio currently runs on the node HOST
+  #      and holds VRAM the scheduler cannot see. Every figure in §6.4 is a
+  #      planning number, not an observation.
+  #
+  # And §6.1: there is NO MIG, NO MPS, NO vGPU — no VRAM isolation of any kind.
+  # Per TASK-823 §2A.1 one pod's CUDA OOM can crash every pod sharing the card,
+  # and the likely casualty is `hope-stt`, a WORKING PRODUCTION capability.
+  #
+  # So: scale to 1 only after reading actual free VRAM on the node
+  #     (`nvidia-smi --query-gpu=memory.used,memory.total --format=csv`)
+  # and confirming the host LM Studio instance has been stopped or accounted for.
+  replicas: 0
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+    type: RollingUpdate
+  selector:
+    matchLabels: { app: hope-llama-cpp }
+  template:
+    metadata:
+      labels:
+        app: hope-llama-cpp
+        app.kubernetes.io/part-of: project-hope
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      runtimeClassName: nvidia
+      imagePullSecrets:
+        - name: hope-registry-creds
+      # L-5: the Service must drop this endpoint BEFORE the process gets SIGTERM,
+      # and the grace period must exceed the longest generation.
+      terminationGracePeriodSeconds: 180
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      affinity:
+        podAntiAffinity:
+          # SOFT only — single node (§14.4 item 7). `required` would make this
+          # unschedulable.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: { app: hope-llama-cpp }
+      initContainers:
+        # Belt to the entrypoint's braces. The entrypoint refuses to exec
+        # without /models/.ready; this refuses to even START the container, so a
+        # failed sync surfaces as Init:CrashLoopBackOff — which names the actual
+        # problem — instead of a serving container flapping.
+        - name: await-models
+          image: busybox:1.36.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for verified model volume (/models/.ready)..."
+              i=0
+              while [ ! -f /models/.ready ]; do
+                i=$((i+1))
+                [ "$i" -gt 120 ] && { echo "timeout: sync Job has not published .ready"; exit 1; }
+                sleep 5
+              done
+              echo "model volume verified at $(cat /models/.ready)"
+              ls -la /models
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+      containers:
+        - name: llama-cpp
+          # Overlay sets newName + digest (§14.4 item 11). Built from
+          # ../image/Dockerfile, which pins
+          # ghcr.io/ggml-org/llama.cpp:server-cuda-b9853
+          #   @sha256:62a1d4e144789aa3dd6948d350388fd4b9ac4d12744f33213a89c4e5a9af25df
+          # Build floor b9383 verified by ancestry, not by build number —
+          # see ../image/verify-build-floor.py.
+          image: registry.taphuynh.dev/hope/llama-cpp:b9853
+          args:
+            - "--models-preset"
+            - "/presets/presets.ini"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8080"
+            # Bound simultaneous residency to 2 of the 3 chat models. This is
+            # the ONE lever that actually caps VRAM on a node with no isolation,
+            # since per-card placement is not enforceable (see replicas note).
+            - "--models-max"
+            - "2"
+            # Release VRAM after 15 min idle. Has no LM Studio equivalent that
+            # is reachable headlessly, and it matters here specifically because
+            # `hope-stt` shares the card.
+            - "--sleep-idle-seconds"
+            - "900"
+            - "--metrics"
+            # Defence in depth on top of the NetworkPolicy. §5 L-1 had to call
+            # the NetworkPolicy "the ONLY enforcement point, not defence in
+            # depth" because LM Studio has no headless token path at all. With
+            # llama-server it is a genuine second control.
+            - "--api-key-file"
+            - "/etc/llama/api-key"
+          env:
+            - { name: LLAMA_ARG_PORT, value: "8080" }
+            - { name: LLAMA_ARG_HOST, value: "0.0.0.0" }
+            # Router mode declares projectors per-model in the preset, so the
+            # entrypoint's argv check is satisfied by the router branch; the
+            # /props modality warning still runs.
+            - { name: HOPE_EXPECT_MODALITIES, value: "vision,audio" }
+          ports:
+            - { name: http, containerPort: 8080, protocol: TCP }
+          # ---- PROBES -------------------------------------------------------
+          # In ROUTER mode /health answers as soon as the ROUTER is up, because
+          # children are spawned on demand — so /health is the right LIVENESS
+          # signal but the wrong READINESS one. Readiness therefore checks that
+          # the router actually parsed its presets and can enumerate them.
+          # (In single-model mode /health alone is both — see hope-llama-embed.)
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60      # up to 10 min for a cold PVC read
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /v1/models, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["/bin/sh", "-c", "sleep 10"] }
+          resources:
+            requests:
+              cpu: "2"
+              # >= weights + KV. Two resident chat models worst case:
+              # E4B 4.80 + mmproj 0.92 + Guardian 4.77 = 10.49 GiB weights,
+              # + ~3.0 GiB KV. Host RAM request covers the mmap'd read.
+              memory: "16Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: "24Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - { name: models,  mountPath: /models, readOnly: true }
+            - { name: presets, mountPath: /presets, readOnly: true }
+            - { name: api-key, mountPath: /etc/llama, readOnly: true }
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: hope-llama-models
+            readOnly: true
+        - name: presets
+          configMap:
+            name: hope-llama-presets
+            items: [{ key: presets.ini, path: presets.ini }]
+        - name: api-key
+          secret:
+            secretName: hope-llama-api-key
+            items: [{ key: api-key, path: api-key }]
+            defaultMode: 0400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  type: ClusterIP
+  selector: { app: hope-llama-cpp }
+  ports:
+    - { name: http, port: 8080, targetPort: http, protocol: TCP }
+---
+# ============================================================================
+# EMBEDDING PLANE — separate Deployment, separate connection, NON-router.
+# ============================================================================
+# Separate because:
+#   * It is a different `service` ('embeddings'), so it needs its own
+#     AiProviderConnection row regardless — the unique key makes this free.
+#   * It is 0.26 GiB. Co-locating it buys nothing.
+#   * Keeping it OUT of router mode means the embedding path never depends on
+#     an experimental code path.
+#
+# >>> ROUTING FOR THIS SERVICE IS NOT YET WIRED, AND I CANNOT WIRE IT.
+# >>> `apps/text` registers exactly ONE embedding provider — `tei-embed`
+# >>> (main.py:191-194) — and TEI cannot load a GGUF at all (TASK-831 §5:
+# >>> safetensors/ONNX only). Reaching this Deployment needs an `embeddings`
+# >>> provider factory in apps/text, which is TASK-831 §9 owner decision 2 and
+# >>> an `apps/text/src/**` change this ticket is explicitly forbidden to make.
+# >>> The server is staged and PROVEN (see README LOAD_PROOF); the wiring is not.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-llama-embed
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 0        # same gate as above — measure VRAM first
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+    type: RollingUpdate
+  selector:
+    matchLabels: { app: hope-llama-embed }
+  template:
+    metadata:
+      labels:
+        app: hope-llama-embed
+        app.kubernetes.io/part-of: project-hope
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      runtimeClassName: nvidia
+      imagePullSecrets: [{ name: hope-registry-creds }]
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      initContainers:
+        - name: await-models
+          image: busybox:1.36.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              i=0
+              while [ ! -f /models/.ready ]; do
+                i=$((i+1)); [ "$i" -gt 120 ] && { echo "timeout"; exit 1; }; sleep 5
+              done
+              echo "model volume verified at $(cat /models/.ready)"
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+      containers:
+        - name: llama-embed
+          image: registry.taphuynh.dev/hope/llama-cpp:b9853
+          args:
+            - "--model"
+            - "/models/embeddinggemma-300M-qat-Q4_0.gguf"
+            # The served id. Must equal the AiModel row's `sourceUri`.
+            # VERIFIED: GET /v1/models returns exactly this string as `id`.
+            - "--alias"
+            - "llama-cpp-embeddinggemma-300m-qat"
+            - "--embeddings"
+            - "--pooling"
+            - "mean"
+            # 8 slots x 2048. 2048 is a HARD ceiling, not a choice:
+            # VERIFIED from the model's own metadata, n_ctx_train = 2048.
+            - "--ctx-size"
+            - "16384"
+            - "--parallel"
+            - "8"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8080"
+            - "--metrics"
+            - "--api-key-file"
+            - "/etc/llama/api-key"
+          env:
+            - { name: LLAMA_ARG_PORT, value: "8080" }
+            - { name: LLAMA_ARG_HOST, value: "0.0.0.0" }
+          ports:
+            - { name: http, containerPort: 8080, protocol: TCP }
+          # Single-model mode: /health IS both liveness and readiness — 503
+          # while the weights load, 200 once resident. This is the property
+          # §2 called "the ideal readiness gate", and it is why no JIT-off +
+          # preload + /v1/models dance (§4.3) is needed here.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop: { exec: { command: ["/bin/sh", "-c", "sleep 10"] } }
+          resources:
+            requests: { cpu: "1", memory: "2Gi", nvidia.com/gpu: "1" }
+            limits:   { cpu: "4", memory: "4Gi", nvidia.com/gpu: "1" }
+          volumeMounts:
+            - { name: models,  mountPath: /models, readOnly: true }
+            - { name: api-key, mountPath: /etc/llama, readOnly: true }
+      volumes:
+        - name: models
+          persistentVolumeClaim: { claimName: hope-llama-models, readOnly: true }
+        - name: api-key
+          secret:
+            secretName: hope-llama-api-key
+            items: [{ key: api-key, path: api-key }]
+            defaultMode: 0400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-llama-embed
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  type: ClusterIP
+  selector: { app: hope-llama-embed }
+  ports:
+    - { name: http, port: 8080, targetPort: http, protocol: TCP }
+---
+# ============================================================================
+# NetworkPolicy — following TASK-823's convention verbatim (it wrote the first
+# one in this repo): policy lives in the same file as the workload it protects,
+# named hope-<svc>-<direction>, ingress-only to start, never a namespace-wide
+# default-deny, and ALWAYS with the Prometheus scrape rule or metrics silently
+# vanish.
+#
+# ⚠ Same caveat TASK-823 recorded: verify k3s NetworkPolicy enforcement is not
+# disabled (`--disable-network-policy`) before trusting these. A decorative
+# policy is worse than none — and here it is load-bearing, not cosmetic.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-llama-cpp-ingress
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-llama-cpp }
+  policyTypes: [Ingress]
+  ingress:
+    # apps/text is the ONLY consumer. It reaches this engine per-request using
+    # the baseUrl on the SYSTEM AiProviderConnection row; nothing else in the
+    # platform has a reason to open a socket to an inference engine.
+    - from:
+        - podSelector:
+            matchLabels: { app: hope-text }
+      ports: [{ protocol: TCP, port: 8080 }]
+    # Metrics. Without this the pod annotations above are a no-op and every
+    # llamacpp:* series disappears with no error anywhere.
+    - from:
+        - podSelector:
+            matchLabels: { app: prometheus }
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-llama-cpp-egress
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-llama-cpp }
+  policyTypes: [Egress]
+  egress:
+    # DNS FIRST. Omitting this is the classic egress-policy outage.
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+  # ==========================================================================
+  # AND NOTHING ELSE. Note what is ABSENT and why it is absent:
+  #
+  #   * No MinIO rule. Unlike vLLM — which streams weights from S3 at runtime
+  #     and therefore needs 10.10.1.102/32:9000 — this pod reads weights from a
+  #     PVC that the sync Job already warmed. The serving pod never speaks S3.
+  #   * No huggingface.co. §3.1b noted the HF-native download path "egresses to
+  #     huggingface.co from a PHI namespace, which contradicts §5 L-3's
+  #     default-deny policy". The mirror-into-MinIO choice is what makes this
+  #     empty rule possible: weights are checksum-pinned and the serving
+  #     namespace has no internet path at all.
+  #   * L-3 asked to "block telemetry egress" and "verify no first-run analytics
+  #     call". llama.cpp has no telemetry to block, and this policy makes the
+  #     question moot rather than trusting the answer.
+  # ==========================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-llama-embed-ingress
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-llama-embed }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: hope-text } }
+      ports: [{ protocol: TCP, port: 8080 }]
+    - from:
+        - podSelector: { matchLabels: { app: prometheus } }
+      ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-llama-embed-egress
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-llama-embed }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# §14.4 item 8 — HPA and PDB always present, even inert, so "the primitive
+# exists uniformly". Both are inert here: replicas is 0 and GPU-bound serving
+# does not autoscale on CPU.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: hope-llama-cpp }
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 90 } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hope-llama-cpp
+  labels:
+    app: hope-llama-cpp
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # 0, not 1: a single-replica GPU workload on a single node cannot satisfy
+  # minAvailable 1 during a drain without blocking it forever.
+  minAvailable: 0
+  selector:
+    matchLabels: { app: hope-llama-cpp }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-llama-embed
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: hope-llama-embed }
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 90 } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hope-llama-embed
+  labels:
+    app: hope-llama-embed
+    app.kubernetes.io/part-of: project-hope
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels: { app: hope-llama-embed }

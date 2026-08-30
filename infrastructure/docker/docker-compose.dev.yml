@@ -783,3 +783,166 @@ services:
           memory: 1G
         reservations:
           memory: 256M
+
+  # ==========================================================================
+  # GGUF serving tier — TASK-824 / TASK-831
+  # ==========================================================================
+  # OPT-IN behind the `gguf` profile (NOT `inference`, deliberately: this tier
+  # and the vLLM/TEI tier target the same GPU, and starting both at once on a
+  # 16 GB card is how you OOM the pod that was already working).
+  #
+  #   docker compose -f infrastructure/docker/docker-compose.dev.yml --profile gguf up -d
+  #
+  # WHY THIS EXISTS ALONGSIDE THE `llama-cpp` SERVICE ABOVE
+  # -------------------------------------------------------
+  # The existing `llama-cpp` service serves ONE model over llama.cpp's NATIVE
+  # /completion endpoint, which is what TEXT's `llama-cpp` provider adapter
+  # targets. That adapter is a RAW-PROMPT client
+  # (`providers/llama_cpp.py:79 _build_prompt`) — it applies no chat template
+  # and cannot express image or audio content parts.
+  #
+  # >>> THE TRAP WORTH STATING ONCE: in the AiModel catalogue,
+  # >>> `provider: 'llama-cpp'` does NOT mean "served by llama.cpp". It selects
+  # >>> the native /completion adapter, which is text-only and un-templated.
+  # >>> A Gemma 4 IT multimodal model tagged `provider: 'llama-cpp'` would lose
+  # >>> its chat template silently and both its modalities loudly.
+  #
+  # So this service serves the SAME engine on its OPENAI-COMPATIBLE /v1 wire and
+  # is addressed by the `lm-studio` / `openai_compat` provider names, which
+  # `openai_compat.py:37` already treats as one:
+  #     _LM_STUDIO_PROVIDER_NAMES = frozenset({"lm-studio", "openai_compat"})
+  # That is why no router code changes: only an AiProviderConnection baseUrl.
+  #
+  # (`openai_compat` additionally probes LM Studio's native /api/v0/models to
+  # enrich listings. llama-server answers 404 there. VERIFIED SAFE — that helper
+  # documents "ANY failure returns {}: enrichment is strictly best-effort and
+  # must never degrade or fail the /v1/models listing", and a non-200 returns {}
+  # before any parsing.)
+  #
+  # BUILD FLOOR — NOT NEGOTIABLE. Pinned b9853 (2026-07-01). TASK-831 §4.1 sets
+  # a hard floor of b9383: below it a projector pre-norm bug and an audio
+  # RMS-norm eps bug make Gemma 4 vision/audio output plausible but WRONG, with
+  # no error. Verified by ancestry, not by build number —
+  # docs/implementation/TASK-824-LM-Studio-Service/image/verify-build-floor.py.
+  #
+  # Weights are operator-staged into ${GGUF_MODELS_DIR} (default ./models/gguf),
+  # the same posture as the llama-cpp service above. In the cluster a Job syncs
+  # them from MinIO with sha256 verification; locally you place them by hand.
+  # Pinned revisions + digests:
+  # docs/implementation/TASK-824-LM-Studio-Service/deployment/model-sync.yaml
+  gguf-server:
+    container_name: hope-gguf-server
+    # CPU image by default so this profile starts on any dev box, Apple Silicon
+    # included. On an NVIDIA host set
+    #   HOPE_GGUF_IMAGE=ghcr.io/ggml-org/llama.cpp:server-cuda-b9853
+    # and uncomment the `deploy.resources` block below.
+    image: ${HOPE_GGUF_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-b9853}
+    profiles: ["gguf"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${HOPE_GGUF_PORT:-8872}:8080'
+    environment:
+      LLAMA_ARG_HOST: "0.0.0.0"
+      LLAMA_ARG_PORT: "8080"
+    command:
+      # Router mode: ONE endpoint serving every model in the preset file,
+      # dispatching on the OpenAI `model` field. This is what lets a THREE-model
+      # chat catalogue sit behind the single baseUrl AiProviderConnection allows
+      # per (tenantId, service, provider) — the table is UNIQUE on that triple,
+      # so three single-model servers could not all be addressed.
+      #
+      # ⚠️ llama-server prints, at every startup:
+      #      "NOTE: router mode is experimental"
+      #      "it is not recommended to use this mode in untrusted environments"
+      #    Recorded, not hidden. See the ticket §2A for why it is accepted here
+      #    (ingress-restricted pod + --api-key-file) and what the fallback is.
+      - "--models-preset"
+      - "/models/presets.ini"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      # Cap simultaneous residency. On a card with no MIG/MPS/vGPU this is the
+      # only real VRAM bound — per-card placement is not enforceable.
+      - "--models-max"
+      - "${HOPE_GGUF_MODELS_MAX:-1}"
+      - "--metrics"
+    volumes:
+      - ${GGUF_MODELS_DIR:-./models/gguf}:/models:ro
+    healthcheck:
+      # /health is 503 while a model loads and 200 once resident — one endpoint
+      # answering both liveness and readiness. (In ROUTER mode it returns 200 as
+      # soon as the router is up, because children load on demand, which is why
+      # the k8s manifests use /v1/models as the readiness signal there.)
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    # Uncomment on an NVIDIA dev host (and switch HOPE_GGUF_IMAGE to -cuda-):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: ["gpu"]
+
+  # Dedicated embedding server. Separate from the router on purpose: it is a
+  # different `service` ('embeddings') and therefore a different
+  # AiProviderConnection row anyway, it is only 0.26 GiB, and keeping it in
+  # plain single-model mode means the embedding path never depends on the
+  # experimental router.
+  #
+  # ⚠️ NOT REACHABLE FROM apps/text YET. `main.py:191-194` registers exactly one
+  # embedding provider — `tei-embed` — and TEI cannot load a GGUF at all
+  # (TASK-831 §5: safetensors/ONNX only). Wiring this needs an `embeddings`
+  # provider factory in apps/text, which is TASK-831 §9 owner decision 2.
+  # The server works; the routing does not exist. It is started here so that
+  # decision can be evaluated against a running endpoint instead of a document.
+  gguf-embed:
+    container_name: hope-gguf-embed
+    image: ${HOPE_GGUF_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-b9853}
+    profiles: ["gguf"]
+    networks:
+      - hope-network
+    restart: unless-stopped
+    ports:
+      - '${HOPE_GGUF_EMBED_PORT:-8873}:8080'
+    environment:
+      LLAMA_ARG_HOST: "0.0.0.0"
+      LLAMA_ARG_PORT: "8080"
+    command:
+      - "--model"
+      - "/models/${GGUF_EMBED_MODEL:-embeddinggemma-300M-qat-Q4_0.gguf}"
+      # The served id. MUST equal the AiModel row's `sourceUri`: the gateway
+      # puts `model.sourceUri` on the wire as the OpenAI `model` field, so a
+      # mismatch 404s every request (TASK-831 §7.4).
+      - "--alias"
+      - "llama-cpp-embeddinggemma-300m-qat"
+      - "--embeddings"
+      - "--pooling"
+      - "mean"
+      # 8 slots x 2048 tokens. --ctx-size is the TOTAL budget, DIVIDED across
+      # --parallel slots (verified: `-c 2048 -np 4` logs
+      # "n_slots = 4, n_ctx_slot = 512"), so this is 8*2048 — not 16k per
+      # sequence. 2048 is a hard ceiling here: the model reports n_ctx_train=2048.
+      - "--ctx-size"
+      - "16384"
+      - "--parallel"
+      - "8"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--metrics"
+    volumes:
+      - ${GGUF_MODELS_DIR:-./models/gguf}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
