@@ -10,7 +10,7 @@ import {
 import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, ExpectedVersion, ForbidApiKey, RequiresIfMatch } from '../../decorators';
+import { CanManage, ExpectedVersion, ForbidApiKey, ForbidServiceAccount, RequiresIfMatch } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -55,14 +55,17 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  *
  * API keys are refused outright (`@ForbidApiKey()`, the admin-plane rule).
  *
- * There is deliberately NO `@RequiredSvcScopes(...)` either, so a SERVICE
- * ACCOUNT is refused by deny-by-default too ("no scope declaration = 403 for
- * both machine classes"). That is a decision, not an omission: a routing-policy
- * write redirects PHI to a different vendor, and granting a machine identity
- * that power needs an owner decision rather than a scope invented in passing.
- * Four admin controllers already sit in this posture (impersonation, consent,
- * monitoring, service health), and the consequence is the same as theirs — the
- * area does not appear in the generated `@arcaai/vox-node` admin plane.
+ * Service accounts are refused too, and that refusal is DECLARED with
+ * `@ForbidServiceAccount()` rather than left to deny-by-default. Since TASK-773
+ * the admin plane is the machine class's plane, so silence there is ambiguous
+ * rather than safe — the boot audit refuses to start on an undeclared admin
+ * route precisely so a missed sweep cannot be mistaken for a deliberate
+ * closure. This one is deliberate: a routing-policy write redirects PHI to a
+ * different vendor, and granting a machine identity that power needs an owner
+ * decision rather than a scope invented in passing. Four admin controllers
+ * already sit in this posture (impersonation, consent, monitoring, service
+ * health), and the consequence is the same as theirs — the area does not appear
+ * in the generated `@arcaai/vox-node` admin plane.
  *
  * To open it later: add `admin:ai-routing-policy:manage` to
  * `apikey-scopes.registry.ts` (the service-account registry renamespaces it to
@@ -74,6 +77,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 @ApiTags('admin-ai-routing-policies')
 @ApiExtraModels(EffectiveRoutingPolicyResponse)
 @ForbidApiKey()
+@ForbidServiceAccount()
 @CanManage('AiRoutingPolicy')
 @Controller('admin/routing-policies')
 export class AiRoutingPolicyAdminController {

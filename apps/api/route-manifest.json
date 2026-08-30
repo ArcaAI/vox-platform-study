@@ -6133,7 +6133,7 @@
       "path": "/api/v1/admin/routing-policies",
       "routePath": "/admin/routing-policies",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6154,7 +6154,7 @@
       "path": "/api/v1/admin/routing-policies",
       "routePath": "/admin/routing-policies",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6175,7 +6175,7 @@
       "path": "/api/v1/admin/routing-policies/{id}",
       "routePath": "/admin/routing-policies/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6196,7 +6196,7 @@
       "path": "/api/v1/admin/routing-policies/{id}",
       "routePath": "/admin/routing-policies/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6217,7 +6217,7 @@
       "path": "/api/v1/admin/routing-policies/{id}",
       "routePath": "/admin/routing-policies/:id",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6238,7 +6238,7 @@
       "path": "/api/v1/admin/routing-policies/{id}/activate",
       "routePath": "/admin/routing-policies/:id/activate",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
@@ -6259,7 +6259,7 @@
       "path": "/api/v1/admin/routing-policies/effective",
       "routePath": "/admin/routing-policies/effective",
       "svcScopes": [],
-      "forbidServiceAccount": false,
+      "forbidServiceAccount": true,
       "apiKeyForbidden": true,
       "apiKeyScopes": [],
       "requiredPermissions": [
