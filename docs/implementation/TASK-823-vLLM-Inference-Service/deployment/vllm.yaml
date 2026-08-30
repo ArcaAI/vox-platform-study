@@ -193,11 +193,26 @@ spec:
           # attributable. NOT `:latest` — image-hygiene bans it in rendered
           # output, and a mutable tag defeats GitOps identity.
           #
-          # ⚠️ VERIFY BEFORE FIRST DEPLOY: that this tag's image bundles the
-          # `runai-model-streamer` + `runai-model-streamer-s3` extras. If it
-          # does not, `--load-format runai_streamer` fails at startup and the
-          # fallback is an init-container pre-pull onto the node hostPath, the
-          # same shape hope-stt already uses for its model cache.
+          # ✅ VERIFIED (Phase 2): this tag DOES bundle the Run:ai streamer.
+          # docker/Dockerfile at tag v0.11.0 builds `vllm-openai` FROM
+          # `vllm-openai-base`, whose only pip layer is:
+          #     uv pip install --system accelerate hf_transfer modelscope \
+          #       "bitsandbytes>=${BITSANDBYTES_VERSION}" 'timm>=1.0.17' boto3 \
+          #       runai-model-streamer runai-model-streamer[s3]
+          # (docker/Dockerfile:529; stage chain at :506 and :540). So
+          # `--load-format runai_streamer` resolves, and the init-container
+          # pre-pull fallback is NOT needed.
+          #
+          # Two riders. (1) That install is UNPINNED, so the streamer version
+          # is whatever was current when the image was built — pin the IMAGE,
+          # not the wheel, and re-verify on any bump with:
+          #     docker run --rm --entrypoint python3 vllm/vllm-openai:v0.11.0 \
+          #       -c "import runai_model_streamer; print('ok')"
+          # (2) vllm/transformers_utils/runai_utils.py guards this import for
+          # `OSError on arm64` (run-ai/runai-model-streamer#26). Irrelevant
+          # here — the node is x86_64 — and stale anyway: streamer 0.16.1
+          # publishes manylinux2014_aarch64 wheels and imports cleanly on arm64
+          # (tested Phase 2).
           image: vllm/vllm-openai:v0.11.0
           imagePullPolicy: IfNotPresent
           args:
@@ -298,6 +313,38 @@ spec:
                 configMapKeyRef:
                   name: hope-vllm-config
                   key: VLLM_S3_ENDPOINT_URL
+            # Belt-and-braces, NOT a bug fix — stated precisely because it is
+            # easy to overclaim here.
+            #
+            # MEASURED with streamer 0.16.1: AWS_ENDPOINT_URL ALONE is enough.
+            # A full 902-tensor stream succeeded with RUNAI_STREAMER_S3_ENDPOINT
+            # unset, so the AWS C++ SDK underneath the streamer reads
+            # AWS_ENDPOINT_URL itself.
+            #
+            # It is still set explicitly because vLLM does not rely on that:
+            # runai_streamer_loader.py:43-49 copies AWS_ENDPOINT_URL into
+            # RUNAI_STREAMER_S3_ENDPOINT, and does so only INSIDE
+            # `if load_config.model_loader_extra_config:`. That copy exists for
+            # streamer versions that needed the RUNAI_ name. Since the image
+            # pins no streamer version (see the image comment), setting both
+            # makes this manifest independent of which one ships — and removes
+            # a latent coupling between an S3 setting and an unrelated tuning
+            # flag.
+            - name: RUNAI_STREAMER_S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_S3_ENDPOINT_URL
+            # MinIO presents a leaf issued by "ARCAAI Internal CA", which is NOT
+            # in any system trust store. Without this the load dies at the very
+            # first LIST with CERTIFICATE_VERIFY_FAILED (reproduced in a lab
+            # mirroring the real cert's SAN shape). There is deliberately no
+            # "skip verification" escape hatch: this is a PHI data store.
+            - name: AWS_CA_BUNDLE
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-vllm-config
+                  key: VLLM_S3_CA_BUNDLE
             # A literal, not a ConfigMap key: MinIO ignores the region entirely
             # and the AWS SDK only requires that one be set. Making it
             # environment-tunable would add a non-optional ref that can fail the
@@ -402,6 +449,11 @@ spec:
               mountPath: /home/vllm
             - name: vllm-tmp
               mountPath: /tmp
+            # The private CA that signed MinIO's leaf. Mounted read-only at the
+            # path AWS_CA_BUNDLE names (VLLM_S3_CA_BUNDLE in the ConfigMap).
+            - name: arcaai-ca
+              mountPath: /etc/ssl/arcaai
+              readOnly: true
       volumes:
         # vLLM needs a large /dev/shm for worker IPC. The container default of
         # 64Mi is not enough even at tensor-parallel-size 1.
@@ -418,6 +470,19 @@ spec:
         - name: nginx-conf
           configMap:
             name: hope-vllm-endpoint-guard
+        # ⚠️ MUST EXIST BEFORE THIS POD CAN START. The ARCAAI Internal CA is
+        # published NOWHERE in hope-v2-dev today (there is no CA ConfigMap or
+        # Secret in the namespace — only kube-root-ca.crt, which is the
+        # cluster's own CA and unrelated). Creating it is a ROOT_CONFIG_REQUEST;
+        # ../README.md §8 carries the exact procedure. NOT marked optional on
+        # purpose: a missing CA must fail the pod, never silently degrade to an
+        # unverified TLS connection to a PHI object store.
+        - name: arcaai-ca
+          configMap:
+            name: arcaai-internal-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
 ---
 # ══════════════════════════════════════════════════════════════════════════
 # V-2 — the endpoint allow-list
@@ -630,3 +695,68 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+---
+# ══════════════════════════════════════════════════════════════════════════
+# V-3 (second half) — EGRESS. Shippable as of Phase 2.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# The handover README previously specified this policy but deliberately did NOT
+# ship it, because the only MinIO address the platform knew was
+# `s3.taphuynh.dev` — a proxied Cloudflare Tunnel hostname. An egress rule
+# scoped to "MinIO only" would have had to allow Cloudflare's edge ranges,
+# which is close to allowing the open internet and would have been a control in
+# name only.
+#
+# Phase 2 resolved the endpoint: the tunnel's own route table maps
+# `s3.taphuynh.dev -> https://10.10.1.102:9000`, a dedicated LAN host on the
+# same /24 as the k3s node, reachable from inside hope-v2-dev in ~2 ms. That
+# makes the rule a single /32 and the control real.
+#
+# This is the enforcement half of "weights come only from MinIO". With it, a
+# runtime HuggingFace pull out of a PHI namespace is structurally impossible
+# rather than merely discouraged — which matters because `--load-format
+# runai_streamer` still falls back to `download_weights_from_hf()` for any
+# --model that is not an s3:// URI (runai_streamer_loader.py:60-68).
+#
+# ⚠️ VERIFY ENFORCEMENT, DO NOT ASSUME IT. k3s ships a NetworkPolicy controller
+# with flannel, but `--disable-network-policy` turns it off and the server flags
+# are not readable through the API. Prove it from a pod that is neither
+# hope-text nor prometheus (see ../README.md §6 step 4). A decorative policy is
+# worse than none, because it is believed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-vllm-egress
+  labels:
+    app: hope-vllm
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels:
+      app: hope-vllm
+  policyTypes: [Egress]
+  egress:
+    # DNS FIRST. Omitting this is the classic egress-policy outage: every
+    # hostname lookup fails and the symptom presents as a broken endpoint
+    # rather than as a policy problem.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # MinIO — the ONLY egress this workload needs. 10.10.1.102 is the MinIO
+    # host; 9000 is the S3 API (9001 is the console and is deliberately absent).
+    # Weight streaming is the only thing that leaves this pod.
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.102/32
+      ports:
+        - protocol: TCP
+          port: 9000

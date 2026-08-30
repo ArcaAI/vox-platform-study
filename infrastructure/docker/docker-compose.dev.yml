@@ -498,9 +498,26 @@ services:
       # budget probing 169.254.169.254 before falling back to static keys.
       AWS_EC2_METADATA_DISABLED: "true"
       AWS_ENDPOINT_URL: ${VLLM_S3_ENDPOINT_URL:-http://minio:9000}
+      # Set explicitly as version insurance, not because AWS_ENDPOINT_URL is
+      # known to be insufficient: with runai-model-streamer 0.16.1 a full weight
+      # stream succeeds with this variable UNSET, so the AWS C++ SDK reads
+      # AWS_ENDPOINT_URL on its own. vLLM nonetheless copies one into the other
+      # (runai_streamer_loader.py:43-49) — and only inside
+      # `if load_config.model_loader_extra_config:`, which this service does not
+      # pass. Since the vLLM image pins no streamer version, setting both keeps
+      # this working whichever version the image happens to carry.
+      RUNAI_STREAMER_S3_ENDPOINT: ${VLLM_S3_ENDPOINT_URL:-http://minio:9000}
       AWS_REGION: ${VLLM_S3_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_admin}
+      # NOTE — AWS_CA_BUNDLE is deliberately NOT declared here.
+      # The local compose MinIO is plain HTTP, so no bundle is needed, and
+      # declaring it as `${VLLM_S3_CA_BUNDLE:-}` would export the EMPTY STRING
+      # on every run — botocore reads that as a certificate PATH, not as
+      # "unset". The CLUSTER's MinIO is different: it is TLS with a private
+      # issuer ("ARCAAI Internal CA"), which is why base/vllm.yaml mounts a CA
+      # and sets AWS_CA_BUNDLE there. To reproduce that path locally, add the
+      # variable and a bind-mounted PEM by hand.
       # NOTE: VLLM_SERVER_DEV_MODE is deliberately, permanently ABSENT (V-1).
       # Setting it to "1" exposes /collective_rpc — arbitrary RPC execution.
       # It is also why there is no Sleep-Mode hot-swap: model changes are
