@@ -21,8 +21,6 @@ const effectivePolicy = {
   safetyEnabled: true,
   phiEnabled: true,
   phiFailClosed: false,
-  safetyProvider: 'lm-studio',
-  safetyModel: 'granite-guardian-4.1-8b',
   textProvider: 'lm-studio',
   textModel: 'medgemma',
   maxRegen: 2,

@@ -303,8 +303,14 @@ class HarnessPolicy(BaseModel):
     safety_enabled: bool = True
     phi_enabled: bool = True
     phi_fail_closed: bool = True
-    safety_provider: str = "lm-studio"
-    safety_model: str = "granite-guardian-4.1-8b"
+    # TASK-816 Phase 4 removed ``safety_provider`` / ``safety_model``. Their Prisma columns
+    # were dropped, so apps/api no longer sends the keys — and keeping the fields would have
+    # meant ``from_api`` resolving these two literals on every run: a hardcoded engine name and
+    # model id with no reader, which rule 00 §Configuration Principles forbids. The guardrail
+    # engine + model are resolved by ``apps/guardrail`` from the ``guardrail.safety``
+    # AiTaskDefault (tenant -> SYSTEM, fail-closed); the harness only supplies the text.
+    # ``extra="ignore"`` above is what makes this replay-safe: a history recorded before the
+    # drop still carries the keys and still decodes, they are simply ignored.
     # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
     # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
     # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
@@ -389,8 +395,6 @@ class HarnessPolicy(BaseModel):
             safety_enabled=_get("safetyEnabled", defaults.safety_enabled),
             phi_enabled=_get("phiEnabled", defaults.phi_enabled),
             phi_fail_closed=_get("phiFailClosed", defaults.phi_fail_closed),
-            safety_provider=_get("safetyProvider", defaults.safety_provider),
-            safety_model=_get("safetyModel", defaults.safety_model),
             # text_provider/text_model are intentionally nullable (None => Text default).
             text_provider=data.get("textProvider"),
             text_model=data.get("textModel"),

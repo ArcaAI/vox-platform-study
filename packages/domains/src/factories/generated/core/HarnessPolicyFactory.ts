@@ -24,8 +24,6 @@ export const HARNESS_POLICY_DEFAULTS = {
   safetyEnabled: true,
   phiEnabled: true,
   phiFailClosed: true,
-  safetyProvider: 'lm-studio',
-  safetyModel: 'granite-guardian-4.1-8b',
   textProvider: null as string | null,
   textModel: null as string | null,
   maxRegen: 2,
@@ -58,8 +56,6 @@ export interface CreateHarnessPolicyProps extends BaseEntityFactoryCreateProps {
   safetyEnabled?: IHarnessPolicyEntity['safetyEnabled'];
   phiEnabled?: IHarnessPolicyEntity['phiEnabled'];
   phiFailClosed?: IHarnessPolicyEntity['phiFailClosed'];
-  safetyProvider?: IHarnessPolicyEntity['safetyProvider'];
-  safetyModel?: IHarnessPolicyEntity['safetyModel'];
   textProvider?: IHarnessPolicyEntity['textProvider'];
   textModel?: IHarnessPolicyEntity['textModel'];
   maxRegen?: IHarnessPolicyEntity['maxRegen'];
@@ -112,8 +108,6 @@ export class HarnessPolicyFactory {
       safetyEnabled: props.safetyEnabled ?? d.safetyEnabled,
       phiEnabled: props.phiEnabled ?? d.phiEnabled,
       phiFailClosed: props.phiFailClosed ?? d.phiFailClosed,
-      safetyProvider: props.safetyProvider ?? d.safetyProvider,
-      safetyModel: props.safetyModel ?? d.safetyModel,
       textProvider: props.textProvider ?? d.textProvider,
       textModel: props.textModel ?? d.textModel,
       maxRegen: props.maxRegen ?? d.maxRegen,

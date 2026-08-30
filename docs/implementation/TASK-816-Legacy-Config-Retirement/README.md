@@ -748,3 +748,70 @@ test file, one comment), so that gap is inherited, not introduced.
 | Date | Change |
 |---|---|
 | 2026-08-30 | **Phase 3** (`lane-816p3-screens`): **no screen retired.** `/agents` was already retired by TASK-815; `/agentic-policy` and `/ai-task-defaults` are each the sole editor for tiers §0 and §7c proved survive, so both are hard stops (§8a). Pinned the previously-unpinned `/agents` redirect target and added two mutation-verified structural guards (no redirect chain, no nav entry on a redirect); corrected a stale `nav-config.ts` comment naming the retired `/agents`. Third console task-key drift reported at §8d, not closed. |
+
+## 11. Phase 4 — the drop (lane `lane-816p4-drop`, 2026-08-30)
+
+`HarnessPolicy.safetyProvider` / `.safetyModel` are dropped. Migration
+`20260830033818_task_816_drop_harness_policy_safety_columns` — **authored and verified against a
+throwaway shadow database only; NOT applied to dev or test.**
+
+### 11a. §7c's "no reader" was true of the runtime and false of the surface
+
+The Phase 2 proof was a grep gate over harness Python modules, so it answered "does any backend
+read this?" — correctly, NO. It did not answer "does anything WRITE it?", and the admin console
+did:
+
+| Surface | What it actually did |
+|---|---|
+| `policy-fields.ts:80-81` | declared both as `kind: 'text'` **editable inputs** in the Safety & PHI group |
+| tenant tab | passed `TENANT_LOCKED_POLICY_KEYS` (both listed) → read-only, stripped from the patch |
+| **global tab** | passes **no** `lockedKeys` (`harness-policy-form.tsx:87`: *"the GLOBAL tab passes nothing (it may write all of them)"*) → a super admin could type into them and `buildSparsePatch` sent them |
+| gateway | `UpdateHarnessPolicyRequest.safetyProvider?/safetyModel?` were declared DTO fields; both in `SUPER_ADMIN_ONLY_POLICY_KEYS`, so a super-admin PATCH returned **200 and persisted** |
+| `harness-policy-screen.tsx:39` | rendered `${safetyProvider} / ${safetyModel}` in the effective-resolve card |
+| `agentic-instructions.service.ts:120` | reported `` `${policy.safetyProvider}/${policy.safetyModel}` `` as the safety criterion's `detail` |
+
+So a super admin could save a value that no backend ever read, and two read surfaces reported it
+as if it were the live guardrail selection. That is a stronger reason to drop than "unused": the
+columns were actively misleading. Nothing was lost — the drop removes a control that changed
+nothing, not a capability.
+
+### 11b. The runtime claim, re-verified independently rather than inherited
+
+- `activities.py::_safety_screen_client` (`:583-604`) builds `GuardrailSafetyScreen(GuardrailClient(settings.guardrail_base_url, …))` — no policy read.
+- `GuardrailClient.analyze` (`:161`) POSTs `{text, guardrail_type}` (+ request id) only.
+- `guards/phi/egress.py:131` takes a `safety_provider` **parameter**; its sole call site (`activities.py:2115`) passes a hardcoded `None`.
+- `eval/inferential_corpus_eval.py:336`'s `safety_screen.model` is the model that ANSWERED, set from the guardrail response (`guardrail_screen.py:107-108`) — not the policy.
+- No replay fixture (17 files) carries `safety_provider`/`safety_model`.
+
+`apps/guardrail` resolves its own engine + model from the `guardrail.safety` `AiTaskDefault`
+(tenant → SYSTEM, fail-closed). That is the correct home since TASK-735/736.
+
+### 11c. Decisions taken
+
+- **The pydantic fields went too.** With the API no longer sending the keys, `from_api`'s fallback
+  would have resolved `"lm-studio"` / `"granite-guardian-4.1-8b"` on every run — a hardcoded
+  engine/model selection with no reader, i.e. the rule-00 violation the drop exists to retire.
+  Replay-safe: `HarnessPolicy` carries `ConfigDict(extra="ignore")`, so a pre-drop history still
+  decodes. All 19 replay-compat histories pass.
+- **`agentic-instructions` safety `detail` → `null`.** Resolving the REAL selection would mean
+  injecting `AiTaskDefaultService` here and deciding what the row shows when the selection is
+  unresolved — a fail-closed key must not degrade into a label. That is a feature, not a drop, so
+  it is left to whichever ticket wants it (comment at the call site).
+- **`HarnessPolicyChange` untouched.** Its `beforeJson`/`afterJson` still carry the keys for
+  historical rows. It is append-only WORM; rewriting it would falsify records of real edits.
+- **No `AiModel` row removed.** `granite-guardian-4.1-8b` keeps its slug — `apps/guardrail` still
+  selects it through `guardrail.safety`.
+
+### 11d. Reported, not closed
+
+- `black --check` would reformat **7 pre-existing harness files** (`_llm_policy.py`, `guards.py`,
+  `internal.py`, and four interpreter tests, one of them `test_llm_binding_task816.py` from an
+  earlier phase). None are touched by this lane; ruff and mypy are clean. Out of scope here.
+- `apps/api` lint reports **64 pre-existing `eslint-comments/require-description` warnings, 0
+  errors**, all in files this lane never touched.
+
+## 12. Change History (continued)
+
+| Date | Entry |
+|---|---|
+| 2026-08-30 | **Phase 4** (`lane-816p4-drop`): dropped `HarnessPolicy.safetyProvider`/`.safetyModel` — schema, migration, entity/factory/model, both DTOs, service knobs + `SUPER_ADMIN_ONLY_POLICY_KEYS`, seed mirror, SDK hook, the admin-console controls/display/type declarations, and the two pydantic fields. §7c's "no reader" was runtime-only: the console's GLOBAL tab **did** write both, and the gateway persisted them (§11a) — so the surface went with the columns. Runtime absence re-verified independently (§11b). Migration authored + drift-proven on a throwaway shadow DB; **not applied to dev or test**. Two hardcoded literals (`lm-studio`, `granite-guardian-4.1-8b`) retired from the schema defaults, the factory, the seed mirror and `models.py`. |
