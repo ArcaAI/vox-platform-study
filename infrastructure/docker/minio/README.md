@@ -1,4 +1,4 @@
-# MinIO buckets — layout, immutability, and access
+# MinIO buckets — layout, access, and the `hope-models` convention
 
 This directory holds the IAM policy documents mounted into the `minio-setup`
 bootstrap container of `infrastructure/docker/docker-compose.yml`, plus the
@@ -16,54 +16,90 @@ convention that governs the `hope-models` bucket in **every** environment.
 > §Operator procedure. Editing the compose file below does **not** change the
 > cluster. Keep the two in step by hand.
 
+> **Owner directives, 2026-08-30** — these override anything older in this file.
+> 1. **No private CA anywhere.** MinIO authentication is a **service account**
+>    (access key + secret). There is no `ARCAAI Internal CA` ConfigMap, no
+>    `AWS_CA_BUNDLE`, no `SSL_CERT_FILE`, no `NODE_EXTRA_CA_CERTS`.
+> 2. **PHI is not the argument.** Internalizing the endpoint is worth doing
+>    because it is faster and simpler. Where a PHI-driven control was relaxed,
+>    it is marked `RELAXED:` in one line so it can be reversed later.
+> 3. **Favour the simplest thing that works.** Best practices for deployment,
+>    integration and configuration are in the ticket's `BEST-PRACTICES.md`.
+
 ---
 
-## 1. Endpoint policy — internal traffic never uses a public hostname
+## 1. Endpoint policy — internal traffic uses the LAN address
 
-`s3.taphuynh.dev` is a **proxied Cloudflare Tunnel** hostname with no Cloudflare
-Access application in front of it. An in-cluster client that uses it sends every
-object — consultation audio, generated documents, model weights — out to
-Cloudflare's edge and back, for a host sitting on the k3s node's own `/24`.
+`s3.taphuynh.dev` is a proxied Cloudflare Tunnel hostname. An in-cluster client
+that uses it sends every object out to Cloudflare's edge and back, for a host
+sitting on the k3s node's own `/24`.
 
 Measured from `hope-text` (TASK-823 Phase 2, 2026-08-30, n=7 median):
 
 | Path | Latency |
 |---|---|
-| `https://s3.taphuynh.dev` (tunnel → internet → edge → tunnel → origin) | 495.6 ms |
-| `https://10.10.1.102:9000` (LAN) | **2.0 ms** |
+| `s3.taphuynh.dev` (pod → internet → edge → tunnel → origin) | 495.6 ms |
+| `10.10.1.102:9000` (LAN) | **2.0 ms** |
 
 **Rule: an internal consumer addresses MinIO by LAN IP, never by a public
-hostname.** This matches how `hope-secrets` already reaches every other
-out-of-band dependency — Postgres `10.10.1.250:5000`, Redis `10.10.1.120:6379`.
-MinIO was the sole exception.
+hostname.** Two reasons, neither of them PHI:
 
-The public hostnames stay for humans and for out-of-cluster tooling. They are
-not a fallback: a client that silently falls back to the tunnel when the LAN
-address is missing reintroduces exactly the exposure this convention removes, so
-the manifests **fail closed** instead (`configMapKeyRef` with `optional`
-unset → `CreateContainerConfigError`).
+- **~248× on every object operation**, on a path that a weight fetch and an
+  audio upload both sit on.
+- **Fewer moving parts.** The tunnel adds DNS, a Cloudflare account, an edge
+  certificate and a `cloudflared` process to a hop between two machines on the
+  same switch. Every one of those is a way for the storage path to break for a
+  reason that has nothing to do with storage.
 
-## 2. TLS — a private CA, and it is mandatory
+This matches how the platform already reaches every other out-of-band
+dependency — Postgres `10.10.1.250:5000`, Redis `10.10.1.120:6379`. MinIO was
+the sole exception.
 
-MinIO's leaf is issued by `CN=ARCAAI Internal CA` and is **not** in any system
-trust store. The tunnel hides this today by presenting a public edge certificate
-to its clients and setting `noTLSVerify: true` toward the origin. Going direct
-removes both crutches, so every direct client must be given the CA:
+The public hostnames stay for humans and out-of-cluster tooling. They are not a
+fallback: a client that silently falls back to the tunnel when the LAN address
+is missing reintroduces the slow path invisibly, so manifests **fail closed**
+instead (`configMapKeyRef` with `optional` unset → `CreateContainerConfigError`).
 
-| Client | Variable |
-|---|---|
-| `mc` (Go) | `SSL_CERT_FILE` — dropping the PEM into `<config-dir>/certs/CAs/` does **not** work (tested, TASK-823 §8.5) |
-| boto3 / AWS SDKs | `AWS_CA_BUNDLE` |
-| Python `requests`/`httpx` | `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` |
-| Node (`minio`, `@aws-sdk/client-s3`) | `NODE_EXTRA_CA_CERTS` |
+## 2. Transport — no CA, and the one decision that is still open
 
-There is deliberately **no** "skip verification" option anywhere in this
-platform. This is a PHI object store; an unverified TLS session to it is not a
-degraded mode, it is a different security posture.
+Per directive 1 there is **no private CA distributed to any client**. That
+settles the trust question and opens a transport question, because the MinIO
+host was given a self-signed certificate in
+`docs/research/deployments/deploy-vm402-minio.md` §14 and now serves **HTTPS on
+:9000**. MinIO auto-detects TLS from the files in its certs directory and serves
+one scheme per port — it cannot serve HTTP and HTTPS on :9000 simultaneously.
 
-The leaf's SAN carries `DNS:s3.taphuynh.dev, DNS:s3-console.taphuynh.dev,
-DNS:localhost, DNS:minio, IP:10.10.1.102, IP:127.0.0.1` and expires
-**2028-03-21**, so the IP verifies directly with no `Host` gymnastics.
+So "LAN + no CA" resolves one of two ways, and **this needs an owner decision**:
+
+| | **A — MinIO serves plain HTTP** (the literal directive) | **B — MinIO keeps HTTPS, clients skip verification** |
+|---|---|---|
+| Change on the MinIO host | drop `--certs-dir` and restart | none |
+| App-repo change | none — every client already supports it | `verify=False` / `rejectUnauthorized:false` in 2 client factories (§2.1) |
+| Other LAN consumers | **pgBackRest breaks** (`deploy-vm402-minio.md:456` records that it requires HTTPS for S3); GitLab, Loki, Tempo, Prometheus and the `cloudflared` origin all need re-pointing | unchanged — all four already run with verification off |
+| Precedent in this platform | the pre-§14 state | `repo1-storage-verify-tls=n` (`deploy-vm402-minio.md:694`), `insecure_skip_verify: true` (Prometheus), `http_config.insecure_skip_verify: true` (Loki), `tls_insecure_skip_verify: true` (Tempo), `No TLS Verify` on both tunnel origins |
+
+**B is the smaller change and is already the de-facto platform posture in four
+places.** It honours directive 1 exactly — the ban is on distributing a CA, not
+on TLS. A is what the directive says literally, and is cheaper in the app repo
+but breaks four things outside it.
+
+`RELAXED:` under either option the MinIO certificate is not verified by anyone
+on the LAN. Reversing this means publishing the CA and setting
+`AWS_CA_BUNDLE` / `SSL_CERT_FILE` / `NODE_EXTRA_CA_CERTS` per §2.1's table.
+
+### 2.1 What each client can actually do today
+
+Verified by reading the client factories, 2026-08-30:
+
+| Workload | Client | Plain HTTP | Skip verification |
+|---|---|---|---|
+| `hope-stt`, `hope-stt-worker` | Python `minio` | ✅ `MINIO_SECURE=false` | ✅ `MINIO_CERT_CHECK=false` → `urllib3.PoolManager(cert_reqs="CERT_NONE")` (`apps/stt/src/stt/core/storage/minio_client.py:38`; settings at `core/config/settings.py:137-138`) |
+| `hope-harness`, `hope-harness-worker` | `boto3` | ✅ `use_ssl=False` (`apps/harness/src/harness/temporal/claim_check.py:153`; scheme built at `models/source_resolver.py:113`) | ❌ **no `verify=` argument is passed** — would need a one-line change |
+| `hope-api` | `@aws-sdk/client-s3` | ✅ `endpoint: http://…` | ❌ **no `requestHandler` is configured** (`packages/applications/src/services/baseServices/storage/providers/s3-blob.provider.ts:58`, `.../storage/s3/s3.service.ts:256`) — would need a `NodeHttpHandler` with `rejectUnauthorized:false`, or the blunt process-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` |
+| `mc` | — | ✅ | ✅ `--insecure` (used at `deploy-vm402-minio.md:653`) |
+
+That asymmetry is the whole reason option A looks attractive: **plain HTTP needs
+zero code changes; skip-verify needs two.**
 
 ## 3. Bucket-per-purpose, and the versioning/erasure tension
 
@@ -74,72 +110,104 @@ and cannot be expressed per-prefix:
 |---|---|---|---|---|
 | `hope-models` | served model weights | **ON** | **ON** (at creation) | no |
 | `mlflow` | MLflow's proxied artifact store | **OFF — deliberately** | no | no |
-| `recordings` | consultation audio (PHI) | off | no | ⚠️ local dev only, see below |
+| `recordings` | consultation audio | off | no | ⚠️ local dev only, see below |
 | `generated-audio` | TTS output | off | no | ⚠️ local dev only, see below |
-| `documents` | generated clinical documents (PHI) | off | no | no |
+| `documents` | generated clinical documents | off | no | no |
 | `backups` | database/system backups | off | no | no |
-| `harness-claim-check` | Temporal claim-check payloads (PHI) | off | no | no |
+| `harness-claim-check` | Temporal claim-check payloads | off | no | no |
+| `hope-audio`, `hope-audio-chunks` | STT working buckets — created at RUNTIME by the app, not by any bootstrap | off | no | no |
 
 **`hope-models` and `mlflow` have OPPOSITE requirements, and getting them the
-same way round is a compliance bug in one direction and a correctness bug in the
-other.** Stated here because this is where someone configuring a bucket will
-read it:
+same way round is a bug in one direction or the other:**
 
 - **`hope-models` wants immutability.** A published weight prefix must never
   change under a running pod. Versioning + object lock is what makes a promoted
   `s3://` URI mean one fixed byte-set forever.
 - **`mlflow` must NOT be versioned.** `mlflow gc` is the only hard-delete path
-  MLflow has, and therefore the only right-to-erasure mechanism for anything
-  that lands in an artifact. With versioning on, `gc`'s delete writes a **delete
-  marker** — the bytes survive as a non-current version, invisible to `mc ls`,
-  fully recoverable. **Erasure silently becomes retention.** (TASK-822 F-4,
-  verified 2026-08-30.)
+  MLflow has. With versioning on, `gc`'s delete writes a **delete marker** — the
+  bytes survive as a non-current version, invisible to `mc ls`, fully
+  recoverable, so a deletion silently becomes retention. (TASK-822 F-4.)
 
 > ⚠️ `recordings` and `generated-audio` are set to an anonymous read-all policy
-> by the local-dev bootstrap. That is a **local-dev-only** convenience and must
-> never be replicated on the cluster host — `recordings` holds PHI. Flagged
-> here rather than changed, because changing it is a behaviour change for every
-> developer's stack and belongs to its own ticket.
+> by the local-dev bootstrap. Local-dev only; never replicate it on the cluster
+> host. (In practice the call is already inert — see §6, M-6.)
 
-### Object lock can only be enabled at bucket creation
+## 4. Credentials — service accounts, one per role
 
-S3 object locking — MinIO included — is set with `mc mb --with-lock` and
-**cannot be turned on afterwards**. `mc mb --ignore-existing --with-lock`
-against a bucket that already exists silently does nothing and exits 0. The
-bootstrap therefore probes for the lock configuration and prints a loud,
-actionable warning rather than pretending it succeeded. On a developer machine
-whose `hope-models` predates this change the fix is to drop that bucket and let
-the bootstrap recreate it; on the cluster it is the operator procedure.
+Directive 1: **MinIO authentication is a service account (access key + secret).**
+MinIO has two layers, and the platform already uses both for pgBackRest
+(`deploy-vm402-minio.md` §9b) — that is the pattern to copy:
 
-Object lock is enabled with **no default retention rule**. Retention is applied
-per-object at publish time by the publisher credential
-(`s3:PutObjectRetention`), so the capability exists uniformly across
-environments without making a developer's scratch upload undeletable for 30
-days.
+| Layer | Command | What it is |
+|---|---|---|
+| **Identity + permissions** | `mc admin user add` + `mc admin policy attach` | the *role*. Long-lived. Named after the job, not the consumer. |
+| **Credential** | `mc admin user svcacct add` | the *access key + secret* a service actually holds. Inherits the parent identity's policy. Disposable — this is the unit of rotation. |
 
-## 4. Credentials — least privilege, never the root key
-
-Two policies live in `policies/`:
+Two policies live in `policies/`, both scoped to `hope-models` alone:
 
 | Policy | Grants | Held by |
 |---|---|---|
-| `hope-models-reader` | `ListBucket`, `GetObject`, `GetObjectVersion` on `hope-models` **only** | every in-cluster consumer (vLLM, STT, harness, text) |
-| `hope-models-publisher` | the above plus `PutObject`, multipart, `PutObjectRetention` | a human or CI publishing weights |
+| `hope-models-reader` | `ListBucket`, `GetBucketLocation` on the bucket; `GetObject`, `GetObjectVersion` on its objects | every in-cluster weight consumer |
+| `hope-models-publisher` | the above plus `ListBucketMultipartUploads`, `ListBucketVersions`, `GetBucketObjectLockConfiguration`, `PutObject`, `AbortMultipartUpload`, `ListMultipartUploadParts`, `PutObjectRetention`, `GetObjectRetention` | a human or CI publishing weights |
 
-Neither grants `s3:DeleteObject`. Removing a published model prefix is a root
+**Neither grants `s3:DeleteObject`.** Retiring a published prefix is a root
 operation performed knowingly, not something a compromised inference pod or a
 mistyped `mc rm --recursive` can do.
 
 **The reader policy is the mechanism that actually enforces "never overwrite a
-published prefix."** Object lock protects bytes that are already there;
-versioning makes a mistake recoverable; but a service account with no
-`PutObject` is what makes the overwrite impossible in the first place. All
-three, because each covers a different failure: malice, accident, and
-misconfiguration.
+published prefix."** §6 measured why: object lock protects *version bytes*, not
+*visibility* — a delete marker still hides an object from every listing. A
+credential with no `PutObject` and no `DeleteObject` is the layer that holds.
 
 Consumers must **not** reuse `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` — that pair
-carries read/write over the PHI buckets. A weight fetch has no business holding
-a credential that can write `recordings`.
+carries read/write over every bucket. A weight fetch has no business holding a
+credential that can write `recordings`.
+
+### 4.1 Provisioning, verbatim
+
+Runs on any host with `mc` and network reach to `10.10.1.102`. Copy the two
+policy documents out of this directory first.
+
+```bash
+# 0. Alias. `--insecure` only if MinIO is serving HTTPS (§2 option B).
+mc --insecure alias set hope https://10.10.1.102:9000 <root-access-key> <root-secret>
+mc --insecure admin info hope        # must succeed before continuing
+
+# 1. The two roles: policy, then identity, then attach.
+mc admin policy create hope hope-models-reader    ./hope-models-reader.json
+mc admin policy create hope hope-models-publisher ./hope-models-publisher.json
+
+mc admin user add hope hope-models-reader    "$(openssl rand -base64 32)"
+mc admin user add hope hope-models-publisher "$(openssl rand -base64 32)"
+
+mc admin policy attach hope hope-models-reader    --user hope-models-reader
+mc admin policy attach hope hope-models-publisher --user hope-models-publisher
+
+# 2. The credentials services actually hold. Record the printed Access Key and
+#    Secret Key — MinIO does not show the secret again.
+mc admin user svcacct add hope hope-models-reader \
+  --name hope-models-reader-sa --description "in-cluster weight consumers"
+mc admin user svcacct add hope hope-models-publisher \
+  --name hope-models-publisher-sa --description "weight publishing (human/CI)"
+```
+
+### 4.2 Rotation
+
+Rotation touches only the credential layer, so the policy and the identity —
+the reviewed parts — never move:
+
+```bash
+mc admin user svcacct list hope hope-models-reader          # find the current key
+mc admin user svcacct add  hope hope-models-reader --name hope-models-reader-sa-2
+#   ...roll the new pair into hope-secrets / the AiProviderConnection row,
+#      restart consumers, confirm they are serving...
+mc admin user svcacct rm   hope <old-access-key>            # only then
+```
+
+Both keys are valid during the overlap, so there is no restart-ordering
+requirement — which is what makes this the cheap operation it should be.
+`mc admin user svcacct info hope <access-key>` shows which identity a key
+belongs to when the mapping has been lost.
 
 ---
 
@@ -190,10 +258,10 @@ S3 key is `qwen3.5-4b`. S3 keys are case-sensitive, so the rule is stated rather
 than left to chance: **lowercase the catalogue id to form the slug.** Dots are
 kept (`qwen3.5-4b`) — see below.
 
-> ⚠️ The Gemma pair also has a **provenance window**: Google re-uploaded these
-> repos on 2026-07-17 to fix a bad checkpoint. Any copy cached or mirrored
-> between 15–17 July 2026 is poisoned. Verify digests against the current
-> publisher blobs before staging into MinIO — which is what §5.5 step 0 does.
+> ⚠️ The Gemma pair has a **provenance window**: Google re-uploaded these repos
+> on 2026-07-17 to fix a bad checkpoint. Any copy cached or mirrored between
+> 15–17 July 2026 is poisoned. Verify digests against the current publisher
+> blobs before staging into MinIO — which is what §5.5 step 0 does.
 
 **There is no `llm/` vs `embeddings/` top-level split, and that is a decision,
 not an oversight.** Role is recorded in `manifest.json`. A prefix split would
@@ -246,7 +314,7 @@ model before serving it.
   "format": "gguf",
   "quantization": "Q4_K_M",
   "contextLength": 8192,
-  "engine": { "family": "llama.cpp", "minVersion": "b4500" },
+  "engine": { "family": "llama.cpp", "minVersion": "b9383" },
   "upstream": {
     "repo": "google/gemma-4-e4b-it-qat-q4_0-gguf",
     "revision": "<upstream git sha>",
@@ -283,11 +351,10 @@ Every field earns its place:
 | `bytes` per object | A truncated object with a correct-looking name is caught before a load attempt, not during one. |
 | `quantization` | Two prefixes of the same model differ only by this. Serving the wrong one is a silent quality regression, not a crash. |
 | `contextLength` | The engine will happily start with a smaller window than the caller assumes and truncate prompts silently. |
-| `engine.minVersion` | A GGUF written by a newer converter fails to load on an older `llama.cpp` with an unhelpful error. Recording the floor turns that into a pre-flight check. |
 | **`primaryObject`** | **See §5.4 — this is the one that bites.** |
 | **`projectorObject`** | **See §5.4.** A multimodal model's `mmproj` is a separate file that no engine auto-pairs from a plain path. |
 | `shardCount` | Lets a syncer assert completeness *before* serving. |
-| `engine.minVersion` (again) | For the Gemma pair this is a **correctness** floor, not a compatibility one — see §5.4 item 3. |
+| `engine.minVersion` | For the Gemma pair this is a **correctness** floor, not a compatibility one — see §5.4 item 3. |
 
 ### 5.4 The three ways a multi-file model fails quietly
 
@@ -305,7 +372,6 @@ against, and the manifest fields above exist precisely to remove each one:
    plus the per-object digest list makes completeness a checkable property:
    a consumer asserts `len(objects with role "weights") == shardCount` before it
    starts.
-
 3. **The multimodal projector is a separate file that nothing auto-pairs.** The
    Gemma 4 pair ships `*-mmproj.gguf` alongside the weights, and
    `llama-server -m <weights>.gguf` **without `--mmproj` is a text-only server**
@@ -333,18 +399,42 @@ shasum -a 256 ./<slug>/*.gguf          # must equal the publisher's digests
 #    ...author manifest.json from those digests (schema in §5.3), then:
 VERSION="q4-k-m-$(shasum -a 256 <slug>/manifest.json | cut -c1-12)"
 
-# 2. Trust the internal CA. `mc` reads SSL_CERT_FILE; certs/CAs/ does NOT work.
-export SSL_CERT_FILE=/path/to/arcaai-ca.crt
-export MC_HOST_hope="https://<publisher-key>:<publisher-secret>@10.10.1.102:9000"
+# 2. The PUBLISHER service-account credential (§4). No CA, no cert file.
+#    Prefix every mc call with --insecure if MinIO is serving HTTPS (§2 option B);
+#    that is the position proven to work in deploy-vm402-minio.md:653.
+mc --insecure alias set hope https://10.10.1.102:9000 <publisher-access-key> <publisher-secret>
 
 # 3. Upload. Ask MinIO to verify each object's SHA256 in flight rather than
 #    trusting the transfer.
-mc cp --recursive --checksum SHA256 ./<slug>/ "hope/hope-models/<slug>/${VERSION}/"
+mc --insecure cp --recursive --checksum SHA256 ./<slug>/ "hope/hope-models/<slug>/${VERSION}/"
 
 # 4. Prove what landed, and only then reference the prefix from config.
-mc ls --recursive "hope/hope-models/<slug>/${VERSION}/"
+mc --insecure ls --recursive "hope/hope-models/<slug>/${VERSION}/"
 ```
 
 **Promotion is a NEW prefix plus a config change — never an overwrite.**
 Rollback is then a revert of the config, not a re-upload of several gigabytes
 under time pressure.
+
+---
+
+## 6. Measured behaviours — things this file used to assert
+
+Run 2026-08-30 against `minio/minio:RELEASE.2025-04-08T15-41-24Z` (4-drive
+erasure set) and `minio/mc:RELEASE.2025-04-16T18-13-26Z`, in a throwaway
+Kubernetes namespace, using **the committed policy documents verbatim**.
+Evidence is in the ticket README §7.
+
+| # | Behaviour |
+|---|---|
+| **M-1** | **`mc retention info --default <bucket>` prints a message that contradicts its exit code.** On a bucket created `--with-lock` it prints `Object locking is not enabled.` and **exits 0**; on a lockless bucket it errors `does not support locking` and **exits 1**. The bootstrap's probe branches on the exit code and is therefore CORRECT — but an operator running the same command by hand reads the message and concludes the opposite. **Judge lock by exit code, or behaviourally** (`mc retention set … <bucket>/<obj>` succeeds only when lock is on). |
+| **M-2** | **`mc mb --ignore-existing --with-lock` on an existing lockless bucket prints `Bucket created successfully` and exits 0** — and the bucket still has no lock. It does not merely do nothing quietly; it reports success. Object lock really is creation-only. |
+| **M-3** | **`mc ls <alias>` is filtered by policy.** The reader and publisher service accounts see `hope-models` and nothing else — not `recordings`, not other buckets. Neither policy grants `s3:ListAllMyBuckets` and neither needs it. Do **not** add it "so `mc ls` works". |
+| **M-4** | **Object lock does not stop an object disappearing.** With lock enabled and GOVERNANCE retention set on the current version, `mc rm` still succeeded — it wrote a *delete marker*, so the object vanished from every listing while the bytes survived as a non-current version. Object lock protects **version bytes**; it does not protect **visibility**. The layer that actually prevents this is the credential having no `DeleteObject`. |
+| **M-5** | Both policy documents are accepted by MinIO verbatim; `mc admin policy info` echoes them back with only action ordering normalized. |
+| **M-6** | `mc policy set public` is **deprecated and a no-op** — it prints `mc: Please use 'mc anonymous'` and exits 0. `recordings` and `generated-audio` have therefore not actually been anonymous-readable on any recent `mc`. Left alone deliberately: *restoring* anonymous read is not a change to make silently. |
+| **M-7** | A publisher overwrite of an existing key creates a new version and retains the old bytes (`v1` + `v2` both listed by `mc ls --versions`). Anonymous access to `hope-models` is denied. |
+
+All six least-privilege assertions passed with the committed policies:
+publisher can write and set retention; reader can list and get; reader cannot
+overwrite, delete or set retention; neither identity can see any other bucket.

@@ -2,11 +2,37 @@
 
 | | |
 |---|---|
-| **Status** | Review — app-repo changes implemented and verified; deployment-repo changes authored as handover; cluster changes require an operator |
-| **Type** | infrastructure / security |
-| **Branch** | `worktree-agent-a2f95e6a50de1f5e8`, based on `dev-2.2` |
+| **Status** | Review — app-repo changes merged on `dev-2.2` (`affff91f6`) and re-verified 2026-08-30; deployment-repo changes authored as handover and **still not applied**; one owner decision blocks the handover (O-1) |
+| **Type** | infrastructure |
+| **Branch** | `worktree-agent-a2f95e6a50de1f5e8` (original), then `worktree-agent-aa4c68180f1ad5142` (owner-directive revision), both based on `dev-2.2` |
 | **Source** | TASK-828 §4b (problem statement), TASK-823 §8–9 (the proven MinIO access path) |
 | **Second repo** | `hope-v2-deployment@main` — read-only here; changes authored in `./deployment/` for the orchestrator to commit |
+| **Best practices** | `./BEST-PRACTICES.md` — the deployment / integration / configuration playbook |
+
+> ## ⚠️ Owner directives, 2026-08-30 — these OVERRIDE the body of this document
+>
+> 1. **No private CA anywhere.** MinIO authentication is a **service account
+>    (access key + secret)**. Every reference below to an `ARCAAI Internal CA`,
+>    `AWS_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS` or a CA ConfigMap
+>    is **cancelled**. **ROOT_CONFIG_REQUEST R-1 is WITHDRAWN**, and with it the
+>    platform-wide blocker this ticket used to carry.
+> 2. **PHI is not the argument.** This ticket descends from TASK-828 §4b/§4c,
+>    which argue from PHI exposure. The internalization is still worth doing —
+>    it is ~248× faster and removes four moving parts from a hop between two
+>    machines on one switch — but it is argued on those grounds now, and
+>    PHI-driven complexity that was holding it up has been dropped. Each such
+>    relaxation is marked `RELAXED:` in one line so it can be reversed.
+> 3. **Deliver best practices for simple deployment / integration /
+>    configuration.** → `./BEST-PRACTICES.md`.
+>
+> **What this changed, concretely:** §2.2, §3.A, §4, §5.2, §8 and §9 below are
+> superseded on the TLS/CA axis; `infrastructure/docker/minio/README.md` §2 and
+> §4 and `./deployment/README.md` are the current text. The bucket layout (§6),
+> the policy documents and the `manifest.json` schema are **unchanged** — a
+> concurrent lane consumes them as-is.
+>
+> **What it opened:** removing the CA does not by itself choose a scheme, and
+> MinIO currently serves HTTPS on :9000. That is **O-1** in §9.
 
 > ### ⚠️ Ticket number — renumbered TWICE
 > The brief assigned **TASK-830**. That was already taken by
@@ -34,7 +60,14 @@ implementation.** See §4.
 
 ## 2. Current state — the three things that are actually wrong
 
-### 2.1 Every PHI object operation leaves the cluster
+> **Re-framed per directive 2.** §2.1 and §2.2 were written as PHI-exposure
+> arguments. The *facts* in them are unchanged and were re-verified on
+> 2026-08-30; the *argument* is now latency and moving parts. §2.2 in particular
+> is no longer "plaintext PHI on the public internet" — it is "the endpoint and
+> the scheme disagree, which is what happens when one lives in a Secret nobody
+> can review and the other is a literal in a manifest."
+
+### 2.1 Every object operation leaves the cluster
 
 `hope-secrets.MINIO_ENDPOINT = s3.taphuynh.dev`, a proxied Cloudflare Tunnel
 hostname with no Cloudflare Access application (TASK-828 §4). There is no MinIO
@@ -46,7 +79,7 @@ machine on the k3s node's own `/24`, and back.
 Measured from `hope-text` (TASK-823 Phase 2, n=7 median): **495.6 ms via the
 tunnel vs 2.0 ms over the LAN — ~248×.**
 
-### 2.2 NEW — `hope-stt` sends PHI audio over plaintext HTTP, across the internet
+### 2.2 `hope-stt`'s endpoint and its scheme disagree
 
 Not previously recorded. Read from the **live** Deployment, 2026-08-30:
 
@@ -60,11 +93,16 @@ The MinIO Python SDK composes scheme from `secure`, so `hope-stt` builds
 hostname**. The zone has `always_use_https: off` and `ssl: flexible`
 (TASK-828 §5), so the edge serves plaintext rather than redirecting.
 
-This sharpens TASK-828 §5, which concluded "this is **not** PHI in the clear
-over the internet today." That conclusion holds only for clients that speak
-HTTPS to the tunnel. `hope-stt` — which carries consultation audio, the most
-sensitive object class on the platform — does not. **`hope-stt` is the
-counter-example to §5, and it is live.**
+**The structural point, not the PHI point:** the endpoint lives in a
+hand-applied Secret and the scheme lives as a literal in a manifest, so nothing
+can check that they agree — and here they do not. Once the endpoint is a LAN
+`/32`, `MINIO_SECURE=false` stops being wrong and becomes correct (option A in
+`./deployment/README.md`). That is exactly why **the endpoint and the boolean
+must move in the same commit**, and why the endpoint belongs in the ConfigMap
+beside the boolean rather than in a Secret CI cannot read.
+
+`RELAXED:` per directive 2 this is no longer treated as a PHI incident. If PHI
+posture is reinstated later, this is the first thing to re-open.
 
 The same posture is why `hope-stt` once crash-looped: `initialize_minio()` →
 `ensure_bucket()` (`apps/stt/src/stt/core/storage/minio_client.py`) runs at
@@ -100,21 +138,21 @@ Both repos. Full raw inventories were produced by two audit passes; this is the
 decision table. **Class** is what the reference *is today*; **Must become** is
 the target.
 
-### 3.A Cluster runtime — PHI and weights in flight (the ones that matter)
+### 3.A Cluster runtime — objects and weights in flight (the ones that matter)
 
 | Ref | Current value | Class | Must become |
 |---|---|---|---|
 | `hope-secrets.MINIO_ENDPOINT` (live Secret) | `s3.taphuynh.dev` | **PUBLIC** | Delete the key, or `10.10.1.102:9000`. Nothing should read it after the handover — see handover §0 |
 | `base/stt.yaml:99` `MINIO_ENDPOINT` | `secretKeyRef hope-secrets` | **PUBLIC** (via the above) | `configMapKeyRef hope-stt-config`, non-optional |
-| `base/stt.yaml:~101` `MINIO_SECURE` | `"false"` | **PLAINTEXT** | `"true"` + `MINIO_CERT_CHECK=true` + CA mount |
+| `base/stt.yaml:104-105` `MINIO_SECURE` | `"false"` | **SCHEME/ENDPOINT MISMATCH** | ~~`"true"` + `MINIO_CERT_CHECK=true` + CA mount~~ → **option A: unchanged** (`false` is correct against a LAN HTTP endpoint); **option B: `"true"` + `MINIO_CERT_CHECK=false`**. No CA either way (directive 1) |
 | `base/stt-worker.yaml:98-119` | same six vars, duplicated | **PUBLIC / PLAINTEXT** | same as `stt.yaml` |
 | `base/api.yaml` + `config/api.env:7` | `MINIO_USE_SSL=true`, endpoint via `envFrom hope-secrets` | **PUBLIC** | add `MINIO_ENDPOINT=10.10.1.102:9000` to `api.env`, non-optional `configMapKeyRef` |
-| `base/harness-worker.yaml:163-192` | `HARNESS_CLAIM_CHECK_ENDPOINT_URL` ← `hope-secrets.MINIO_ENDPOINT` | **PUBLIC** | `https://10.10.1.102:9000` from `harness.env`; `_SECURE=true` |
-| `base/observability-config.yaml:464,712,788` (Loki, Tempo storage) | `10.10.1.102:9000` | **INTERNAL ✅** | already correct — but connects with TLS verification **disabled**; trust the CA once it exists |
+| `base/harness-worker.yaml:163-192` | `HARNESS_CLAIM_CHECK_ENDPOINT_URL` ← `hope-secrets.MINIO_ENDPOINT` | **PUBLIC** | `http://10.10.1.102:9000` from `harness.env` (option A) — `secure` is derived from the URL scheme, `claim_check.py:256` |
+| `base/observability-config.yaml:732-738, 806-812` (Loki, Tempo storage) | `10.10.1.102:9000` + `insecure_skip_verify` / `tls_insecure_skip_verify` | **INTERNAL ✅** | ~~trust the CA once it exists~~ → **already compliant with directive 1**: LAN endpoint, no CA, verification off. These three (plus the Prometheus scrape at `:481-484`) are the platform's existing precedent for option B |
 | `base/observability-config.yaml:299` (Prometheus `minio` scrape job) | `10.10.1.102` | **INTERNAL ✅** | no change |
-| TASK-823 `deployment/vllm.yaml` (not yet handed over) | `https://10.10.1.102:9000` + `AWS_CA_BUNDLE` | **INTERNAL ✅** | no change — this ticket generalises it |
-| TASK-822 `deployment/mlflow.env:19` (not yet handed over) | `http://minio.taphuynh.dev:9000` | **PUBLIC + PLAINTEXT** | `https://10.10.1.102:9000` + CA. Correctable before that handover lands |
-| `deployment/secrets.dev.yaml.example:55` | `minio.taphuynh.dev:9000` | **PUBLIC** | `10.10.1.102:9000` (it is the template operators copy) |
+| TASK-823 `deployment/vllm.yaml` (not yet handed over) | `https://10.10.1.102:9000` + `AWS_CA_BUNDLE` | **INTERNAL, but CA-dependent** | endpoint correct; **drop the `AWS_CA_BUNDLE` and the CA mount** before that handover lands (directive 1) |
+| TASK-822 `deployment/mlflow.env:19` (not yet handed over) | `http://minio.taphuynh.dev:9000` | **PUBLIC** | `http://10.10.1.102:9000` (option A) — a *third* hostname; correctable before that handover lands |
+| `deployment/secrets.dev.yaml.example:55` | `minio.taphuynh.dev:9000` **inside the Secret** | **PUBLIC + WRONG TIER** | Two separate defects. (a) The value should be `10.10.1.102:9000`. (b) **An endpoint is not a secret** — the settings registry declares `minio.endpoint` as tier `env`, `sensitivity: 'internal'` (`storage.descriptors.ts`), so it belongs in a ConfigMap where `config-refs` can verify it. Worked example in `./BEST-PRACTICES.md` §1.1. Re-verified present 2026-08-30; not fixable from this repo |
 
 ### 3.B Control plane — endpoints that live in the DATABASE, not in any manifest
 
@@ -173,7 +211,7 @@ config, committed to this repo):
 | `...['path_style'] = true` / `'pathstyle' => true` | path-style addressing | required against a MinIO addressed by IP |
 | **`object_store['proxy_download'] = true`** | GitLab streams objects **through itself** | **this is the load-bearing one** — see below |
 | **`registry['redirect']['disable'] = true`** | registry serves blobs itself | same, for the registry |
-| `registry['env'] = { 'SSL_CERT_DIR' => '/etc/ssl/certs' }` | trusts the private CA from the system store | the CA-distribution half |
+| `registry['env'] = { 'SSL_CERT_DIR' => '/etc/ssl/certs' }` | trusts the private CA from the system store | ~~the CA-distribution half~~ — **not copied.** Directive 1 cancels CA distribution for HOPE; the transferable parts of this reference are the LAN endpoint, path-style, and `proxy_download` |
 
 **Does the LAN path apply to GitLab? Yes — and GitLab already uses it.** GitLab
 runs on a VM on the same `10.10.1.0/24` as MinIO, so it is an internal consumer
@@ -229,7 +267,8 @@ this is where they were found.
 | `infrastructure/docker/docker-compose.yml` | `entrypoint: >` → `\|` (fixes the comment-folding bug); the stray `"` in the TASK-789 comment replaced with `'`; `hope-models` created **with object lock**, with an explicit probe + loud warning on a pre-existing lockless bucket; two least-privilege identities provisioned; `./minio/policies:/policies:ro` mounted |
 | `infrastructure/docker/minio/policies/hope-models-reader.json` | new — `ListBucket` + `GetObject` on `hope-models` only |
 | `infrastructure/docker/minio/policies/hope-models-publisher.json` | new — the above plus `PutObject`, multipart, `PutObjectRetention`. **Neither grants `DeleteObject`** |
-| `infrastructure/docker/minio/README.md` | new — endpoint policy, CA distribution, bucket-per-purpose table, the versioning/erasure tension, and the full `hope-models` blob layout + `manifest.json` schema |
+| `infrastructure/docker/minio/README.md` | new — endpoint policy, ~~CA distribution~~ **transport + service-account model**, bucket-per-purpose table, the versioning/erasure tension, the full `hope-models` blob layout + `manifest.json` schema, and (2026-08-30) a §6 of **measured** MinIO behaviours |
+| `docs/implementation/TASK-832-…/BEST-PRACTICES.md` | new (2026-08-30, directive 3) — the deployment / integration / configuration playbook: tier selection with the endpoint-in-a-Secret worked example, how a new service consumes MinIO, service-account hygiene, the local↔cluster mirror, and 12 traps cited to where they were found |
 
 ### 5.2 Deployment repo (authored, NOT committed)
 
@@ -455,6 +494,144 @@ $ gitleaks detect --source docs/research/configs/gitlab --no-git --config .gitle
 INF no leaks found          # …on a file containing a real access key and secret key
 ```
 
+### 7.6 Re-verification and live measurement, 2026-08-30 (owner-directive revision)
+
+Everything in this subsection was run in this session, against real systems.
+
+**(a) The app-repo half is genuinely merged.** `affff91f6 merge(TASK-832)` on
+`dev-2.2`; working tree clean; `infrastructure/docker/docker-compose.yml`
+carries the literal-block entrypoint, the object-lock probe and both identity
+provisioning steps; `infrastructure/docker/minio/policies/` holds both JSON
+documents. No app-repo *source* file hardcodes a public MinIO hostname — every
+`taphuynh.dev` hit under `apps/`, `packages/`, `scripts/`, `infrastructure/`
+and `tests/` is either an unrelated CORS/SSH host or documentation prose.
+
+**(b) The deployment-repo half is genuinely NOT applied.** Re-read at
+`hope-v2-deployment@5af5e73`:
+
+```
+deployment/k8s/base/stt.yaml:99-105
+    - name: MINIO_ENDPOINT
+      valueFrom:
+        secretKeyRef: { name: hope-secrets, key: MINIO_ENDPOINT }
+    - name: MINIO_SECURE
+      value: "false"
+
+deployment/secrets.dev.yaml.example:55   MINIO_ENDPOINT: "minio.taphuynh.dev:9000"
+deployment/k8s/base/config/api.env       — no MINIO_ENDPOINT
+deployment/k8s/base/config/stt.env       — no MINIO_ENDPOINT, no MINIO_SECURE
+$ grep -rl "kind: NetworkPolicy" deployment/   → (no matches)
+$ grep -rn "arcaai-internal-ca|AWS_CA_BUNDLE|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE" deployment/  → (no matches)
+```
+
+**(c) NetworkPolicy manifest — schema and admission.**
+
+```
+$ kubeconform -strict -summary deployment/networkpolicy-minio-egress.yaml
+Summary: 2 resources found in 1 file - Valid: 2, Invalid: 0, Errors: 0, Skipped: 0
+
+$ kubectl apply --dry-run=server -f deployment/networkpolicy-minio-egress.yaml   # live v1.35.6 API server
+networkpolicy.networking.k8s.io/hope-stt-egress created (server dry run)
+networkpolicy.networking.k8s.io/hope-stt-worker-egress created (server dry run)
+```
+
+That proves schema + admission. It does **not** prove enforcement — see the
+file's §A step 1, which is still a prerequisite on k3s.
+
+**(d) The two policies, measured against a real MinIO.** Throwaway namespace
+`task832-minio-lab` on the local single-node cluster (`kubectl --context
+orbstack`), `minio/minio:RELEASE.2025-04-08T15-41-24Z` over a 4-drive erasure
+set, `minio/mc:RELEASE.2025-04-16T18-13-26Z`, **the committed policy JSON
+documents used verbatim**, credentials minted as MinIO **service accounts**
+(`mc admin user svcacct add`) per directive 1:
+
+```
+=== 3. policies created from the committed JSON documents ===
+Created policy `hope-models-reader` successfully.
+Created policy `hope-models-publisher` successfully.
+
+=== 4. identities + SERVICE ACCOUNTS ===
+Added user `hope-models-reader` successfully.
+Attached Policies: [hope-models-reader]
+Access Key: svcRDR…            (svcacct, inherits the parent identity's policy)
+
+=== 5. publish through the SERVICE-ACCOUNT credential ===
+PASS (allowed, as intended)
+[…]    33B STANDARD qwen3.5-4b/q4-k-m-3f9a1c7d2e05/SHA256SUMS
+[…]    20B STANDARD qwen3.5-4b/q4-k-m-3f9a1c7d2e05/manifest.json
+[…]    11B STANDARD qwen3.5-4b/q4-k-m-3f9a1c7d2e05/qwen3.5-4b.Q4_K_M.gguf
+
+=== 6. LEAST-PRIVILEGE ASSERTIONS ===
+[1] publisher CAN write                       PASS
+[2] reader CAN list the bucket                PASS
+[3] reader CAN get an object                  PASS
+[4] reader CANNOT overwrite a published blob  PASS (denied)
+[5] reader CANNOT delete                      PASS (denied)
+[6] reader CANNOT touch the other bucket      PASS (denied)
+[7] publisher CANNOT delete                   PASS (denied)
+[8] publisher CANNOT touch the other bucket   PASS (denied)
+[9] publisher CAN set object retention        PASS
+[10] reader CANNOT set object retention       PASS (denied)
+
+=== 9. anonymous access to hope-models ===   PASS (anonymous denied)
+```
+
+**Both policy documents are therefore unchanged**, and a concurrent lane
+consuming them can rely on that.
+
+**(e) Four behaviours that the earlier revision asserted, now measured** — full
+table at `infrastructure/docker/minio/README.md` §6. Two of them change what an
+operator should be told:
+
+```
+=== B. 'mc retention info --default' on a LOCKED vs a LOCKLESS bucket ===
+-- hope-models (created WITH --with-lock):
+Object locking is not enabled.
+   exit=0
+-- lock-probe (created WITHOUT lock):
+mc: <ERROR> Remote bucket `lab/lock-probe` does not support locking
+   exit=1
+
+=== D. can retention actually be SET on each bucket? ===
+lock-probe:  retention REFUSED -> lock NOT enabled
+hope-models: retention SET     -> lock IS enabled
+
+=== 2. retro attempt: mb --ignore-existing --with-lock on an EXISTING lockless bucket
+Bucket created successfully `lab/lock-probe`.
+   exit code: 0
+   still NO lock
+
+=== A. what does 'mc ls <alias>' RETURN? ===
+-- root:      hope-models/  lock-probe/  recordings/
+-- reader SA: hope-models/                             exit=0
+-- publisher: hope-models/                             exit=0
+
+=== E. does object lock stop a DELETE? ===
+root rm: SUCCEEDED (delete marker, versioned bucket)
+[…] v2 DEL x
+[…] v1 PUT x
+```
+
+- **`mc retention info --default` prints the OPPOSITE of the truth on a locked
+  bucket** while getting the exit code right. The bootstrap branches on the exit
+  code and is correct; §8 step 1 below told the operator to read the message and
+  decide, which would have led them to destroy and re-upload a correctly-locked
+  bucket. Corrected below.
+- **Object lock does not stop an object disappearing** — `rm` writes a delete
+  marker and the object leaves every listing while its bytes survive. The
+  credential having no `DeleteObject` is the layer that actually holds.
+- `mc ls <alias>` is **filtered by policy**; neither identity can enumerate any
+  other bucket, and `s3:ListAllMyBuckets` must not be granted "so `mc ls` works".
+
+The namespace was deleted at the end of the session; `kubectl get ns` shows no
+residue.
+
+**(f) Not measurable from here.** `10.10.1.102:9000` is unreachable from this
+workstation (`curl` times out on both schemes), so the cluster MinIO's live
+scheme, its certificate, and the LAN latency figures were **not** re-verified in
+this session — they are carried from TASK-823 Phase 2 and from
+`docs/research/deployments/deploy-vm402-minio.md` §14.
+
 ## 8. Operator procedure — the external cluster MinIO
 
 **The cluster MinIO is bootstrapped by nothing.** It is a standalone host with
@@ -463,34 +640,57 @@ human action on `10.10.1.102`; none of it is GitOps, and Argo cannot do any of
 it. Editing `docker-compose.yml` does **not** change the cluster — the two init
 paths are independent and must be kept in step by hand.
 
-```bash
-# ── 0. Trust the CA. mc reads SSL_CERT_FILE; certs/CAs/ does NOT work (tested).
-export SSL_CERT_FILE=/path/to/arcaai-ca.crt
-export MC_HOST_hope="https://<root-access-key>:<root-secret>@10.10.1.102:9000"
-mc admin info hope        # must succeed before continuing
+> **Revised 2026-08-30 for directive 1 (no CA, service accounts) and for the
+> measured `mc` behaviours in §7.6(e).** The `SSL_CERT_FILE` export is gone;
+> `--insecure` replaces it and is needed only while MinIO serves HTTPS.
 
-# ── 1. hope-models, WITH OBJECT LOCK.
-#      Lock is creation-only. If the bucket already exists WITHOUT lock, `mb`
-#      here silently does nothing. Check first, and decide deliberately —
-#      recreating means re-uploading every weight.
-mc ls hope/hope-models >/dev/null 2>&1 \
-  && mc retention info --default hope/hope-models \
-  || mc mb --with-lock hope/hope-models
+```bash
+# ── 0. Alias. NO CA. `--insecure` only if MinIO is serving HTTPS (O-1).
+mc --insecure alias set hope https://10.10.1.102:9000 <root-access-key> <root-secret>
+mc --insecure admin info hope       # must succeed before continuing
+
+# ── 1. hope-models, WITH OBJECT LOCK. Lock is creation-only, and BOTH of the
+#      obvious ways to check it are misleading (measured, §7.6e):
+#        * `mb --ignore-existing --with-lock` on an existing lockless bucket
+#          prints "Bucket created successfully" and exits 0 — with no lock.
+#        * `mc retention info --default` on a LOCKED bucket prints
+#          "Object locking is not enabled." and exits 0.
+#      So branch on the EXIT CODE, never on the message.
+if mc ls hope/hope-models >/dev/null 2>&1; then
+  if mc retention info --default hope/hope-models >/dev/null 2>&1; then
+    echo "hope-models: object lock ON   (ignore any 'not enabled' text — see above)"
+  else
+    echo "hope-models: NO object lock. Adding it means rb + re-uploading every"
+    echo "             weight. Until then immutability rests on versioning and"
+    echo "             on the reader policy having no PutObject."
+  fi
+else
+  mc mb --with-lock hope/hope-models
+fi
 mc version enable hope/hope-models
 
-# ── 2. Least-privilege identities. Copy the two policy documents from
-#      infrastructure/docker/minio/policies/ in the app repo.
+# ── 2. The two ROLES (identity + policy). Copy the policy documents from
+#      infrastructure/docker/minio/policies/ in the app repo — do not retype them.
 mc admin policy create hope hope-models-reader    ./hope-models-reader.json
 mc admin policy create hope hope-models-publisher ./hope-models-publisher.json
-mc admin user add hope <models-reader-key> <models-reader-secret>
-mc admin user add hope <models-publisher-key> <models-publisher-secret>
-mc admin policy attach hope hope-models-reader    --user <models-reader-key>
-mc admin policy attach hope hope-models-publisher --user <models-publisher-key>
+mc admin user add hope hope-models-reader    "$(openssl rand -base64 32)"
+mc admin user add hope hope-models-publisher "$(openssl rand -base64 32)"
+mc admin policy attach hope hope-models-reader    --user hope-models-reader
+mc admin policy attach hope hope-models-publisher --user hope-models-publisher
+
+# ── 2b. The CREDENTIALS services hold — MinIO service accounts (directive 1).
+#       They inherit the parent identity's policy and are the unit of rotation.
+#       Record the printed Access Key / Secret Key; the secret is not shown again.
+mc admin user svcacct add hope hope-models-reader \
+  --name hope-models-reader-sa --description "in-cluster weight consumers"
+mc admin user svcacct add hope hope-models-publisher \
+  --name hope-models-publisher-sa --description "weight publishing (human/CI)"
 
 # ── 3. Pre-create the STT buckets rather than letting the app do it.
 #      apps/stt creates hope-audio / hope-audio-chunks at RUNTIME via
-#      ensure_bucket(), which forces the app credential to hold CreateBucket
-#      and makes a startup failure look like a storage outage.
+#      ensure_bucket() (core/storage/minio_client.py:53), which forces the app
+#      credential to hold CreateBucket and turns a storage hiccup into a
+#      crash-loop with no retry.
 mc mb --ignore-existing hope/hope-audio
 mc mb --ignore-existing hope/hope-audio-chunks
 
@@ -504,16 +704,17 @@ manifest change can reach:
 ```
 # 5. TenantStorageConfig, SYSTEM tenant, bucketId = NULL
 #    (id 00000000-0000-0000-0005-000000000001)
-#      endpoint       -> https://10.10.1.102:9000
+#      endpoint       -> http://10.10.1.102:9000     (option A; https:// under B)
+#      region         -> us-east-1
 #      forcePathStyle -> true
 #    Super-admin console, or a direct row update. The seed is CREATE-ONLY, so
 #    re-seeding will NOT correct an existing row.
 
 # 6. AiProviderConnection, service='model-registry', provider='s3'
 #    (id 87000000-0000-0000-0000-0000000000e2) — seeded blank + disabled
-#      baseUrl                -> https://10.10.1.102:9000
-#      extraJson.accessKeyId  -> <models-reader-key>
-#      encrypted key          -> <models-reader-secret>
+#      baseUrl                -> http://10.10.1.102:9000   (option A)
+#      extraJson.accessKeyId  -> the hope-models-reader SERVICE ACCOUNT access key
+#      encrypted key          -> its secret
 #      enabled                -> true
 ```
 
@@ -531,12 +732,14 @@ kubectl -n hope-v2-dev exec deploy/hope-stt -- \
 
 | # | Request | Blocking? |
 |---|---|---|
-| **R-1** | **Publish the `ARCAAI Internal CA` as ConfigMap `arcaai-internal-ca` (key `ca.crt`) in `hope-v2-dev`.** It does not exist; the namespace has no CA material at all. MinIO serves a one-certificate chain so the issuer cannot be scraped off the wire — the PEM must come from wherever it was generated (likely the MinIO host). **TASK-823 §9.1 already raised this, but its priority changes here**: for TASK-823 it blocked one workload at `replicas: 0`; after this ticket it blocks `hope-api`, `hope-stt` and `hope-harness`. Expires **2028-03-21** | **YES — platform-wide** |
+| ~~**R-1**~~ | ~~Publish the `ARCAAI Internal CA` as ConfigMap `arcaai-internal-ca`~~ — **WITHDRAWN 2026-08-30 by owner directive 1.** No CA is distributed anywhere. This was the ticket's platform-wide blocker; it is gone | — |
+| **O-1** | **NEW, and it now blocks the handover: pick the scheme.** Directive 1 removes the CA but MinIO currently serves **HTTPS** on :9000 (`docs/research/deployments/deploy-vm402-minio.md` §14) and serves one scheme per port. **A —** MinIO serves plain HTTP: zero app-repo code changes, but pgBackRest (recorded at `:456` as requiring HTTPS), GitLab, Loki, Tempo, Prometheus and both `cloudflared` origins all need changing. **B —** MinIO keeps HTTPS and clients skip verification: nothing outside these two repos moves (all five already run verification-off), but `boto3` in `claim_check.py:147` and `@aws-sdk/client-s3` in `s3-blob.provider.ts:58` / `s3.service.ts:256` pass no verify/requestHandler option and need one line each. Full comparison: `infrastructure/docker/minio/README.md` §2 | **YES — the `.env` diffs differ only by this** |
 | **R-2** | Set the two control-plane rows (§8 steps 5–6). No redeploy reaches them | **YES** |
-| **R-3** | Mint the `hope-models` reader/publisher keys on the cluster MinIO (§8 step 2) and add `MINIO_MODELS_ACCESS_KEY`/`_SECRET_KEY` to `hope-secrets` | YES for weights |
+| **R-3** | Mint the `hope-models` reader/publisher **service accounts** on the cluster MinIO (§8 steps 2–2b) and add `MINIO_MODELS_ACCESS_KEY`/`_SECRET_KEY` to `hope-secrets` | YES for weights |
 | **R-4** | Correct or delete `hope-secrets.MINIO_ENDPOINT` (still `s3.taphuynh.dev`) | No — handover §0 makes correctness independent of it, but leaving it is a trap |
 | **R-5** | **Rotate the MinIO credentials committed at `docs/research/configs/gitlab/gitlab.rb:241-242,269-270`**, and fix the `hope-s3-credentials` gitleaks regex to match Ruby hash-rocket form (§4) | Owner action |
 | **R-6** | Decide the presigned-URL posture (§4): proxy object access through `hope-api` as GitLab does, or adopt an explicit two-endpoint split. Silently issuing LAN presigned URLs to browsers fails like a storage outage | Design decision |
+| **R-7** | **NEW.** Move `MINIO_ENDPOINT` out of `deployment/secrets.dev.yaml.example` into a ConfigMap and correct its value. An endpoint is not a secret — `storage.descriptors.ts` declares `minio.endpoint` as tier `env`, `sensitivity: 'internal'`. Worked example: `./BEST-PRACTICES.md` §1.1. Not fixable from this repo | No, but it is the template every operator copies |
 
 ## 10. Findings recorded, not fixed
 
@@ -546,11 +749,16 @@ kubectl -n hope-v2-dev exec deploy/hope-stt -- \
 | F-2 | `tests/docker-compose.test.yml:152-156` creates `mlflow`, `recordings`, `generated-audio`, `documents`, `backups` — but **not `hope-models` or `harness-claim-check`**. Any integration test touching those against the real test MinIO fails on a missing bucket. Its entrypoint is also a folded `>` scalar; it works today only because it happens to contain no `#` comment and no `"`. It is one comment away from the §2.3 bug |
 | F-3 | `hope-audio` / `hope-audio-chunks` are created at **runtime** by `ensure_bucket()` in `apps/stt/.../minio_client.py`, not by any init script. That forces the app credential to hold `CreateBucket` — the opposite of least privilege — and turns a storage hiccup into a startup crash-loop (no retry). §8 step 3 pre-creates them; narrowing the credential is a follow-up |
 | F-4 | `hope-secrets` still carries `kubectl.kubernetes.io/last-applied-configuration` with the entire `stringData` block in cleartext. Confirmed present 2026-08-30. Rotating without stripping the annotation does not retire the old values. Already recorded in TASK-823 §8.6 / TASK-828; repeated because every credential action in §8 is undermined by it |
-| F-5 | Loki and Tempo reach `10.10.1.102:9000` with TLS **verification disabled**. Endpoint-correct, trust-incorrect. Fix once R-1 lands |
+| F-5 | Loki and Tempo reach `10.10.1.102:9000` with TLS **verification disabled**. ~~Endpoint-correct, trust-incorrect; fix once R-1 lands.~~ **Reclassified 2026-08-30**: under directive 1 this is now the *reference* posture, not a defect — together with the Prometheus scrape (`observability-config.yaml:481-484`) and pgBackRest's `repo1-storage-verify-tls=n` it is the platform's existing precedent for option B in O-1 |
 | F-6 | `docker-compose.yml`'s named volume has a fixed `name:`, so it is shared across compose projects and a `down -v` on any project built from this file targets the developer's Postgres volume (§7.4) |
+| **F-7** | **`mc retention info --default` prints the opposite of the truth.** On an object-locked bucket it prints `Object locking is not enabled.` and exits **0**; on a lockless bucket it errors and exits **1**. The bootstrap branches on the exit code and is correct, but §8 step 1 previously told the operator to read the message and decide — which would have led them to destroy and re-upload a correctly-locked bucket. Corrected in §8. Measured, §7.6(e) |
+| **F-8** | **`mc mb --ignore-existing --with-lock` on an existing lockless bucket prints `Bucket created successfully` and exits 0**, with no lock created. The earlier text said it "does nothing and exits 0" — it is worse than that: it reports success. Measured, §7.6(e) |
+| **F-9** | **Object lock does not prevent an object disappearing.** With lock on and GOVERNANCE retention set, `mc rm` still succeeded by writing a delete marker: the object left every listing while its bytes survived as a non-current version. The three-layer story (lock / versioning / credential) is real, but the layer that actually stops this is **the credential having no `DeleteObject`**. Measured, §7.6(e) |
+| **F-10** | **Neither the Node nor the boto3 S3 client can skip TLS verification.** `s3-blob.provider.ts:58` and `s3.service.ts:256` configure no `requestHandler`; `claim_check.py:147-153` and `source_resolver.py:115-121` pass no `verify=`. Only the Python `minio` SDK in STT has the knob (`minio_client.py:38`). This is what makes O-1 a real decision rather than a formality |
 
 ## 11. Change History
 
 | Date | Change |
 |---|---|
+| 2026-08-30 (2nd pass) | **Owner-directive revision.** Applied three directives: no private CA anywhere (authentication is a MinIO **service account**), PHI is not the argument, and deliver deployment/integration/configuration best practices. **R-1 withdrawn** and replaced by **O-1** (the scheme decision the CA removal exposes). Re-verified both repos: the app-repo half is merged at `affff91f6` and intact; the deployment handover is confirmed **not applied**. Stood up a throwaway MinIO + `mc` on the local cluster and **measured** the two policy documents end-to-end with service-account credentials — all ten assertions pass, **policies unchanged**. Four asserted `mc` behaviours turned out to need correcting (F-7…F-9), one of which had a wrong operator instruction in §8. Recorded F-10: two of three client stacks cannot skip TLS verification, which is what makes O-1 load-bearing. Added `BEST-PRACTICES.md`; rewrote `infrastructure/docker/minio/README.md` §2/§4 and added a measured-behaviour §6; rewrote the deployment handover for the no-CA posture. Added R-7 (endpoint in a Secret is the wrong tier). |
 | 2026-08-30 | Created. Audited both repos; fixed the local-dev bootstrap (folded-scalar + stray-quote bugs that had disabled all bucket creation since 2026-08-23/08-30); added object lock, least-privilege identities and the content-addressed blob layout to `hope-models`; authored the deployment-repo handover and the first egress NetworkPolicy draft. Recorded the `hope-stt` plaintext-PHI path (new, sharpens TASK-828 §5), the GitLab reference implementation, committed GitLab MinIO credentials with the gitleaks rule gap that hides them, and six secondary findings. |
