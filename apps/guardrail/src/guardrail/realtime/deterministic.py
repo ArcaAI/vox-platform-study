@@ -25,6 +25,7 @@ stream clean, which is the most dangerous possible default.
 
 from __future__ import annotations
 
+import hashlib
 from collections import deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -60,6 +61,12 @@ class DeterministicRuleSet:
     rule_ids: tuple[str, ...]
     #: Longest declared phrase — sizes the resume tail (see :class:`StreamMatcher`).
     max_phrase_len: int = 1
+    #: Digest of the compiled (id, phrase) pairs — what this automaton actually
+    #: MATCHES, not merely what it is called. Rule ids are stable by design, so a
+    #: phrase edited under an existing id leaves `rule_ids` untouched while
+    #: changing every verdict the automaton produces; a verdict cache keyed on
+    #: identity rather than content would keep serving the pre-edit answer.
+    declaration_digest: str = ""
 
     @classmethod
     def from_declaration(cls, declaration: Sequence[Any] | None) -> DeterministicRuleSet:
@@ -81,6 +88,7 @@ class DeterministicRuleSet:
 
         root = _Node()
         ids: list[str] = []
+        pairs: list[tuple[str, str]] = []
         longest = 1
         for entry in entries:
             rule_id = str(entry.get("id") or "").strip()
@@ -97,6 +105,7 @@ class DeterministicRuleSet:
             node.outputs.append((rule_id, len(phrase)))
             longest = max(longest, len(phrase))
             ids.append(rule_id)
+            pairs.append((rule_id, phrase))
 
         # Breadth-first failure links: the classic Aho-Corasick construction.
         root.fail = root
@@ -117,10 +126,16 @@ class DeterministicRuleSet:
                 child.outputs.extend(child.fail.outputs)
                 queue.append(child)
 
+        # Sorted, so declaration ORDER (which the automaton is invariant to)
+        # does not churn the digest and needlessly drop a warm cache.
+        digest = hashlib.sha256(
+            "\x00".join(f"{i}\x1f{p}" for i, p in sorted(pairs)).encode("utf-8")
+        ).hexdigest()
         return cls(
             root=root,
             rule_ids=tuple(sorted(set(ids))),
             max_phrase_len=max(longest, 1),
+            declaration_digest=digest,
         )
 
 
