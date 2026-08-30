@@ -22,6 +22,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json ./
 COPY apps/admin-console/package.json ./apps/admin-console/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
+# `@arcaai/workflow-contract` is a real dependency of the workflow-studio canvas.
+# Without its package.json here, `pnpm install` gives it no node_modules and the
+# builder stage's `turbo run build --filter=@arcaai/admin-console` fails on
+# `@arcaai/workflow-contract#build` — the CI-only failure in pipeline #1002.
+COPY packages/workflow-contract/package.json ./packages/workflow-contract/
 COPY packages/room/package.json ./packages/room/
 COPY packages/stt/package.json ./packages/stt/
 COPY packages/agentic-sdk-v2/package.json ./packages/agentic-sdk-v2/
