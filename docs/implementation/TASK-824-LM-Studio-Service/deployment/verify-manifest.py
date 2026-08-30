@@ -2,14 +2,19 @@
 """TASK-824 — assert manifest.tsv agrees with manifest.json, and (optionally)
 that both agree with what HuggingFace actually serves today.
 
-WHY TWO FORMS EXIST
--------------------
-The sync Job runs in `minio/mc`, which ships no `jq` and no package manager to
-install one. So the machine-readable manifest the Job parses is a TSV, and the
-JSON alongside it carries the provenance notes. Two representations of the same
-facts is a drift hazard; this script is the guard.
+WHAT THIS CHECKS
+----------------
+`upstream.json` in the sync ConfigMap is the PROVENANCE RECORD the publisher
+verifies against before uploading anything into `hope-models`
+(infrastructure/docker/minio/README.md §5.5 step 0). It is deliberately NOT read
+by `sync.sh` — the sync verifies against each prefix's own `SHA256SUMS`, so the
+bucket stays the single source of truth at serving time.
 
-Run it after ANY edit to either block in model-sync.yaml.
+That makes this script a PRE-PUBLISH gate: it re-checks every recorded digest
+against the live publisher blob, and cross-checks that `models.tsv` and
+`upstream.json` name the same slugs.
+
+Run it after ANY edit to model-sync.yaml, and before any publish.
 
     python3 verify-manifest.py              # local consistency only
     python3 verify-manifest.py --remote     # also re-check against HuggingFace
@@ -46,16 +51,18 @@ def load_configmap_data() -> dict[str, str]:
     raise SystemExit(2)
 
 
-def rows_from_json(blob: str) -> list[tuple[str, str, int]]:
+def objects_from_json(blob: str) -> list[tuple[str, str, str, int]]:
+    """upstream.json objects: (slug, path, sha256, bytes)."""
     doc = json.loads(blob)
     return [
-        (f["key"], f["sha256"], int(f["bytes"]))
+        (m["slug"], o["path"], o["sha256"], int(o["bytes"]))
         for m in doc["models"]
-        for f in m["files"]
+        for o in m["objects"]
     ]
 
 
-def rows_from_tsv(blob: str) -> list[tuple[str, str, int]]:
+def slugs_from_tsv(blob: str) -> list[tuple[str, str, str]]:
+    """models.tsv rows: slug <TAB> version <TAB> role."""
     out = []
     for line in blob.splitlines():
         line = line.strip()
@@ -63,9 +70,9 @@ def rows_from_tsv(blob: str) -> list[tuple[str, str, int]]:
             continue
         parts = line.split("\t")
         if len(parts) != 3:
-            print(f"FAIL: TSV line does not have 3 tab-separated fields:\n  {line!r}")
+            print(f"FAIL: models.tsv line does not have 3 tab-separated fields:\n  {line!r}")
             raise SystemExit(1)
-        out.append((parts[0], parts[1], int(parts[2])))
+        out.append((parts[0], parts[1], parts[2]))
     return out
 
 
@@ -86,34 +93,52 @@ def hf_actual(repo: str, revision: str) -> dict[str, tuple[str, int]]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--remote", action="store_true",
-                    help="also verify each digest against the live HuggingFace blob")
+                    help="also verify each recorded digest against the live HuggingFace blob")
     args = ap.parse_args()
 
     data = load_configmap_data()
-    j = rows_from_json(data["manifest.json"])
-    t = rows_from_tsv(data["manifest.tsv"])
+    objs = objects_from_json(data["upstream.json"])
+    rows = slugs_from_tsv(data["models.tsv"])
 
-    print(f"manifest.json : {len(j)} files")
-    print(f"manifest.tsv  : {len(t)} files")
+    json_slugs = {s for s, _, _, _ in objs}
+    tsv_slugs = {s for s, _, _ in rows}
 
-    if sorted(j) != sorted(t):
-        print("\nFAIL: manifest.tsv and manifest.json disagree.")
-        for row in sorted(set(j) - set(t)):
-            print(f"  only in JSON: {row[0]}")
-        for row in sorted(set(t) - set(j)):
-            print(f"  only in TSV : {row[0]}")
+    print(f"models.tsv    : {len(rows)} model(s)")
+    print(f"upstream.json : {len(objs)} object(s) across {len(json_slugs)} model(s)")
+
+    ok = True
+    if json_slugs != tsv_slugs:
+        print("\nFAIL: models.tsv and upstream.json name different slugs.")
+        for s in sorted(json_slugs - tsv_slugs):
+            print(f"  only in upstream.json: {s}")
+        for s in sorted(tsv_slugs - json_slugs):
+            print(f"  only in models.tsv   : {s}")
+        ok = False
+    else:
+        print("PASS: models.tsv and upstream.json name the same slugs.")
+
+    # Slugs must be S3-safe and lowercase (minio/README.md §5.1).
+    for s in sorted(tsv_slugs):
+        if s != s.lower() or not all(c.isalnum() or c in "._-" for c in s):
+            print(f"FAIL: slug {s!r} is not lowercase [a-z0-9._-]")
+            ok = False
+
+    unset = [s for s, v, _ in rows if v == "SET-AT-PUBLISH" or not v]
+    if unset:
+        print(f"\nNOTE: {len(unset)} slug(s) have no published version yet "
+              f"(content-addressed, known only after publish): {', '.join(sorted(unset))}")
+        print("      The sync Job fails closed on these by design.")
+
+    total = sum(b for _, _, _, b in objs)
+    print(f"total upstream bytes: {total:,} ({total / 1024**3:.2f} GiB)")
+
+    if not ok:
         return 1
-    print("PASS: TSV and JSON agree on every (key, sha256, bytes).")
-
-    total = sum(b for _, _, b in j)
-    print(f"total staged bytes: {total:,} ({total / 1024**3:.2f} GiB)")
-
     if not args.remote:
         return 0
 
-    print("\nre-checking digests against live HuggingFace blobs...")
-    doc = json.loads(data["manifest.json"])
-    ok = True
+    print("\nre-checking recorded digests against live HuggingFace blobs...")
+    doc = json.loads(data["upstream.json"])
     for m in doc["models"]:
         try:
             actual = hf_actual(m["repo"], m["revision"])
@@ -121,23 +146,32 @@ def main() -> int:
             print(f"  {m['repo']}: HTTP {exc.code} — cannot verify")
             ok = False
             continue
-        for f in m["files"]:
-            basename = f["key"].split("/")[-1]
-            match = next((v for k, v in actual.items() if k.split("/")[-1] == basename), None)
+        for o in m["objects"]:
+            base = o["path"].split("/")[-1]
+            match = next((v for k, v in actual.items() if k.split("/")[-1] == base), None)
             if match is None:
-                print(f"  MISSING upstream: {m['repo']}/{basename}")
+                print(f"  MISSING upstream: {m['repo']}/{base}")
                 ok = False
                 continue
             sha, size = match
-            good = sha == f["sha256"] and size == int(f["bytes"])
-            print(f"  {'ok  ' if good else 'DRIFT'} {basename}")
+            good = sha == o["sha256"] and size == int(o["bytes"])
+            print(f"  {'ok   ' if good else 'DRIFT'} {base}")
             if not good:
-                print(f"        manifest sha={f['sha256']} bytes={f['bytes']}")
+                print(f"        recorded sha={o['sha256']} bytes={o['bytes']}")
                 print(f"        upstream sha={sha} bytes={size}")
                 ok = False
+
+        # primaryObject / projectorObject must exist in `objects`.
+        paths = {o["path"] for o in m["objects"]}
+        for field in ("primaryObject", "projectorObject"):
+            val = m.get(field)
+            if val and val not in paths:
+                print(f"  FAIL {m['slug']}: {field} {val!r} is not listed in objects[]")
+                ok = False
+
     print()
-    print("PASS: every digest matches the live upstream blob." if ok
-          else "FAIL: upstream drift — do NOT sync until this is explained.")
+    print("PASS: every recorded digest matches the live upstream blob." if ok
+          else "FAIL: upstream drift — do NOT publish until this is explained.")
     return 0 if ok else 1
 
 
