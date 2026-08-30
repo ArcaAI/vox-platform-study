@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | Completed — merged into `dev-2.2` via `c16cef1cb` |
 | Type | bugfix |
-| Branch | `lane-nlp-confidences` (worktree; unmerged) |
+| Branch | `lane-nlp-confidences` (worktree; now deleted — squash-merged as `2f0320485`) |
 | Unblocks | TASK-829 Phase 4 (per-tenant θ/Θ calibration) |
 | Ticket number | **Assigned by this lane, not by the owner** — `TASK-829` was the highest under `docs/implementation/`. Renumber if the orchestrator has another slot. |
 
@@ -140,7 +140,7 @@ alongside `windows` so the mix is auditable rather than merely conservative.
 | `pnpm nlp:test` | 531 passed, 2 failed — the two pre-existing `test_metrics_endpoint_task636.py` failures, unchanged (525 → 531 passed; 6 new tests) |
 | `pnpm nlp:lint` | All checks passed |
 | `pnpm nlp:typecheck` | Success: no issues found in 56 source files |
-| `pnpm guardrail:test` | 411 passed (405 → 411; 11 new tests, 5 in the client file) |
+| `pnpm guardrail:test` | 411 passed (405 → 411; **13** new test functions were added — 6 in `test_task830_nlp_client_scores.py`, 7 in `test_task830_graded_session_aggregate.py` — though the passed-count delta is only 6; that discrepancy is unexplained and unverified, see Change History) |
 | `pnpm guardrail:lint` | All checks passed |
 | `pnpm guardrail:typecheck` | Success: no issues found in 44 source files |
 | `pnpm harness:test` | 1728 passed |
@@ -154,3 +154,4 @@ No dependency changed, so `uv lock` was not re-run.
 | Date | Change |
 |---|---|
 | 2026-08-30 | Route, schema and runtime call fixed in `apps/nlp`; `ClassifiedTasks` seam and graded session aggregate in `apps/guardrail`. TASK-829's §12A honest-limit section updated to record that the block is lifted. |
+| 2026-08-30 | **Corrected: this ticket is merged, not in review on an unmerged worktree.** `lane-nlp-confidences` no longer exists as a branch (`git branch -a` — no match); the work is on `dev-2.2` via merge commit `c16cef1cb` (squashing `2f0320485`), confirmed with `git merge-base --is-ancestor c16cef1cb dev-2.2`. Status and Branch fields updated accordingly. Also corrected the guardrail test count: `def test_` counts 6 new functions in `test_task830_nlp_client_scores.py` and 7 in `test_task830_graded_session_aggregate.py` (both wholly new files in this merge) — 13 total, not "11 new tests, 5 in the client file" as previously stated. Note: the suite's reported passed-count delta (405 → 411 = 6) does not reconcile with the 13 new `def test_` functions found by direct inspection; re-running `pnpm guardrail:test` to resolve the discrepancy was out of scope for this documentation-only pass. |
