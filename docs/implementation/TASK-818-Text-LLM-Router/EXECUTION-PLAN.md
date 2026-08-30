@@ -217,7 +217,20 @@ So: **hand-author entity, factory, mapper and repository.** Exemplars: `AiTaskDe
    `.gitlab/ci/*` job; "the image builds" is not evidence, because images are promoted by
    DIGEST from a CI pipeline and never rebuilt, so a locally-built image can never be the one
    that ships. Static checks (hadolint, YAML lint, reading published base tags) are fine.
-7. **Merge BEFORE cleanup — hard gate.** Finish → lane gates green → orchestrator merges into
+7. **Rebuild workspace deps BEFORE re-running gates after a merge.** A merge that adds an
+   export to `@arcaai/database`, `@arcaai/domains` or `@arcaai/applications` leaves the
+   primary checkout's `dist/` stale, and consumers resolve the BUILT package — so the gate
+   fails for a defect that does not exist. Seen twice on 2026-08-30: the `ResourceType`
+   parity test failed alone on a stale `@arcaai/database`; then a stale `@arcaai/domains`
+   plus a new barrel line in `@arcaai/applications` failed **483 test files at once**,
+   reported as a missing `vi.mock` export. Both vanished on `pnpm --filter <pkg> build`,
+   and both looked like real regressions first. Rebuild, THEN judge.
+
+   > Corollary for reading lane reports: a lane's package-scoped suite can be green while
+   > the repo-wide suite is not, because a fresh worktree builds what it needs and the
+   > primary tree does not. That difference is an artifact of the trees, not a disagreement
+   > about the code — diagnose it before believing either number.
+8. **Merge BEFORE cleanup — hard gate.** Finish → lane gates green → orchestrator merges into
    `dev-2.2` from the primary checkout → **re-run gates after the merge** (a clean merge is not
    a passing build) → only then `git worktree remove`.
    **Never `--force`, never `git worktree prune` "to tidy up".** An abandoned worktree is
