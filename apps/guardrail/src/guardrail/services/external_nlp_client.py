@@ -55,6 +55,29 @@ ENTAILMENT_PATH = "/api/v1/guard/entailment"
 
 
 @dataclass(frozen=True)
+class ClassifiedTasks:
+    """One moderation call's answer: the labels, and the confidences behind them.
+
+    TASK-830. `apps/nlp` used to answer `/guard/classify` with labels alone, which
+    is why TASK-829's session aggregate could only ever be a flag RATE. The
+    confidences now ride along in the SAME response, so a graded score costs no
+    extra inference pass.
+
+    `scores` maps task → {label: confidence} and covers only the labels present in
+    `labels`. It is EMPTY when the peer reported none — never filled with zeros,
+    which would read as "the model was certain of nothing".
+    """
+
+    labels: dict[str, Any]
+    scores: dict[str, dict[str, float]]
+
+    @property
+    def is_scored(self) -> bool:
+        """True when at least one label carries a confidence."""
+        return bool(self.scores)
+
+
+@dataclass(frozen=True)
 class PiiSpan:
     """One PII span in DOCUMENT coordinates of the text that was submitted."""
 
@@ -62,6 +85,31 @@ class PiiSpan:
     start: int
     end: int
     score: float
+
+
+def _parse_scores(blob: Any, labels: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """Read `scores` defensively: a number or nothing, never a coercion.
+
+    An unparseable confidence is DROPPED, not defaulted. Both a fabricated 0.0
+    (reads as "certainly clean") and a fabricated 1.0 (reads as "certainly
+    harmful") are wrong claims about what the model said, and the graded/
+    categorical flag downstream exists precisely so an absence can be declared
+    rather than filled in.
+    """
+    if not isinstance(blob, dict):
+        return {}
+    parsed: dict[str, dict[str, float]] = {}
+    for task, per_label in blob.items():
+        if task not in labels or not isinstance(per_label, dict):
+            continue
+        confidences: dict[str, float] = {}
+        for label, value in per_label.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            confidences[str(label)] = float(value)
+        if confidences:
+            parsed[str(task)] = confidences
+    return parsed
 
 
 class _PeerStatusError(RuntimeError):
@@ -218,10 +266,20 @@ class NlpGuardClient:
         return spans
 
     async def classify(self, tasks: dict[str, Any], text: str) -> dict[str, Any]:
-        """Run the caller's moderation task schema; return only what nlp answered."""
+        """Run the caller's moderation task schema; return only what nlp answered.
+
+        Labels only — the shape `analyze_content` and `services/screening.py`
+        have always parsed. Callers that need the confidences use
+        :meth:`classify_scored`.
+        """
+        return (await self.classify_scored(tasks, text)).labels
+
+    async def classify_scored(self, tasks: dict[str, Any], text: str) -> ClassifiedTasks:
+        """The same one call, with the per-label confidences kept (TASK-830)."""
         payload = await self._post(CLASSIFY_PATH, {"text": text, "tasks": tasks}, "classify")
         results = payload.get("results")
-        return results if isinstance(results, dict) else {}
+        labels = results if isinstance(results, dict) else {}
+        return ClassifiedTasks(labels=labels, scores=_parse_scores(payload.get("scores"), labels))
 
     async def score_pairs(self, pairs: Sequence[tuple[str, str]]) -> list[float]:
         """The `NliScorer` seam's spelling (`services/groundedness_nli.py`)."""
