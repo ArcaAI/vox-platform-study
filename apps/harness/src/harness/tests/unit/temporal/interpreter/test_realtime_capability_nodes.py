@@ -24,7 +24,7 @@ import pytest
 from temporalio import activity as temporal_activity
 
 from harness.sensors.base import NEREntity
-from harness.services.api_client import ApiServiceError
+from harness.services.api_client import ApiServiceError, ResolvedPromptTemplateResponse
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal.interpreter.models import NodeActivityInput
@@ -32,6 +32,10 @@ from harness.temporal.interpreter.nodes import consultation_realtime as rt
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = {"consultationId": "c1", "externalPatientId": "p1", "userId": "u1"}
+#: A bound prompt template id. TASK-826 — `consultation.proposeCorrections` resolves its
+#: system prompt from this binding, so a correction test that omits it exercises the
+#: unconfigured-node degrade rather than the behaviour it means to assert.
+_TEMPLATE = "11111111-1111-1111-1111-111111111111"
 
 
 def _payload(node_type: str, **overrides) -> NodeActivityInput:
@@ -56,13 +60,34 @@ class _FakeApi:
     happens at all — the delivery is specified in ``test_realtime_delivery.py``.
     """
 
-    def __init__(self, *, provider="lm-studio", model="a-model"):
+    def __init__(
+        self,
+        *,
+        provider="lm-studio",
+        model="a-model",
+        found=True,
+        approved=True,
+        prompt_content="TENANT CORRECTION INSTRUCTION",
+    ):
         self.provider = provider
         self.model = model
+        self.found = found
+        self.approved = approved
+        self.prompt_content = prompt_content
         self.events: list[dict[str, Any]] = []
         self.policy_task_keys: list[Any] = []
         self.summaries: list[dict[str, Any]] = []
         self.assists: list[dict[str, Any]] = []
+        self.resolved_ids: list[str] = []
+
+    async def get_resolved_prompt_template(self, template_id, tenant_id=None):
+        self.resolved_ids.append(template_id)
+        return ResolvedPromptTemplateResponse(
+            found=self.found,
+            approved=self.approved,
+            content=self.prompt_content,
+            version_number=1,
+        )
 
     async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
         self.policy_task_keys.append(task_key)
@@ -334,7 +359,7 @@ class TestProposeCorrections:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": source}},
             )
         )
@@ -386,7 +411,7 @@ class TestProposeCorrections:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": source}},
             )
         )
@@ -408,7 +433,7 @@ class TestProposeCorrections:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "nothing clinical here"}},
             )
         )
@@ -426,7 +451,7 @@ class TestProposeCorrections:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "some clinical text"}},
             )
         )
@@ -446,11 +471,146 @@ class TestProposeCorrections:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
                 bound_inputs={"in": {"text": "x"}},
             )
         )
         assert result.status == "DEGRADED"
+
+
+# ---------------------------------------------------------------------------
+# TASK-826 — the correction instruction is GOVERNED CONFIGURATION, never a literal
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectionInstructionIsGoverned:
+    """The durable corrector's system prompt comes from its OWN ``promptTemplateId`` binding.
+
+    It used to be ``_CORRECTION_SYSTEM_PROMPT``, a module-level Python constant, while the very
+    same engine's realtime caller (``LiveDocumentationService.resolveGovernedNodePrompt``) already
+    resolved an APPROVED template and threw when it could not. Two configuration postures for one
+    capability, and the durable half was the one that violated
+    ``00-project-context.md`` §Configuration Principles — *"a ... prompt ... is NOT a literal in
+    code"*.
+
+    The load-bearing assertion is the second one. A default here would mean the platform deciding
+    how every tenant's clinical text is corrected, and — because a proposal is offered to a
+    clinician for one-click acceptance — it would do so on a patient-safety surface. So an unbound
+    template must stop the node VISIBLY and must never reach a model.
+    """
+
+    _SOURCE = "Patient started on amoxicilin 500mg."
+
+    def _entities(self):
+        async def _extract(payload):
+            return type("R", (), {"entities": [NEREntity(text="amoxicilin", start=19, end=29)]})()
+
+        return _extract
+
+    @pytest.mark.asyncio
+    async def test_the_system_prompt_is_the_bound_templates_content_verbatim(self, monkeypatch):
+        api = _FakeApi(prompt_content="Correct THIS tenant's notes, this way.")
+        text = _FakeText(
+            '{"proposals": [{"start": 19, "end": 29, "original": "amoxicilin",'
+            ' "proposed": "amoxicillin", "category": "drugName", "confidence": 0.9,'
+            ' "rationale": "misspelling"}]}'
+        )
+        monkeypatch.setattr(rt, "_api_client", lambda s: api)
+        monkeypatch.setattr(rt, "extract_entities", self._entities())
+        monkeypatch.setattr(rt, "_text_client", lambda s: text)
+
+        result = await rt.interpreter_consultation_propose_corrections(
+            _payload(
+                "consultation.proposeCorrections",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+
+        assert result.status == "SUCCEEDED"
+        assert api.resolved_ids == [_TEMPLATE]
+        assert text.calls[0]["system_prompt"] == "Correct THIS tenant's notes, this way."
+
+    @pytest.mark.asyncio
+    async def test_an_unbound_instruction_DEGRADES_and_never_falls_back_to_a_default(
+        self, monkeypatch
+    ):
+        """THE mutation target. Re-introducing any in-code default turns this red."""
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi())
+        monkeypatch.setattr(
+            rt, "extract_entities", lambda *a, **k: pytest.fail("must not detect before it is configured")
+        )
+        monkeypatch.setattr(
+            rt,
+            "_text_client",
+            lambda s: pytest.fail("must not generate without a tenant instruction"),
+        )
+
+        result = await rt.interpreter_consultation_propose_corrections(
+            _payload(
+                "consultation.proposeCorrections",
+                config={"taskKey": "text.live"},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "no instruction template is bound" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_an_unapproved_instruction_DEGRADES(self, monkeypatch):
+        """Same bar every other governed prompt is held to — DRAFT content never reaches a model."""
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi(approved=False))
+        monkeypatch.setattr(rt, "extract_entities", self._entities())
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate on an unapproved prompt")
+        )
+
+        result = await rt.interpreter_consultation_propose_corrections(
+            _payload(
+                "consultation.proposeCorrections",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "no approved version" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_a_missing_template_DEGRADES(self, monkeypatch):
+        monkeypatch.setattr(rt, "_api_client", lambda s: _FakeApi(found=False))
+        monkeypatch.setattr(rt, "extract_entities", self._entities())
+        monkeypatch.setattr(
+            rt, "_text_client", lambda s: pytest.fail("must not generate on a missing prompt")
+        )
+
+        result = await rt.interpreter_consultation_propose_corrections(
+            _payload(
+                "consultation.proposeCorrections",
+                config={"taskKey": "text.live", "promptTemplateId": _TEMPLATE},
+                bound_inputs={"in": {"text": self._SOURCE}},
+            )
+        )
+        assert result.status == "DEGRADED"
+        assert "not found" in result.reason
+
+    def test_the_module_holds_no_correction_prompt_literal(self):
+        """Belt-and-braces on the mutation above, at the SOURCE rather than the behaviour.
+
+        The behavioural test catches a fallback that is REACHED. This catches one that is merely
+        re-introduced — a constant added back "for the tests" is the shape this defect took the
+        first time.
+        """
+        import inspect
+
+        source = inspect.getsource(rt)
+        assert "_CORRECTION_SYSTEM_PROMPT" not in source
+        # The deleted constant's own giveaway phrases. Deliberately CORRECTION-specific rather
+        # than a generic "no prompt prose in this module" sweep: `_SUGGESTION_SYSTEM_PROMPT`
+        # (W2, `consultation.suggestions`) is still a literal in this same file. That is the same
+        # defect class on a different node, reported under TASK-826 rather than fixed here —
+        # widening this assertion would make an unrelated node's fix a prerequisite for this one.
+        for phrase in ("You review clinical text", "medical-term and drug-name errors"):
+            assert phrase not in source
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ from typing import Any
 import pytest
 
 from harness.sensors.base import NEREntity
-from harness.services.api_client import ApiServiceError
+from harness.services.api_client import ApiServiceError, ResolvedPromptTemplateResponse
 from harness.services.text_client import TextGenerationResult
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import consultation_realtime as rt
@@ -57,6 +57,10 @@ def _payload(node_type: str, **overrides: Any) -> NodeActivityInput:
     return NodeActivityInput(**base)
 
 
+#: TASK-826 — the correction node's bound instruction template.
+_CORRECTION_TEMPLATE = "11111111-1111-1111-1111-111111111111"
+
+
 class _RecordingApi:
     """Resolves a selection and records every publish the nodes make."""
 
@@ -66,6 +70,15 @@ class _RecordingApi:
         self.events: list[dict[str, Any]] = []
         self.summaries: list[dict[str, Any]] = []
         self.assists: list[dict[str, Any]] = []
+
+    async def get_resolved_prompt_template(self, template_id, tenant_id=None):
+        """TASK-826 — `consultation.proposeCorrections` resolves its system prompt from the
+        node's `promptTemplateId`. Delivery is what these tests are about, so the instruction
+        resolves cleanly here; the degrade paths are specified in
+        `test_realtime_capability_nodes.py::TestCorrectionInstructionIsGoverned`."""
+        return ResolvedPromptTemplateResponse(
+            found=True, approved=True, content="a tenant correction instruction", version_number=1
+        )
 
     async def get_policy(self, tenant_id, consultation_id=None, task_key=None, model_slug=None):
         return {
@@ -345,7 +358,7 @@ class TestCorrectionDelivery:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _CORRECTION_TEMPLATE},
                 bound_inputs={"in": {"text": self._SOURCE}},
             )
         )
@@ -385,7 +398,7 @@ class TestCorrectionDelivery:
 
         payload = _payload(
             "consultation.proposeCorrections",
-            config={"taskKey": "text.live"},
+            config={"taskKey": "text.live", "promptTemplateId": _CORRECTION_TEMPLATE},
             bound_inputs={"in": {"text": self._SOURCE}},
         )
         first = await rt.interpreter_consultation_propose_corrections(payload)
@@ -412,7 +425,7 @@ class TestCorrectionDelivery:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _CORRECTION_TEMPLATE},
                 bound_inputs={"in": {"text": "nothing clinical here"}},
             )
         )
@@ -432,7 +445,7 @@ class TestCorrectionDelivery:
         result = await rt.interpreter_consultation_propose_corrections(
             _payload(
                 "consultation.proposeCorrections",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _CORRECTION_TEMPLATE},
                 bound_inputs={"in": {"text": self._SOURCE}},
             )
         )

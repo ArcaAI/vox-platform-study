@@ -373,7 +373,23 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   { id: 'n_suggest', type: 'consultation.suggestions', config: { onError: 'degrade' } },
   // Proposes spelling / medical-term / drug-name corrections and applies none of them — the
   // clinician accepts. `externalWrite: false` on this node is a safety property, not a perf one.
-  { id: 'n_correct', type: 'consultation.proposeCorrections', config: { onError: 'degrade' } },
+  //
+  // ⚠ TASK-826 — `promptTemplateId` is NOT optional decoration. The activity resolves its system
+  // prompt from this binding and DEGRADES when it is absent; it used to run on a Python constant
+  // (`_CORRECTION_SYSTEM_PROMPT`), which is the hardcoded configuration
+  // `00-project-context.md` §Configuration Principles forbids and which no tenant could read,
+  // change or version-pin.
+  //
+  // It binds NOTE_CORRECTIONS_SYSTEM and not the LIVE_GRAMMAR_SYSTEM row `n_grammar` uses, for
+  // the same reason the two nodes both exist: this one is fed from `n_synth`, so it reviews a
+  // FINISHED note, while `n_grammar` reviews the partial transcript the clinician is watching
+  // grow. One instruction cannot be right about both. A tenant admin overrides it by binding its
+  // own template here.
+  {
+    id: 'n_correct',
+    type: 'consultation.proposeCorrections',
+    config: { promptTemplateId: TEMPLATE_IDS.NOTE_CORRECTIONS_SYSTEM, onError: 'degrade' },
+  },
   { id: 'n_sensors', type: 'consultation.sensors', config: { onError: 'degrade' } },
   ...(options.inferentialSensors ? [{ id: 'n_infer', type: 'consultation.inferentialSensors', config: { onError: 'degrade' } }] : []),
   // `occ: true` is WF-CONS-014 — the authorship protection made structural.
