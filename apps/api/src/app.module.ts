@@ -57,6 +57,7 @@ import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admi
 // /admin/ai-services read-only Guardrail/NLP proxy plane.
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
+import { AiRoutingPolicyModule } from './modules/ai-routing-policy/ai-routing-policy.module';
 import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
 import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
@@ -443,6 +444,10 @@ const featureModules: any[] = [
   // (hyperparameter/context/concurrency profiles, super-admin only).
   AiProviderConnectionModule,
   AiRuntimeProfileModule,
+  // /admin/routing-policies (TASK-818 §3A) — the ordered N-way candidate chain
+  // over those two: which providers serve a task, in what order, and what may
+  // happen on failure. Super-admin-authored, enforced imperatively.
+  AiRoutingPolicyModule,
   ApiKeyModule,
   // /admin/service-accounts + POST /auth/service-token (TASK-762) — the third
   // credential class: platform-issued machine identity for administration.

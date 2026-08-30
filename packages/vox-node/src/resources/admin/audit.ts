@@ -117,7 +117,8 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowAssignment'
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
-          | 'DocumentTemplate';
+          | 'DocumentTemplate'
+          | 'AiRoutingPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -238,7 +239,8 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowAssignment'
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
-          | 'DocumentTemplate';
+          | 'DocumentTemplate'
+          | 'AiRoutingPolicy';
         to?: string;
         userId?: string;
       };
@@ -341,7 +343,8 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowAssignment'
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
-          | 'DocumentTemplate';
+          | 'DocumentTemplate'
+          | 'AiRoutingPolicy';
         search?: string;
         searchFields?: string;
         sort?: string;

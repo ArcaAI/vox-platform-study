@@ -729,6 +729,137 @@
         ],
         "type": "object"
       },
+      "AiRoutingPolicyResponse": {
+        "properties": {
+          "activatedAt": {
+            "description": "When this revision was promoted to ACTIVE (ISO)",
+            "nullable": true,
+            "type": "string"
+          },
+          "affinity": {
+            "description": "Cache-affinity / sticky-routing hints",
+            "nullable": true,
+            "type": "object"
+          },
+          "candidates": {
+            "description": "Ordered candidate chain: [{ rank, weight, connectionRef, model, residency, baaCovered, maxTtftMs }]",
+            "type": "object"
+          },
+          "createdAt": {
+            "description": "Created timestamp (ISO)",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "Actor who created this revision",
+            "nullable": true,
+            "type": "string"
+          },
+          "explicitProviderMode": {
+            "description": "STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE. STRICT is the platform default (§3A.4).",
+            "type": "string"
+          },
+          "fallback": {
+            "description": "Fallback contract: { maxDepth, triggers, requireSameResidencyClass, requireBaaCovered, crossFundingAllowed }",
+            "nullable": true,
+            "type": "object"
+          },
+          "health": {
+            "description": "Circuit/health thresholds (§3A.5)",
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "description": "Policy id (uuid7)",
+            "type": "string"
+          },
+          "killSwitch": {
+            "description": "Operator stop button. When true this policy serves nothing.",
+            "type": "boolean"
+          },
+          "match": {
+            "description": "Narrowing predicate: { models, metadata, minContextTokens, maxContextTokens }",
+            "nullable": true,
+            "type": "object"
+          },
+          "maxConcurrentStreams": {
+            "description": "Concurrent-stream ceiling, or null for no ceiling here",
+            "nullable": true,
+            "type": "number"
+          },
+          "policyVersion": {
+            "description": "AUTHORED revision, part of the natural key and the rollback target. Distinct from `version`, which is the OCC counter the database owns.",
+            "example": 1,
+            "type": "number"
+          },
+          "priority": {
+            "description": "Tie-break when two rows match equally specifically",
+            "type": "number"
+          },
+          "requestsPerMinute": {
+            "description": "Requests-per-minute ceiling",
+            "nullable": true,
+            "type": "number"
+          },
+          "resourceStatus": {
+            "description": "Resource status",
+            "type": "string"
+          },
+          "status": {
+            "description": "DRAFT | ACTIVE | ARCHIVED",
+            "type": "string"
+          },
+          "strategy": {
+            "description": "PRIORITY | WEIGHTED | LEAST_BUSY | LOWEST_LATENCY | LOWEST_COST",
+            "type": "string"
+          },
+          "supersedesVersion": {
+            "description": "The policyVersion this revision replaced (§3A.8 lineage)",
+            "nullable": true,
+            "type": "number"
+          },
+          "taskKey": {
+            "description": "AI task key this policy routes",
+            "example": "text.finalize",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Owning tenant. The reserved SYSTEM tenant owns the platform default every tenant inherits.",
+            "type": "string"
+          },
+          "tokensPerMinute": {
+            "description": "Tokens-per-minute ceiling",
+            "nullable": true,
+            "type": "number"
+          },
+          "updatedAt": {
+            "description": "Updated timestamp (ISO)",
+            "type": "string"
+          },
+          "updatedBy": {
+            "description": "Actor who last changed this revision",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "OCC version — the If-Match/ETag token",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "taskKey",
+          "policyVersion",
+          "status",
+          "strategy",
+          "explicitProviderMode",
+          "priority",
+          "killSwitch",
+          "candidates",
+          "version"
+        ],
+        "type": "object"
+      },
       "AiRuntimeProfileResponse": {
         "properties": {
           "contextLength": {
@@ -3657,6 +3788,99 @@
           "p99Micros",
           "meanMicros",
           "totalMicros"
+        ],
+        "type": "object"
+      },
+      "CreateAiRoutingPolicyRequest": {
+        "properties": {
+          "affinity": {
+            "description": "Cache-affinity / sticky-routing hints",
+            "type": "object"
+          },
+          "candidates": {
+            "description": "Ordered candidate chain. Every entry needs `connectionRef` (the AiProviderConnection `provider` under the `llm` service), `model`, `residency` and `baaCovered` — the last two are read by the §3A.4 hard gates, so an entry omitting them is rejected rather than defaulted.",
+            "example": [
+              {
+                "baaCovered": true,
+                "connectionRef": "azure",
+                "model": "gpt-4o",
+                "rank": 0,
+                "residency": "AZURE_US",
+                "weight": 100
+              }
+            ],
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "explicitProviderMode": {
+            "description": "Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting (§3A.4).",
+            "enum": [
+              "STRICT",
+              "STRICT_UNLESS_OPTED_IN",
+              "POLICY_MAY_OVERRIDE"
+            ],
+            "type": "string"
+          },
+          "fallback": {
+            "description": "{ maxDepth, triggers, requireSameResidencyClass, requireBaaCovered, crossFundingAllowed }. OMITTING this means NO fallback at all (maxDepth 0) — absence is fail-closed, never a guessed depth.",
+            "type": "object"
+          },
+          "health": {
+            "description": "Circuit/health thresholds (§3A.5)",
+            "type": "object"
+          },
+          "killSwitch": {
+            "description": "Operator stop button. Defaults OFF.",
+            "type": "boolean"
+          },
+          "match": {
+            "description": "{ models, metadata, minContextTokens, maxContextTokens }",
+            "type": "object"
+          },
+          "maxConcurrentStreams": {
+            "description": "Concurrent-stream ceiling",
+            "type": "number"
+          },
+          "policyVersion": {
+            "description": "AUTHORED revision. Omit to take the next revision after the highest existing one for this (tenant, taskKey).",
+            "example": 1,
+            "type": "number"
+          },
+          "priority": {
+            "description": "Tie-break when two rows match equally specifically",
+            "example": 0,
+            "type": "number"
+          },
+          "requestsPerMinute": {
+            "description": "Requests-per-minute ceiling",
+            "type": "number"
+          },
+          "strategy": {
+            "description": "Selection strategy",
+            "enum": [
+              "PRIORITY",
+              "WEIGHTED",
+              "LEAST_BUSY",
+              "LOWEST_LATENCY",
+              "LOWEST_COST"
+            ],
+            "type": "string"
+          },
+          "taskKey": {
+            "description": "AI task key this policy routes",
+            "example": "text.finalize",
+            "type": "string"
+          },
+          "tokensPerMinute": {
+            "description": "Tokens-per-minute ceiling",
+            "type": "number"
+          }
+        },
+        "required": [
+          "taskKey",
+          "candidates"
         ],
         "type": "object"
       },
@@ -6593,6 +6817,112 @@
         "required": [
           "tenantId",
           "taskKey"
+        ],
+        "type": "object"
+      },
+      "EffectiveRoutingPolicyResponse": {
+        "properties": {
+          "explicitProviderMode": {
+            "description": "Explicit-provider mode of the winning policy",
+            "nullable": true,
+            "type": "string"
+          },
+          "fallbackChain": {
+            "description": "Admitted fallback hops in order, already gated and depth-bounded",
+            "items": {
+              "$ref": "#/components/schemas/ResolvedRoutingCandidateResponse"
+            },
+            "type": "array"
+          },
+          "health": {
+            "description": "Circuit/health thresholds the router should apply (§3A.5)",
+            "nullable": true,
+            "type": "object"
+          },
+          "maxConcurrentStreams": {
+            "description": "Concurrent-stream ceiling from the winning policy",
+            "nullable": true,
+            "type": "number"
+          },
+          "policyId": {
+            "description": "Winning policy id",
+            "nullable": true,
+            "type": "string"
+          },
+          "policyVersion": {
+            "description": "Winning AUTHORED revision",
+            "nullable": true,
+            "type": "number"
+          },
+          "primary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedRoutingCandidateResponse"
+              }
+            ],
+            "description": "The primary candidate (step 0), or null when nothing may serve",
+            "nullable": true,
+            "type": "object"
+          },
+          "rejectedCandidates": {
+            "description": "Every candidate the resolver refused, with its reason",
+            "items": {
+              "$ref": "#/components/schemas/RejectedRoutingCandidateResponse"
+            },
+            "type": "array"
+          },
+          "rejection": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RoutingRejectionResponse"
+              }
+            ],
+            "description": "Set when the request cannot be served at all",
+            "nullable": true,
+            "type": "object"
+          },
+          "relaxedGates": {
+            "description": "Which of the three §3A.4 hard gates the winning policy explicitly relaxed. Empty in the default posture; every entry is a deliberate, audited super-admin act.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "requestsPerMinute": {
+            "description": "Requests-per-minute ceiling from the winning policy",
+            "nullable": true,
+            "type": "number"
+          },
+          "source": {
+            "description": "'tenant' when the request tenant's own ACTIVE policy won, 'system' when it inherited the platform default, null when neither exists.",
+            "nullable": true,
+            "type": "string"
+          },
+          "strategy": {
+            "description": "Selection strategy of the winning policy",
+            "nullable": true,
+            "type": "string"
+          },
+          "taskKey": {
+            "description": "AI task key",
+            "type": "string"
+          },
+          "tenantId": {
+            "description": "Tenant the resolution ran for",
+            "type": "string"
+          },
+          "tokensPerMinute": {
+            "description": "Tokens-per-minute ceiling from the winning policy",
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "tenantId",
+          "taskKey",
+          "fallbackChain",
+          "rejectedCandidates",
+          "relaxedGates"
         ],
         "type": "object"
       },
@@ -13410,6 +13740,33 @@
         ],
         "type": "object"
       },
+      "RejectedRoutingCandidateResponse": {
+        "properties": {
+          "connectionRef": {
+            "description": "AiProviderConnection `provider` under the `llm` service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Model this candidate would have served",
+            "type": "string"
+          },
+          "rank": {
+            "description": "Rank as authored",
+            "type": "number"
+          },
+          "reason": {
+            "description": "RESIDENCY_CLASS_MISMATCH | NOT_BAA_COVERED | FUNDING_TIER_MISMATCH | FALLBACK_DEPTH_EXCEEDED | CONNECTION_UNRESOLVED | PROVIDER_UNHEALTHY | EXPLICIT_PROVIDER_STRICT",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "connectionRef",
+          "model",
+          "reason"
+        ],
+        "type": "object"
+      },
       "RemoteConfigResponseDto": {
         "properties": {
           "assignedBy": {
@@ -13587,6 +13944,59 @@
           "promptId",
           "resolvedFrom",
           "promptType"
+        ],
+        "type": "object"
+      },
+      "ResolvedRoutingCandidateResponse": {
+        "properties": {
+          "baaCovered": {
+            "description": "Whether a BAA covers this vendor AND model",
+            "type": "boolean"
+          },
+          "connectionRef": {
+            "description": "AiProviderConnection `provider` under the `llm` service",
+            "example": "azure",
+            "type": "string"
+          },
+          "funding": {
+            "description": "BYOK | CLOUD — DERIVED from which cascade tier supplied the credential (`row.tenantId === SYSTEM` ⇒ CLOUD), never stamped by a caller. Becomes `x-hope-funding`.",
+            "type": "string"
+          },
+          "maxTtftMs": {
+            "description": "TTFT budget, advisory to the router",
+            "nullable": true,
+            "type": "number"
+          },
+          "model": {
+            "description": "Model this candidate serves",
+            "type": "string"
+          },
+          "rank": {
+            "description": "Rank as authored on the candidate",
+            "type": "number"
+          },
+          "residency": {
+            "description": "Residency-class label",
+            "type": "string"
+          },
+          "step": {
+            "description": "Position in the chain. 0 = the primary (`x-hope-fallback-step`).",
+            "type": "number"
+          },
+          "weight": {
+            "description": "Weight within the rank tier",
+            "type": "number"
+          }
+        },
+        "required": [
+          "step",
+          "rank",
+          "weight",
+          "connectionRef",
+          "model",
+          "residency",
+          "baaCovered",
+          "funding"
         ],
         "type": "object"
       },
@@ -13963,6 +14373,28 @@
           "path",
           "controller",
           "handler"
+        ],
+        "type": "object"
+      },
+      "RoutingRejectionResponse": {
+        "properties": {
+          "code": {
+            "description": "provider_unavailable | provider_not_in_policy | no_policy | kill_switch_engaged | no_eligible_candidate — machine-readable, per §3A.4.",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable explanation naming the offending provider/gate",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether retrying the same request may succeed later (a health ejection) or never (a gate)",
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
         ],
         "type": "object"
       },
@@ -17757,6 +18189,78 @@
         "required": [
           "providers"
         ],
+        "type": "object"
+      },
+      "UpdateAiRoutingPolicyRequest": {
+        "properties": {
+          "affinity": {
+            "description": "Cache-affinity hints (DRAFT only)",
+            "type": "object"
+          },
+          "candidates": {
+            "description": "Ordered candidate chain (DRAFT only)",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expectedVersion": {
+            "description": "OCC token. The controller folds the RFC 7232 `If-Match` header over this; a mismatch is 412, an absent header 428.",
+            "type": "number"
+          },
+          "explicitProviderMode": {
+            "description": "Explicit-provider semantics (DRAFT only)",
+            "enum": [
+              "STRICT",
+              "STRICT_UNLESS_OPTED_IN",
+              "POLICY_MAY_OVERRIDE"
+            ],
+            "type": "string"
+          },
+          "fallback": {
+            "description": "Fallback contract (DRAFT only)",
+            "type": "object"
+          },
+          "health": {
+            "description": "Circuit/health thresholds (DRAFT only)",
+            "type": "object"
+          },
+          "killSwitch": {
+            "description": "Operator stop button. The ONLY field editable on an ACTIVE revision.",
+            "type": "boolean"
+          },
+          "match": {
+            "description": "Narrowing predicate (DRAFT only)",
+            "type": "object"
+          },
+          "maxConcurrentStreams": {
+            "description": "Concurrent-stream ceiling (DRAFT only)",
+            "type": "number"
+          },
+          "priority": {
+            "description": "Tie-break priority (DRAFT only)",
+            "type": "number"
+          },
+          "requestsPerMinute": {
+            "description": "Requests-per-minute ceiling (DRAFT only)",
+            "type": "number"
+          },
+          "strategy": {
+            "description": "Selection strategy (DRAFT only)",
+            "enum": [
+              "PRIORITY",
+              "WEIGHTED",
+              "LEAST_BUSY",
+              "LOWEST_LATENCY",
+              "LOWEST_COST"
+            ],
+            "type": "string"
+          },
+          "tokensPerMinute": {
+            "description": "Tokens-per-minute ceiling (DRAFT only)",
+            "type": "number"
+          }
+        },
         "type": "object"
       },
       "UpdateApiKeyRequest": {

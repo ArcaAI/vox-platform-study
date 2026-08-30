@@ -6127,6 +6127,153 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/routing-policies",
+      "routePath": "/admin/routing-policies",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/routing-policies",
+      "routePath": "/admin/routing-policies",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "deleteById",
+      "method": "DELETE",
+      "path": "/api/v1/admin/routing-policies/{id}",
+      "routePath": "/admin/routing-policies/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "getById",
+      "method": "GET",
+      "path": "/api/v1/admin/routing-policies/{id}",
+      "routePath": "/admin/routing-policies/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/routing-policies/{id}",
+      "routePath": "/admin/routing-policies/:id",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "activate",
+      "method": "POST",
+      "path": "/api/v1/admin/routing-policies/{id}/activate",
+      "routePath": "/admin/routing-policies/:id/activate",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "getEffective",
+      "method": "GET",
+      "path": "/api/v1/admin/routing-policies/effective",
+      "routePath": "/admin/routing-policies/effective",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "SchedulerAdminController",
       "handler": "listSchedulers",
       "method": "GET",
