@@ -187,7 +187,12 @@ data:
       # measured, it puts PHI-adjacent traffic on the public internet, and it
       # makes the egress NetworkPolicy unwritable (the rule would have to allow
       # Cloudflare's whole edge range instead of a single /32).
-      if ! mc mirror --quiet --overwrite "hope/${BUCKET}/${prefix}/" "$stage/"; then
+      #
+      # `--insecure` — TLS verification deliberately disabled, same reason and
+      # same reversal as the `config host add` line in the container args. It is
+      # NOT inherited from that call: mc evaluates the flag per invocation, so
+      # omitting it here would fail the mirror while the alias add succeeded.
+      if ! mc mirror --quiet --insecure --overwrite "hope/${BUCKET}/${prefix}/" "$stage/"; then
         echo "  FETCH FAILED ${prefix}"; fail=1; continue
       fi
 
@@ -237,6 +242,14 @@ spec:
       labels:
         app: hope-lmstudio
         app.kubernetes.io/part-of: project-hope
+        # ADDED 2026-08-30, and it is load-bearing rather than decorative.
+        # NetworkPolicy selects PODS BY LABEL, and this Job pod carries
+        # `app: hope-lmstudio` — so `hope-lmstudio-egress` (DNS only) selects it
+        # too, and would block the very `mc mirror` this Job exists to run.
+        # This extra label lets `hope-lmstudio-model-sync-egress` (bottom of this
+        # file) grant MinIO egress to the JOB ALONE. Policies are additive, so
+        # the Job gets DNS + MinIO while the serving pod keeps DNS only.
+        app.kubernetes.io/component: model-sync
     spec:
       restartPolicy: OnFailure
       # §14.4 item 4 — required on EVERY pod spec, Jobs included, or CI's
@@ -256,35 +269,72 @@ spec:
           args:
             - |
               set -eu
-              mc --quiet config host add hope "$AWS_ENDPOINT_URL" \
+              # ══ TLS VERIFICATION IS DELIBERATELY DISABLED HERE ══════════════
+              # `--insecure` REPLACES the SSL_CERT_FILE + /etc/ssl/arcaai/ca.crt
+              # mount that used to be here. The transport is still https:// (see
+              # config/lmstudio.env); what is gone is the private CA and the
+              # verification of the peer. Owner directive 2026-08-30: no CA at
+              # all, authentication is the MinIO service account and nothing
+              # else, PHI hardening de-prioritised for now.
+              # ⚠️ This encrypts but does not authenticate the peer. Reinstating
+              # is two edits — drop `--insecure` HERE and from `mc mirror` in
+              # sync.sh below, and restore SSL_CERT_FILE + the CA volume.
+              mc --quiet --insecure config host add hope "$AWS_ENDPOINT_URL" \
                  "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" --api S3v4
               exec /bin/sh /scripts/sync.sh
           env:
+            # THE ENDPOINT IS NOT A SECRET — it is a LAN transport address, which
+            # `09-infrastructure-devops.md` §Configuration Tiers puts squarely in
+            # the `env` tier. CHANGED 2026-08-30: it was a hardcoded literal here
+            # (and `hope-secrets.MINIO_ENDPOINT` elsewhere in the platform); it is
+            # now a NON-OPTIONAL configMapKeyRef, so a missing key fails the Job
+            # as CreateContainerConfigError instead of silently defaulting.
+            #
+            # The value is PLAIN HTTP by owner directive 2026-08-30 — see
+            # config/lmstudio.env for the full rationale, the cost, and the
+            # one-line rollback if MinIO's listener is still TLS.
             - name: AWS_ENDPOINT_URL
-              value: "https://10.10.1.102:9000"
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-lmstudio-config
+                  key: LMSTUDIO_S3_ENDPOINT_URL
+            # THE ONLY AUTHENTICATION TO MinIO: a MinIO SERVICE ACCOUNT.
             # `hope-models-reader` — ListBucket/GetObject/GetObjectVersion on
             # hope-models ONLY, and NO DeleteObject (minio/README.md §4). This
             # Job must never hold the root key or the publisher key: a weight
             # fetch has no business with a credential that can write PHI buckets.
+            # TASK-823's vLLM pod reads the SAME Secret and keys — one service
+            # account serves both serving tiers.
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef: { name: hope-models-reader, key: accessKeyId }
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef: { name: hope-models-reader, key: secretAccessKey }
-            # MinIO's leaf is issued by the private "ARCAAI Internal CA". `mc`
-            # reads SSL_CERT_FILE; its certs/CAs/ path does NOT work — TASK-832
-            # states this explicitly and it was tested. There is deliberately no
-            # skip-verify anywhere in this platform.
-            - name: SSL_CERT_FILE
-              value: /etc/ssl/arcaai/ca.crt
+            # ⚠️ SSL_CERT_FILE AND THE /etc/ssl/arcaai MOUNT WERE REMOVED HERE ON
+            # 2026-08-30 (owner directive). There is no TLS on this path any more,
+            # so there is no private CA to trust and `ROOT_CONFIG_REQUEST R-1`
+            # (create ConfigMap `arcaai-internal-ca`) is CANCELLED — see README §3.
+            # Do not re-add either without also flipping the scheme in
+            # config/lmstudio.env; an SSL_CERT_FILE against an http:// endpoint is
+            # inert and misleading.
             - name: MC_CONFIG_DIR
               value: /home/hope/.mc
           volumeMounts:
             - { name: models,    mountPath: /models }
             - { name: manifest,  mountPath: /manifest, readOnly: true }
             - { name: scripts,   mountPath: /scripts,  readOnly: true }
-            - { name: arcaai-ca, mountPath: /etc/ssl/arcaai, readOnly: true }
+            # ⚠️ REQUIRED, AND ITS ABSENCE WAS A HARD FAILURE — not a nicety.
+            # MEASURED 2026-08-30 on a single-node k8s by running THIS Job:
+            #     mc: <ERROR> Unable to save new mc config.
+            #                 mkdir /home/hope: permission denied.
+            # `minio/mc` has no /home/hope, /home is root-owned, and the pod runs
+            # as uid 10001 — so the very first command (`mc config host add`)
+            # died before a single byte was fetched. An emptyDir gives uid 10001
+            # (fsGroup 10001) a writable HOME. Deleting this mount reintroduces
+            # the failure; pointing MC_CONFIG_DIR at /tmp would also work today
+            # but breaks the moment readOnlyRootFilesystem is set.
+            - { name: mc-config, mountPath: /home/hope }
           resources:
             requests: { cpu: "500m", memory: "512Mi" }
             limits:   { cpu: "2",    memory: "2Gi" }
@@ -301,12 +351,13 @@ spec:
           configMap:
             name: hope-lmstudio-manifest
             items: [{ key: sync.sh, path: sync.sh }]
-        - name: arcaai-ca
-          configMap:
-            # Deliberately fails closed (CreateContainerConfigError) rather than
-            # skipping TLS verification against a PHI object store.
-            name: arcaai-internal-ca
-            items: [{ key: ca.crt, path: ca.crt }]
+        # Writable HOME for `mc` — see the volumeMount comment above.
+        - name: mc-config
+          emptyDir: {}
+        # (The `arcaai-ca` volume was removed on 2026-08-30 — see the
+        # SSL_CERT_FILE note in the container's env block above. This Job now
+        # depends on exactly ONE hand-created object: the `hope-models-reader`
+        # Secret.)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -548,12 +599,49 @@ spec:
     # This is a REGRESSION versus the llama.cpp option, which supports
     # --api-key-file and would have made this policy defence in depth. It is an
     # accepted consequence of the engine decision, named here rather than
-    # papered over. Treat any weakening of this rule as a security change.
+    # papered over. Treat any change to this peer list as a security change.
+    #
+    # ── THE PEER SET IS `hope-text` AND NOTHING ELSE ────────────────────────
+    # OWNER RULING 2026-08-30: internal peers reach LM Studio THROUGH THE
+    # GATEWAY, not by dialling it. `apps/text` fronts the engine; everything
+    # else arrives via `hope-api` -> `hope-text`. So exactly one pod label may
+    # open a socket to :1234, and this list must NOT be widened on the
+    # assumption that some other service calls it directly.
+    #
+    #   hope-text — reaches LM Studio per request through openai_compat.py
+    #               using the baseUrl on the SYSTEM AiProviderConnection row
+    #               (`http://hope-lmstudio:1234/v1`, README §5).
+    #
+    # ⚠️ A CONTRADICTION IN THE CLUSTER TODAY, AND IT IS NOT THIS FILE'S TO FIX.
+    # `hope-harness` and `hope-harness-worker` are currently configured to dial
+    # LM Studio DIRECTLY for Institutional-RAG embeddings —
+    # `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` at
+    # hope-v2-deployment base/harness.yaml:110 and base/harness-worker.yaml:123.
+    # Those callers are LIVE against the out-of-band Service. Under the ruling
+    # above they must be re-pointed through the gateway BEFORE the Service
+    # cutover; if they are not, this policy will cut harness embeddings off at
+    # cutover, and the symptom will look like an embeddings outage rather than a
+    # policy decision. Tracked as OPEN-824-HARNESS in ../README.md §4A —
+    # a blocking pre-cutover item, deliberately NOT worked around by widening
+    # this rule.
+    #
+    # Deliberately ABSENT, each for a reason:
+    #   hope-guardrail — no longer dials an LLM directly. base/guardrail.yaml
+    #     sets TEXT_URL/NLP_URL and its GUARDRAIL_OPENAI_COMPAT_* engine config
+    #     was deleted (06-python-services.md). The "guardrail path" the cutover
+    #     file mentions is guardrail -> text -> lmstudio, and hope-text is
+    #     already allowed. Do not add guardrail "because the cutover file says
+    #     it carries the guardrail path" — that path is indirect.
+    #   hope-nlp, hope-api, hope-admin-console — no reference to :1234 anywhere
+    #     in hope-v2-deployment or in this repo's service code, and under the
+    #     ruling above they must not acquire one.
+    #   prometheus — LM Studio exposes NO metrics endpoint (measured: GET
+    #     /metrics returns 200 with "Unexpected endpoint or method"). A scrape
+    #     rule would imply a signal that does not exist.
     - from:
         - podSelector:
             matchLabels: { app: hope-text }
       ports: [{ protocol: TCP, port: 1234 }]
-    # No prometheus rule: LM Studio exposes no metrics endpoint (measured).
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -577,11 +665,22 @@ spec:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
   # ==========================================================================
-  # AND NOTHING ELSE. What is ABSENT here is the point:
+  # AND NOTHING ELSE FOR THE SERVING POD. What is ABSENT here is the point:
   #
   #   * No MinIO rule. Unlike vLLM, which streams weights from S3 at runtime,
   #     this pod reads weights from a PVC the sync Job already warmed. The
   #     serving pod never speaks S3.
+  #
+  #     ⚠️ CORRECTION 2026-08-30 — that reasoning was right about the SERVING
+  #     POD and wrong about what this policy SELECTS. A NetworkPolicy selects
+  #     pods by label, and the model-sync Job's pod template also carries
+  #     `app: hope-lmstudio`, so this DNS-only policy selected the Job as well
+  #     and would have blocked its `mc mirror` outright on any cluster that
+  #     actually enforces NetworkPolicy. The fix is the separate, narrower
+  #     `hope-lmstudio-model-sync-egress` policy at the bottom of this file —
+  #     NOT a MinIO rule here, which would hand the serving pod an S3 path it
+  #     has no use for.
+  #
   #   * No huggingface.co. §3.1b noted that LM Studio's native
   #     POST /api/v1/models/download accepts a catalog id or an HF URL and would
   #     egress to huggingface.co FROM A PHI NAMESPACE. Choosing to mirror into
@@ -596,6 +695,58 @@ spec:
   #     from source. §4.9 item 9 (offline cold start with egress blocked) is
   #     still UNVERIFIED and must be proven on first deploy.
   # ==========================================================================
+---
+# ══════════════════════════════════════════════════════════════════════════
+# The model-sync Job's egress. ADDED 2026-08-30.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# WHY THIS EXISTS AS A SECOND POLICY RATHER THAN A RULE IN THE ONE ABOVE:
+# NetworkPolicies are ADDITIVE. A pod selected by two policies may do the UNION
+# of what they allow. The sync Job's pod carries BOTH `app: hope-lmstudio` and
+# `app.kubernetes.io/component: model-sync`, so it gets DNS (from the policy
+# above) + MinIO (from this one). The SERVING pod carries only the first label,
+# so it gets DNS and no S3 path at all — which is the property the policy above
+# was written to have, and which a MinIO rule added there would have destroyed.
+#
+# This is also the fix for a real defect: before this file existed, the DNS-only
+# egress policy selected the Job and would have blocked `mc mirror` on any
+# cluster enforcing NetworkPolicy. The Job would have failed closed (no `.ready`
+# sentinel, serving pod refuses to start), so the symptom would have presented
+# as "the models never sync" rather than as a networking change.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-lmstudio-model-sync-egress
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/component: model-sync
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels:
+      app: hope-lmstudio
+      app.kubernetes.io/component: model-sync
+  policyTypes: [Egress]
+  egress:
+    # DNS. Repeated deliberately: a policy's rules are not inherited, and if the
+    # sibling policy above is ever narrowed this Job must still resolve names.
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # MinIO S3 API on the LAN, https (TLS, verification disabled at the client —
+    # see the container args). 9001 is the console and is deliberately absent.
+    # A single /32 — this is only expressible because the endpoint is the LAN
+    # host and not the Cloudflare tunnel (TASK-832).
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.102/32
+      ports:
+        - { protocol: TCP, port: 9000 }
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

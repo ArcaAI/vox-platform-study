@@ -9,14 +9,42 @@
 #    the only step in this migration that can take production down, and it must
 #    be gated on a human, not on a sync.
 #
+# ── DECISION RE-CONFIRMED 2026-08-30: KEEP THIS FILE SEPARATE ───────────────
+# The owner's requirement is that `http://hope-lmstudio:1234` end up resolving
+# to the POD. It is worth being explicit that separation SERVES that requirement
+# rather than deferring it:
+#
+#   * The Deployment ships at `replicas: 0` and the image has NEVER been built
+#     (`build-lmstudio` has not completed a pipeline). Folding this Service into
+#     lmstudio.yaml means Argo CD applies it on the next sync, replacing the
+#     LIVE selector-less Service that currently points at the host instance —
+#     with zero pods behind the new selector.
+#   * The name is unchanged, so this is a REPLACE, not an add. There is no
+#     window in which both the old and the new backend serve.
+#   * Therefore folding it in produces exactly the outcome the requirement
+#     forbids: `hope-lmstudio:1234` resolving to NOTHING, for however long it
+#     takes to build an image and schedule a GPU pod.
+#
+# Separation is the only ordering in which the name resolves to a real backend
+# at every instant. Step 6 below is where the requirement is actually satisfied,
+# and step 5' is where it is proven.
+#
 # ── WHY IT IS DANGEROUS ─────────────────────────────────────────────────────
 # `hope-lmstudio` ALREADY EXISTS in hope-v2-dev. Today it is a SELECTOR-LESS
 # Service plus hand-written Endpoints pointing at the node host 10.10.1.10:1234,
 # applied OUTSIDE kustomize and Argo:
 #     deployment/k8s/out-of-band/lmstudio-service.yaml
 #     deployment/k8s/out-of-band/lmstudio-endpoints.yaml
-# It currently carries BOTH the summarization path and the safety/guardrail
-# path.
+# It currently carries the summarization path (hope-text), the harness
+# Institutional-RAG embeddings path (hope-harness + hope-harness-worker, both of
+# which set HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL to http://hope-lmstudio:1234/v1
+# in the deployment repo), and — INDIRECTLY, via hope-text — the safety/guardrail
+# path. All of them re-point at the pod the moment this object is applied.
+#
+# ⚠️ But `hope-lmstudio-ingress` in lmstudio.yaml admits `hope-text` ONLY, by
+# owner ruling (internal peers reach LM Studio through the gateway, not
+# directly). The two harness callers are therefore a BLOCKING PRE-CUTOVER ITEM,
+# not a reason to widen the policy — see step 5'' below.
 #
 # The Service below has the SAME NAME. Applying it REPLACES that object and
 # adds a selector, at which point the endpoints controller takes ownership and
@@ -57,7 +85,39 @@
 #          curl -fsS http://127.0.0.1:1234/api/v1/models
 #     Confirm every key in imports.tsv appears with a non-empty
 #     loaded_instances[] for the one you preloaded.
+#  5'. Prove the NetworkPolicy peer set. The peer set is `hope-text` AND NOTHING
+#     ELSE (owner ruling: internal peers reach LM Studio THROUGH THE GATEWAY,
+#     never directly). Use the pod IP so a policy failure is not confused with a
+#     DNS or endpoint failure:
+#        POD_IP=$(kubectl -n hope-v2-dev get pod -l app=hope-lmstudio \
+#                   -o jsonpath='{.items[0].status.podIP}')
+#        kubectl -n hope-v2-dev exec deploy/hope-text -- \
+#          curl -fsS --max-time 5 http://$POD_IP:1234/api/v1/models   # expect 200
+#     Then prove the DENY half from pods that are NOT peers — each must TIME OUT:
+#        for app in hope-nlp hope-harness; do
+#          kubectl -n hope-v2-dev exec deploy/$app -- \
+#            curl --max-time 5 http://$POD_IP:1234/api/v1/models
+#        done
+#     If either returns 200, this cluster is NOT enforcing NetworkPolicy and the
+#     ingress rule is DECORATIVE — LM Studio has no auth of its own, so say so
+#     loudly (R-5) rather than proceeding as if a control exists.
+#
+#  ⚠️ 5''. BLOCKING PRE-CUTOVER ITEM — OPEN-824-HARNESS.
+#     `hope-harness` and `hope-harness-worker` are configured TODAY to dial LM
+#     Studio directly for Institutional-RAG embeddings
+#     (HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1 at
+#     base/harness.yaml:110 and base/harness-worker.yaml:123) and are live
+#     against the out-of-band Service. Under the gateway ruling they are NOT
+#     peers, so this policy will cut them off the moment it is enforced.
+#     RE-POINT THEM THROUGH THE GATEWAY BEFORE STEP 6, or accept a harness
+#     embeddings outage. Do NOT "fix" it by adding them to the ingress rule.
+#     Confirm before proceeding:
+#        grep -rn 'hope-lmstudio' deployment/k8s/base/harness*.yaml   # expect none
 #  6. ONLY NOW apply this Service. Cutover is a single object replace.
+#  6'. Re-verify THROUGH the Service, from each caller, by name:
+#        kubectl -n hope-v2-dev exec deploy/hope-text -- \
+#          curl -fsS http://hope-lmstudio:1234/api/v1/models
+#     This is the assertion the owner requirement actually names.
 #  7. Delete the retired out-of-band files from the deployment repo:
 #        deployment/k8s/out-of-band/lmstudio-service.yaml
 #        deployment/k8s/out-of-band/lmstudio-endpoints.yaml
