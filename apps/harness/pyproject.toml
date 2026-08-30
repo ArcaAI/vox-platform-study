@@ -274,7 +274,20 @@ minversion = "9.0"
 # pythonpath lets pytest import `harness` from src/ without requiring an
 # editable install (the service is also installed via `pip install -e` to
 # mirror text/stt/nlp, but tests must work standalone too).
-pythonpath = ["src"]
+# `pythonpath` is resolved relative to rootdir, i.e. relative to the checkout the
+# suite was invoked from, and is applied at `pytest_load_initial_conftests` —
+# earlier than anything that could import the service. That ordering is what makes
+# a run inside a git worktree exercise THAT worktree's source instead of the
+# primary checkout the conda env's `__editable__.*.pth` files point at.
+# `scripts/pytest-support` carries the guard that proves it held; see
+# scripts/pytest-support/hope_worktree_guard.py.
+pythonpath = [
+    "src",
+    "../../packages/py-env/src",
+    "../../packages/py-runtime-models/src",
+    "../../packages/py-workflow-contract/src",
+    "../../scripts/pytest-support",
+]
 addopts = [
     "-ra",
     "--strict-config",

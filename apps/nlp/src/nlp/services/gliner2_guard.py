@@ -149,7 +149,17 @@ class Gliner2GuardService:
         self, texts: list[str], tasks: dict[str, Any], threshold: float, batch_size: int
     ) -> list[dict[str, Any]]:
         results = self.runtime.batch_classify_text(
-            texts, tasks, batch_size=batch_size, threshold=threshold
+            texts,
+            tasks,
+            batch_size=batch_size,
+            threshold=threshold,
+            # TASK-830. The confidences are ALREADY COMPUTED — gliner2's
+            # `_extract_classification_result` softmaxes/sigmoids the classifier
+            # logits and carries `(label, confidence)` — and `_format_results`
+            # throws them away unless asked. The entity path above has always
+            # asked; this one did not, which is the whole reason guardrail's
+            # session aggregate is a flag rate rather than a graded mean.
+            include_confidence=True,
         )
         if len(results) != len(texts):
             raise RuntimeError(f"gliner2 returned {len(results)} results for {len(texts)} texts")
@@ -188,7 +198,13 @@ class Gliner2GuardService:
         return normalized
 
     def _sync_classify(self, text: str, tasks: dict[str, Any], threshold: float) -> dict[str, Any]:
-        return dict(self.runtime.classify_text(text, tasks, threshold=threshold) or {})
+        # `include_confidence=True` — see `_sync_batch_classify`.
+        return dict(
+            self.runtime.classify_text(
+                text, tasks, threshold=threshold, include_confidence=True
+            )
+            or {}
+        )
 
     # ── async API ────────────────────────────────────────────────────────
 

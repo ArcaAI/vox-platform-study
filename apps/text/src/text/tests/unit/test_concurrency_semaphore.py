@@ -154,20 +154,23 @@ class TestConcurrencyMetric:
 class TestSemaphoreDependency:
     """Verify get_provider_semaphores dependency."""
 
-    def test_get_provider_semaphores_returns_dict(self):
+    # `async def` + `await`: the provider became a coroutine function in
+    # TASK-818 Lane C so FastAPI resolves it on the event loop instead of
+    # shipping it to the worker threadpool. Same value, awaited.
+    async def test_get_provider_semaphores_returns_dict(self):
         from text.core.dependencies import get_provider_semaphores
 
         mock_request = AsyncMock()
         mock_request.app.state.provider_semaphores = {"ollama": asyncio.Semaphore(2)}
-        result = get_provider_semaphores(mock_request)
+        result = await get_provider_semaphores(mock_request)
         assert "ollama" in result
 
-    def test_get_provider_semaphores_defaults_to_empty(self):
+    async def test_get_provider_semaphores_defaults_to_empty(self):
         from text.core.dependencies import get_provider_semaphores
 
         mock_request = AsyncMock()
         del mock_request.app.state.provider_semaphores
-        result = get_provider_semaphores(mock_request)
+        result = await get_provider_semaphores(mock_request)
         assert result == {}
 
 

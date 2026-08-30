@@ -43,6 +43,12 @@ from collections.abc import Generator
 
 import pytest
 
+# Refuse to run against another checkout's source (git-worktree false-greens).
+# See scripts/pytest-support/hope_worktree_guard.py.
+from hope_worktree_guard import assert_source_tree
+
+assert_source_tree(["stt", "hope_env", "hope_otel", "hope_runtime_models"], __file__)
+
 # Test infrastructure ports (matching monorepo's tests/docker-compose.test.yml)
 TEST_DB_PORT = 5433
 TEST_REDIS_PORT = 6380
