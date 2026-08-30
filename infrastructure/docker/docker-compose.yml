@@ -139,7 +139,7 @@ services:
             # scalar is unreviewable. See ../minio/README.md.
             - ./minio/policies:/policies:ro
         # ⚠️ `|` (LITERAL), never `>` (FOLDED). This block was a folded scalar
-        # until TASK-831 and it was silently broken: `>` joins every line into
+        # until TASK-832 and it was silently broken: `>` joins every line into
         # ONE line, so the first `#` comment turned the entire remainder of the
         # script into a shell comment. Effects, in order of when they landed:
         #   2026-08-23 (TASK-789) — the comment above `mc mb harness-claim-check`
@@ -177,7 +177,7 @@ services:
             # vLLM's runai_streamer needs a real s3:// URI. Move weights into
             # MLflow artifacts and vLLM breaks with no error at the MLflow layer.
             #
-            # TASK-831: created WITH OBJECT LOCK. Note the asymmetry with mlflow
+            # TASK-832: created WITH OBJECT LOCK. Note the asymmetry with mlflow
             # directly above — mlflow must NOT be versioned (versioning turns
             # `mlflow gc` into a delete marker and erasure silently becomes
             # retention); hope-models must be, because a published weight prefix
@@ -210,7 +210,7 @@ services:
             # TASK-789: the compiled-config claim check every workflow dispatch mints into.
             # Without it a consultation-open dispatch fails with 'The specified bucket does
             # not exist' — and because dispatch is best-effort, it fails SILENTLY.
-            # (TASK-831: those quotes were DOUBLE quotes until now. This whole script is
+            # (TASK-832: those quotes were DOUBLE quotes until now. This whole script is
             # one double-quoted argument to /bin/sh -c, so a literal double-quote inside
             # it closed the argument early and everything after became stray argv. Never
             # put a double-quote character anywhere in this block — comments included.
@@ -227,7 +227,7 @@ services:
             # /usr/bin/mc encrypt set sse-s3 minio/generated-audio;
             # /usr/bin/mc encrypt set sse-s3 minio/documents;
             # /usr/bin/mc encrypt set sse-s3 minio/backups;
-            echo 'Provisioning least-privilege hope-models identities (TASK-831)...';
+            echo 'Provisioning least-privilege hope-models identities (TASK-832)...';
             # Weight consumers must NOT hold the root key, and must not hold the
             # MINIO_ACCESS_KEY pair either: that pair carries read/write over the
             # PHI buckets, and a weight fetch has no business being able to write
@@ -246,7 +246,7 @@ services:
             # placeholder in a comment here; compose tries to interpolate that too
             # and fails the whole file. Learned the hard way, twice.)
             # The defaults are obvious dev placeholders; the cluster host gets real
-            # keys from the operator procedure (TASK-831), never these.
+            # keys from the operator procedure (TASK-832), never these.
             /usr/bin/mc admin policy create minio hope-models-reader /policies/hope-models-reader.json;
             /usr/bin/mc admin policy create minio hope-models-publisher /policies/hope-models-publisher.json;
             /usr/bin/mc admin user add minio ${MINIO_MODELS_READER_KEY:-hope-models-reader} ${MINIO_MODELS_READER_SECRET:-dev_placeholder_reader_secret};

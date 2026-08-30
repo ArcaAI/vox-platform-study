@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════
-# TASK-831 — egress NetworkPolicies for the MinIO object-storage consumers.
+# TASK-832 — egress NetworkPolicies for the MinIO object-storage consumers.
 #
 # HANDOVER ARTIFACT. Authored in the app repo, applied to `hope-v2-deployment`
 # by the orchestrator (EXECUTION-PLAN §14.5). NOT APPLIED, and NOT SAFE to
