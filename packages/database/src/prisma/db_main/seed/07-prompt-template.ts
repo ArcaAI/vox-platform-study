@@ -179,6 +179,14 @@ export const TEMPLATE_IDS = {
   // from `consultation.synthesize`: a FINISHED, complete note. An instruction telling a model the
   // note is still growing would be wrong about the only thing it needs to be right about.
   NOTE_CORRECTIONS_SYSTEM: '71000000-0000-0000-0000-000000000044',
+  // TASK-827 — the platform default for `consultation.suggestions` (W2), the sibling defect of
+  // …044's. It is a THIRD body rather than a reuse of either neighbour, and the difference is
+  // what the pass is for. …043 and …044 both REVIEW existing words for error — one in a partial
+  // transcript, one in a finished note — and neither may add clinical content. This pass adds:
+  // it proposes questions, checks and omissions that are NOT in the text. An instruction built
+  // around "correct only what is genuinely wrong, add nothing" is the exact opposite of what
+  // this node needs to be told.
+  LIVE_SUGGESTIONS_SYSTEM: '71000000-0000-0000-0000-000000000045',
   WHISPER_INITIAL_PROMPT_EN_VI: '71000000-0000-0000-0000-000000000050',
 } as const;
 
@@ -1396,6 +1404,51 @@ Transcript:
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['note-corrections', 'system', 'platform-default'],
+  },
+  // ⚠ APPEND-ONLY TAIL. `DEFAULT_PROMPT_VERSIONS` below derives each version id from this array's
+  // INDEX (`V${i + 1}`). A row inserted above this point renumbers every version row after it,
+  // re-pointing seeded content at ids that already exist in deployed databases. New platform
+  // defaults go HERE, at the end. This one is index 44 → V45 (`72000000-…-045`).
+  {
+    id: TEMPLATE_IDS.LIVE_SUGGESTIONS_SYSTEM,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
+    name: 'Live Consultation Suggestions (platform default)',
+    description:
+      'Platform-default instruction for the `consultation.suggestions` node — clinician-facing prompts during a LIVE consultation. A tenant admin overrides it by binding their own template on the node.',
+    // What this body has to get right, and it is not the same list as its two neighbours.
+    //
+    // This node PROPOSES rather than CORRECTS, so it is the only one of the three permitted to
+    // raise something absent from the text — that is the entire point of an "omission". The
+    // safety bar therefore cannot be "add nothing"; it has to be the narrower and harder
+    // "ground every item in the supplied text, and never assert".
+    //
+    // The two failure modes it is written against:
+    //  - a suggestion stated as a FINDING ("the patient has X") — the clinician is reading these
+    //    mid-consultation and a confident false positive is the expensive kind of wrong;
+    //  - an INVENTED detail dressed as something already established, which is worse than a bad
+    //    suggestion because it is not obviously one.
+    //
+    // The empty list is named as a correct answer for the same reason it is in …043/…044: a model
+    // told only to produce suggestions will produce them from nothing on a quiet transcript.
+    content:
+      'You assist a clinician during a LIVE consultation. From the transcript and context you are given, propose the most useful next questions, checks, or omissions for the clinician to consider.\n\n' +
+      'Return ONLY a JSON object of this shape:\n' +
+      '{"suggestions":[{"text":"<one short, actionable suggestion>","category":"<a short label, e.g. history, examination, investigation, safety>"}]}\n\n' +
+      'Rules:\n' +
+      '- Ground every suggestion in the supplied text. Do not introduce a condition, medication, allergy, result or history that the text does not support.\n' +
+      '- Propose; never assert. Write "consider asking about X" or "check X", never "the patient has X". A suggestion is a prompt for the clinician, not a finding.\n' +
+      '- Never state or imply a diagnosis as established fact, and never invent a clinical finding, measurement or result.\n' +
+      '- Do not repeat something the transcript shows has already been asked, examined or ordered.\n' +
+      '- Keep each suggestion to one specific, actionable step. Do not restate the transcript and do not summarise it.\n' +
+      '- The clinician decides. Nothing here is an instruction to the patient or an action taken on their behalf.\n' +
+      '- If nothing useful can be suggested, return {"suggestions":[]}. An empty list is a correct answer.\n' +
+      '- Return the JSON object and nothing else.',
+    category: 'SYSTEM',
+    variables: {},
+    currentVersionNumber: 1,
+    departmentId: null,
+    tags: ['live-suggestions', 'system', 'platform-default'],
   },
 ];
 

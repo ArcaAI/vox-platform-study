@@ -408,13 +408,19 @@ async def interpreter_consultation_realtime_summary(
 # ---------------------------------------------------------------------------
 
 
-_SUGGESTION_SYSTEM_PROMPT = (
-    "You assist a clinician during a live consultation. From the transcript and context, "
-    "propose the most useful next questions, checks or omissions to consider. "
-    'Reply ONLY with JSON of the form {"suggestions": [{"text": "...", "category": "..."}]}. '
-    "Ground every suggestion in the supplied text. Never state a diagnosis as fact and never "
-    "invent clinical findings. If nothing useful can be suggested, return an empty list."
-)
+# TASK-827 — the system prompt used to live HERE, as a module-level Python constant, exactly as
+# W3's did before TASK-826. It is now the node's own bound ``promptTemplateId``, resolved APPROVED
+# through the gateway with NO fallback.
+#
+# ``00-project-context.md`` §Configuration Principles — "an engine name, model id, endpoint,
+# credential, threshold, PROMPT, taxonomy or label set is NOT a literal in code". This node puts
+# clinical questions and checks in front of a clinician mid-consultation, so a literal here meant
+# the platform deciding what every tenant's clinicians are prompted to ask, with no tenant able to
+# read, change or version-pin it.
+#
+# The platform default is a SYSTEM-tenant ``PromptTemplate`` (``07-prompt-template.ts``,
+# ``LIVE_SUGGESTIONS_SYSTEM``) — the sanctioned platform tier, not a fallback this module reaches
+# for. A tenant with an opinion binds its own id on the node instead.
 
 
 @activity.defn(name="interpreter.consultation_suggestions")
@@ -445,6 +451,24 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
             status="DEGRADED", reason="no text bound from an upstream node to suggest from"
         )
 
+    # BEFORE the policy call, deliberately — the same ordering TASK-826 established for W3.
+    # Configuration validity is not conditional on a peer service being reachable: resolving
+    # after `_resolve_selection` would let an unbound node report `policy_fetch_unreachable`
+    # whenever the policy plane was also down, masking a permanent configuration gap behind a
+    # transient fault on exactly the runs an operator investigates.
+    try:
+        instruction = await resolve_instruction(
+            config.get("promptTemplateId"),
+            payload.tenant_id,
+            missing_code="no_suggestion_instruction_bound",
+            api=_api_client(get_settings()),
+        )
+    except InstructionUnavailable as exc:
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code=exc.error_code
+        )
+        return NodeActivityResult(status="DEGRADED", reason=exc.reason)
+
     policy, provider, model, error_code = await _resolve_selection(payload, task_key)
     if error_code is not None or policy is None or provider is None or model is None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started, error_code=error_code)
@@ -462,7 +486,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
             text, provider=provider, policy=policy, settings=settings, redactor=redactor
         )
         safe_system = _screen(
-            _SUGGESTION_SYSTEM_PROMPT,
+            instruction,
             provider=provider,
             policy=policy,
             settings=settings,
