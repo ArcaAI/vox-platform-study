@@ -295,11 +295,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'all']],
     implemented: true,
   },
-  // `/prompt-studio` retired — prompt governance folded
-  // into the elevated-only Governance tab of `/agents` (one authoritative
-  // surface per resource). `/prompt-studio` still resolves for one release
-  // via a redirect page.: `/ai-services` takes the freed slot,
-  // surfacing the guardrail/NLP status + config backends that had no screen.
+  // `/prompt-studio` retired — prompt governance folded into the elevated-only
+  // Governance tab of the prompt-template surface (one authoritative surface
+  // per resource). `/prompt-studio` still resolves for one release via a
+  // redirect page; `/ai-services` takes the freed slot, surfacing the
+  // guardrail/NLP status + config backends that had no screen.
+  //
+  // The fold originally landed governance on `/agents`, and this comment still
+  // said so after `/agents` itself retired (TASK-815) — pointing the reader at
+  // a redirect. The live target is `/prompt-templates?tab=governance`.
   {
     route: '/ai-services',
     domain: 'ai-platform',
