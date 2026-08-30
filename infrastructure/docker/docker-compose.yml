@@ -133,7 +133,24 @@ services:
         environment:
             MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
             MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_admin}
-        entrypoint: >
+        volumes:
+            # IAM policy documents. Kept as files rather than inlined because
+            # embedding JSON inside a double-quoted shell string inside a YAML
+            # scalar is unreviewable. See ../minio/README.md.
+            - ./minio/policies:/policies:ro
+        # ⚠️ `|` (LITERAL), never `>` (FOLDED). This block was a folded scalar
+        # until TASK-832 and it was silently broken: `>` joins every line into
+        # ONE line, so the first `#` comment turned the entire remainder of the
+        # script into a shell comment. Effects, in order of when they landed:
+        #   2026-08-23 (TASK-789) — the comment above `mc mb harness-claim-check`
+        #     meant that bucket was never created. The comment itself warned the
+        #     missing bucket fails SILENTLY; the fix disabled its own fix.
+        #   2026-08-30 (TASK-822) — a comment moved above `mc mb mlflow`, so from
+        #     that commit NO bucket was created at all, on any dev machine.
+        # A literal block keeps one command per line and comments stay comments.
+        # If you ever change this back to `>`, every comment below becomes a
+        # kill switch for everything after it.
+        entrypoint: |
             /bin/sh -c "
             echo 'Setting up MinIO buckets and policies...';
             until /usr/bin/mc alias set minio http://minio:9000 ${MINIO_ROOT_USER:-minio_admin} ${MINIO_ROOT_PASSWORD:-minio_admin}; do
@@ -159,15 +176,45 @@ services:
             # in proxied mode MLflow can only ever hand a client an HTTP URL, and
             # vLLM's runai_streamer needs a real s3:// URI. Move weights into
             # MLflow artifacts and vLLM breaks with no error at the MLflow layer.
-            /usr/bin/mc mb minio/hope-models --ignore-existing;
+            #
+            # TASK-832: created WITH OBJECT LOCK. Note the asymmetry with mlflow
+            # directly above — mlflow must NOT be versioned (versioning turns
+            # `mlflow gc` into a delete marker and erasure silently becomes
+            # retention); hope-models must be, because a published weight prefix
+            # must never change under a running pod. Same product, opposite
+            # requirements. Reasoning in full: ../minio/README.md section 3.
+            #
+            # Object lock can ONLY be set at creation (mc mb --with-lock); it
+            # cannot be enabled afterwards, and `mb --ignore-existing --with-lock`
+            # against an existing bucket does nothing and exits 0. So probe, and
+            # say so loudly rather than reporting a success that did not happen.
+            if /usr/bin/mc ls minio/hope-models > /dev/null 2>&1; then
+              if /usr/bin/mc retention info --default minio/hope-models > /dev/null 2>&1; then
+                echo '  hope-models: present, object lock ON';
+              else
+                echo '  WARNING: hope-models exists WITHOUT object lock.';
+                echo '           Object lock is creation-only and cannot be added now.';
+                echo '           Dev fix: mc rb --force minio/hope-models, then re-run this setup.';
+                echo '           Until then immutability rests on versioning + the';
+                echo '           hope-models-reader policy (no PutObject), not on lock.';
+              fi;
+            else
+              /usr/bin/mc mb --with-lock minio/hope-models;
+              echo '  hope-models: created with versioning + object lock';
+            fi;
             /usr/bin/mc version enable minio/hope-models;
             /usr/bin/mc mb minio/recordings --ignore-existing;
             /usr/bin/mc mb minio/generated-audio --ignore-existing;
             /usr/bin/mc mb minio/documents --ignore-existing;
             /usr/bin/mc mb minio/backups --ignore-existing;
             # TASK-789: the compiled-config claim check every workflow dispatch mints into.
-            # Without it a consultation-open dispatch fails with "The specified bucket does
-            # not exist" — and because dispatch is best-effort, it fails SILENTLY.
+            # Without it a consultation-open dispatch fails with 'The specified bucket does
+            # not exist' — and because dispatch is best-effort, it fails SILENTLY.
+            # (TASK-832: those quotes were DOUBLE quotes until now. This whole script is
+            # one double-quoted argument to /bin/sh -c, so a literal double-quote inside
+            # it closed the argument early and everything after became stray argv. Never
+            # put a double-quote character anywhere in this block — comments included.
+            # The only two in the whole entrypoint are the opening and closing delimiter.)
             /usr/bin/mc mb minio/harness-claim-check --ignore-existing;
             echo 'Setting bucket policies...';
             /usr/bin/mc policy set public minio/recordings;
@@ -180,6 +227,38 @@ services:
             # /usr/bin/mc encrypt set sse-s3 minio/generated-audio;
             # /usr/bin/mc encrypt set sse-s3 minio/documents;
             # /usr/bin/mc encrypt set sse-s3 minio/backups;
+            echo 'Provisioning least-privilege hope-models identities (TASK-832)...';
+            # Weight consumers must NOT hold the root key, and must not hold the
+            # MINIO_ACCESS_KEY pair either: that pair carries read/write over the
+            # PHI buckets, and a weight fetch has no business being able to write
+            # `recordings`. Two scoped identities instead:
+            #   hope-models-reader    -> Get/List on hope-models only  (services)
+            #   hope-models-publisher -> the above + Put/retention     (humans/CI)
+            # Neither can DeleteObject. Retiring a published prefix is a root
+            # action taken knowingly, not something a compromised inference pod
+            # or a mistyped `mc rm --recursive` can do.
+            # Policy documents are mounted at /policies; see ../minio/README.md.
+            #
+            # The variable references below are interpolated by COMPOSE from the
+            # host env / infrastructure/docker/.env, NOT by the container shell —
+            # the same mechanism the MINIO_ROOT_USER reference in the alias line
+            # above already relies on. (Corollary: never write a bare dollar-brace
+            # placeholder in a comment here; compose tries to interpolate that too
+            # and fails the whole file. Learned the hard way, twice.)
+            # The defaults are obvious dev placeholders; the cluster host gets real
+            # keys from the operator procedure (TASK-832), never these.
+            /usr/bin/mc admin policy create minio hope-models-reader /policies/hope-models-reader.json;
+            /usr/bin/mc admin policy create minio hope-models-publisher /policies/hope-models-publisher.json;
+            /usr/bin/mc admin user add minio ${MINIO_MODELS_READER_KEY:-hope-models-reader} ${MINIO_MODELS_READER_SECRET:-dev_placeholder_reader_secret};
+            /usr/bin/mc admin user add minio ${MINIO_MODELS_PUBLISHER_KEY:-hope-models-publisher} ${MINIO_MODELS_PUBLISHER_SECRET:-dev_placeholder_publisher_secret};
+            # `policy attach` errors with 'already in effect' on a re-run. That is
+            # success, not failure, so it is swallowed — this whole script must be
+            # idempotent (compose re-runs it on every `up`).
+            /usr/bin/mc admin policy attach minio hope-models-reader --user ${MINIO_MODELS_READER_KEY:-hope-models-reader} > /dev/null 2>&1 || true;
+            /usr/bin/mc admin policy attach minio hope-models-publisher --user ${MINIO_MODELS_PUBLISHER_KEY:-hope-models-publisher} > /dev/null 2>&1 || true;
+            echo 'Blob layout for hope-models: <slug>/<version>/{manifest.json,SHA256SUMS,*.gguf,...}';
+            echo '  version is content-addressed; a published prefix is NEVER overwritten.';
+            echo '  Convention + manifest.json schema: infrastructure/docker/minio/README.md';
             echo 'MinIO setup completed successfully';
             exit 0;
             "
