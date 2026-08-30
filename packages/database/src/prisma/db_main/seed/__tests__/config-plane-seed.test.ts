@@ -200,6 +200,30 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
+  it('addresses every PLATFORM-RUN self-host engine by its cluster Service name, not a workstation', () => {
+    /*
+     * A SYSTEM-tenant row is the PLATFORM default every tenant without an
+     * opinion inherits, so its endpoint has to be an address the platform's own
+     * pods can reach. `llm:lm-studio` carried `http://localhost:1234/v1` — the
+     * developer-desktop address — long after `llm:vllm` and `llm:llama-cpp` had
+     * moved to cluster Service names; in a cluster that resolves to the calling
+     * pod itself and every generation 503s on connect.
+     *
+     * `llm:ollama` is deliberately NOT in this list: the platform runs no Ollama
+     * and seeds no Ollama model (owner decision 2026-08-17). Its row is the
+     * endpoint a BYO tenant overrides, not an engine the platform hosts.
+     */
+    const PLATFORM_RUN_ENGINES = ['llm:lm-studio', 'llm:vllm', 'llm:llama-cpp'] as const;
+    PLATFORM_RUN_ENGINES.forEach((pair) => {
+      const row = SYSTEM_AI_PROVIDER_CONNECTIONS.find((c) => `${c.service}:${c.provider}` === pair);
+      expect(row, `${pair} must have a SYSTEM connection row`).toBeDefined();
+      expect(row!.baseUrl, `${pair} must carry an endpoint`).toBeTruthy();
+      expect(row!.baseUrl, `${pair} must not point the platform default at a workstation`).not.toMatch(
+        /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)([:/]|$)/,
+      );
+    });
+  });
+
   it('never seeds a VENDOR credential — the only seeded key material is the non-secret placeholder', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
       const key = c.apiKeyPlaintext;

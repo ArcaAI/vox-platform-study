@@ -78,14 +78,26 @@ def _register_provider_factories(
     from text.providers.azure_openai import AzureOpenAIProvider
     from text.providers.bedrock import BedrockProvider
     from text.providers.llama_cpp import LlamaCppProvider
+    from text.providers.lmstudio import LMStudioProvider
     from text.providers.ollama import OllamaProvider
     from text.providers.openai import OpenAIProvider
     from text.providers.openai_compat import OpenAICompatProvider
     from text.providers.vertex import VertexProvider
     from text.providers.vllm import VllmProvider
 
-    # LM Studio (OpenAI-compatible) — primary local engine; product key + alias.
-    _register(("lm-studio", "openai_compat"), _shared(OpenAICompatProvider))
+    # LM Studio — a FIRST-CLASS engine with its own adapter, not an alias of the
+    # generic OpenAI-wire one. These two keys used to share ONE instance built
+    # with the DEFAULT `provider_name`, so a request that said `lm-studio` was
+    # served by an object that reported `openai_compat`, never sent LM Studio's
+    # `ttl` retention hint, and forced the native `/api/v0/models` probe to be
+    # widened onto generic endpoints to stay reachable at all.
+    #
+    # `openai_compat` REMAINS registered and generic: it is the portability
+    # adapter for any other OpenAI-wire server (TGI, Groq, a `llama-server` on
+    # its `/v1` surface), and it must never be handed LM Studio's non-standard
+    # body fields.
+    _register(("lm-studio",), _shared(LMStudioProvider))
+    _register(("openai_compat",), _shared(OpenAICompatProvider))
     _register(("ollama",), lambda: OllamaProvider(http_client))
     _register(("bedrock",), _shared(BedrockProvider))
     _register(("azure-openai", "azure"), _shared(AzureOpenAIProvider))

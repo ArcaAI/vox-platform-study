@@ -7,10 +7,10 @@ each entry reports its own ``probe_status`` (``ok`` / ``timeout`` / ``error``),
 
 * one hung or down engine NEVER stalls or 500s the listing — it degrades to a
   single entry with ``status: "unavailable"`` and the reason attached;
-* the emitted ``name`` is the REGISTRY KEY, not ``ProviderInfo.name``.
-  ``main.py`` registers the LM Studio instance under both ``lm-studio`` and
-  ``openai_compat`` and the shared instance reports ``openai_compat`` for both,
-  so the key is the only stable identity the gateway discovery merge
+* the emitted ``name`` is the REGISTRY KEY, not ``ProviderInfo.name``. An
+  adapter reports its own engine name and a registration may legitimately
+  disagree with it (``azure-openai``/``azure`` are still one instance under two
+  keys), so the key is the only stable identity the gateway discovery merge
   (``admin/ai-models/discovery``) can join on.
 
 Two surfaces, one probe body. ``GET /providers`` reports each adapter's own

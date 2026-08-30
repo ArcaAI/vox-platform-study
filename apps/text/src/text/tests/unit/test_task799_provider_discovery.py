@@ -177,6 +177,10 @@ class TestOpenAiWireDiscovery:
         from text.providers import openai_compat as mod
         from text.providers.openai_compat import OpenAICompatProvider
 
+        # The GENERIC OpenAI-wire adapter: this test is about WHICH ENDPOINT a
+        # connection-scoped probe reaches, which is wire behaviour shared by
+        # every OpenAI-compatible engine. LM Studio's own native enrichment is
+        # covered on its adapter (`tests/unit/test_lmstudio_provider.py`).
         provider = OpenAICompatProvider(provider_name="lm-studio", display_name="LM Studio")
         # The process memo points at the PLATFORM engine; the injected
         # connection must win.
@@ -204,11 +208,6 @@ class TestOpenAiWireDiscovery:
             return _Client()
 
         monkeypatch.setattr(mod, "AsyncOpenAI", _fake_openai)
-        monkeypatch.setattr(
-            mod,
-            "_native_probe_client",
-            lambda: httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404))),
-        )
 
         info = await provider.discover_models(
             ProbeConnection(base_url="http://tenant-lmstudio.test/v1", api_key="tk")

@@ -1,4 +1,17 @@
-"""Generic OpenAI-compatible LLM provider — works with LM Studio, vLLM, TGI, Groq, etc."""
+"""Generic OpenAI-compatible LLM provider — the PORTABILITY adapter.
+
+Any server that speaks the OpenAI chat-completions wire (TGI, Groq, a
+llama.cpp `llama-server` on its `/v1` surface, an unknown vendor) is reachable
+through this class under the ``openai_compat`` registry key.
+
+It is deliberately WIRE-ONLY: nothing here may assume a particular engine.
+Engine-specific affordances live in a subclass that carries its own identity —
+`providers/vllm.py` (`/health`, `/metrics`, `guided_json`) and
+`providers/lmstudio.py` (the `ttl` retention hint, the native `/api/v0/models`
+listing, the non-standard `stats` blob). Two hooks below are the seam:
+``_apply_retention_hint`` and ``_engine_native`` are no-ops here, and
+``_enrich_models`` returns the `/v1/models` listing untouched.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +19,6 @@ import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-import httpx
 import structlog
 from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
@@ -30,22 +42,6 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# `main.py` registers the LM Studio instance under BOTH keys with
-# the DEFAULT `provider_name`, so the native-REST enrichment below is attempted
-# for both. Engine subclasses (vLLM) carry their own `provider_name` and are
-# excluded — they have no `/api/v0` surface.
-_LM_STUDIO_PROVIDER_NAMES = frozenset({"lm-studio", "openai_compat"})
-
-# Short, self-contained budget for the OPTIONAL native listing probe. The
-# endpoint-level `asyncio.wait_for` caps the whole `get_info`; this keeps the
-# enrichment from consuming that entire budget and losing the `/v1` result.
-_NATIVE_PROBE_TIMEOUT_S = 3.0
-
-
-def _native_probe_client() -> httpx.AsyncClient:
-    """Factory for the native-probe transport (patched in tests)."""
-    return httpx.AsyncClient(timeout=_NATIVE_PROBE_TIMEOUT_S)
-
 
 def _get_tracer() -> Tracer:
     return get_tracer(__name__)
@@ -54,9 +50,9 @@ def _get_tracer() -> Tracer:
 class OpenAICompatProvider:
     """Generic provider for any OpenAI-compatible API server."""
 
-    # An operator-run engine reached by topology base_url (LM Studio by default),
-    # so there is no vendor credential to fail closed on. It still honours a tenant
-    # override — see `_client_for`.
+    # An operator-run engine reached by topology base_url, so there is no vendor
+    # credential to fail closed on. It still honours a tenant override — see
+    # `_client_for`.
     credential_posture = CredentialPosture.SELF_HOST
 
     def __init__(
@@ -193,16 +189,19 @@ class OpenAICompatProvider:
             self._retention_ttl_s = clamp_cache_ttl_seconds(ttl_seconds)
 
     def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
-        """Attach LM Studio's JIT `ttl`, and ONLY for LM Studio.
+        """Hook: attach the engine's server-side idle-retention directive.
 
-        This class is shared with vLLM and generic OpenAI-compatible endpoints,
-        which reject unknown body fields — so the hint is gated on the engine
-        identity, not merely "is openai-compatible". `extra_body` is the OpenAI
-        SDK's sanctioned ride-along for non-standard fields.
+        NO-OP here, and that is the safe default: a generic OpenAI-wire server
+        400s on an unknown body field, so an engine only opts in by overriding
+        this (today: `providers/lmstudio.py`, which sends LM Studio's `ttl`).
+
+        This used to be an ``if self._provider_name != "lm-studio": return``
+        guard on this class — which never fired, because `main.py` registered
+        the LM Studio key against an instance built with the DEFAULT
+        ``provider_name``. An engine capability gated on a string the instance
+        does not carry is a capability nobody has; a subclass cannot be wrong
+        about which engine it is.
         """
-        if self._provider_name != "lm-studio":
-            return
-        kwargs["extra_body"] = {"ttl": self._retention_ttl_s}
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # No in-gateway default — the caller-supplied model is
@@ -228,6 +227,16 @@ class OpenAICompatProvider:
         else:
             messages.append({"role": "user", "content": request.prompt})
         return messages
+
+    def _engine_native(self, response: Any, usage: dict[str, Any]) -> dict[str, Any]:
+        """Hook: the audit-only engine-native blob attached to `GenerationStats`.
+
+        The OpenAI ``usage`` object is all the wire guarantees. An engine that
+        returns more (LM Studio's non-standard ``stats``) adds it in its own
+        subclass, so the generic adapter never carries a key named after an
+        engine it is not talking to.
+        """
+        return {"usage": usage}
 
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
         """Inject the structured-output directive into the create() kwargs.
@@ -291,12 +300,9 @@ class OpenAICompatProvider:
             # and reasoning splits are priced separately by the ledger and the
             # three headline fields cannot express them.
             usage = openai_usage_dict(usage_obj)
-            # engine_native: OpenAI ``usage`` + the LM-Studio ``stats`` blob when the
-            # server includes it (extra field, dict-shaped) — audit-only, never billed.
-            native: dict[str, Any] = {"usage": usage}
-            lm_stats = getattr(response, "stats", None)
-            if isinstance(lm_stats, dict):
-                native["lm_studio_stats"] = lm_stats
+            # engine_native: the provider's OWN usage object, plus whatever the
+            # engine subclass can add (`_engine_native`) — audit-only, never billed.
+            native = self._engine_native(response, usage)
             stats = stats_from_openai_usage(
                 provider=self._provider_name,
                 model=resolved_model or "",
@@ -407,40 +413,16 @@ class OpenAICompatProvider:
             )
             return False
 
-    async def _lm_studio_native_models(
-        self, base_url: str | None = None
-    ) -> dict[str, dict[str, Any]]:
-        """LM Studio's native REST listing, keyed by model id.
+    async def _enrich_models(self, models: list[ModelInfo], base_url: str | None) -> None:
+        """Hook: decorate a `/v1/models` listing with engine-native metadata.
 
-        `/v1/models` (OpenAI wire) carries no load state, but LM Studio also
-        serves `GET {root}/api/v0/models` with `state` / `quantization` /
-        `max_context_length` on the SAME host — the AsyncOpenAI client cannot
-        reach it (it prefixes `/v1`), so this uses a plain httpx call against
-        `base_url` minus its trailing `/v1`.
+        NO-OP here — the OpenAI wire carries no load state and a generic server
+        has no second listing route to ask. `providers/lmstudio.py` overrides it
+        to read LM Studio's native `/api/v0/models`.
 
-        ``base_url`` is explicit so a connection-scoped discovery probe enriches
-        the engine it was GIVEN; omitted, it falls back to the process memo, which
-        is what `get_info()` has always used.
-
-        ANY failure returns `{}`: enrichment is strictly best-effort and must
-        never degrade or fail the `/v1/models` listing.
+        Whatever an override does, it is STRICTLY best-effort: enrichment must
+        never degrade or fail the `/v1/models` listing it decorates.
         """
-        root = (base_url or self._probe_url() or "").rstrip("/")
-        if not root:
-            return {}
-        if root.endswith("/v1"):
-            root = root[: -len("/v1")].rstrip("/")
-        try:
-            async with _native_probe_client() as client:
-                resp = await client.get(f"{root}/api/v0/models")
-            if resp.status_code != 200:
-                return {}
-            return {m["id"]: m for m in resp.json().get("data", []) if m.get("id")}
-        except Exception as exc:  # noqa: BLE001 — best-effort enrichment
-            logger.warning(
-                "get_info.native_probe_failed", provider=self._provider_name, error=str(exc)
-            )
-            return {}
 
     def _info(self, status: str, models: list[ModelInfo]) -> ProviderInfo:
         return ProviderInfo(
@@ -459,7 +441,7 @@ class OpenAICompatProvider:
         )
 
     async def _list_models(self, client: AsyncOpenAI, base_url: str | None) -> ProviderInfo:
-        """`GET {base_url}/models` (OpenAI wire) + LM Studio's native enrichment.
+        """`GET {base_url}/models` (OpenAI wire), plus `_enrich_models`.
 
         The one listing body shared by the memo probe (`get_info`) and the
         connection-scoped one (`discover_models`); they differ ONLY in which
@@ -480,14 +462,8 @@ class OpenAICompatProvider:
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=self._provider_name, error=str(exc))
 
-        if models and self._provider_name in _LM_STUDIO_PROVIDER_NAMES:
-            native = await self._lm_studio_native_models(base_url)
-            for model in models:
-                meta = native.get(model.name)
-                if not meta:
-                    continue
-                model.state = meta.get("state")
-                model.engine_native = meta
+        if models:
+            await self._enrich_models(models, base_url)
 
         return self._info(status, models)
 

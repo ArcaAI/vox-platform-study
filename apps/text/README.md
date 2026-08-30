@@ -22,8 +22,11 @@ The gateway fronts this service. Browsers should not call it directly.
   (separate process from the API).
 
 Providers registered from connection config (local engines by `base_url`; cloud BYO registered
-unconditionally so the gateway can inject credentials per request): LM Studio /
-`openai_compat`, Azure OpenAI, OpenAI, Anthropic, Vertex, Bedrock, vLLM, llama.cpp, TEI embed.
+unconditionally so the gateway can inject credentials per request): LM Studio (`lm-studio`),
+`openai_compat` (the generic OpenAI-wire portability adapter), Azure OpenAI, OpenAI, Anthropic,
+Vertex, Bedrock, vLLM, llama.cpp, TEI embed. `lm-studio` and `openai_compat` are DISTINCT
+adapters — LM Studio owns the `ttl` retention hint, the native `/api/v0/models` listing and the
+non-standard `stats` blob, none of which a generic OpenAI-wire server accepts.
 
 ## Quick start
 
