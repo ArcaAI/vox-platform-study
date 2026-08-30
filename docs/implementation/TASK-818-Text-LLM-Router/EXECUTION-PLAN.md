@@ -156,6 +156,32 @@ So: **hand-author entity, factory, mapper and repository.** Exemplars: `AiTaskDe
 
 ## 6. Worktree protocol
 
+0. **ASSERT YOUR BASE BEFORE YOU WRITE A LINE.** Step zero because this has gone wrong
+   **three times, in two different directions**:
+
+   ```bash
+   # LOCAL dev-2.2, not origin/dev-2.2 — see the warning below.
+   git merge-base --is-ancestor dev-2.2 HEAD && echo "base OK" || echo "STALE BASE — STOP"
+   git rev-list --count dev-2.2..HEAD    # expect 0, else you are on someone else's work
+   ```
+
+   **What went wrong, so the check is understood rather than copied:**
+
+   - *Twice:* worktrees were created from **`dev`**, because `refs/remotes/origin/HEAD` pointed
+     at `origin/dev` and every tool resolving "the default branch" followed it. One was
+     **~2,400 commits and three months stale**. Repointed with `git remote set-head origin
+     dev-2.2`, but that ref drifts again on any re-clone or `fetch --prune`, so the assertion —
+     not the ref — is the durable control.
+   - *Once:* the assertion itself, written against `origin/dev-2.2`, **passed vacuously**.
+     `origin/dev-2.2` was **92 commits behind** the local branch because this programme's work
+     is committed locally and not pushed, and `--is-ancestor` is trivially true when the
+     reference is behind. It printed `base OK` for a tree missing every TASK-818 commit.
+
+   > ⚠️ **Never assert against `origin/dev-2.2`.** It is the form a reasonable person reaches
+   > for and it is the wrong one here. **The shared local checkout is the source of truth for
+   > this programme, not the remote.** A check that cannot fail is worse than no check, because
+   > it manufactures confidence.
+
 1. **Branch from `dev-2.2`**, never `dev`. Name after the lane: `../hope-v2-task-818-lane-a`,
    branch `task-818/lane-a`.
 2. **Copy `.env.dev` and `.env.test` in** — gitignored files do not follow a worktree, and a
@@ -226,9 +252,11 @@ Never pre-emptively raise the whole fleet.
 > `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2`, branch **`dev-2.2`**.
 > Working directory: **[worktree path or "main tree"]**.
 >
-> **Before anything else**, run `git merge-base --is-ancestor origin/dev-2.2 HEAD && echo "base OK"`.
+> **Before anything else**, run `git merge-base --is-ancestor dev-2.2 HEAD && echo "base OK"`
+> and `git rev-list --count dev-2.2..HEAD` (expect 0). **LOCAL `dev-2.2`, not `origin/dev-2.2`** —
+> origin has run 92 commits behind, which makes the origin form pass vacuously (§6 step 0).
 > If it does not print `base OK`, your worktree is on the wrong base — **stop and report it**
-> rather than working (§6 step 0; this has already happened twice).
+> If either fails, **stop and report it** rather than working — this has gone wrong three times.
 >
 > **Read first:** `docs/implementation/TASK-818-Text-LLM-Router/EXECUTION-PLAN.md` (this plan),
 > `docs/implementation/[TICKET]/README.md`, and rules `[NN, NN]`.
