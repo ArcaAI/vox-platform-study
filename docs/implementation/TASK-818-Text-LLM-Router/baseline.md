@@ -338,7 +338,28 @@ is an argument for measuring A-3, not for assuming it.
 
 # After Lane C (request-path cost) — 2026-08-30
 
-## ✅ AC-3 is MET in latency-injecting mode
+## ⚠️ RETRACTED 2026-08-30 — "AC-3 is MET" is not supported by this measurement
+
+**The claim below is withdrawn. It was mine, and it was undersampled.**
+
+`--duration 8` at c=10 yields roughly 40 samples, so the "p99" reported here is about the
+second-worst request in a handful — an order statistic with enormous variance, not a tail
+estimate. Lane G re-ran **the identical command** at 1 worker and measured **p99 17.83 ms
+(c=10) / 33.87 ms (c=25)** — 2–5× the numbers below, from the same code. Nothing regressed
+between the runs; the short run simply could not see the tail.
+
+Lane G's own 30-second runs in this mode are the ones to trust, and they do NOT clear the
+10 ms bar either (best observed p99 39.25 ms in zero-latency at 4 workers; 39.68 ms at
+1 worker / c=100 latency-injecting).
+
+**So AC-3 is currently UNPROVEN, not met.** Treat the table below as a record of the
+mistake, kept because the retraction is only legible next to what it retracts.
+
+**Rule going forward, applying to every lane:** never quote a p99 from a run shorter than
+30 s, and state the sample count next to any tail statistic. A p99 without an N is not a
+measurement. I reported this one to the owner as a win before Lane G caught it.
+
+### (superseded) AC-3 in latency-injecting mode
 
 Orchestrator's own post-merge run, `--mode latency-injecting --levels 10,25 --duration 8`:
 
