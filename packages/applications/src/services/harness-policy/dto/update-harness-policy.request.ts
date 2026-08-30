@@ -64,18 +64,6 @@ export class UpdateHarnessPolicyRequest {
   @IsBoolean()
   phiFailClosed?: boolean;
 
-  @ApiPropertyOptional({ description: 'Safety-guard provider id.', example: 'lm-studio' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  safetyProvider?: string;
-
-  @ApiPropertyOptional({ description: 'Safety-guard model id.', example: 'granite-guardian-4.1-8b' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  safetyModel?: string;
-
   @ApiPropertyOptional({ description: 'TEXT generation provider id (null = let the TEXT service choose).', nullable: true })
   @IsOptional()
   @IsString()

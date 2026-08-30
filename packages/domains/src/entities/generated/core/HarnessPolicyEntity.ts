@@ -25,8 +25,6 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   safetyEnabled: boolean;
   phiEnabled: boolean;
   phiFailClosed: boolean;
-  safetyProvider: string;
-  safetyModel: string;
   textProvider?: string | null;
   textModel?: string | null;
   maxRegen: number;
@@ -57,8 +55,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
   private _safetyEnabled: IHarnessPolicyEntity['safetyEnabled'];
   private _phiEnabled: IHarnessPolicyEntity['phiEnabled'];
   private _phiFailClosed: IHarnessPolicyEntity['phiFailClosed'];
-  private _safetyProvider: IHarnessPolicyEntity['safetyProvider'];
-  private _safetyModel: IHarnessPolicyEntity['safetyModel'];
   private _textProvider?: IHarnessPolicyEntity['textProvider'];
   private _textModel?: IHarnessPolicyEntity['textModel'];
   private _maxRegen: IHarnessPolicyEntity['maxRegen'];
@@ -84,8 +80,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     this._safetyEnabled = init.safetyEnabled;
     this._phiEnabled = init.phiEnabled;
     this._phiFailClosed = init.phiFailClosed;
-    this._safetyProvider = init.safetyProvider;
-    this._safetyModel = init.safetyModel;
     this._textProvider = init.textProvider;
     this._textModel = init.textModel;
     this._maxRegen = init.maxRegen;
@@ -164,22 +158,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
 
   set phiFailClosed(value: IHarnessPolicyEntity['phiFailClosed']) {
     this.setProperty('phiFailClosed', value);
-  }
-
-  get safetyProvider(): IHarnessPolicyEntity['safetyProvider'] {
-    return this._safetyProvider;
-  }
-
-  set safetyProvider(value: IHarnessPolicyEntity['safetyProvider']) {
-    this.setProperty('safetyProvider', value);
-  }
-
-  get safetyModel(): IHarnessPolicyEntity['safetyModel'] {
-    return this._safetyModel;
-  }
-
-  set safetyModel(value: IHarnessPolicyEntity['safetyModel']) {
-    this.setProperty('safetyModel', value);
   }
 
   get textProvider(): IHarnessPolicyEntity['textProvider'] {
@@ -315,13 +293,6 @@ export class HarnessPolicyEntity extends BaseTenantEntity {
     // the agentic knobs are nullable overrides; only range-check when set.
     if (this._maxEditReruns !== null && this._maxEditReruns !== undefined) {
       this.assertNonNegativeInt('maxEditReruns', this._maxEditReruns);
-    }
-
-    if (!this._safetyProvider || this._safetyProvider.trim().length === 0) {
-      throw new BusinessException('HarnessPolicy safetyProvider is required.');
-    }
-    if (!this._safetyModel || this._safetyModel.trim().length === 0) {
-      throw new BusinessException('HarnessPolicy safetyModel is required.');
     }
   }
 

@@ -46,8 +46,6 @@ _POLICY_JSON: dict[str, Any] = {
     "safetyEnabled": False,
     "phiEnabled": False,
     "phiFailClosed": False,
-    "safetyProvider": "ollama",
-    "safetyModel": "granite-guardian-x",
     "textProvider": "azure",
     "textModel": "gpt-4o",
     "judgeProvider": "openai_compat",
@@ -76,8 +74,6 @@ class TestHarnessPolicyModel:
         assert policy.safety_enabled is False
         assert policy.phi_enabled is False
         assert policy.phi_fail_closed is False
-        assert policy.safety_provider == "ollama"
-        assert policy.safety_model == "granite-guardian-x"
         assert policy.text_provider == "azure"
         assert policy.text_model == "gpt-4o"
         # the SYSTEM harness.judge selection maps straight through.

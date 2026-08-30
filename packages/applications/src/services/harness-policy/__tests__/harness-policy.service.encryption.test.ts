@@ -59,7 +59,7 @@ function makeService(withSecrets = true): HarnessPolicyService {
 }
 
 function systemDefaultEntity() {
-  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID, safetyModel: 'system-default-guardian' });
+  return HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: SYSTEM_TENANT_ID, gateSlaSeconds: 12_345 });
 }
 
 describe('HarnessPolicyService — change-row encryption', () => {
