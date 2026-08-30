@@ -43,6 +43,9 @@ export * from './ai-task-default';
 // Config-plane core (provider connections + runtime profiles).
 export * from './ai-provider-connection';
 export * from './ai-runtime-profile';
+// The ordered N-way candidate chain over those two: which providers serve a
+// task, in what order, and what may happen on failure (TASK-818 §3A).
+export * from './ai-routing-policy';
 // The read side: per-service effective-config for the Python pull clients.
 export * from './effective-config';
 // MCP external-tools registry admin (super-admin CRUD + registry reads).
