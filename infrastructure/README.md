@@ -85,7 +85,7 @@ Dashboard JSONs and provisioning for a Grafana instance pointed at a Prometheus 
 
 ## single-deployment/ — production blueprints
 
-Currently contains one stack: [single-deployment/vault/](single-deployment/vault/README.md) — 3-node HA Vault with Raft storage and Transit auto-unseal on the self-hosted k3s cluster (Helm values, bootstrap scripts, network policies, monitoring rules, kind-based E2E test). See [single-deployment/README.md](single-deployment/README.md).
+Currently contains one stack, and it is **RETIRED**: [single-deployment/vault/](single-deployment/vault/README.md) — 3-node HA Vault with Raft storage and Transit auto-unseal, deployed on Proxmox VMs 430-432 (+434 seal) which are being destroyed under TASK-833. HOPE's Vault is now a single in-cluster instance defined in `arca/hope-v2-deployment` (`deployment/k8s/base/vault.yaml`); see that repo's `docs/vault-seal-migration.md`. The tree is kept as a design record and for the still-used bootstrap/policy assets — read the banner in [single-deployment/README.md](single-deployment/README.md) first.
 
 Day-2 Vault operations (rotation, failover, recovery, chaos drills) are documented in [docs/operations/vault/](../docs/operations/vault/README.md); the chaos drill script itself is `scripts/chaos/vault-drill.sh`.
 

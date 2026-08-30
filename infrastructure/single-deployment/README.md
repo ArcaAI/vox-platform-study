@@ -1,6 +1,19 @@
 # Single-Deployment — Production Blueprints
 
-Last updated: 2026-07-04
+Last updated: 2026-08-30
+
+> ## ⛔ The one stack in here — `vault/` — is RETIRED (TASK-833)
+>
+> It targets Proxmox VMs 430/431/432/434, which are being destroyed. HOPE's Vault is now
+> a single in-cluster instance (`hope-vault` in `hope-v2-dev`, Shamir seal unsealed by an
+> in-pod sidecar) defined in `arca/hope-v2-deployment` →
+> `deployment/k8s/base/vault.yaml`, with the operator procedure in that repo's
+> `docs/vault-seal-migration.md`.
+>
+> The tree below is kept as a design record and for the parts still in use
+> (`bootstrap/configure-app-auth.sh`, the policy set, the unapplied monitoring rules).
+> Read the banner at the top of [vault/README.md](vault/README.md) before using any of
+> it. **This directory therefore contains no currently-deployable blueprint.**
 
 Production deployment blueprints for infrastructure components that are deployed once per environment (as opposed to the per-service application manifests in [deployment/](../../deployment/README.md)).
 
