@@ -16,6 +16,32 @@
 > can weigh both — several of their traps (§4.1's silent CPU fallback, §4.10's
 > missing rescan, §4.3's readiness workaround) do not apply to the recommendation.
 
+## 0. ✅ OWNER DECISION 2026-08-30 — LM Studio, not llama.cpp
+
+**The owner has decided: LM Studio server + vLLM service. Do not initialise a
+llama.cpp server.** §2A's recommendation was made, considered and **overruled**. It is
+retained below as the record of the argument, not as the plan.
+
+**This ticket therefore builds the custom headless `llmster` GPU image (§4).**
+
+### Risks accepted by this decision, stated once and then not re-argued
+
+| # | Risk | Consequence |
+|---|---|---|
+| **A-1** | **LM Studio audio support is UNVERIFIED-NEGATIVE**, and Gemma 4 E2B/E4B are vision **and audio** | If audio matters clinically, it must be verified early. A model that serves text and vision but silently not audio is the failure this flags |
+| **A-2** | **The no-rescan hazard returns** (§4.10). LM Studio has no rescan API or CLI — established three ways | A GGUF synced onto the volume is **not** visible. The sync MUST call `lms import … -y -L` (`-L`/`-c` mandatory: import **moves** by default) |
+| **A-3** | **The silent-CPU-fallback returns** (§4.1) | `install.sh` picks the `+cuda12` bundle from the **build host's** `nvidia-smi`. A GPU-less CI runner yields a CPU-only image that starts, serves and answers — silently. Fetch the pinned `+cuda12` tarball by URL with a verified SHA-512 |
+| **A-4** | Auth cannot be minted headlessly | Tokens are GUI-only, so **NetworkPolicy is the only enforcement point** (§5 L-1) — not defence in depth |
+| **A-5** | ToS + private-registry constraint | The image embeds a proprietary binary; **internal registry only** |
+| **A-6** | Readiness is weaker | `/lmstudio-greeting` proves *server up*, not *model loaded*, and LM Studio returns **200 for unknown paths**, so a path probe always passes |
+
+### What carries over from the llama.cpp work regardless
+
+- **The catalogue and co-tenancy plan** (TASK-831) are engine-independent.
+- **The MinIO layout** — `s3://hope-models/<slug>/<version>/`, `SHA256SUMS`-verified (TASK-832).
+- ⚠️ **The provider trap still applies:** `provider: 'llama-cpp'` in the catalogue selects `LlamaCppProvider`'s raw `/completion` path — no chat template, no image or audio parts. **Multimodal models stay on `'lm-studio'`.**
+- **vLLM stays at `replicas: 0`.** It cannot serve this catalogue — GGUF is deprecated in-tree (RFC #39583) and its Gemma 4 recipe needs 24 GB+ against 16 GiB cards. It remains the tier for future AWQ/FP8 models.
+
 ## 1. Requirement Analysis
 
 Deploy **LM Studio as a containerized service** serving the OpenAI-compatible API to `apps/text`, with GGUF model weights **fetched from and published to MinIO/S3**. Priority #2 backend, behind vLLM.
