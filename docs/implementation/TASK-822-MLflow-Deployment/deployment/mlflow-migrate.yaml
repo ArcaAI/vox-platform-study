@@ -1,0 +1,141 @@
+# ── MLflow schema migration (TASK-822) ──────────────────────────────────────
+#
+# DESTINATION: hope-v2-deployment, `deployment/k8s/base/mlflow-migrate.yaml`.
+#
+# Its own file, mirroring `db-migrate.yaml`, because it is a hook with its own
+# lifecycle rather than part of the workload.
+#
+# WHY IT EXISTS: `mlflow server` HARD-FAILS on a stale schema, and the failure
+# reads like a bad connection string rather than a missing migration (ticket
+# pitfall #3). This Job is the cluster half of the same guarantee the dev
+# compose gives via `depends_on: {mlflow-migrate: service_completed_successfully}`
+# — that is what keeps dev and prod honest.
+#
+# SAME IMAGE AND SAME DIGEST as the Deployment. The overlay `images:` stanza
+# rewrites `ghcr.io/mlflow/mlflow` once, so both objects move together; a Job
+# pinned to a different build than the server it migrates for is how a schema
+# ends up one revision away from the code reading it.
+#
+# ⚠️ EXACTLY ONE RUNNER. `parallelism: 1` + `backoffLimit` is not decoration:
+# Alembic migrations are not concurrency-safe, and two runners against one
+# database can leave a half-applied schema. MLflow's own upgrade warning is that
+# migrations "can be slow and are not guaranteed to be transactional" (S-10) —
+# which is also why the operator runbook requires a Postgres logical dump BEFORE
+# every upgrade. Downgrade is undocumented; assume forward-only.
+#
+# ── PREREQUISITE THIS JOB DELIBERATELY DOES NOT DO ──────────────────────────
+# It does NOT create the `mlflow` database. Postgres is EXTERNAL to the cluster
+# (`postgres.taphuynh.dev`), creating a database there needs CREATEDB, and
+# handing that to a Job that runs on every sync is a privilege this workload
+# should not hold. So it is a one-time operator action, documented in
+# the ticket README §9 (Handover):
+#
+#     CREATE DATABASE mlflow;
+#
+# The preflight below turns "database does not exist" into a one-line message
+# instead of a psycopg2 stack trace that reads like a credentials problem.
+# (Dev compose DOES create it automatically — there the database is a local
+# container, not shared infrastructure.)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hope-mlflow-migrate
+  labels:
+    app: hope-mlflow-migrate
+    app.kubernetes.io/part-of: project-hope
+  annotations:
+    # PreSync at wave -1, exactly like hope-db-migrate: the schema must be
+    # current before the server that reads it is rolled.
+    #
+    # ⚠️ The dev overlay REMOVES these three annotations and adds
+    # `sync-options: Replace=true` — see the ticket README §9 (Handover). That is not
+    # drift: a failing hook does not merely fail itself, it WEDGES THE WHOLE
+    # APPLICATION (hope-vault-init did exactly that on 2026-08-07/09 and blocked
+    # every Git change from reaching the cluster for days, including the fix for
+    # the image it was failing on). And as a plain resource it needs
+    # Replace=true, because `Job.spec.template` is immutable and Argo's PATCH is
+    # rejected on every sync after the first run. Change those ops together or
+    # not at all.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  backoffLimit: 3
+  parallelism: 1
+  completions: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: hope-mlflow-migrate
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: hope-registry-creds
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      automountServiceAccountToken: false
+      containers:
+        - name: migrate
+          image: ghcr.io/mlflow/mlflow:v3.15.2-full
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            - name: HOME
+              value: "/tmp"
+            - name: MLFLOW_BACKEND_STORE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MLFLOW_BACKEND_STORE_URI
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              python3 - <<'PY'
+              import sys, psycopg2
+              from urllib.parse import urlparse
+              import os
+              u = urlparse(os.environ["MLFLOW_BACKEND_STORE_URI"])
+              db = (u.path or "/").lstrip("/")
+              if db in ("", "postgres"):
+                  sys.exit(
+                      f"REFUSING TO MIGRATE: backend store points at '{db or '<none>'}'.\n"
+                      "MLflow must own a SEPARATE database (expected 'mlflow'); sharing the\n"
+                      "Prisma-managed one makes Alembic and Prisma drift-detection fight."
+                  )
+              try:
+                  psycopg2.connect(
+                      host=u.hostname, port=u.port or 5432, user=u.username,
+                      password=u.password, dbname=db, connect_timeout=10,
+                  ).close()
+              except psycopg2.OperationalError as exc:
+                  if "does not exist" in str(exc):
+                      sys.exit(
+                          f"PREREQUISITE MISSING: database '{db}' does not exist on {u.hostname}.\n"
+                          "Postgres is external to this cluster and this Job deliberately does not\n"
+                          f"hold CREATEDB. Create it once, by hand:  CREATE DATABASE {db};"
+                      )
+                  raise
+              print(f"preflight OK: '{db}' reachable on {u.hostname}")
+              PY
+              mlflow db upgrade "$MLFLOW_BACKEND_STORE_URI"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        - name: tmp
+          emptyDir: {}

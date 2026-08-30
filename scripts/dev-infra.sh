@@ -22,6 +22,7 @@
 # Flags:
 #   -o / --observability   add prometheus profile
 #   -e / --inference       add inference profile
+#   -m / --mlflow          add mlflow profile (model registry, TASK-822)
 #   --rag                  no-op (rag is default; kept for compat)
 #   --print                print the compose command only
 #
@@ -129,6 +130,7 @@ shift || true
 
 WANT_OBS=0
 WANT_INF=0
+WANT_MLFLOW=0
 PRINT=0
 for arg in "$@"; do
     # pnpm may forward a literal `--` separator (pnpm infra:dev:up -- -o)
@@ -137,9 +139,10 @@ for arg in "$@"; do
         --rag) ;; # no-op: rag is default
         -o|--observability) WANT_OBS=1 ;;
         -e|--inference) WANT_INF=1 ;;
+        -m|--mlflow) WANT_MLFLOW=1 ;;
         --print) PRINT=1 ;;
         *)
-            echo "Unknown flag: $arg (known: -o/--observability, -e/--inference, --rag, --print)" >&2
+            echo "Unknown flag: $arg (known: -o/--observability, -e/--inference, -m/--mlflow, --rag, --print)" >&2
             exit 2
             ;;
     esac
@@ -153,6 +156,9 @@ fi
 if [ "$WANT_INF" = "1" ]; then
     UP_PROFILES+=(--profile inference)
 fi
+if [ "$WANT_MLFLOW" = "1" ]; then
+    UP_PROFILES+=(--profile mlflow)
+fi
 
 # Include both prometheus and observability aliases so neither path leaves
 # Grafana/Prometheus behind. inference covers vllm/llama-cpp/tei-embed.
@@ -163,6 +169,10 @@ ALL_PROFILES=(
     --profile prometheus
     --profile observability
     --profile inference
+    # TASK-822. Opt-in on `up` (-m), but ALWAYS in the down/status/logs set —
+    # omit it here and `infra:dev:down` silently leaves hope-mlflow and its
+    # migrate one-shot running, which is exactly the orphan class this array exists to prevent.
+    --profile mlflow
 )
 
 warn_inference_preflight() {

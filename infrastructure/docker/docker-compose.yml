@@ -141,7 +141,26 @@ services:
               sleep 5;
             done;
             echo 'MinIO is ready, creating buckets...';
+            # TASK-822: MLflow's PROXIED artifact store. Only the MLflow server
+            # ever holds credentials for it — clients reach artifacts over HTTP
+            # through the tracking server and never see this bucket.
+            #
+            # ⚠️ Deliberately NOT versioned. `mlflow gc` is the only hard-delete
+            # path MLflow has, and therefore the only right-to-erasure mechanism.
+            # With versioning on, gc writes a DELETE MARKER and the artifact bytes
+            # survive as a non-current version — invisible to `mc ls`, fully
+            # recoverable, and erasure silently becomes retention. Verified
+            # 2026-08-30. Versioning + object lock belong on the SEPARATE
+            # `hope-models` weights bucket, where immutability is the goal.
             /usr/bin/mc mb minio/mlflow --ignore-existing;
+            # TASK-822 R-2: served model weights live HERE, in a plain bucket,
+            # NOT in MLflow's artifact store. MLflow records the s3:// URI and a
+            # checksum as model-version tags and nothing more. This is load-bearing:
+            # in proxied mode MLflow can only ever hand a client an HTTP URL, and
+            # vLLM's runai_streamer needs a real s3:// URI. Move weights into
+            # MLflow artifacts and vLLM breaks with no error at the MLflow layer.
+            /usr/bin/mc mb minio/hope-models --ignore-existing;
+            /usr/bin/mc version enable minio/hope-models;
             /usr/bin/mc mb minio/recordings --ignore-existing;
             /usr/bin/mc mb minio/generated-audio --ignore-existing;
             /usr/bin/mc mb minio/documents --ignore-existing;

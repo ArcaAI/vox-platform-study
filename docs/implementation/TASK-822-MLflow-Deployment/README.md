@@ -2,12 +2,19 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review — Phase 1 built and verified; Phase 2 manifests authored, awaiting orchestrator commit to `hope-v2-deployment`; Phases 3–4 not started |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` |
 | **Depends on** | nothing (greenfield) |
 | **Feeds** | TASK-823 (vLLM model promotion) |
 | **Related** | TASK-818 (router), TASK-824 (LM Studio) |
+
+> ### ⚠️ Four statements in §2–§5 were CORRECTED against a running MLflow 3.15.2 (2026-08-30)
+> Read **§10 Findings** before implementing from §2–§5. In short: the image must be the **`-full`**
+> variant (F-1); `--allowed-hosts` is **mandatory** and must include the pod CIDR or Prometheus
+> silently 403s (F-2); the R-1 invariant holds by a **different mechanism** than the box in §2 says
+> (F-3); and the MLflow artifact bucket must **not** be versioned or `mlflow gc` stops erasing
+> (F-4). Every correction is backed by pasted output in §10.
 
 ## 1. Requirement Analysis
 
@@ -77,7 +84,9 @@ For a clinical transcription platform this is unambiguous: an autologged GenAI c
 
 ### Phase 1 — Local dev first (mirror prod exactly)
 Compose profile `mlflow`, differing from prod **only in endpoints**:
-1. Service `mlflow`: `ghcr.io/mlflow/mlflow:v3.15.2`, port 5000, healthcheck `GET /health`.
+1. Service `mlflow`: `ghcr.io/mlflow/mlflow:v3.15.2-full` (**corrected — F-1**; the plain
+   image has no psycopg2, no boto3 and no prometheus_flask_exporter, so it can do none of the
+   three things this deployment needs), port 5000, healthcheck `GET /health`.
 2. **Separate `mlflow` database** in the existing Postgres 18 container. **Never put MLflow tables in the Prisma-managed database** — Alembic's ledger and Prisma's drift detection must not share a schema.
 3. Extend the **existing** MinIO init job with `mc mb --ignore-existing local/mlflow` + a scoped policy. Do not add a second init container.
 4. Service `mlflow-migrate`: one-shot, `depends_on: postgres(service_healthy)`, runs `mlflow db upgrade "$BACKEND_STORE_URI"`, `restart: "no"`. `mlflow` then `depends_on: mlflow-migrate(service_completed_successfully)`. **This is the compose analogue of the PreSync Job and is what keeps dev and prod honest.**
@@ -268,7 +277,295 @@ acceptance that a HF outage is a cold-start outage. Say so in the manifest comme
 9. Putting MLflow tables in the Prisma database → Alembic and Prisma drift-detection fight.
 10. Client newer than server — unsupported direction.
 
-## 8. Change History
+---
+
+## 9. Implementation Summary (2026-08-30)
+
+### 9.1 What shipped
+
+| File | Change |
+|---|---|
+| `infrastructure/docker/docker-compose.dev.yml` | **NEW** `mlflow` + `mlflow-migrate` services behind `profiles: ["mlflow"]` |
+| `infrastructure/docker/docker-compose.yml` | Two lines on the **existing** `minio-setup` entrypoint: an explanatory guard on the `mlflow` bucket, plus the `hope-models` weights bucket (versioned) |
+| `scripts/dev-infra.sh` | `-m/--mlflow` flag; `mlflow` added to `UP_PROFILES` (opt-in) **and** `ALL_PROFILES` (so `infra:dev:down` never orphans it) |
+| `docs/implementation/TASK-822-MLflow-Deployment/deployment/*.yaml` | Phase-2 manifests, authored here for the orchestrator to commit to `hope-v2-deployment` (§9.3) |
+| `docs/implementation/TASK-822-MLflow-Deployment/verify/*` | The throwaway harness that produced every piece of evidence below, re-runnable |
+
+Nothing in `packages/**`, `apps/**`, `turbo.json` or the root `package.json` was touched, and
+no shared Docker/DB state was mutated — all verification ran in an isolated compose project
+(`hope-mlflow-verify`, own network, ports 55432/59000/59001/55000), torn down afterwards.
+
+### 9.2 Evidence
+
+Re-run everything with `verify/run-verification.sh`.
+
+**`mlflow db upgrade` on PostgreSQL 18** — ticket §6 item 1:
+
+```
+PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg22.04+1) on aarch64-unknown-linux-gnu, ... 64-bit
+--- mlflow-migrate container log ---
+2026/08/30 01:48:42 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2026/08/30 01:48:42 INFO mlflow.store.db.utils: Updating database tables
+--- migrate exit code ---
+0
+--- alembic ledger in the mlflow database ---
+ public | alembic_version            | table | postgres
+ public | experiments                | table | postgres
+ public | runs (…27 tables total)    | table | postgres
+6f8d9c3b2a1e
+```
+
+MLflow's tables are in their own database, not the Prisma one (`0` = no `experiments` /
+`runs` / `registered_models` table in the default database).
+
+**Proxied artifacts from a credential-free client** — §6 item 2 (12/12 checks):
+
+```
+  [PASS] no MinIO/S3 credentials in the client env — clean
+  client env MLFLOW_* keys: ['MLFLOW_TRACKING_URI']
+  [PASS] upload succeeded via the tracking server (proxied) — 2176 bytes
+  [PASS] artifact_uri uses the mlflow-artifacts scheme, not s3://
+  [PASS] downloaded bytes are identical — 2176 bytes
+  [PASS] resolve_uri rewrites the artifact URI onto the tracking server over HTTP
+         -> http://mlflow:5000/api/2.0/mlflow-artifacts/artifacts/1/<run>/artifacts
+  [PASS] no REST payload exposes the underlying s3:// location
+  [PASS] /metrics returns 200          (under readOnlyRootFilesystem + uid 1000)
+  [PASS] /metrics emits Prometheus exposition format — 6122 bytes
+RESULT: 12/12 checks passed
+```
+
+Server-side, the bytes really landed in MinIO:
+`2.1KiB STANDARD artifacts/1/<run>/artifacts/task822-artifact.txt`.
+
+**`mlflow gc` really erases** — §6 item 7, and S-7's whole purpose:
+
+```
+--- 6b. gc WITH MLFLOW_TRACKING_URI (the shipped CronJob configuration) ---
+Run with ID 8a87b9c14ccf407390d6fe8407061ace has been permanently deleted.
+objects in bucket AFTER correct gc: 1     (was 2)
+--- run row gone from the backend store? --- 0   (0 = hard-deleted)
+--- 6c. erasure is REAL, not a delete marker ---
+local/mlflow is un-versioned
+>> PASS: no version of <run> remains. Erasure is real.
+```
+
+**Compose ↔ manifest parity** — §6 item 9 (`verify/parity_check.py`):
+
+```
+IMAGE PARITY
+  ✓ compose and dev overlay pin the SAME digest: sha256:2c9c50ca…30c3647
+  ✓ all 3 cluster containers use one image: ghcr.io/mlflow/mlflow:v3.15.2-full
+SERVER FLAG PARITY
+  ✓ identical flag set (8): --allowed-hosts --artifacts-destination --backend-store-uri
+    --expose-prometheus --host --port --serve-artifacts --workers
+  ✓ compose/k8s: no --default-artifact-root (proxied mode intact)
+ARTIFACT-STORE ENV PARITY   ✓ ×6
+S-1 (PHI): no tracing/OTLP egress enabled anywhere   ✓ ×2
+```
+
+**Manifests against the deployment repo's own CI gates** (same pinned tool versions):
+
+```
+kustomize build .            EXIT=0   (426 lines)
+kubeconform -strict …        Summary: 8 resources found — Valid: 8, Invalid: 0, Errors: 0
+image-hygiene                PASS: no mutable tags
+patch-hygiene                PASS  (no index-based JSON6902)
+pull-secrets                 PASS
+config-refs                  OK configMapKeyRef hope-mlflow-config/MLFLOW_S3_ENDPOINT_URL
+                             required hand-applied hope-secrets keys:
+                               MLFLOW_BACKEND_STORE_URI, MLFLOW_MINIO_ACCESS_KEY, MLFLOW_MINIO_SECRET_KEY
+gitleaks detect --no-git     no leaks found  (ticket dir, infrastructure/docker, scripts)
+```
+
+**The migrate Job's preflight**, all three branches:
+
+```
+A. happy path      -> preflight OK: 'mlflow' reachable on postgres            exit=0
+B. missing DB      -> PREREQUISITE MISSING: database 'nope_missing' … CREATE DATABASE  exit=1
+C. Prisma DB       -> REFUSING TO MIGRATE: backend store points at 'postgres' exit=1
+```
+
+**The R-1/R-2 guard** (`verify/check_weights_uri.py`) — 7/7 unit cases, and against a live
+registry seeded with one compliant and one violating version:
+
+```
+✗ 1 problem(s) across 2 model version(s):
+    clinical-summariser-gguf v1: weights_uri does not start with s3://
+      (got 'mlflow-artifacts:/1/…/artifacts/model').
+      -> weights were logged INTO MLflow's artifact store. vLLM cannot read this …
+GUARD EXIT=1
+```
+
+### 9.3 Handover — orchestrator actions
+
+**A. Copy into `hope-v2-deployment` (branch `main`)** — from
+`docs/implementation/TASK-822-MLflow-Deployment/deployment/`:
+
+| From | To |
+|---|---|
+| `mlflow.yaml` | `deployment/k8s/base/mlflow.yaml` |
+| `mlflow-migrate.yaml` | `deployment/k8s/base/mlflow-migrate.yaml` |
+| `mlflow-gc.yaml` | `deployment/k8s/base/mlflow-gc.yaml` |
+| `mlflow.env` | `deployment/k8s/base/config/mlflow.env` |
+
+**B. `deployment/k8s/base/kustomization.yaml`** — add to `resources:` (after `db-migrate.yaml`)
+and to `configMapGenerator:`:
+
+```yaml
+  # MLflow model registry (TASK-822). Registry of record for models we
+  # fine-tune/quantize/promote. Metadata + lineage only — served WEIGHTS live in the
+  # plain `hope-models` MinIO bucket, referenced by tag, because MLflow's proxied
+  # artifact mode can never hand vLLM the s3:// URI runai_streamer needs.
+  - mlflow.yaml
+  - mlflow-migrate.yaml
+  # The repo's FIRST CronJob. `mlflow gc` is MLflow's only hard-delete path and
+  # therefore the only right-to-erasure mechanism for anything logged here.
+  - mlflow-gc.yaml
+```
+
+```yaml
+  - name: hope-mlflow-config
+    envs: [config/mlflow.env]
+```
+
+**C. `deployment/k8s/overlays/dev/kustomization.yaml`** — add to `images:` (alphabetical, after
+`hope-v2/harness-worker`; note this one is a PUBLIC image, so `newName` is not rewritten):
+
+```yaml
+- digest: sha256:2c9c50ca72e314cb1b8b301ceaa43882629ad91873d7271f3be92796930c3647
+  name: ghcr.io/mlflow/mlflow
+  newTag: v3.15.2-full
+```
+
+…and add this patch, mirroring the existing `hope-db-migrate` one **and for the same reason**
+(a failing hook wedges the whole Application; a plain Job then needs `Replace=true` because
+`Job.spec.template` is immutable):
+
+```yaml
+- patch: |
+    - op: remove
+      path: /metadata/annotations/argocd.argoproj.io~1hook
+    - op: remove
+      path: /metadata/annotations/argocd.argoproj.io~1hook-delete-policy
+    - op: remove
+      path: /metadata/annotations/argocd.argoproj.io~1sync-wave
+    - op: add
+      path: /metadata/annotations/argocd.argoproj.io~1sync-options
+      value: Replace=true
+  target:
+    kind: Job
+    name: hope-mlflow-migrate
+```
+
+**D. One-time operator prerequisites** (none of these can be, or should be, automated):
+
+1. `CREATE DATABASE mlflow;` on the external Postgres. The migrate Job deliberately does not
+   hold CREATEDB; its preflight prints this exact command if the database is absent.
+2. A MinIO **service account scoped to the `mlflow` bucket only** — *not* the platform root key
+   already in `hope-secrets` as `MINIO_ACCESS_KEY`. In proxied mode this server holds the
+   credential on behalf of every client, so a root key here would expose `recordings` and
+   `documents` to anyone who can reach the artifact API.
+3. `mc mb hope-models && mc version enable hope-models && mc ilm/object-lock` on the cluster
+   MinIO — the weights bucket (§5A.4). **Do not enable versioning on `mlflow`** (F-4).
+4. Add to the hand-applied `hope-secrets` (Argo may never manage Secrets — the AppProject
+   blacklists them) and to `deployment/secrets.dev.yaml.example` as placeholders:
+   `MLFLOW_BACKEND_STORE_URI`, `MLFLOW_MINIO_ACCESS_KEY`, `MLFLOW_MINIO_SECRET_KEY`.
+
+**E. Optional, low priority** — `scripts/check-envfrom-coverage.py`'s `WORKLOAD_TO_SERVICE` map
+silently SKIPS unlisted workloads. `hope-mlflow` is legitimately absent (it is a third-party
+image with no entry in the HOPE env-consumer inventory), but the file's own comment warns that
+silent skipping is the trap the map exists to prevent — worth a one-line comment saying so.
+
+### 9.4 Deliberately NOT shipped
+
+| Item | Why |
+|---|---|
+| **Ingress** (S-3) | MLflow has no native auth, the cluster has no cert-manager/TLS, and Grafana is the only Ingress in the repo. An MLflow Ingress would be unauthenticated plain HTTP in front of a registry that can hold evaluation datasets built from real consultations (S-9). Access is `kubectl port-forward svc/hope-mlflow 5000:5000`. A NodePort (the `hope-api` pattern) would be strictly worse — `hope-api` authenticates. **oauth2-proxy forward-auth + cert-manager are a NEW DEPENDENCY and a separate owner decision, not a config detail.** |
+| **NetworkPolicy** (S-8) | Would be the repo's first, and two prerequisites are unverified: whether k3s here runs the network-policy controller at all (an unenforced policy is false assurance), and the egress CIDRs for the EXTERNAL Postgres and MinIO. Shipping an unverifiable control is worse than naming the gap. Draft is in §9.5. |
+| **MLflow AI Gateway** (R-3) | Ruled out — it overlaps `apps/text` and would split tenant policy, BYOK and audit across two planes. |
+| **`--app-name basic-auth`** (S-4) | Not enabled: it creates a default admin at first boot and needs `MLFLOW_FLASK_SERVER_SECRET_KEY` + a rotation step. With no Ingress there is no unauthenticated exposure to defend, and the ticket is explicit that basic-auth is "a second layer, never the only one". Enable it together with the Ingress decision, not before. |
+| **Webhooks / Phase 3–4** | Out of this lane's scope. Note for whoever picks it up: `MLFLOW_WEBHOOK_ALLOW_PRIVATE_IPS` is off by default, so an in-cluster CI target fails silently (pitfall #7). |
+
+### 9.5 NetworkPolicy draft (do not apply until the two blockers are cleared)
+
+```yaml
+# BLOCKERS: (1) confirm k3s here runs its network-policy controller — if not, this
+# is decorative; (2) fill the CIDRs for the EXTERNAL postgres.taphuynh.dev and
+# minio.taphuynh.dev. Both are unknown from the repo alone.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: hope-mlflow, labels: {app: hope-mlflow}}
+spec:
+  podSelector: {matchLabels: {app: hope-mlflow}}
+  policyTypes: [Egress]
+  egress:
+    - to: [{namespaceSelector: {}, podSelector: {matchLabels: {"k8s-app": kube-dns}}}]
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to: [{ipBlock: {cidr: "<POSTGRES_IP>/32"}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: "<MINIO_IP>/32"}}]
+      ports: [{protocol: TCP, port: 9000}]
+```
+
+---
+
+## 10. Findings — corrections to §2–§5, each with evidence (2026-08-30)
+
+| # | Finding |
+|---|---|
+| **F-1** | **The image in §4 was unusable.** `ghcr.io/mlflow/mlflow:v3.15.2` ships mlflow + SQLAlchemy + alembic and nothing else. Verified by importing in both images: plain → `psycopg2 MISSING, boto3 MISSING, prometheus_flask_exporter MISSING`; `-full` → all three present. So the plain image cannot reach Postgres, cannot reach MinIO and cannot serve `--expose-prometheus` — it cannot do any of the three things this deployment exists to do. **Corrected to `-full` throughout.** This also softens R-6's "building your own is no longer the norm": an official image exists, but only one of its two variants is viable. |
+| **F-2** | **`--allowed-hosts` is mandatory, and getting it wrong breaks metrics silently.** Not mentioned in §4's flag list as load-bearing. Two facts, both verified: (a) omitting it 403s every client that connects by DNS name — the first harness run died on `403 'Invalid Host header - possible DNS rebinding attack detected'`; (b) an explicit list **replaces** the private-IP defaults, and `/metrics` is host-validated while `/health` and `/version` are exempt (`HEALTH_ENDPOINTS` in `mlflow/server/security_utils.py`). Endpoint matrix: `Host: 10.42.0.7:5000` → `/health` **200**, `/metrics` **403**. So a pod-IP Prometheus scrape 403s while the pod stays Ready and looks healthy. `10.*` (the k3s pod CIDR) is in the shipped allow-list for exactly this. Matching is `fnmatch` and **port-exact** (`localhost:5000` ≠ `localhost:55000`). |
+| **F-3** | **The R-1 invariant box names the wrong mechanism.** `_validate_uri_scheme`'s `allowable_schemes = {"http","https"}` gates the **TRACKING URI**, not the artifact URI — its own message reads *"the tracking URI must be a valid http or https URI"*. Constructing `MlflowArtifactsRepository("s3://…")` does **not** raise. The conclusion is unchanged and still correct, but by a different route: `resolve_uri` takes the tracking URI's scheme+netloc and forces the path onto `/api/2.0/mlflow-artifacts/artifacts`, so a client can only ever address the tracking server over HTTP. Verified, plus: no REST payload (run, experiment, artifact list) contains an `s3://` string. |
+| **F-4** | **Versioning the MLflow artifact bucket defeats `mlflow gc` — a PHI control failure.** Not anticipated anywhere in §3/§5A. With versioning on, gc's delete became a **delete marker** and the artifact bytes survived as a non-current version (`v2 DEL` over `v1 PUT 1.8KiB`) — invisible to `mc ls`, fully recoverable. Since gc is MLflow's only hard-delete path (S-7), versioning silently converts erasure into retention. **Ruling: `mlflow` bucket unversioned; versioning + object lock belong on `hope-models` only**, where immutability is the goal (§5A.4). The two requirements are in direct tension and must not be applied uniformly. |
+| **F-5** | **`mlflow gc` fails LOUDER than documented, but is still fragile.** Docs say a missing `MLFLOW_TRACKING_URI` means artifact deletion is "bypassed" while gc "continues" (a silent half-delete). On 3.15.2 it raises `MlflowException: Tracking URL is not set` and exits non-zero, deleting nothing. Better — but it means the CronJob fails every run if that variable is lost, so `failedJobsHistoryLimit` must stay **> 0** or the failure of the erasure mechanism is itself invisible. |
+| **F-6** | **`pg_isready` is not a readiness signal for `timescale/timescaledb-ha`.** It answers over the local socket while Patroni is still starting, so compose's `service_healthy` fires before the server accepts TCP. A cold-volume run died with `connection to server at "postgres" … Connection refused`. The shipped `mlflow-migrate` one-shot retries on TCP for this reason. Likely to bite any future service that gates on the platform Postgres's healthcheck. |
+| **F-7** | **`ghcr.io/mlflow/mlflow` runs as root by default** (`User=` empty, `id` → `uid=0`). The chart's `runAsNonRoot: true` / `runAsUser: 1000` (R-6) is therefore load-bearing, not decorative. Verified the server starts, serves artifacts and serves `/metrics` as uid 1000 with `readOnlyRootFilesystem` + a writable `/tmp`. |
+| **F-8** | **The dev overlay de-hooks `hope-db-migrate`** (removes the three Argo hook annotations, adds `sync-options: Replace=true`), because a failing hook wedges the entire Application — `hope-vault-init` did exactly that on 2026-08-07/09 and blocked every Git change for days. §4's "PreSync migration Job" instruction is right for `base/` but incomplete: the dev overlay needs the matching patch, supplied in §9.3C. |
+
+## 11. `AiModelSource.MLFLOW` resolver — design notes (NOT implemented here)
+
+Design only. The resolver lives in `packages/**`, which is TASK-818 Lane F's exclusive surface
+(EXECUTION-PLAN §11); this lane must not write it.
+
+**The resolver is source-aware, and only `MLFLOW` does any work** (§5B.1): `HUGGINGFACE` hands
+the repo id straight to the backend, `S3`/`LOCAL` pass through. So this is a new branch, not a
+new abstraction.
+
+Resolution chain for `MLFLOW`:
+
+```
+AiModel.source = MLFLOW, ref = "clinical-summariser-<format>@champion"
+  → MlflowClient.get_model_version_by_alias(name, alias)      # R-5: alias, never Stage
+  → read tags: weights_uri, weights_sha256, format, tokenizer_uri
+  → ASSERT weights_uri.startswith("s3://")                    # the R-1/R-2 invariant
+  → return { uri: weights_uri, sha256: weights_sha256, tokenizer: tokenizer_uri }
+```
+
+Five things the implementer must not get wrong:
+
+1. **Never return a `models:/` or `mlflow-artifacts:/` URI.** vLLM cannot parse either, and in
+   proxied mode the underlying `s3://` is unreachable. `verify/check_weights_uri.py` encodes this
+   assertion and already runs green against a live registry — reuse it rather than re-deriving it.
+2. **Resolve at PROMOTION time, not at pod start** (§3). The alias flip is the *trigger*; the
+   resolved immutable URI is committed into the deployment repo and Argo syncs it. A vLLM pod's
+   startup path must never depend on the MLflow artifact proxy. This also keeps Git the single
+   source of truth, matching the existing digest-pinned promotion posture.
+3. **Tags, not params** (§5A.2) — params are immutable run inputs and are not settable on a model
+   version at all. Use `set_model_version_tag`.
+4. **The tokenizer trap** (§5A.3): the `transformers` flavor writes weights to `model/` and the
+   tokenizer to `components/tokenizer/`, so `model/` is not servable as-is. The sync job must
+   assert `tokenizer_config.json` exists in the served directory before emitting a GitOps commit.
+5. **One registered model per (logical model × format)** (§5A.1) — aliases attach to a registered
+   model, not to an artifact inside a version, so a shared model makes `@champion` ambiguous and
+   makes independent rollback impossible.
+
+Config-tier placement: an MLflow registry URL is **topology**, so `MLFLOW_TRACKING_URI` is
+`env`-tier (bootstrap floor). Which model a tenant gets is `AiTaskDefault` + `AiModel`, resolved
+tenant → SYSTEM, `failMode: closed` — MLflow is where the artifact is described, never where the
+selection policy lives.
+
+## 12. Change History
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created from research. Rulings R-1..R-6 and PHI controls S-1..S-10 recorded. |
+| 2026-08-30 | Phase 1 built and verified end to end against a running MLflow 3.15.2 + PostgreSQL 18.4; Phase 2 manifests authored for handover; Phase 4 resolver design notes recorded (§11). Eight findings (§10) correct §2–§5, four of them materially: the image must be `-full`, `--allowed-hosts` is mandatory and gates `/metrics`, the R-1 invariant holds by a different mechanism than stated, and versioning the artifact bucket defeats `mlflow gc`. Ingress, NetworkPolicy and basic-auth deliberately not shipped, with reasons (§9.4). |
