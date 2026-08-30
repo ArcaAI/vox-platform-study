@@ -368,5 +368,15 @@ enum ResourceType {
   // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
   DocumentTemplate
 
+  // Provider routing policy (TASK-818 §3A.8). A routing-policy change can
+  // redirect PHI to a different vendor, which puts it squarely inside the
+  // HIPAA §164.312(b) audit-controls standard — a *required*, not addressable,
+  // standard. Every mutation (author / activate / archive / kill-switch)
+  // broadcasts against this ResourceType so who/what/when/before-after is
+  // recorded immutably. Each AUTHORED revision is its own row of the same
+  // resource (the `policyVersion` natural key), not a separate ResourceType —
+  // the `PromptVersion` / `DocumentTemplateVersion` precedents above.
+  AiRoutingPolicy
+
   @@schema("core")
 }

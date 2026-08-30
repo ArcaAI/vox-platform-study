@@ -140,4 +140,10 @@ export enum ResourceType {
   // publish; the ConsultationContextSchemaVersion / PromptVersion precedent).
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   DocumentTemplate = 'DocumentTemplate',
+  // Provider routing policy (TASK-818) — a policy change can redirect PHI to a
+  // different vendor, so every mutation is audited under HIPAA §164.312(b).
+  // Each AUTHORED revision is another row of the same resource (the
+  // `policyVersion` natural key), not a ResourceType of its own.
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  AiRoutingPolicy = 'AiRoutingPolicy',
 }

@@ -1,0 +1,122 @@
+// ============================================================================
+// AI Routing Policies (config-plane core — TASK-818 §3A.3)
+//
+// WHICH candidates serve a task, in WHAT order, and what may happen when the
+// first one fails. One row per (tenant, taskKey, policyVersion); the reserved
+// SYSTEM tenant `00000000-…` row is the platform default a tenant inherits when
+// it has expressed no opinion of its own.
+//
+// Named `AiRoutingPolicy` for the `Ai*` config-plane family (`AiTaskDefault`,
+// `AiProviderConnection`, `AiRuntimeProfile`), NOT §3A.3's shorthand
+// `RoutingPolicy`.
+//
+// Where it sits relative to its siblings:
+//   AiProviderConnection  WHERE a provider lives + HOW to authenticate to it.
+//   AiTaskDefault         ONE default model per (tenant, taskKey).
+//   AiRuntimeProfile      hyperparameters/concurrency per (provider, model).
+//   AiRoutingPolicy       the ORDERED N-way candidate chain over those, with a
+//                         selection strategy, typed fallback triggers and
+//                         circuit/health gating. This is the piece that did not
+//                         exist: what shipped was one primary + one `.fallback`
+//                         AiTaskDefault row, retried reactively.
+//
+// Resolution is the house cascade and nothing else: request tenant → SYSTEM,
+// TWO tiers. `50000000-…` ("Global") is a CUSTOMER tenant (the platform-admin
+// playground) and must never appear in the cascade. Because the SYSTEM row is
+// what every tenant without its own row must read, this model is registered in
+// SYSTEM_SHARED_READ_MODELS as well as TENANT_SCOPED_MODELS — reads widen to
+// [caller, SYSTEM], writes are NOT widened.
+//
+// Shape rule: anything the resolver must MATCH ON, ORDER BY or ENFORCE A
+// CEILING WITH is a scalar column; the nested structures of §3A.3 (the
+// candidate list, the match predicate, the fallback contract, the health
+// thresholds) are JSONB, validated at the application layer.
+//
+// No secrets on this model. A candidate names a connection by reference
+// (`connectionRef` inside `candidatesJson`); the credential itself stays in
+// `AiProviderConnection.encryptedApiKey` as Vault-Transit ciphertext, and
+// funding (BYOK vs CLOUD) is DERIVED from which tier supplied that row, never
+// stamped here.
+// ============================================================================
+
+model AiRoutingPolicy {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields (SYSTEM row = platform default)
+  tenantId String
+
+  // core fields
+  taskKey String // same vocabulary as AiTaskDefault.taskKey (e.g. text.live | text.finalize)
+
+  // The AUTHORED revision of this policy — NOT the `_version` OCC counter
+  // above. `_version` is owned by the database, bumped on every write, and
+  // exists so a concurrent PATCH is rejected (`updateWithVersion`).
+  // `policyVersion` is written by a human, moves only when someone authors a
+  // new revision, and is part of the natural key: the supersede-only lifecycle
+  // of §3A.3/§3A.8 keeps every revision addressable for rollback and audit.
+  // Conflating the two would make a rollback target unnameable.
+  policyVersion Int @default(1)
+
+  status               AiRoutingPolicyStatus  @default(DRAFT)
+  strategy             AiRoutingStrategy      @default(PRIORITY)
+  explicitProviderMode AiExplicitProviderMode @default(STRICT) // §3A.4 — STRICT is the platform default
+
+  // Tie-break when two rows match equally specifically (§3A.3, "most-specific
+  // match wins; ties broken by an explicit `priority` int").
+  priority Int @default(0)
+
+  // Operator stop button (§3A.8). Defaults OFF, like every kill-switch.
+  killSwitch Boolean @default(false)
+
+  // §3A.3 nested structures, JSONB. Only `candidatesJson` is required — a
+  // policy with no candidates cannot route anything, so it is not a policy.
+  matchJson      Json? @db.JsonB // { models, metadata, minContextTokens, maxContextTokens }
+  candidatesJson Json  @db.JsonB // [{ rank, weight, connectionRef, model, residency, baaCovered, maxTtftMs }]
+  fallbackJson   Json? @db.JsonB // { maxDepth, triggers[], requireSameResidencyClass, requireBaaCovered, crossFundingAllowed }
+  healthJson     Json? @db.JsonB // { consecutiveFailures, failureRatePct, windowSec, baseEjectionSec, maxEjectionSec, maxEjectionPct, halfOpenProbes, rateLimit }
+
+  // Ceilings promoted OUT of JSON because they are queryable facts a super
+  // admin sorts and reports on ("which policies cap streams below N?") and the
+  // §3A.7 saturation panels read directly. NULL = no ceiling expressed here;
+  // the AiRuntimeProfile cascade still applies.
+  maxConcurrentStreams Int?
+  requestsPerMinute    Int?
+  tokensPerMinute      Int?
+
+  // Cache-affinity / sticky-routing hints (prefix-cache hit rate is a §3A.7
+  // saturation panel). Nested and advisory, so JSONB rather than columns.
+  affinityJson Json? @db.JsonB
+
+  // Supersede-only lineage (§3A.8): the `policyVersion` this revision replaced,
+  // and when it was promoted to ACTIVE. Both NULL on a first DRAFT.
+  supersedesVersion Int?
+  activatedAt       DateTime?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one row per (tenant, task, authored revision).
+  //
+  // On `@@unique`, `name:` is the CLIENT-facing compound key and `map:` is the
+  // DATABASE index name; both are stated so the hand-written migration SQL can
+  // name the index without guessing Prisma's default. On `@@index`, `name:` IS
+  // the database name. Getting that pair backwards is what drifted the ledger
+  // permanently in TASK-648.
+  //
+  // The composite index leads with `tenantId`, so it also serves the plain
+  // tenant-scope reads the extension injects — no separate `[tenantId]` index.
+  @@unique([tenantId, taskKey, policyVersion], name: "AiRoutingPolicy_tenant_task_version_unique", map: "AiRoutingPolicy_tenantId_taskKey_policyVersion_unique")
+  @@index([tenantId, taskKey], name: "AiRoutingPolicy_tenantId_taskKey_idx")
+  @@schema("core")
+}
