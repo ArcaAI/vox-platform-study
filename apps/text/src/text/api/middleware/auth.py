@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from text.core.logging import get_logger
 
@@ -62,12 +62,29 @@ _TENANT_REQUIRED_DETAIL = (
 )
 
 
-class ServiceAuthMiddleware(BaseHTTPMiddleware):
-    """Enforce the service token and the tenant precondition for non-exempt routes."""
+class ServiceAuthMiddleware:
+    """Enforce the service token and the tenant precondition for non-exempt routes.
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    **Pure ASGI, not `BaseHTTPMiddleware`** (TASK-818 Lane C) — see
+    `request_id.py`'s docstring for the measurement. The checks below are
+    unchanged, in the same order, with the same statuses and log events; only the
+    transport differs. A `Request` is still constructed, because it is a lazy
+    view over the scope (headers are parsed on access) and costs nothing like the
+    task group and memory-object-stream pair the shim allocated per request.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
         if request.url.path in EXEMPT_PATHS:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         # Owner decision D-D (2026-08-17): the CANONICAL credential is the single
         # shared `INTERNAL_ACCESS_TOKEN`. The legacy per-service `TEXT_SERVICE_TOKEN`
@@ -82,19 +99,21 @@ class ServiceAuthMiddleware(BaseHTTPMiddleware):
                     path=request.url.path,
                     reason="invalid_or_missing_token",
                 )
-                return JSONResponse(
+                await JSONResponse(
                     status_code=401,
                     content={"detail": "Invalid or missing service token"},
-                )
+                )(scope, receive, send)
+                return
 
         # Deliberately OUTSIDE the `if accepted:` block above: the dev-mode token
         # bypass says nothing about tenant attribution, and the two contracts must
         # not be able to disable each other.
         tenant_refusal = _tenant_precondition_refusal(request)
         if tenant_refusal is not None:
-            return tenant_refusal
+            await tenant_refusal(scope, receive, send)
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
 
 
 def _tenant_precondition_refusal(request: Request) -> JSONResponse | None:
