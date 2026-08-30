@@ -1,0 +1,360 @@
+# ── MLflow tracking server / model registry (TASK-822) ──────────────────────
+#
+# DESTINATION: hope-v2-deployment, `deployment/k8s/base/mlflow.yaml`.
+# Authored in the app repo and handed to the orchestrator — per EXECUTION-PLAN
+# §14.5, only the orchestrator commits to the deployment repo, so 822/823/824
+# land in ticket order and base/kustomization.yaml is edited once.
+#
+# WHAT THIS IS: the platform's registry of record for models we fine-tune,
+# quantize, evaluate or promote — metadata, lineage, eval metrics and the
+# version→alias pointer. It is NOT a blob store for weights (R-2) and NOT a
+# second LLM router (R-3: the MLflow AI Gateway is deliberately not deployed,
+# because it would split tenant policy, BYOK and audit across two planes with
+# apps/text).
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# THE INVARIANT — do not "simplify" this away
+# ═══════════════════════════════════════════════════════════════════════════
+# The server runs in PROXIED artifact mode (`--serve-artifacts` +
+# `--artifacts-destination`), so clients hold NO MinIO credentials and reach
+# artifacts over HTTP through this server. Verified 2026-08-30: a client whose
+# only configuration is a tracking URI logged and downloaded an artifact, and
+# `MlflowArtifactsRepository.resolve_uri` rewrote the URI onto
+# `<tracking-uri>/api/2.0/mlflow-artifacts/artifacts/...`. No REST payload ever
+# exposes the underlying s3:// location.
+#
+# The consequence: **MLflow can never hand anything an `s3://` path.** vLLM's
+# runai_streamer requires one. The two are compatible ONLY because served
+# weights live in the SEPARATE, plain `hope-models` bucket that MLflow merely
+# references by model-version tag (`weights_uri`, `weights_sha256`).
+# Move weights into MLflow's artifact store and vLLM breaks with no error at
+# the MLflow layer. CI asserts every resolved `weights_uri` starts with `s3://`.
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# PHI — read before changing anything here
+# ═══════════════════════════════════════════════════════════════════════════
+# MLflow 3 GenAI tracing captures full prompts AND responses BY DEFAULT, and
+# masking (`mlflow.tracing.configure(span_processors=...)`) is opt-in and applied
+# CLIENT-side. Opt-in masking on default-on capture is the wrong way round for a
+# clinical transcription platform, so the control is `log_traces=False` at every
+# autolog call site (S-1), not redaction. Nothing in this manifest enables
+# tracing; nothing that touches consultation text may autolog against this
+# server. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` +
+# `MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT` are a SECOND egress for the same
+# payloads (S-2) and are deliberately unset.
+#
+# NO INGRESS, deliberately (S-3). MLflow ships no native OAuth2/SAML/LDAP, this
+# cluster has no cert-manager and no TLS, and Grafana is the only Ingress in the
+# repo. Exposing MLflow would inherit plain HTTP with no authentication in front
+# of a registry that can hold evaluation datasets built from real consultations
+# (S-9). Access is `kubectl port-forward svc/hope-mlflow 5000:5000`. Giving it a
+# NodePort like hope-api's would be strictly worse — hope-api authenticates and
+# this does not. Adding an Ingress is a SEPARATE owner decision that must land
+# oauth2-proxy forward-auth AND cert-manager first; it is a new dependency, not
+# a configuration detail.
+#
+# ═══════════════════════════════════════════════════════════════════════════
+# IMAGE — the `-full` variant is mandatory, not a preference
+# ═══════════════════════════════════════════════════════════════════════════
+# `ghcr.io/mlflow/mlflow:v3.15.2` ships mlflow + SQLAlchemy + alembic and
+# nothing else. Verified 2026-08-30 by importing in both images:
+#     plain : psycopg2 MISSING, boto3 MISSING, prometheus_flask_exporter MISSING
+#     -full : all three present
+# So the plain image cannot reach Postgres, cannot reach MinIO, and cannot serve
+# `--expose-prometheus` — i.e. it cannot do any of the three things this
+# deployment exists to do. `-full` also carries GCS/Azure SDKs we do not use;
+# that is the accepted cost of not maintaining our own image (R-6).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-mlflow
+  labels:
+    app: hope-mlflow
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # Exactly 1. `mlflow db upgrade` is not concurrency-safe and MLflow does not
+  # support upgrading a live server; the HPA below is a structural placeholder,
+  # not real autoscaling (see its own note).
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: hope-mlflow
+  template:
+    metadata:
+      labels:
+        app: hope-mlflow
+      annotations:
+        # ── FIRST USER of the opt-in `kubernetes-pods` scrape job ────────────
+        # There is no Prometheus Operator in this cluster and no ServiceMonitor
+        # anywhere; `base/observability-config.yaml` runs a plain Prometheus
+        # Deployment whose `kubernetes-pods` job keeps only pods carrying these
+        # annotations. That job currently has ZERO targets, so this is the first
+        # workload to use it.
+        #
+        # Safe by the migration rule in that file: the double-scrape hazard
+        # applies to a workload that ALSO has a hand-written static_configs job.
+        # MLflow is new and has none, so there is nothing to delete in the same
+        # change.
+        #
+        # ⚠️ Prometheus scrapes <pod-ip>:5000/metrics, so the Host header is the
+        # POD IP — and `/metrics` IS subject to --allowed-hosts validation
+        # (unlike /health and /version, which MLflow exempts). Verified
+        # 2026-08-30: Host `10.42.0.7:5000` against a server whose allow-list
+        # omits it returns 403 on /metrics while /health still returns 200 —
+        # i.e. the pod stays Ready and the scrape silently fails. That is why
+        # `10.*` is in --allowed-hosts below. Do not remove it.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Required by §14.4 even though ghcr.io is public and CI's `pull-secrets`
+      # gate only inspects registry.taphuynh.dev images: kubelet ignores a
+      # dockerconfigjson entry whose registry does not match, so this is inert
+      # here and keeps every pod spec uniform.
+      imagePullSecrets:
+        - name: hope-registry-creds
+      # Security defaults lifted verbatim from the official MLflow Helm chart
+      # (R-6 reads the chart as a reference implementation, not a dependency —
+      # it has no migration hook, which is the thing we actually need).
+      # The image runs as root by default, so runAsUser is load-bearing.
+      # Verified 2026-08-30: the server starts, serves artifacts and serves
+      # /metrics as uid 1000 with a read-only root filesystem.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      # MLflow never talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      # soft spread only; dev/staging are a single shared node, so `required`
+      # would strand the replica Pending.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: hope-mlflow
+      containers:
+        - name: mlflow
+          image: ghcr.io/mlflow/mlflow:v3.15.2-full
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # `readOnlyRootFilesystem: true` + `--expose-prometheus` needs a
+          # WRITABLE multiprocess directory or metrics break (ticket pitfall #8).
+          # HOME is redirected here too — several client-side code paths write
+          # dotfiles into $HOME and would otherwise fail on the read-only root.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          envFrom:
+            - configMapRef:
+                name: hope-platform-config
+            - configMapRef:
+                name: hope-mlflow-config
+            - secretRef:
+                name: hope-secrets
+          env:
+            # Promoted out of envFrom to an explicit NON-OPTIONAL configMapKeyRef
+            # so CI's check-config-refs.py can see it (envFrom keys are invisible
+            # to that gate), and because the silent fallback is genuinely
+            # dangerous: with MLFLOW_S3_ENDPOINT_URL absent, boto3 does not fail
+            # — it resolves the default AWS endpoint and tries to reach
+            # s3.amazonaws.com with our MinIO credentials. Absent, this now fails
+            # loudly as CreateContainerConfigError instead.
+            - name: MLFLOW_S3_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: hope-mlflow-config
+                  key: MLFLOW_S3_ENDPOINT_URL
+            # ── The one credential set this deployment holds (R-1) ───────────
+            # In proxied mode the server holds MinIO credentials ONCE, on behalf
+            # of every client. That is the entire argument for proxied mode:
+            # direct mode would mean issuing MinIO credentials to every client
+            # and never being able to claw them back.
+            #
+            # These MUST be a MinIO service account scoped to the `mlflow`
+            # bucket only — NOT the platform root key already in hope-secrets as
+            # MINIO_ACCESS_KEY. A root key here would let anyone who can reach
+            # this server's artifact API read every bucket, including
+            # `recordings` and `documents`.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MLFLOW_MINIO_ACCESS_KEY
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MLFLOW_MINIO_SECRET_KEY
+            # Carries the Postgres password, so it is a Secret key, never a
+            # ConfigMap one. Points at the SEPARATE `mlflow` database — never
+            # the Prisma-managed one, or Alembic's ledger and Prisma's drift
+            # detection end up fighting over one schema (pitfall #9).
+            - name: MLFLOW_BACKEND_STORE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: hope-secrets
+                  key: MLFLOW_BACKEND_STORE_URI
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+            # S-5: never disable TLS verification to the object store. Left
+            # explicit so a future "just make it work" edit is a visible diff.
+            - name: MLFLOW_S3_IGNORE_TLS
+              value: "false"
+            # 3.15 presigned URLs + proxy multipart are what make proxied mode
+            # viable for large artifacts. UNVERIFIED against MinIO specifically
+            # (MLflow's docs name S3 and GCS): if a large upload misbehaves,
+            # test with MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD=false before
+            # blaming the network.
+            - name: MLFLOW_ENABLE_PROXY_MULTIPART_UPLOAD
+              value: "true"
+            - name: MLFLOW_MULTIPART_UPLOAD_MINIMUM_FILE_SIZE
+              value: "524288000"
+            - name: MLFLOW_MULTIPART_UPLOAD_CHUNK_SIZE
+              value: "104857600"
+            - name: MLFLOW_PRESIGNED_DOWNLOAD_URL_TTL_SECONDS
+              value: "300"
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: "/tmp/metrics"
+            - name: HOME
+              value: "/tmp"
+          # ── Flags: two of these are traps ───────────────────────────────────
+          # 1. `--artifacts-destination`, NEVER `--default-artifact-root`. The
+          #    latter is the DIRECT-access knob: using it when you meant proxied
+          #    silently gives direct mode and requires client credentials nobody
+          #    issued (ticket pitfall #1).
+          # 2. `--allowed-hosts` is MANDATORY and REPLACES the defaults. Verified
+          #    2026-08-30 in mlflow/server/security_utils.py: an explicit list
+          #    replaces `get_default_allowed_hosts()` entirely, matching is
+          #    fnmatch (so `*` works) and PORT-EXACT. Omit the flag and every
+          #    client reaching the Service by DNS name gets
+          #      403 'Invalid Host header - possible DNS rebinding attack detected'
+          #    Include the wrong entries and Prometheus 403s on /metrics while
+          #    /health keeps returning 200, so the pod looks perfectly healthy.
+          #    `10.*` covers the k3s pod CIDR (10.42.0.0/16) for that scrape.
+          command: ["mlflow"]
+          args:
+            - "server"
+            - "--host=0.0.0.0"
+            - "--port=5000"
+            - "--workers=4"
+            - "--backend-store-uri=$(MLFLOW_BACKEND_STORE_URI)"
+            - "--serve-artifacts"
+            - "--artifacts-destination=s3://mlflow/artifacts"
+            - "--expose-prometheus=/tmp/metrics"
+            - "--allowed-hosts=hope-mlflow,hope-mlflow:5000,hope-mlflow.hope-v2-dev.svc.cluster.local,hope-mlflow.hope-v2-dev.svc.cluster.local:5000,10.*,127.0.0.1,127.0.0.1:*,localhost,localhost:*"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          # /health is EXEMPT from --allowed-hosts validation
+          # (HEALTH_ENDPOINTS in mlflow/server/security_utils.py), so probes
+          # cannot be broken by the allow-list — verified 2026-08-30.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hope-mlflow
+  labels:
+    app: hope-mlflow
+spec:
+  selector:
+    app: hope-mlflow
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+  # ClusterIP only. No NodePort, no Ingress — see the S-3 note in the header.
+  type: ClusterIP
+---
+# Structural placeholder, matching the repo's "the primitive exists uniformly"
+# rule (§14.4 point 8) — NOT real autoscaling. min == max == 1 is deliberate and
+# must stay that way: `mlflow db upgrade` is not concurrency-safe, MLflow does
+# not support upgrading a live server, and a second replica buys nothing at
+# day-1 scale (a handful of models, ~200 platform users). Same inert-HPA
+# convention as `stt.yaml`.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-mlflow
+  labels:
+    app: hope-mlflow
+    app.kubernetes.io/part-of: project-hope
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hope-mlflow
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+---
+# minAvailable: 0 is the only value strictly below minReplicas: 1 — a structural
+# placeholder, as in text.yaml. Real disruption protection needs minReplicas >= 2,
+# which the HPA note above rules out for this workload.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hope-mlflow
+  labels:
+    app: hope-mlflow
+    app.kubernetes.io/part-of: project-hope
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: hope-mlflow

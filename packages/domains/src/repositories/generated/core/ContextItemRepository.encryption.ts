@@ -30,8 +30,35 @@ declare module './ContextItemRepository' {
      * and store the ciphertext in `encryptedContent` (+ key version in
      * `contentKeyVersion`). Mutates the entity in place; caller persists.
      *
-     * No-op when `content` is empty/null so it is safe to call unconditionally
-     * on a not-yet-migrated row.
+     * This function owns ONE invariant: after it returns, `encryptedContent`
+     * AGREES with `content`. `encryptStringToCiphertext` collapses three
+     * different meanings into a single `null`, so they are separated here:
+     *
+     *   - a non-empty string  → new body: encrypt and store.
+     *   - `undefined` / `null` → the caller has no opinion about the body: no-op.
+     *     This is how a row reconstituted from columns arrives (the plaintext
+     *     `content` column was DROPPED, so there is nothing to hydrate), and
+     *     treating it as a deletion would blank the body of every item touched
+     *     by a write that never mentioned it.
+     *   - `''`                 → the body is now empty: CLEAR `encryptedContent`
+     *     and `contentKeyVersion` as a pair.
+     *
+     * The old contract — *"no-op when `content` is empty/null, so it is safe to
+     * call unconditionally"* — stated the bug as a feature: a no-op is only safe
+     * on a row that has no ciphertext YET. On a row that already has one, an
+     * empty write returned before assigning, so `encryptedContent` never entered
+     * `entity.changes` and the UPDATE simply omitted the only column that holds
+     * the body — while `currentVersionNumber`/`updatedBy` had already advanced
+     * and an immutable `ContextItemVersion` snapshot recording the empty body had
+     * already been inserted (TASK-825; same defect as TASK-820 on
+     * `DocumentSection`).
+     *
+     * WHETHER an empty write is ALLOWED is a separate question, answered above
+     * this layer: `ContextService.updateContext` refuses one on a
+     * `requiresContent` type (mirroring `addContext`), and
+     * `HarnessInternalService.persistDraft` skips an empty adoption. This
+     * function only guarantees that an empty write which IS allowed is actually
+     * PERSISTED.
      */
     encryptContentIntoEntity(this: ContextItemRepository, entity: ContextItemEntity, secrets: SecretsServiceLike): Promise<void>;
 
@@ -91,9 +118,14 @@ ContextItemRepository.prototype.encryptContentIntoEntity = async function (
   secrets: SecretsServiceLike,
 ): Promise<void> {
   const result = await encryptStringToCiphertext(secrets, entity.content);
-  if (!result) return;
-  entity.encryptedContent = result.ciphertext;
-  entity.contentKeyVersion = result.keyVersion;
+  if (result) {
+    entity.encryptedContent = result.ciphertext;
+    entity.contentKeyVersion = result.keyVersion;
+    return;
+  }
+  if (entity.content !== '') return;
+  entity.encryptedContent = null;
+  entity.contentKeyVersion = null;
 };
 
 ContextItemRepository.prototype.decryptContentFromEntity = async function (
