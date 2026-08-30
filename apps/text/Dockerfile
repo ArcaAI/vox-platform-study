@@ -118,4 +118,42 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 EXPOSE 8862
 
+# ── SINGLE WORKER, DELIBERATELY. DO NOT ADD `--workers`. ─────────────────────
+#
+# TASK-818 Lane G measured this rather than assuming it. Multi-worker IS the
+# remaining throughput lever — one worker saturates a single core (0.95 cores
+# busy) and 4 workers more than doubled throughput at concurrency 10 — but it
+# BREAKS RESUMABILITY, which is a hard owner requirement ("nothing may be
+# lost") and outranks the latency win.
+#
+# The mechanism: `GenerationHub` (routing/hub.py) is process-local, so N
+# workers means N independent hubs. A resume request (`GET
+# /generations/{gid}/stream`) is load-balanced to an arbitrary worker, and the
+# `producer is None` branch in api/endpoints/stream.py reads the flushed Redis
+# backlog and RETURNS — it never tails live. §3C.3(5) anticipated an `XREAD
+# BLOCK` fallback for exactly this case; it was never implemented.
+#
+# Measured with `uvicorn text.main:app --workers 4` against a real shared
+# Redis, 8 resumes of a 60-token generation: 4 landed on a non-owner worker and
+# each returned HTTP 200 with 3-4 of 60 chunks, NO terminal frame, closing in
+# ~2 ms. A clinician sees a truncated summary and no error.
+#
+# This is NOT a bug that `--workers` introduces — it is one that any second
+# process makes reachable, so `replicas > 1` and every rolling restart have it
+# too. Raising either is blocked on the same fix.
+#
+# TO ENABLE, in this order:
+#   1. Implement the cross-process live tail (`XREAD BLOCK` on the replay
+#      buffer) in the `producer is None` branch of api/endpoints/stream.py.
+#   2. Re-run the Lane G resume probe and confirm every resume delivers a
+#      terminal frame regardless of which worker serves it.
+#   3. Then add `--workers 2` here (2, not 4 or 8 — see
+#      docs/implementation/TASK-818-Text-LLM-Router/deployment/README.md for
+#      the sweep: 8 workers was WORSE than 4, and in the realistic
+#      latency-injecting mode 100 concurrent streams keep one worker at only
+#      0.51 cores, so workers buy throughput only against a fast local engine).
+#
+# Cross-worker CANCEL, by contrast, is already correct: it rides a persisted
+# Redis flag polled every 0.5 s, and 6/6 producers stopped cleanly under 4
+# workers. Only resume is broken.
 ENTRYPOINT ["python", "-m", "uvicorn", "text.main:app", "--host", "0.0.0.0", "--port", "8862"]
