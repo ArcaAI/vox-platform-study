@@ -1,8 +1,28 @@
+import { EventEmitter } from 'node:events';
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ModelTaskType } from '@arcaai/domains';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 import { TextProxyController } from '../text-proxy.controller';
+
+/**
+ * TASK-818 Lane E-stream: `POST /generate` with `stream:true` now answers
+ * 200 + text/event-stream, not a 202 ack. The controller harvests
+ * `generation_id` off the first frame, so a streaming mock must be a real
+ * stream — a plain `{task_id}` object fails inside the harvest and surfaces as
+ * an upstream HttpException.
+ */
+const streamingGenerateAck = (generationId: string) => {
+  const stream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+  stream.destroy = vi.fn();
+  stream.on('newListener', (event) => {
+    if (event !== 'data') return;
+    setImmediate(() =>
+      stream.emit('data', Buffer.from(`event: meta\ndata: {"generation_id":"${generationId}"}\nid: ${generationId}:0\n\n`)),
+    );
+  });
+  return stream;
+};
 
 const createMockHttpService = () => ({
   axiosRef: {
@@ -161,14 +181,7 @@ describe('TextProxyController', () => {
     });
 
     it('should proxy streaming generation and return task info with stream_url', async () => {
-      const textResponse = {
-        data: {
-          task_id: 'task-stream-1',
-          status: 'running',
-          stream_url: '/api/v1/tasks/task-stream-1/stream',
-        },
-      };
-      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: streamingGenerateAck('task-stream-1') });
 
       const body = {
         prompt: 'Generate a summary',
@@ -179,7 +192,9 @@ describe('TextProxyController', () => {
       const result = await controller.generate(body);
 
       expect(result.task_id).toBe('task-stream-1');
-      expect(result.status).toBe('running');
+      // TASK-818: the gateway now SYNTHESIZES this ack from the first SSE frame,
+      // so the status is its own ('streaming'), not one TEXT reported.
+      expect(result.status).toBe('streaming');
       expect(result.stream_url).toContain('/stream');
     });
 
@@ -670,14 +685,7 @@ describe('TextProxyController', () => {
     });
 
     it('should forward streaming request with json_schema to TEXT', async () => {
-      const textResponse = {
-        data: {
-          task_id: 'task-stream-schema-1',
-          status: 'running',
-          stream_url: '/api/v1/tasks/task-stream-schema-1/stream',
-        },
-      };
-      mockHttpService.axiosRef.post.mockResolvedValue(textResponse);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: streamingGenerateAck('task-stream-schema-1') });
 
       const body = {
         prompt: 'Return structured data',
@@ -1503,13 +1511,7 @@ describe('TextProxyController', () => {
     });
 
     it('should forward streaming request and return stream_url with debug metadata', async () => {
-      mockHttpService.axiosRef.post.mockResolvedValue({
-        data: {
-          task_id: 'task-stream-assembled',
-          status: 'running',
-          stream_url: '/api/v1/tasks/task-stream-assembled/stream',
-        },
-      });
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: streamingGenerateAck('task-stream-assembled') });
 
       const result = await controller.generateAssembled({
         type: 'summary',

@@ -31494,7 +31494,7 @@
     },
     "/api/v1/text-generations/tasks/{taskId}/stream": {
       "get": {
-        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `text_task:<taskId>`. Send `Last-Event-ID` to resume an interrupted stream from its cursor; the gateway forwards it upstream and relays `id:` back unchanged.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TextProxyController_streamTaskEvents",
         "parameters": [
           {
