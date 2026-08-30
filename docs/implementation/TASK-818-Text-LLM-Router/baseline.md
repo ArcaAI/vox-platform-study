@@ -56,3 +56,52 @@ is what makes their claims falsifiable rather than assertions.
 router restart, and "a dropped socket never cancels a generation" — all need Lane
 B's producer/subscriber split and `GET /generations/{gid}/stream`, which do not
 exist yet. Flagged, not skipped.
+
+
+---
+
+# After Lane A (pooled egress clients) — 2026-08-30
+
+Same command, same levels, same host, immediately after merging Lane A at
+`061ad8d84`.
+
+| Concurrency | AC-3 p50 / p95 / p99 — **baseline** | AC-3 p50 / p95 / p99 — **after Lane A** |
+|---|---|---|
+| 10 | 18.40 / 24.40 / 71.74 ms | 21.00 / 29.02 / 80.48 ms |
+| 25 | 46.26 / 113.37 / 126.39 ms | 50.00 / 106.34 / 113.59 ms |
+
+## The client cache did not move AC-3, and that is not a Lane A failure
+
+**It is a harness limitation, and it was worth discovering now rather than after
+three more lanes.** The cache's win is avoiding TLS handshakes, DNS and connection
+setup on every request. The benchmark's mock upstream is **plain HTTP on
+localhost** — no TLS, no DNS, negligible loopback TCP setup. There is essentially
+nothing for connection reuse to save, so the harness **structurally cannot
+observe the thing Lane A fixed**.
+
+Do not read this table as "the client cache was pointless." Read it as "this
+harness cannot price it." Against a real Azure or Bedrock endpoint over TLS, a
+per-request client is a per-request handshake, and that is the case the cache
+removes.
+
+## What the ~20–50 ms actually is
+
+Since it is not connection setup, it is what §3C.1 already identified: the
+**Python tax** — JSON encode/decode and pydantic validation on both sides — plus
+the **202-and-poll indirection** and its Redis round trips. That is Lane B's
+scope, not Lane A's. **AC-3 movement should be expected from Lane B, and if Lane B
+lands without moving it, the diagnosis in §3C.1 is wrong and should be reopened.**
+
+## Harness gap to close before the next measurement
+
+Lane H's mock should gain a **TLS mode** (self-signed, on a non-loopback address
+if practical) so connection-reuse benefits become measurable. Until then, Lane A's
+value is asserted by its unit tests — which do prove one client is constructed per
+credential rather than per request — and not by this benchmark.
+
+## Also unmeasured
+
+**HTTP/2 (A-3) was inert for both runs above.** `h2` was not installed, so
+`httpx.AsyncClient(http2=True)` raised `ImportError` and the pool degraded to
+HTTP/1.1. Fixed in `7311a82bc`; any future comparison against these two runs is
+therefore not like-for-like on that axis.
