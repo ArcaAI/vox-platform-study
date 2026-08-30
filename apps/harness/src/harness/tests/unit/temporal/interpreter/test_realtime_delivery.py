@@ -59,6 +59,9 @@ def _payload(node_type: str, **overrides: Any) -> NodeActivityInput:
 
 #: TASK-826 — the correction node's bound instruction template.
 _CORRECTION_TEMPLATE = "11111111-1111-1111-1111-111111111111"
+#: TASK-827 — `consultation.suggestions` resolves its system prompt from a bound template too, so
+#: a delivery test that omits it degrades before it ever publishes.
+_SUGGESTION_TEMPLATE = "22222222-2222-2222-2222-222222222222"
 
 
 class _RecordingApi:
@@ -257,7 +260,7 @@ class TestSuggestionDelivery:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _SUGGESTION_TEMPLATE},
                 bound_inputs={"in": {"text": "rash after antibiotics"}},
             )
         )
@@ -287,7 +290,7 @@ class TestSuggestionDelivery:
 
         payload = _payload(
             "consultation.suggestions",
-            config={"taskKey": "text.live"},
+            config={"taskKey": "text.live", "promptTemplateId": _SUGGESTION_TEMPLATE},
             bound_inputs={"in": {"text": "something"}},
         )
         first = await rt.interpreter_consultation_suggestions(payload)
@@ -312,7 +315,7 @@ class TestSuggestionDelivery:
         result = await rt.interpreter_consultation_suggestions(
             _payload(
                 "consultation.suggestions",
-                config={"taskKey": "text.live"},
+                config={"taskKey": "text.live", "promptTemplateId": _SUGGESTION_TEMPLATE},
                 bound_inputs={"in": {"text": "something"}},
             )
         )

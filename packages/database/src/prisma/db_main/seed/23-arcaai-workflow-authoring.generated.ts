@@ -16,7 +16,7 @@
 
 export const REGISTRY_CHECKSUM: string = "21901af1becbe9a9be072bab9eac6a5fe97f13c1de1f370b591c2f8da549b2d4" as const;
 
-export const GEN_GRAPH_CHECKSUM: string = "b4b045d745764aad7386daae42d476f2848281b4dcb72f0251047caa7c60d386" as const;
+export const GEN_GRAPH_CHECKSUM: string = "a23b0b564672f186718a3ffb6b9590ddf0cf8c986675f9587dc64864afad4b0c" as const;
 
 export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -482,6 +482,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.suggestions",
           "activity": "interpreter.consultation_suggestions",
           "config": {
+            "promptTemplateId": "71000000-0000-0000-0000-000000000045",
             "onError": "degrade"
           },
           "timeoutSeconds": 60,
@@ -725,10 +726,10 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "e6aa3fce23725d5f6e340e26c18383e6260d41d9574564a996f1c32863c9f9fa"
+  "checksum": "4ac6cc9a6f41cb459ef683fa046158026c37bd6206127bfc71de6ea799d9e22f"
 } as const;
 
-export const RHEUM_GRAPH_CHECKSUM: string = "d181d364bab67da378404dbdb70aeaf50500c06669eee5eafaca533053a55bcc" as const;
+export const RHEUM_GRAPH_CHECKSUM: string = "e4da75eda428d38ba201e3749bd0ed30b44461d2473afee8ad878f79c4f8ff1a" as const;
 
 export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "reportVersion": 1,
@@ -1195,6 +1196,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
           "type": "consultation.suggestions",
           "activity": "interpreter.consultation_suggestions",
           "config": {
+            "promptTemplateId": "71000000-0000-0000-0000-000000000045",
             "onError": "degrade"
           },
           "timeoutSeconds": 60,
@@ -1481,5 +1483,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "efdabbb6aa244e8e0f9788ed75a0635aa35ae369fbf42e3d2637ccbf38a92e70"
+  "checksum": "94e086fcdabc272dacffff9d34d0a531ae1cf57bc9d5a476b1d1b74aaeca6594"
 } as const;
