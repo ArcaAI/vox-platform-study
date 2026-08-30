@@ -215,7 +215,12 @@ class RequestResult:
 
 
 async def run_one(
-    client: httpx.AsyncClient, mock_base: str, *, stream: bool, model: str
+    client: httpx.AsyncClient,
+    mock_base: str,
+    *,
+    stream: bool,
+    model: str,
+    protocol: str = "sse",
 ) -> RequestResult:
     bench_id = str(uuid.uuid4())
     result = RequestResult(bench_id=bench_id, ok=False)
@@ -231,37 +236,104 @@ async def run_one(
     headers = {"X-Tenant-Id": _TENANT_ID}
     try:
         result.client_send_ts = time.monotonic()
-        resp = await client.post("/api/v1/generate", json=body, headers=headers, timeout=60.0)
         if stream:
-            if resp.status_code != 202:
-                result.error = f"generate returned {resp.status_code}: {resp.text[:200]}"
-                return result
-            task_id = resp.json()["task_id"]
-            async with client.stream(
-                "GET", f"/api/v1/tasks/{task_id}/stream", headers=headers, timeout=60.0
-            ) as stream_resp:
-                if stream_resp.status_code != 200:
-                    result.error = f"stream returned {stream_resp.status_code}"
-                    return result
-                async for line in stream_resp.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    now = time.monotonic()
-                    if result.client_first_byte_ts is None:
-                        result.client_first_byte_ts = now
-                    result.chunk_arrival_ts.append(now)
-            result.client_done_ts = time.monotonic()
+            await _run_stream(client, body, headers, result, protocol=protocol)
         else:
+            resp = await client.post("/api/v1/generate", json=body, headers=headers, timeout=60.0)
             if resp.status_code != 200:
                 result.error = f"generate returned {resp.status_code}: {resp.text[:200]}"
                 return result
             now = time.monotonic()
             result.client_first_byte_ts = now
             result.client_done_ts = now
+        if result.error:
+            return result
         result.ok = True
     except Exception as exc:  # noqa: BLE001 - a failed request is a data point, not a crash
         result.error = f"{type(exc).__name__}: {exc}"
     return result
+
+
+async def _read_sse(response: httpx.Response, result: RequestResult) -> str | None:
+    """Timestamp every delivered frame; return the generation id from the first."""
+    generation_id: str | None = None
+    async for line in response.aiter_lines():
+        if not line.startswith("data:"):
+            continue
+        now = time.monotonic()
+        payload = line[5:].strip()
+        if generation_id is None and "generation_id" in payload:
+            # The `meta` frame. It is protocol overhead, not a token — counting
+            # it as the client's first byte would flatter AC-3 by exactly the
+            # cost of the first delta, so it is deliberately excluded from both
+            # the TTFT and the inter-token series.
+            try:
+                generation_id = str(json.loads(payload)["generation_id"])
+                continue
+            except (ValueError, KeyError):
+                pass
+        if result.client_first_byte_ts is None:
+            result.client_first_byte_ts = now
+        result.chunk_arrival_ts.append(now)
+    return generation_id
+
+
+async def _run_stream(
+    client: httpx.AsyncClient,
+    body: dict,
+    headers: dict,
+    result: RequestResult,
+    *,
+    protocol: str,
+) -> None:
+    """Drive one streaming generation under the requested client protocol.
+
+    Two protocols, because TASK-818 changed the wire contract and an honest
+    before/after has to separate two different wins:
+
+    ``sse`` (default, the shipped contract)
+        One request. ``POST /generate`` answers 200 + SSE and streams.
+
+    ``resume``
+        Two requests, deliberately: POST, take the generation id from the first
+        frame, abandon that response, and reconnect through
+        ``GET /generations/{id}/stream``. This costs the SAME extra round trip
+        the old 202-and-poll flow did, so comparing it against ``sse`` isolates
+        "the round trip was removed" from "the per-token work was removed".
+        Without it, an AC-3 improvement cannot be attributed to either.
+    """
+    async with client.stream(
+        "POST", "/api/v1/generate", json=body, headers=headers, timeout=60.0
+    ) as response:
+        if response.status_code != 200:
+            result.error = f"generate returned {response.status_code}"
+            return
+        if protocol == "sse":
+            await _read_sse(response, result)
+            result.client_done_ts = time.monotonic()
+            return
+
+        # `resume`: read only the meta frame, then drop this response.
+        generation_id = None
+        async for line in response.aiter_lines():
+            if line.startswith("data:") and "generation_id" in line:
+                generation_id = str(json.loads(line[5:].strip())["generation_id"])
+                break
+    if generation_id is None:
+        result.error = "no generation id in the first frame"
+        return
+
+    async with client.stream(
+        "GET",
+        f"/api/v1/generations/{generation_id}/stream",
+        headers=headers,
+        timeout=60.0,
+    ) as resumed:
+        if resumed.status_code != 200:
+            result.error = f"resume returned {resumed.status_code}"
+            return
+        await _read_sse(resumed, result)
+    result.client_done_ts = time.monotonic()
 
 
 async def sample_rss(pid: int) -> float | None:
@@ -333,6 +405,7 @@ async def run_level(
     duration_s: float,
     stream: bool,
     model: str,
+    protocol: str = "sse",
     track_connections: bool = False,
 ) -> LevelReport:
     await mock_client.post("/__bench__/reset")
@@ -344,7 +417,9 @@ async def run_level(
 
     async def worker() -> None:
         while not stop.is_set():
-            results.append(await run_one(client, mock_base, stream=stream, model=model))
+            results.append(
+                await run_one(client, mock_base, stream=stream, model=model, protocol=protocol)
+            )
 
     async def sampler() -> None:
         while not stop.is_set():
@@ -519,7 +594,11 @@ async def main_async(args: argparse.Namespace) -> list[LevelReport]:
                     # process.
                     for _ in range(args.warmup):
                         await run_one(
-                            client, mock.base_url, stream=not args.no_stream, model=args.model
+                            client,
+                            mock.base_url,
+                            stream=not args.no_stream,
+                            model=args.model,
+                            protocol=args.protocol,
                         )
                     await mock_client.post("/__bench__/reset")
 
@@ -533,6 +612,7 @@ async def main_async(args: argparse.Namespace) -> list[LevelReport]:
                             duration_s=args.duration,
                             stream=not args.no_stream,
                             model=args.model,
+                            protocol=args.protocol,
                             track_connections=args.connections_per_request,
                         )
                         reports.append(report)
@@ -569,6 +649,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Throwaway requests before the first measured level (discards cold-start costs).",
     )
     parser.add_argument("--model", default="mock-model")
+    parser.add_argument(
+        "--protocol",
+        choices=("sse", "resume"),
+        default="sse",
+        help=(
+            "Client protocol for streaming runs. 'sse' is the shipped contract "
+            "(one request). 'resume' pays the same extra round trip the old "
+            "202-and-poll flow did, which is what makes an AC-3 comparison "
+            "attributable rather than merely favourable."
+        ),
+    )
     parser.add_argument("--no-stream", action="store_true", help="Exercise stream=false (AC-7).")
     parser.add_argument(
         "--tls",
