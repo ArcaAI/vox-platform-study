@@ -102,7 +102,7 @@
 #     ingress rule is DECORATIVE — LM Studio has no auth of its own, so say so
 #     loudly (R-5) rather than proceeding as if a control exists.
 #
-#  ⚠️ 5''. BLOCKING PRE-CUTOVER ITEM — OPEN-824-HARNESS.
+#  ✅ 5''. OPEN-824-HARNESS — RESOLVED 2026-08-30, NO LONGER BLOCKING.
 #     `hope-harness` and `hope-harness-worker` are configured TODAY to dial LM
 #     Studio directly for Institutional-RAG embeddings
 #     (HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1 at

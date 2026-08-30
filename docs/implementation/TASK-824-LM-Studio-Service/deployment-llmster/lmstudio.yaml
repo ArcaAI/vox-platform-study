@@ -601,29 +601,39 @@ spec:
     # accepted consequence of the engine decision, named here rather than
     # papered over. Treat any change to this peer list as a security change.
     #
-    # ── THE PEER SET IS `hope-text` AND NOTHING ELSE ────────────────────────
-    # OWNER RULING 2026-08-30: internal peers reach LM Studio THROUGH THE
-    # GATEWAY, not by dialling it. `apps/text` fronts the engine; everything
-    # else arrives via `hope-api` -> `hope-text`. So exactly one pod label may
-    # open a socket to :1234, and this list must NOT be widened on the
-    # assumption that some other service calls it directly.
+    # ── THE PEER SET: `hope-text` PLUS THE TWO HARNESS WORKLOADS ────────────
+    # OWNER RULING 2026-08-30 (SUPERSEDES the earlier "hope-text and nothing
+    # else" reading recorded in ../README.md §4A as OPEN-824-HARNESS).
     #
-    #   hope-text — reaches LM Studio per request through openai_compat.py
-    #               using the baseUrl on the SYSTEM AiProviderConnection row
-    #               (`http://hope-lmstudio:1234/v1`, README §5).
+    # The earlier ruling was that internal peers reach LM Studio THROUGH the
+    # gateway. It was overturned on measurement, not preference: the gateway's
+    # text surface is BUSINESS-plane — `UnifiedAuthGuard` accepts a
+    # service-account token, an API key or a JWT, and never `X-Service-Token`
+    # — so neither harness workload can authenticate to it today, and the
+    # credential that would let them is tenant-bound with no wildcard. Holding
+    # the narrow peer set would therefore not have routed harness through the
+    # gateway; it would only have cut it off.
     #
-    # ⚠️ A CONTRADICTION IN THE CLUSTER TODAY, AND IT IS NOT THIS FILE'S TO FIX.
-    # `hope-harness` and `hope-harness-worker` are currently configured to dial
-    # LM Studio DIRECTLY for Institutional-RAG embeddings —
-    # `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` at
-    # hope-v2-deployment base/harness.yaml:110 and base/harness-worker.yaml:123.
-    # Those callers are LIVE against the out-of-band Service. Under the ruling
-    # above they must be re-pointed through the gateway BEFORE the Service
-    # cutover; if they are not, this policy will cut harness embeddings off at
-    # cutover, and the symptom will look like an embeddings outage rather than a
-    # policy decision. Tracked as OPEN-824-HARNESS in ../README.md §4A —
-    # a blocking pre-cutover item, deliberately NOT worked around by widening
-    # this rule.
+    #   hope-text — reaches LM Studio per request through the LMStudioProvider
+    #               adapter using the baseUrl on the SYSTEM AiProviderConnection
+    #               row (`http://hope-lmstudio:1234/v1`, README §5).
+    #
+    #   hope-harness, hope-harness-worker — dial LM Studio DIRECTLY for
+    #               Institutional-RAG embeddings
+    #               (`HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL`, hope-v2-deployment
+    #               base/harness.yaml:110 and base/harness-worker.yaml:123).
+    #               These callers are LIVE against the out-of-band Service and
+    #               are admitted here so the Service cutover does not present as
+    #               an embeddings outage. This is an embeddings path, not a
+    #               generation path — it does not go through the router, and
+    #               widening it does not license a generation call.
+    #
+    # ⚠️ EVERY ENTRY IN THIS LIST IS UNCONDITIONAL ACCESS. LM Studio has NO
+    # authentication of any kind — its `/v1` surface accepts any bearer token
+    # including none — so this policy is the ONLY control, not defence in
+    # depth. Adding a pod label here grants that workload the full engine.
+    # Treat any change to this list as a security change, and prefer routing a
+    # new consumer through `hope-text` over adding it here.
     #
     # Deliberately ABSENT, each for a reason:
     #   hope-guardrail — no longer dials an LLM directly. base/guardrail.yaml
@@ -633,14 +643,18 @@ spec:
     #     already allowed. Do not add guardrail "because the cutover file says
     #     it carries the guardrail path" — that path is indirect.
     #   hope-nlp, hope-api, hope-admin-console — no reference to :1234 anywhere
-    #     in hope-v2-deployment or in this repo's service code, and under the
-    #     ruling above they must not acquire one.
+    #     in hope-v2-deployment or in this repo's service code. If one acquires
+    #     a direct dependency, route it through hope-text rather than widening.
     #   prometheus — LM Studio exposes NO metrics endpoint (measured: GET
     #     /metrics returns 200 with "Unexpected endpoint or method"). A scrape
     #     rule would imply a signal that does not exist.
     - from:
         - podSelector:
             matchLabels: { app: hope-text }
+        - podSelector:
+            matchLabels: { app: hope-harness }
+        - podSelector:
+            matchLabels: { app: hope-harness-worker }
       ports: [{ protocol: TCP, port: 1234 }]
 ---
 apiVersion: networking.k8s.io/v1
