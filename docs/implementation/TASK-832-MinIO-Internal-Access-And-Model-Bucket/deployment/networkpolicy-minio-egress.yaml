@@ -1,0 +1,242 @@
+# ══════════════════════════════════════════════════════════════════════════
+# TASK-832 — egress NetworkPolicies for the MinIO object-storage consumers.
+#
+# HANDOVER ARTIFACT. Authored in the app repo, applied to `hope-v2-deployment`
+# by the orchestrator (EXECUTION-PLAN §14.5). NOT APPLIED, and NOT SAFE to
+# apply as one batch — read §A before doing anything with this file.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ── §A. Why an egress policy is newly possible, and newly dangerous ────────
+#
+# POSSIBLE: until TASK-823 Phase 2, every in-cluster MinIO client used
+# `s3.taphuynh.dev`, a proxied Cloudflare Tunnel hostname. An egress rule
+# scoped to "MinIO only" would have had to allow Cloudflare's entire edge
+# range — indistinguishable from allowing the open internet, and a control in
+# name only. Once every consumer is on `10.10.1.102`, the rule is a single
+# /32 and the control is real.
+#
+# DANGEROUS: **a NetworkPolicy with `policyTypes: [Egress]` flips the pods it
+# selects to DENY-ALL-EGRESS.** It is not additive. The moment one of these
+# lands, that workload can reach *only* what is enumerated below — and
+# anything omitted fails as a connection timeout that presents as a broken
+# dependency, not as a policy problem. `hope-v2-dev` has ~43 pods that have
+# never run under any policy (TASK-828 §6), so nothing here has ever been
+# exercised.
+#
+# THEREFORE, mandatory before apply:
+#
+#   1. PROVE k3s IS ENFORCING NetworkPolicy AT ALL. k3s ships a policy
+#      controller with flannel, but `--disable-network-policy` turns it off
+#      and the server flags are not readable through the API. An unenforced
+#      policy is WORSE than no policy, because it is believed. Cheapest check
+#      — apply the `hope-stt` policy below, then from a pod that is NOT
+#      hope-stt run `curl --max-time 5 http://10.10.1.102:9000/minio/health/live`.
+#      It must still succeed (that pod is unselected), while from hope-stt a
+#      request to a NON-enumerated destination must TIME OUT. If nothing is
+#      ever blocked, say so loudly and remove the file rather than leaving
+#      decoration in the tree.
+#
+#   2. ENUMERATE EACH WORKLOAD'S COMPLETE EGRESS SET FIRST. The `hope-stt`
+#      policy below was derived from the live Deployment's full env block
+#      (read 2026-08-30) and is the worked example. The others are TEMPLATES
+#      with their unknowns marked — do not apply a template until its set has
+#      been enumerated the same way.
+#
+#   3. ONE WORKLOAD AT A TIME, verified between each. Never `kubectl apply -f`
+#      this whole file.
+#
+# NEVER a namespace-wide default-deny. Per-workload allow-lists compose
+# safely; a namespace default-deny would break DNS, the Prometheus scrape,
+# Argo's health checks and the tunnel NodePort paths simultaneously.
+#
+# ── §B. Relationship to ingress ───────────────────────────────────────────
+#
+# These are `policyTypes: [Egress]` ONLY, so ingress to these pods is left
+# completely untouched and the Prometheus scrape path is unaffected. That is
+# deliberate: it keeps the blast radius to one direction.
+#
+# ⚠️ If an INGRESS policy is later added for any of these workloads, it MUST
+# carry the Prometheus allow rule. This repo scrapes pod-to-pod from a plain
+# Prometheus Deployment via pod annotations (there is no Prometheus Operator
+# and no ServiceMonitor anywhere); an ingress policy that forgets it silently
+# deletes the workload's metrics. Convention established by TASK-823's
+# `hope-vllm-ingress`.
+#
+# ── §C. The shared destinations, resolved 2026-08-30 ──────────────────────
+#
+#   10.10.1.102:9000   MinIO S3 API      (9001 is the console — deliberately absent)
+#   10.10.1.250:5000   Postgres via PgBouncer VIP
+#   10.10.1.120:6379   Redis
+#   kube-dns           UDP+TCP 53 — FIRST RULE ALWAYS. Omitting DNS is the
+#                      classic egress outage: every hostname lookup fails and
+#                      the symptom looks like a dead dependency.
+---
+# ── hope-stt — WORKED EXAMPLE. Egress set derived from the live Deployment's
+#    complete env block, not inferred.
+#
+#    Reaches: MinIO (hope-audio, hope-audio-chunks), Postgres (DATABASE_URL),
+#    Redis (REDIS_URL), hope-api (API_GATEWAY_URL), otel-collector, DNS.
+#
+#    ⚠️ ONE UNRESOLVED ITEM — huggingface.co. hope-stt carries HF_TOKEN /
+#    HUGGINGFACE_TOKEN and a HF cache, so it MAY pull model weights from the
+#    internet at runtime. There is no rule for it below, and that is a
+#    DECISION, not an omission: for a PHI namespace, "weights come only from
+#    MinIO" is the desired posture, and this policy is what makes it true
+#    rather than aspirational. But if any model is still resolved from HF at
+#    runtime, applying this WILL break STT startup. Confirm every STT model
+#    source is an `s3://` URI before applying. (Model source now resolves
+#    through the AiProviderConnection `model-registry` rows, TASK-799 — so
+#    this is checkable in the DB, not guesswork.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-stt-egress
+  labels:
+    app: hope-stt
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels:
+      app: hope-stt
+  policyTypes: [Egress]
+  egress:
+    # DNS FIRST, ALWAYS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # MinIO — the LAN host. This single /32 is the whole point of the ticket:
+    # on the old tunnel hostname this rule could not be written at all.
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.102/32
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Postgres (PgBouncer VIP) and Redis — the other two out-of-band LAN deps.
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.250/32
+      ports:
+        - protocol: TCP
+          port: 5000
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.120/32
+      ports:
+        - protocol: TCP
+          port: 6379
+    # In-namespace peers: the gateway and the OTel collector.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: hope-api
+      ports:
+        - protocol: TCP
+          port: 8868
+    - to:
+        - podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# ── hope-stt-worker — same codebase, same egress set as hope-stt above.
+#    Ships as a separate object because podSelector is per-workload.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-stt-worker-egress
+  labels:
+    app: hope-stt-worker
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels:
+      app: hope-stt-worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.102/32
+      ports:
+        - protocol: TCP
+          port: 9000
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.250/32
+      ports:
+        - protocol: TCP
+          port: 5000
+    - to:
+        - ipBlock:
+            cidr: 10.10.1.120/32
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app: hope-api
+      ports:
+        - protocol: TCP
+          port: 8868
+    - to:
+        - podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+---
+# ══════════════════════════════════════════════════════════════════════════
+# TEMPLATES BELOW — DO NOT APPLY UNVERIFIED.
+#
+# `hope-api` and `hope-harness`/`hope-harness-worker` are also MinIO
+# consumers, but their complete egress sets were NOT enumerated in this
+# session and both are far wider than STT's:
+#
+#   hope-api        — every downstream service (text/stt/nlp/guardrail/
+#                     harness/tts), Vault, Postgres, Redis, OTel, and
+#                     possibly outbound cloud AI providers.
+#   hope-harness    — Temporal, Qdrant, text/nlp/guardrail, Postgres, MinIO
+#   (+ worker)        (claim-check), OTel.
+#
+# Deriving those sets is a prerequisite, not a formality: hope-api is the
+# gateway, and a missing rule there takes the whole platform down. The
+# method that produced the STT policy above:
+#
+#   1. Read the live Deployment's full `env` + `envFrom` (every *_URL, every
+#      host in a connection string).
+#   2. Cross-check against the service's own config module for hosts that are
+#      resolved at runtime from the DB control plane rather than from env —
+#      `AiProviderConnection.baseUrl` is the trap here, because a BYOK tenant
+#      row can point at an arbitrary internet host that appears in NO manifest.
+#   3. Only then write the rule set.
+#
+# Step 2 is the one that will bite. For `hope-api` and `hope-text`, provider
+# endpoints are tenant-configurable data; an egress allow-list over them is a
+# policy decision about what a tenant may point at, not a transcription job.
+# Raise it rather than guessing.
+# ══════════════════════════════════════════════════════════════════════════
