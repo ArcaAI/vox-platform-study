@@ -84,6 +84,21 @@ export class PipelinePolicyAdminController {
     return this.policyService.getRow({ tenantId, scope, scopeId: query.scopeId });
   }
 
+  // AUTH-NOTE: the decorator below UNDERSTATES the real gate, and must not be widened without
+  // reading `PipelinePolicyService.assertGlobalOnlyToggles` first. A tenant admin legitimately
+  // holds `manage:PipelinePolicy` for every toggle on this route, but the two whose registry
+  // descriptor carries `globalOnly: true` — today `harnessEnabled` (guardrail's primary caller)
+  // and `autoNerEnabled` (NLP auto-extraction) — are SUPER_ADMIN-only and are refused in the
+  // service with a 403. No decorator can express "super admins only, for these fields of this
+  // resource", which is why the check is imperative (`05-nestjs-api.md` §Imperative Privilege
+  // Checks, which names this lock as one of its canonical examples).
+  //
+  // The lock is descriptor-driven, so the covered set is NOT a list here or in the service:
+  // adding `globalOnly` to a `pipeline.*` descriptor governs another toggle with no code change.
+  //
+  // 403 is PRIVILEGE, not the 404-over-403 cross-tenant posture: the caller may still READ these
+  // toggles and their pinned rows, and a cross-tenant target is rejected separately by
+  // `resolveTenantId` above. Read is deliberately ungated.
   @Put('row')
   @Authorize(['manage', 'PipelinePolicy'])
   @RequiresIfMatch()

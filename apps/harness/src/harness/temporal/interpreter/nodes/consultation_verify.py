@@ -68,6 +68,31 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
             status="DEGRADED", reason="no draft note bound from an upstream node to verify"
         )
 
+    # TASK-816 Phase 2 — the tenant's clinical gates, which this lane used to DROP.
+    #
+    # `HarnessPolicy`'s five threshold columns are the tenant tier of a gate whose platform tier
+    # is the settings registry (`harness.sensor.*`, resolved by `resolve_sensor_thresholds`).
+    # The legacy durable loop threads them onto every `RunSensorsInput` (`workflows.py:512`);
+    # this node did not, so `_platform_thresholds(None)` fell through to the PLATFORM value and a
+    # tenant that TIGHTENED a fabrication or numeric-dose gate had it silently loosened on the
+    # substrate every graph-mode consultation runs on. Only `groundednessThreshold` survived,
+    # because the INFERENTIAL node below reads it — which is what made the loss easy to miss.
+    #
+    # `None` is not a fallback here, it is the "no tenant opinion" signal `_platform_thresholds`
+    # already understands: an unreachable policy leaves the clinical gate exactly where it was
+    # rather than degrading this non-critical verifier (CR-14).
+    thresholds = None
+    try:
+        raw_policy = await _api_client(get_settings()).get_policy(payload.tenant_id)
+    except ApiServiceError as exc:
+        activity.logger.warning(
+            "consultation_sensors: effective policy unreachable, gating on the platform "
+            "thresholds for this run: %s",
+            exc,
+        )
+    else:
+        thresholds = HarnessPolicy.from_api(raw_policy).to_sensor_thresholds()
+
     chunk_ids = bound_value(payload.bound_inputs, "chunkIds")
     try:
         result = await run_sensors(
@@ -76,6 +101,7 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
                 transcript_text=_transcript_text(payload),
                 note_entities=bound_entities(payload.bound_inputs),
                 retrieved_chunk_ids=[c for c in (chunk_ids or []) if isinstance(c, str)],
+                thresholds=thresholds,
             )
         )
     except Exception as exc:  # noqa: BLE001 — CR-14: a failing sensor degrades, never fails the run
