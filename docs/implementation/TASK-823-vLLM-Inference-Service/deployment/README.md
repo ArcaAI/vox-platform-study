@@ -86,46 +86,38 @@ zero-downtime semantics; dev inverts it exactly as it already does for both STT
 workloads. Name-based strategic merge, never an index-based JSON6902 patch —
 CI's `patch-hygiene` job bans those outright.
 
-## 4. The egress NetworkPolicy — specified, deliberately NOT shipped
+## 4. The egress NetworkPolicy — RESOLVED and now shipped (Phase 2)
 
-`vllm.yaml` ships an **ingress** policy (V-3). Egress is the control that would
-make "weights come only from MinIO" *enforced* rather than aspirational, and
-would structurally prevent a runtime HuggingFace pull out of a PHI namespace.
-It is not shipped because it cannot be written correctly yet:
+`vllm.yaml` ships **both** halves of V-3 now: the ingress policy, and the egress
+policy that makes "weights come only from MinIO" *enforced* rather than
+aspirational.
 
-**`MINIO_ENDPOINT` in `hope-secrets` is `s3.taphuynh.dev`** — a **public,
-proxied Cloudflare Tunnel hostname**, which TASK-828 §4 records as having **no
-Cloudflare Access application in front of it**. So an egress rule scoped to
-"MinIO only" would have to allow the Cloudflare edge ranges, which is close to
-allowing the open internet, and would not be the control it appears to be.
+This was previously blocked. The only MinIO address the platform knew was
+`hope-secrets.MINIO_ENDPOINT = s3.taphuynh.dev`, a **proxied Cloudflare Tunnel
+hostname with no Cloudflare Access application** (TASK-828 §4). An egress rule
+scoped to "MinIO only" would have had to allow Cloudflare's edge ranges — close
+to allowing the open internet, and a control in name only.
 
-**The right fix is a LAN-local MinIO endpoint for in-cluster consumers, not a
-cleverer policy.** Once one exists, this is the policy:
+**Phase 2 resolved it.** The tunnel's own route table (read from the Cloudflare
+API, tunnel `arca-dev`, ingress ids 8–10) says where that hostname actually
+lands:
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: hope-vllm-egress
-  labels: { app: hope-vllm, app.kubernetes.io/part-of: project-hope }
-spec:
-  podSelector: { matchLabels: { app: hope-vllm } }
-  policyTypes: [Egress]
-  egress:
-    # DNS FIRST. Omitting this is the classic egress-policy outage: every
-    # hostname lookup fails and the symptom looks like a broken endpoint.
-    - to:
-        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
-          podSelector: { matchLabels: { k8s-app: kube-dns } }
-      ports:
-        - { protocol: UDP, port: 53 }
-        - { protocol: TCP, port: 53 }
-    # MinIO. <<< REPLACE: the LAN CIDR/port MinIO actually listens on. >>>
-    - to:
-        - ipBlock: { cidr: 10.10.1.0/24 }
-      ports:
-        - { protocol: TCP, port: 9000 }
-```
+| Public hostname | Origin |
+|---|---|
+| `s3.taphuynh.dev` | `https://10.10.1.102:9000` (`noTLSVerify: true`) |
+| `s3-console.taphuynh.dev` | `https://10.10.1.102:9001` |
+| `ssh-minio.taphuynh.dev` | `ssh://10.10.1.102:22` |
+
+MinIO is a **dedicated LAN host, `10.10.1.102`**, on the same `/24` as the k3s
+node (`10.10.1.10`). So the egress rule is a single `/32` and the control is
+real. It is written out in full at the bottom of `vllm.yaml`.
+
+Why this is the right shape and not a workaround: **`hope-secrets` already
+addresses every other out-of-band dependency by raw LAN IP** —
+`DATABASE_URL … @10.10.1.250:5000`, `REDIS_HOST=10.10.1.120`,
+`TEMPORAL_DB_HOST=10.10.1.250`. MinIO was the *only* one reached through the
+public internet. Pointing vLLM at `10.10.1.102` brings it into line with house
+convention rather than inventing one.
 
 ## 5. `smoke-test.yaml` — do NOT add a check yet
 
@@ -150,11 +142,13 @@ guarded against a documented vLLM failure mode.
    (`out-of-band/lmstudio-endpoints.yaml` → `10.10.1.10:1234`) and holds VRAM
    outside scheduler accounting. `base/dashboards/gpu.json` already carries this
    warning.
-2. **Confirm the image bundles the Run:ai streamer extras**
-   (`runai-model-streamer`, `runai-model-streamer-s3`). If not,
-   `--load-format runai_streamer` fails at startup; the fallback is an
-   init-container pre-pull onto the node `hostPath`, the shape `hope-stt`
-   already uses for its model cache.
+2. ~~Confirm the image bundles the Run:ai streamer extras.~~ **DONE in Phase 2 —
+   it does.** `docker/Dockerfile` at tag `v0.11.0` builds `vllm-openai` FROM
+   `vllm-openai-base` (`:540`, `:506`), whose pip layer (`:529`) ends
+   `… boto3 runai-model-streamer runai-model-streamer[s3]`. No init-container
+   pre-pull fallback is needed. That install is UNPINNED, so re-verify on any
+   image bump:
+   `docker run --rm --entrypoint python3 vllm/vllm-openai:<tag> -c "import runai_model_streamer"`.
 3. **Read the engine's own KV number from the startup log** — vLLM prints the
    computed `GPU KV cache size: N tokens`. Divide by `--max-model-len` for real
    concurrency and compare against `../README.md` §2A. The activation/CUDA-graph
@@ -194,3 +188,333 @@ guarded against a documented vLLM failure mode.
 - **No MLflow resolver.** TASK-822 owns it. This manifest consumes its output:
   CI writes a resolved, immutable `s3://` URI into `config/vllm.env`. The pod
   never talks to MLflow.
+
+---
+
+## 8. The MinIO weight path — what Phase 2 actually proved
+
+Phase 1 **specified** this path; Phase 2 **ran** it. Everything below is a
+measurement or a source citation, not a plan.
+
+### 8.1 Where MinIO is, and why the endpoint changed
+
+| | Before (Phase 1) | Now |
+|---|---|---|
+| `VLLM_S3_ENDPOINT_URL` | `https://s3.taphuynh.dev` | `https://10.10.1.102:9000` |
+| Path | Pod → Cloudflare edge → tunnel → origin | Pod → LAN |
+| Median request (measured, n=7, from `hope-text`) | **495.6 ms** | **2.0 ms** |
+| Egress policy expressible? | No (Cloudflare edge ranges) | Yes (`10.10.1.102/32`) |
+
+There is **no MinIO Service, Endpoints, or Pod anywhere in the cluster** —
+`kubernetes_list` over Services and Endpoints in every namespace returns none.
+MinIO is out-of-band infrastructure, and `hope-secrets` already reaches the
+other out-of-band dependencies (Postgres `10.10.1.250:5000`, Redis
+`10.10.1.120:6379`) by raw LAN IP. MinIO was the sole exception.
+
+**No new Kubernetes object is required for the endpoint.** The leaf's SAN
+carries `IP:10.10.1.102`, so the IP address verifies directly.
+
+<details>
+<summary>If you would rather have a stable NAME than an IP</summary>
+
+The leaf's SAN also carries `DNS:minio`, so a Service named exactly `minio` in
+`hope-v2-dev` would let you use `https://minio:9000` and verify cleanly.
+
+**It must be applied out of band, never through kustomize.** A selector-less
+Service in the kustomize tree gets a selector INVENTED for it by the legacy
+`commonLabels:` transformer, the endpoints controller then takes ownership, and
+the static address is replaced by every pod in the namespace. That is not
+hypothetical — it is what `out-of-band/lmstudio-service.yaml`'s header
+documents as having taken out both the summarization and safety paths on
+2026-08-09. Argo CD also excludes `Endpoints`/`EndpointSlice` cluster-wide, so
+it can neither create nor heal them.
+
+The IP is simpler, needs nothing new, and matches how Postgres and Redis are
+already addressed. Prefer it.
+</details>
+
+### 8.2 TLS — a private CA, and it is mandatory
+
+Read off the wire from inside `hope-v2-dev` on 2026-08-30:
+
+```
+subject  C=AU, ST=Victoria, L=Melbourne, O=ARCAAI, OU=Infrastructure, CN=s3.taphuynh.dev
+issuer   C=AU, ST=Victoria, L=Melbourne, O=ARCAAI, OU=Infrastructure, CN=ARCAAI Internal CA
+notAfter Mar 21 03:48:21 2028 GMT
+SAN      DNS:s3.taphuynh.dev, DNS:s3-console.taphuynh.dev, DNS:localhost,
+         DNS:minio, IP:10.10.1.102, IP:127.0.0.1
+EC P-256, X509v3 Extended Key Usage: TLS Web Server Authentication
+```
+
+- The system trust store does **not** contain this CA — a default-context
+  handshake from `hope-text` fails `unable to get local issuer certificate`.
+  (The Cloudflare tunnel hides this today by setting `noTLSVerify: true` on the
+  origin, and by presenting a *public* edge certificate to its clients. Going
+  direct removes both crutches.)
+- Therefore **`AWS_CA_BUNDLE` is required**, and `vllm.yaml` mounts it. There is
+  deliberately no "skip verification" option: this is a PHI object store.
+- **The CA is published nowhere in `hope-v2-dev`.** The namespace has no CA
+  ConfigMap or Secret (`kube-root-ca.crt` is the cluster's own CA, unrelated).
+  Creating `arcaai-internal-ca` is a ROOT_CONFIG_REQUEST — see §9.
+
+### 8.3 The two settings that are non-negotiable, and why
+
+Both are set in `vllm.yaml`; both were verified against vLLM's own source.
+
+**`RUNAI_STREAMER_S3_ENDPOINT` — set it explicitly, as version insurance.**
+Stated carefully, because the obvious reading is wrong: a full 902-tensor stream
+**succeeded with this variable unset**, so streamer 0.16.1's AWS C++ SDK reads
+`AWS_ENDPOINT_URL` by itself. vLLM does not depend on that — it copies one into
+the other (`runai_streamer_loader.py:43-49`), and only *inside*
+`if load_config.model_loader_extra_config:`. Since the vLLM image installs the
+streamer **unpinned**, setting both makes the config independent of which
+streamer version the image carries, and decouples an S3 setting from an
+unrelated tuning flag. Applied to the dev compose `inference` profile too, which
+does not pass `--model-loader-extra-config`.
+
+**`RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=0`** — path-style addressing. Note
+that there are **two different S3 clients** in this load path, and only one of
+them reads this variable:
+
+| Stage | Client | Reads |
+|---|---|---|
+| `pull_files()` / `list_safetensors()` — config, tokenizer, shard listing | boto3 (Python) | `AWS_CA_BUNDLE`, `AWS_ENDPOINT_URL` |
+| `SafetensorsStreamer.stream_files()` — the weights | Run:ai C++ / AWS C++ SDK | `RUNAI_STREAMER_*` |
+
+So a smoke test that only lists objects will pass with the variable wrong. It
+has to stream real weights to exercise the C++ client at all.
+
+### 8.4 The S3 layout vLLM requires
+
+Derived from `vllm/config/model.py:701-728` and
+`vllm/transformers_utils/runai_utils.py`:
+
+1. `pull_files(uri, allow_pattern=["*.model","*.py","*.json"])` → config and
+   friends, into a temp dir.
+2. `pull_files(uri, ignore_pattern=["*.pt","*.safetensors","*.bin","*.tensors","*.pth"])`
+   → everything else non-weight (this is the pass that fetches `merges.txt`).
+   Runs only when `--tokenizer` is unset, i.e. tokenizer == model.
+3. `list_safetensors(uri)` → `*.safetensors`, which are **streamed, never
+   downloaded**. No PVC, no `hostPath`, no init container.
+
+A **flat prefix** is therefore correct — do not nest `model/` and
+`components/tokenizer/` subdirectories:
+
+```
+s3://hope-models/<model-slug>/<version>/
+    config.json  generation_config.json
+    model.safetensors            <- streamed
+    tokenizer.json  tokenizer_config.json  vocab.json  merges.txt
+```
+
+**The trailing slash on `VLLM_MODEL_URI` is optional** — tested, not assumed.
+With a decoy `.../v10/model.safetensors` deliberately present in the same
+bucket, both `.../v1` and `.../v1/` resolved to exactly one shard,
+`.../v1/model.safetensors`. `list_safetensors` normalises the prefix; it does
+not do a bare string match. Keep the slash for readability if you like, but
+nothing depends on it.
+
+### 8.5 Upload procedure
+
+`mc` is a Go binary: it honours **`SSL_CERT_FILE`** for a private CA. Dropping
+the PEM into `<config-dir>/certs/CAs/` did **not** take effect (tested).
+
+```bash
+# 0. Fetch the checkpoint and VERIFY IT AGAINST THE PUBLISHER before it is ever
+#    uploaded. HuggingFace publishes the LFS sha256 via the tree API:
+#      curl -s 'https://huggingface.co/api/models/Qwen/Qwen3-4B-AWQ/tree/main?recursive=1' \
+#        | jq -r '.[] | select(.lfs) | "\(.lfs.oid)  \(.path)"'
+#    For Qwen/Qwen3-4B-AWQ, model.safetensors is
+#      a7043493ebd993f5fea18794ad7b5b3e064a52023f392a7fcce7ce0984c341f0   (2666027672 bytes)
+shasum -a 256 ./qwen3-4b-awq/model.safetensors     # must equal the above
+
+# 1. Record every object's digest. This file is the provenance record, and the
+#    model.safetensors line is what becomes the MLflow `weights_sha256` tag
+#    that TASK-822 §4A.1 step 3 asserts before promotion.
+( cd qwen3-4b-awq && shasum -a 256 ./* | tee SHA256SUMS )
+
+# 2. Point mc at MinIO, trusting the ARCAAI CA.
+export SSL_CERT_FILE=/path/to/arcaai-ca.crt
+export MC_HOST_hope="https://<access-key>:<secret-key>@10.10.1.102:9000"
+
+# 3. Bucket, versioned. Versioning is what makes a promoted URI immutable, and
+#    what makes a bad promotion recoverable without re-uploading.
+mc mb --ignore-existing hope/hope-models
+mc version enable hope/hope-models
+
+# 4. Upload the flat prefix, asking MinIO to verify each object's SHA256 in
+#    flight rather than trusting the transfer.
+mc cp --recursive --checksum SHA256 ./qwen3-4b-awq/ hope/hope-models/qwen3-4b-awq/v1/
+
+# 5. Prove what landed.
+mc ls --recursive hope/hope-models/qwen3-4b-awq/v1/
+```
+
+**Never overwrite a published prefix.** Promotion is a NEW version prefix
+(`/v2/`) plus a config change, so rollback is a revert rather than a re-upload.
+
+### 8.6 Credentials
+
+No new secret. `vllm.yaml` reuses `hope-secrets.MINIO_ACCESS_KEY` /
+`MINIO_SECRET_KEY`, already present for `hope-stt`.
+
+> **Aside, for whoever owns TASK-828.** `hope-secrets` carries a
+> `kubectl.kubernetes.io/last-applied-configuration` annotation containing the
+> full `stringData` block — every platform secret in cleartext, including
+> `DATABASE_URL`, `JWT_SECRET_KEY`, the MinIO keys and cloud API keys. Anything
+> that can read the Secret *object* reads them even when the `data` values are
+> masked by the viewer. Rotating without stripping that annotation does not
+> retire the old values.
+
+---
+
+## 9. ROOT_CONFIG_REQUESTs — what the orchestrator/owner must create
+
+These are outside this ticket's write boundary. The manifests are authored
+against them and **fail closed** until they exist.
+
+### 9.1 Publish the ARCAAI Internal CA into `hope-v2-dev` (BLOCKING)
+
+`vllm.yaml` mounts ConfigMap `arcaai-internal-ca`, key `ca.crt`. It does not
+exist; the namespace has no CA material at all. Without it the pod stops at
+`CreateContainerConfigError` — deliberately, rather than talking to a PHI
+object store without verifying it.
+
+The CA to publish is the issuer of MinIO's leaf, identified by:
+
+```
+CN=ARCAAI Internal CA, OU=Infrastructure, O=ARCAAI, L=Melbourne, ST=Victoria, C=AU
+Authority Key Identifier of the leaf: 50:0E:C5:26:8E:A4:43:3F:21:16:93:AA:4E:0A:EF:D8:D8:2A:6F:45
+```
+
+MinIO serves only its leaf (a 1-certificate chain), so the CA cannot be scraped
+off the wire — it has to come from wherever it was generated (most likely the
+MinIO host `10.10.1.102`, cf. `ssh-minio.taphuynh.dev`). Once you have the PEM:
+
+```sh
+kubectl -n hope-v2-dev create configmap arcaai-internal-ca --from-file=ca.crt=./arcaai-ca.crt
+```
+
+Then verify it is the right CA before trusting it:
+
+```sh
+openssl verify -CAfile ./arcaai-ca.crt <(openssl s_client -connect 10.10.1.102:9000 \
+  -servername s3.taphuynh.dev </dev/null 2>/dev/null | openssl x509)
+```
+
+This belongs in the deployment repo as a committed manifest, not a one-off
+`kubectl create` — a CA cert is public material, so there is no reason for it to
+live outside Git. It expires **2028-03-21**; put that in whatever tracks renewals.
+
+### 9.2 Create the `hope-models` bucket (BLOCKING for a real load)
+
+Versioned, per §8.5 step 3. It does not exist yet on `10.10.1.102`.
+
+### 9.3 Bring the rest of the platform onto the LAN MinIO endpoint (NOT blocking, but larger)
+
+This ticket changes **only vLLM's** view of MinIO. Everything else still goes
+through the tunnel, because `hope-secrets.MINIO_ENDPOINT = s3.taphuynh.dev` and
+`hope-api-config.MINIO_USE_SSL = true`.
+
+That means **every PHI object read and write — consultation audio, artifacts —
+currently leaves the cluster for the public internet and comes back**, over a
+hostname that TASK-828 §4 records as having no Cloudflare Access application.
+The ~248× latency penalty measured in §8.1 applies to all of it.
+
+Fixing it is the same two changes made here (`MINIO_ENDPOINT` → the LAN
+address, plus CA trust for the clients), but it touches `hope-api`, `hope-stt`
+and anything else holding a MinIO client, so it needs its own ticket and its own
+verification. Raising it here; not doing it here.
+
+### 9.4 TASK-828 follow-ups surfaced in passing
+
+- `hope-secrets` leaks every secret in cleartext via its
+  `last-applied-configuration` annotation (§8.6 aside).
+- Two tunnel routes reach MinIO (`s3`, `s3-console`) with no Access application.
+  Once in-cluster consumers use the LAN address, the question of whether those
+  routes need to be public at all is worth asking — removing them would close
+  the exposure rather than authenticate it.
+
+---
+
+## 10. Evidence — the Phase 2 lab run
+
+Isolated compose project `hope-vllm-minio-verify`, publishing no host ports, on
+its own bridge network. MinIO served over TLS with a leaf issued by a private CA
+whose SAN mirrors the real one (`DNS:minio`, `DNS:localhost`, `IP:127.0.0.1`),
+so the CA and hostname-verification behaviour match the cluster's. Torn down
+after the run; the shared dev stack was not touched.
+
+**The client exercises vLLM's own loader transport.** `stream_test.py` calls
+`pull_files` → `list_safetensors` → `SafetensorsStreamer.stream_files` →
+`get_tensors()` — precisely the chain in `vllm/config/model.py:704-722` and
+`runai_streamer_loader.py:50-92` (via `weight_utils.runai_safetensors_weights_iterator`).
+Everything except the final `.to("cuda")`.
+
+Model: **`Qwen/Qwen3-4B-AWQ`**, sha256 verified against HuggingFace's published
+LFS digest *before upload*
+(`a7043493ebd993f5fea18794ad7b5b3e064a52023f392a7fcce7ce0984c341f0`, 2 666 027 672 B).
+
+| # | Variant | Result |
+|---|---|---|
+| 1 | **Baseline** — `https://minio:9000`, path-style, CA bundle | **OK — 902 tensors, 2.483 GiB, 10.51 s, 241.8 MiB/s** |
+| 2 | No `AWS_CA_BUNDLE` | **FAILS** — `botocore.exceptions.SSLError … CERTIFICATE_VERIFY_FAILED` on the first LIST |
+| 3 | `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=1` | **FAILS** — see the failure signature below |
+| 4 | `RUNAI_STREAMER_S3_ENDPOINT` unset, `AWS_ENDPOINT_URL` only | OK — 902 tensors, 556.6 MiB/s |
+| 5 | **IP-SAN path** — connect to `https://127.0.0.1:9000`, verify against the CA | OK — 902 tensors, 970.3 MiB/s |
+| 6 | URI without trailing slash, decoy `v10/` present | OK — selected only `v1/model.safetensors` |
+
+Tensors materialised as genuine AWQ W4A16 structures — e.g.
+`model.layers.13.self_attn.k_proj.qzeros [20,128] torch.int32` and
+`model.layers.9.self_attn.o_proj.scales [32,2560] torch.float16` — so this is a
+real quantized checkpoint being read, not an opaque byte copy.
+
+Row 5 is the one that matters for the cluster: it is the same shape as
+`https://10.10.1.102:9000`, whose leaf carries `IP:10.10.1.102`.
+
+Throughput varies across rows because of page-cache warmth on the MinIO side,
+not because of the settings under test. **Do not read these as cluster cold-start
+numbers** — different hardware, loopback/bridge rather than a physical LAN, and
+no GPU. The number to record for real is the one from step 3 of §6, on the node.
+
+### Pitfall #7's actual failure signature — correcting the ticket
+
+TASK-823 §12 predicts "MinIO host-style DNS failures at load". The real failure
+is both later and far more opaque:
+
+```
+ValueError: Could not receive runai_response from libstreamer due to:
+            b'File access error'
+```
+
+No hostname, no bucket, no DNS text — the message comes from the C++ library.
+And it arrives **after** `pull_files` and `list_safetensors` have already
+succeeded, because those use boto3 while only `stream_files` uses the C++
+client:
+
+| Stage | Client | Reads |
+|---|---|---|
+| `pull_files` / `list_safetensors` | boto3 (Python) | `AWS_CA_BUNDLE`, `AWS_ENDPOINT_URL` |
+| `stream_files` (the weights) | Run:ai C++ / AWS C++ SDK | `RUNAI_STREAMER_*` |
+
+So the pod's config and tokenizer load cleanly, the shard is listed cleanly, and
+only the weight read dies with `File access error`. If you see that string,
+check `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING` first — and note that a smoke
+test which only lists objects will pass with the setting wrong.
+
+### What was NOT proven
+
+- **No GPU load was performed.** No CUDA device was available to this session.
+  Everything up to and including tensor materialisation in host memory is
+  proven; `.to("cuda")`, CUDA-graph capture, the engine's `GPU KV cache size`
+  line and `vllm bench serve` are all still outstanding, and §6 remains the
+  order to do them in.
+- **The lab ran the streamer on arm64**, not the cluster's x86_64. The transport
+  is arch-independent, and the arm64 caveat in `runai_utils.py` proved stale
+  (0.16.1 imports cleanly on arm64), but the vLLM image itself was not executed.
+- **The `vllm/vllm-openai:v0.11.0` image was not run.** The streamer verdict is
+  from its Dockerfile (§6 step 2), which is decisive about what is installed but
+  is not the same as importing it from the published image.
+- **The real MinIO at `10.10.1.102` was never authenticated to.** Reachability,
+  latency and the certificate were measured; no bucket was created and no object
+  was read or written there.
