@@ -1,0 +1,172 @@
+# ══════════════════════════════════════════════════════════════════════════
+# TASK-818 Lane G — staged changes for `hope-v2-deployment` base/text.yaml
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ THIS FILE IS NOT APPLIED BY ANYTHING IN THIS REPOSITORY.
+#
+# The k8s manifests live in the separate GitOps repo `arca/hope-v2-deployment`
+# (`.claude/rules/09-infrastructure-devops.md` §Cluster Deploys). This file is a
+# hand-over artifact for the orchestrator to fold into `deployment/k8s/base/
+# text.yaml` there, following the precedent set by
+# `docs/implementation/TASK-823-vLLM-Inference-Service/deployment/vllm.yaml` and
+# TASK-824/TASK-822.
+#
+# It is a FIELD-LEVEL PATCH, not a whole manifest, because Lane G could not read
+# the existing `base/text.yaml` (different repo, not checked out here). Writing a
+# full Deployment would mean inventing an image pin, env, resources and probes
+# that already exist and are correct. Every stanza below therefore names the
+# object and the exact field to change, and nothing else.
+#
+# `hope-text` already has a Deployment, Service, HPA and PDB — they were renamed
+# from `hope-smr` by TASK-803 (`docs/implementation/TASK-803-Deployment-Config-
+# Plane-Alignment/README.md:102`). So G-3 is an EDIT to an existing HPA, not a
+# new object.
+#
+# ── WHAT IS DELIBERATELY ABSENT ────────────────────────────────────────────
+#
+# G-1 (`--workers`) — BLOCKED, not deferred. Multi-worker breaks resume; see
+#   README.md in this directory and the comment block in `apps/text/Dockerfile`.
+#   Nothing here raises `replicas` either, for the same reason: the defect is in
+#   running a second PROCESS, not specifically in `--workers`.
+#
+# G-5 (ingress SSE config) — NOT APPLICABLE to this cluster. There is no nginx
+#   ingress controller, and the only `Ingress` object is Grafana's on
+#   `grafana.local`, which no tunnel route targets (TASK-828 §edge). Traffic
+#   reaches pods via Cloudflare Tunnel -> k3s NodePort, bypassing Traefik
+#   entirely. `nginx.ingress.kubernetes.io/*` annotations would be inert twice
+#   over, so none are written here. See README.md §G-5.
+
+---
+# ══════════════════════════════════════════════════════════════════════════
+# G-2 — graceful shutdown that does not cut clinicians off
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Deployment/hope-text -> spec.template.spec
+#
+# MEASURED (Lane G, 2026-08-30), single worker, real Redis, SIGTERM sent
+# mid-stream at chunk 5:
+#
+#   * uvicorn drops the client's SSE connection IMMEDIATELY. The client sees
+#     `RemoteProtocolError: peer closed connection without sending complete
+#     message body` and NO terminal frame. `--timeout-graceful-shutdown` does
+#     not change this (tested at unset and at 2 s — both identical).
+#   * The PRODUCER survives and runs on, held by the lifespan drain in
+#     `main.py`. A 60 s generation completed (process exited 55.13 s after
+#     SIGTERM); a 90 s generation did NOT (process exited at 60.16 s).
+#
+# So the in-process drain budget is ~60 s: `generation_hub.drain(timeout=30.0)`
+# followed by `shutdown_manager.wait_for_shutdown(timeout=30.0)`, sequential,
+# and NEITHER cancels the producer — they simply stop waiting.
+#
+# THE CONSEQUENCE THAT MATTERS: `terminationGracePeriodSeconds` alone cannot
+# deliver G-2's promise. Even with a 30-minute grace period the app gives up at
+# ~60 s. The k8s value below is necessary but NOT sufficient; the binding
+# constraint is in `main.py`, which is orchestrator-owned (see README.md
+# §REGISTRATIONS).
+#
+# 600 s is chosen to match the house precedent for a long-running workload
+# (TASK-823 `vllm.yaml:123`) and to bound how long a terminating pod can block a
+# rolling update. It deliberately does NOT match `maxGenerationSeconds`, whose
+# in-code floor is 1800 s — see the coupling note in README.md §G-2.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-text
+spec:
+  template:
+    spec:
+      # Was: unset (k8s default 30 s). A 30 s grace period SIGKILLs the pod
+      # while producers are still draining, losing every unflushed delta.
+      terminationGracePeriodSeconds: 600
+
+---
+# ══════════════════════════════════════════════════════════════════════════
+# G-3 — HPA: record the right metric, keep the object inert
+# ══════════════════════════════════════════════════════════════════════════
+#
+# EDIT the EXISTING `hope-text` HPA. Do not create a second one.
+#
+# §4.7 says not to scale an I/O-bound proxy on CPU, and Lane G's measurement
+# says the same thing from the other side: in latency-injecting mode at 100
+# concurrent streams, one worker sits at 0.51 cores. CPU utilisation is
+# uncorrelated with how close this service is to its real limit, which is
+# in-flight upstream concurrency.
+#
+# But KEDA is NOT installed in this cluster and there are ZERO ScaledObjects in
+# either repo (TASK-823 §453-457, EXECUTION-PLAN §375). Installing it is a
+# platform decision with its own operator, RBAC and failure modes; it does not
+# ride in on this ticket.
+#
+# So this follows the HOUSE precedent verbatim: a real HPA object so the
+# primitive exists uniformly, pinned `min == max` so it can never change the
+# replica count — exactly as `base/stt.yaml` and `TASK-823/vllm.yaml` do.
+#
+# ⚠️ min == max == 1 IS ALSO LOAD-BEARING HERE, FOR A SECOND REASON. It is not
+# only "CPU is the wrong signal". A second replica is a second `GenerationHub`,
+# and a resume routed to the replica that does not own the producer returns a
+# truncated stream with no terminal frame (README.md §RESUMABILITY). Until the
+# cross-process live tail exists, this HPA pinned at 1 is the only thing
+# preventing a silent data-loss path in production. Raising `maxReplicas`
+# before that fix would ship the defect, not scale the service.
+#
+# WHEN KEDA ARRIVES, the metric to scale on is in-flight upstream concurrency
+# per pod — `text_active_generations` (already exported; see
+# `apps/text/src/text/core/metrics.py` `ACTIVE_GENERATIONS`) — never CPU and
+# never RPS, because a long stream makes RPS meaningless. Pair it with
+# `behavior.scaleDown.stabilizationWindowSeconds: 300` (§4.7) so a pod holding
+# minute-long clinical generations is never scaled away on a traffic dip.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-text
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hope-text
+  minReplicas: 1
+  maxReplicas: 1
+  behavior:
+    scaleDown:
+      # Inert while min == max, but correct and already in place for the day
+      # maxReplicas is raised. 300 s per §4.7.
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+
+---
+# ══════════════════════════════════════════════════════════════════════════
+# G-4 — keep scraping pods that are terminating
+# ══════════════════════════════════════════════════════════════════════════
+#
+# A terminating `hope-text` pod is exactly the one whose metrics matter: it is
+# draining producers for up to ~60 s and that is the window in which a
+# generation is lost. By default a pod in `Terminating` is removed from Service
+# endpoints, so Prometheus stops scraping it and the shutdown data disappears.
+#
+# ⚠️ APPLY THIS ONLY TO A METRICS/HEADLESS SERVICE, NEVER TO THE SERVICE THAT
+# CARRIES CLIENT TRAFFIC. On the traffic Service, `publishNotReadyAddresses`
+# would route new generations to a pod that is shutting down.
+#
+# Lane G could not confirm which Service objects `base/text.yaml` defines, or
+# whether this repo's Prometheus scrapes `hope-text` via Service endpoints or
+# via pod annotations. TASK-823's NetworkPolicy comment says this repo "scrapes
+# pod-to-pod from a plain Prometheus Deployment via pod annotations" — if that
+# is how `hope-text` is scraped, then endpoint membership is NOT what gates the
+# scrape and THIS PATCH IS A NO-OP. Verify before applying; do not add the field
+# to the traffic Service to "make it work".
+apiVersion: v1
+kind: Service
+metadata:
+  # ⚠️ NAME UNVERIFIED — Lane G could not read base/text.yaml. If there is no
+  # separate metrics Service, do NOT rename the traffic Service into this
+  # patch; either add a headless metrics Service or drop G-4 as not applicable
+  # and record that the scrape is annotation-based.
+  name: hope-text-metrics
+spec:
+  publishNotReadyAddresses: true
