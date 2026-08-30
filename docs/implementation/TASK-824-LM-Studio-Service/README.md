@@ -2,19 +2,22 @@
 
 | | |
 |---|---|
-| **Status** | **Review — engine decision pending owner (§2A)** |
+| **Status** | **In Progress — engine DECIDED (§0: LM Studio + vLLM). Phase 2 built and staged (§10B); blocked on ROOT_CONFIG_REQUESTS R-1..R-5 and a CI build** |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` |
 | **Depends on** | MinIO model-artifact bucket (`hope-models` already exists, `docker-compose.yml:145`); objects not yet mirrored |
 | **Feeds** | TASK-818 (router) — the GGUF serving tier |
 | **Related** | **TASK-831 (model catalogue — inverted the engine priority)**, TASK-823 (vLLM), TASK-822 (MLflow), TASK-828 §4b (MinIO on the LAN) |
 
-> **⚠️ READ §2A FIRST.** TASK-831 landed after this ticket's engine decision was
-> made and changed the inputs it rested on. §2A recommends **`llama-server`
-> instead of the custom `llmster` image** and gives the evidence. §4–§5 below
-> are the ORIGINAL llmster build spec, left intact and un-edited so the owner
-> can weigh both — several of their traps (§4.1's silent CPU fallback, §4.10's
-> missing rescan, §4.3's readiness workaround) do not apply to the recommendation.
+> **⚠️ READ §0 FIRST, THEN §10B.** The engine question is CLOSED: **LM Studio
+> (`llmster`) + vLLM**, by owner decision on 2026-08-30. §2A's `llama-server`
+> recommendation was made, considered and **overruled**; it is retained below as
+> the record of the argument, not as the plan. **Do not re-open the comparison
+> and do not initialise a llama.cpp server.**
+>
+> §4–§5 are the llmster build spec and are LIVE. Where §10B's measurements
+> contradict them — §4.7's wait-loop, §4.10's "no rescan", §4.3's readiness
+> design — **§10B is correct and the shipped artifacts follow it.**
 
 ## 0. ✅ OWNER DECISION 2026-08-30 — LM Studio, not llama.cpp
 
@@ -908,8 +911,140 @@ The size + digest gates rejected it. Corruption from an interrupted transfer is 
 - Granite Guardian and Gemma 4 E4B were never downloaded or loaded; their digests are verified
   against HuggingFace but no file was fetched.
 
+## 10B. Phase 2 — the LM Studio (`llmster`) tier, per the §0 owner decision
+
+This is the lane that BUILT the decision in §0. §10A above belongs to the
+llama.cpp lane whose recommendation §0 overruled; its artifacts (`image/`,
+`deployment/`) are left untouched as the record of that argument and as the
+documented escape hatch (§2).
+
+### Artifacts
+
+| Path | What |
+|---|---|
+| `infrastructure/docker/lmstudio/Dockerfile` | Pinned, SHA-512-verified `+cuda12` bundle on a CUDA runtime base. Non-root uid 10001 |
+| `infrastructure/docker/lmstudio/entrypoint.sh` | Eight ordered boot assertions, each fail-closed with exit 78 |
+| `infrastructure/docker/lmstudio/.dockerignore` | Context is two files |
+| `infrastructure/docker/lmstudio/README.md` | The measured-behaviour record, and what it does/does not cover |
+| `.gitlab/ci/build.yml` | `build-lmstudio` + `verify-lmstudio-runtime`; CUDA base added to the warm-up list |
+| `deployment-llmster/lmstudio.yaml` | 8 objects: PVC, ConfigMap, PreSync sync Job, Deployment (`replicas: 0`), 2 NetworkPolicies, PDB, HPA |
+| `deployment-llmster/lmstudio-service-cutover.yaml` | The Service — separated because it is the one outage-capable step |
+| `deployment-llmster/audio-smoke-test.sh` | Executable A-1 test. **Not run** |
+| `deployment-llmster/README.md` | Handover, R-1..R-7, the `AiProviderConnection` spec, OI-1..OI-6 |
+
+**The image is built by CI only** (owner directive, 2026-08-30). It lives under
+`infrastructure/docker/` following the `python-base` / `qdrant-init` convention,
+not under this ticket directory, because a CI job needs a real repo path.
+
+### The four traps, and where each is now closed
+
+| Trap | Closed by |
+|---|---|
+| §4.1 silent CPU bundle | Pinned SHA-512 (build) → `verify-lmstudio-runtime` (CI) → entrypoint A-2 (pod) |
+| §4.10 no rescan | Refuted by measurement (see below); replaced by a *verified* publication step that asserts every expected key before serving |
+| §4.2 daemon forks and exits | `entrypoint.sh`, holding on `exec lms log stream`, with explicit `--port` AND `--bind` |
+| §4.11 liveness | Every probe is an `exec` that greps the body. No `httpGet` probe on this server can ever fail |
+
+### Findings that CORRECT this ticket
+
+Measured against llmster 0.0.23-1 by running the vendor's own binary.
+
+1. **§4.7's wait-loop does not wait.** `lms server status` exits **0 before the
+   daemon exists**, so `... && break` breaks on the first iteration. In fact
+   *every* `lms` status command exits 0 regardless of the answer, including
+   `lms runtime select` on a machine with **no GPU**. Every gate must match
+   output text. This is §4.11's HTTP hazard (200 for unknown paths) reappearing
+   one layer down in the CLI.
+
+2. **§4.10's conclusion does not hold.** Its three pieces of evidence are each
+   correct — no rescan subcommand, no rescan RPC, no docs concept — but the
+   inference is not. A GGUF at `<models>/<publisher>/<model>/x.gguf` is indexed
+   **at daemon start**, and one dropped there **while the daemon runs** is
+   indexed within seconds, with no import and no restart. There is no rescan
+   command because the daemon watches the directory. "No rescan API" and "no
+   discovery" are different claims, and only the first was evidenced.
+
+3. **A second silent-CPU path §4.1 does not describe.** The bundle ships **both**
+   engines and **selects the CPU one by default** (`llama.cpp-linux-arm64` ✓
+   alongside `…-nvidia-cuda13`). Shipping the right bundle is necessary but not
+   sufficient — without an explicit `lms runtime select` a correct CUDA image
+   runs on CPU. There is also a second trigger in `install.sh` itself: a builder
+   lacking coreutils `timeout` gets the CPU bundle **even on a GPU host**
+   (`install.sh:442`).
+
+4. **`lms import` without `-L` crashes; it does not silently move.** `-y`
+   suppresses the warning text but the CLI still opens a TTY prompt and dies
+   with `BadResource: ENOTTY: Not a typewriter`, exit 1, nothing imported. `-L`
+   remains mandatory, for a different reason than stated. With `-L`: staging
+   inode unchanged, link count 1 → 2.
+
+5. **§4.3's readiness design has no headless mechanism.** There is **no JIT
+   control anywhere in the CLI**. With JIT on, `/v1/models` lists every model on
+   disk regardless of load state, exactly as §4.3 warns. The working signal is
+   `/api/v1/models` → per-model `loaded_instances[]`, which is empty for a model
+   merely on disk.
+
+6. **The model key comes from the `<model>` segment of `--user-repo`, not the
+   filename** — and LM Studio **prepends `text-embedding-`** for embedding
+   models. This is the §7.4 `sourceUri` trap made concrete; `imports.tsv` carries
+   an expected-key column and the entrypoint asserts it before serving.
+
+7. **Defaults are loopback on a random port** (`{"host":"127.0.0.1","port":41343}`
+   in a fresh container), and `~/.lmstudio/.internal/http-server.json` is **not**
+   the live serving address — it still read `127.0.0.1:41343` after
+   `lms server start --port 1234 --bind 0.0.0.0` succeeded.
+
+8. **LM Studio exposes no metrics endpoint.** `GET /metrics` → 200 with
+   `{"error":"Unexpected endpoint or method"}`. A real observability regression
+   versus llama.cpp; no scrape annotations were added, because they would imply
+   a signal that does not exist.
+
+9. **Bug #2093 not reproduced.** As uid 10001 with `HOME=/home/llmster`, the
+   install landed in `/home/llmster/.lmstudio`, and the daemon started, served
+   and ran inference from there. See the caveat below.
+
+### NOT proven — stated plainly
+
+- **No image build is claimed.** Per the owner directive of 2026-08-30, CI is the
+  only builder; local build results obtained earlier in this lane are
+  **discarded as evidence** and no claim rests on them.
+- **The measured facts above are from the `linux-arm64` bundle.** They are facts
+  about the vendor's CLI and server, retained because several correct this
+  ticket. They are **not** evidence about the production artifact, which is
+  `linux-x64` + `full+cuda12` on a CUDA base — a different bundle on a different
+  architecture. Finding 9 in particular is a property of *our image* and needs
+  CI re-confirmation.
+- **No GPU execution of any kind.** GPU offload, VRAM residency, throughput, the
+  co-tenancy plan, and A-2 firing in its *positive* direction are all unverified.
+- **Audio was NOT verified (risk A-1).** `audio-smoke-test.sh` is delivered as an
+  executable test, not a result. All evidence gathered is negative or absent:
+  the docs say "text and images"; the per-model schema carries
+  `capabilities{vision, trained_for_tool_use, reasoning}` with **no audio flag**.
+  The script's three outcomes distinguish explicit rejection, working audio, and
+  the dangerous middle case — accepted with HTTP 200 but answered from the text
+  alone.
+- **Whether LM Studio auto-pairs `*-mmproj.gguf` is UNVERIFIED** (OI-1). If it
+  does not, vision *and* audio are both silently unavailable, and there is no
+  `--mmproj` equivalent on `lms load` or in the REST load body. The smoke test's
+  vision control is the discriminator.
+- **Which CUDA minor the `+cuda12` bundle links** (OI-4). The arm64 bundle ships a
+  **cuda13** engine, so the `nvidia/cuda:12.8.1-runtime-ubuntu24.04` base may be
+  the wrong minor. `verify-lmstudio-runtime` prints the engine list on the first
+  pipeline.
+- **Offline cold start with egress blocked** (§4.9 item 9) is unverified, and
+  matters more here than for llama.cpp: LM Studio is closed-source, so its
+  first-run telemetry behaviour cannot be read from source.
+
+### Two accepted regressions, named rather than buried
+
+- **No auth at all.** LM Studio has no headless token path, so the ingress
+  NetworkPolicy is the *only* enforcement point (§5 L-1, risk A-4) rather than
+  defence in depth. Treat any weakening of that rule as a security change.
+- **No metrics.** Finding 8.
+
 ## 11. Change History
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created. Owner directed a custom headless `llmster` GPU image over `linuxserver/docker-lm-studio`; ToS position recorded as accepted risk; MinIO artifact plane specified. |
 | 2026-08-30 | **Engine recommendation reversed pending owner sign-off (§2A): `llama-server` over the `llmster` build.** Driven by TASK-831 — two headline models are vision **and audio**, and LM Studio audio support is UNVERIFIED-negative. Six corroborating findings: §4.10's entire no-rescan problem class disappears (and router mode HAS a rescan, `GET /models?reload=1`); `/health` gives a real 503→200 readiness gate (verified); the §4.1 silent-CPU-fallback trap becomes structurally absent; MIT licence removes both the ToS risk and the private-registry constraint; `--api-key-file` makes §5 L-1's auth gap real rather than "NetworkPolicy is the ONLY enforcement point"; and most of §4.9's twelve unknowns are LM Studio-specific. Build floor b9383 proven by **commit ancestry** (4/4 fix PRs `behind_by=0`), not by build number. Staged a thin digest-pinned image, a checksum-verifying MinIO→PVC sync Job (with the §4.10 `lms import` step correctly ABSENT), 13 k8s objects incl. the first NetworkPolicies for this workload, an opt-in `gguf` compose profile, and the `AiProviderConnection` spec — which turns out to be a **one-field `baseUrl` change to an existing seed row**, no router code and no `AiModel.provider` change. Recorded three findings that change how the plan is expressed: `--ctx-size` is the TOTAL KV budget divided across `--parallel` slots (so §6.4's "28 seq @ 8k" is `-np 28 -c 229376`); `provider: 'llama-cpp'` in the catalogue selects the raw-prompt `/completion` adapter and would silently strip the chat template from a multimodal model; and Gemma 4 emits reasoning into `message.reasoning_content`, leaving `content` empty. Two genuine costs recorded rather than buried: router mode self-reports as **experimental** ("not recommended in untrusted environments"), and the embedding plane **cannot route at all** until TASK-831 §9 owner decision 2 is taken, because `apps/text` registers only `tei-embed` and TEI cannot load a GGUF. **No GPU was available to this lane; GPU offload and all throughput claims are unverified.** |
+| 2026-08-30 | **Phase 2 — built the LM Studio (`llmster`) tier per the §0 owner decision (§10B).** Image at `infrastructure/docker/lmstudio/` (pinned + SHA-512-verified `+cuda12` bundle, non-root uid 10001, build-info baked); CI wiring in `.gitlab/ci/build.yml` (`build-lmstudio` + `verify-lmstudio-runtime`, which fails the pipeline on a CPU-only image); 8 staged k8s objects at `replicas: 0` with the Service separated into a cutover file because it is the one outage-capable step (`hope-lmstudio` currently fronts the HOST instance and carries both summarization and guardrail). **Per the owner directive of 2026-08-30, CI is the only builder; local build results are discarded as evidence.** Nine measured findings against llmster 0.0.23-1, several of which CORRECT this ticket: §4.7's wait-loop never waits (`lms server status` exits 0 before the daemon exists — in fact every `lms` status command exits 0 regardless of the answer, `runtime select` included, even with no GPU); **§4.10's conclusion does not hold** — a GGUF in `<publisher>/<model>/` is indexed at daemon start AND live, so there is no rescan command because the daemon watches the directory ("no rescan API" and "no discovery" are different claims); a **second silent-CPU path** — the bundle ships both engines and selects the CPU one by default, plus `install.sh:442` yields the CPU bundle on a builder lacking `timeout` even on a GPU host; `lms import` without `-L` **crashes** on a TTY probe rather than silently moving; §4.3's readiness design has **no headless mechanism** (no JIT control exists) so readiness is `loaded_instances[]` via an exec probe; the model key derives from the `--user-repo` `<model>` segment with a `text-embedding-` prefix for embedding models (the §7.4 trap, now asserted at boot); defaults are loopback on a random port; and **no `/metrics` endpoint exists** — an observability regression recorded rather than hidden. **NOT proven: no image build is claimed, no GPU execution, and AUDIO WAS NOT VERIFIED** — `audio-smoke-test.sh` is delivered as an executable A-1 test with all gathered evidence negative or absent, and OI-1 (whether LM Studio auto-pairs `*-mmproj.gguf`) must be closed first or vision and audio are both silently unavailable. |

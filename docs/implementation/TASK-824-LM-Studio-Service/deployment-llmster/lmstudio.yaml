@@ -1,0 +1,637 @@
+# =============================================================================
+# TASK-824 — LM Studio (`llmster`) in-cluster serving tier
+# =============================================================================
+# STAGED, NOT APPLIED. Destination in `hope-v2-deployment`:
+#     deployment/k8s/base/lmstudio.yaml
+# The ORCHESTRATOR makes every commit to that repo (EXECUTION-PLAN §14.5).
+#
+# This file is SAFE to register in base/kustomization.yaml immediately: every
+# workload in it ships at `replicas: 0` and the sync Job fails closed on an
+# unfilled model version, so registering it changes nothing that serves.
+#
+# ⚠️ THE SERVICE IS DELIBERATELY NOT IN THIS FILE. It lives in
+#    lmstudio-service-cutover.yaml, because applying it is the one irreversible,
+#    outage-capable step in this migration. Read that file before touching it.
+#
+# ── THIS IS A MIGRATION, NOT A NEW DEPLOY (EXECUTION-PLAN §14.3) ─────────────
+# LM Studio already serves this platform from the node HOST (10.10.1.10:1234),
+# fronted by a selector-less Service + hand-written Endpoints applied OUTSIDE
+# kustomize and Argo. Those two objects are retired by the cutover file, not by
+# this one.
+#
+# ── ENGINE CHOICE: OWNER DECISION, NOT AN OPEN QUESTION (ticket §0) ──────────
+# A prior lane recommended llama.cpp. The owner considered that and OVERRULED
+# it: LM Studio + vLLM. The six risks that decision accepts (A-1..A-6) are
+# recorded once in the ticket and are not re-argued here. Where a control below
+# is weaker than the llama.cpp equivalent, the comment says so plainly rather
+# than pretending parity.
+# =============================================================================
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hope-lmstudio-models
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  accessModes:
+    # The Job writes; the serving pod ALSO writes (see the Deployment's
+    # readOnly:false note — `lms import` hard-links into the models tree and the
+    # daemon maintains its index there). RWO is correct on single-node k3s.
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Four models, vision on: 14.79 GiB (TASK-831 §6.3). The staging area
+      # holds a SECOND copy only transiently — `lms import -L` hard-links, so a
+      # published model occupies its bytes once, not twice (measured: link
+      # count 1 -> 2, same inode). 60Gi leaves room to stage a replacement
+      # prefix before deleting the old one, which is mandatory because
+      # promotion is a NEW prefix and never an overwrite
+      # (infrastructure/docker/minio/README.md §5.5).
+      storage: 60Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hope-lmstudio-manifest
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+data:
+  # ==========================================================================
+  # WHAT TO SYNC — one row per published model version.
+  #     slug <TAB> version <TAB> role
+  #
+  # Slugs are TASK-832's (infrastructure/docker/minio/README.md §5.1), which
+  # lowercases the catalogue id. This ticket does NOT define the bucket layout;
+  # it consumes it.
+  #
+  # ⚠️ THE `version` VALUES ARE PLACEHOLDERS AND THE JOB REFUSES TO RUN WITH
+  # THEM. `<version>` is content-addressed (`<quant>-<sha256-12>` of
+  # manifest.json) and is only knowable AFTER publication. Failing closed on a
+  # placeholder is deliberate: a silently-wrong version syncs a DIFFERENT model
+  # and content-addressed prefixes make that undetectable downstream.
+  #
+  # `qwen3.5-4b` is deliberately absent — TASK-831 §4.2 recommends dropping it
+  # (no first-party GGUF, a RETIRED slug that must not be reused, and it is
+  # what collapses the KV budget on the card hosting the guardrail model).
+  models.tsv: |
+    gemma4-e2b-it-qat	SET-AT-PUBLISH	llm
+    gemma4-e4b-it-qat	SET-AT-PUBLISH	llm
+    granite-guardian-4.1-8b	SET-AT-PUBLISH	llm
+    text-embedding-embeddinggemma-300m-qat	SET-AT-PUBLISH	embeddings
+
+  # ==========================================================================
+  # HOW TO PUBLISH EACH STAGED FILE INTO LM STUDIO'S CATALOGUE
+  #     <staged-relative-path> <TAB> <publisher>/<model> <TAB> <expected key>
+  #
+  # ── WHY THIS FILE EXISTS AT ALL ────────────────────────────────────────────
+  # TASK-832's bucket is keyed `<slug>/<version>/`. LM Studio resolves models
+  # from a `<publisher>/<model>/` directory tree. Something must bridge the two
+  # shapes, and `lms import --user-repo` IS that bridge — which is precisely why
+  # the bucket layout does NOT need to change to accommodate this engine.
+  #
+  # ── THE THIRD COLUMN IS THE §7.4 TRAP, DEFUSED ─────────────────────────────
+  # MEASURED (llmster 0.0.23-1, 2026-08-30): the model key is derived from the
+  # <model> SEGMENT OF --user-repo, not from the filename. Importing a file
+  # named `hope-test-model.gguf` as `hopetest/imported-model` produced the key
+  # `text-embedding-imported-model`.
+  #
+  # That matters because `resolveTextSelectionForKey` puts `AiModel.sourceUri`
+  # on the wire as the OpenAI `model` field. If the key LM Studio advertises
+  # differs from the seed row's sourceUri, EVERY generation 404s. The seed
+  # values are test-pinned by `ai-model-consolidation-seed.test.ts`, so they are
+  # the fixed point and the <model> segment is what must match them:
+  #     seed/ai-models/llm.ts:114  sourceUri 'gemma-4-e2b-it-qat'
+  #     seed/ai-models/llm.ts:135  sourceUri 'gemma-4-e4b-it-qat'
+  #     seed/ai-models/llm.ts:65   sourceUri 'granite-guardian-4.1-8b'
+  #
+  # entrypoint.sh asserts every expected key is visible before it serves, so a
+  # wrong guess here fails at POD START with exit 78 — not at 3am on a clinical
+  # request.
+  #
+  # ⚠️ EMBEDDING MODELS GET A `text-embedding-` PREFIX ADDED BY LM STUDIO.
+  # MEASURED: directory `hope-embed-test` -> key `text-embedding-hope-embed-test`.
+  # So the <model> segment is `embeddinggemma-300m-qat` and the resulting key is
+  # `text-embedding-embeddinggemma-300m-qat`, which is exactly TASK-832's slug.
+  # Naming the directory with the prefix already on it would double it.
+  #
+  # ⚠️ THE PROJECTORS ARE NOT LISTED, AND THAT IS AN OPEN ITEM, NOT AN OMISSION.
+  # Gemma 4 E2B/E4B ship a separate `*-mmproj.gguf` carrying BOTH the vision and
+  # audio encoders. llama.cpp needs an explicit `--mmproj`; whether LM Studio
+  # auto-pairs a projector sitting next to the weights in the same
+  # <publisher>/<model>/ directory is UNVERIFIED — see AUDIO_VERDICT in the
+  # handover README. The sync places them on the volume regardless; how they are
+  # activated must be settled before any multimodal traffic.
+  imports.tsv: |
+    # staged path	publisher/model	expected key
+    gemma4-e2b-it-qat/gemma-4-E2B_q4_0-it.gguf	hope/gemma-4-e2b-it-qat	gemma-4-e2b-it-qat
+    gemma4-e4b-it-qat/gemma-4-E4B_q4_0-it.gguf	hope/gemma-4-e4b-it-qat	gemma-4-e4b-it-qat
+    granite-guardian-4.1-8b/granite-guardian-4.1-8b-Q4_K_M.gguf	hope/granite-guardian-4.1-8b	granite-guardian-4.1-8b
+
+  sync.sh: |
+    #!/bin/sh
+    # MinIO -> PVC warm sync for the LM Studio serving tier.
+    #
+    # Contract:  fetch prefix -> verify SHA256SUMS -> flip .ready
+    # The catalogue registration step (`lms import`) is NOT here: `minio/mc`
+    # ships no `lms`, and the import must run where the daemon and the models
+    # tree are — i.e. in the serving container. entrypoint.sh A-3 does it.
+    #
+    # POSIX sh with NO jq: `minio/mc` ships neither jq nor a package manager to
+    # add one (found the hard way by a prior lane, whose script died on
+    # `jq: command not found`). Verifying against the prefix's plain-text
+    # SHA256SUMS instead of a JSON manifest makes that a non-issue AND keeps ONE
+    # source of truth — digests are never copied into this repo.
+    #
+    # Idempotent: a prefix already present and correct is re-verified and
+    # skipped, so this is safe as an ArgoCD PreSync hook.
+    set -eu
+
+    DEST="${DEST:-/models}"
+    STAGING="${DEST}/staging"
+    MODELS="${MODELS:-/manifest/models.tsv}"
+    BUCKET="${BUCKET:-hope-models}"
+
+    echo "sync: endpoint=${AWS_ENDPOINT_URL} bucket=${BUCKET} dest=${DEST}"
+
+    # The sentinel goes FIRST. If this Job dies midway the volume stays un-ready
+    # and every serving pod refuses to start (entrypoint A-0 + the await-models
+    # initContainer) rather than serving a half-synced model.
+    rm -f "${DEST}/.ready"
+    mkdir -p "${STAGING}"
+
+    fail=0
+    # Read from a redirected FILE, not a pipe: `cmd | while read` runs the body
+    # in a SUBSHELL, so `fail=1` would be discarded at the end of the loop and a
+    # checksum mismatch would report a SUCCESSFUL sync.
+    while IFS="$(printf '\t')" read -r slug version role; do
+      [ -n "${slug:-}" ] || continue
+      case "${slug}" in \#*) continue ;; esac
+
+      if [ "$version" = "SET-AT-PUBLISH" ] || [ -z "${version:-}" ]; then
+        echo "  FATAL ${slug}: version is unset. The prefix is content-addressed"
+        echo "        (<quant>-<sha256-12> of manifest.json) and is known only after"
+        echo "        publication. Fill models.tsv — see deployment-llmster/README.md R-3."
+        fail=1; continue
+      fi
+
+      prefix="${slug}/${version}"
+      stage="${STAGING}/${slug}"
+      echo "  syncing s3://${BUCKET}/${prefix}  (role=${role})"
+      mkdir -p "$stage"
+
+      # LAN endpoint, never the public tunnel. TASK-832: s3.taphuynh.dev is a
+      # Cloudflare Tunnel with no Access app in front — 495.6 ms vs 2.0 ms
+      # measured, it puts PHI-adjacent traffic on the public internet, and it
+      # makes the egress NetworkPolicy unwritable (the rule would have to allow
+      # Cloudflare's whole edge range instead of a single /32).
+      if ! mc mirror --quiet --overwrite "hope/${BUCKET}/${prefix}/" "$stage/"; then
+        echo "  FETCH FAILED ${prefix}"; fail=1; continue
+      fi
+
+      # --- the verification gate --------------------------------------------
+      # SHA256SUMS is written by the publisher from the bytes it uploaded
+      # (minio/README.md §5.5 step 1) and shipped in the prefix for exactly this
+      # `shasum -c` interop.
+      if [ ! -f "${stage}/SHA256SUMS" ]; then
+        echo "  NO SHA256SUMS in ${prefix} — refusing to trust this prefix"
+        fail=1; continue
+      fi
+      if ! ( cd "$stage" && sha256sum -c SHA256SUMS ); then
+        echo "  CHECKSUM MISMATCH in ${prefix}"
+        fail=1; continue
+      fi
+      echo "  verified ${prefix}"
+    done < "$MODELS"
+
+    if [ "$fail" -ne 0 ]; then
+      echo "sync: FAILED — sentinel NOT written; serving pods will refuse to start."
+      exit 1
+    fi
+
+    date -u +%Y-%m-%dT%H:%M:%SZ > "${DEST}/.ready"
+    echo "sync: OK — staged and verified; sentinel written."
+    echo "sync: the serving pod publishes these into LM Studio's catalogue via"
+    echo "      'lms import -L' (entrypoint A-3) — there is no rescan API."
+    ls -la "${STAGING}"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hope-lmstudio-model-sync
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+  annotations:
+    # PreSync/wave -1 so the volume is warm and verified BEFORE the serving
+    # Deployment rolls. Matches the db-migrate.yaml shape (§14.4 item 9).
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: hope-lmstudio
+        app.kubernetes.io/part-of: project-hope
+    spec:
+      restartPolicy: OnFailure
+      # §14.4 item 4 — required on EVERY pod spec, Jobs included, or CI's
+      # `pull-secrets` job fails the pipeline.
+      imagePullSecrets:
+        - name: hope-registry-creds
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: sync
+          # Pinned, no :latest (CI's image-hygiene job bans it).
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              mc --quiet config host add hope "$AWS_ENDPOINT_URL" \
+                 "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" --api S3v4
+              exec /bin/sh /scripts/sync.sh
+          env:
+            - name: AWS_ENDPOINT_URL
+              value: "https://10.10.1.102:9000"
+            # `hope-models-reader` — ListBucket/GetObject/GetObjectVersion on
+            # hope-models ONLY, and NO DeleteObject (minio/README.md §4). This
+            # Job must never hold the root key or the publisher key: a weight
+            # fetch has no business with a credential that can write PHI buckets.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: hope-models-reader, key: accessKeyId }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: hope-models-reader, key: secretAccessKey }
+            # MinIO's leaf is issued by the private "ARCAAI Internal CA". `mc`
+            # reads SSL_CERT_FILE; its certs/CAs/ path does NOT work — TASK-832
+            # states this explicitly and it was tested. There is deliberately no
+            # skip-verify anywhere in this platform.
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/arcaai/ca.crt
+            - name: MC_CONFIG_DIR
+              value: /home/hope/.mc
+          volumeMounts:
+            - { name: models,    mountPath: /models }
+            - { name: manifest,  mountPath: /manifest, readOnly: true }
+            - { name: scripts,   mountPath: /scripts,  readOnly: true }
+            - { name: arcaai-ca, mountPath: /etc/ssl/arcaai, readOnly: true }
+          resources:
+            requests: { cpu: "500m", memory: "512Mi" }
+            limits:   { cpu: "2",    memory: "2Gi" }
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: hope-lmstudio-models
+        - name: manifest
+          configMap:
+            name: hope-lmstudio-manifest
+            items:
+              - { key: models.tsv, path: models.tsv }
+        - name: scripts
+          configMap:
+            name: hope-lmstudio-manifest
+            items: [{ key: sync.sh, path: sync.sh }]
+        - name: arcaai-ca
+          configMap:
+            # Deliberately fails closed (CreateContainerConfigError) rather than
+            # skipping TLS verification against a PHI object store.
+            name: arcaai-internal-ca
+            items: [{ key: ca.crt, path: ca.crt }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-lmstudio
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # ==========================================================================
+  # SHIPS AT ZERO, DELIBERATELY. Same posture as TASK-823's vllm.yaml.
+  # ==========================================================================
+  # LM Studio ALREADY RUNS ON THE NODE HOST and holds VRAM the k8s scheduler
+  # cannot see. Scaling this to 1 while that instance is still running competes
+  # for the same two 15.99 GiB cards with NO isolation of any kind — TASK-831
+  # §6.1: no MIG, no MPS, no vGPU, just time-slicing handing out fungible
+  # permits. Per TASK-823 §2A.1 one pod's CUDA OOM can crash every pod sharing
+  # the card, and the likely casualty is `hope-stt`, a WORKING PRODUCTION
+  # capability.
+  #
+  # Scale to 1 ONLY after:
+  #   1. reading actual free VRAM on the node
+  #      (nvidia-smi --query-gpu=memory.used,memory.total --format=csv), AND
+  #   2. stopping or accounting for the host LM Studio instance, AND
+  #   3. completing the Service cutover in lmstudio-service-cutover.yaml.
+  replicas: 0
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+    type: RollingUpdate
+  selector:
+    matchLabels: { app: hope-lmstudio }
+  template:
+    metadata:
+      labels:
+        app: hope-lmstudio
+        app.kubernetes.io/part-of: project-hope
+      # NOTE: no prometheus.io/* annotations, and that is a MEASURED fact, not
+      # an oversight. LM Studio exposes NO metrics endpoint: GET /metrics
+      # returns 200 with {"error":"Unexpected endpoint or method. (GET
+      # /metrics)"}. This is a real observability REGRESSION versus llama.cpp
+      # (which serves Prometheus metrics) and is a consequence of the engine
+      # decision, recorded rather than hidden. Scrape annotations here would be
+      # decorative and would imply a signal that does not exist.
+    spec:
+      runtimeClassName: nvidia
+      imagePullSecrets:
+        - name: hope-registry-creds
+      # L-5: the Service must drop this endpoint BEFORE the process gets
+      # SIGTERM, and the grace period must exceed the longest generation.
+      terminationGracePeriodSeconds: 180
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        # fsGroup is load-bearing here, not boilerplate: the serving container
+        # WRITES to the models volume (`lms import` hard-links into the tree and
+        # the daemon maintains its index there), so the PVC must be group-owned
+        # by the runtime UID.
+        fsGroup: 10001
+      affinity:
+        podAntiAffinity:
+          # SOFT only — single node (§14.4 item 7). `required` is unschedulable.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels: { app: hope-lmstudio }
+      initContainers:
+        # Belt to the entrypoint's braces. entrypoint.sh A-0 refuses to exec
+        # without /models/.ready; this refuses to even START the container, so a
+        # failed sync surfaces as Init:CrashLoopBackOff — which names the actual
+        # problem — instead of a serving container flapping.
+        - name: await-models
+          image: busybox:1.36.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo "waiting for verified model volume (/models/.ready)..."
+              i=0
+              while [ ! -f /models/.ready ]; do
+                i=$((i+1))
+                [ "$i" -gt 120 ] && { echo "timeout: sync Job has not published .ready"; exit 1; }
+                sleep 5
+              done
+              echo "model volume verified at $(cat /models/.ready)"
+          volumeMounts:
+            - { name: models, mountPath: /models, readOnly: true }
+      containers:
+        - name: lmstudio
+          # Overlay sets newName + digest (§14.4 item 11). Built by CI only —
+          # .gitlab/ci/build.yml `build-lmstudio`, gated by
+          # `verify-lmstudio-runtime`, which fails the pipeline if the image
+          # turns out to be CPU-only. NEVER built or pushed from a workstation:
+          # the upstream installer selects its bundle from the BUILD HOST, so a
+          # laptop or a GPU-less runner silently produces a CPU-only image.
+          image: registry.taphuynh.dev/hope/lmstudio:dev
+          env:
+            - { name: LMS_PORT, value: "1234" }
+            # MANDATORY. MEASURED: a fresh container's daemon records
+            # {"host":"127.0.0.1","port":41343} — loopback on a RANDOM high
+            # port. `lms server start` defaults its port to "the same port as
+            # the last time it was started", and a fresh container has no last
+            # time. Omitting either value does not fall back to 0.0.0.0:1234; it
+            # lands somewhere unreachable, the pod looks healthy from inside,
+            # and every request from `apps/text` is refused.
+            - { name: LMS_SERVER_HOST, value: "0.0.0.0" }
+            # ---- the anti-silent-CPU control (ticket §0 risk A-3) -----------
+            # `strict` makes entrypoint A-2 exit 78 when no GPU is present.
+            # §8.4: a CPU-only deployment is UNDETECTABLE OVER HTTP, so this is
+            # the only place it can be caught. Do not set this to `warn` to make
+            # a pod start — a started pod that serves on CPU is the failure.
+            - { name: HOPE_ACCEL_ENFORCE, value: "strict" }
+            # HOPE_EXPECT_ACCEL is intentionally NOT set here. It is baked into
+            # the image from the build arg, so a manifest cannot weaken the
+            # guarantee by declaring a weaker expectation than the bundle
+            # delivers.
+            - { name: HOPE_IMPORT_MAP, value: "/manifest/imports.tsv" }
+            # Preload one model so readiness means something. Multi-model
+            # residency is NOT configured here: TASK-831 §6.4's per-card plan is
+            # not enforceable under time-slicing, and `--models-max` has no LM
+            # Studio equivalent. Add models only after measuring free VRAM.
+            - { name: LMS_LOAD,     value: "gemma-4-e2b-it-qat" }
+            - { name: LMS_GPU,      value: "max" }
+            - { name: LMS_CONTEXT,  value: "8192" }
+            # Max Concurrent Predictions. Source-verified, absent from the
+            # published docs, default 4, llama.cpp runtime only. §6: raising
+            # this without raising batch size just spreads the same throughput
+            # across more queues — latency rises, aggregate tok/s does not.
+            - { name: LMS_PARALLEL, value: "4" }
+            # Stable instance id, so the readiness probe can grep for it.
+            - { name: LMS_IDENTIFIER, value: "hope-primary" }
+          ports:
+            - { name: http, containerPort: 1234, protocol: TCP }
+          # ---- PROBES ------------------------------------------------------
+          # ⚠️ EVERY PROBE HERE IS AN `exec`, AND THAT IS MANDATORY, NOT STYLE.
+          #
+          # MEASURED (llmster 0.0.23-1) — LM Studio returns HTTP 200 for paths
+          # that do not exist:
+          #     /lmstudio-greeting        200 {"lmstudio":true}
+          #     /this-path-does-not-exist 200 {"error":"Unexpected endpoint..."}
+          #     /health                   200 {"error":"Unexpected endpoint..."}
+          #     /totally/bogus            200 {"error":"Unexpected endpoint..."}
+          #
+          # A k8s `httpGet` probe inspects ONLY the status code. Therefore NO
+          # httpGet probe on this server can ever fail — it would report a dead
+          # or broken pod as healthy, forever. The body is the only signal, and
+          # only `exec` can read it. Do not "simplify" these into httpGet.
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - curl -fsS http://127.0.0.1:1234/lmstudio-greeting | grep -q '"lmstudio":[[:space:]]*true'
+            periodSeconds: 10
+            failureThreshold: 90      # up to 15 min: cold PVC read + model load
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - curl -fsS http://127.0.0.1:1234/lmstudio-greeting | grep -q '"lmstudio":[[:space:]]*true'
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            # READINESS IS NOT /v1/models. §4.3 proposed turning JIT off and
+            # gating on it; MEASURED: there is NO JIT control anywhere in the
+            # CLI (not on `lms server start`, not on `lms load`, not on
+            # `lms server`), and with JIT on /v1/models lists every model ON
+            # DISK regardless of load state — both test models appeared with
+            # nothing loaded. It is therefore useless as a readiness signal,
+            # exactly as §4.3 warns.
+            #
+            # MEASURED alternative: GET /api/v1/models returns, per model,
+            #     "key": "...", "loaded_instances": [ { "id": "<identifier>" } ]
+            # and loaded_instances is EMPTY for a model merely on disk. Grepping
+            # for the identifier we passed to `lms load --identifier` proves
+            # THIS pod has THAT model resident.
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - curl -fsS http://127.0.0.1:1234/api/v1/models | grep -q '"hope-primary"'
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: { command: ["/bin/sh", "-c", "sleep 10"] }
+          resources:
+            requests:
+              cpu: "2"
+              # >= weights + KV. E2B 3.12 GiB + mmproj 0.92 + KV headroom.
+              # Host RAM request covers the mmap'd read during load.
+              memory: "12Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: "20Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            # NOT readOnly. `lms import` hard-links into the models tree and the
+            # daemon maintains its index there, so the serving container needs
+            # write access to this volume. This is a genuine difference from a
+            # llama.cpp deployment, where the same volume can be mounted ro.
+            - { name: models,   mountPath: /data }
+            - { name: manifest, mountPath: /manifest, readOnly: true }
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: hope-lmstudio-models
+        - name: manifest
+          configMap:
+            name: hope-lmstudio-manifest
+            items: [{ key: imports.tsv, path: imports.tsv }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-lmstudio-ingress
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-lmstudio }
+  policyTypes: [Ingress]
+  ingress:
+    # ⚠️ THIS IS THE ONLY ENFORCEMENT POINT, NOT DEFENCE IN DEPTH (§5 L-1,
+    # ticket §0 risk A-4). LM Studio auth is off by default and there is NO
+    # headless way to mint a token: grepping `lms/src` for
+    # apiToken|requireAuth|createToken|bearer returns zero hits, and `lms`
+    # issue #489 confirms it. The alternative — minting a token on a GUI
+    # machine and baking the config dir into the image — creates an
+    # unrotatable, GUI-minted secret, which is worse.
+    #
+    # This is a REGRESSION versus the llama.cpp option, which supports
+    # --api-key-file and would have made this policy defence in depth. It is an
+    # accepted consequence of the engine decision, named here rather than
+    # papered over. Treat any weakening of this rule as a security change.
+    - from:
+        - podSelector:
+            matchLabels: { app: hope-text }
+      ports: [{ protocol: TCP, port: 1234 }]
+    # No prometheus rule: LM Studio exposes no metrics endpoint (measured).
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hope-lmstudio-egress
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  podSelector:
+    matchLabels: { app: hope-lmstudio }
+  policyTypes: [Egress]
+  egress:
+    # DNS FIRST. Omitting this is the classic egress-policy outage.
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+  # ==========================================================================
+  # AND NOTHING ELSE. What is ABSENT here is the point:
+  #
+  #   * No MinIO rule. Unlike vLLM, which streams weights from S3 at runtime,
+  #     this pod reads weights from a PVC the sync Job already warmed. The
+  #     serving pod never speaks S3.
+  #   * No huggingface.co. §3.1b noted that LM Studio's native
+  #     POST /api/v1/models/download accepts a catalog id or an HF URL and would
+  #     egress to huggingface.co FROM A PHI NAMESPACE. Choosing to mirror into
+  #     MinIO instead is what lets this rule stay empty — and it also means the
+  #     console's "download a model" affordance CANNOT work in this namespace.
+  #     That is deliberate: weights are checksum-pinned and the serving
+  #     namespace has no internet path at all.
+  #   * L-3 asked to block telemetry egress and to verify no first-run analytics
+  #     call. This closed policy makes the question moot rather than trusting
+  #     the answer — which matters more here than it did for llama.cpp, because
+  #     LM Studio is closed-source and its telemetry behaviour cannot be read
+  #     from source. §4.9 item 9 (offline cold start with egress blocked) is
+  #     still UNVERIFIED and must be proven on first deploy.
+  # ==========================================================================
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hope-lmstudio
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # Inert but present, per §14.4 item 8 ("the primitive exists uniformly").
+  # minAvailable: 0 is correct while replicas: 0.
+  minAvailable: 0
+  selector:
+    matchLabels: { app: hope-lmstudio }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hope-lmstudio
+  labels:
+    app: hope-lmstudio
+    app.kubernetes.io/part-of: project-hope
+spec:
+  # Deliberately INERT (min == max), the same shape as stt.yaml's HPA and for
+  # the same reason: CPU-based autoscaling is wrong for a GPU pod, and there is
+  # exactly one GPU-capable node. Present for uniformity only.
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hope-lmstudio
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
