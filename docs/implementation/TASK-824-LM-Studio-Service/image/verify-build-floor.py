@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -46,15 +47,32 @@ REQUIRED_PRS = {
 }
 
 
-def gh(path: str) -> tuple[int, object | None]:
-    req = urllib.request.Request(f"https://api.github.com{path}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("User-Agent", "hope-task824-verify-build-floor")
-    try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
-            return resp.status, json.load(resp)
-    except urllib.error.HTTPError as exc:
-        return exc.code, None
+def gh(path: str, attempts: int = 4) -> tuple[int, object | None]:
+    """GitHub API GET with a bounded retry.
+
+    The retry is not politeness — it is correctness for a GATE. A transient
+    RemoteDisconnected from api.github.com would otherwise surface as a crash
+    that reads exactly like "this build is below the floor", which is the one
+    conclusion this script must never reach by accident. Observed once during
+    development. HTTP errors are returned, not retried: a 404 is an answer.
+    """
+    last = None
+    for i in range(attempts):
+        req = urllib.request.Request(f"https://api.github.com{path}")
+        req.add_header("Accept", "application/vnd.github+json")
+        req.add_header("User-Agent", "hope-task824-verify-build-floor")
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                return resp.status, json.load(resp)
+        except urllib.error.HTTPError as exc:
+            return exc.code, None
+        except Exception as exc:  # transport-level: retry
+            last = exc
+            if i < attempts - 1:
+                time.sleep(2 * (i + 1))
+    print(f"FAIL: transport error talking to api.github.com after {attempts} attempts: {last}")
+    print("      This is NOT a floor violation — it is an unverified result. Re-run.")
+    raise SystemExit(2)
 
 
 def main() -> int:

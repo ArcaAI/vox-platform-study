@@ -806,7 +806,7 @@ own threat model — not a tab on this screen.
 | Claim | Evidence |
 |---|---|
 | Build floor met | 4/4 fix PRs `behind_by=0` against `7af4279f…` |
-| Manifest is honest | TSV↔JSON agree on all 6 files; all 6 digests match live HF blobs; total **14.79 GiB**, matching TASK-831 §6.3 exactly |
+| Provenance record is honest | `models.tsv` and `upstream.json` name the same 4 slugs; all 6 recorded digests match the live HF blobs; total **14.79 GiB**, matching TASK-831 §6.3 exactly |
 | Image builds + runs non-root | `docker build` OK; UID 10001 |
 | Sentinel gate works | Missing `/models/.ready` → **exit 78**, refuses to serve |
 | `--mmproj` gate works | `HOPE_EXPECT_MODALITIES` set + no `--mmproj` → **exit 78** |
@@ -820,15 +820,39 @@ own threat model — not a tab on this screen.
 | Chat + template work | Gemma 4 E2B chat completion generated; template applied from the GGUF |
 | Embeddings work | 768-dim, **L2 = 1.000000**, `/v1/embeddings` |
 | Router mode works | Preset section name becomes the served id; `unloaded` → request → `loaded` |
-| Sync works | `sync.sh` unmodified in `minio/mc` against live MinIO: fetch → verify → `.ready` |
-| **Sync fails CLOSED** | Corrupted expected digest → `SHA MISMATCH`, **exit 1, `.ready` absent** |
+| Sync works | `sync.sh` unmodified in `minio/mc` against live MinIO, on TASK-832's `<slug>/<version>/` layout: mirror → `sha256sum -c SHA256SUMS` → flatten → `.ready` |
+| **Sync fails CLOSED, 3 ways** | corrupted `SHA256SUMS` → `CHECKSUM MISMATCH`; missing `SHA256SUMS` → `refusing to trust this prefix`; unfilled version → `FATAL … version is unset`. **All three: exit 1, `.ready` absent.** The positive control in between returns exit 0 with `.ready` present |
 | Compose is valid + opt-in | Full stack validates with every profile; `gguf` absent from the default profile |
 
 ### Bugs found by RUNNING the artifacts, not by reviewing them
 
 1. `done < <(...)` — bash process substitution in a script the Job runs with `/bin/sh` (BusyBox ash). Syntax error at runtime. Rewritten POSIX.
-2. **`minio/mc` ships no `jq`** and no package manager to add one. The script died on `jq: command not found`. The manifest gained a TSV form the script parses, with `verify-manifest.py` guarding the two forms against drift.
-3. A `jq | while read` pipeline would have run the loop body in a SUBSHELL, silently discarding `fail=1` — a checksum mismatch would have reported success. The loop now reads from a redirected file.
+2. **`minio/mc` ships no `jq`** and no package manager to add one. The script died on `jq: command not found`. Resolved for good by the reconciliation below: the sync verifies against the prefix's plain-text `SHA256SUMS`, so no JSON is parsed at sync time at all.
+3. A `jq | while read` pipeline would have run the loop body in a SUBSHELL, silently discarding `fail=1` — a checksum mismatch would have reported success. The loop reads from a redirected file.
+
+### Reconciled mid-lane with TASK-832
+
+TASK-832 ("MinIO goes internal — and the bootstrap script was silently broken")
+landed on `dev-2.2` while this work was in flight and made
+`infrastructure/docker/minio/README.md` **authoritative** for the `hope-models`
+bucket. Merging it in changed this lane's design, correctly:
+
+- An earlier draft carried its own `<publisher>/<repo>/<quant>/` keys, inherited
+  from **§3.1 — a shape chosen because *LM Studio* resolves models from a
+  `<publisher>/<model>/` directory tree.** That constraint died with §2A's engine
+  recommendation, and TASK-832's `<slug>/<version>/` layout supersedes it.
+- `<version>` is **content-addressed** (`<quant>-<sha256-12>` of `manifest.json`),
+  so it cannot be a constant in a manifest — it is an input, and the Job **fails
+  closed on the placeholder** rather than syncing a different model silently.
+- Digests are **no longer duplicated** into this repo. The sync verifies against
+  each prefix's own `SHA256SUMS`, keeping one source of truth; `upstream.json`
+  remains only as the publisher's pre-upload provenance record (§5.5 step 0).
+- The Job now uses the least-privilege `hope-models-reader` credential
+  (no `DeleteObject`) rather than root, and drops the `mc certs/CAs/` mount —
+  TASK-832 states plainly that `mc` reads `SSL_CERT_FILE` and that path does not work.
+
+Had this lane finished without merging, it would have shipped a bucket layout
+that no longer exists.
 
 A fourth was found the hard way, and is worth recording because it is the exact hazard the sync
 Job exists to catch: a repeatedly-resumed `curl` of the E2B projector produced a
