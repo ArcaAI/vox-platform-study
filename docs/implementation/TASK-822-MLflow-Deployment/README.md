@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — Phase 1 built and verified; Phase 2 manifests authored, awaiting orchestrator commit to `hope-v2-deployment`; Phases 3–4 not started |
+| **Status** | **In Progress** — *"awaiting orchestrator commit" is stale.* Phase 2 is **committed and deployed** (`arca/hope-v2-deployment@main` `4062cead`, `15977113`), and `hope-mlflow` is live at `replicas: 0`, Synced/Healthy. Phase 3 (exposure) and Phase 4 (the `AiModelSource.MLFLOW` resolver) are **not started**, and **control S-5 is contradicted by what shipped** — see §13. Scaling above 0 is gated only on operator steps, no hardware |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` |
 | **Depends on** | nothing (greenfield) |
@@ -73,7 +73,7 @@ For a clinical transcription platform this is unambiguous: an autologged GenAI c
 | S-2 | Audit the OTLP export path separately | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` + `MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT` are a **second egress** for the same payloads. |
 | S-3 | Authenticating reverse proxy in front, always | MLflow ships **no** native OAuth2/SAML/LDAP. Built-in `--app-name basic-auth` is a second layer, never the only one. Use oauth2-proxy forward-auth at the ingress. |
 | S-4 | Rotate the default basic-auth admin on first boot | It creates a default admin at first start. Requires `MLFLOW_FLASK_SERVER_SECRET_KEY` for CSRF. Note MLflow's RBAC (`READ/USE/EDIT/MANAGE/NO_PERMISSIONS`) has **no explicit-deny override** — you cannot grant broadly then except a resource. |
-| S-5 | TLS everywhere; `MLFLOW_S3_IGNORE_TLS` stays **false** | Use `AWS_CA_BUNDLE=/path/ca.pem` for the MinIO CA. |
+| S-5 | ~~TLS everywhere; `MLFLOW_S3_IGNORE_TLS` stays **false**~~ ⚠️ **SUPERSEDED — see §13** | ~~Use `AWS_CA_BUNDLE=/path/ca.pem` for the MinIO CA.~~ The private CA was CANCELLED by owner decision; the shipped `base/mlflow.yaml` sets `MLFLOW_S3_IGNORE_TLS: "true"` and carries no `AWS_CA_BUNDLE`. |
 | S-6 | Encryption at rest | MinIO SSE (KMS-backed) for the bucket; Postgres at the volume layer. **Vault-Transit does not apply** — MLflow has no envelope-encryption hook. |
 | S-7 | Wire `mlflow gc` deliberately | MLflow **soft-deletes**. `mlflow gc --older-than` is the *only* hard-deletion path and the only right-to-erasure mechanism. The official chart ships a CronJob for it. |
 | S-8 | NetworkPolicy egress allow-list | DNS, Postgres, MinIO. Nothing else. |
@@ -263,7 +263,7 @@ acceptance that a HF outage is a cold-start outage. Say so in the manifest comme
 ## 6. Verification Criteria
 - [ ] `mlflow db upgrade` succeeds against Postgres 18 (evidence pasted)
 - [ ] Proxied artifacts confirmed: a client with **no** MinIO credentials can log and download an artifact
-- [ ] `MLFLOW_S3_IGNORE_TLS` is false and `AWS_CA_BUNDLE` resolves the MinIO CA
+- [ ] ~~`MLFLOW_S3_IGNORE_TLS` is false and `AWS_CA_BUNDLE` resolves the MinIO CA~~ — **VOID.** This criterion cannot be met and is not meant to be: the CA it depends on was cancelled. Replaced by: *`MLFLOW_S3_IGNORE_TLS` reverts to `false` on the day a publicly-trusted certificate is installed on the MinIO listener* (§13)
 - [ ] Tracing disabled on every clinical-text path; a test asserts no prompt text reaches MLflow
 - [ ] Ingress requires auth; unauthenticated request returns 401/403
 - [ ] `/metrics` scrapes with `readOnlyRootFilesystem: true` (proves the `/tmp` emptyDir)
@@ -704,8 +704,92 @@ Config-tier placement: an MLflow registry URL is **topology**, so `MLFLOW_TRACKI
 tenant → SYSTEM, `failMode: closed` — MLflow is where the artifact is described, never where the
 selection policy lives.
 
+## 13. Where this actually stands (2026-08-31) — verified against `hope-v2-deployment@main` and the live cluster
+
+### Phase 2 is committed and deployed, not "awaiting a commit"
+
+| Landed | Commit |
+|---|---|
+| `base/mlflow.yaml`, `base/mlflow-gc.yaml` (this repo's FIRST CronJob), registered in `base/kustomization.yaml` | `4062cead` — *"MLflow lands as the registry of record, inert and digest-pinned"* |
+| `out-of-band/mlflow-bootstrap.yaml` (idempotent database + least-privilege role) and `minio/policies/mlflow-artifacts-rw.json` (bucket policy scoped to `artifacts/*`) | `15977113` — *"one database server, a bootstrapped least-privilege role, a scoped artifact key"* |
+| `hope-mlflow-migrate` de-hooked and moved out-of-band; `hope-mlflow` dropped from `replicas: 1` to `0` | `de8dc03e` |
+
+Live: Deployment `hope-mlflow` 0/0 (`ScaledToZero`), Service `hope-mlflow`, HPA, PDB, CronJob
+`hope-mlflow-gc` and ConfigMap `hope-mlflow-config-gc7bkft25d` all present and **Synced/Healthy**
+in the `hope-v2-dev` Argo Application. The image is digest-pinned in the dev overlay
+(`ghcr.io/mlflow/mlflow@sha256:2c9c50ca…`, `newName` deliberately not rewritten — it is a public
+image not in `registry.taphuynh.dev`, so the pull secret does not apply).
+
+**It shipped at `replicas: 1` first, and that was a mistake worth recording.** The pod sat in
+`CreateContainerConfigError` — *"couldn't find key `MLFLOW_MINIO_ACCESS_KEY` in Secret
+hope-v2-dev/hope-secrets"* — dragging the whole Application to Degraded for a missing
+**prerequisite** rather than a defect. `de8dc03e` set it to 0 to match vLLM and LM Studio. Scaling
+to 1 is the last step of bring-up, not the first.
+
+### ⚠️ Control S-5 is contradicted by what shipped, and §9.4c is a plan, not a state
+
+Two places where this document no longer describes reality. Neither is a defect in the manifests;
+both are the document failing to follow an owner reversal.
+
+1. **S-5 (`MLFLOW_S3_IGNORE_TLS` stays false, `AWS_CA_BUNDLE` resolves the MinIO CA) is dead.**
+   The committed `base/mlflow.yaml` sets **`MLFLOW_S3_IGNORE_TLS: "true"`** and carries **no**
+   `AWS_CA_BUNDLE` at all. That is correct, not drift: the private CA (`ROOT_CONFIG_REQUEST R-1`)
+   was **cancelled by owner decision**, and the platform-wide posture is now HTTPS with
+   verification disabled until a **publicly-trusted certificate** is installed on the MinIO
+   listener. TASK-823 recorded the identical reversal for vLLM as `OPEN-823-TLS`; this ticket
+   never wrote its equivalent down, so S-5 sat here reading like an unmet requirement. It is not
+   unmet — it is **withdrawn**. The replacement criterion is: flip `MLFLOW_S3_IGNORE_TLS` back to
+   `false` on the day that certificate lands.
+2. **§9.4c's exposure design has not shipped.** It describes Cloudflare Tunnel + a Cloudflare
+   Access application on the existing Entra IdP, NodePort 30500, `mlflow.taphuynh.dev`. **None of
+   it exists**: the committed Service is `type: ClusterIP` and its own comment still says access is
+   `kubectl port-forward svc/hope-mlflow 5000:5000` — the older §9.4b posture. §9.4c is the
+   decision; the implementation is Phase 3 and is not started. The tunnel route in particular lives
+   only in the Cloudflare dashboard (`config_src: cloudflare`), outside both repos and outside CI —
+   see TASK-828 §6.
+
+### What still gates `hope-mlflow` above `replicas: 0`
+
+Operator-sequenced only. **No hardware blocker** — unlike TASK-823, nothing here is waiting on a
+GPU. In order:
+
+1. `kubectl create secret generic hope-mlflow-bootstrap --from-literal=ADMIN_URI=…` (by hand — the
+   admin URI is never committed).
+2. `kubectl apply -f deployment/k8s/out-of-band/mlflow-bootstrap.yaml`, then verify it completed.
+   This is the improvement `15977113` bought: §9.3D used to say these prerequisites "cannot be, and
+   should not be, automated", and creating the database now *is* a re-runnable idempotent Job.
+3. Mint the MinIO service account (`mc admin user svcacct add`) under
+   `deployment/minio/policies/mlflow-artifacts-rw.json`, and patch
+   `MLFLOW_BACKEND_STORE_URI`, `MLFLOW_MINIO_ACCESS_KEY`, `MLFLOW_MINIO_SECRET_KEY` into
+   `hope-secrets`. **Still fully manual** — documented in the deployment repo's
+   `docs/mlflow-database.md` §5.
+4. Run `out-of-band/mlflow-migrate.yaml` by hand.
+5. Flip `replicas: 0 → 1`.
+
+Steps 1–4 are deliberately outside every kustomization. That is not an oversight: a PreSync hook
+that cannot yet succeed does not gate a sync, it **deadlocks** it — which is exactly what
+`hope-mlflow-migrate` did on its first real sync, and what `hope-vault-init` did for days in
+2026-08.
+
+### Verification criteria that are NOT met, restated plainly
+
+- **`AiModelSource.MLFLOW` has no resolver** (Phase 4). Grepped `packages/domains`, `apps/stt`,
+  `apps/text`, `apps/harness`: the only artifacts are the enum member
+  (`packages/domains/src/enums/generated/AiModelSource.ts:8`) and the boolean helper
+  `AiModelEntity.isMLFlow()`. No `MlflowClient`, no resolution chain, no
+  `get_model_version_by_alias` call anywhere. §11 already says these are design notes; the
+  checklist did not.
+- **The promotion webhook** (Phase 3) is not built.
+- **The `weights_uri` CI assertion is proven-correct, not enforced.** `verify/check_weights_uri.py`
+  passes 7/7 plus a live run, but it lives under this ticket's own `verify/` directory as a
+  re-runnable harness. **It is wired into no pipeline**, so nothing re-checks it on a change.
+- **Ingress auth** — cannot be met while there is no Ingress (above).
+- **The transformers-flavor `tokenizer_config.json` assertion** has no evidence anywhere; it is a
+  design note in §5A.3 that was never exercised.
+
 ## 12. Change History
 | Date | Change |
 |---|---|
 | 2026-08-29 | Ticket created from research. Rulings R-1..R-6 and PHI controls S-1..S-10 recorded. |
 | 2026-08-30 | Phase 1 built and verified end to end against a running MLflow 3.15.2 + PostgreSQL 18.4; Phase 2 manifests authored for handover; Phase 4 resolver design notes recorded (§11). Eight findings (§10) correct §2–§5, four of them materially: the image must be `-full`, `--allowed-hosts` is mandatory and gates `/metrics`, the R-1 invariant holds by a different mechanism than stated, and versioning the artifact bucket defeats `mlflow gc`. Ingress, NetworkPolicy and basic-auth deliberately not shipped, with reasons (§9.4). |
+| 2026-08-31 | **Status `Review` → `In Progress`; the "awaiting orchestrator commit" line was stale and control S-5 was contradicted by what shipped.** New §13. Phase 2 is committed AND deployed — `4062cead` (mlflow + the repo's first CronJob), `15977113` (idempotent DB-bootstrap Job + a MinIO bucket policy scoped to `artifacts/*`), `de8dc03e` (migrate de-hooked to out-of-band; `replicas: 1 → 0`). `hope-mlflow` is live at 0/0, Synced/Healthy, digest-pinned. Recorded that it shipped at `replicas: 1` first and sat in `CreateContainerConfigError` on a missing prerequisite, dragging the Application to Degraded — hence the rule that nothing which cannot yet succeed may gate the sync. **S-5 is WITHDRAWN, not unmet:** the private CA (R-1) was cancelled by owner decision, so `base/mlflow.yaml` correctly sets `MLFLOW_S3_IGNORE_TLS: "true"` with no `AWS_CA_BUNDLE`; TASK-823 recorded the same reversal as `OPEN-823-TLS` and this ticket had not. Its verification-criteria checkbox is marked VOID with the replacement criterion (revert on the day a publicly-trusted certificate is installed). **§9.4c is a plan, not a state** — the Service is still `ClusterIP` with a `port-forward` comment; no NodePort, no tunnel route, no Access application exists. Restated the criteria that are genuinely not met: no `AiModelSource.MLFLOW` resolver anywhere (only the enum member and `AiModelEntity.isMLFlow()`), no promotion webhook, and `check_weights_uri.py` is proven-correct but wired into no pipeline. Bring-up is now five named operator steps with no hardware blocker. |

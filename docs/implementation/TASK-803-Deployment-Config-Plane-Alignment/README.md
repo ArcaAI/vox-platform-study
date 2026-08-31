@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review |
+| Status | **Completed** — all six findings (A–F) closed with live-cluster evidence, 2026-08-31. See §Closure |
 | Type | infrastructure |
 | Branch | `dev-2.2` (monorepo, docs only) · `main` (`arca/hope-v2-deployment`, manifests) |
 | Scope | `arca/hope-v2-deployment` — `deployment/k8s/**`, `.gitlab-ci.yml`, vendored env inventory |
@@ -127,6 +127,52 @@ gitleaks clean.
   (`platform-secrets.descriptors.ts` `internal.accessToken`); the wiring is in place and
   inert until someone populates it.
 
+## Closure — each finding, against the LIVE cluster (2026-08-31)
+
+The manifest work was already pushed; what was missing was evidence that it *reached* and *worked
+on* `hope-v2-dev`. Every row below was read from the running objects, not from the manifests.
+
+| # | Finding | Closed by | Live evidence |
+|---|---|---|---|
+| **A** | The `smr` → `text` fork — every `apps/text` change since 2026-08-15 never reached the cluster | `18821c6` | Deployment **`hope-text`** exists and is 1/1; there is **no `hope-smr`** workload in the namespace. The dev overlay pins `hope-v2/text` → `registry.taphuynh.dev/arca/hope-v2/text@sha256:faac799c5449…` |
+| **B** | `SMR_URL` had no reader, so the gateway fell through to `http://localhost:8862` | `18821c6` | ConfigMap `hope-api-config-6629fmb499` carries `TEXT_URL=http://hope-text:8862`; **no `SMR_URL` key exists**. The symptom this finding was named for is gone: `ServiceHealthMonitoringService` now logs `{"service":"Text","status":"up","responseTimeMs":10}` — and `up` for all six peers |
+| **C** | Prefix drift — 32 `SMR_*` vars set, 0 `TEXT_*`; dead `GUARDRAIL_*` engine prefixes | `18821c6` | No `SMR_*` in any live ConfigMap; the dev overlay's own comment records that the seven `SMR_V2_OTEL_*` keys were dropped rather than carried as inert |
+| **D** | `stt-v2` naming shim | `18821c6` | `STT_URL=http://hope-stt:8861` in `hope-api-config`; workloads are `hope-stt` / `hope-stt-worker`; no `STT_V2_URL` key remains |
+| **E** | Stale `envfrom-coverage` CI gate (inventory vendored 2026-08-08) | `18821c6` | The gate now runs **and passes** — `envfrom-coverage` is one of the 8 green jobs in deployment-repo pipeline **#1029** on `de8dc03e`. Worth stating plainly: until `f09c45e3` ("tag the jobs, because none of them had ever actually run") **no job in that repo had ever executed** — every one was untagged and no runner accepts untagged jobs. So this gate's earlier "pass" was a local run, not CI |
+| **F** | Seed-time Vault requirement — without `SECRETS_PROVIDER=vault` the self-hosted engine rows seed KEYLESS and `apps/text` answers 503 | `hope-reset` | Job **`hope-reset`** completed successfully — `succeeded: 1`, `startTime 2026-08-30T18:35:14Z`, `completionTime 2026-08-30T18:35:53Z` — with `SECRETS_PROVIDER=vault`, `RUN_SEED=all`, and **non-optional** `VAULT_ROLE_ID`/`VAULT_SECRET_ID` refs. Its step 2 is a canary that logs in with hope-api's own AppRole and encrypts under `transit/hope-phi`, and it gates step 3, so a successful run **proves** the AppRole in `hope-secrets` is the current one for the rebuilt Vault and that the seed ran in vault mode |
+
+**One F caveat, stated rather than glossed:** the four self-hosted `AiProviderConnection` rows have
+not been READ BACK. The mechanism that produces them is proven to have run under the right
+conditions, which is a strong structural argument, not a row-level observation. The cheapest
+end-to-end confirmation is TASK-808's open probe — one live flush returning `textFailed:false`. If
+that probe ever returns `503 PROVIDER_CREDENTIALS_MISSING`, **come back here first**: F is the
+likeliest cause, and the repair is another `hope-reset` (the `needsSelfHostKeyBackfill` path at
+`seed/17-ai-provider-connection.ts:585`).
+
+**Also landed under this ticket after the original close-out:** `2d87b4ff`
+*"an endpoint is not a secret, and two dead keys are not documentation"* — R-7 moved
+`MINIO_ENDPOINT` out of `hope-secrets` (the settings registry declares `minio.endpoint` as tier
+`env`, sensitivity `internal`, so it was never a credential) into `config/{api,stt,harness}.env`,
+referenced as an **explicit, non-optional `configMapKeyRef`**. Explicit is load-bearing, not style:
+`secretRef: hope-secrets` is the last `envFrom` source in all four workloads, so a same-named
+Secret key would outrank a `configMapRef` — but an explicit `env:` entry outranks every `envFrom`
+source, so the reviewed Git value wins with no operator coordination. That matters because the dev
+AppProject blacklists Secrets, so Argo can never manage `hope-secrets`. It also took the
+`config-refs` gate from 31 to 35 checked references. Two dead keys (`STT_V2_DATABASE_URL`, an empty
+`# -- SMR V2 --` header) were deleted from the secret template, and one latent defect was fixed in
+passing: `hope-harness-worker` was feeding bare `host:port` into
+`HARNESS_CLAIM_CHECK_ENDPOINT_URL`, which harness parses as a URL and derives `secure` from.
+Confirmed live: `hope-api-config-6629fmb499` carries `MINIO_ENDPOINT: 10.10.1.102:9000`.
+
+**Still owed, and deliberately NOT a reason to hold this ticket open:** `INTERNAL_ACCESS_TOKEN` is
+still unminted. It was declared out of scope at close-out (§Deliberately NOT done) because it is
+DevOps-set key material — the wiring is in place on all six Python services as an OPTIONAL secret
+ref and is inert until someone populates it. **Naming the action so it is not lost: an operator
+must generate the token and patch it into `hope-secrets`.** The same applies to
+`TTS_KOKORO_ENABLED` (needs an owner decision, per TASK-799) and
+`HARNESS_RETRIEVAL_RERANKER_BASE_URL` (no reranker is deployed to this cluster; inventing an
+address would produce config that looks correct and resolves to nothing).
+
 ## Change History
 
 | Date | Change |
@@ -135,3 +181,5 @@ gitleaks clean.
 | 2026-08-25 | Manifests aligned and pushed as `18821c6`; Argo auto-synced to it. |
 | 2026-08-25 | Follow-up `36ba06e`: wired the Redis clients owner decision D-5 added to nlp/tts/harness-worker (the first commit carried a comment asserting the opposite, quoting a Round-2 statement D-5 superseded), `HARNESS_TEMPORAL_METRICS_HOST=0.0.0.0`, and `DEPLOYMENT_ENVIRONMENT`. |
 | 2026-08-25 | Cluster DB reset + reseeded with `SECRETS_PROVIDER=vault`; all four self-hosted engine rows seeded `(enabled, keyed)`. |
+| 2026-08-30 | Follow-up `2d87b4ff` (R-7): `MINIO_ENDPOINT` moved OUT of `hope-secrets` into `config/{api,stt,harness}.env` as an explicit non-optional `configMapKeyRef` (an endpoint is tier `env`, sensitivity `internal` — never a credential, and in the Secret it was outside Git, outside review and outside CI). Two dead keys removed from the secret template (`STT_V2_DATABASE_URL`, the empty `# -- SMR V2 --` header). One latent defect fixed in passing: `hope-harness-worker` fed bare `host:port` into `HARNESS_CLAIM_CHECK_ENDPOINT_URL`, which harness parses as a URL and derives `secure` from. `config-refs` 31 → 35 checked references. |
+| 2026-08-31 | **Status `Review` → `Completed`.** New §Closure verifies all six findings (A–F) against the RUNNING cluster rather than the manifests: `hope-text` exists and `hope-smr` does not (A); `hope-api-config` carries `TEXT_URL`/`STT_URL`/`MINIO_ENDPOINT` with no `SMR_URL` or `STT_V2_URL`, and the gateway's own `ServiceHealthMonitoringService` — the monitor whose "Text: down" was the original symptom — now reports all six peers `up` (B, C, D); the `envfrom-coverage` gate passes in deployment-repo pipeline **#1029** (E). Note for the record: that gate's earlier "pass" was a LOCAL run — until `f09c45e3` no job in `arca/hope-v2-deployment` had ever executed, because every job was untagged and no runner accepts untagged jobs. (F) is closed structurally: the `hope-reset` Job completed (`succeeded: 1`, 18:35:14Z → 18:35:53Z) with `SECRETS_PROVIDER=vault`, `RUN_SEED=all` and non-optional AppRole refs, behind a step-2 canary that logs in as hope-api and encrypts under `transit/hope-phi` before anything is dropped — so the seed demonstrably ran in vault mode against the rebuilt Vault. **Caveat recorded, not hidden:** the four self-hosted `AiProviderConnection` rows were not read back; TASK-808's open live-flush probe is the cheapest confirmation, and a `503 PROVIDER_CREDENTIALS_MISSING` there points here first. Three items stay deliberately undone with named owners: mint `INTERNAL_ACCESS_TOKEN` (operator), `TTS_KOKORO_ENABLED` (owner decision), `HARNESS_RETRIEVAL_RERANKER_BASE_URL` (no reranker deployed). |

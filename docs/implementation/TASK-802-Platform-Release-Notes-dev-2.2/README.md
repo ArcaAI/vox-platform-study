@@ -23,7 +23,7 @@ Produce a user-facing Platform Release Note / Changelog for HOPE `dev-2.2` compa
 - Existing convention: `docs/operations/release-notes/ALL-3.0.0.md` + `docs/operations/release-runbook.md` (Changesets for npm; git tag for services).
 - Since the 08-25 baseline, `docs/implementation/` gained 32 new ticket folders, `TASK-803` through `TASK-834` — except **`TASK-834` does not exist** (no trace in git history under any branch; treated here as a retired/reserved number, not a gap to fill). 31 real new tickets: `TASK-803`…`TASK-833`.
 - The most consequential addition is **TASK-806 "Consultation Workflow Substrate Unification"** — a program ticket (opened 2026-08-25, the same day as the prior draft) whose nine sub-tickets (`TASK-808`…`TASK-816`) are now **all Completed**, deleting `DepartmentAgent` (205 files, 21,092 deletions) and making the realtime consultation loop graph-driven end to end. None of this existed when the 08-25 draft was written.
-- `hope-v2-dev` (the only live cluster environment) has received **no manifest changes since 2026-08-25** — Argo CD's repo-server has been down since 2026-08-29T16:43:29Z on top of a `hope-db-migrate` sync defect present since 2026-08-25, and (separately) `hope-api` itself has been down since 2026-08-28 because the external seal Vault is sealed and needs a human to unseal it. This blocks TASK-833, TASK-808's remaining DoD items, and effectively every infra ticket in the new tranche (803, 822, 823, 824, 832) from reaching the cluster regardless of code readiness.
+- ~~`hope-v2-dev` has received **no manifest changes since 2026-08-25**…~~ **SUPERSEDED 2026-08-31 — the outage is over and its diagnosis was wrong in one material way.** The external seal Vault at `10.10.1.134:8200` was not "sealed, awaiting an operator with its keys": a Proxmox review found **no VM and no container at that address**, so nobody could ever have unsealed it. TASK-833 wiped the store and re-initialised it under an in-cluster **Shamir** seal driven by a `vault-bootstrap` sidecar (init · unseal · kv-v2 + transit mounts · both transit keys · AppRole · policy · a canary proving `hope-app` can encrypt under `transit/hope-phi`). The database was reset and re-seeded via the `hope-reset` Job (succeeded 2026-08-30T18:35:53Z), Argo CD reconciles again, `hope-api` is 1/1, and **every** workload in `hope-v2-dev` is at its desired replica count. The infra tranche has landed: 803, 817, 818 (Lane G), 822, 823, 824, 832 and 833 are all committed to `hope-v2-deployment@main` and Synced.
 
 ## Implementation Plan
 
@@ -38,6 +38,7 @@ Draft originally written 2026-08-25 from `git log` / `git diff --stat` / ticket 
 | Date | Change |
 |---|---|
 | 2026-08-25 | Initial draft from `origin/dev-2.1..dev-2.2`. |
+| 2026-08-31 | **Second refresh: the cluster outage this draft was built around is OVER, and its diagnosis was wrong.** Six stale claims corrected in place, each marked rather than silently rewritten. (1) The "`hope-v2-dev` undeliverable since 2026-08-25" block — in Current State Evaluation, in Deprecations/notes, and as the lead Known Issue — is superseded: the external seal Vault at `10.10.1.134:8200` **did not exist** (no VM, no container on Proxmox), so nobody could ever have unsealed it; TASK-833 rebuilt the store under an in-cluster Shamir seal, the database was reset and re-seeded (`hope-reset`, succeeded 18:35:53Z), Argo reconciles, `hope-api` is 1/1 and every workload is at its desired replica count. (2) Highlight 0a's "none of these have reached `hope-v2-dev` yet" is **false** — MLflow, vLLM and LM Studio are all committed and Synced at `replicas: 0`, MinIO internalization and the in-cluster Vault are live and serving. (3) The inference subsection's per-ticket bullets rewritten to say *deployed at zero pending prerequisites*, and to name vLLM's second blocker (`OPEN-823-TLS`) and LM Studio's failing build. (4) The Known Issues status table refreshed against re-verified ticket state — 803 and 830 now Completed, 817 at 4 of 6, 822/828 In Progress, 808's readiness item MET. (5) Three findings added that were invisible from inside the outage: the deployment repo's CI **had never once succeeded** (every job untagged, no runner accepts untagged jobs; its `schemas` gate could not have run at all — distroless, no shell), so any earlier "green in CI" claim about that repo was a local run; the rule that **nothing which cannot yet succeed may gate the Application** (three PreSync hooks and a consumerless PVC each wedged the sync); and the Application's current `OutOfSync` being only the deleted `hope-db-migrate` hook Job, not a regression. (6) New current-known-issues list: LM Studio's image does not build, `hope-api` runs with `NODE_TLS_REJECT_UNAUTHORIZED=0` set outside Git, the committed credentials are still unrotated, and Vault's unseal shares now live in etcd. `TASK-834` still does not exist; the internal-CA question once pencilled in for it is answered (no CA anywhere) and its residue — the MinIO certificate-SAN question — is now recorded in TASK-828 §4b rather than left homeless. |
 | 2026-08-30 | Refresh pass: recomputed stats against `HEAD` (`e20fe4957`, 690 commits), folded in `TASK-803`…`TASK-833` (31 new tickets; `TASK-834` does not exist), rewrote Known issues against current ticket statuses and the `hope-v2-dev` Argo CD outage, resolved the ticket-numbering confirmation, updated the duplicate-`TASK-780` renumbering suggestion (803 is now taken; recommend 835), and added a Publication mechanics section. Did not touch the four previously-verified breaking-change claims. |
 
 ---
@@ -59,7 +60,7 @@ A narrower integrator note already exists as `ALL-3.0.0` (18 Aug 2026, still Dra
 ## Highlights
 
 0. **NEW since 08-25 — the consultation substrate is now fully graph-driven, and `DepartmentAgent` is gone.** TASK-806, a nine-sub-ticket program opened 2026-08-25 and **Completed 2026-08-30**, replaced `LiveDocumentationService.flush()`'s hardcoded 11-step sequence with a graph executor, gave documents typed ports/per-section OCC/concurrent per-node generation, added an admin-ordered session-end action list, wired SDK-side workflow selection and a tenant-admin-impersonates-clinician playground, and **deleted `DepartmentAgent` outright** (205 files, 21,092 deletions — zero routes remain in `apps/api/route-manifest.json`). This is the single largest change in the tranche since the last draft. *(TASK-806, 808–816)*
-0a. **NEW — a wave of new inference and security infrastructure, mostly not yet live.** MLflow model registry (TASK-822, Review), a self-hosted vLLM backend (TASK-823, Pending — ships at `replicas: 0`, blocked on GPU hardware undersized for the original target), a custom headless LM Studio (`llmster`) GPU image (TASK-824, In Progress, blocked on a CI build), MinIO internalization + a `hope-models` bucket layout (TASK-832, Review — app-repo done, cluster change awaits an operator), and moving the Vault seal in-cluster (TASK-833, **Blocked** — see Known issues). None of these have reached `hope-v2-dev` yet.
+0a. **NEW — a wave of new inference and security infrastructure. It is DEPLOYED, and deliberately INERT.** *(Rewritten 2026-08-31; the previous "none of these have reached `hope-v2-dev` yet" is false.)* The manifests for MLflow (TASK-822), vLLM (TASK-823) and LM Studio (TASK-824) are all committed and **Synced/Healthy** in the `hope-v2-dev` Argo Application — and all three ship at **`replicas: 0`**, pending prerequisites rather than pending delivery: MLflow needs its database and a MinIO service account; LM Studio needs published models and its `models.tsv` filled (and its image does not currently build — see Known issues); vLLM additionally needs **A100/H100-class hardware** the cluster does not have. MinIO internalization (TASK-832) IS live — every in-cluster workload now reaches object storage over the LAN. Moving the Vault seal in-cluster (TASK-833) is **done**: the external transit-seal host turned out not to exist, so the store was rebuilt under an in-cluster Shamir seal. "Deployed at zero" is the deliberate posture, not a failure: **nothing that cannot yet succeed may gate the Application** — three PreSync hooks and one consumerless PVC each wedged the sync before being moved out-of-band.
 1. **Workflow Studio and a durable interpreter** — Graph definitions, compiler/validator, Temporal interpreter, sandbox workbench, run observability, and public exposure of workflows. Clinicians and tenant admins can author and run consultation / summarization / STT graphs instead of a single hard-coded generator. *(TASK-715…724, 718, 719, 731, 790, 795)*
 2. **The live consultation path is a workflow, not a sidecar** — Realtime short summaries, SOAP autofill, suggestions, and spelling/medical-term correction are brokered through the interpreter; substrate dispatch is exclusive (legacy signable generator removed), and as of TASK-806/811 the realtime lane itself is graph-executed rather than a fixed sequence. *(TASK-732, 791, 793, 795–798, 806, 811)*
 3. **Administration is JWT- or service-account only** — Tenant API keys can no longer call `/api/v1/admin/*`. A new **service account** credential (`svc:*`) is the machine path. *(TASK-757, 762, 767)*
@@ -230,11 +231,11 @@ The `DepartmentAgent` Prisma model, its domain trio, the `services/departmentAge
 - NEW — **Consent governance plane**: realtime consultation start was returning `403 DOMAIN.CONSENT_DENIED` on a fresh environment with no way to grant consent; a console + tenant-wide consent list closes the gap (TASK-805, Completed).
 - NEW — **Super-admin-governed routing-policy admin plane** for `apps/text` (`apps/api/src/modules/ai-routing-policy/**`): tenant→SYSTEM resolution, three hard gates (residency, BAA, funding tier), audit trail. Not yet enforced by the router itself — see TASK-818 in Highlights and Known issues.
 
-### NEW — Inference & model infrastructure (mostly not yet deployed)
+### NEW — Inference & model infrastructure (deployed at `replicas: 0`, pending prerequisites)
 
-- **MLflow model registry**, self-hosted, reusing existing Postgres/MinIO/Vault/Argo CD infra; day-1 scale ~200 users. Greenfield — Phase 1 built and verified, Phase 2 manifests authored awaiting an orchestrator commit, Phases 3–4 not started (TASK-822, Review).
-- **vLLM inference service**, priority-1 router backend. Manifests are gate-clean but ship at `replicas: 0` — the cluster's actual GPUs (2× RTX 2000 Ada, 16 GiB) fall short of the original H100-class sizing by ~3× on VRAM and ~15× on bandwidth; enabling needs an owner decision on hardware (TASK-823, Pending).
-- **LM Studio as a containerized headless service** (`llmster`, priority-2 backend), a custom GPU image built from LM Studio's server-native core rather than a GUI-desktop container. Engine choice decided by the owner 2026-08-30 (LM Studio + vLLM, not llama.cpp); Phase 2 built and staged, blocked on five `ROOT_CONFIG_REQUESTS` and a CI build (TASK-824, In Progress).
+- **MLflow model registry**, self-hosted, reusing existing Postgres/MinIO/Vault/Argo CD infra; day-1 scale ~200 users. Greenfield — Phase 1 built and verified; **Phase 2 is committed and deployed** (not "awaiting a commit": `4062cead`, `15977113`), live at `replicas: 0`; Phases 3 (exposure) and 4 (the `AiModelSource.MLFLOW` resolver) not started. Bring-up is five operator steps and no hardware (TASK-822, In Progress).
+- **vLLM inference service**, priority-1 router backend. Manifests are **committed and live at `replicas: 0`**, with this repo's first NetworkPolicies. **Two** blockers, not one: the cluster's GPUs (2× RTX 2000 Ada, 16 GiB) fall short of the original H100-class sizing by ~3× on VRAM and ~15× on bandwidth, **and** `OPEN-823-TLS` — vLLM's boto3 client cannot be told to skip certificate verification, so the pod is expected to fail at startup until a publicly-trusted certificate is installed on the MinIO listener. The routing lever is also unpulled: both SYSTEM `AiTaskDefault` rows still select LM Studio (TASK-823, Pending).
+- **LM Studio as a containerized headless service** (`llmster`, priority-2 backend), a custom GPU image built from LM Studio's server-native core rather than a GUI-desktop container. Engine choice decided by the owner 2026-08-30 (LM Studio + vLLM, not llama.cpp). Manifests are committed and live at `replicas: 0`. **The image does not currently build** — `build-lmstudio` fails at `Dockerfile:107` with *"no CUDA runtime present after bootstrap"*: the `+cuda12` tarball lands and its SHA-512 verifies, but the bundle registers no inference runtime at all. Also blocked on R-2/R-3/R-5 (TASK-824, In Progress).
 - **Model catalogue alignment**: reconciled the owner's five named GGUF models against the router's written vLLM-first priority (a collision, since GGUF does not run on vLLM); research + seed proposal only, nothing applied yet (TASK-831, Review).
 
 ### Admin console & UI kit
@@ -310,8 +311,8 @@ Security-relevant first:
 - Worker pool productionization for STT/TTS/text.
 - Changesets config added; do not use `scripts/publish-sdk.sh` for a normal SDK release.
 - NEW — **Deployment config-plane alignment** (TASK-803, Review) and **Vault session self-healing** (TASK-807, Completed) — see New features.
-- NEW — **MLflow, vLLM, LM Studio, MinIO internalization, in-cluster Vault** — see the "Inference & model infrastructure" subsection above and Known issues; none has reached `hope-v2-dev` yet (TASK-822, 823, 824, 832, 833).
-- ⚠️ NEW — **`hope-v2-dev` has been effectively undeliverable since 2026-08-25** — Argo CD's repo-server has been down since 2026-08-29T16:43:29Z (`ComparisonError`, connection refused) stacked on a `hope-db-migrate` sync failure (immutable field) present since 2026-08-25, and separately `hope-api` has been down since 2026-08-28 because the external seal Vault at `10.10.1.134` is sealed and needs a human operator to unseal it. See Known issues — this blocks essentially every infrastructure ticket in this tranche from actually landing.
+- NEW — **MLflow, vLLM, LM Studio, MinIO internalization, in-cluster Vault** — see the "Inference & model infrastructure" subsection above and Known issues. *(Corrected 2026-08-31: all five HAVE reached `hope-v2-dev`. The three inference workloads are deployed at `replicas: 0` pending prerequisites; MinIO internalization and the in-cluster Vault are live and serving.)* (TASK-822, 823, 824, 832, 833).
+- ✅ NEW — **the `hope-v2-dev` delivery outage is OVER** *(corrected 2026-08-31; the previous text described it as ongoing and mis-diagnosed its cause)*. Argo CD reconciles again, `hope-api` is 1/1, and every workload is at its desired replica count. The external seal Vault this was blamed on **did not exist** — no VM, no container at `10.10.1.134` — so the store was rebuilt under an in-cluster Shamir seal (TASK-833) and the database reset and re-seeded. See Known issues.
 
 ---
 
@@ -355,41 +356,67 @@ Ticket statuses below are from README headers as of **2026-08-30** (this refresh
 against every ticket in the table, not carried forward from the 08-25 draft unread. Several say
 **Review** while code is merged; treat Review as "owner has not formally closed."
 
-### ⚠️ The live cluster (`hope-v2-dev`) has been effectively undeliverable since 2026-08-25
+### ✅ RESOLVED 2026-08-31 — ~~the live cluster (`hope-v2-dev`) has been effectively undeliverable since 2026-08-25~~
 
-This is new since the 08-25 draft and is the most consequential known issue in this release —
-it blocks essentially every infrastructure item below regardless of code readiness. Two
-independent, stacked causes, both verified against the live Argo CD Application on 2026-08-30
-(TASK-833 §4.2):
+**The outage is over, and the diagnosis below was wrong on its most important point.** Kept as the
+incident record; corrected here so nobody plans around it.
 
-1. **A `hope-db-migrate` sync failure present since 2026-08-25** — `Job.batch "hope-db-migrate"
-   is invalid: [spec.selector: Required value, … field is immutable]`. Every sync attempt from
-   that point has failed.
-2. **Argo CD's repo-server has been down since 2026-08-29T16:43:29Z** — `ComparisonError:
-   Failed to load target state … dial tcp 10.43.14.10:8081: connect: connection refused`. Argo
-   cannot render desired state for `hope-v2-dev` at all now, on top of (1).
+| The section below said | What is true 2026-08-31 |
+|---|---|
+| `hope-api` is down because the external seal Vault at `10.10.1.134:8200` is sealed and needs an operator with its unseal keys | **That host does not exist.** A Proxmox review found no VM and no container at that address, so no operator could ever have unsealed it. TASK-833 wiped the store and re-initialised it under an **in-cluster Shamir seal** driven by a `vault-bootstrap` sidecar — init, unseal, kv-v2 + transit mounts, both transit keys, AppRole, policy, and a canary proving `hope-app` can encrypt under `transit/hope-phi` |
+| `hope-vault-0` is `CrashLoopBackOff` (507+ restarts), StatefulSet Degraded | `hope-vault` is **1/1 Healthy** |
+| `hope-api` is `0/2`, fail-closing | `hope-api` is **1/1**, `restartCount: 0`, ready 6 h+ with every 5 s probe returning 200 |
+| Argo CD's repo-server is down; nothing can be delivered | Argo **reconciles again** — it has compared and synced `de8dc03e`, the deployment repo's current `main` |
+| Every infra ticket is blocked from landing | 803, 817, 818 (Lane G), 822, 823, 824, 832 and 833 have **all landed** |
 
-Separately (and not fixable by any deploy), **`hope-api` itself has been down since
-2026-08-28**: the external seal Vault at `10.10.1.134:8200` is sealed, so `hope-vault-0` cannot
-transit-auto-unseal (`CrashLoopBackOff`, restart count 507+), the `hope-vault` Service has no
-ready endpoint, and `hope-api` correctly fail-closes rather than start without a secrets backend
-(TASK-808 §9). Unsealing needs an operator with unseal keys for a VM outside the cluster —
-nothing in the repo, pipeline, or Argo can resolve it.
+**Three things that were NOT visible from inside the outage, and are worth carrying forward:**
+
+1. **The deployment repo's CI had never once succeeded.** Every job was untagged and no runner
+   accepts untagged jobs, so nothing had ever run — and its `schemas` gate could not have executed
+   even if scheduled (a distroless image with no shell, binary off `PATH`). Both fixed
+   (`f09c45e3`, `ff7ae4e9`); **all 8 jobs now pass** (pipeline #1029). Any earlier claim that a
+   deployment-repo gate was "green in CI" was true only of a local run.
+2. **Nothing that cannot yet succeed may gate the Application.** Three PreSync hooks
+   (`hope-lmstudio` model-sync, `hope-mlflow-migrate`) and one `WaitForFirstConsumer` PVC with no
+   consumer each wedged the sync in turn — a failing wave-hook does not fail alone, it deadlocks
+   every later wave. All moved out-of-band (`4adb9512`, `de8dc03e`). `hope-db-migrate` keeps its
+   hook deliberately: it is the one that can actually succeed, and does.
+3. **The Argo Application still reads `OutOfSync`** at the time of writing, and it is not a
+   regression: the only diverging resource is the `hope-db-migrate` hook Job, reported `Missing`
+   because a completed hook Job is deleted. Its last sync operation `Succeeded`
+   ("successfully synced (no more tasks)"). Every other resource is Synced/Healthy.
+
+### The current known issues, restated
+
+- **`hope-lmstudio`'s image does not build.** `build-lmstudio` fails at `Dockerfile:107` —
+  *"no CUDA runtime present after bootstrap"*. The `+cuda12` tarball lands and its pinned SHA-512
+  verifies, but the bundle registers no inference runtime at all, so TASK-824's silent-CPU risk
+  (A-3) is **open**, with the question changed from "did a CPU bundle sneak in" to "how does this
+  bundle install engines".
+- **`hope-api` runs with `NODE_TLS_REJECT_UNAUTHORIZED=0`, set by a live edit that is not in Git**
+  — a Node *process* flag, so certificate verification is off for every outbound TLS connection
+  the gateway makes, not just MinIO. Recorded as TASK-828 §4d.
+- **The credentials committed under `docs/research/configs/` have still not been rotated** — an
+  Azure AD client secret (sharing the tenant with GitLab and Rancher SSO), MinIO keys and four
+  GitLab runner tokens. This remains the single most urgent security item in the tranche.
+- **Vault's three unseal shares and its initial root token now sit in etcd** in `hope-v2-dev`.
+  Accepted for dev, explicitly not for staging or production, and it makes Argo's write path the
+  control standing in front of them.
 
 | Topic | Status | Notes |
 |---|---|---|
-| TASK-833 In-cluster Vault | **Blocked** | Manifests done and proven (`28aa2a8` already pushed to `hope-v2-deployment@main`, plus `9425643`+`ccb35a4` unpushed); **blocked on the Argo outage above**, then on operator steps after that. |
-| TASK-808 Unblock TEXT generation | Review | Six callers fixed and verified from a checkout; the three DoD items requiring a live deploy (`textFailed:false`+non-zero `summaryChars`, NLP `/classify/tokens` 200, `hope-api` readiness stable) **cannot pass while dev is down** — see the outage above. |
-| TASK-822 MLflow deployment | Review | Phase 1 built and verified; Phase 2 manifests authored, awaiting an orchestrator commit to `hope-v2-deployment`; Phases 3–4 not started. |
-| TASK-823 vLLM inference service | **Pending** | Manifests gate-clean but ship at `replicas: 0` — cluster GPUs (2× RTX 2000 Ada, 16 GiB) undersized ~3× on VRAM / ~15× on bandwidth vs. the original H100-class target. Enabling needs an owner hardware decision. |
-| TASK-824 LM Studio service | **In Progress** | Engine decided (LM Studio + vLLM); Phase 2 built and staged; blocked on five `ROOT_CONFIG_REQUESTS` (R-1..R-5) and a CI build. |
-| TASK-832 MinIO internalization | Review | App-repo changes implemented and verified; deployment-repo changes authored as a handover; cluster changes require an operator (and are additionally blocked by the Argo outage above). |
-| TASK-828 Edge/cluster security findings | **Pending** | Findings recorded, remediation not started. Most urgent: **live credentials committed** (Azure AD client secret + MinIO keys + GitLab runner tokens + a DB password) need rotation, and **all PHI object traffic, including `hope-stt`'s consultation audio over plaintext HTTP, currently leaves the cluster** via a public tunnel hostname. See Security/compliance above. |
-| TASK-818 `apps/text` LLM router | Pending | **Substantially incomplete.** Only the routing-policy admin CRUD plane (Lane I′) and a streaming connection-reuse fix have merged. The router-side policy enforcement (Lane I″), the OpenAI-standard contract (Lane C, `src/text/api/v1_compat/**` does not exist), and the disposition of `/judge`/generation-audit (Lane D) are all unbuilt — `judge.py` and `generation_audit.py` are unchanged since before this ticket. |
-| TASK-829 Realtime consultation guardrail | In Progress | Phase 1 (decision plane) merged; wiring into the realtime nodes outstanding. |
-| TASK-830 NLP guard-classify confidences | Review | Needed before TASK-829 Phase 4 (graded-mean session aggregate) can complete; this ticket's own resolution is also open. |
+| TASK-833 In-cluster Vault | **Done** | The seal is in-cluster and the store rebuilt; `hope-vault` 1/1, `vault-bootstrap` provisions the whole surface on any pod start with no human step, and its canary proves `hope-app` can encrypt under `transit/hope-phi`. 21 KV secrets re-seeded and `hope-secrets` re-pointed at the new AppRole *(counts as reported by the operator — UNVERIFIED here)*. Residual: the unseal shares and the initial root token live in etcd; revoking that root token is the owed hardening. |
+| TASK-808 Unblock TEXT generation | Review | Six callers fixed and verified from a checkout. Of the three deploy-gated DoD items, **`hope-api` readiness stable is now MET** (6 h 12 m, `restartCount: 0`, every probe 200). The other two are **UNVERIFIED but no longer blocked** — the rebuilt `hope-nlp` image is deployed and `Medical NLP` reports `up`, but nobody has POSTed `/classify/tokens`, and no consultation has been flushed. Two live probes, not a deploy. |
+| TASK-822 MLflow deployment | In Progress | Phase 2 is **committed and deployed** (`4062cead`, `15977113`), live at `replicas: 0`, Synced/Healthy — "awaiting a commit" was stale. Bring-up is five operator steps and **no hardware blocker**. Phases 3–4 not started; `AiModelSource.MLFLOW` has no resolver anywhere. Control S-5 (`MLFLOW_S3_IGNORE_TLS` false + `AWS_CA_BUNDLE`) is **withdrawn**, not unmet — the private CA was cancelled by owner decision. |
+| TASK-823 vLLM inference service | **Pending** | Committed and live at `replicas: 0` with this repo's first NetworkPolicies. **TWO** blockers: the GPUs (2× RTX 2000 Ada, undersized ~3× VRAM / ~15× bandwidth vs. the H100-class target — and no nodeSelector anywhere requests a bigger card), **and** `OPEN-823-TLS` — its "RESOLVED by owner ruling" heading is true of the decision and false of the platform; the publicly-trusted certificate is not installed, so the pod is expected to fail at startup. The `AiTaskDefault` repoint has also not happened. |
+| TASK-824 LM Studio service | **In Progress** | Manifests committed and live at `replicas: 0`. **The image does not build** — `build-lmstudio` fails at `Dockerfile:107`, "no CUDA runtime present after bootstrap", so risk A-3 is OPEN. R-1 cancelled; `OPEN-824-HARNESS` resolved by widening the ingress peer set (measured both halves); R-2/R-3/R-5 open. Not digest-pinned — alone among fourteen images. |
+| TASK-832 MinIO internalization | Review | **Live.** No in-cluster workload reaches MinIO by a public hostname any more (`12835e42`): `MINIO_ENDPOINT: 10.10.1.102:9000`, `MINIO_SECURE: "true"`, `MINIO_CERT_CHECK: "false"`. Auth is a least-privilege service account; transport is HTTPS with verification disabled until a publicly-trusted certificate lands. **No internal CA anywhere** — that was an owner decision, not an omission. |
+| TASK-828 Edge/cluster security findings | In Progress | §4b and §4c **closed** by TASK-832 — PHI object traffic no longer leaves the cluster and `hope-stt` no longer speaks plaintext. "Zero NetworkPolicies" partly addressed (four exist, but only on the two workloads scaled to zero, and k3s enforcement is untested). **One finding was WRONG**: `langfuse/docker-compose.yml` has never held a secret, so the "38 findings across three files" headline is overstated by one file. **Still the most urgent item in the tranche: the credentials in the other two files are UNROTATED** — the Azure AD client secret first. New §4d: `hope-api` runs with TLS verification globally disabled by an out-of-band edit. |
+| TASK-818 `apps/text` LLM router | In Progress | **Substantially incomplete, re-verified 2026-08-31.** `main.py` mounts eight routers and none is OpenAI-standard; `apps/text/src` contains **zero** references to `AiRoutingPolicy`, so the policy plane built on the gateway side is unreachable from the router; `judge.py:174` and `generation_audit.py:36` are unchanged. What HAS landed: the routing-policy admin CRUD plane, cross-process stream resume (AC-17), a connection-reuse fix, LM Studio's own provider identity, and Lane G's deploy manifest (grace period 600 s, HPA pinned 1/1). |
+| TASK-829 Realtime consultation guardrail | In Progress | Phase 1 (decision plane) merged and re-verified module by module. Phase 4 is **unblocked** by TASK-830. Wiring still outstanding, and both blockers re-confirmed: `TranscriptSegment.validationRef` does not exist in the Prisma schema, and `apps/stt` has no segment-finalization hook. |
+| TASK-830 NLP guard-classify confidences | **Completed** | Merged into `dev-2.2` via `c16cef1cb`; every claim re-verified against the tip. One self-disclosed discrepancy remains (13 new test functions vs a +6 passed delta) — narrowed but unresolved without a suite run. |
 | TASK-831 Model catalogue alignment | Review | Research + seed proposal only; nothing applied. |
-| TASK-817 NLP persistent model cache | Pending | Not started. |
+| TASK-817 NLP persistent model cache | In Progress | **4 of 6 done.** The two in-repo cleanups shipped in `ecab308ef`; the deployment half landed (`6a8d94f2`) and is live — `hope-nlp` mounts the shared `models-cache` `hostPath` behind an `init-hf-cache` initContainer. Remaining: the two-restart persistence proof (operator) and the persistence-contract test. |
 | TASK-780 Harness Eval ICC restore | **Pending** | Restore ICC bar 0.73 → 0.80. **Number collision still unresolved** — see Needs confirmation (recommend renumbering to `TASK-835`, not `803`, which is now taken). |
 | TASK-730 Harness Temporal on cluster | **Blocked** | Unchanged since 08-25: kustomize patch on `task-730-harness-temporal` in the deployment repo authored and validated, but **not pushed/merged/applied to any cluster**. |
 | TASK-733 Department assignment personalization | **In Progress** | Backend + Studio matrix done (design gate waived); **Phase B remains HARD-GATED**. |
