@@ -295,6 +295,27 @@ export class TextProxyController {
    * untouched. When the model is absent, resolve SYSTEM `{provider, model}` via
    * AiTaskDefault / HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
    * (typically 400) — no silent omit → env fallback.
+   *
+   * ⚠ The `provider` branch below is NOT a tidy-up. This method used to resolve
+   * ONLY when the model was absent, so a caller that pinned a model and omitted
+   * the provider reached TEXT with `provider: undefined` — where
+   * `_HARDCODED_DEFAULT_PROVIDER = "lm-studio"`
+   * (`apps/text/src/text/models/requests.py`) silently took over and routed the
+   * request to LM Studio whatever engine that model actually lives on. `model`
+   * has no equivalent default (TEXT 422s without it), and that asymmetry was the
+   * defect: one half of the selection failed loudly, the other guessed. The
+   * gateway now always sends an explicit provider, which is also what has to be
+   * true before that literal can be deleted from `apps/text`.
+   *
+   * The two branches are deliberately NOT collapsed into one "fill whatever is
+   * missing" rule. `{provider, model}` is a PAIR: the resolved model belongs to
+   * the resolved provider. Honouring a caller-supplied provider while filling
+   * the model from a resolution that may have chosen a different provider would
+   * forward an incoherent pair — a new failure mode, not a fix. So:
+   *
+   *   - model absent            → resolve BOTH (byte-identical to before);
+   *   - model pinned, no provider → fill the PROVIDER only, model untouched;
+   *   - provider pinned + model pinned → nothing is resolved or overwritten.
    */
   private async applyTextModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     if (!target.model && this.harnessPolicyService) {
@@ -302,6 +323,12 @@ export class TextProxyController {
       const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId);
       target.provider = provider;
       target.model = model;
+    } else if (!target.provider && this.harnessPolicyService) {
+      // Selection is `failMode: closed`, so an unresolvable tenant surfaces an
+      // error here rather than inheriting TEXT's literal further downstream.
+      const tenantId = this.clsService.get('tenantId');
+      const { provider } = await this.harnessPolicyService.resolveTextSelection(tenantId);
+      target.provider = provider;
     }
     // Layer the resolved runtime profile on top of the identity.
     // Runs for a caller-pinned model too: the caller chose the MODEL, not the
