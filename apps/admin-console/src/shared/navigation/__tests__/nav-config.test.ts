@@ -76,14 +76,19 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // 30-49 / domain `knowledge-agents` back down by one. The route itself keeps
   // a one-release `redirect()` to `/prompt-templates`, but a redirect is not a
   // navigable destination and has no place in the rail map.
-  it('covers the full 57-route rail map across the four tiers (including /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(57);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+  // The three platform AI BACKENDS that had no screen added
+  // `/ai-services/lm-studio`, `/ai-services/vllm` and `/ai-services/mlflow`
+  // (all tier 10-19, domain `ai-platform`), taking 57 -> 60 and tier 10-19 from
+  // 23 -> 26. They are rail entries rather than tabs of `/ai-services` because
+  // the rail is the platform's inventory of engines and registries.
+  it('covers the full 60-route rail map across the four tiers (including /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(60);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(26);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(59);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -403,6 +408,11 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/security-policy', '10-19', [['manage', 'all']]],
   ['/agentic-policy', '10-19', [['manage', 'all']]],
   ['/ai-services', '10-19', [['manage', 'all']]],
+  // The three platform AI backends that had no screen. Same gate as their
+  // parent: platform infrastructure, cross-tenant, SUPER_ADMIN only.
+  ['/ai-services/lm-studio', '10-19', [['manage', 'all']]],
+  ['/ai-services/vllm', '10-19', [['manage', 'all']]],
+  ['/ai-services/mlflow', '10-19', [['manage', 'all']]],
   ['/ai-operations/runs', '10-19', [['manage', 'all']]],
   ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
   ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
@@ -579,6 +589,10 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/ai-operations/reconciliation',
       // TASK-799 Phase 4 E.2.
       '/ai-runtime-profiles',
+      // The self-hosted engines and the model registry of record.
+      '/ai-services/lm-studio',
+      '/ai-services/vllm',
+      '/ai-services/mlflow',
     ],
   ],
   // `/document-templates` (TASK-810) sits next to `/context-schemas`: the two
@@ -664,7 +678,8 @@ describe('NAV_DOMAINS', () => {
   // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4; clinical
   // 3 -> 4 (/consent, TASK-805).
   // knowledge-agents 6 -> 5 (TASK-815 removed /agents).
-  it('partitions the 57 rail routes exactly as the ticket Domain Model does (3·5·11·6·4·7·7·8·6)', () => {
+  // ai-platform 11 -> 14: LM Studio, vLLM and MLflow.
+  it('partitions the 60 rail routes exactly as the ticket Domain Model does (3·6·14·5·4·7·7·8·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -673,7 +688,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(57);
+    expect(NAV_ENTRIES).toHaveLength(60);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

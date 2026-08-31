@@ -218,6 +218,63 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Extra PHI fields to redact',
     'Comma-separated field names redacted from every log entry, on top of the built-in PHI key list. Matching is case-insensitive and ignores _ and -.',
   ),
+  // Console transport (`logging.service.ts:93-97`). Same reason as the Loki keys
+  // below: the reads go through `getEnvString`/`getEnvBoolean`, whose dynamic
+  // `process.env[key]` indexing the env-sync scanner cannot see — so they
+  // reached `turbo.json#globalEnv` (which unions declared AND scanned names)
+  // while appearing in NO `.env.sample`. `env:sync --check` only asserts the
+  // opposite direction ("no unread keys"), so nothing flagged it: an operator
+  // reading the sample could not discover that these knobs exist at all.
+  //
+  // Defaults are transcribed from the reader, INCLUDING the two that are
+  // environment-dependent (`isDevelopment()`): the sample is dev-shaped, so the
+  // dev value is the truthful one to show.
+  envKnob(
+    'logConsole.enabled',
+    'boolean',
+    'Logging',
+    'Console logging enabled',
+    'Writes log records to stdout. Turning this off leaves only the file/Loki/OTel transports.',
+    true,
+  ),
+  // These three have NO runtime `default` on purpose, and that is not an
+  // oversight: their reader's fallback is `isDevelopment()`, not a constant, so
+  // transcribing either branch as a `default` would be inventing one — and
+  // `.env.sample` is dev-shaped, so an operator copying it into production
+  // would turn pretty-printing on there. `sampleValue` is exactly the seam for
+  // that split (same reasoning as `enablePrismaStudio` above): the sample shows
+  // the development shape while an unset variable leaves the reader's own
+  // environment-dependent fallback in charge.
+  {
+    ...envKnob(
+      'logConsole.colorize',
+      'boolean',
+      'Logging',
+      'Colorize console output',
+      'ANSI colour on stdout. Unset ⇒ ON in development and OFF elsewhere (`isDevelopment()`), so a collected log stream is not full of escape codes.',
+    ),
+    sampleValue: true,
+  },
+  {
+    ...envKnob(
+      'logConsole.pretty',
+      'boolean',
+      'Logging',
+      'Pretty-print console output',
+      'Human-readable multi-line records. Unset ⇒ ON in development and OFF elsewhere (`isDevelopment()`).',
+    ),
+    sampleValue: true,
+  },
+  {
+    ...envKnob(
+      'logConsole.json',
+      'boolean',
+      'Logging',
+      'JSON console output',
+      'One JSON object per record — the shape a collector parses. The inverse of the development default: unset ⇒ ON outside development.',
+    ),
+    sampleValue: false,
+  },
   envKnob('loki.enabled', 'boolean', 'Logging', 'Loki transport enabled', 'Pushes logs to Loki in addition to stdout. Requires `LOKI_HOST`.', false),
   envKnob(
     'loki.host',
@@ -233,6 +290,47 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Loki extra labels',
     'Comma-separated `key=value` pairs merged into every stream label set. Keep LOW-cardinality — never a tenant, user, or request id.',
   ),
+  envKnob(
+    'loki.basicAuth',
+    'string',
+    'Logging',
+    'Loki basic-auth credentials',
+    'HTTP basic-auth string (`user:password`) for the Loki push endpoint. Unset means the endpoint is reached unauthenticated — appropriate only in-cluster.',
+  ),
+  envKnob('loki.batchInterval', 'number', 'Logging', 'Loki batch interval (ms)', 'How long the transport buffers records before pushing.', 5000),
+  envKnob('loki.batchSize', 'number', 'Logging', 'Loki batch size', 'Maximum records per push.', 1000),
+  envKnob('loki.timeout', 'number', 'Logging', 'Loki push timeout (ms)', 'Per-push HTTP timeout.', 30000),
+  // Highlight.io session/error transport (`logging.service.ts:119-129`).
+  // `HIGHLIGHT_PROJECT_ID` is the switch: unset ⇒ the transport never mounts,
+  // which is why every field here is `open-to-default` with no default.
+  envKnob(
+    'highlight.projectId',
+    'string',
+    'Logging',
+    'Highlight.io project id',
+    'Enables the Highlight.io log transport. UNSET ⇒ the transport does not mount at all, which is the shipped posture.',
+  ),
+  envKnob(
+    'agenticHighlight.projectId',
+    'string',
+    'Logging',
+    'Highlight.io project id (legacy name)',
+    'Legacy alias read only when `HIGHLIGHT_PROJECT_ID` is unset. Prefer the unprefixed name; this exists so an older deployment keeps working.',
+  ),
+  envKnob(
+    'highlight.backendUrl',
+    'string',
+    'Logging',
+    'Highlight.io backend URL',
+    'Overrides the Highlight.io ingest backend. Unset uses the vendor default.',
+  ),
+  envKnob(
+    'highlight.otlpEndpoint',
+    'string',
+    'Logging',
+    'Highlight.io OTLP endpoint',
+    'Overrides the Highlight.io OTLP endpoint. Unset uses the vendor default.',
+  ),
 ];
 
 /** OpenTelemetry (`apps/api/src/instrumentation.ts`, `observability/otel.service.ts`). */
@@ -244,6 +342,69 @@ const OBSERVABILITY: SettingDescriptor[] = [
   envKnob('otel.serviceVersion', 'string', 'Observability', 'OTel service version', 'Value of the `service.version` resource attribute.', '1.0.0'),
   envKnob('otel.metricsEnabled', 'boolean', 'Observability', 'OTel metrics enabled', 'Turns on the OpenTelemetry metrics pipeline.', false),
   envKnob('otel.tracesEnabled', 'boolean', 'Observability', 'OTel traces enabled', 'Turns on the OpenTelemetry tracing pipeline.', false),
+  // The OTel LOG pipeline (`logging.service.ts:158-183`) — distinct from the
+  // trace/metric pipelines above, with its own enable flag, its own endpoint
+  // and its own protocol. Read through `getEnvString`/`getEnvBoolean`, so
+  // invisible to the env-sync scanner and previously absent from every sample.
+  envKnob(
+    'otel.logsEnabled',
+    'boolean',
+    'Observability',
+    'OTel log export enabled',
+    'Exports log records over OTLP in addition to the console transport.',
+    false,
+  ),
+  envKnob(
+    'otel.logBridge',
+    'boolean',
+    'Observability',
+    'Use the OTel log bridge',
+    'Emits through the OpenTelemetry logs bridge API rather than the direct exporter.',
+    false,
+  ),
+  envKnob(
+    'otel.exporterOtlpLogsEndpoint',
+    'string',
+    'Observability',
+    'OTLP logs endpoint',
+    'Signal-specific OTLP endpoint for LOGS. Read only when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset; the signal-specific name wins per the OTel spec.',
+  ),
+  envKnob(
+    'otel.exporterOtlpProtocol',
+    'string',
+    'Observability',
+    'OTLP protocol',
+    'Wire protocol for the OTLP log exporter (`http/json`, `http/protobuf`, `grpc`).',
+    'http/json',
+  ),
+  envKnob(
+    'otel.injectTraceContext',
+    'boolean',
+    'Observability',
+    'Inject trace context into logs',
+    'Stamps the active trace/span ids onto every log record so logs and traces correlate.',
+    true,
+  ),
+  envKnob(
+    'otel.resourceAttributes',
+    'string',
+    'Observability',
+    'OTel resource attributes',
+    'Comma-separated `key=value` pairs merged into the OTel resource. Keep LOW-cardinality and PHI-free — resource attributes are attached to every exported record.',
+  ),
+  // Read by `logging.service.ts:61` to LABEL log records. It is NOT the release
+  // version: build identity is baked into the image as `/app/build-info.json`
+  // (TASK-648) and is deliberately not settable from configuration. Declared
+  // because the read is real and an undeclared read is invisible to operators —
+  // not as an invitation to set it.
+  envKnob(
+    'serviceVersion',
+    'string',
+    'Process',
+    'Service version label on logs',
+    'Version string stamped on log records. Build identity comes from the image’s `build-info.json`, never from this.',
+    '1.0.0',
+  ),
   envKnob(
     'metricsPrefix',
     'string',
