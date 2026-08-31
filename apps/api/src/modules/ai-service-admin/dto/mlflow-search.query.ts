@@ -26,7 +26,12 @@ export class MlflowSearchQuery {
   @MaxLength(1000)
   filter?: string;
 
-  @ApiProperty({ required: false, minimum: 1, maximum: 1000, description: 'Page size. Capped so one console read can never ask MLflow for an unbounded scan.' })
+  @ApiProperty({
+    required: false,
+    minimum: 1,
+    maximum: 1000,
+    description: 'Page size. Capped so one console read can never ask MLflow for an unbounded scan.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -40,7 +45,7 @@ export class MlflowSearchQuery {
   @MaxLength(4000)
   pageToken?: string;
 
-  @ApiProperty({ required: false, maxLength: 200, description: "MLflow order-by clause, e.g. `last_updated_timestamp DESC`." })
+  @ApiProperty({ required: false, maxLength: 200, description: 'MLflow order-by clause, e.g. `last_updated_timestamp DESC`.' })
   @IsOptional()
   @IsString()
   @MaxLength(200)

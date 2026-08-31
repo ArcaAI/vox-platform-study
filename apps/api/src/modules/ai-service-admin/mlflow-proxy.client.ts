@@ -57,7 +57,10 @@ export class MlflowStatusResponse {
   @ApiProperty({ description: 'Address the GATEWAY calls. Never a browser address.' })
   baseUrl: string;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Browser-reachable MLflow UI, or null when none is configured (the default — MLflow ships with no Ingress).' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Browser-reachable MLflow UI, or null when none is configured (the default — MLflow ships with no Ingress).',
+  })
   uiUrl: string | null;
 
   @ApiProperty() reachable: boolean;
@@ -76,7 +79,10 @@ export class MlflowStatusResponse {
   @ApiProperty({ nullable: true, description: 'The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none.' })
   frameOptions: string | null;
 
-  @ApiProperty({ description: 'Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists.' })
+  @ApiProperty({
+    description:
+      'Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists.',
+  })
   embeddable: boolean;
 
   @ApiProperty({ nullable: true, description: 'Why framing is refused, in operator language. Null when `embeddable` is true.' })
@@ -197,7 +203,10 @@ export class MlflowProxyClient {
    * Framing verdict. Two independent blockers, reported one at a time so the
    * console can tell the operator WHICH one to clear first.
    */
-  private describeEmbeddability(frameOptions: string | null, uiUrl: string | null): Pick<MlflowStatusResponse, 'frameOptions' | 'embeddable' | 'embedBlockedReason'> {
+  private describeEmbeddability(
+    frameOptions: string | null,
+    uiUrl: string | null,
+  ): Pick<MlflowStatusResponse, 'frameOptions' | 'embeddable' | 'embedBlockedReason'> {
     const framesDenied = frameOptions !== null && frameOptions.trim().toUpperCase() !== 'NONE';
     if (framesDenied) {
       return {
