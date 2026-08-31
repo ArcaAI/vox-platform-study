@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — AC-17 blocker (R-1) resolved 2026-08-30 (see §5 banner); OPEN-1's route rename and OPEN-3's fire-and-forget audit conversion are recorded rulings, not yet implemented (`judge.py`'s route is still `/generate/internal/judge`; `generation_audit.py` is still synchronous); Lane D (the OpenAI-standard surface of D-2, and an `AiRoutingPolicy` client reachable from `apps/text`) never started |
+| **Status** | In Progress — **re-verified against `HEAD` on 2026-08-31 and the two headline deliverables are still UNBUILT.** D-2's OpenAI-standard surface does not exist (`main.py:441-451` mounts eight routers; none serves `/v1/chat/completions` — the only two `chat/completions` strings under `apps/text/src` are OUTBOUND calls in tests of the LM Studio adapter) and the router has no `AiRoutingPolicy` client (`grep -ri 'routing.policy' apps/text/src` returns nothing; `pool_router.py` is the worker-pool router, an unrelated thing). AC-17 (R-1) is resolved; R-3 is now resolved by Lane G's deployment-repo landing; OPEN-1's route rename and OPEN-3's fire-and-forget audit conversion remain recorded rulings with no shipped code (`judge.py:174` is still `/generate/internal/judge`; `generation_audit.py:36` is still `def log_generation`). Lane D never started. **Do not read this ticket as nearly-done.** |
 | **Type** | refactor + infrastructure |
 | **Branch** | `dev-2.2` |
 | **Primary surface** | `apps/text` (port 8862) |
@@ -886,13 +886,23 @@ measured p99 overhead exceeds ~10 ms after Phase 2.** Against a real provider (T
 > Granian is not worth trialling — it would inherit the same defect, which lives in
 > `GenerationHub`, not in the server.
 >
+> **Landed 2026-08-31 (deployment repo `1a61521d`, Lane G):** the `hope-text` HPA is now
+> pinned inert at `minReplicas: 1 / maxReplicas: 1` (was 1/3), with
+> `scaleDown.stabilizationWindowSeconds: 300` staged for the day the pin lifts. Two
+> independent reasons, either sufficient: CPU is the wrong signal for an I/O-bound proxy
+> at 0.51 cores under 100 streams, and a second replica is a second `GenerationHub`, so a
+> resume routed to the pod that does not own the producer returns a truncated stream with
+> no terminal frame. The former "burst headroom" was headroom to lose clinical output.
+> **NOT verified:** drain behaviour under a real SIGTERM — `hope-text` is deployed, but
+> nobody has exercised a rolling restart under load against it.
+>
 > ### Open registrations
 >
 > | Id | Item |
 > |---|---|
 > | **R-1** | ✅ *(RESOLVED 2026-08-30 — `6af3ece30`/`2bd18c1df`)* Distinguish finished from running-elsewhere; `XREAD BLOCK` the replay buffer until terminal. Acceptance: every resume trial at `--workers 4` ends in a terminal frame — met, 20/20 |
-> | **R-2** | `main.py:296-306` — two hardcoded `30.0` shutdown waits, sequential, neither cancellable. With `terminationGracePeriodSeconds: 600` they should total ≲ 540 s |
-> | **R-3** | Confirm whether `hope-text` is scraped via Service endpoints or pod annotations BEFORE applying G-4; if annotations, it is a no-op and must be recorded as such, never added to the traffic Service |
+> | **R-2** | ⚠️ *(half-landed 2026-08-31)* `main.py:296-306` — two hardcoded `30.0` shutdown waits, sequential, neither cancellable. `terminationGracePeriodSeconds: 600` **has** now landed in the deployment repo (`1a61521d`, G-2), but the in-process budget is still ~60 s, so the pod's grace period is no longer the binding constraint and `main.py` is. Still open, and now the ONLY thing between a 600 s grace period and a 60 s drain |
+> | **R-3** | ✅ *(RESOLVED 2026-08-31 — deployment repo `1a61521d`)* Neither. `base/text.yaml` defines exactly one Service (`hope-text`, the traffic Service) and carries no `prometheus.io` annotations; Prometheus reaches it as a **`static_configs` target `hope-text:8862` under `job_name: "text"`** — a third case G-4 did not anticipate. G-4 was therefore **deliberately not applied**: a headless metrics Service would be scraped by nothing (a `static_configs` target resolves one address and never enumerates pods), and the patch itself forbids putting `publishNotReadyAddresses` on the traffic Service. The real fix is pod-role discovery in `observability-config.yaml`, owned by whoever owns that file |
 > | **OWNER** | **The shutdown budget disagrees with the generation ceiling by 30×.** `main.py` bounds drain at ~60 s (env-tier, boot-time); `maxGenerationSeconds` floors at **1800 s** (`db-config`, tenant→SYSTEM). "How long may one clinical generation run?" currently has two different answers and nothing reconciles them. This is a policy call, not a code change |
 >
 > `--timeout-graceful-shutdown` was measured **inert** (11.20 s exit either way) and
@@ -1273,7 +1283,29 @@ Final message is DATA for the orchestrator. Exactly these fields:
 
 *(to be filled in as phases land)*
 
-### What is genuinely still missing (recorded 2026-08-30, since the ticket never says so plainly)
+### What is genuinely still missing (recorded 2026-08-30 · **re-verified against `HEAD` 2026-08-31, all three still true**)
+
+> **Re-verification, 2026-08-31.** Every bullet below was checked again at the `dev-2.2` tip
+> after the TASK-818 lanes merged, because a prior audit found this ticket reading as
+> nearly-done when its two headline deliverables were unbuilt. The commands and their
+> results:
+>
+> | Check | Result |
+> |---|---|
+> | `grep -n 'include_router' apps/text/src/text/main.py` | 8 routers — `health`, `generate`, `judge`, `tasks`, `providers`, `stream`, `translate`, `embeddings`. **No OpenAI-standard route** |
+> | `grep -rn 'chat/completions' apps/text/src/` | 2 hits, both in `tests/unit/` and both **outbound** (the LM Studio adapter calling an upstream). Zero inbound routes |
+> | `grep -rni 'routing_policy\|RoutingPolicy\|routing-policy' apps/text/src/` | **zero hits** |
+> | `grep -rn 'ai-routing\|ai_routing' apps/` | gateway + admin-console + `openapi.json` only; nothing under `apps/text` |
+> | `grep -n 'internal/judge' apps/text/src/text/api/endpoints/judge.py` | `:174` — route unchanged |
+> | `grep -n 'def log_generation' apps/text/src/text/services/generation_audit.py` | `:36` — `def`, not `async def` |
+>
+> The `AiRoutingPolicy` plane itself is real and complete on the gateway side —
+> `packages/database/src/prisma/db_main/ai-routing-policy.prisma`, the migration
+> `20260830103000_task_818_ai_routing_policy`, the full generated domain trio,
+> `packages/applications/src/services/ai-routing-policy/**`, and
+> `apps/api/src/modules/ai-routing-policy/ai-routing-policy-admin.controller.ts`. It is the
+> CONSUMER that is missing. Requests still resolve through `AiTaskDefault` /
+> `AiProviderConnection` only, exactly as before this ticket.
 
 - **D-2's OpenAI-standard surface was never built.** `main.py`'s router list
   (`health_router`, `generate_router`, `judge_router`, `tasks_router`, `providers_router`,
@@ -1330,4 +1362,5 @@ free, so it still cannot price what reuse is worth against a remote provider.
 |---|---|
 | 2026-08-29 | Ticket created. Three-agent discovery: serving-capability audit (verdict: text cannot serve a model today), throughput architecture map (12 ranked bottlenecks), external best-practice research (2025–2026 sources). Owner decisions D-1..D-4 recorded. OPEN-1..3 raised for resolution. |
 | 2026-08-30 | Root-caused Lane H2's `1.000 conn/req`: not the B-2 cache or the B-8 pool (both proven to hit on every request), but `openai.AsyncStream` closing a streamed response before EOF. Bounded drain-on-close added at the transport in `providers/pool.py`; regression test `test_task818_stream_close_reuse.py` (RED first). Reuse now measurable in both harness modes. Upstream report drafted, awaiting a human to file. §4.2, §7 and `baseline.md` updated. |
+| 2026-08-31 | **Re-verified, not re-asserted.** The three §7 "genuinely still missing" bullets were checked again against the `dev-2.2` tip after all TASK-818 lanes merged, with the six commands and results now recorded inline in §7: D-2's OpenAI-standard surface is still absent from `main.py`'s eight-router list, `apps/text/src` still contains **zero** references to `AiRoutingPolicy`/`RoutingPolicy`, `judge.py:174` is still `/generate/internal/judge`, and `generation_audit.py:36` is still a synchronous `def`. Header status rewritten to say so first rather than last. **Landed since the last pass, in the DEPLOYMENT repo** (`arca/hope-v2-deployment@main`): Lane G's G-2 and G-3 (`1a61521d`) — `terminationGracePeriodSeconds: 600` and the `hope-text` HPA pinned inert at 1/1 with a 300 s scale-down window. G-4 was deliberately NOT applied and that **resolves R-3**: `hope-text` is scraped as a `static_configs` target (`job_name: "text"` → `hope-text:8862`), neither endpoint-discovery nor annotations, so a headless metrics Service would be read by nothing. R-3 marked resolved; R-2 marked half-landed (the grace period is no longer the binding constraint — `main.py`'s two hardcoded `30.0` waits are). The OWNER registration (60 s drain budget vs `maxGenerationSeconds` floor of 1800 s) is untouched and still open. |
 | 2026-08-30 | **Corrected: the header status and the §5 "🔴 STATUS" banner both predated their own fix.** The R-1 fix lane the banner described as dispatched had already landed (`6af3ece30`, merged `2bd18c1df` — "20/20 intact… 0 duplicates, 0 gaps", locked by `test_task818_cross_process_resume.py`; verified as an ancestor of `dev-2.2`). AC-17 is now MET, not a blocker. Banner retitled, the superseded AC-17 paragraph struck through and kept for history, R-1's open-registration row and the AC-17 criteria-table row both marked resolved. Header status changed from "Pending — awaiting OPEN-1..3" to reflect the actual state. Added to §7: the OpenAI-standard surface of D-2 was never built (no `/v1/chat/completions` in `main.py`'s router list); Lane D never started (OPEN-1's route rename and OPEN-3's async-audit conversion are recorded rulings with no shipped code — `judge.py` is still `/generate/internal/judge`, `generation_audit.py` is still synchronous); and `apps/text` has no `AiRoutingPolicy` client, so the routing-policy plane from Lanes F′/I′ is unreachable from the router. Also recorded as landed: LM Studio's own provider identity (`providers/lmstudio.py`, `a8d85138d`). |
