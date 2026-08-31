@@ -2,15 +2,18 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiServiceAdminController } from './ai-service-admin.controller';
 import { AiServiceProxyClient } from './ai-service-proxy.client';
+import { MlflowProxyClient } from './mlflow-proxy.client';
 
 /**
  * AiServiceAdminModule — the `/admin/ai-services/*` read-only
- * proxy plane over the Guardrail + NLP Python services. `IConfigService` is
- * global (ConfigModule.forRoot in AppModule), so only HttpModule is imported.
+ * proxy plane over the Guardrail + NLP Python services and the MLflow tracking
+ * server. `IConfigService` and `IAppSettingsService` are both global
+ * (`ConfigModule.forRoot` / `AppSettingsModule.forRoot` in AppModule), so only
+ * HttpModule is imported.
  */
 @Module({
   imports: [HttpModule],
   controllers: [AiServiceAdminController],
-  providers: [AiServiceProxyClient],
+  providers: [AiServiceProxyClient, MlflowProxyClient],
 })
 export class AiServiceAdminModule {}
