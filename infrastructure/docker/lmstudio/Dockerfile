@@ -89,6 +89,41 @@ RUN set -eu; cd /tmp; \
     rm -rf /tmp/llmster.tar.gz /tmp/x; \
     lms version
 
+# ── RUNTIMES MUST BE BAKED INTO THE IMAGE (owner directive, 2026-08-31) ──────
+# MEASURED, pipeline 1026 / job 15158: a container from this image answered
+# `lms runtime ls` with "No runtimes found." -- on STDERR, exit 0, stdout empty
+# -- i.e. NO inference runtime at all, even though the +cuda12 tarball verifiably
+# landed (hope-build-info.json below). Both the CI gate and entrypoint.sh A-2
+# assumed `llmster bootstrap` registers the bundle's engines. That assumption
+# came from a measurement of the ARM64 DEVELOPER bundle on a developer machine
+# (README §10B finding 3: "ships both engines ... llama.cpp-linux-arm64 alongside
+# ...-nvidia-cuda13"); it was never re-measured on this x64 bundle, and here it
+# does not hold.
+#
+# An image with no runtime cannot serve, so this belongs at BUILD time, not as a
+# deploy-time surprise -- and not merely in CI, which only fires after the image
+# is already pushed. On failure this prints the whole ~/.lmstudio tree, which is
+# the evidence needed to identify the correct install mechanism.
+RUN set -eu; \
+    lms daemon up >/dev/null || true; \
+    i=0; while [ $i -lt 60 ]; do \
+      lms daemon status 2>/dev/null | grep -q "is running" && break; \
+      i=$((i+1)); sleep 1; \
+    done; \
+    engines="$(lms runtime ls 2>&1 || true)"; \
+    echo "── lms runtime ls ──"; printf '%s\n' "${engines}"; \
+    echo "── ~/.lmstudio tree (depth 3) ──"; \
+    find /home/llmster/.lmstudio -maxdepth 3 2>/dev/null | head -200; \
+    if printf '%s' "${engines}" | grep -iq 'cuda'; then \
+      echo "OK: a CUDA runtime is baked into this image."; \
+    else \
+      echo "FATAL: no CUDA runtime present after bootstrap." >&2; \
+      echo "Runtimes must be INCLUDED in the image, not fetched on first use." >&2; \
+      echo "See the tree above to identify how this bundle installs engines." >&2; \
+      exit 1; \
+    fi; \
+    lms daemon stop >/dev/null 2>&1 || true
+
 # Build-time provenance. `lms` cannot tell you which bundle produced it, so we
 # record it ourselves and the entrypoint asserts against it.
 RUN set -eu; \
