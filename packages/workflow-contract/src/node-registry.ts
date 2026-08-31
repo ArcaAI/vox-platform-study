@@ -26,8 +26,8 @@
  * EMPTY of palette nodes — TASK-720 populates it"), or a definition that validates in the
  * gateway fails admission in the interpreter. `__tests__/node-registry-parity.test.ts` (this
  * package) and `test_node_registry_parity.py` (harness) both assert against ONE committed
- * fixture — `docs/implementation/TASK-734-Workflow-Substrate-Second-Pass/contracts/
- * node-registry.snapshot.json` — rather than against each other directly, because neither
+ * fixture — `packages/workflow-contract/src/__tests__/fixtures/node-registry.snapshot.json`
+ * — rather than against each other directly, because neither
  * runtime can import the other language's module.
  *
  * `classes`/`paletteKey` are TS-only concepts (the predicate catalogue's `nodeClass` selector

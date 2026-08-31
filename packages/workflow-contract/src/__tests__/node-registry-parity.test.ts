@@ -11,10 +11,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
-const FIXTURE_PATH = path.resolve(
-  __dirname,
-  '../../../../docs/implementation/TASK-734-Workflow-Substrate-Second-Pass/contracts/node-registry.snapshot.json',
-);
+const FIXTURE_PATH = path.resolve(__dirname, 'fixtures/node-registry.snapshot.json');
 
 interface FixtureEntry {
   key: string;

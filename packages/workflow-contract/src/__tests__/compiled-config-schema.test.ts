@@ -1,6 +1,6 @@
 /**
  * Asserts a real `compile()` output validates against the NORMATIVE contract
- * (`docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json`)
+ * (`packages/workflow-contract/schemas/compiled-config.schema.json`)
  * — TASK-716 Task 1's verify step: "the compiled example validates against Task 1's JSON
  * Schema (assert this in the test)". `ajv`/`ajv-formats` are devDependencies ONLY (schema
  * conformance testing) — the package's runtime `dependencies` stay empty.
@@ -14,10 +14,7 @@ import { compile } from '../compiler';
 import type { CompiledWorkflowConfig, CompilerContext } from '../compiler';
 import type { WorkflowGraph } from '../graph-model';
 
-const SCHEMA_PATH = path.resolve(
-  __dirname,
-  '../../../../docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json',
-);
+const SCHEMA_PATH = path.resolve(__dirname, '../../schemas/compiled-config.schema.json');
 
 function loadValidator() {
   const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
