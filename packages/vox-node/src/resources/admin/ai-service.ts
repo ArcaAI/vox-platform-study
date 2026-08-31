@@ -10,6 +10,7 @@
 
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions } from './admin-resource';
+import type { MlflowStatusResponse } from './schemas';
 
 /**
  * `hope.admin.aiService` — the `svc:admin:ai-service:manage` administration area.
@@ -19,7 +20,7 @@ import type { AdminRequestOptions } from './admin-resource';
  * names the scope in that error's message.
  *
  * Backed by controller AiServiceAdminController
- * (3 routes). Several controllers sharing one scope share one
+ * (7 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -49,6 +50,79 @@ export class AdminAiServiceResource extends AdminResource {
     return this.request<unknown>({
       method: 'GET',
       path: 'admin/ai-services/guardrail/status',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Search MLflow experiments
+   *
+   * Proxies MLflow’s own `GET /api/2.0/mlflow/experiments/search`. Response shape is UPSTREAM-OWNED and passed through verbatim.
+   *
+   * `GET /api/v1/admin/ai-services/mlflow/experiments` — `AiServiceAdminController.mlflowExperiments`.
+   */
+  mlflowExperiments(
+    options: AdminRequestOptions & { query?: { filter?: string; maxResults?: number; orderBy?: string; pageToken?: string } } = {},
+  ): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'GET',
+      path: 'admin/ai-services/mlflow/experiments',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Search MLflow model versions
+   *
+   * Proxies `GET /api/2.0/mlflow/model-versions/search`. Aliases (not stages) are the promotion mechanism — see the registry conventions.
+   *
+   * `GET /api/v1/admin/ai-services/mlflow/model-versions` — `AiServiceAdminController.mlflowModelVersions`.
+   */
+  mlflowModelVersions(
+    options: AdminRequestOptions & { query?: { filter?: string; maxResults?: number; orderBy?: string; pageToken?: string } } = {},
+  ): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'GET',
+      path: 'admin/ai-services/mlflow/model-versions',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Search the MLflow model registry
+   *
+   * Proxies `GET /api/2.0/mlflow/registered-models/search`. MLflow holds metadata and lineage; served weights live in the `hope-models` bucket.
+   *
+   * `GET /api/v1/admin/ai-services/mlflow/registered-models` — `AiServiceAdminController.mlflowRegisteredModels`.
+   */
+  mlflowRegisteredModels(
+    options: AdminRequestOptions & { query?: { filter?: string; maxResults?: number; orderBy?: string; pageToken?: string } } = {},
+  ): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'GET',
+      path: 'admin/ai-services/mlflow/registered-models',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * MLflow tracking-server reachability, version and framing posture
+   *
+   * Probes the tracking server’s host-validation-exempt `/health` (and `/version` best-effort) and reports the `X-Frame-Options` header OBSERVED on that response, so the console can decide whether the MLflow UI may be embedded rather than assuming. Never fails: an unreachable server is a status document with `reachable: false`, because MLflow ships without an Ingress and being unreachable from the console is its normal state.
+   *
+   * `GET /api/v1/admin/ai-services/mlflow/status` — `AiServiceAdminController.mlflowStatus`.
+   */
+  mlflowStatus(options: AdminRequestOptions = {}): Promise<MlflowStatusResponse> {
+    return this.request<MlflowStatusResponse>({
+      method: 'GET',
+      path: 'admin/ai-services/mlflow/status',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

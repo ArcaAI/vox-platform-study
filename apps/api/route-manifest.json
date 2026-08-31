@@ -724,6 +724,98 @@
     },
     {
       "controller": "AiServiceAdminController",
+      "handler": "mlflowExperiments",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-services/mlflow/experiments",
+      "routePath": "/admin/ai-services/mlflow/experiments",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
+      "handler": "mlflowModelVersions",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-services/mlflow/model-versions",
+      "routePath": "/admin/ai-services/mlflow/model-versions",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
+      "handler": "mlflowRegisteredModels",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-services/mlflow/registered-models",
+      "routePath": "/admin/ai-services/mlflow/registered-models",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
+      "handler": "mlflowStatus",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-services/mlflow/status",
+      "routePath": "/admin/ai-services/mlflow/status",
+      "svcScopes": [
+        "svc:admin:ai-service:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiServiceAdminController",
       "handler": "nlpStatus",
       "method": "GET",
       "path": "/api/v1/admin/ai-services/nlp/status",

@@ -9741,6 +9741,64 @@
         ],
         "type": "object"
       },
+      "MlflowStatusResponse": {
+        "properties": {
+          "baseUrl": {
+            "description": "Address the GATEWAY calls. Never a browser address.",
+            "type": "string"
+          },
+          "embedBlockedReason": {
+            "description": "Why framing is refused, in operator language. Null when `embeddable` is true.",
+            "nullable": true,
+            "type": "string"
+          },
+          "embeddable": {
+            "description": "Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Operator-facing failure summary. Never carries the internal host:port (TASK-768).",
+            "type": "string"
+          },
+          "frameOptions": {
+            "description": "The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "probeStatus": {
+            "enum": [
+              "ok",
+              "timeout",
+              "error"
+            ],
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "uiUrl": {
+            "description": "Browser-reachable MLflow UI, or null when none is configured (the default — MLflow ships with no Ingress).",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "MLflow `GET /version`, when the server answered it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "reachable",
+          "probeStatus",
+          "frameOptions",
+          "embeddable",
+          "embedBlockedReason"
+        ],
+        "type": "object"
+      },
       "ModelResponse": {
         "properties": {
           "architecture": {
@@ -24139,6 +24197,256 @@
           }
         ],
         "summary": "Guardrail service health (proxied /api/health): LLM engine, GLiNER, and Redis component checks.",
+        "tags": [
+          "admin-ai-services"
+        ]
+      }
+    },
+    "/api/v1/admin/ai-services/mlflow/experiments": {
+      "get": {
+        "description": "Proxies MLflow’s own `GET /api/2.0/mlflow/experiments/search`. Response shape is UPSTREAM-OWNED and passed through verbatim.",
+        "operationId": "AiServiceAdminController_mlflowExperiments",
+        "parameters": [
+          {
+            "description": "MLflow search-filter expression, forwarded verbatim (e.g. `name LIKE 'whisper%'`). A malformed filter returns MLflow's own 400.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "maxLength": 1000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size. Capped so one console read can never ask MLflow for an unbounded scan.",
+            "in": "query",
+            "name": "maxResults",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque continuation token from a previous response `next_page_token`.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "MLflow order-by clause, e.g. `last_updated_timestamp DESC`.",
+            "in": "query",
+            "name": "orderBy",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MLflow `SearchExperiments` response (`experiments[]`, `next_page_token`), proxied verbatim."
+          },
+          "400": {
+            "description": "Rejected query window, or MLflow’s own 400 for a malformed `filter`."
+          },
+          "503": {
+            "description": "The tracking server could not be reached."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Search MLflow experiments",
+        "tags": [
+          "admin-ai-services"
+        ]
+      }
+    },
+    "/api/v1/admin/ai-services/mlflow/model-versions": {
+      "get": {
+        "description": "Proxies `GET /api/2.0/mlflow/model-versions/search`. Aliases (not stages) are the promotion mechanism — see the registry conventions.",
+        "operationId": "AiServiceAdminController_mlflowModelVersions",
+        "parameters": [
+          {
+            "description": "MLflow search-filter expression, forwarded verbatim (e.g. `name LIKE 'whisper%'`). A malformed filter returns MLflow's own 400.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "maxLength": 1000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size. Capped so one console read can never ask MLflow for an unbounded scan.",
+            "in": "query",
+            "name": "maxResults",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque continuation token from a previous response `next_page_token`.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "MLflow order-by clause, e.g. `last_updated_timestamp DESC`.",
+            "in": "query",
+            "name": "orderBy",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MLflow `SearchModelVersions` response (`model_versions[]`, `next_page_token`), proxied verbatim."
+          },
+          "400": {
+            "description": "Rejected query window, or MLflow’s own 400 for a malformed `filter`."
+          },
+          "503": {
+            "description": "The tracking server could not be reached."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Search MLflow model versions",
+        "tags": [
+          "admin-ai-services"
+        ]
+      }
+    },
+    "/api/v1/admin/ai-services/mlflow/registered-models": {
+      "get": {
+        "description": "Proxies `GET /api/2.0/mlflow/registered-models/search`. MLflow holds metadata and lineage; served weights live in the `hope-models` bucket.",
+        "operationId": "AiServiceAdminController_mlflowRegisteredModels",
+        "parameters": [
+          {
+            "description": "MLflow search-filter expression, forwarded verbatim (e.g. `name LIKE 'whisper%'`). A malformed filter returns MLflow's own 400.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "maxLength": 1000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size. Capped so one console read can never ask MLflow for an unbounded scan.",
+            "in": "query",
+            "name": "maxResults",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Opaque continuation token from a previous response `next_page_token`.",
+            "in": "query",
+            "name": "pageToken",
+            "required": false,
+            "schema": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          {
+            "description": "MLflow order-by clause, e.g. `last_updated_timestamp DESC`.",
+            "in": "query",
+            "name": "orderBy",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MLflow `SearchRegisteredModels` response (`registered_models[]`, `next_page_token`), proxied verbatim."
+          },
+          "400": {
+            "description": "Rejected query window, or MLflow’s own 400 for a malformed `filter`."
+          },
+          "503": {
+            "description": "The tracking server could not be reached."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Search the MLflow model registry",
+        "tags": [
+          "admin-ai-services"
+        ]
+      }
+    },
+    "/api/v1/admin/ai-services/mlflow/status": {
+      "get": {
+        "description": "Probes the tracking server’s host-validation-exempt `/health` (and `/version` best-effort) and reports the `X-Frame-Options` header OBSERVED on that response, so the console can decide whether the MLflow UI may be embedded rather than assuming. Never fails: an unreachable server is a status document with `reachable: false`, because MLflow ships without an Ingress and being unreachable from the console is its normal state.",
+        "operationId": "AiServiceAdminController_mlflowStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlflowStatusResponse"
+                }
+              }
+            },
+            "description": "Reachability + embeddability document."
+          },
+          "403": {
+            "description": "Caller is not a super admin, or presented an API key (this plane is JWT/service-account only)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "MLflow tracking-server reachability, version and framing posture",
         "tags": [
           "admin-ai-services"
         ]

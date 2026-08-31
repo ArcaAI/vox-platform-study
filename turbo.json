@@ -190,6 +190,7 @@
         "AZURE_STORAGE_CONNECTION_STRING",
         "AZURE_STORAGE_ENDPOINT_SUFFIX",
         "BENCH_DEBUG",
+        "CERT_CHECK",
         "CI",
         "CI_COMMIT_TAG",
         "CORS_ORIGINS",
