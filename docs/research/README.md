@@ -37,7 +37,8 @@ which look like a network problem.
 **Image pulls are FIXED as of 2026-08-31** (LAN mirror, no restart — 57 KB/s → ~25 MB/s). The Rancher
 websocket half is unfixed; Argo was taken off it instead.
 
-If you are debugging any of those, start here:
+Full write-up: [cloudflare-lan-path-incident-2026-08-31.md](./infrastructure/cloudflare-lan-path-incident-2026-08-31.md).
+Per-VM procedures:
 [CT 101 — second failure mode](./deployments/deploy-ct101-cloudflare-tunnel.md#-second-failure-mode-long-lived-connections-and-latency-measured-2026-08-31)
 · [VM 200 — internal DNS override](./deployments/deploy-vm200-k3s-gpu.md#51-internal-dns-override--keep-cluster-traffic-off-cloudflare)
 · [VM 400 — register clusters directly](./deployments/deploy-vm400-master.md#-register-downstream-clusters-directly-not-through-the-rancher-proxy)
@@ -55,6 +56,7 @@ than speeding it up. The order of operations is in the VM 200 guide.
 | [proxmox-setup-dell-7920-step-by-step.md](./infrastructure/proxmox-setup-dell-7920-step-by-step.md) | Step-by-step Proxmox VE 9.1 installation on Dell 7920 (96 CPU, 256 GB RAM, 2× RTX 2000 Ada) — BIOS, IOMMU, GPU passthrough, VM creation, networking |
 | [proxmox-gpu-self-hosted-deployment-2026-03-12.md](./infrastructure/proxmox-gpu-self-hosted-deployment-2026-03-12.md) | Architecture analysis for HOPE platform on Dell 7920 with GPU passthrough using free/open-source software |
 | [proxmox-infrastructure-gitlab-rancher-plan.md](./infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | Master infrastructure overview (v6) — all VMs/LXCs, IPs, specs, apps, status, Cloudflare tunnel routes |
+| [cloudflare-lan-path-incident-2026-08-31.md](./infrastructure/cloudflare-lan-path-incident-2026-08-31.md) | **Investigation write-up** — LAN traffic transiting Cloudflare (HKG edge): root cause, the three faults it masked, what was ruled out, the fixes applied (Argo direct endpoint; LAN registry mirror, no restart), what is still open, and reusable pull/tunnel diagnostics |
 | [proxmox-network-topology-design.md](./infrastructure/proxmox-network-topology-design.md) | Network topology design — VLAN-aware bridges, IP addressing, NAT, firewall rules, cloudflared ingress |
 | [proxmox-shared-storage-nfs.md](./infrastructure/proxmox-shared-storage-nfs.md) | Shared NFS storage from external 954 GB disk — NFS vs Samba, Docker bind mounts, per-environment access |
 
