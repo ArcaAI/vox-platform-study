@@ -3,6 +3,7 @@ import {
   IconAdjustmentsAlt,
   IconAdjustmentsCog,
   IconApi,
+  IconAtom,
   IconBinaryTree2,
   IconBook2,
   IconBrain,
@@ -12,6 +13,7 @@ import {
   IconBuildingSkyscraper,
   IconBulb,
   IconCpu,
+  IconCpu2,
   IconCalendarTime,
   IconChartHistogram,
   IconDatabase,
@@ -44,6 +46,7 @@ import {
   IconSchema,
   IconServerBolt,
   IconServerCog,
+  IconRocket,
   IconRoute,
   IconSettings,
   IconShieldBolt,
@@ -310,6 +313,44 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'AI services',
     tier: '10-19',
     icon: IconServerCog,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  // The three PLATFORM AI BACKENDS that had no screen of their own. All three
+  // sit under `/ai-services/*` because they are the same kind of thing as the
+  // guardrail/NLP surface above it: read-only operator views over a backend the
+  // console does not own.
+  //
+  // Separate rail entries rather than tabs of `/ai-services`, because the rail
+  // IS the inventory — an operator should be able to see WHICH engines and
+  // registries this platform has without opening a screen and hunting a tab.
+  {
+    route: '/ai-services/lm-studio',
+    domain: 'ai-platform',
+    label: 'LM Studio',
+    tier: '10-19',
+    icon: IconCpu2,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    route: '/ai-services/vllm',
+    domain: 'ai-platform',
+    label: 'vLLM',
+    tier: '10-19',
+    icon: IconRocket,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    // MLflow is rendered NATIVELY through the gateway rather than framed: it
+    // frame-denies by default, authenticates nobody of its own, and has no
+    // browser-reachable URL. See `features/mlflow/components/mlflow-screen.tsx`.
+    route: '/ai-services/mlflow',
+    domain: 'ai-platform',
+    label: 'MLflow',
+    tier: '10-19',
+    icon: IconAtom,
     required: [['manage', 'all']],
     implemented: true,
   },
