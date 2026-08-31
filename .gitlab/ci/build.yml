@@ -467,73 +467,54 @@ verify-lmstudio-runtime:
       echo "── bundle provenance (which tarball actually landed) ──"
       docker run --rm --entrypoint cat "$img" /home/llmster/.lmstudio/hope-build-info.json
 
-      echo "── installed inference engines ──"
-      # /data is a VOLUME and /data/models is the target of the
-      # ~/.lmstudio/models symlink, but ONLY entrypoint.sh:90 ever creates it.
-      # This job deliberately runs with --entrypoint /bin/sh, so without this
-      # mkdir the daemon starts against a DANGLING symlink. /data is chowned to
-      # 10001 in the Dockerfile, so the unprivileged user can create it.
+      echo "── installed inference engines (filesystem inventory) ──"
+      # DO NOT use `lms runtime ls` here. MEASURED 2026-08-31, job 15218: it
+      # answers "No runtimes found." on this runner while the very same
+      # container holds three engines on disk. It enumerates runtimes THE HOST
+      # CAN RUN -- it is hardware-filtered -- so on a runner with no NVIDIA
+      # device it is guaranteed to report nothing, whatever the image contains.
+      # Using it made a GPU a prerequisite for verifying an image, which no CI
+      # runner here has and buildkit cannot provide.
       #
-      # The substitution is NOT under `set -e`: an assignment takes the exit
-      # status of its command substitution, so a failing daemon aborted this
-      # job BEFORE the echo and the CUDA check below. That left a trace ending
-      # bare at this header, unable to distinguish "the image is CPU-only" --
-      # the one thing this gate exists to catch -- from "the probe broke".
-      # Capture the status, print it, and let the checks below decide.
+      # What this job can honestly prove is CONTENTS, so it reads the directory
+      # the bundle installs into. That is also exactly what the Dockerfile
+      # asserts, so the two agree by construction.
       #
-      # stderr is no longer sent to /dev/null: command substitution captures
-      # stdout only, so letting stderr through puts the daemon's own complaint
-      # in the job log instead of discarding it.
+      # The GPU question -- is a device present, and was the CUDA engine
+      # actually selected -- belongs to entrypoint.sh A-2 at pod start, where a
+      # device exists. `lms runtime ls` is the right command THERE for the same
+      # reason it is the wrong one here.
       set +e
       engines=$(docker run --rm --entrypoint /bin/sh "$img" -c \
-        'mkdir -p /data/models /data/staging;
-         lms daemon up >/dev/null || true;
-         i=0; while [ $i -lt 60 ]; do
-           lms daemon status 2>/dev/null | grep -q "is running" && break; i=$((i+1)); sleep 1; done;
-         lms runtime ls 2>&1')
+        'ls -1 /home/llmster/.lmstudio/extensions/backends 2>&1')
       rc=$?
       set -e
       echo "docker run exit status: $rc"
       echo "$engines"
 
-      # MEASURED 2026-08-31 (pipeline 1026, job 15158): `lms runtime ls` exits
-      # 0, prints "No runtimes found." on STDERR, and leaves STDOUT EMPTY. So
-      # the answer must be read off the merged stream (`2>&1` above) and off
-      # OUTPUT, never $? -- capturing stdout alone loses the reply entirely.
-      #
-      # Three outcomes, three different messages. Collapsing them is what made
-      # this gate unreadable in the first place.
-      if [ -z "$engines" ]; then
-        echo "FATAL: \`lms runtime ls\` produced no output at all (exit $rc)." >&2
-        echo "The probe could not answer, so the accelerator is UNVERIFIED." >&2
+      if [ -z "$engines" ] || [ "$rc" -ne 0 ]; then
+        echo "FATAL: could not list the backends directory (exit $rc)." >&2
+        echo "The probe could not answer, so the image is UNVERIFIED." >&2
         exit 1
       fi
 
-      if echo "$engines" | grep -iq 'no runtimes found'; then
-        echo "FATAL: the daemon started and answered, but NO RUNTIME is" >&2
-        echo "installed in this image, so there is no engine to check." >&2
-        echo "This is NOT the same as a CPU-only bundle -- the provenance" >&2
-        echo "above shows the cuda12 tarball landed. Either runtimes are" >&2
-        echo "fetched on first use (making this assertion unprovable in a" >&2
-        echo "bare container) or the bundle did not register them." >&2
-        echo "NOTE: entrypoint.sh A-2 reads the SAME command the SAME way," >&2
-        echo "so a pod would die at boot for this reason too." >&2
-        exit 1
-      fi
-
-      # `lms` exits 0 whether or not the thing you asked about is true
-      # (measured: `lms daemon status` exits 0 for "LM Studio is not running").
-      # So this matches OUTPUT, never $?. Do not "simplify" it.
       if ! echo "$engines" | grep -iq 'cuda'; then
         echo "FATAL: no CUDA engine in this image — it is CPU-ONLY." >&2
         echo "It would start, serve and answer requests at a fraction of the" >&2
         echo "throughput, and no HTTP endpoint could reveal it. Do not promote." >&2
         exit 1
       fi
-      echo "OK: an accelerated engine is present in the image."
-      echo "NOTE: this proves the BUNDLE only. GPU presence is asserted at pod"
-      echo "      start by entrypoint.sh A-2 (exit 78), because this runner has"
-      echo "      no NVIDIA device and 'lms runtime select' succeeds without one."
+
+      # Owner requirement 2026-08-31: images must be ready for CPU *and* CUDA.
+      if ! echo "$engines" | grep -i '^llama\.cpp' | grep -qvi 'cuda\|vulkan\|rocm\|hip\|metal'; then
+        echo "FATAL: no CPU engine in this image." >&2
+        echo "A CPU-runnable image is a requirement, not a fallback." >&2
+        exit 1
+      fi
+      echo "OK: both a CPU and a CUDA engine are present in the image."
+      echo "NOTE: this proves the image CONTENTS only. GPU presence is asserted"
+      echo "      at pod start by entrypoint.sh A-2 (exit 78) — correctly, since"
+      echo "      that is the first place a device actually exists."
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
