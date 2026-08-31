@@ -34,6 +34,9 @@ KB/s**. It presents as `sync from client` errors, partial Argo syncs (115 of 124
 objects in one run), and Deployments missing their progress deadline — none of
 which look like a network problem.
 
+**Image pulls are FIXED as of 2026-08-31** (LAN mirror, no restart — 57 KB/s → ~25 MB/s). The Rancher
+websocket half is unfixed; Argo was taken off it instead.
+
 If you are debugging any of those, start here:
 [CT 101 — second failure mode](./deployments/deploy-ct101-cloudflare-tunnel.md#-second-failure-mode-long-lived-connections-and-latency-measured-2026-08-31)
 · [VM 200 — internal DNS override](./deployments/deploy-vm200-k3s-gpu.md#51-internal-dns-override--keep-cluster-traffic-off-cloudflare)
