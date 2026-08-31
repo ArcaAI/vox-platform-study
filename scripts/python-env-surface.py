@@ -471,11 +471,19 @@ def _git_tracked_python_files() -> list[str]:
         listed = subprocess.run(
             ["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True, check=True
         ).stdout.splitlines()
-        return [f for f in listed if f and "node_modules" not in f]
+        # `docs/` is EXCLUDED, mirroring scripts/env-sync.mts:875,909 for the
+        # TypeScript side. Its own comment states the principle: prose ABOUT a
+        # variable is not a program that READS one, and treating it as a read
+        # poisons the Turborepo cache key with a name no build consumes.
+        # Without this, TASK-822's verify/*.py scripts put MLFLOW_TRACKING_URI
+        # into turbo.json#globalEnv. Measured 2026-08-31.
+        return [f for f in listed if f and "node_modules" not in f and not f.startswith("docs/")]
     except (OSError, subprocess.SubprocessError):
         walked: list[str] = []
         for dirpath, dirnames, filenames in os.walk(ROOT):
             dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP_DIRS]
+            if os.path.relpath(dirpath, ROOT).startswith("docs"):
+                continue  # same docs/ exclusion as the git ls-files path above
             for name in filenames:
                 if name.endswith(".py"):
                     walked.append(os.path.relpath(os.path.join(dirpath, name), ROOT))

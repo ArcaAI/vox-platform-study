@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 371 component schemas the generated surface transitively
+ * Only the 372 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2401,6 +2401,26 @@ export interface McpServerResponse {
   updatedAt?: string;
   /** OCC version (drives the If-Match token). */
   version: number;
+}
+
+export interface MlflowStatusResponse {
+  /** Address the GATEWAY calls. Never a browser address. */
+  baseUrl: string;
+  /** Why framing is refused, in operator language. Null when `embeddable` is true. */
+  embedBlockedReason: string | null;
+  /** Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists. */
+  embeddable: boolean;
+  /** Operator-facing failure summary. Never carries the internal host:port (TASK-768). */
+  error?: string;
+  /** The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none. */
+  frameOptions: string | null;
+  latencyMs?: number;
+  probeStatus: 'ok' | 'timeout' | 'error';
+  reachable: boolean;
+  /** Browser-reachable MLflow UI, or null when none is configured (the default — MLflow ships with no Ingress). */
+  uiUrl?: string | null;
+  /** MLflow `GET /version`, when the server answered it. */
+  version?: string;
 }
 
 export interface ModelResponse {

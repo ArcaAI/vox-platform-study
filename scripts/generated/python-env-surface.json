@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 401,
+  "distinctNames": 402,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -415,6 +415,20 @@
           "dataType": "string",
           "default": "memory",
           "description": "Backend selector: ``memory`` (process-local fake \u2014 dev/test) | ``s3`` (self-hosted MinIO)."
+        },
+        {
+          "name": "MINIO_CERT_CHECK",
+          "aliases": [
+            "CERT_CHECK"
+          ],
+          "class": "ClaimCheckConfig",
+          "field": "cert_check",
+          "prefix": "HARNESS_CLAIM_CHECK_",
+          "required": false,
+          "secret": false,
+          "dataType": "boolean",
+          "default": "false",
+          "description": "`validation_alias` deliberately ESCAPES the `HARNESS_CLAIM_CHECK_` prefix: this is one platform-wide trust decision about one object store, and it is the same bare variable apps/stt reads and `turbo.json#globalEnv` declares. A `HARNESS_CLAIM_CHECK_CERT_CHECK` of its own would be a second knob that can disagree with the first about a single fact. `AliasChoices` and not a bare `validation_alias`: the alias REPLACES the field name for init as well as for env lookup, so `ClaimCheckConfig( cert_check=...)` (tests, and any direct construction) would be rejected as an extra field. Listing both keeps the platform variable authoritative and the field constructible by name."
         },
         {
           "name": "HARNESS_EVAL_CASE_CONCURRENCY",
@@ -2662,8 +2676,8 @@
           "required": false,
           "secret": false,
           "dataType": "boolean",
-          "default": "true",
-          "description": ""
+          "default": "false",
+          "description": "\u26a0\ufe0f DELIBERATE, REVERSIBLE SECURITY RELAXATION (owner ruling 2026-08-30, `MINIO_CERT_CHECK`). Defaults to False \u2014 TLS certificates are NOT verified. That is a statement about how this platform is deployed today, not about what is safe: there is no private CA, MinIO serves HTTPS on :9000 with a certificate nothing here can chain to a trusted root, and MinIO authenticates with a service account (access key + secret) rather than the certificate. Defaulting to \"verify\" would fail every object-store call closed. PHI hardening is explicitly de-prioritised for now; when a CA lands, set `MINIO_CERT_CHECK=true` (or flip this default) \u2014 grep `MINIO_CERT_CHECK` for every consumer, in this service and in apps/api / apps/harness."
         },
         {
           "name": "MINIO_CHUNK_BUCKET",

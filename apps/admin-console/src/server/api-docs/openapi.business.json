@@ -9741,6 +9741,64 @@
         ],
         "type": "object"
       },
+      "MlflowStatusResponse": {
+        "properties": {
+          "baseUrl": {
+            "description": "Address the GATEWAY calls. Never a browser address.",
+            "type": "string"
+          },
+          "embedBlockedReason": {
+            "description": "Why framing is refused, in operator language. Null when `embeddable` is true.",
+            "nullable": true,
+            "type": "string"
+          },
+          "embeddable": {
+            "description": "Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Operator-facing failure summary. Never carries the internal host:port (TASK-768).",
+            "type": "string"
+          },
+          "frameOptions": {
+            "description": "The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "probeStatus": {
+            "enum": [
+              "ok",
+              "timeout",
+              "error"
+            ],
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "uiUrl": {
+            "description": "Browser-reachable MLflow UI, or null when none is configured (the default — MLflow ships with no Ingress).",
+            "nullable": true,
+            "type": "string"
+          },
+          "version": {
+            "description": "MLflow `GET /version`, when the server answered it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseUrl",
+          "reachable",
+          "probeStatus",
+          "frameOptions",
+          "embeddable",
+          "embedBlockedReason"
+        ],
+        "type": "object"
+      },
       "ModelResponse": {
         "properties": {
           "architecture": {

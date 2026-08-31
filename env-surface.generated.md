@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 136 |
+| Declared keys (distinct) | 155 |
 | … of which required (`failMode: closed`) | 29 |
 | … of which secret | 28 |
-| … tier `env` | 103 |
+| … tier `env` | 122 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 24 |
-| Python declared fields | 352 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 401 |
-| `turbo.json#globalEnv` entries | 529 |
+| Python declared fields | 353 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 402 |
+| `turbo.json#globalEnv` entries | 530 |
 
 ## Variables — the TypeScript platform surface
 
@@ -30,6 +30,7 @@ disagree with those declarations.
 | `ADMIN_CONSOLE_URL` | `env` | no | `http://localhost:5176` | `apps/api` | Origin of the Next.js admin console; used by the gateway e2e harness and CORS guidance. |
 | `ADMIN_PORT` | `env` | no | `5176` | `apps/admin-console` | Port the dev (5176) or test (5276) console binds — read by `scripts/dev-stack.sh` and `scripts/start-test-app.sh`, not by application code. |
 | `ADMIN_SESSION_SECRET` | `env` | yes | `CHANGE_ME` | `apps/admin-console` | Secret the encrypted session cookie (jose JWE, dir + A256GCM) is keyed from; the 32-byte AES key is derived via SHA-256 in `src/server/session.ts`. Minimum 32 characters — the console refuses to start without it. |
+| `AGENTIC_HIGHLIGHT_PROJECT_ID` | `env` | no | — | `apps/api` | Legacy alias read only when `HIGHLIGHT_PROJECT_ID` is unset. Prefer the unprefixed name; this exists so an older deployment keeps working. |
 | `API_GATEWAY_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | The credential STT presents to the gateway. STT is the one service that authenticates with `X-Internal-Service-Key` rather than `X-Service-Token`, reusing this key instead of minting a second STT credential (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`). There is no `STT_SERVICE_TOKEN`. NOT a free-form shared secret like the `*_SERVICE_TOKEN` values: `X-Internal-Service-Key` is also read by the GLOBAL `UnifiedAuthGuard` (`ApiKeyService.extractApiKeyFromRequest`), so this MUST be the RAW value of a registered ACTIVE SERVICE_ACCOUNT ApiKey row — a random secret with no matching row 401s every `/internal/stt/*` callback (BUG-013). Dev uses the seeded fixture; provision one with `pnpm gen:api-key`. |
 | `API_INSPECT_HOSTPORT` | `env` | no | `127.0.0.1:9229` | `apps/api` | Inspector endpoint for `nest start --debug`, so a test gateway can be debugged alongside a dev one (test: 127.0.0.1:9329). |
 | `API_KEY_ALLOW_QUERY_PARAM` | `global-kv` | no | `false` | `apps/api` | When true, an API key may be presented as a query parameter. PLATFORM-ONLY by construction: the only reader is the ANONYMOUS credential-extraction step, which runs before the caller — and therefore the tenant — is known, so there is no tenant scope to resolve it at. Query strings land in access logs and referrers: keep OFF unless a specific integration forces it. `API_KEY_ALLOW_QUERY_PARAM` remains the bootstrap fallback. |
@@ -60,9 +61,16 @@ disagree with those declarations.
 | `HARNESS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s. |
 | `HARNESS_URL` | `env` | no | `http://localhost:8866` | `apps/api` | Clinical Documentation Harness base URL (apps/harness, port 8866). |
 | `HARNESS_WARM_START_ENABLED` | `env` | no | `false` | `apps/harness` | Env FALLBACK for harness warm-start; `HarnessInternalService` treats the DB/policy value as the authority and consults this only when that is absent. Being a fallback for a policy value is itself an argument for moving it out of env. |
+| `HIGHLIGHT_BACKEND_URL` | `env` | no | — | `apps/api` | Overrides the Highlight.io ingest backend. Unset uses the vendor default. |
+| `HIGHLIGHT_OTLP_ENDPOINT` | `env` | no | — | `apps/api` | Overrides the Highlight.io OTLP endpoint. Unset uses the vendor default. |
+| `HIGHLIGHT_PROJECT_ID` | `env` | no | — | `apps/api` | Enables the Highlight.io log transport. UNSET ⇒ the transport does not mount at all, which is the shipped posture. |
 | `INTERNAL_ACCESS_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | THE canonical internal service-to-service credential (owner decision D-D, 2026-08-17): **one** shared access token, identical across every service, set by the DevOps engineer, internal use only. It is presented and accepted as `X-Service-Token` on every internal hop — gateway↔text/nlp/guardrail/harness/tts and every peer-to-peer hop (harness→text/nlp/guardrail, text→guardrail, nlp→text). There is deliberately NO per-service and NO per-pair token in the target state: the `*_SERVICE_TOKEN` family below (`TEXT_`, `NLP_`, `GUARDRAIL_`, `HARNESS_`, `TTS_`, and harness’s outbound `HARNESS_TEXT_`/`HARNESS_NLP_`) is retained ONLY as a zero-cost backward-compatibility fallback — every inbound middleware accepts EITHER this token or its own legacy secret, and every outbound client PREFERS this token and falls back to its legacy per-target secret when unset. Set this one variable and the legacy family can all be dropped. This is the sanctioned env-var exception to D-B (configuration lives in the DB) — it is bootstrap-floor auth material, delivered from Vault in deployed environments. NOT the same thing as `HARNESS_INTERNAL_SERVICE_TOKEN`, which gates the harness knowledge-ingest endpoint only, nor `API_GATEWAY_KEY`, which must be a real ApiKey row (see below). |
 | `JWT_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | HS256 signing secret for gateway-issued access tokens. Warmed at boot; `apps/api/src/main.ts` refuses to start when it is still a placeholder. Rotating it invalidates every outstanding access token immediately (they are short-lived, so the blast radius is one token TTL). |
 | `LIVE_DOC_GROUNDEDNESS_ENABLED` | `env` | no | `false` | `apps/api` | Gates the output-side groundedness check on the live-documentation path. Read once in the `LiveDocumentationService` constructor as `=== "true"`, so a change needs a restart — the clearest instant-fan-out candidate in this file. |
+| `LOG_CONSOLE_COLORIZE` | `env` | no | — | `apps/api` | ANSI colour on stdout. Unset ⇒ ON in development and OFF elsewhere (`isDevelopment()`), so a collected log stream is not full of escape codes. |
+| `LOG_CONSOLE_ENABLED` | `env` | no | `true` | `apps/api` | Writes log records to stdout. Turning this off leaves only the file/Loki/OTel transports. |
+| `LOG_CONSOLE_JSON` | `env` | no | — | `apps/api` | One JSON object per record — the shape a collector parses. The inverse of the development default: unset ⇒ ON outside development. |
+| `LOG_CONSOLE_PRETTY` | `env` | no | — | `apps/api` | Human-readable multi-line records. Unset ⇒ ON in development and OFF elsewhere (`isDevelopment()`). |
 | `LOG_FILE_DATE_PATTERN` | `env` | no | `yyyy-MM-dd` | `apps/api` | Date pattern in rotated log file names. |
 | `LOG_FILE_ENABLED` | `env` | no | `false` | `apps/api` | Writes rotating log files in addition to stdout. |
 | `LOG_FILE_MAX_FILES` | `env` | no | `1000` | `apps/api` | Number of rotated log files kept. |
@@ -71,9 +79,13 @@ disagree with those declarations.
 | `LOG_FILE_SEPARATE_ERROR` | `env` | no | `false` | `apps/api` | Writes errors to their own file in addition to the combined log. |
 | `LOG_LEVEL` | `global-kv` | no | `info` | `apps/api` | Gateway log level, applied live by `PlatformKnobsBinder` through `ILoggingService.setLevel` whenever the settings cache refreshes — so an operator can raise verbosity during an incident with no redeploy. `LOG_LEVEL` remains the BOOTSTRAP value: it is read pre-bootstrap in `apps/api/src/main.ts` (before the Nest module graph, therefore before any DB) to seed the Nest logger. |
 | `LOG_REDACT_FIELDS` | `env` | no | — | `apps/api` | Comma-separated field names redacted from every log entry, on top of the built-in PHI key list. Matching is case-insensitive and ignores _ and -. |
+| `LOKI_BASIC_AUTH` | `env` | no | — | `apps/api` | HTTP basic-auth string (`user:password`) for the Loki push endpoint. Unset means the endpoint is reached unauthenticated — appropriate only in-cluster. |
+| `LOKI_BATCH_INTERVAL` | `env` | no | `5000` | `apps/api` | How long the transport buffers records before pushing. |
+| `LOKI_BATCH_SIZE` | `env` | no | `1000` | `apps/api` | Maximum records per push. |
 | `LOKI_ENABLED` | `env` | no | `false` | `apps/api` | Pushes logs to Loki in addition to stdout. Requires `LOKI_HOST`. |
 | `LOKI_HOST` | `env` | no | — | `apps/api` | Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport. |
 | `LOKI_LABELS` | `env` | no | — | `apps/api` | Comma-separated `key=value` pairs merged into every stream label set. Keep LOW-cardinality — never a tenant, user, or request id. |
+| `LOKI_TIMEOUT` | `env` | no | `30000` | `apps/api` | Per-push HTTP timeout. |
 | `METERING_RECONCILE_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `METRICS_COLLECT_INTERVAL` | `env` | no | `15000` | `apps/api` | Interval of the simplified monitoring collector. |
 | `METRICS_PREFIX` | `env` | no | — | `apps/api` | Prefix for Prometheus metric names; defaults to the sanitized service name. |
@@ -95,8 +107,14 @@ disagree with those declarations.
 | `NODE_ENV` | `env` | no | `development` | `apps/api` | Selects the env file `loadEnv()` reads (`.env.dev` / `.env.test` / `.env.production`); CI and production load NO file and use host env only. |
 | `OTEL_DEBUG` | `env` | no | `false` | `apps/api` | Enables the OpenTelemetry diagnostic logger. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `env` | no | — | `apps/api` | gRPC OTLP collector endpoint. Unset disables the exporters. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | `env` | no | — | `apps/api` | Signal-specific OTLP endpoint for LOGS. Read only when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset; the signal-specific name wins per the OTel spec. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `env` | no | `http/json` | `apps/api` | Wire protocol for the OTLP log exporter (`http/json`, `http/protobuf`, `grpc`). |
+| `OTEL_INJECT_TRACE_CONTEXT` | `env` | no | `true` | `apps/api` | Stamps the active trace/span ids onto every log record so logs and traces correlate. |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `env` | no | — | `apps/api` | Pins the OTel GenAI instrumentation-library content-capture switch off, so prompt/completion text (PHI) is never stamped onto spans. Boot-time audit refuses to start in production unless this is exactly NO_CONTENT. |
+| `OTEL_LOG_BRIDGE` | `env` | no | `false` | `apps/api` | Emits through the OpenTelemetry logs bridge API rather than the direct exporter. |
+| `OTEL_LOGS_ENABLED` | `env` | no | `false` | `apps/api` | Exports log records over OTLP in addition to the console transport. |
 | `OTEL_METRICS_ENABLED` | `env` | no | `false` | `apps/api` | Turns on the OpenTelemetry metrics pipeline. |
+| `OTEL_RESOURCE_ATTRIBUTES` | `env` | no | — | `apps/api` | Comma-separated `key=value` pairs merged into the OTel resource. Keep LOW-cardinality and PHI-free — resource attributes are attached to every exported record. |
 | `OTEL_SDK_DISABLED` | `env` | no | `false` | `apps/api` | Skips OpenTelemetry SDK start-up entirely. |
 | `OTEL_SERVICE_NAME` | `env` | no | `api-gateway` | `apps/api` | Value of the `service.name` resource attribute. |
 | `OTEL_SERVICE_VERSION` | `env` | no | `1.0.0` | `apps/api` | Value of the `service.version` resource attribute. |
@@ -129,6 +147,7 @@ disagree with those declarations.
 | `SECRETS_TTL_SEC` | `env` | no | `300` | `apps/api` | Per-entry TTL of the SecretsService LRU cache. |
 | `SEMANTIC_ENDPOINT_ENABLED` | `env` | no | `false` | `apps/api` | Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the plan §3.3 rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard. |
 | `SERVICE_NAME` | `env` | no | `hope-api` | `apps/api` | Logical service name stamped on logs and metrics. |
+| `SERVICE_VERSION` | `env` | no | `1.0.0` | `apps/api` | Version string stamped on log records. Build identity comes from the image’s `build-info.json`, never from this. |
 | `SESSION_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Signing/encryption secret for server-side session material. Rotating it invalidates existing sessions; users re-authenticate. |
 | `SHUTDOWN_DRAIN_DELAY_MS` | `global-kv` | no | `5000` | `apps/api` | Delay between failing readiness and closing the server, so a load balancer stops routing before connections drop. Resolved at drain time (see `shutdown.timeoutMs`). `SHUTDOWN_DRAIN_DELAY_MS` remains the bootstrap fallback. |
 | `SHUTDOWN_TIMEOUT_MS` | `global-kv` | no | `30000` | `apps/api` | Upper bound on graceful shutdown before the process is forced down. `GracefulShutdownService` resolves it at SHUTDOWN time, not construction time, so a change applies to the next drain without a restart. `SHUTDOWN_TIMEOUT_MS` remains the bootstrap fallback. |
@@ -340,7 +359,8 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `METRICS_ENABLED` | `apps/stt` | no | no | `true` | commented | — |
 | `MINIO_ACCESS_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
 | `MINIO_AUDIO_BUCKET` | `apps/stt` | no | no | `hope-audio` | commented | — |
-| `MINIO_CERT_CHECK` | `apps/stt` | no | no | `true` | commented | — |
+| `MINIO_CERT_CHECK` | `apps/harness` | no | no | `false` | commented | `CERT_CHECK` |
+| `MINIO_CERT_CHECK` | `apps/stt` | no | no | `false` | commented | — |
 | `MINIO_CHUNK_BUCKET` | `apps/stt` | no | no | `hope-audio-chunks` | commented | — |
 | `MINIO_ENDPOINT` | `apps/stt` | no | no | `localhost:9000` | commented | — |
 | `MINIO_SECRET_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
