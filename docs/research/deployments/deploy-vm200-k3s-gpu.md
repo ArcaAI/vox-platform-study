@@ -125,28 +125,79 @@ hostname — so out of the box this node violates that principle twice.
 LAN latency to the same hosts is **1.1–8.5 ms**, versus **350–800 ms** through
 the edge.
 
-### Fix 1 — image pulls (safe, do this one)
+### Fix 1 — image pulls ✅ APPLIED 2026-08-31 (no restart required)
 
 A CoreDNS entry does **not** work: containerd resolves through the **node**, not
-cluster DNS. Pin the mirror instead:
+cluster DNS. But a k3s restart is **not** needed either — this node already has
+`config_path` enabled, and containerd re-reads those files **on every pull**:
 
-```bash
-sudo tee /etc/rancher/k3s/registries.yaml >/dev/null <<'EOF'
-mirrors:
-  registry.taphuynh.dev:
-    endpoint:
-      - "http://10.10.1.110:5050"
-configs:
-  "10.10.1.110:5050":
-    tls:
-      insecure_skip_verify: true
-EOF
-sudo systemctl restart k3s
+```
+/var/lib/rancher/k3s/agent/etc/containerd/config.toml:58
+  config_path = "/var/lib/rancher/k3s/agent/etc/containerd/certs.d"
 ```
 
-`10.10.1.110:5050` is the same origin the tunnel already points at, so this
-changes the path, not the content. Verify with a fresh pull and compare the
-`Pulled ... in <duration>` event against the figures above.
+So the mirror can be dropped in live. **Both** of the following were applied —
+the first takes effect immediately, the second makes it survive a restart
+(k3s regenerates `certs.d/` from `registries.yaml` at startup):
+
+```bash
+# (a) Immediate — containerd reads this per-pull, no restart.
+D=/var/lib/rancher/k3s/agent/etc/containerd/certs.d/registry.taphuynh.dev
+sudo mkdir -p "$D"
+sudo tee "$D/hosts.toml" >/dev/null <<'EOF'
+server = "https://registry.taphuynh.dev"
+
+[host."http://10.10.1.110:5050"]
+  capabilities = ["pull", "resolve"]
+  skip_verify = true
+EOF
+
+# (b) Durable — add the same mirror to /etc/rancher/k3s/registries.yaml
+#     (backup taken: registries.yaml.bak-2026-08-31). Keep the existing
+#     `configs:` auth block; only the `mirrors:` map gains an entry.
+```
+
+**Measured effect on a 3.0 GiB image (`stt-ml-runtime`):**
+
+| Path | Throughput | Time for 3.0 GiB |
+|---|---|---|
+| via Cloudflare (before) | **57 KB/s** | ~15 hours |
+| via LAN mirror (after) | **~25 MB/s** (2.4 GiB in 96.7 s) | ~2 minutes |
+
+Roughly **440× faster**. `hope-stt` and `hope-stt-worker` had been stuck
+`PodInitializing` for ~2 hours; after the mirror both reached `1/1 Running`,
+and the gateway reached `http://hope-stt:8861/api/v1/health` in **10.8 ms**.
+
+> ⚠ The pre-existing `registries.yaml` carried credentials for `10.10.1.110:80`
+> **only** — no entry for `registry.taphuynh.dev`, which is why pulls fell
+> through to the edge. Those stored credentials are also **rejected** by the
+> registry (`GET https://git.taphuynh.dev/jwt/auth … 403 Forbidden`); the
+> working credential is the one in the `hope-registry-creds` Secret. Worth
+> reconciling, and the file holds a GitLab token in plaintext.
+
+#### Diagnosing a slow vs stalled pull
+
+Kubelet reports `PodInitializing` either way, and events age out after an hour.
+Distinguish them by watching containerd's own directories from a privileged pod:
+
+```bash
+# still downloading?  content store grows
+du -sk /var/lib/rancher/k3s/agent/containerd/io.containerd.content.v1.content
+# unpacking?          snapshotter grows
+du -sk /var/lib/rancher/k3s/agent/containerd/io.containerd.snapshotter.v1.overlayfs
+# already have it?
+k3s ctr -n k8s.io images ls | grep <image>
+```
+
+Sample twice, 60–90 s apart. Zero growth in **both** with the image absent means
+the pull is genuinely stalled, not slow.
+
+**A separate failure seen the same day:** kubelet stopped acting on the STT pods
+entirely — no log lines for 30+ minutes — while `k3s crictl pods` showed **five**
+STT sandboxes all `Ready`, including ones whose pods the API had as `Terminating`.
+The pod workers were wedged (same family as the `FailedCreatePodSandBox:
+DeadlineExceeded` seen earlier). `kubectl delete pod --force --grace-period=0`
+on the affected label cleared it and kubelet created working replacements.
 
 ### Fix 2 — the agent websocket (⚠ needs a prerequisite)
 
