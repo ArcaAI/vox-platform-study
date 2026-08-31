@@ -90,45 +90,60 @@ RUN set -eu; cd /tmp; \
     lms version
 
 # ── RUNTIMES MUST BE BAKED INTO THE IMAGE (owner directive, 2026-08-31) ──────
-# MEASURED, pipeline 1026 / job 15158: a container from this image answered
-# `lms runtime ls` with "No runtimes found." -- on STDERR, exit 0, stdout empty
-# -- i.e. NO inference runtime at all, even though the +cuda12 tarball verifiably
-# landed (hope-build-info.json below). Both the CI gate and entrypoint.sh A-2
-# assumed `llmster bootstrap` registers the bundle's engines. That assumption
-# came from a measurement of the ARM64 DEVELOPER bundle on a developer machine
-# (README §10B finding 3: "ships both engines ... llama.cpp-linux-arm64 alongside
-# ...-nvidia-cuda13"); it was never re-measured on this x64 bundle, and here it
-# does not hold.
+# They ARE. The previous revision of this stage asserted it with
+# `lms runtime ls` and failed the build; that was the WRONG PROBE, not a bad
+# bundle.
 #
-# An image with no runtime cannot serve, so this belongs at BUILD time, not as a
-# deploy-time surprise -- and not merely in CI, which only fires after the image
-# is already pushed. On failure this prints the whole ~/.lmstudio tree, which is
-# the evidence needed to identify the correct install mechanism.
+# MEASURED, pipeline 1030 / job 15218 (the failing build's own evidence dump):
+#   `lms runtime ls`      -> "No runtimes found."
+#   ~/.lmstudio/extensions/backends/ ->
+#       llama.cpp-linux-x86_64-avx2-2.31.2                 (CPU)
+#       llama.cpp-linux-x86_64-vulkan-avx2-2.31.2          (Vulkan)
+#       llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.31.2   (CUDA)
+#
+# Both are true at once because `lms runtime ls` enumerates runtimes the HOST
+# CAN RUN -- it is hardware-filtered. A CI runner has no NVIDIA device, so it
+# correctly lists nothing, while the CUDA engine sits on disk. Using it here
+# made a GPU a BUILD dependency, which it must never be: buildkit exposes no
+# GPU (see the job's own "Platforms: linux/amd64,..." with no device), and an
+# image only has to CONTAIN an engine, not exercise it.
+#
+# So this asserts the FILESYSTEM inventory, which is exactly what "baked in"
+# means and is provable on any runner. The runtime half -- does this host have
+# a GPU, and did we actually select the CUDA engine -- stays in entrypoint.sh
+# A-2, where a device exists.
+#
+# Owner requirement (2026-08-31): images must be ready for CPU *and* CUDA, so
+# both are required and a missing either-half fails the build.
 RUN set -eu; \
-    lms daemon up >/dev/null || true; \
-    i=0; while [ $i -lt 60 ]; do \
-      lms daemon status 2>/dev/null | grep -q "is running" && break; \
-      i=$((i+1)); sleep 1; \
-    done; \
-    engines="$(lms runtime ls 2>&1 || true)"; \
-    echo "── lms runtime ls ──"; printf '%s\n' "${engines}"; \
-    echo "── ~/.lmstudio tree (depth 3) ──"; \
-    find /home/llmster/.lmstudio -maxdepth 3 2>/dev/null | head -200; \
-    if printf '%s' "${engines}" | grep -iq 'cuda'; then \
-      echo "OK: a CUDA runtime is baked into this image."; \
-    else \
-      echo "FATAL: no CUDA runtime present after bootstrap." >&2; \
-      echo "Runtimes must be INCLUDED in the image, not fetched on first use." >&2; \
-      echo "See the tree above to identify how this bundle installs engines." >&2; \
-      exit 1; \
-    fi; \
-    lms daemon stop >/dev/null 2>&1 || true
+    b=/home/llmster/.lmstudio/extensions/backends; \
+    echo "── ${b} ──"; ls -1 "${b}" 2>/dev/null || true; \
+    cuda="$(ls -1 "${b}" 2>/dev/null | grep -i 'cuda' | head -1 || true)"; \
+    cpu="$(ls -1 "${b}" 2>/dev/null | grep -i '^llama\.cpp' \
+             | grep -vi 'cuda\|vulkan\|rocm\|hip\|metal' | head -1 || true)"; \
+    [ -n "${cuda}" ] || { \
+      echo "FATAL: no CUDA engine in the image (${b})." >&2; \
+      echo "The +cuda12 bundle should install one; the listing above is the evidence." >&2; \
+      exit 1; }; \
+    [ -n "${cpu}" ] || { \
+      echo "FATAL: no CPU engine in the image (${b})." >&2; \
+      echo "A CPU-runnable image is an owner requirement, not a fallback." >&2; \
+      exit 1; }; \
+    echo "OK: CPU engine '${cpu}' and CUDA engine '${cuda}' are baked in."
 
 # Build-time provenance. `lms` cannot tell you which bundle produced it, so we
 # record it ourselves and the entrypoint asserts against it.
+#
+# `accel` is the build ARG -- a DECLARATION of which bundle was requested. It is
+# NOT a measurement, and it must never be read as one: it printed "cuda" on the
+# job-15218 image whose CUDA engine was never confirmed. `engines` beside it IS
+# the measurement, taken from the filesystem in the stage above.
 RUN set -eu; \
-    printf '{"artifact":"%s","version":"%s","sha512":"%s","accel":"%s"}\n' \
+    b=/home/llmster/.lmstudio/extensions/backends; \
+    engines="$(ls -1 "${b}" 2>/dev/null | paste -sd, - || true)"; \
+    printf '{"artifact":"%s","version":"%s","sha512":"%s","accel":"%s","engines":"%s"}\n' \
       "${LLMSTER_ARTIFACT}" "${LLMSTER_VERSION}" "${LLMSTER_SHA512}" "${HOPE_BUILD_ACCEL}" \
+      "${engines}" \
       > /home/llmster/.lmstudio/hope-build-info.json; \
     cat /home/llmster/.lmstudio/hope-build-info.json
 
