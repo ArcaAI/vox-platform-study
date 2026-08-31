@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **In Progress — engine DECIDED (§0: LM Studio + vLLM). Phase 2 built and staged (§10B); Phase 3 made it deployable (§10C). Blocked on ROOT_CONFIG_REQUESTS R-2..R-5 and a CI build — R-1 (the private CA) is CANCELLED by owner decision** |
+| **Status** | **In Progress — and the CI build is now a FAILING build, not a pending one.** `build-lmstudio` fails at `Dockerfile:107` with *"FATAL: no CUDA runtime present after bootstrap"* (pipeline **1030**, job **15218**, commit `698598b9`). The `+cuda12` tarball lands and its SHA-512 verifies, but the bundle registers **no inference runtime at all** — so **risk A-3 is NOT closed** (§12). Engine still DECIDED (§0: LM Studio + vLLM); manifests are committed and `hope-lmstudio` is live at `replicas: 0`; **OPEN-824-HARNESS is RESOLVED by widening** (`82c63a6ff`), superseding §10C. Still blocked on R-2, R-3, R-5 — R-1 (the private CA) is CANCELLED by owner decision |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` |
 | **Depends on** | MinIO model-artifact bucket (`hope-models` already exists, `docker-compose.yml:145`); objects not yet mirrored |
@@ -1095,7 +1095,30 @@ widened on the assumption that another service calls the engine. `hope-guardrail
 is not a peer either — it no longer dials an LLM at all, so the "guardrail path"
 runs guardrail → text → lmstudio.
 
-**⚠️ OPEN-824-HARNESS — a blocker this exposed.** `hope-harness` and
+> ### ✅ OPEN-824-HARNESS — RESOLVED 2026-08-30 by widening, and the ruling above is SUPERSEDED
+>
+> `82c63a6ff` (monorepo) and `dd19dab2` (deployment repo, *"LM Studio's workload lands inert — the
+> Service does NOT"*) admit **`hope-harness` and `hope-harness-worker`** to the ingress policy
+> alongside `hope-text`. So the paragraph immediately above — *"the ingress peer set is `hope-text`
+> and nothing else, and it must not be widened"* — no longer describes the shipped rule, and the
+> paragraph below it no longer describes an open blocker. Both are kept as the record of the
+> reasoning that was overturned.
+>
+> **Why the earlier ruling was overturned, on measurement rather than preference:** the gateway's
+> text surface is BUSINESS-plane. `UnifiedAuthGuard` accepts a service-account token, an API key
+> or a JWT, and **never `X-Service-Token`** — so neither harness workload can authenticate to it,
+> and the credential that would let them is tenant-bound with no wildcard in `allowedTenantIds`.
+> Holding the narrow set would therefore not have routed harness through the gateway. It would
+> only have cut Institutional-RAG embeddings off at the Service cutover, presenting as an
+> embeddings outage rather than as a policy decision.
+>
+> **Both halves were measured** (`587213170`): `hope-text`, `hope-harness` and
+> `hope-harness-worker` reach `:1234`; `hope-nlp` and `hope-guardrail` still time out. Widening the
+> rule for harness did not widen it for anything else — which is the half of a NetworkPolicy change
+> that usually goes unproven. Measured on a **different CNI from k3s**, so it proves the policy is
+> correct, not that the target cluster enforces it: **`R-5` stays open.**
+
+**⚠️ ~~OPEN-824-HARNESS — a blocker this exposed.~~** *(Historical — resolved above.)* `hope-harness` and
 `hope-harness-worker` are configured *today* to dial LM Studio directly for
 Institutional-RAG embeddings
 (`HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` at
@@ -1146,6 +1169,93 @@ The image has never been built; no GPU execution of any kind; and NetworkPolicy
 enforcement was demonstrated on a **different CNI**, so R-5 stays open for the real
 k3s cluster. §10B's "NOT proven" list is otherwise unchanged.
 
+## 12. Where this actually stands (2026-08-31)
+
+### 🔴 The image does NOT build, and risk A-3 is therefore NOT closed
+
+`build-lmstudio` **failed** on `arca/hope-v2` pipeline **1030**, job **15218**, commit
+`698598b9`, `script_failure` after 30.8 s:
+
+```
+FATAL: no CUDA runtime present after bootstrap.
+Runtimes must be INCLUDED in the image, not fetched on first use.
+See the tree above to identify how this bundle installs engines.
+ERROR: failed to build: … Dockerfile:107 … exit code: 1
+```
+
+**Read the failure precisely, because the two halves come apart.**
+
+| Layer | State |
+|---|---|
+| The `+cuda12` **tarball** | ✅ Lands, and its pinned **SHA-512** verifies — so the CPU tarball cannot have been substituted. This half of A-3's fix is real and structural |
+| An installed CUDA **runtime** | ❌ **Absent.** `lms runtime ls` answers *"No runtimes found."* — on STDERR, exit 0, stdout empty. Not "a CPU engine was selected": **no engine at all** |
+
+**`hope-build-info.json`'s `"accel": "cuda"` is NOT evidence of either.** It is written from the
+`HOPE_BUILD_ACCEL` build ARG (`Dockerfile:57,130`) — a declaration of intent. It would read `cuda`
+on precisely the image that just failed to build. Anything that cites it as proof of the bundle's
+accelerator is citing a `printf`.
+
+**Where the assumption came from.** Both the CI gate and `entrypoint.sh` A-2 assumed
+`llmster bootstrap` registers the bundle's engines. That came from a measurement of the **arm64
+DEVELOPER bundle on a developer machine** (§10B finding 3: *"ships both engines … llama.cpp-linux-arm64
+alongside …-nvidia-cuda13"*). It was never re-measured on the **x64** bundle, and there it does not
+hold. Owner directive 2026-08-31: runtimes must be baked at BUILD time — an image with no runtime
+cannot serve, and CI only fires after the image is already pushed. `698598b92` moved the assertion
+into the Dockerfile, which is why the failure now surfaces as a red build instead of a red pod.
+
+**Consequence for A-3.** Its three-layer chain was: pinned SHA-512 (build) → `verify-lmstudio-runtime`
+(CI) → `entrypoint.sh` A-2 (pod). Layer 1 holds. Layers 2 and 3 both read `lms runtime ls`, and on
+this bundle that command reports nothing to check — so **A-3 is open**, and the open question is no
+longer "did a CPU bundle sneak in" but **"how does this bundle install engines at all?"** The
+failing `RUN` prints the whole `~/.lmstudio` tree on failure precisely to answer that; the tree is
+in job 15218's log.
+
+**What `verify-lmstudio-runtime` proves, stated once so it is not overclaimed:** it greps the merged
+output of `lms runtime ls` for `cuda` inside a container with **no NVIDIA device attached**. It is a
+**bundle/provenance assertion**. It does not prove a GPU exists, and it was never able to — its own
+epilogue says so: *"this proves the BUNDLE only. GPU presence is asserted at pod start by
+entrypoint.sh A-2 (exit 78), because this runner has no NVIDIA device and `lms runtime select`
+succeeds without one."* **Any claim that this job "cannot pass without a GPU" is wrong.**
+
+### The manifests ARE committed and live
+
+`dd19dab2` — *"LM Studio's workload lands inert — the Service does NOT"* — is on
+`hope-v2-deployment@main`. Live and **Synced/Healthy**: Deployment `hope-lmstudio` (0/0), HPA, PDB,
+ConfigMaps `hope-lmstudio-config-h2b672g88m` and `hope-lmstudio-manifest`, NetworkPolicies
+`hope-lmstudio-ingress` / `hope-lmstudio-egress`.
+
+**Two objects were pulled OUT of the sync, both for the same reason** — nothing that cannot yet
+succeed may gate the Application:
+
+- `4adb9512` — the **model-sync PreSync hook wedged the Application**. It cannot pass until R-2/R-3
+  are satisfied, so it did not gate the sync, it deadlocked it. Moved to `out-of-band/`.
+- `de8dc03e` — `hope-lmstudio-models` is a **`WaitForFirstConsumer` PVC** and the Deployment is at
+  `replicas: 0`, so it has no consumer and stays `Pending` forever while Argo gates sync health on
+  it: a permanent `OutOfSync`. Moved out-of-band next to the Job that populates it. Both are
+  cutover-time objects, not sync-time ones.
+
+### Not digest-pinned
+
+`base/lmstudio.yaml` hardcodes `image: registry.taphuynh.dev/hope/lmstudio:dev` — a **mutable
+tag** — and the dev overlay's `images:` list has **no entry** for it, while carrying digest pins for
+all fourteen other images. Its own comment says the overlay is expected to set `newName` + digest.
+That step is unwired, and it cannot be wired until there is an image to pin.
+
+### The corrected blocker list
+
+| Id | State |
+|---|---|
+| **The build** | 🔴 **FAILING** — no runtime in the bundle (above). This is now the first blocker, ahead of everything below |
+| R-1 private CA | ✅ CANCELLED by owner decision (struck through, not deleted) |
+| R-2 `hope-models-reader` Secret | ⬜ Operator — a hand-created MinIO service account under the committed policy; shared with TASK-823 |
+| R-3 publish models + fill `models.tsv` | ⬜ **Not done.** All four rows in ConfigMap `hope-lmstudio-manifest` are still the literal placeholder `SET-AT-PUBLISH`; `sync.sh` fails closed on it |
+| R-4 registry creds / private-only | ✅ Structurally (`imagePullSecrets: hope-registry-creds`); the "not mirrored publicly" half is a human policy check |
+| R-5 k3s NetworkPolicy enforcement | ⬜ **OPEN** — the peer set was measured on a different CNI |
+| R-6 `LMS` release-tag grammar | ⬜ Deferred, non-blocking (branch-push + `ALL-` triggers work today) |
+| R-7 `AiProviderConnection` no-op | ✅ `seed/17-ai-provider-connection.ts:253-266` already targets `http://hope-lmstudio:1234/v1` |
+| Service cutover | ⬜ `lmstudio-service-cutover.yaml` deliberately separate — folding it in today repoints the live Service at zero pods |
+| GPU accounting | ⬜ The HOST LM Studio instance holds VRAM entirely outside k8s accounting, so the scheduler's ledger understates usage; read `nvidia-smi` on the node before scaling |
+
 ## 11. Change History
 | Date | Change |
 |---|---|
@@ -1153,3 +1263,4 @@ k3s cluster. §10B's "NOT proven" list is otherwise unchanged.
 | 2026-08-30 | **Engine recommendation reversed pending owner sign-off (§2A): `llama-server` over the `llmster` build.** Driven by TASK-831 — two headline models are vision **and audio**, and LM Studio audio support is UNVERIFIED-negative. Six corroborating findings: §4.10's entire no-rescan problem class disappears (and router mode HAS a rescan, `GET /models?reload=1`); `/health` gives a real 503→200 readiness gate (verified); the §4.1 silent-CPU-fallback trap becomes structurally absent; MIT licence removes both the ToS risk and the private-registry constraint; `--api-key-file` makes §5 L-1's auth gap real rather than "NetworkPolicy is the ONLY enforcement point"; and most of §4.9's twelve unknowns are LM Studio-specific. Build floor b9383 proven by **commit ancestry** (4/4 fix PRs `behind_by=0`), not by build number. Staged a thin digest-pinned image, a checksum-verifying MinIO→PVC sync Job (with the §4.10 `lms import` step correctly ABSENT), 13 k8s objects incl. the first NetworkPolicies for this workload, an opt-in `gguf` compose profile, and the `AiProviderConnection` spec — which turns out to be a **one-field `baseUrl` change to an existing seed row**, no router code and no `AiModel.provider` change. Recorded three findings that change how the plan is expressed: `--ctx-size` is the TOTAL KV budget divided across `--parallel` slots (so §6.4's "28 seq @ 8k" is `-np 28 -c 229376`); `provider: 'llama-cpp'` in the catalogue selects the raw-prompt `/completion` adapter and would silently strip the chat template from a multimodal model; and Gemma 4 emits reasoning into `message.reasoning_content`, leaving `content` empty. Two genuine costs recorded rather than buried: router mode self-reports as **experimental** ("not recommended in untrusted environments"), and the embedding plane **cannot route at all** until TASK-831 §9 owner decision 2 is taken, because `apps/text` registers only `tei-embed` and TEI cannot load a GGUF. **No GPU was available to this lane; GPU offload and all throughput claims are unverified.** |
 | 2026-08-30 | **Phase 2 — built the LM Studio (`llmster`) tier per the §0 owner decision (§10B).** Image at `infrastructure/docker/lmstudio/` (pinned + SHA-512-verified `+cuda12` bundle, non-root uid 10001, build-info baked); CI wiring in `.gitlab/ci/build.yml` (`build-lmstudio` + `verify-lmstudio-runtime`, which fails the pipeline on a CPU-only image); 8 staged k8s objects at `replicas: 0` with the Service separated into a cutover file because it is the one outage-capable step (`hope-lmstudio` currently fronts the HOST instance and carries both summarization and guardrail). **Per the owner directive of 2026-08-30, CI is the only builder; local build results are discarded as evidence.** Nine measured findings against llmster 0.0.23-1, several of which CORRECT this ticket: §4.7's wait-loop never waits (`lms server status` exits 0 before the daemon exists — in fact every `lms` status command exits 0 regardless of the answer, `runtime select` included, even with no GPU); **§4.10's conclusion does not hold** — a GGUF in `<publisher>/<model>/` is indexed at daemon start AND live, so there is no rescan command because the daemon watches the directory ("no rescan API" and "no discovery" are different claims); a **second silent-CPU path** — the bundle ships both engines and selects the CPU one by default, plus `install.sh:442` yields the CPU bundle on a builder lacking `timeout` even on a GPU host; `lms import` without `-L` **crashes** on a TTY probe rather than silently moving; §4.3's readiness design has **no headless mechanism** (no JIT control exists) so readiness is `loaded_instances[]` via an exec probe; the model key derives from the `--user-repo` `<model>` segment with a `text-embedding-` prefix for embedding models (the §7.4 trap, now asserted at boot); defaults are loopback on a random port; and **no `/metrics` endpoint exists** — an observability regression recorded rather than hidden. **NOT proven: no image build is claimed, no GPU execution, and AUDIO WAS NOT VERIFIED** — `audio-smoke-test.sh` is delivered as an executable A-1 test with all gathered evidence negative or absent, and OI-1 (whether LM Studio auto-pairs `*-mmproj.gguf`) must be closed first or vision and audio are both silently unavailable. |
 | 2026-08-30 (Phase 3) | **Deployability pass (§10C): the CA is gone, the peer set follows the gateway ruling, and the manifest was RUN rather than only reviewed.** Per owner directive — no private CA anywhere, authentication is a MinIO SERVICE ACCOUNT and nothing else, PHI hardening explicitly de-prioritised. **"No CA" settles authentication, not transport:** the endpoint stays `https://10.10.1.102:9000` (MinIO serves TLS on :9000, one port serves one scheme, and plain HTTP would have forced pgBackRest, GitLab, Loki, Tempo, Prometheus and both cloudflared origins to be re-pointed as collateral), and what replaces the CA is `mc --insecure` on BOTH `mc` invocations — the `config host add` and the `mc mirror` inside `sync.sh`, because mc evaluates the flag per invocation. Removed `SSL_CERT_FILE`, the `/etc/ssl/arcaai` mount and the `arcaai-internal-ca` volume; **`ROOT_CONFIG_REQUEST R-1` is recorded as CANCELLED, struck through rather than deleted**. Moved the MinIO endpoint out of a hardcoded literal (and out of the platform's `hope-secrets`, which still holds the PUBLIC tunnel hostname) into `config/lmstudio.env` → `hope-lmstudio-config.LMSTUDIO_S3_ENDPOINT_URL`, referenced NON-optionally: an endpoint is `env`-tier config, and a stale Secret value fails OPEN onto the internet where a missing ConfigMap key fails the pod. **Ingress peer set is `hope-text` ONLY**, per the owner's topology ruling that internal peers reach LM Studio through the gateway rather than dialling it — which exposed **OPEN-824-HARNESS**: `base/harness.yaml:110` and `base/harness-worker.yaml:123` set `HARNESS_RETRIEVAL_EMBEDDINGS_BASE_URL=http://hope-lmstudio:1234/v1` and are LIVE today, so they must be re-pointed through the gateway before the Service cutover or their embeddings calls are dropped (carried as blocking cutover step 5''; deliberately NOT worked around by widening the rule). **Found and fixed a NetworkPolicy defect this ticket shipped:** the sync Job's pod carries `app: hope-lmstudio`, so the DNS-only egress policy selected it and would have blocked its own `mc mirror`; the Job now also carries `app.kubernetes.io/component: model-sync` and a third, narrower policy grants it DNS + `10.10.1.102/32:9000` while the serving pod keeps DNS only. **Found by RUNNING the Job on a throwaway cluster: `mc: <ERROR> Unable to save new mc config. mkdir /home/hope: permission denied` — `minio/mc` has no `/home/hope` and the pod runs as uid 10001, so EVERY PreSync would have failed**; fixed with an `emptyDir` at `/home/hope`. Then proved the shipped configuration end to end against a MinIO serving TLS with a self-signed leaf: three transport controls (plain HTTP → `Client sent an HTTP request to an HTTPS server`; https without a CA → `x509: certificate signed by unknown authority`; https + `--insecure` → works), then `mc config host add` from the ConfigMap endpoint + `hope-models-reader` Secret, the `SET-AT-PUBLISH` fail-closed guard, `mc mirror`, `sha256sum -c` verification, the `.ready` sentinel, and correct PVC ownership under `fsGroup: 10001`; plus the reader service account denying put/delete/other-bucket. Ingress policy verified behaviourally (`hope-text` ALLOWED; harness, harness-worker and nlp all BLOCKED, against a clean all-allowed baseline) — **on a different CNI, so R-5 stays OPEN for k3s**; egress showed a startup race (forbidden destination reachable at t=0, blocked at t=45s, reproduced twice). Kept `lmstudio-service-cutover.yaml` separate and said why in the file: folding it in would repoint the live Service at zero pods. Added cutover steps 5' (prove the peer set, allow AND deny halves), 5'' (the harness blocker) and 6' (re-verify through the Service by name). Wrote the operator runbook `docs/operations/inference/serving-tier-cluster-deployment.md`. |
+| 2026-08-31 | **The image does NOT build, so risk A-3 is OPEN — and `OPEN-824-HARNESS` is resolved.** New §12. `build-lmstudio` FAILED on `arca/hope-v2` pipeline **1030**, job **15218**, commit `698598b9`: *"FATAL: no CUDA runtime present after bootstrap"* at `Dockerfile:107`. The two halves of A-3 come apart — the `+cuda12` **tarball** lands and its pinned SHA-512 verifies (structural, real), but the bundle registers **no inference runtime at all** (`lms runtime ls` → "No runtimes found."), so both the CI gate and `entrypoint.sh` A-2 have nothing to check. **`hope-build-info.json`'s `"accel": "cuda"` is a `printf` of the `HOPE_BUILD_ACCEL` build ARG, not a measurement** — it would read `cuda` on exactly the image that just failed. The assumption that `llmster bootstrap` registers the bundle's engines came from the **arm64 developer** bundle measured on a developer machine (§10B finding 3) and does not hold on x64; `698598b92` moved the assertion into the Dockerfile per owner directive, so it now fails as a red build rather than a red pod. Also corrected: **`verify-lmstudio-runtime` proves the BUNDLE only** — it greps `lms runtime ls` inside a container with no NVIDIA device — so any claim that it "cannot pass without a GPU" is wrong; the job's own epilogue says so. **`OPEN-824-HARNESS` is RESOLVED by widening** (`82c63a6ff` + deployment `dd19dab2`), which SUPERSEDES §10C's "peer set is `hope-text` and nothing else, and it must not be widened": `UnifiedAuthGuard` never accepts `X-Service-Token`, so neither harness workload could authenticate to the gateway and the narrow set would have produced an embeddings outage, not a routing change. Both halves measured (`587213170`) — text/harness/harness-worker allowed, nlp/guardrail still blocked — on a different CNI, so **R-5 stays open**. Recorded that the manifests are committed and live at 0/0 (`dd19dab2`), that two objects were pulled out of the sync because they could not yet succeed (`4adb9512` model-sync PreSync hook; `de8dc03e` the `WaitForFirstConsumer` PVC with no consumer), and that the image is **not digest-pinned** — `base/lmstudio.yaml` carries the mutable tag `:dev` and the dev overlay has no `images:` entry for it, alone among fourteen. |

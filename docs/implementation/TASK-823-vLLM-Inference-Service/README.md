@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | **Pending** — manifests are now **COMMITTED and deployed** (`arca/hope-v2-deployment@main` `eb3e5d92`; `hope-vllm` live at 0/0, Synced/Healthy, with this repo's first NetworkPolicies), so "authored" below understates it. Two independent blockers keep it at 0: the **hardware** (below) and **`OPEN-823-TLS`**, whose owner ruling is a DECISION, not a state — the publicly-trusted certificate has not been installed. See §14 |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` |
 | **Depends on** | TASK-822 (MLflow) for the promotion path; independent for first deploy |
@@ -497,15 +497,22 @@ Reference Grafana dashboards: vLLM ships `examples/observability/prometheus_graf
 ## 11. Verification Criteria
 - [ ] `vllm bench serve` at concurrency {10, 25, 50, 100}; TTFT p95 and aggregate tok/s recorded as the baseline
 - [ ] 40 concurrent in-flight generations sustained 10 min with `num_requests_waiting` at 0
-- [x] **Weights load from MinIO via `runai_streamer`** — proven Phase 2 against a TLS MinIO
-      with a private CA: 902 tensors / 2.483 GiB in 10.51 s (`deployment/README.md` §10).
-      Cold start on the real node still to be measured (needs the GPU).
+- [~] **Weights load from MinIO via `runai_streamer`** — ⚠️ **this checkmark was downgraded
+      2026-08-31; it was proven for a configuration that no longer ships.** Phase 2 measured
+      902 tensors / 2.483 GiB in 10.51 s against a TLS MinIO **with a private CA and
+      `AWS_CA_BUNDLE`** (`deployment/README.md` §10). Phase 3 removed both. The committed
+      `base/vllm.yaml` carries `RUNAI_STREAMER_S3_VERIFY_SSL=0` for the C++ client and
+      **nothing at all** for boto3 — and Phase 2's own variant 2 measured exactly that shape
+      (https, no CA, no bundle) failing `CERTIFICATE_VERIFY_FAILED` on the first LIST. So the
+      loader is proven; **the configuration that ships is expected to fail.** The manifest says
+      so itself: *"THIS DOES NOT FULLY WORK YET"*. See `OPEN-823-TLS` and §14. Cold start on the
+      real node also still unmeasured (needs the GPU).
 - [ ] `VLLM_SERVER_DEV_MODE` unset — asserted by a test against the running pod's env
 - [ ] `/invocations`, `/pause`, `/abort_requests`, `/update_weights` unreachable from outside the router
 - [ ] No prompt text in pod logs under a full generation at INFO
 - [ ] Rolling update completes with **zero** dropped in-flight generations
 - [ ] KEDA scales on `vllm:num_requests_waiting`, not CPU
-- [ ] `apps/text` routes to it as provider priority #1 via an `AiProviderConnection` SYSTEM row
+- [ ] `apps/text` routes to it as provider priority #1 via an `AiProviderConnection` SYSTEM row — **the connection row exists and is enabled** (`seed/17-ai-provider-connection.ts:354-367`, `provider: 'vllm'`, `baseUrl: http://hope-vllm:8000/v1`), but the lever has NOT been pulled: both SYSTEM `AiTaskDefault` rows that actually select a model (`text.live`, `text.finalize`) still name `lms-gemma-4-e2b-it-qat` (`seed/16-ai-task-default.ts:209-217`) — LM Studio, not vLLM
 - [ ] A `models:/<name>@champion` alias resolves to an `s3://` URI and the pod serves it (§4A)
 - [ ] Manifest follows house convention: annotation-based metrics, `imagePullSecrets`, inert HPA + PDB present, `runtimeClassName: nvidia` with matching GPU request **and** limit
 
@@ -562,8 +569,11 @@ the traffic to `10.10.1.102/32`, and the endpoint allow-list (V-2),
 `VLLM_SERVER_DEV_MODE` prohibition (V-1) and log-level controls (V-4) are
 untouched.
 
-**✅ OPEN-823-TLS — RESOLVED 2026-08-30 by owner ruling: a publicly-trusted
-certificate goes on the MinIO listener.** No private CA returns and vLLM needs
+**🟡 OPEN-823-TLS — the RULING is settled; the STATE is not. Re-checked 2026-08-31: the
+certificate has NOT been installed, so this remains a live blocker.** The heading below said
+"RESOLVED", which is true of the decision and false of the platform — and the difference is
+exactly the thing that bites whoever scales this Deployment to 1. Owner ruling (2026-08-30): **a
+publicly-trusted certificate goes on the MinIO listener.** No private CA returns and vLLM needs
 no patch; verification succeeds, which is the shape both of its S3 clients
 already support. An operator action outside both repos, not blocking while
 `replicas: 0`, blocking the moment anyone scales to 1. It also lets
@@ -596,6 +606,67 @@ LM Studio Service cutover, verification, rollback, and the known-unprovable list
 **`replicas: 0` is unchanged and the hardware blocker is unchanged.** Nothing in
 this pass makes vLLM runnable on 2× RTX 2000 Ada; see §2A.
 
+## 14. Where this actually stands (2026-08-31)
+
+### The manifests are deployed, not merely authored
+
+`eb3e5d92` — *"vLLM lands at replicas 0, with this repo's first NetworkPolicy"* — is on
+`arca/hope-v2-deployment@main`. Live in `hope-v2-dev` and **Synced/Healthy** in the Argo
+Application: Deployment `hope-vllm` (0/0, `ScaledToZero`), Service `hope-vllm`, HPA, PDB,
+ConfigMaps `hope-vllm-config-h58cf94bt6` and `hope-vllm-endpoint-guard`, and NetworkPolicies
+`hope-vllm-ingress` / `hope-vllm-egress`. The dev overlay additionally puts `hope-vllm` in the
+`maxSurge: 0` set, for the sharpest form of the single-node reason: a surge pod is a second full
+VRAM allocation and a second `nvidia.com/gpu` slice, on a node that has neither to spare.
+
+Those two NetworkPolicies are also the **first this repo has ever produced**, which closes half of
+TASK-828 §6's "zero NetworkPolicies" finding — and opens a new question it records: whether k3s is
+enforcing them at all has never been tested (TASK-824 carries it as `R-5`).
+
+### TWO blockers, not one — and only the first is in the header
+
+1. **Hardware.** Unchanged and correctly stated: 2× RTX 2000 Ada (16380 MiB, 224 GB/s), short ~3×
+   on VRAM and ~15× on bandwidth against the 20–40 in-flight target, with `mig.capable=false`,
+   `mps.capable=false`, `vgpu.present=false` so time-slicing has no VRAM isolation and no
+   workaround. Re-checked across the whole deployment repo: **no nodeSelector, node affinity or
+   node label anywhere requests an A100/H100-class card.** Nothing is waiting to schedule onto
+   hardware that exists.
+2. **`OPEN-823-TLS` — and this one is easy to misread as closed.** Its section is headed
+   "RESOLVED by owner ruling", which is true of the *decision* (put a publicly-trusted certificate
+   on the MinIO listener) and false of the *platform*: **that certificate has not been installed.**
+   The shipped `base/vllm.yaml` still carries `RUNAI_STREAMER_S3_VERIFY_SSL=0` for the C++ client
+   and nothing for boto3, and the manifest's own comment says *"THIS DOES NOT FULLY WORK YET …
+   vLLM is expected to fail at startup under the no-CA directive … blocking the moment anyone
+   scales to 1."* Solving the hardware blocker alone would not produce a working pod.
+
+### The routing lever has not been pulled
+
+`AiProviderConnection` has the SYSTEM `vllm` row, enabled, pointing at `http://hope-vllm:8000/v1`
+(`seed/17-ai-provider-connection.ts:354-367`). But selection lives in `AiTaskDefault`, and both
+SYSTEM rows that choose a model for the live path — `text.live` and `text.finalize` — still name
+`lms-gemma-4-e2b-it-qat` (`seed/16-ai-task-default.ts:209-217`). §5A already says the whole change
+is repointing those two rows; recording here that it is **still to do**, so "vLLM is provider
+priority #1" is not read as a live property.
+
+### Criteria that cannot be met from a checkout, and one that has no path
+
+Every unchecked box in §11 except the last needs a running pod, so they wait on the two blockers
+above. One is different in kind: **KEDA scaling on `vllm:num_requests_waiting` has no path at all**
+— there is no KEDA in the cluster and no `ScaledObject` anywhere in the deployment repo, and the
+`hope-vllm` HPA is deliberately inert (`minReplicas: 1`, `maxReplicas: 1`, CPU metric, decorative
+by its own comment). §10 already argues introducing KEDA is a real platform decision; the criterion
+should be read as "when KEDA arrives", not as work in flight.
+
+### What gates `replicas: 0 → 1`
+
+1. A GPU in the A100/H100 class (owner decision — §2A).
+2. A publicly-trusted certificate on the MinIO listener, or one of the two alternatives
+   `OPEN-823-TLS` names (reinstate the CA for vLLM only; patch the loader upstream).
+3. The `hope-models-reader` MinIO service account created by hand (`ROOT_CONFIG_REQUEST R-2`,
+   shared with TASK-824) and the weights published to `s3://hope-models/`.
+4. Re-tune `VLLM_GPU_MEMORY_UTILIZATION` for worst-case co-tenancy with `hope-stt` /
+   `hope-stt-worker` on the same node, then flip the replica count by hand.
+5. Separately, to make it matter: repoint the two `AiTaskDefault` rows.
+
 ## 13. Change History
 | Date | Change |
 |---|---|
@@ -603,3 +674,4 @@ this pass makes vLLM runnable on 2× RTX 2000 Ada; see §2A.
 | 2026-08-30 (Phase 2) | **MinIO weight path PROVEN, and the endpoint blocker resolved.** Ran vLLM's own loader transport (`pull_files` → `list_safetensors` → `SafetensorsStreamer`) end to end against a TLS MinIO with a private CA: **902 tensors, 2.483 GiB, 10.51 s, 241.8 MiB/s**, with `Qwen/Qwen3-4B-AWQ` verified against HuggingFace's published sha256 before upload. Negative controls prove `AWS_CA_BUNDLE` and `RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING=0` are both mandatory; corrected pitfall #7's failure signature (opaque `File access error`, not DNS) and the two-S3-clients reason behind it. **No GPU load was performed** — see `deployment/README.md` §10 "What was NOT proven". Resolved the endpoint (new §4B): MinIO is `10.10.1.102:9000` on the LAN, 2.0 ms vs 495.6 ms through the tunnel, with no in-cluster Service existing; repointed `config/vllm.env`, added `AWS_CA_BUNDLE` + CA mount, and **shipped the egress NetworkPolicy** that §4 of the handover previously could not write. Confirmed the image bundles the streamer (Dockerfile:529). Corrected the §2A weight estimate from 3.19 to the measured **2.483 GiB** (the checkpoint ties embeddings), raising honest capacity from ~6.8 to ~8.0 sequences. Two overstatements of my own were caught by the controls and corrected in place: `AWS_ENDPOINT_URL` alone IS sufficient with streamer 0.16.1, and the trailing slash on the model URI is optional. |
 | 2026-08-30 | **§2 superseded by §2A.** Sizing redone against the real hardware (2× RTX 2000 Ada, 16380 MiB, read from the node's GFD labels) instead of the assumed H100 80GB. Verdict: no useful model fits at the 20–40 target — short ~3× on VRAM and ~15× on bandwidth simultaneously; an 8B at BF16 does not load at all. Recorded that MIG/MPS/vGPU are all unavailable, so time-slicing's lack of VRAM isolation has no workaround. Added §5A (the `AiProviderConnection`/`AiTaskDefault` integration contract — the SYSTEM connection row already exists; the lever is `AiTaskDefault`, and there is no priority field). Corrected §8: time-slicing IS applied, the house grace-period max is 90s not 60s, `hope-ollama` is gone. Manifests, config and handover authored under `deployment/`; dev compose `inference` profile extended with the MinIO streaming path and V-2/V-4 controls. Status left **Pending** — enabling is an owner hardware decision. |
 | 2026-08-30 (Phase 3) | **Deployability pass — the CA is gone, the credential is least-privilege, and the manifest now depends on ONE hand-created object (§12A).** Per owner directive: no private CA anywhere, authentication is a MinIO SERVICE ACCOUNT and nothing else, PHI hardening explicitly de-prioritised. **"No CA" settles authentication, not transport** — the endpoint stays `https://10.10.1.102:9000` (MinIO serves TLS on :9000 and one port serves one scheme; plain HTTP would have forced pgBackRest, GitLab, Loki, Tempo, Prometheus and both cloudflared origins to be re-pointed as collateral), and what replaces the CA is **certificate verification turned OFF**, commented at the point it happens. Removed `AWS_CA_BUNDLE`, the `VLLM_S3_CA_BUNDLE` ConfigMap key, the `/etc/ssl/arcaai` mount and the `arcaai-internal-ca` volume from `deployment/vllm.yaml`; **`ROOT_CONFIG_REQUEST R-1` is recorded as CANCELLED, struck through rather than deleted**, so it can be reinstated when PHI hardening returns. Switched the credential from `hope-secrets.MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` — the platform-wide read/WRITE pair that can also reach the PHI buckets — to the dedicated `hope-models-reader` Secret (`accessKeyId`/`secretAccessKey`), the SAME Secret TASK-824's sync Job already reads, so one service account serves both serving tiers (new §9.1b). **Raised OPEN-823-TLS, which is a measurement rather than a caveat:** vLLM's load path has TWO S3 clients and only the Run:ai C++ one reads `RUNAI_STREAMER_*`; **boto3 has NO environment variable that disables verification** (`verify=False` is a construction argument vLLM owns), and Phase 2's variant 2 measured exactly this shape failing `CERTIFICATE_VERIFY_FAILED` on the first LIST. So vLLM is expected to fail at startup until the owner picks one of: reinstate the CA for vLLM only, put a publicly-trusted cert on MinIO, or patch the loader upstream. Not blocking today (`replicas: 0` for the hardware reason), blocking the moment anyone scales it to 1. `RUNAI_STREAMER_S3_VERIFY_SSL=0` is carried for the C++ half and marked UNVERIFIED — no vLLM image was available to this lane, and an unrecognised env var is inert. Validated on a throwaway single-node k8s namespace: `kubeconform -strict` 17/17 valid and `kubectl apply --dry-run=server` clean on all 7 objects; against a stand-in MinIO serving TLS with a self-signed leaf, the `hope-models-reader` policy JSON proved list/get ALLOWED and put/delete/other-bucket DENIED, and a MinIO service account was created end to end (MinIO rejects an access key longer than 20 characters — measured). Also measured the three transport controls that settle the scheme question: plain HTTP against a TLS listener returns `Client sent an HTTP request to an HTTPS server`; https without a CA fails `x509: certificate signed by unknown authority`; https with verification disabled works. Wrote the operator runbook `docs/operations/inference/serving-tier-cluster-deployment.md`. **`replicas: 0` and the hardware blocker are unchanged.** |
+| 2026-08-31 | **Deployed, not just authored — and there are TWO blockers, not one.** New §14. `eb3e5d92` is on `hope-v2-deployment@main` and `hope-vllm` is live at 0/0, Synced/Healthy, with this repo's first NetworkPolicies (`hope-vllm-ingress`/`-egress`) — which closes half of TASK-828 §6's "zero NetworkPolicies" finding and raises its successor: k3s enforcement has never been tested (TASK-824 `R-5`). Three corrections. **(1)** §11's `[x]` on "weights load from MinIO via `runai_streamer`" was downgraded to `[~]`: it was proven in Phase 2 against a TLS MinIO **with a private CA and `AWS_CA_BUNDLE`**, and Phase 3 removed both — the configuration that actually ships is the one Phase 2's own variant 2 measured FAILING with `CERTIFICATE_VERIFY_FAILED`, and `base/vllm.yaml` says so itself (*"THIS DOES NOT FULLY WORK YET"*). **(2)** `OPEN-823-TLS`'s "✅ RESOLVED" heading is true of the DECISION and false of the PLATFORM — the publicly-trusted certificate has not been installed, so it is a second live blocker and solving the hardware one alone would still not produce a working pod. Re-headed 🟡 with the distinction stated. **(3)** The routing lever is unpulled: the SYSTEM `AiProviderConnection` row for vLLM exists and is enabled, but both `AiTaskDefault` rows that select a model (`text.live`, `text.finalize`) still name `lms-gemma-4-e2b-it-qat` — LM Studio. Also recorded: KEDA has no path (no KEDA, no `ScaledObject`, HPA deliberately inert at 1/1), and **no nodeSelector or node label anywhere in the deployment repo requests an A100/H100-class card**, so nothing is waiting to schedule onto hardware that exists. `replicas: 0` and the hardware blocker unchanged. |
