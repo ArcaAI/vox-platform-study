@@ -212,7 +212,7 @@ export interface AiProviderConnectionSeed {
  */
 export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   {
-    // Local/self-host Ollama engine (`TEXT_OLLAMA_BASE_URL`).
+    // Local/self-host Ollama engine.
     //
     // The provider is selectable but the platform seeds NO Ollama model
     // (owner decision 2026-08-17, TASK-736): this row is the endpoint a
@@ -230,7 +230,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
-    metaData: { note: 'Base URL from TEXT_OLLAMA_BASE_URL (env-tier connection identity).' },
+    metaData: { note: 'Ollama endpoint; admin-tunable on this row (db-config tier — there is no env var behind it).' },
   },
   {
     // LM Studio — the platform's default local OpenAI-compatible engine, and
@@ -262,7 +262,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
-    metaData: { note: 'LM Studio k3s Service (env-tier connection identity); admin-tunable.' },
+    metaData: { note: 'LM Studio k3s Service; admin-tunable on this row (db-config tier — there is no env var behind it).' },
   },
   {
     // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and
@@ -350,7 +350,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // vLLM production self-host engine (`TEXT_VLLM_BASE_URL`).
+    // vLLM production self-host engine.
     id: '87000000-0000-0000-0000-000000000007',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -363,10 +363,10 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
-    metaData: { note: 'Base URL from TEXT_VLLM_BASE_URL (k3s Service; env-tier connection identity).' },
+    metaData: { note: 'vLLM k3s Service; admin-tunable on this row (db-config tier — there is no env var behind it).' },
   },
   {
-    // llama.cpp production self-host engine (`TEXT_LLAMA_CPP_BASE_URL`).
+    // llama.cpp production self-host engine.
     id: '87000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -379,7 +379,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     keyVersion: null,
     apiKeyPlaintext: SELF_HOST_PLACEHOLDER_API_KEY,
     enabled: true,
-    metaData: { note: 'Base URL from TEXT_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
+    metaData: { note: 'llama.cpp k3s Service; admin-tunable on this row (db-config tier — there is no env var behind it).' },
   },
 
   // ── New LLM cloud providers (freeze; functional in) ──────
