@@ -15,10 +15,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson } from '../canonical-json';
 
-const FIXTURE_PATH = path.resolve(
-  __dirname,
-  '../../../../docs/implementation/TASK-734-Workflow-Substrate-Second-Pass/contracts/canonical-json-fixtures.json',
-);
+const FIXTURE_PATH = path.resolve(__dirname, 'fixtures/canonical-json-fixtures.json');
 
 interface FixtureCase {
   name: string;

@@ -4,7 +4,7 @@ TASK-716 Task 7b: the Python mirror of `@arcaai/workflow-contract`'s
 `compiledConfig` contract — the **consumer half only**.
 
 Normative machine artifact (the one both languages mirror):
-[`contracts/compiled-config.schema.json`](../../docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json).
+[`schemas/compiled-config.schema.json`](../workflow-contract/schemas/compiled-config.schema.json).
 Normative prose:
 [`contracts/README.md`](../../docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/README.md).
 

@@ -4,7 +4,7 @@
 (``packages/workflow-contract/src/compiler.ts``) produces from a server-validated
 ``WorkflowGraph``, and what the Python interpreter (TASK-718) consumes. The single
 normative machine artifact is
-``docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json``;
+``packages/workflow-contract/schemas/compiled-config.schema.json``;
 this module is a MIRROR of it, kept honest by ``tests/test_parity.py``.
 
 **Consumer half only.** Python never authors or validates a workflow — there is no

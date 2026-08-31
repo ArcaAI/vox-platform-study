@@ -17,10 +17,11 @@ from harness.temporal.interpreter.compiled_config import (
 
 _FIXTURE_PATH = (
     Path(__file__).resolve().parents[8]
-    / "docs"
-    / "implementation"
-    / "TASK-734-Workflow-Substrate-Second-Pass"
-    / "contracts"
+    / "packages"
+    / "workflow-contract"
+    / "src"
+    / "__tests__"
+    / "fixtures"
     / "canonical-json-fixtures.json"
 )
 
