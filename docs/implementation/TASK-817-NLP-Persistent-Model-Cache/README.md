@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` — the two in-repo cleanups (tasks 4–5) shipped in `ecab308ef`; the `hope-nlp` cache wiring (tasks 1–3, deployment repo) and the persistence-contract test (task 6) remain |
+| **Status** | `In Progress` — **4 of 6 tasks done.** Tasks 4–5 (in-repo cleanups) shipped in `ecab308ef`; tasks 1–2 (the `hope-nlp` volume + `init-hf-cache` initContainer, and the mount-path decision written down) landed in the deployment repo as `6a8d94f2` and are **live on `hope-v2-dev`**. Remaining: **task 3** (the two-restart persistence proof — an operator action) and **task 6** (the in-repo persistence-contract test) |
 | **Type** | `infrastructure` |
 | **Branch** | `dev-2.2` |
 | **Follows** | [TASK-808](../TASK-808-Unblock-TEXT-Generation/README.md) §6.3 |
@@ -152,15 +152,48 @@ section was last written as "not started."**
 Both files and both tests are present and unchanged since `ecab308ef` (verified against the
 `dev-2.2` tip: `git merge-base --is-ancestor ecab308ef HEAD` succeeds).
 
-**Not started:** tasks 1–3 (the `hope-nlp` volume + `init-hf-cache` initContainer, the mount-path
-decision, and the live-cluster persistence proof) — these live in the `arca/hope-v2-deployment`
-manifests repo, outside this repo's visibility, and per this ticket's own framing a separate lane
-is landing them. Task 6 (extending `apps/nlp/tests/test_hf_cache_writable_task808.py`, or a
-sibling, to cover the persistence contract rather than just writability) has not been started
-either — no such test exists in `apps/nlp/tests/` as of this writing.
+**Tasks 1 and 2 landed 2026-08-31** in `arca/hope-v2-deployment@main` as
+`6a8d94f2 feat(TASK-817): hope-nlp keeps its weights across a restart, like its two siblings`,
+and are **live on `hope-v2-dev`** (verified against the running Deployment, not just the manifest):
+
+| What | Value on the live `hope-nlp` Deployment |
+|---|---|
+| `volumes` | `models-cache` → `hostPath: /mnt/data/models-cache`, `type: DirectoryOrCreate` — the SAME directory `hope-stt` and `hope-tts` use |
+| `volumeMounts` | `models-cache` at **`/app/.cache/huggingface/hub`** |
+| `initContainers` | `init-hf-cache`, `busybox:1.36.1`, `runAsUser: 0`, `[ "$(stat -c %u /hf-cache)" = 1001 ] \|\| chown -R 1001:1001 /hf-cache` |
+
+**Task 2's decision, recorded where it belongs (in the manifest, not only here).** nlp follows
+**STT's shape** — `HF_HOME=<dir>` in the image, mount at `<dir>/hub` — and the manifest adds **no
+env override at all**. The reason is specific to nlp: `nlp/core/config.py` has a first-class
+`HF_HOME` field that it re-applies to `os.environ` before any transformers import, and no
+`HF_HUB_CACHE` field, so TTS's variable would steer `huggingface_hub` while nlp's own plumbing
+pointed elsewhere — two sources of truth. Because the image already sets
+`HF_HOME=/app/.cache/huggingface` and `huggingface_hub` derives its hub cache as `$HF_HOME/hub`,
+mounting at `/app/.cache/huggingface/hub` makes the image value and the effective value agree **by
+construction**. That is the exact opposite of F-3, where stt's image and manifest disagree. The
+manifest also states why the mount must be at *hub* level: `/mnt/data/models-cache` is already
+hub-shaped on disk (`models--org--name` directories), so mounting one level up would send nlp
+looking in a `<hostPath>/hub` that does not exist and silently re-download everything into a
+directory the other two services never read. **F-4 is therefore closed as a documentation defect**
+— one shared directory still has two env-var conventions, but each is now stated with its reason.
+
+**Still open — task 3 (operator) and task 6 (in-repo).**
+
+- **Task 3 — the persistence proof has NOT been run.** The wiring is live but nobody has executed
+  §4's sequence (`POST /classify/tokens` → `kubectl rollout restart deployment/hope-nlp` →
+  `POST /classify/tokens` again, with both log windows captured). Until someone does, "the volume
+  is mounted" is all that is proven, and that is *not* the same claim as "the weights survived a
+  restart" — F-4's failure mode is precisely a mount that is present and at the wrong level. This
+  is an **operator action**; the orchestrator owns the rollout restart.
+- **Task 6 — no persistence-contract test exists.** `apps/nlp/tests/` holds
+  `test_hf_cache_writable_task808.py` (writability only), plus `test_model_cache.py` and
+  `test_model_cache_retention.py` — both of which test the in-process LRU `ModelCache` (TTL /
+  max-size / admin-controlled retention), an unrelated concern from the on-disk HF cache surviving
+  a pod restart. Nothing asserts the persistence contract.
 
 ## 7. Change History
 | Date | Change |
 |---|---|
 | 2026-08-26 | Opened from TASK-808 §6.3. Scope narrowed after verifying against `hope-v2-dev`: `hope-stt` and `hope-tts` already run the target pattern, so this is an application of it to `hope-nlp` rather than a new design. Added F-2 (guardrail's `HF_HOME` is dead since TASK-735 P3), F-3 (stt image/manifest disagree) and F-4 (three conventions for one directory), all found while confirming the pattern. |
 | 2026-08-30 | **Corrected: Status and §6 said `Pending`/"Not started" while two of the three in-scope items had already shipped.** Tasks 4 and 5 (deleting guardrail's dead `HF_HOME` config, and reconciling stt's Dockerfile/manifest `HF_HOME` divergence) landed in `ecab308ef` (2026-08-28), each guarded by a new test (`test_no_model_cache_config_task817.py`, `test_hf_home_manifest_divergence_task817.py`). Status changed to `In Progress`; §6 rewritten to record what shipped and what remains — tasks 1–3 (the `hope-nlp` deployment-repo wiring) and task 6 (the NLP persistence-contract test) are still outstanding. OD-1 is unchanged and still open. |
+| 2026-08-31 | **Tasks 1–2 landed and are live; §6's "not started" was stale on arrival.** `arca/hope-v2-deployment@main` `6a8d94f2` gave `hope-nlp` the `models-cache` `hostPath` volume, the `init-hf-cache` initContainer and a mount at `/app/.cache/huggingface/hub`; verified against the RUNNING Deployment on `hope-v2-dev`, not merely the manifest. Task 2's mount-path decision is recorded in the manifest itself (nlp follows STT's shape, adds no env override, and the mount is at hub level by construction) — so F-4 is closed as a documentation defect even though the two env-var conventions remain. Status moved to "4 of 6 done". **Deliberately NOT closed:** task 3's persistence proof has never been run (a mount being present is not the same claim as weights surviving a restart — a mount at the wrong level is exactly F-4's failure mode), and task 6's persistence-contract test does not exist (`test_model_cache.py` / `test_model_cache_retention.py` cover the in-process LRU `ModelCache`, an unrelated concern). OD-1 (`hostPath` is a single-node bet) is unchanged and still open. |
