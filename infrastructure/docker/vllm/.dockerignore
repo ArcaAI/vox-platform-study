@@ -1,0 +1,10 @@
+# Build context for the vLLM serving image (TASK-823).
+#
+# The context is this directory ONLY (see .gitlab/ci/build.yml `build-vllm`
+# -> DOCKER_CONTEXT), so it is already tiny. This file keeps it that way and
+# guarantees that nothing which could carry a secret or a model blob is ever
+# sent to the daemon — this image is pushed to a registry, so context hygiene
+# is not cosmetic.
+*
+!Dockerfile
+!build-verify.py
