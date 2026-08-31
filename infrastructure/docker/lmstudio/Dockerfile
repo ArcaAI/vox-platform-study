@@ -115,21 +115,45 @@ RUN set -eu; cd /tmp; \
 #
 # Owner requirement (2026-08-31): images must be ready for CPU *and* CUDA, so
 # both are required and a missing either-half fails the build.
+#
+# THE DAEMON MUST BE STARTED FIRST. Measured across two jobs:
+#   job 15218 — `lms daemon up`, THEN `find ~/.lmstudio` -> three backends
+#   job 15283 — no daemon, `ls .../extensions/backends`  -> EMPTY
+# Same cached bootstrap layer in both, so `llmster bootstrap` does NOT populate
+# extensions/backends; the daemon's FIRST START does. Starting it here means the
+# engines are materialised into THIS layer, i.e. genuinely baked into the image
+# rather than fetched on first use in the cluster — which is the property the
+# owner directive is actually about.
+#
+# Starting the daemon needs no GPU (it started fine on the GPU-less runner in
+# 15218). Reading the DIRECTORY afterwards is the honest probe; `lms runtime ls`
+# is not, because it is hardware-filtered and answers about the host.
 RUN set -eu; \
     b=/home/llmster/.lmstudio/extensions/backends; \
+    lms daemon up >/dev/null || true; \
+    i=0; while [ $i -lt 60 ]; do \
+      lms daemon status 2>/dev/null | grep -q "is running" && break; \
+      i=$((i+1)); sleep 1; \
+    done; \
+    lms daemon status 2>&1 | head -3; \
     echo "── ${b} ──"; ls -1 "${b}" 2>/dev/null || true; \
     cuda="$(ls -1 "${b}" 2>/dev/null | grep -i 'cuda' | head -1 || true)"; \
     cpu="$(ls -1 "${b}" 2>/dev/null | grep -i '^llama\.cpp' \
              | grep -vi 'cuda\|vulkan\|rocm\|hip\|metal' | head -1 || true)"; \
+    if [ -z "${cuda}" ] || [ -z "${cpu}" ]; then \
+      echo "── ~/.lmstudio tree (depth 3) ──" >&2; \
+      find /home/llmster/.lmstudio -maxdepth 3 2>/dev/null | head -200 >&2; \
+    fi; \
     [ -n "${cuda}" ] || { \
       echo "FATAL: no CUDA engine in the image (${b})." >&2; \
-      echo "The +cuda12 bundle should install one; the listing above is the evidence." >&2; \
+      echo "The +cuda12 bundle should install one; the tree above is the evidence." >&2; \
       exit 1; }; \
     [ -n "${cpu}" ] || { \
       echo "FATAL: no CPU engine in the image (${b})." >&2; \
       echo "A CPU-runnable image is an owner requirement, not a fallback." >&2; \
       exit 1; }; \
-    echo "OK: CPU engine '${cpu}' and CUDA engine '${cuda}' are baked in."
+    echo "OK: CPU engine '${cpu}' and CUDA engine '${cuda}' are baked in."; \
+    lms daemon stop >/dev/null 2>&1 || true
 
 # Build-time provenance. `lms` cannot tell you which bundle produced it, so we
 # record it ourselves and the entrypoint asserts against it.
