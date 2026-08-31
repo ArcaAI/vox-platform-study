@@ -518,3 +518,106 @@ verify-lmstudio-runtime:
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ── vLLM inference image (TASK-823) ─────────────────────────────────────────
+# `vllm/vllm-openai:v0.28.0` + the out-of-tree GGUF plugin, pinned to a full
+# commit SHA. Rationale, the v0.11.0-vs-v0.28.0 version pincer, and the three
+# limitations this image ships with (no GGUF embeddings, Granite unverified,
+# GGUF documented by vLLM as highly experimental) are in
+# infrastructure/docker/vllm/Dockerfile and ticket §13.
+#
+# ── NOT IN warm-up-base-images, DELIBERATELY ────────────────────────────────
+# `vllm/vllm-openai:v0.28.0` is ~10 GB. warm-up-base-images has a 15m timeout
+# and pulls SIX bases sequentially; adding this one risks turning a shared
+# warm-up job into the pipeline's flakiest step for a single consumer. buildx
+# pulls it as part of this job instead, where the timeout below accounts for it.
+# The `needs:` is kept (optional) purely to match the house shape.
+#
+# ── NO SERVICE RELEASE TAG YET ──────────────────────────────────────────────
+# `<SVC>` in the release grammar is a CLOSED set
+# (packages/utils/src/version-grammar.ts): ALL API ADMIN COMPAT GUARD HARNESS
+# NLP TEXT STT TTS. There is no VLLM member, and adding one edits packages/**,
+# which is outside this lane's boundary. So this job triggers on branch pushes
+# and `ALL-` only — the same shape as build-lmstudio, build-qdrant-init and
+# build-database.
+
+build-vllm:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+  variables:
+    SERVICE_NAME: vllm
+    # Context is the image directory itself, not the repo root: this image
+    # copies exactly one file and needs none of the monorepo. Same shape as
+    # build-lmstudio and build-python-base.
+    DOCKER_CONTEXT: infrastructure/docker/vllm
+    DOCKERFILE: infrastructure/docker/vllm/Dockerfile
+  # ~10 GB base pull, plus a from-source nvcc compile of the plugin's GGUF
+  # kernels across the base image's full TORCH_CUDA_ARCH_LIST (8 architectures).
+  # 45m — build-lmstudio's budget for a 2 GB base and a download — is not enough.
+  timeout: 90m
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ── The gate that makes the GGUF claim real ─────────────────────────────────
+# Installing `vllm-gguf-plugin` is not the same as vLLM being able to USE it:
+# vLLM finds it through an entry point in the `vllm.general_plugins` group
+# (vllm/plugins/__init__.py::load_plugins_by_group), so a package that imports
+# fine but is not registered there would never be loaded — and a build that
+# compiled no CUDA kernels would fail only at inference time.
+#
+# This job re-runs the image's OWN verifier against the pushed image, so the CI
+# gate and the Dockerfile's build-time gate cannot drift apart. It additionally
+# proves the pushed image carries the SHA that the Dockerfile in THIS commit
+# asks for.
+#
+# WHAT IT DOES NOT PROVE, and must not be read as proving: that a GPU exists,
+# that the kernels execute, or that any weights load. Build runners have no
+# NVIDIA device and buildkit exposes none — so, exactly as in
+# verify-lmstudio-runtime above, this asserts IMAGE CONTENTS, never host
+# capability. That distinction is the whole lesson of job 15218.
+verify-vllm-plugin:
+  stage: build
+  tags: [build]
+  image: docker:28
+  timeout: 30m
+  interruptible: true
+  needs:
+    - job: build-vllm
+  before_script:
+    - !reference [.buildx-registry-login, before_script]
+  script:
+    - |
+      set -eu
+      img="$REGISTRY/$CI_PROJECT_PATH/vllm@${DIGEST}"
+      echo "verifying $img"
+
+      # The pin as the REPO states it at this commit. Extracted rather than
+      # duplicated, so the two can never disagree; empty is a hard failure
+      # (an unguarded empty here would silently verify nothing).
+      expect_sha=$(sed -n 's/^ARG VLLM_GGUF_PLUGIN_SHA=\([0-9a-f]\{40\}\)$/\1/p' \
+        infrastructure/docker/vllm/Dockerfile)
+      if [ -z "$expect_sha" ]; then
+        echo "FATAL: could not read a 40-char ARG VLLM_GGUF_PLUGIN_SHA from" >&2
+        echo "infrastructure/docker/vllm/Dockerfile. Either the pin was moved to" >&2
+        echo "a branch/tag (never do that) or this extraction needs updating." >&2
+        exit 1
+      fi
+      echo "Dockerfile pins the GGUF plugin at $expect_sha"
+
+      docker pull "$img"
+
+      echo "── build identity ──"
+      docker run --rm --entrypoint cat "$img" /app/build-info.json
+
+      echo "── plugin provenance + GPU-free registration assertions ──"
+      docker run --rm --entrypoint python3 "$img" \
+        /opt/hope/build-verify.py assert --expect-sha "$expect_sha"
+
+      echo "OK: the pushed image carries the pinned plugin commit, a compiled"
+      echo "    CUDA extension, and a loadable vllm.general_plugins entry point."
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
