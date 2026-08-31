@@ -2,39 +2,49 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://arcaai.dev/schemas/task-648/build-info.schema.json",
   "title": "HOPE build-info",
-  "description": "Immutable build identity baked into every HOPE image at /app/build-info.json. Written by the Dockerfile from CI build args; read once at process boot. This is NOT configuration — it is a property of the artifact, so it must never be settable from a Deployment manifest, an env file, or turbo.json#globalEnv. The image digest is deliberately absent: it does not exist until after the push, and is attached to the release row by CI instead.",
+  "description": "Immutable build identity baked into every HOPE image at /app/build-info.json. Written by the Dockerfile from CI build args; read once at process boot. This is NOT configuration \u2014 it is a property of the artifact, so it must never be settable from a Deployment manifest, an env file, or turbo.json#globalEnv. The image digest is deliberately absent: it does not exist until after the push, and is attached to the release row by CI instead.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["service", "version", "gitBranch", "gitCommitSha", "buildAt"],
+  "required": [
+    "service",
+    "version",
+    "gitBranch",
+    "gitCommitSha",
+    "buildAt"
+  ],
   "properties": {
     "service": {
       "type": "string",
       "description": "Image/process name as built by CI (SERVICE_NAME in .gitlab/ci/build.yml).",
       "enum": [
-        "api",
         "admin-console",
+        "api",
         "compat-playground",
-        "text",
-        "text",
-        "stt-ml-runtime",
-        "stt-worker",
-        "nlp",
+        "database",
         "guardrail",
-        "tts",
         "harness",
         "harness-worker",
-        "database",
+        "hope-python-base",
+        "lmstudio",
+        "nlp",
         "qdrant-init",
-        "hope-python-base"
+        "stt-ml-runtime",
+        "stt-worker",
+        "text",
+        "tts",
+        "vllm"
       ]
     },
     "version": {
       "type": "string",
-      "description": "SemVer from the release tag, or 0.0.0-<branch-slug>.<sha8> for an untagged build. Produced by parseReleaseTag / formatUntaggedVersion in @arcaai/utils — never hand-formatted, never read from package.json.",
+      "description": "SemVer from the release tag, or 0.0.0-<branch-slug>.<sha8> for an untagged build. Produced by parseReleaseTag / formatUntaggedVersion in @arcaai/utils \u2014 never hand-formatted, never read from package.json.",
       "minLength": 5
     },
     "releaseTag": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The git tag that produced this build, e.g. TEXT-2.1.0. Null on untagged builds.",
       "default": null
     },
@@ -53,11 +63,17 @@
       "description": "UTC RFC3339 instant the image was built, matching org.opencontainers.image.created."
     },
     "ciPipelineId": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "default": null
     },
     "ciPipelineUrl": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "uri",
       "default": null
     }
