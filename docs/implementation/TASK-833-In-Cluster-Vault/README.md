@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Blocked` — manifests done and proven; **Argo CD cannot deliver to `hope-v2-dev` at all** (§4.2), and operator steps are required after that (§7) |
+| **Status** | **`Completed`** — ~~`Blocked`~~. §4.2's delivery blocker is **resolved**: Argo reconciles again and has synced `de8dc03e`. The wipe was performed, the store re-initialised under the in-cluster Shamir seal, and `hope-vault` is **1/1 Healthy** with `vault-bootstrap` provisioning the whole surface (kv-v2, transit, both keys, AppRole, `hope-app` policy) and ending in a canary that logs in as `hope-app` and encrypts under `transit/hope-phi`. The `hope-reset` Job then completed (`succeeded: 1`, 2026-08-30T18:35:53Z) — its step-2 canary uses the SAME AppRole, so a successful run also proves `hope-secrets` was re-pointed at the new Vault. `hope-api` recovered to 1/1. **Residual, tracked in TASK-828 §6, not here:** the three unseal shares and the initial ROOT TOKEN now live in etcd in this namespace — revoking that root token is the owed hardening, and staging/production must not inherit this seal |
 | **Type** | `infrastructure` |
 | **Severity** | **Dev is DOWN** — this is the fix for the TASK-808 §9 outage |
 | **Repos** | `arca/hope-v2` (this ticket) · **`arca/hope-v2-deployment`** (the manifests: `28aa2a8` — **already pushed**, see §4.2 — then `9425643` + `ccb35a4` on `main`, unpushed) |
@@ -156,7 +156,26 @@ pre-flight runs the real authorization path *before* `sys/init`.
 sys/init → {"initialized":false}      /vault/data entries: 0      ← nothing damaged, retries every 15s
 ```
 
-### 4.2 ⚠️ R-10 — Argo CD cannot deliver to `hope-v2-dev`, so nothing has changed in the cluster
+### 4.2 ✅ RESOLVED 2026-08-31 — ~~R-10 — Argo CD cannot deliver to `hope-v2-dev`, so nothing has changed in the cluster~~
+
+> **This blocker is gone; the section is kept as the record.** Argo CD's repo-server is back and
+> the Application has compared and synced `de8dc03e`, the deployment repo's current `main`. A-2's
+> `hope-db-migrate` defect was fixed by `ad93f7b1` — `Replace=true` alone only changes the verb to
+> `kubectl replace`, which is **still an update**, so every Job immutability rule still applied;
+> `Force=true` makes Argo delete/create so the API server regenerates the server-side
+> `spec.selector`. Both options are load-bearing and this repo had been broken by each in turn.
+>
+> **The Application currently reads `OutOfSync`, and that is not this blocker returning.** The only
+> diverging resource is the `hope-db-migrate` hook Job, reported `Missing` because a completed hook
+> Job is deleted by its delete-policy. Its last sync operation `Succeeded` — *"successfully synced
+> (no more tasks)"*. Every other resource is Synced/Healthy.
+>
+> **What was learned repairing it, and belongs in the record:** the deployment repo's CI had
+> **never once succeeded** — every job was untagged and no runner accepts untagged jobs — and its
+> `schemas` gate could not have executed even if scheduled (distroless image, no shell, binary off
+> `PATH`). Fixed by `f09c45e3` and `ff7ae4e9`; all 8 jobs now pass (pipeline #1029). And the rule
+> that came out of three further wedges: **nothing that cannot yet succeed may gate the
+> Application** — a failing wave-hook does not fail alone, it deadlocks every later wave.
 
 **This outranks everything else in the ticket.** `28aa2a8` is already on `origin/main` (the
 ticket recorded it as unpushed; it is not) and **the cluster has not moved**: live ConfigMap
@@ -529,3 +548,4 @@ and against a throwaway PostgreSQL 18 (`timescale/timescaledb-ha:pg18-all`):
 | 2026-08-30 | Opened from the TASK-808 §9 diagnosis, on the owner's directive. |
 | 2026-08-30 | Seal decision made (Shamir + in-cluster `vault-bootstrap` sidecar); manifests committed as `28aa2a8` in `hope-v2-deployment` (unpushed); runbook added. Found and fixed a duplicate-`-config` entrypoint bug that would have shipped a Vault unable to start. Found that `10.10.1.134` also seals the Vault HA Raft cluster, down from the same event. Corrected the ticket's "Raft data" premise: the backend is `storage "file"`. |
 | 2026-08-30 | **Review pass → `9425643` + `ccb35a4`.** Reproduced a data-loss bug in the sidecar (a failed Secret write after `sys/init` discarded the shares and left the store permanently unrecoverable) plus a 67s→2s cold-start regression and a missing pre-flight; all three fixed and re-verified. Added resources to both containers. **Found that the runbook's re-init path could not have worked**: a fresh non-dev Vault has no `secret/`, `transit/`, `approle/` or policies, and `vault-seed-secrets.sh` creates none of them — runbook §5 added. **Found that the wipe destroys the `hope-phi`/`hope-globalsetting` transit keys**, which encrypt columns across 20 repositories, and that their only backup lives on the VMs approved for destruction — snapshot gate added. Owner confirmed Path F (re-initialise) as the only path; runbook rewritten around the wipe, with an explicit verified-empty check. Annotated the three monitoring configs that would otherwise alert forever, and marked `infrastructure/single-deployment/vault/` retired. | Finally, found that `28aa2a8` was already pushed and that **Argo CD cannot sync `hope-v2-dev` at all** — repo-server down, and a `hope-db-migrate` `Replace=true` defect that has failed every sync since 2026-08-25. The manifests are proven but undeliverable until that is repaired; status moved to `Blocked` and the runbook now gates the wipe on it. |
+| 2026-08-31 | **Status `Blocked` → `Completed`.** §4.2's delivery blocker is resolved and the ticket's own work is done and live. Argo CD reconciles again and has synced `de8dc03e`; A-2's `hope-db-migrate` defect was fixed by `ad93f7b1` (`Replace=true` alone is still an UPDATE, so Job immutability still applied — `Force=true` makes Argo delete/create so the API server regenerates the server-side `spec.selector`; both options are load-bearing and this repo had been broken by each in turn). The wipe was performed and the store re-initialised under the in-cluster Shamir seal: `hope-vault` is **1/1 Healthy**, `vault-bootstrap` provisions kv-v2, transit, both transit keys, the AppRole and the `hope-app` policy on any pod start with no human step, and ends in a canary that logs in as `hope-app` and encrypts under `transit/hope-phi`. The `hope-reset` Job then completed (`succeeded: 1`, 18:35:14Z → 18:35:53Z) — its own step-2 canary presents the SAME AppRole `hope-api` uses, so a successful run also proves `hope-secrets` carries the CURRENT credentials rather than the previous Vault's. `hope-api` recovered to 1/1 and every workload in the namespace is at its desired replica count. **UNVERIFIED here:** the operator-reported "21 KV secrets re-seeded" count — their values live only in the operator's `.env.dev` and cannot be read back from this session (this file's own header comment says 23; neither number is confirmable here). **Residual risk moved to TASK-828 §6 rather than closed:** the three unseal shares and the initial ROOT TOKEN now sit in etcd in this namespace, so anyone reaching Argo's write path reaches Vault's unseal material — revoking the root token is the owed hardening, and staging/production must not inherit this seal. Also recorded in §4.2: the deployment repo's CI had **never once succeeded** before `f09c45e3`/`ff7ae4e9`, and the rule that came out of the remaining wedges — nothing that cannot yet succeed may gate the Application. |
