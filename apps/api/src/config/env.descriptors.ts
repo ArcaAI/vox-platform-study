@@ -229,7 +229,14 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
   // Defaults are transcribed from the reader, INCLUDING the two that are
   // environment-dependent (`isDevelopment()`): the sample is dev-shaped, so the
   // dev value is the truthful one to show.
-  envKnob('logConsole.enabled', 'boolean', 'Logging', 'Console logging enabled', 'Writes log records to stdout. Turning this off leaves only the file/Loki/OTel transports.', true),
+  envKnob(
+    'logConsole.enabled',
+    'boolean',
+    'Logging',
+    'Console logging enabled',
+    'Writes log records to stdout. Turning this off leaves only the file/Loki/OTel transports.',
+    true,
+  ),
   // These three have NO runtime `default` on purpose, and that is not an
   // oversight: their reader's fallback is `isDevelopment()`, not a constant, so
   // transcribing either branch as a `default` would be inventing one — and
@@ -310,8 +317,20 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Highlight.io project id (legacy name)',
     'Legacy alias read only when `HIGHLIGHT_PROJECT_ID` is unset. Prefer the unprefixed name; this exists so an older deployment keeps working.',
   ),
-  envKnob('highlight.backendUrl', 'string', 'Logging', 'Highlight.io backend URL', 'Overrides the Highlight.io ingest backend. Unset uses the vendor default.'),
-  envKnob('highlight.otlpEndpoint', 'string', 'Logging', 'Highlight.io OTLP endpoint', 'Overrides the Highlight.io OTLP endpoint. Unset uses the vendor default.'),
+  envKnob(
+    'highlight.backendUrl',
+    'string',
+    'Logging',
+    'Highlight.io backend URL',
+    'Overrides the Highlight.io ingest backend. Unset uses the vendor default.',
+  ),
+  envKnob(
+    'highlight.otlpEndpoint',
+    'string',
+    'Logging',
+    'Highlight.io OTLP endpoint',
+    'Overrides the Highlight.io OTLP endpoint. Unset uses the vendor default.',
+  ),
 ];
 
 /** OpenTelemetry (`apps/api/src/instrumentation.ts`, `observability/otel.service.ts`). */
@@ -327,7 +346,14 @@ const OBSERVABILITY: SettingDescriptor[] = [
   // trace/metric pipelines above, with its own enable flag, its own endpoint
   // and its own protocol. Read through `getEnvString`/`getEnvBoolean`, so
   // invisible to the env-sync scanner and previously absent from every sample.
-  envKnob('otel.logsEnabled', 'boolean', 'Observability', 'OTel log export enabled', 'Exports log records over OTLP in addition to the console transport.', false),
+  envKnob(
+    'otel.logsEnabled',
+    'boolean',
+    'Observability',
+    'OTel log export enabled',
+    'Exports log records over OTLP in addition to the console transport.',
+    false,
+  ),
   envKnob(
     'otel.logBridge',
     'boolean',
@@ -371,7 +397,14 @@ const OBSERVABILITY: SettingDescriptor[] = [
   // (TASK-648) and is deliberately not settable from configuration. Declared
   // because the read is real and an undeclared read is invisible to operators —
   // not as an invitation to set it.
-  envKnob('serviceVersion', 'string', 'Process', 'Service version label on logs', 'Version string stamped on log records. Build identity comes from the image’s `build-info.json`, never from this.', '1.0.0'),
+  envKnob(
+    'serviceVersion',
+    'string',
+    'Process',
+    'Service version label on logs',
+    'Version string stamped on log records. Build identity comes from the image’s `build-info.json`, never from this.',
+    '1.0.0',
+  ),
   envKnob(
     'metricsPrefix',
     'string',

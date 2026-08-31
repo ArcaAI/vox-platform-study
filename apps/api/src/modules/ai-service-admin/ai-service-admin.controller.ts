@@ -98,7 +98,8 @@ export class AiServiceAdminController {
   @Get('mlflow/registered-models')
   @ApiOperation({
     summary: 'Search the MLflow model registry',
-    description: 'Proxies `GET /api/2.0/mlflow/registered-models/search`. MLflow holds metadata and lineage; served weights live in the `hope-models` bucket.',
+    description:
+      'Proxies `GET /api/2.0/mlflow/registered-models/search`. MLflow holds metadata and lineage; served weights live in the `hope-models` bucket.',
   })
   @ApiOkResponse({ description: 'MLflow `SearchRegisteredModels` response (`registered_models[]`, `next_page_token`), proxied verbatim.' })
   @ApiResponse({ status: 400, description: 'Rejected query window, or MLflow’s own 400 for a malformed `filter`.' })
@@ -110,7 +111,8 @@ export class AiServiceAdminController {
   @Get('mlflow/model-versions')
   @ApiOperation({
     summary: 'Search MLflow model versions',
-    description: 'Proxies `GET /api/2.0/mlflow/model-versions/search`. Aliases (not stages) are the promotion mechanism — see the registry conventions.',
+    description:
+      'Proxies `GET /api/2.0/mlflow/model-versions/search`. Aliases (not stages) are the promotion mechanism — see the registry conventions.',
   })
   @ApiOkResponse({ description: 'MLflow `SearchModelVersions` response (`model_versions[]`, `next_page_token`), proxied verbatim.' })
   @ApiResponse({ status: 400, description: 'Rejected query window, or MLflow’s own 400 for a malformed `filter`.' })
