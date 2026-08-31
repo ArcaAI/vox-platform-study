@@ -490,19 +490,34 @@ verify-lmstudio-runtime:
          lms daemon up >/dev/null || true;
          i=0; while [ $i -lt 60 ]; do
            lms daemon status 2>/dev/null | grep -q "is running" && break; i=$((i+1)); sleep 1; done;
-         lms runtime ls')
+         lms runtime ls 2>&1')
       rc=$?
       set -e
       echo "docker run exit status: $rc"
       echo "$engines"
 
-      # An empty result is a BROKEN PROBE, not a CPU-only image. Fail with a
-      # different message so the two can never be confused again.
+      # MEASURED 2026-08-31 (pipeline 1026, job 15158): `lms runtime ls` exits
+      # 0, prints "No runtimes found." on STDERR, and leaves STDOUT EMPTY. So
+      # the answer must be read off the merged stream (`2>&1` above) and off
+      # OUTPUT, never $? -- capturing stdout alone loses the reply entirely.
+      #
+      # Three outcomes, three different messages. Collapsing them is what made
+      # this gate unreadable in the first place.
       if [ -z "$engines" ]; then
-        echo "FATAL: \`lms runtime ls\` produced no output (exit $rc)." >&2
-        echo "This does NOT mean the image is CPU-only -- it means the probe" >&2
-        echo "could not answer, so the accelerator is UNVERIFIED. Check the" >&2
-        echo "daemon's stderr above. Do not promote on an unverified result." >&2
+        echo "FATAL: \`lms runtime ls\` produced no output at all (exit $rc)." >&2
+        echo "The probe could not answer, so the accelerator is UNVERIFIED." >&2
+        exit 1
+      fi
+
+      if echo "$engines" | grep -iq 'no runtimes found'; then
+        echo "FATAL: the daemon started and answered, but NO RUNTIME is" >&2
+        echo "installed in this image, so there is no engine to check." >&2
+        echo "This is NOT the same as a CPU-only bundle -- the provenance" >&2
+        echo "above shows the cuda12 tarball landed. Either runtimes are" >&2
+        echo "fetched on first use (making this assertion unprovable in a" >&2
+        echo "bare container) or the bundle did not register them." >&2
+        echo "NOTE: entrypoint.sh A-2 reads the SAME command the SAME way," >&2
+        echo "so a pod would die at boot for this reason too." >&2
         exit 1
       fi
 
