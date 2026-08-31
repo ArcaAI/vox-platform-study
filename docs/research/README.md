@@ -19,6 +19,32 @@ research/
 
 ---
 
+## ⚠ Read first — the cross-cutting finding (2026-08-31)
+
+**`rancher.taphuynh.dev` and `registry.taphuynh.dev` resolve to Cloudflare**, so
+LAN→LAN traffic between VMs metres apart crosses to a Hong Kong edge and back.
+The tunnel doc's own principle — *"All VM-to-VM traffic MUST stay on the
+internal `10.10.1.x` network"* — was implemented for VM 400 and VM 411 but
+**never for VM 200**, the k3s cluster that pulls the largest images and holds
+the Rancher websocket.
+
+Measured: **8.5 ms** direct to the k3s API and **1.1 ms** to the Rancher origin
+on the LAN, versus **350–800 ms** through the edge; image pulls at **80–200
+KB/s**. It presents as `sync from client` errors, partial Argo syncs (115 of 124
+objects in one run), and Deployments missing their progress deadline — none of
+which look like a network problem.
+
+If you are debugging any of those, start here:
+[CT 101 — second failure mode](./deployments/deploy-ct101-cloudflare-tunnel.md#-second-failure-mode-long-lived-connections-and-latency-measured-2026-08-31)
+· [VM 200 — internal DNS override](./deployments/deploy-vm200-k3s-gpu.md#51-internal-dns-override--keep-cluster-traffic-off-cloudflare)
+· [VM 400 — register clusters directly](./deployments/deploy-vm400-master.md#-register-downstream-clusters-directly-not-through-the-rancher-proxy)
+
+⚠ Do **not** "fix" it with an `/etc/hosts` entry for `rancher.taphuynh.dev`
+alone — the origin serves no TLS for that host, so that breaks the agent rather
+than speeding it up. The order of operations is in the VM 200 guide.
+
+---
+
 ## Infrastructure — Proxmox Host Setup
 
 | Document | Description |

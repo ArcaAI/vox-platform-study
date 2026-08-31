@@ -127,6 +127,60 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
 
 ---
 
+### ⚠ Register downstream clusters DIRECTLY, not through the Rancher proxy
+
+**Changed 2026-08-31.** Argo's destination for `hope-v2-dev` was
+`https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq` — the Rancher proxy, which
+resolves to **Cloudflare** and inherits every tunnel drop. Syncs failed an
+arbitrary subset of objects (one run: **9 of 124**), and because the failures
+land in early sync waves, later waves never ran — `hope-temporal` (`syncWave: 2`)
+was simply never created, which in turn crash-looped `hope-harness-worker`.
+
+VM 400 and VM 200 are both on `10.10.1.0/24`. Measured from an Argo pod:
+`https://10.10.1.10:6443` answers in **8.5 ms**; the proxy path takes **506 ms**.
+
+```bash
+# On VM 200 — the SA usually already exists from the Rancher import. Verify it is admin:
+kubectl auth can-i '*' '*' --all-namespaces \
+  --as=system:serviceaccount:kube-system:argocd-manager      # -> yes
+
+# k8s >= 1.24 does not auto-create a token; make a long-lived one:
+kubectl -n kube-system apply -f - <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-manager-token
+  namespace: kube-system
+  annotations: { kubernetes.io/service-account.name: argocd-manager }
+type: kubernetes.io/service-account-token
+EOF
+
+# On VM 400 — register the cluster. The label is what makes Argo treat it as one.
+#   stringData.server = https://10.10.1.10:6443
+#   stringData.config = {"bearerToken":"<token>","tlsClientConfig":{"insecure":false,"caData":"<ca.crt b64>"}}
+# Both values come from the Secret above; copy base64 to base64 and never echo them.
+
+# Whitelist the destination in the AppProject, or the app parks at Unknown/Unknown:
+kubectl -n argocd patch appproject hope-v2 --type=merge -p '{"spec":{"destinations":[
+  {"server":"https://10.10.1.10:6443","namespace":"hope-v2-dev"}]}}'
+
+# Repoint the Application:
+kubectl -n argocd patch application hope-v2-dev --type=merge \
+  -p '{"spec":{"destination":{"server":"https://10.10.1.10:6443","namespace":"hope-v2-dev"}}}'
+```
+
+Result: **124 of 124 objects applied, 0 failures**, against 9 failures minutes
+earlier on the proxy path.
+
+Forgetting the AppProject step is not a transient error — the Application
+reports `destination server ... do not match any of the allowed destinations`
+and never reconciles.
+
+Background and the full measurement set:
+[CT 101 — second failure mode](./deploy-ct101-cloudflare-tunnel.md#-second-failure-mode-long-lived-connections-and-latency-measured-2026-08-31).
+
+---
+
 ## 6. Access & Initial Configuration
 
 ### Internal Access

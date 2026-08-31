@@ -103,6 +103,86 @@ kubectl apply -f <generated-manifest-url>
 
 ---
 
+## 5.1 Internal DNS override — keep cluster traffic off Cloudflare
+
+> **Added 2026-08-31 after a full day lost to this.** VM 411 and VM 400 both got
+> this treatment when they were built (see [CT 101 workaround strategy](./deploy-ct101-cloudflare-tunnel.md#workaround-strategy));
+> **VM 200 never did**, and it is the node that pulls the largest images and holds
+> the Rancher websocket.
+
+The tunnel doc's principle is *"All VM-to-VM traffic MUST stay on the internal
+`10.10.1.x` network."* Step 5 above imports this cluster using
+`https://rancher.taphuynh.dev`, which sets `CATTLE_SERVER` to the **public**
+hostname — so out of the box this node violates that principle twice.
+
+### What breaks, measured
+
+| Flow | Symptom |
+|---|---|
+| `cattle-cluster-agent` → Rancher | Websocket dies with `close 1006`; every consumer sees `error trying to reach service: sync from client`. Argo applied only **115 of 124** objects in one run, all 9 failures transport-only |
+| kubelet/containerd → registry | **80–200 KB/s** (413 MB took 29m20s). Multi-GB ML images exceed the Deployment progress deadline and look like an app fault |
+
+LAN latency to the same hosts is **1.1–8.5 ms**, versus **350–800 ms** through
+the edge.
+
+### Fix 1 — image pulls (safe, do this one)
+
+A CoreDNS entry does **not** work: containerd resolves through the **node**, not
+cluster DNS. Pin the mirror instead:
+
+```bash
+sudo tee /etc/rancher/k3s/registries.yaml >/dev/null <<'EOF'
+mirrors:
+  registry.taphuynh.dev:
+    endpoint:
+      - "http://10.10.1.110:5050"
+configs:
+  "10.10.1.110:5050":
+    tls:
+      insecure_skip_verify: true
+EOF
+sudo systemctl restart k3s
+```
+
+`10.10.1.110:5050` is the same origin the tunnel already points at, so this
+changes the path, not the content. Verify with a fresh pull and compare the
+`Pulled ... in <duration>` event against the figures above.
+
+### Fix 2 — the agent websocket (⚠ needs a prerequisite)
+
+Do **not** just add `10.10.1.100 rancher.taphuynh.dev` to `/etc/hosts`. The
+Rancher origin serves **no TLS** for that hostname — the tunnel ingress is
+`http://10.10.1.100:80`, so traefik builds no router on `:443`:
+
+```
+:443 /healthz -> 404      :80 /healthz -> 200      :80 /v3/connect -> 302
+```
+
+An `/etc/hosts` entry alone therefore **breaks the agent**. Order of operations:
+
+1. On VM 400, add a `tls:` section to the `rancher` Ingress using the existing
+   `tls-rancher-ingress` Secret (cert-manager is installed there).
+2. Confirm `curl -k --resolve rancher.taphuynh.dev:443:10.10.1.100 https://rancher.taphuynh.dev/healthz` returns **200**, not 404.
+3. Only then add the `/etc/hosts` entry on VM 200.
+
+The agent runs with `CATTLE_CA_CHECKSUM=` empty and `STRICT_VERIFY=false`, so it
+tolerates the origin's own certificate.
+
+**Or skip both**: set the Cloudflare DNS records for `rancher.taphuynh.dev` and
+`registry.taphuynh.dev` to **DNS-only (grey cloud)** and every internal client
+resolves the origin directly. Owner decision — it changes external reachability.
+
+### Argo no longer depends on any of this
+
+Argo CD (VM 400) previously reached this cluster through
+`https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq`, inheriting every tunnel
+drop. Since 2026-08-31 it targets the API server **directly** at
+`https://10.10.1.10:6443` via a `hope-v2-direct` cluster Secret — 8.5 ms, and
+the first sync after the change applied **124 of 124 objects with 0 failures**.
+See [VM 400 guide](./deploy-vm400-master.md#5-install-argo-cd).
+
+---
+
 ## 6. Install NVIDIA GPU Operator
 
 The GPU Operator automates the management of GPU resources in Kubernetes. Install via Rancher UI or Helm.

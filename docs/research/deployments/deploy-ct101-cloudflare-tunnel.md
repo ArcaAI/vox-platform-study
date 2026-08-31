@@ -150,6 +150,9 @@ Cloudflare Free plan rejects any HTTP request body larger than **100 MB**. This 
 | 10 | Runner CI jobs | Docker push to registry | Depends on DNS resolution | **Maybe** | Image layers | **Mitigated below** |
 | 11 | GitLab (410) | MinIO (402) | `https://10.10.1.102:9000` (internal, self-signed TLS) | **No** | — | None |
 | 12 | Master (400) | GitLab registry | Depends on DNS resolution | **Maybe** | Image pulls | **Mitigated below** |
+| 13 | **K3s (200) kubelet/containerd** | GitLab registry | `registry.taphuynh.dev` — **resolves to Cloudflare** | **Yes** | Multi-GB ML images | **HIGH — CONFIRMED 2026-08-31** |
+| 14 | **K3s (200) `cattle-cluster-agent`** | Rancher (400) | `wss://rancher.taphuynh.dev/v3/connect` — **resolves to Cloudflare** | **Yes** | No (long-lived websocket) | **HIGH — CONFIRMED 2026-08-31** |
+| 15 | **Argo (400)** | K3s API (200) | was `rancher.taphuynh.dev/k8s/clusters/c-nfhxq` | **Yes** | No | **FIXED 2026-08-31 — now direct** |
 
 ### Workaround Strategy
 
@@ -162,6 +165,68 @@ Cloudflare Free plan rejects any HTTP request body larger than **100 MB**. This 
 | **#6 Dev Docker push** | For images > 100 MB: push from a machine on the internal network (VM 411 or SSH into any VM), or build on the runner via CI pipeline. |
 | **#9–10 Runner CI** | Add `/etc/hosts` on VM 411 + `extra_hosts` in runner `config.toml` to resolve `git.taphuynh.dev` and `registry.taphuynh.dev` to internal IPs. See [Runner deployment guide](./deploy-vm411-gitlab-runner.md#31--dns-override-bypass-cloudflare-for-internal-traffic). |
 | **#12 Rancher pulls** | Configure Rancher cluster to use `10.10.1.110:5050` as the registry endpoint, or add `/etc/hosts` on VM 400. See [Master deployment guide](./deploy-vm400-master.md#8-container-registry-access). |
+| **#13 K3s image pulls** | `/etc/hosts` on VM 200 is **not enough** — containerd resolves through the node but pulls are best pinned explicitly. Add a mirror in `/etc/rancher/k3s/registries.yaml` mapping `registry.taphuynh.dev` → `http://10.10.1.110:5050`, then restart k3s. See [K3s guide](./deploy-vm200-k3s-gpu.md#51-internal-dns-override--keep-cluster-traffic-off-cloudflare). **A CoreDNS entry cannot fix this** — cluster DNS serves pods, not the kubelet. |
+| **#14 Cluster agent tunnel** | `/etc/hosts` on VM 200 mapping `rancher.taphuynh.dev` → `10.10.1.100`. ⚠ **The origin serves no TLS for that host** (see below), so this requires adding TLS to the Rancher ingress first, or the agent breaks. |
+| **#15 Argo → K3s** | **Done.** Argo targets `https://10.10.1.10:6443` directly via the `hope-v2-direct` cluster Secret. Took a sync from 9 failed objects to 0. |
+
+### ⚠ Second failure mode: long-lived connections and latency (measured 2026-08-31)
+
+The matrix above scores risk by **payload size**, because the 100 MB cap was the
+known constraint. A full day of debugging established a second, independent
+failure mode that payload size does not predict: **Cloudflare recycles
+long-lived connections, and every LAN→LAN hop pays edge latency.**
+
+Both `rancher.taphuynh.dev` and `registry.taphuynh.dev` resolve to Cloudflare
+edge IPs (`104.21.78.11`, `172.67.214.109`) and answer with `server: cloudflare`
+and a ray id ending **`-HKG`** — traffic between two VMs three metres apart was
+crossing to Hong Kong and back.
+
+| Path | Latency |
+|---|---|
+| VM 400 → VM 200 k3s API, direct (`10.10.1.10:6443`) | **8.5 ms** |
+| VM 200 → Rancher origin, LAN (`10.10.1.100:80`) | **1.1 ms** |
+| Either host via the Cloudflare edge | **350–800 ms** |
+
+Consequences observed:
+
+- The `cattle-cluster-agent` websocket dies periodically with
+  `websocket: close 1006 (abnormal closure): unexpected EOF`. Every consumer of
+  the Rancher proxy then sees
+  `an error on the server ("error trying to reach service: sync from client")` —
+  `kubectl apply/logs/exec/set env` and `port-forward` (which needed 5 attempts).
+- **Argo syncs fail an arbitrary subset of objects** — one run applied 115 of
+  124, the 9 failures being purely transport. Because they land in early sync
+  waves, later waves never run.
+- **Image pulls crawl**: 116 MB in 24m40s, 260 MB in 26m34s, 413 MB in 29m20s —
+  roughly 80–200 KB/s. A multi-GB ML image can exceed a Deployment's progress
+  deadline, which then looks like an application fault and is not one.
+
+Ruled out with evidence, so nobody re-walks these: the Rancher server's 48
+restarts are **historical** (`lastState.terminated.finishedAt = 2026-08-28`);
+`cattle-cluster-agent` has **no resource requests or limits**, so no limit could
+OOM it; and the node reported `MemoryPressure=False DiskPressure=False
+PIDPressure=False Ready=True`.
+
+**⚠ The trap — do not simply repoint DNS at the origin.** The tunnel ingress for
+`rancher` is `http://10.10.1.100:80` (see Route Summary above), i.e. Cloudflare
+terminates TLS and speaks **plain HTTP** to the origin. Measured on VM 400:
+
+```
+:443  /healthz     http=404      <- traefik answered; no TLS router matches this host
+:80   /healthz     http=200  1.6ms
+:80   /v3/connect  http=302      <- Rancher redirects plain HTTP to HTTPS
+```
+
+So an `/etc/hosts` entry alone makes the agent fail rather than go faster. A
+`tls-rancher-ingress` Secret exists and cert-manager is installed on VM 400, so
+adding a `tls:` section to the Rancher Ingress is the enabling step — do that
+first, then override DNS.
+
+**Cleanest global fix**: set the Cloudflare DNS records for
+`rancher.taphuynh.dev` and `registry.taphuynh.dev` to **DNS-only (grey cloud)**.
+Internal clients then resolve the origin directly and the per-host `/etc/hosts`
+workarounds become unnecessary. This changes how those hostnames are reached
+from outside the LAN, so it is an owner decision, not a silent fix.
 
 > **Key insight**: The Cloudflare limit only applies to HTTP request bodies. SSH tunneled via `cloudflared access ssh` uses a WebSocket/TCP stream where Git data flows as a continuous stream, not discrete HTTP requests. This makes SSH the safe default for all Git operations from external machines.
 
