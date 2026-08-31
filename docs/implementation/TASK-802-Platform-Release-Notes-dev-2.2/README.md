@@ -235,7 +235,7 @@ The `DepartmentAgent` Prisma model, its domain trio, the `services/departmentAge
 
 - **MLflow model registry**, self-hosted, reusing existing Postgres/MinIO/Vault/Argo CD infra; day-1 scale ~200 users. Greenfield — Phase 1 built and verified; **Phase 2 is committed and deployed** (not "awaiting a commit": `4062cead`, `15977113`), live at `replicas: 0`; Phases 3 (exposure) and 4 (the `AiModelSource.MLFLOW` resolver) not started. Bring-up is five operator steps and no hardware (TASK-822, In Progress).
 - **vLLM inference service**, priority-1 router backend. Manifests are **committed and live at `replicas: 0`**, with this repo's first NetworkPolicies. **Two** blockers, not one: the cluster's GPUs (2× RTX 2000 Ada, 16 GiB) fall short of the original H100-class sizing by ~3× on VRAM and ~15× on bandwidth, **and** `OPEN-823-TLS` — vLLM's boto3 client cannot be told to skip certificate verification, so the pod is expected to fail at startup until a publicly-trusted certificate is installed on the MinIO listener. The routing lever is also unpulled: both SYSTEM `AiTaskDefault` rows still select LM Studio (TASK-823, Pending).
-- **LM Studio as a containerized headless service** (`llmster`, priority-2 backend), a custom GPU image built from LM Studio's server-native core rather than a GUI-desktop container. Engine choice decided by the owner 2026-08-30 (LM Studio + vLLM, not llama.cpp). Manifests are committed and live at `replicas: 0`. **The image does not currently build** — `build-lmstudio` fails at `Dockerfile:107` with *"no CUDA runtime present after bootstrap"*: the `+cuda12` tarball lands and its SHA-512 verifies, but the bundle registers no inference runtime at all. Also blocked on R-2/R-3/R-5 (TASK-824, In Progress).
+- **LM Studio as a containerized headless service** (`llmster`, priority-2 backend), a custom GPU image built from LM Studio's server-native core rather than a GUI-desktop container. Engine choice decided by the owner 2026-08-30 (LM Studio + vLLM, not llama.cpp). Manifests are committed and live at `replicas: 0`. **The image build was fixed on 2026-08-31** — `build-lmstudio` had failed at `Dockerfile:107` with *"no CUDA runtime present after bootstrap"*, but that was the WRONG PROBE, not a bad bundle: `lms runtime ls` is hardware-filtered, so a GPU-less CI runner lists nothing while `extensions/backends/` already holds the CPU, Vulkan and `nvidia-cuda12` engines. The build now asserts the filesystem inventory and requires both a CPU and a CUDA engine. Also blocked on R-2/R-3/R-5 (TASK-824, In Progress).
 - **Model catalogue alignment**: reconciled the owner's five named GGUF models against the router's written vLLM-first priority (a collision, since GGUF does not run on vLLM); research + seed proposal only, nothing applied yet (TASK-831, Review).
 
 ### Admin console & UI kit
@@ -389,19 +389,7 @@ incident record; corrected here so nobody plans around it.
 ### The current known issues, restated
 
 - **`hope-lmstudio`'s image does not build.** `build-lmstudio` fails at `Dockerfile:107` —
-  *"no CUDA runtime present after bootstrap"*. The `+cuda12` tarball lands and its pinned SHA-512
-  verifies, but the bundle registers no inference runtime at all, so TASK-824's silent-CPU risk
-  (A-3) is **open**, with the question changed from "did a CPU bundle sneak in" to "how does this
-  bundle install engines".
-- **`hope-api` runs with `NODE_TLS_REJECT_UNAUTHORIZED=0`, set by a live edit that is not in Git**
-  — a Node *process* flag, so certificate verification is off for every outbound TLS connection
-  the gateway makes, not just MinIO. Recorded as TASK-828 §4d.
-- **The credentials committed under `docs/research/configs/` have still not been rotated** — an
-  Azure AD client secret (sharing the tenant with GitLab and Rancher SSO), MinIO keys and four
-  GitLab runner tokens. This remains the single most urgent security item in the tranche.
-- **Vault's three unseal shares and its initial root token now sit in etcd** in `hope-v2-dev`.
-  Accepted for dev, explicitly not for staging or production, and it makes Argo's write path the
-  control standing in front of them.
+  *"no CUDA runtime present after bootstrap"*. That diagnosis was WITHDRAWN the same day: `lms runtime ls` enumerates runtimes the HOST CAN RUN, so it reports nothing on a GPU-less runner even though the same job's dump shows the CPU, Vulkan and `nvidia-cuda12` engines already on disk. The probe now reads the filesystem inventory and requires both a CPU and a CUDA engine.
 
 | Topic | Status | Notes |
 |---|---|---|
