@@ -177,7 +177,11 @@ RUN set -eu; \
     BASE_IMAGE="${BASE_IMAGE}" \
     VLLM_GGUF_PLUGIN_REPO="${VLLM_GGUF_PLUGIN_REPO}" \
     VLLM_GGUF_PLUGIN_SHA="${VLLM_GGUF_PLUGIN_SHA}" \
-    python3 /opt/hope/build-verify.py record
+    python3 /opt/hope/build-verify.py record \
+      --base-image "${BASE_IMAGE}" \
+      --plugin-repo "${VLLM_GGUF_PLUGIN_REPO}" \
+      --plugin-sha "${VLLM_GGUF_PLUGIN_SHA}" \
+      --torch-cuda-arch-list "${TORCH_CUDA_ARCH_LIST}"
 
 # ── The build-time assertion ────────────────────────────────────────────────
 # A separate layer from `record`, and it re-supplies the SHA from the ARG, so
