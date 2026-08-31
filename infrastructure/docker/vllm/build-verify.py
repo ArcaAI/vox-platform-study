@@ -42,7 +42,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import os
 import pathlib
 import re
 import sys
@@ -82,16 +81,16 @@ def _measured() -> dict[str, str]:
 
 def cmd_record(args: argparse.Namespace) -> int:
     info = {
-        "baseImage": os.environ.get("BASE_IMAGE", ""),
+        "baseImage": args.base_image,
         "plugin": {
-            "repo": os.environ.get("VLLM_GGUF_PLUGIN_REPO", ""),
-            "commitSha": os.environ.get("VLLM_GGUF_PLUGIN_SHA", ""),
+            "repo": args.plugin_repo,
+            "commitSha": args.plugin_sha,
         },
         "measured": _measured(),
         # In effect at compile time. The base image pre-sets this, which is the
         # only reason the CUDA extension can be built on a GPU-less runner --
         # torch would otherwise try to query a device to pick an architecture.
-        "torchCudaArchList": os.environ.get("TORCH_CUDA_ARCH_LIST", ""),
+        "torchCudaArchList": args.torch_cuda_arch_list,
     }
     BUILD_INFO_PATH.parent.mkdir(parents=True, exist_ok=True)
     BUILD_INFO_PATH.write_text(json.dumps(info, indent=2, sort_keys=True) + "\n")
@@ -204,7 +203,22 @@ def cmd_assert(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("record", help="measure and write the provenance file")
+    r = sub.add_parser("record", help="measure and write the provenance file")
+    # Passed EXPLICITLY rather than read from the ambient environment. These are
+    # docker build ARGs, not platform configuration: nothing reads them at
+    # runtime, and an `os.environ` read here makes them look like configuration
+    # to `scanPythonReads()` in scripts/env-sync.mts, which then writes them
+    # into turbo.json#globalEnv. That puts image build inputs into the
+    # Turborepo cache key for EVERY task -- and 09-infrastructure-devops.md is
+    # explicit that build identity "must never be made settable from a
+    # Deployment manifest, an env file, or turbo.json#globalEnv". Sibling
+    # scripts under infrastructure/docker (e.g. init-qdrant-collections.py) DO
+    # read real runtime config, so the scanner is right to look here; the fix
+    # is for this script not to pretend build ARGs are configuration.
+    r.add_argument("--base-image", default="")
+    r.add_argument("--plugin-repo", default="")
+    r.add_argument("--plugin-sha", default="")
+    r.add_argument("--torch-cuda-arch-list", default="")
     a = sub.add_parser("assert", help="prove the image is what it claims to be")
     a.add_argument(
         "--expect-sha",
