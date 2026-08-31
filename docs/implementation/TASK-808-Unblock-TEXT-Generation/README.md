@@ -123,15 +123,23 @@ Then a live consultation on `hope-v2-dev` producing a non-empty `summaryChars` i
 `Live summary flush` log line, and `GET /consultations/:id/summary/latest` returning 200.
 
 ## 5. Definition of Done
+
+> **Updated 2026-08-31 — the deploy gate is gone.** §9 below (dev is down, unfixable without an
+> operator unsealing an external VM) is **SUPERSEDED**: the Vault was rebuilt in-cluster under a
+> Shamir seal, the database was reset and re-seeded, and `hope-v2-dev` is serving again. Two of the
+> three deploy-gated items are now decided; the third is one probe away. See §10.
+
 - [x] All six callers enrich; regression gate green — three layers: a **source scan** so a new caller fails on its first commit, a behavioural test, and a **DI-wiring guard** (the injection is `@Optional()`, so a module missing the import silently no-ops and every positional fixture still passes)
-- [ ] **Live flush shows `textFailed:false` and non-zero `summaryChars`** — needs deploy
-- [ ] **NLP `/classify/tokens` returns 200** — needs an **image rebuild**; restarting the pod will not help
-- [ ] **`hope-api` readiness stable over 30 min** — needs deploy
+- [ ] **Live flush shows `textFailed:false` and non-zero `summaryChars`** — **UNVERIFIED.** No longer blocked: the gateway serves and `ServiceHealthMonitoringService` reports `Text` `up` (10 ms). Closing this needs one actual consultation flush against `hope-v2-dev` — an operator/e2e action, not a deploy
+- [ ] **NLP `/classify/tokens` returns 200** — **UNVERIFIED, but the stated blocker is gone.** The rebuilt image is deployed (`nlp@sha256:24e34c73d01d…`, replacing the `nlp@sha256:ab3eecea…` recorded in §6.8 as having no `HF_HOME` and no volumes) and the gateway's health monitor reports `Medical NLP` `up` (9 ms). That is `/health`, not `/classify/tokens` — one POST still has to be issued
+- [x] **`hope-api` readiness stable over 30 min** — **MET 2026-08-31.** Pod `hope-api-5d84f9f977-z9gqp`, `restartCount: 0`, `startedAt: 2026-08-30T19:36:43Z`, still `ready: true` at `2026-08-31T01:48:44Z` — **6 h 12 m** with no restart, and every 5 s `GET /api/v1/health/ready` in the log window returning `statusCode: 200`. The `@SkipThrottle()` fix holds
 - [x] Rule 05 DoD updated to five artifacts
 - [x] No compat file modified outside the OD-9 exemption
 
-**Remaining work is entirely deployment**, not code. Durability of the NLP cache is
-[TASK-817](../TASK-817-NLP-Persistent-Model-Cache/README.md).
+**Remaining work is two live probes**, not code and no longer a deploy. Durability of the NLP cache
+is [TASK-817](../TASK-817-NLP-Persistent-Model-Cache/README.md), whose deployment half has since
+landed — `hope-nlp` now mounts the shared `models-cache` `hostPath` with the `init-hf-cache`
+initContainer.
 
 ## Best Practices — apply to every task here
 
@@ -425,8 +433,25 @@ Baseline captured for comparison: `hope-api` `readyReplicas: 1` at the time of w
 | 2026-08-26 | Task 8: root cause was `apps/nlp/Dockerfile` never setting `HF_HOME` (base image uses `--no-create-home`), NOT a missing volume in the deployment repo — the three sibling Python services already set it. Fixed in-repo with a pytest guard. |
 | 2026-08-26 | Task 9: readiness flapping traced to the kubelet probes sharing the anonymous `tenant:null` 30 req/min throttle bucket — a remote unauthenticated way to evict the pod from Endpoints, matching the observed 1-minute flap with no restart. Fixed with `@SkipThrottle()` on the three probes; `/health` keeps its cap. |
 | 2026-08-26 | Opened [TASK-817](../TASK-817-NLP-Persistent-Model-Cache/README.md) for the ephemeral-cache follow-up noted in §6.3. |
+| 2026-08-31 | **§9 is superseded — the outage it describes is over, and its diagnosis of the cause was wrong in the one way that mattered.** The external seal Vault at `10.10.1.134:8200` was not "sealed, awaiting an operator with its unseal keys": a Proxmox review found **no VM and no container at that address at all**, so no operator could ever have unsealed it. TASK-833 wiped the store and re-initialised it under an in-cluster Shamir seal driven by a `vault-bootstrap` sidecar (init · unseal · kv-v2 + transit mounts · `hope-globalsetting` and `hope-phi` transit keys · AppRole · `hope-app` policy · a canary that logs in with the minted credential and encrypts under `transit/hope-phi`). The database was reset and re-seeded via `hope-reset`, Argo CD is reconciling again, and every workload in `hope-v2-dev` is at its desired replica count. §9 kept as the incident record, with a superseded banner and a point-by-point correction table; new §10 records where the three items actually stand. **AC "`hope-api` readiness stable over 30 min" is now MET** — pod `hope-api-5d84f9f977-z9gqp`, `restartCount: 0`, `startedAt: 2026-08-30T19:36:43Z`, still ready at `2026-08-31T01:48:44Z` (6 h 12 m), with every 5 s `/health/ready` probe answering 200. The other two are marked **UNVERIFIED, not blocked**: the rebuilt `hope-nlp` image is deployed (`nlp@sha256:24e34c73…`, replacing `ab3eecea…`) and `Medical NLP` reports `up`, but nobody has POSTed `/classify/tokens`, and no consultation has been flushed. Ticket deliberately **left open** — "the API serves" is not "generation produces a summary". |
 
-## 9. Why the three items could never pass — dev has been DOWN since 2026-08-28
+## 9. ~~Why the three items could never pass — dev has been DOWN since 2026-08-28~~ — **SUPERSEDED 2026-08-31**
+
+> ### ⛔ This section describes an outage that is OVER. Read §10 instead.
+>
+> Everything below was true when written on 2026-08-30 and is kept as the record of the incident,
+> not as a description of the platform. It is superseded on every point:
+>
+> | §9 said | What is true 2026-08-31 |
+> |---|---|
+> | The external seal Vault at `10.10.1.134:8200` is sealed and needs a human with its unseal keys | **That host does not exist.** A review of Proxmox found no VM and no container behind that address. Nobody could ever have unsealed it. The store was wiped and re-initialised under an **in-cluster Shamir seal** (TASK-833) |
+> | `hope-vault-0` is `CrashLoopBackOff`, restartCount 507, StatefulSet `0/1` | `hope-vault` StatefulSet is **1/1 Healthy**. A `vault-bootstrap` sidecar does init, unseal, the kv-v2 and transit mounts, both transit keys, the AppRole and the `hope-app` policy, and ends in a canary that logs in with the credential it just minted and encrypts under `transit/hope-phi` |
+> | `hope-api` is `0/2`, fail-closing on `getaddrinfo ENOTFOUND hope-vault` | `hope-api` is **1/1**, `restartCount: 0`, `startedAt: 2026-08-30T19:36:43Z` |
+> | Argo CD's repo-server is down; nothing can be delivered to `hope-v2-dev` | Argo is reconciling again — it has compared and synced `de8dc03e`, the deployment repo's current `main` |
+>
+> The fix was not "an operator unseals a VM". It was to remove the off-cluster dependency
+> entirely — which is what §9's own closing paragraph asked for, in the sentence beginning
+> *"This is an availability dependency worth a ticket of its own"*. That ticket is TASK-833.
 
 Diagnosed 2026-08-30 against the live cluster. The three open DoD items are not blocked on a deploy;
 they are blocked on an **outage that predates it by two days**.
@@ -463,3 +488,28 @@ so that *"unsealing needs no keys and no human"* — which is true of `hope-vaul
 
 **This is an availability dependency worth a ticket of its own**: dev's entire secrets plane, and
 therefore its API, rests on one external Vault that must be manually unsealed after any restart.
+
+---
+
+## 10. Where the three deploy-gated items actually stand (2026-08-31)
+
+`hope-v2-dev` is serving again. The Vault was rebuilt in-cluster, the database was reset and
+re-seeded through the `hope-reset` path (schema `core` dropped, 20 migrations replayed, seed
+completed), and every workload in the namespace is at its desired replica count. So the three
+items are no longer *blocked* — two are decided and one needs a single probe.
+
+| DoD item | Verdict | Evidence |
+|---|---|---|
+| `hope-api` readiness stable over 30 min | ✅ **MET** | Pod `hope-api-5d84f9f977-z9gqp`: `restartCount: 0`, `startedAt: 2026-08-30T19:36:43Z`, `ready: true` at `2026-08-31T01:48:44Z` — **6 h 12 m** unbroken. Every 5 s `GET /api/v1/health/ready` in the observed log window answers `statusCode: 200`. The kubelet probes are on `clientIp: 10.42.0.1` and are no longer being throttled out of Endpoints — the `@SkipThrottle()` fix from task 9 is doing its job in production |
+| NLP `/classify/tokens` returns 200 | ⚠️ **UNVERIFIED — but the blocker named in §6.8 is gone** | The rebuilt image is deployed: `nlp@sha256:24e34c73d01d5652157eeb39b1154234a7ad4f06c5ad8dbf58f7efcbef182bb2`, replacing the `nlp@sha256:ab3eecea…` §6.8 recorded as having no `HF_HOME` and no volumes. It now also mounts the shared `models-cache` `hostPath` at `/app/.cache/huggingface/hub` behind the `init-hf-cache` initContainer (TASK-817). The gateway's `ServiceHealthMonitoringService` reports `Medical NLP` `up` at 9 ms — but that is `/health`. **Nobody has POSTed `/classify/tokens`.** One request closes this |
+| Live flush shows `textFailed:false` and non-zero `summaryChars` | ⚠️ **UNVERIFIED** | Same shape. `Text` is `up` at 10 ms and the gateway is serving, so the path exists; the assertion needs an actual consultation flush against `hope-v2-dev` |
+
+**What is still owed, and by whom.** Two live probes, both operator/e2e actions rather than code
+or deploys:
+
+1. `POST /api/v1/classify/tokens` through the gateway → expect 200.
+2. Run one consultation to a flush → expect `textFailed:false` and non-zero `summaryChars`.
+
+Until someone runs them, this ticket stays open. It is **not** blocked, and it must not be
+closed on the strength of the platform being up: "the API serves" is not the same claim as
+"generation produces a summary", and conflating them is exactly what §9 was written to prevent.
