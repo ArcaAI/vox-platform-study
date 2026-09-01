@@ -1,4 +1,4 @@
-import { ModelTaskType } from '@arcaai/domains';
+import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
 
 /**
  * The AI tasks whose default model is selected through
@@ -100,6 +100,94 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // vision extraction — image + text in, text out.
   'vlm.extract': ModelTaskType.IMAGE_TEXT_TO_TEXT,
 };
+
+/**
+ * TASK-843 — taskKey → the CANONICAL TASK TAXONOMY the key belongs to.
+ *
+ * This is the mapping `AiTaskDefault.taskKind` / `AiRoutingPolicy.taskKind` are
+ * derived from, and the SQL `CASE` in the `task_843_ai_task_taxonomy` migration
+ * is its twin. `ai-task-kind.test.ts` reads that migration file and fails if
+ * the two drift.
+ *
+ * Do not confuse it with {@link AI_TASK_MODEL_TASK_TYPES} directly above.
+ * That one answers *what SHAPE of model may be bound here* (the HuggingFace
+ * pipeline-tag vocabulary, a property of the `AiModel` artifact). This one
+ * answers *which platform TASK this key configures*. They are many-to-one in
+ * BOTH directions and neither substitutes for the other: `TOKEN_CLASSIFICATION`
+ * serves `nlp.ner` AND `guardrail.pii` (two different task kinds under
+ * different governance), while `TEXT_GENERATION` the kind covers five keys that
+ * are all `ModelTaskType.TEXT_GENERATION` plus `vlm.extract`'s sibling that is
+ * not.
+ *
+ * The `Record<AiTaskKey, AiTaskKind>` is EXHAUSTIVE on purpose: adding a task
+ * key to `AI_TASK_KEYS` without deciding its kind is a compile error, which is
+ * the same enforcement `AI_TASK_MODEL_TASK_TYPES` already relies on.
+ *
+ * The taxonomy is COARSER than the key vocabulary by design — `text.live` and
+ * `text.finalize` are one KIND and two SELECTIONS. A "one default per task"
+ * constraint therefore keys on `taskKey`, never on `taskKind` alone.
+ */
+export const AI_TASK_KIND_BY_TASK_KEY: Record<AiTaskKey, AiTaskKind> = {
+  // Safety moderation — `guardrail.validate` is the granite-guardian screen,
+  // `guardrail.safety` the GLiGuard moderation head. Same task, two models.
+  'guardrail.validate': AiTaskKind.CONTENT_SAFETY,
+  'guardrail.safety': AiTaskKind.CONTENT_SAFETY,
+  // NLI/entailment fact-checking is its own task, not a generic classification:
+  // it scores a claim AGAINST a source, and no other key does that.
+  'guardrail.groundedness': AiTaskKind.GROUNDEDNESS,
+  // PII span extraction. Distinct from NER despite sharing
+  // `ModelTaskType.TOKEN_CLASSIFICATION` — different models, and PII redaction
+  // is a PHI control with platform-shared (never BYO) selection.
+  'guardrail.pii': AiTaskKind.PII_DETECTION,
+  'guardrail.pii.spans': AiTaskKind.PII_DETECTION,
+  'nlp.ner': AiTaskKind.NAMED_ENTITY_RECOGNITION,
+  // The four keys served by the same generic `/classify/text` path.
+  'nlp.classification': AiTaskKind.TEXT_CLASSIFICATION,
+  'nlp.diagnosis': AiTaskKind.TEXT_CLASSIFICATION,
+  'nlp.sentiment': AiTaskKind.TEXT_CLASSIFICATION,
+  'nlp.toxicity': AiTaskKind.TEXT_CLASSIFICATION,
+  // The generation plane. `.fallback` and `.test` are ROUTING ROLES of the same
+  // task, not tasks of their own, so they share the kind; `harness.judge` is a
+  // text-generation model doing LLM-as-judge.
+  'text.live': AiTaskKind.TEXT_GENERATION,
+  'text.finalize': AiTaskKind.TEXT_GENERATION,
+  'text.live.fallback': AiTaskKind.TEXT_GENERATION,
+  'text.finalize.fallback': AiTaskKind.TEXT_GENERATION,
+  'text.test': AiTaskKind.TEXT_GENERATION,
+  'harness.judge': AiTaskKind.TEXT_GENERATION,
+  // Image + text in, text out. Not TEXT_GENERATION: the binding needs a vision
+  // model, and a text-only provider cannot serve it.
+  'vlm.extract': AiTaskKind.VISION_EXTRACTION,
+};
+
+/**
+ * Task keys that carry a kind but live OUTSIDE `AI_TASK_KEYS`.
+ *
+ * `nlp.topic` / `nlp.intent` are declared in
+ * `tenant-nlp-task-instructions/constants.ts` as instruction-CONTENT keys, yet
+ * their MODEL selection still resolves through `AiTaskDefault` (that file says
+ * so explicitly). They are therefore real task keys that `assertKnownTaskKey`
+ * rejects — a pre-existing governance gap, not one this ticket introduces.
+ * Classifying them here keeps the taxonomy honest without widening
+ * `AI_TASK_KEYS`, which is an owner-facing decision about who may configure
+ * them.
+ */
+const AI_TASK_KIND_BY_UNREGISTERED_TASK_KEY: Readonly<Record<string, AiTaskKind>> = {
+  'nlp.topic': AiTaskKind.TEXT_CLASSIFICATION,
+  'nlp.intent': AiTaskKind.TEXT_CLASSIFICATION,
+};
+
+/**
+ * The canonical task kind for `taskKey`, or `null` when the key is unknown.
+ *
+ * Returns `null` rather than guessing: provider/model selection is
+ * `failMode: 'closed'` platform-wide, so "nobody classified this" must stay
+ * distinguishable from "classified as X". The migration's backfill takes the
+ * same position — an unrecognised key is left NULL, never defaulted.
+ */
+export function resolveAiTaskKind(taskKey: string): AiTaskKind | null {
+  return (AI_TASK_KIND_BY_TASK_KEY as Record<string, AiTaskKind>)[taskKey] ?? AI_TASK_KIND_BY_UNREGISTERED_TASK_KEY[taskKey] ?? null;
+}
 
 /**
  * Task-key prefixes whose writes AND effective resolution are SUPER_ADMIN-ONLY

@@ -32,7 +32,21 @@ model AiTaskDefault {
   // core fields
   taskKey    String // guardrail.validate | nlp.ner | nlp.classification
   modelSlug  String // references AiModel.slug (no FK — house convention)
-  configJson Json?  @db.JsonB // task-specific extras (thresholds, etc.)
+  configJson Json?  @db.JsonB
+
+  // TASK-843 — the canonical task taxonomy this row's `taskKey` belongs to.
+  // DERIVED from `taskKey`, never independently chosen: the mapping is
+  // `AI_TASK_KIND_BY_TASK_KEY` in
+  // `packages/applications/src/services/ai-task-default/constants.ts`.
+  //
+  // NULLABLE, on purpose. Phase 1 is purely ADDITIVE — it backfills every
+  // existing row and changes no writer, so a row created by an un-migrated
+  // writer lands NULL rather than carrying a plausible-but-wrong default.
+  // "Nobody set it" is a state a resolver can fail closed on; a default of
+  // TEXT_GENERATION would silently mislabel every `guardrail.*` and `nlp.*`
+  // row, which is 8 of the 12 rows the seed creates. TASK-844 tightens this to
+  // NOT NULL once `AiTaskDefaultService.upsertRow` sets it.
+  taskKind AiTaskKind? // task-specific extras (thresholds, etc.)
 
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
@@ -49,5 +63,9 @@ model AiTaskDefault {
   @@unique([tenantId, taskKey], name: "AiTaskDefault_tenant_task_unique")
   @@index([tenantId], name: "AiTaskDefault_tenantId_idx")
   @@index([taskKey], name: "AiTaskDefault_taskKey_idx")
+  // TASK-843 — "every binding this tenant has for task kind X", the read
+  // TASK-844's unified selection surface is built on. Leads with `tenantId` so
+  // it also serves the plain tenant-scope reads the extension injects.
+  @@index([tenantId, taskKind], name: "AiTaskDefault_tenantId_taskKind_idx")
   @@schema("core")
 }

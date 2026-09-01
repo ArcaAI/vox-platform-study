@@ -18,6 +18,9 @@ export interface CreateTenantTtsConfigProps extends BaseEntityFactoryCreateProps
   maxInputChars?: ITenantTtsConfigEntity['maxInputChars'];
   sarvamPublicApiAllowed?: ITenantTtsConfigEntity['sarvamPublicApiAllowed'];
   configJson?: ITenantTtsConfigEntity['configJson'];
+  // TASK-843 — constant for the model; the entity supplies TEXT_TO_SPEECH when
+  // omitted, matching the DB default.
+  taskKind?: ITenantTtsConfigEntity['taskKind'];
 
   createdAt?: ITenantTtsConfigEntity['createdAt'];
   updatedAt?: ITenantTtsConfigEntity['updatedAt'];
@@ -50,6 +53,7 @@ export class TenantTtsConfigFactory {
       maxInputChars: props.maxInputChars ?? null,
       sarvamPublicApiAllowed: props.sarvamPublicApiAllowed ?? false,
       configJson: props.configJson ?? null,
+      taskKind: props.taskKind,
     });
   }
 }
