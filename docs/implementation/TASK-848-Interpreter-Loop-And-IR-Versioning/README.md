@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan expanded 2026-09-01, ready to start |
+| **Status** | `In Progress` — components landed inert (`cdd17b99d`); wiring + tests outstanding |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
@@ -131,7 +131,44 @@ The steps below are unchanged; only their assignment to passes is new.
 
 ## 6. Implementation Summary
 
-Not started.
+### Landed 2026-09-01 (`cdd17b99d`) — components only, deliberately INERT
+
+| File | Lines | What |
+|---|---|---|
+| `interpreter/loop_workflow.py` | 381 | `AgenticLoopWorkflow` + `AgenticSubAgentWorkflow` — one iteration per generation, then `continue_as_new` |
+| `interpreter/models.py` | +196 | The loop payloads: the state that must survive `continue_as_new` |
+| `interpreter/loop_activities.py` | 98 | The per-iteration checkpoint activity |
+| `interpreter/workflow.py` | +35 | `_LOOP_PATCH`, `_LOOP_NODE_TYPE`, and the stop-reason taxonomy |
+
+**Inert by construction, and this was verified before merge:** `agentic.loop` still returns `DEGRADED`
+(`nodes/agentic.py:296`), `_LOOP_PATCH` and `_LOOP_NODE_TYPE` are declared but never called, and neither
+`AgenticLoopWorkflow` nor the checkpoint activity is registered on the worker. Behaviour is unchanged.
+Gates at merge: lint EXIT=0, typecheck clean (143 files), 1876 tests passed.
+
+### The stop-reason taxonomy (decided, implemented in comments, not yet reachable)
+
+`termination_key` and `no_progress_iterations` are **SUCCEEDED** — the author's exit fired, or the
+orchestrator converged, which is what that bound exists to detect. Every ceiling — iterations, invoice,
+clock — **DEGRADES**, because *a truncated clinical deliberation reported as SUCCEEDED is the false-success
+claim this substrate exists to avoid.*
+
+### Still outstanding for the next pass
+
+1. The dispatch branch in `_dispatch_node`, guarded by `workflow.patched(_LOOP_PATCH)`.
+2. `_index_loop_body` — referenced by the comments, not written.
+3. Worker registration for `AgenticLoopWorkflow`, `AgenticSubAgentWorkflow` and the checkpoint activity.
+4. Un-`DEGRADE` `agentic.loop`, updating `test_neither_ever_claims_to_have_produced_anything` deliberately.
+5. **All tests**: the four bounds each terminating distinguishably, the determinism poison test, and the
+   `continue_as_new` history-bound MEASUREMENT.
+
+### Process note
+
+This ticket cost **four dispatch attempts**, three of which hit the 600s stall watchdog. The first kept
+171 lines because it committed early; the fourth kept 675 because the instruction had hardened to *commit
+stubs, commit RED tests, commit partial implementations*. The orchestrator finished the lint/typecheck
+cleanup directly rather than spending a fifth dispatch on it. **The lesson is recorded because it is
+reusable: on a long ticket, commit granularity is what converts a stall from a total loss into a resumable
+one.**
 
 ## 7. Change History
 
@@ -139,3 +176,5 @@ Not started.
 |---|---|
 | 2026-09-01 | Ticket created, aligned to TASK-837 §4. |
 | 2026-09-01 | Plan expanded against the contract TASK-847 actually shipped; unblocked and ready to start. |
+| 2026-09-01 | Scope split into loop body / durability+versioning / tier 3 after three stalls (§2c). |
+| 2026-09-01 | Components merged INERT as `cdd17b99d`. Wiring and tests outstanding; Status → `In Progress`. |
