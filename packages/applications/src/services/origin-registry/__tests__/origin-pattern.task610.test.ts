@@ -236,7 +236,7 @@ describe('normalizeOriginPattern — rejects (security floors)', () => {
     'https://*.bcmch_org.com:*',
     'https://*.bcmch.org\n:*',
     'https://*.bcmch.org\t:*',
-    'https://*.bcmch.org :*',
+    'https://*.bcmch.org\0:*',
     'https://*.1.2.3.4:*', // all-numeric TLD label (IPv4-ish)
     'https://*.bcmch.org%2eevil.com:*',
     `https://*.${'a'.repeat(300)}.org:*`,
@@ -381,7 +381,7 @@ describe('matchesOriginPattern — hostile input never throws', () => {
     '',
     '   ',
     'null',
-    'null ',
+    'null\0',
     '*',
     'https://*.bcmch.org',
     'https://sub.bcmch.org\t',
