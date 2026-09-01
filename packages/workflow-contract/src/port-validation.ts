@@ -22,6 +22,8 @@
  * belongs to whichever lane owns that path. Everything here is pure and total: it returns `problems: string[]` (the house idiom) and
  * never throws, whatever it is handed.
  */
+import { agenticNodeConfigProblems } from './agentic-contract';
+import type { AgenticGraphContext } from './agentic-contract';
 import type { WorkflowGraph } from './graph-model';
 import { EMPTY_PORTS, NODE_PORTS } from './node-ports';
 import type { WorkflowNodeDescriptor } from './node-registry';
@@ -233,6 +235,29 @@ export function workflowPublishProblems(graph: WorkflowGraph, options?: PortVali
   const typeById = new Map<string, string>();
   for (const node of nodes) {
     if (typeof node?.id === 'string' && typeof node?.type === 'string') typeById.set(node.id, node.type);
+  }
+
+  // TASK-847 — the `agentic.*` per-node checks a JSON Schema cannot express: exactly-one
+  // provider-configuration selection source, the three-axis loop bounds (including the COST
+  // ceiling), and guard/orchestrator references that must name real nodes of the right class.
+  //
+  // Wired HERE and not left as an exported helper, because an unwired gate is not a gate. The
+  // schema governs what may be AUTHORED; this is the only thing that governs what may be
+  // PUBLISHED, and a definition that arrived through an importer — or that predates a schema
+  // change — reaches publish without ever passing through the schema.
+  //
+  // `nodeIds`/`nodeTypesById` are supplied from THIS graph, so the cross-node reference checks
+  // are exact rather than skipped. A node-level caller (the Studio inspector, before the node is
+  // wired) can call `agenticNodeConfigProblems` with no context and still get the within-node
+  // rules — that asymmetry is the function's own contract, not an accident here.
+  const agenticContext: AgenticGraphContext = { nodeIds: [...typeById.keys()], nodeTypesById: Object.fromEntries(typeById) };
+  for (const node of nodes) {
+    if (typeof node?.id !== 'string' || typeof node?.type !== 'string') continue;
+    problems.push(
+      ...agenticNodeConfigProblems({ id: node.id, type: node.type, config: node.config as Record<string, unknown> | undefined }, agenticContext).map(
+        (problem) => `/nodes: ${problem}`,
+      ),
+    );
   }
 
   const seenTypes = new Set<string>();

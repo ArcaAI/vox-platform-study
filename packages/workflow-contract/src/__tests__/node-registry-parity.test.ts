@@ -80,7 +80,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage keys, no more, no less', () => {
+  it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage + agentic keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
       // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
       'agent.discharge_summary',
@@ -97,6 +97,16 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'agent.retrieval',
       'agent.summarization',
       'agent.transcription',
+      // TASK-847 — the GENERIC (`agentic`) catalogue: the eight node types of the owner's
+      // specification, closing program finding F-12's have/missing table.
+      'agentic.agent',
+      'agentic.data',
+      'agentic.guardrail',
+      'agentic.input',
+      'agentic.loop',
+      'agentic.output',
+      'agentic.stt',
+      'agentic.tts',
       'consultation.assemblePrompt',
       'consultation.bindTerminology',
       'consultation.captureBinding',

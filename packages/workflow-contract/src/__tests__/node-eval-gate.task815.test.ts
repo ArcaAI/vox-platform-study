@@ -31,6 +31,10 @@ import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schem
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
 const PROMPT_CARRYING_KEYS = [
+  // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+  // binding groups every other generation node does; that set-equality is what stops a new
+  // generation node shipping without an approved, version-pinned prompt.
+  'agentic.agent',
   // TASK-806 lane A — DD-9's three generation entries reuse `consultation.synthesize`'s schema.
   'agent.presummarization',
   'agent.summarization',
@@ -52,6 +56,7 @@ const BASE_CONFIG: Record<(typeof PROMPT_CARRYING_KEYS)[number], Record<string, 
   'agent.discharge_summary': { producesCode: false, onError: 'fail' },
   'prompt.template_ref': { promptTemplateId: '3f1a7c2e-5b84-4d19-9e63-0a2c8d5f7b41' },
   'generate.text': { taskKey: 'text.finalize' },
+  'agentic.agent': { providerConfigRef: { taskKey: 'text.finalize' } },
   'consultation.assemblePrompt': { requiresFinalized: true, onError: 'fail' },
   'consultation.synthesize': { producesCode: false, onError: 'fail' },
   'consultation.realtimeSummary': { onError: 'degrade' },

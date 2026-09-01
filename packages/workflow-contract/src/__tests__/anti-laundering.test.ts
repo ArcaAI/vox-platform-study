@@ -130,8 +130,14 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
     // TASK-806 lane A — `agent.transcription` is the target catalogue's capture entry. It
     // belongs on this list for exactly the reason the list exists: it is a TRANSCRIPTION node,
     // not a generation node, and the loop below is what enforces that distinction.
+    // TASK-847 — `agentic.stt` joins the list, and the loop below is why that is safe rather
+    // than merely expected: it is a TRANSCRIPTION node (it dispatches a batch ASR job and
+    // publishes what the recogniser returned), it carries no `generation` class, and the
+    // generic `agentic.agent` deliberately produces `text` rather than `transcript` precisely so
+    // it can never appear here.
     expect(transcriptProducers).toEqual([
       'agent.transcription',
+      'agentic.stt',
       'consultation.captureBinding',
       'consultation.phiHop',
       'stt.asrEngine',

@@ -166,6 +166,127 @@
       "lane": "realtime"
     },
     {
+      "key": "agentic.agent",
+      "implemented": true,
+      "activityName": "interpreter.agentic_agent",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "data": "data",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.data",
+      "implemented": true,
+      "activityName": "interpreter.agentic_data",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "data",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.guardrail",
+      "implemented": true,
+      "activityName": "interpreter.agentic_guardrail",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "verdict",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.input",
+      "implemented": true,
+      "activityName": "interpreter.agentic_input",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "payload",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.loop",
+      "implemented": true,
+      "activityName": "interpreter.agentic_loop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 3600,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "result",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.output",
+      "implemented": true,
+      "activityName": "interpreter.agentic_output",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "payload",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.stt",
+      "implemented": true,
+      "activityName": "interpreter.agentic_stt",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 900,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "transcript",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "agentic.tts",
+      "implemented": true,
+      "activityName": "interpreter.agentic_tts",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 300,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "audio",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
       "key": "consultation.assemblePrompt",
       "implemented": true,
       "activityName": "interpreter.consultation_assemble_prompt",

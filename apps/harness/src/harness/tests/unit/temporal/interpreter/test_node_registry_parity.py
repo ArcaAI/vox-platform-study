@@ -65,7 +65,7 @@ class TestNodeRegistryParity:
     def test_matches_the_committed_cross_language_fixture_exactly(self):
         assert _project_registry() == _load_fixture_entries()
 
-    def test_carries_exactly_the_seed_and_stt_palette_keys(self):
+    def test_carries_exactly_the_seed_stt_consultation_and_agentic_keys(self):
         assert sorted(NODE_REGISTRY.keys()) == [
             # TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
             "agent.discharge_summary",
@@ -82,6 +82,18 @@ class TestNodeRegistryParity:
             "agent.retrieval",
             "agent.summarization",
             "agent.transcription",
+            # TASK-847 - the GENERIC (`agentic`) catalogue: the eight node types of the
+            # owner's specification, closing program finding F-12's have/missing table.
+            # Sorted position, not catalogue position -- Python's `sorted` puts `agentic.*`
+            # after every `agent.*` because "." sorts before "i".
+            "agentic.agent",
+            "agentic.data",
+            "agentic.guardrail",
+            "agentic.input",
+            "agentic.loop",
+            "agentic.output",
+            "agentic.stt",
+            "agentic.tts",
             "consultation.assemblePrompt",
             "consultation.bindTerminology",
             "consultation.captureBinding",
