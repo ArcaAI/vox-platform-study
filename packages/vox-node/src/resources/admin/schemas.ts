@@ -4971,7 +4971,7 @@ export interface UpdateHarnessPolicyRequest {
   maxEditReruns?: number | null;
   /** Bounded-regen budget (non-negative integer). */
   maxRegen?: number;
-  /** MCP external-tools master switch (null = OFF). Super-admin only. */
+  /** MCP external-tools master switch. null = no opinion, which widens to the SYSTEM default; absent that, OFF. Per-tenant since OD-11 (2026-09-01) — a tenant admin may set it. */
   mcpToolsEnabled?: boolean | null;
   /** NER-priors toggle (null = harness env default). */
   nerPriorsEnabled?: boolean | null;

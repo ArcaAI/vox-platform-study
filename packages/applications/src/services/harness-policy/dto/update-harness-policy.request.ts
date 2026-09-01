@@ -152,7 +152,7 @@ export class UpdateHarnessPolicyRequest {
    * pipe runs `forbidNonWhitelisted`, so the field was stripped before it could
    * ever reach `mergeKnobs`.
    */
-  @ApiPropertyOptional({ description: 'MCP external-tools master switch (null = OFF). Super-admin only.', nullable: true })
+  @ApiPropertyOptional({ description: 'MCP external-tools master switch. null = no opinion, which widens to the SYSTEM default; absent that, OFF. Per-tenant since OD-11 (2026-09-01) — a tenant admin may set it.', nullable: true })
   @IsOptional()
   @IsBoolean()
   mcpToolsEnabled?: boolean | null;
