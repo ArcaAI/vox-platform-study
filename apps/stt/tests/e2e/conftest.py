@@ -74,7 +74,7 @@ def minio_container():
     try:
         from testcontainers.minio import MinioContainer
 
-        with MinioContainer("minio/minio:latest") as minio:
+        with MinioContainer("minio/minio:RELEASE.2025-04-22T22-12-26Z") as minio:
             yield {
                 "endpoint": f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}",
                 "access_key": "minioadmin",
