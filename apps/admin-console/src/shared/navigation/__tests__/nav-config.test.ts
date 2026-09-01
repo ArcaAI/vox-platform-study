@@ -81,17 +81,24 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // (all tier 10-19, domain `ai-platform`), taking 57 -> 60 and tier 10-19 from
   // 23 -> 26. They are rail entries rather than tabs of `/ai-services` because
   // the rail is the platform's inventory of engines and registries.
-  it('covers the full 60-route rail map across the four tiers (including /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(60);
-    // TASK-846 / OD-7: /tools-mcp retiered 10-19 -> 20-29 (tenant admins may
-    // configure MCP connectors), taking 10-19 from 26 -> 25 and 20-29 from
-    // 7 -> 8. The 60-route total is unchanged — nothing was added or removed.
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(25);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(8);
+  // TASK-845 consolidated the AI provider surface into `/ai-platform`
+  // (tier 20-29), and retired two rail entries in the process:
+  //   * `/ai-task-defaults` — the SYSTEM half of a two-tier cascade whose
+  //     tenant half lived on another screen. It is now the platform-default
+  //     SCOPE of `/ai-platform`, and its URL keeps a one-release redirect.
+  //   * `/ai-runtime-profiles` — retired as a rail entry ONLY. The route still
+  //     exists and is reached from the Providers tab it tunes; a rail peer
+  //     implied it was a sibling of the configurations rather than their knobs.
+  // Net: 10-19 loses both (25 -> 23), 20-29 gains `/ai-platform` (8 -> 9),
+  // so the total goes 60 -> 59.
+  it('covers the full 59-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -123,26 +130,57 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-configuration')).toBe(true);
   });
 
-  it('tiers the task-default surfaces: platform defaults global-only, tenant AI configuration tenant-scoped', () => {
-    const platform = NAV_ENTRIES.find((entry) => entry.route === '/ai-task-defaults');
-    expect(platform?.tier).toBe('10-19');
-    expect(platform?.required).toEqual([['manage', 'all']]);
-    expect(platform?.implemented).toBe(true);
-    // Renamed from `/ai-model-defaults`; the old route now only
-    // serves a redirect and must be gone from the nav.
+  it('collapses the two task-default tiers onto one shared-audience screen (TASK-845)', () => {
+    // The platform-default screen is GONE from the rail: SYSTEM and the working
+    // tenant are the two tiers of one cascade, so they are a control on one
+    // screen rather than two routes. `/ai-task-defaults` keeps a one-release
+    // redirect, and a redirect is not a navigable destination.
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-task-defaults')).toBe(false);
+    // Same for the older rename, still absent.
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-model-defaults')).toBe(false);
-    const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
-    expect(tenant?.label).toBe('AI Configuration');
-    expect(tenant?.tier).toBe('30-49');
-    // The hub spans four resources, so it is OR-gated over the four
-    // reads (Models/Speech/Voice/Providers) — visible if the caller can read any.
-    expect(tenant?.required).toEqual([
+
+    const unified = NAV_ENTRIES.find((entry) => entry.route === '/ai-platform');
+    expect(unified?.label).toBe('AI Platform');
+    // Tier 20-29: cross-tenant for a super admin, tenant-scoped for a tenant
+    // admin — which is exactly what the shared audience tier means.
+    expect(unified?.tier).toBe('20-29');
+    expect(unified?.domain).toBe('ai-platform');
+    // OR-gated over the reads its tabs make, so a caller who can read any one
+    // of them reaches the screen and sees only the tabs they may read.
+    expect(unified?.required).toEqual([
+      ['manage', 'AiRoutingPolicy'],
       ['read', 'AiTaskDefault'],
-      ['read', 'TenantSttConfig'],
-      ['read', 'TenantTtsConfig'],
       ['read', 'GlobalSetting'],
     ]);
+    expect(unified?.implemented).toBe(true);
+
+    // `/ai-configuration` survives, narrowed to the surfaces that did NOT move:
+    // speech and voice are pipeline and voice BINDINGS, not provider
+    // configuration. Its URL is unchanged, so it takes no redirect.
+    const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
+    expect(tenant?.label).toBe('Speech & Voice');
+    expect(tenant?.tier).toBe('30-49');
+    expect(tenant?.required).toEqual([
+      ['read', 'TenantSttConfig'],
+      ['read', 'TenantTtsConfig'],
+    ]);
     expect(tenant?.implemented).toBe(true);
+  });
+
+  it('retires /ai-runtime-profiles as a rail PEER without retiring the route', () => {
+    // Runtime profiles tune a (provider, model) pair, so they belong beside the
+    // configuration that names that pair. The rail entry goes; the URL stays,
+    // reached from the Providers tab — which is why there is no redirect stub.
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-runtime-profiles')).toBe(false);
+  });
+
+  it('moves provider reconciliation to Platform Ops — it is a billing auditor, not an AI surface', () => {
+    const reconciliation = NAV_ENTRIES.find((entry) => entry.route === '/ai-operations/reconciliation');
+    expect(reconciliation?.domain).toBe('platform-ops');
+    // Domain retag only: the URL, tier and gate are untouched, so no redirect
+    // is possible or needed.
+    expect(reconciliation?.tier).toBe('10-19');
+    expect(reconciliation?.required).toEqual([['manage', 'all']]);
   });
 
   it('re-tiers AI models to super-admin only and folds frontend config into the tenant detail', () => {
@@ -404,9 +442,10 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
     ],
   ],
   ['/ai-models', '10-19', [['manage', 'all']]],
-  ['/ai-task-defaults', '10-19', [['manage', 'all']]],
-  // TASK-799 Phase 4 E.2 — hyperparameters/capacity/timing, SYSTEM-tenant only.
-  ['/ai-runtime-profiles', '10-19', [['manage', 'all']]],
+  // TASK-845 removed `/ai-task-defaults` and `/ai-runtime-profiles` from the
+  // rail: the first became the platform-default SCOPE of `/ai-platform` (its
+  // URL redirects), the second is now reached from the Providers tab it tunes
+  // (its URL is unchanged).
   ['/rate-limits', '10-19', [['manage', 'all']]],
   ['/security-policy', '10-19', [['manage', 'all']]],
   ['/agentic-policy', '10-19', [['manage', 'all']]],
@@ -464,6 +503,18 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
     [
       ['read', 'Tenant'],
       ['update', 'Tenant'],
+    ],
+  ],
+  // TASK-845 — the unified AI provider console. Shared audience: cross-tenant
+  // for a super admin, tenant-scoped for a tenant admin. OR-gated over the
+  // reads its tabs make.
+  [
+    '/ai-platform',
+    '20-29',
+    [
+      ['manage', 'AiRoutingPolicy'],
+      ['read', 'AiTaskDefault'],
+      ['read', 'GlobalSetting'],
     ],
   ],
   // TASK-846 / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
@@ -553,13 +604,15 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/workflow-studio', '30-49', [['manage', 'WorkflowDefinition']]],
   ['/workflow-studio/assignments', '30-49', [['manage', 'WorkflowDefinition']]],
   [
+    // TASK-845 NARROWED this entry: the Models (`AiTaskDefault`) and Providers
+    // (`GlobalSetting`) reads left with the tabs that made them, both now on
+    // `/ai-platform`. The URL, tier and domain are untouched — this table
+    // exists to make exactly that kind of narrowing visible in a diff.
     '/ai-configuration',
     '30-49',
     [
-      ['read', 'AiTaskDefault'],
       ['read', 'TenantSttConfig'],
       ['read', 'TenantTtsConfig'],
-      ['read', 'GlobalSetting'],
     ],
   ],
   ['/consultations', '30-49', [['manage', 'Consultation']]],
@@ -586,7 +639,10 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     'ai-platform',
     [
       '/ai-models',
-      '/ai-task-defaults',
+      // TASK-845 — the unified provider console. It absorbed
+      // `/ai-task-defaults` (retired) and the provider/model half of
+      // `/ai-configuration` (narrowed, not retired).
+      '/ai-platform',
       '/ai-services',
       '/agentic-policy',
       '/ai-configuration',
@@ -594,9 +650,6 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/ai-operations/runs',
       '/ai-operations/metrics',
       '/ai-operations/consumption',
-      '/ai-operations/reconciliation',
-      // TASK-799 Phase 4 E.2.
-      '/ai-runtime-profiles',
       // The self-hosted engines and the model registry of record.
       '/ai-services/lm-studio',
       '/ai-services/vllm',
@@ -622,7 +675,13 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
   // `/settings-registry` (TASK-799 Phase 4 E.1) joins `/settings` here: same
   // domain, different resource — descriptor-governed keys vs raw rows/secrets.
-  ['platform-ops', ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage']],
+  // `/ai-operations/reconciliation` joined Platform Ops in TASK-845: a vendor
+  // BILLING auditor that never reads an AI table, filed under AI only because
+  // it shares a URL prefix with its `/ai-operations/*` neighbours.
+  [
+    'platform-ops',
+    ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage', '/ai-operations/reconciliation'],
+  ],
   [
     'playground',
     [
@@ -687,7 +746,10 @@ describe('NAV_DOMAINS', () => {
   // 3 -> 4 (/consent, TASK-805).
   // knowledge-agents 6 -> 5 (TASK-815 removed /agents).
   // ai-platform 11 -> 14: LM Studio, vLLM and MLflow.
-  it('partitions the 60 rail routes exactly as the ticket Domain Model does (3·6·14·5·4·7·7·8·6)', () => {
+  // TASK-845: ai-platform 14 -> 12 (`/ai-task-defaults` and
+  // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
+  // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
+  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·12·5·4·7·7·9·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -696,7 +758,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(60);
+    expect(NAV_ENTRIES).toHaveLength(59);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

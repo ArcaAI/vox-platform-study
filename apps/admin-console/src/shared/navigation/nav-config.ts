@@ -800,25 +800,27 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'WorkflowDefinition']],
     implemented: true,
   },
-  // the single tenant AI hub. The former standalone screens
-  // `/stt-config`, `/tts-config` and `/ai-providers` were merged into four tabs
-  // here (Models · Speech · Voice · Providers), closing the credential-editor
-  // duplication (rule 13, "one authoritative editor"). Each tab spans a
-  // DIFFERENT backend resource, so `required` is the OR (canAny) of the four
-  // reads — the entry shows if the caller can read ANY one, and each tab is
-  // `<RequirePermission>`-gated in the screen. TEXT selection stays tenant-owned;
-  // guardrail/nlp/harness model selection stays SUPER_ADMIN-only (read-only here).
+  // Was the four-tab tenant AI hub (Models · Speech · Voice · Providers).
+  // TASK-845 NARROWED it to two: the Models and Providers tabs were the TENANT
+  // half of a two-tier cascade whose SYSTEM half lived on a different route,
+  // and both moved to `/ai-platform`, where the tier is a control rather than a
+  // route. The URL is unchanged, so this is a narrowing and takes no redirect.
+  //
+  // Speech and Voice stayed deliberately: `TenantSttConfig` / `TenantTtsConfig`
+  // are pipeline and voice BINDINGS resolved on their own rows, not provider
+  // configuration on the routing cascade. Folding them into a provider console
+  // would recreate the by-which-table grouping TASK-845 exists to remove.
+  // `required` is the OR of the two remaining reads; each tab is separately
+  // `<RequirePermission>`-gated in the screen.
   {
     route: '/ai-configuration',
     domain: 'ai-platform',
-    label: 'AI Configuration',
+    label: 'Speech & Voice',
     tier: '30-49',
     icon: IconTargetArrow,
     required: [
-      ['read', 'AiTaskDefault'],
       ['read', 'TenantSttConfig'],
       ['read', 'TenantTtsConfig'],
-      ['read', 'GlobalSetting'],
     ],
     implemented: true,
   },
