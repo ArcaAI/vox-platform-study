@@ -23,6 +23,11 @@ from temporalio.client import WorkflowHistory
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Replayer
 
+from harness.temporal.interpreter.loop_workflow import (
+    AgenticLoopWorkflow,
+    AgenticSubAgentWorkflow,
+)
+from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import ConsultationLoopWorkflow, HarnessDocWorkflow
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -487,6 +492,46 @@ class TestWorkflowInterpreterReplayCompatibility:
 
         replayer = Replayer(
             workflows=[WorkflowInterpreter],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_v1_history"))
+
+
+class TestAgenticLoopReplayCompatibility:
+    """TASK-848b step 9 — the loop's own replay guards, in both directions.
+
+    The loop introduced ONE new command: the interpreter starting `AgenticLoopWorkflow` as a
+    child, gated behind `workflow.patched(_LOOP_PATCH)`. That gate is load-bearing rather than
+    ceremonial — TASK-847 shipped `agentic.loop` as a dispatchable ACTIVITY, so histories recorded
+    before this change genuinely carry an `ActivityTaskScheduled` for `interpreter.agentic_loop`
+    and must keep replaying that way.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_current_era_loop_history_replays_on_the_current_definition(self):
+        """FORWARD guard: today's in-flight loops must survive tomorrow's deploy.
+
+        The fixture is a real recorded history carrying the child-workflow start and the patch
+        marker. Moving or ungating the loop dispatch changes the command sequence, and this test
+        is what makes that fail here rather than against live clinical runs.
+        """
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter, AgenticLoopWorkflow, AgenticSubAgentWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_loop_v1_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_pre_loop_history_still_replays(self):
+        """BACKWARD guard: a history recorded before the loop existed must be unaffected.
+
+        `interpreter_v1_history` predates `agentic.loop` entirely, so the cheap operand
+        (`node.type == _LOOP_NODE_TYPE`) short-circuits and `workflow.patched` is never reached.
+        This asserts the guard costs nothing to a graph that contains no loop — the property that
+        lets it be added without touching every existing execution.
+        """
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter, AgenticLoopWorkflow, AgenticSubAgentWorkflow],
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("interpreter_v1_history"))
