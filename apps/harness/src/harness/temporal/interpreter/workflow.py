@@ -278,6 +278,34 @@ class WorkflowInterpreter:
                 reason="realtime_lane",
             )
 
+        # TASK-852 item 4 — the per-node KILL SWITCH, honoured by BOTH runtimes.
+        #
+        # TASK-811's realtime executor has read this key since it shipped (`realtime-lane.ts`:
+        # `enabled: node.config?.enabled !== false`); this interpreter never did. A toggle one
+        # runtime honours and the other ignores is worse than no toggle: an admin switches a node
+        # off, watches the live lane stop running it, and the durable lane keeps executing it on
+        # every finalize — including the `external_write` nodes.
+        #
+        # AFTER the lane check on purpose. Lane ownership decides WHICH runtime speaks for a node
+        # at all, so a disabled `realtime` node is still reported as `realtime_lane` here and as
+        # disabled by the runtime that actually owns it. Reporting it twice, under two different
+        # reasons, is the ambiguity `lane` was made load-bearing to remove.
+        #
+        # The literal `is False`, never a truthiness test: absent must mean ENABLED (every graph
+        # published before this ticket carries no `enabled` key), and the schema types it as a
+        # boolean, so a non-boolean is MALFORMED rather than "off" — silently disabling a node
+        # because its config carried the string "false" is the failure mode this avoids.
+        #
+        # A pure read of an already-deserialised `CompiledNode`: no I/O, no clock, no env, no
+        # `workflow.*` call — replay-safe exactly like the two skips around it.
+        if node.config.get("enabled") is False:
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="SKIPPED",
+                reason="disabled_by_config",
+            )
+
         # S-4: the callable that gets invoked always comes from the registry; the wire's
         # `activity` string is only a consistency check, never trusted for routing.
         if node.activity != spec.activity_name:

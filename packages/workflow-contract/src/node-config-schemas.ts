@@ -1216,6 +1216,12 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
 // cannot derive (`compileNode` treats every value that is not `'degrade'` as `'fail'`, so the
 // consultation enum's `'retry'` is already an authoring-time value with no compiled meaning).
 // That is a real, separate gap — reported, not silently papered over with a guessed enum.
+//
+// TASK-852 adds a THIRD key to this fold, `enabled`, on the same argument one level over: it is
+// read by the two RUNTIMES rather than by `compileNode` (which passes `config` through
+// wholesale), it was already honoured by one of them, and it was undeclared — so it was stripped
+// by the validator and undrawn by the inspector, exactly as `timeoutSeconds`/`retry` were. It is
+// the first folded key with an EXCLUSION SET of its own; see `MANDATORY_NODE_TYPES` below.
 
 /** The per-node retry ceiling `compileNode` clamps against `caps.maxAttempts`. Mirrors
  *  `CompiledRetryPolicy` exactly; a key the compiler does not read is not offered. */
@@ -1229,7 +1235,31 @@ const NODE_RETRY_SCHEMA: NodeConfigSchema = Object.freeze({
   },
 });
 
-/** The two keys `compileNode` reads off every node`s config. */
+/**
+ * TASK-852 item 3 — the per-node KILL SWITCH, declared at last.
+ *
+ * Both runtimes read this key off `CompiledNode.config`: TASK-811's realtime executor as
+ * `enabled: node.config?.enabled !== false` (`realtime-lane.ts`), and the durable interpreter's
+ * `_dispatch_node` as a `SKIPPED(disabled_by_config)` branch (TASK-852 item 4). Neither compiles
+ * it — `compileNode` passes `config` through wholesale — so unlike `timeoutSeconds`/`retry` this
+ * is a key the RUNTIMES read rather than the compiler, and it is folded in here for exactly the
+ * reason they are: an undeclared key is stripped twice over (the validator rejects it under
+ * `additionalProperties: false`, and the Studio inspector draws no field for it), so the toggle
+ * the runtimes already honoured was unreachable from the supported authoring path.
+ *
+ * `default: true` is not decoration. ABSENT MUST MEAN ON: every graph published before this
+ * ticket carries no `enabled` key, and both runtimes therefore test for the literal `false`
+ * rather than for falsiness.
+ */
+const NODE_ENABLED_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'boolean',
+  default: true,
+  description:
+    'Turn this node off without deleting it from the graph. Absent is ENABLED. A disabled node is SKIPPED observably by both runtimes — never a silent no-op — and mandatory nodes do not offer it.',
+});
+
+/** The palette-agnostic runtime knobs folded onto every node type: the two keys `compileNode`
+ *  reads off every node`s config, plus the `enabled` toggle both RUNTIMES read off it. */
 const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Object.freeze({
   timeoutSeconds: Object.freeze({
     type: 'integer',
@@ -1237,6 +1267,7 @@ const NODE_RUNTIME_PROPERTIES: Readonly<Record<string, NodeConfigSchema>> = Obje
     description: 'Per-node execution budget in seconds, clamped to the definition`s `caps.maxNodeSeconds` at compile time.',
   }),
   retry: NODE_RETRY_SCHEMA,
+  enabled: NODE_ENABLED_PROPERTY,
 });
 
 // ===========================================================================================
@@ -1322,10 +1353,52 @@ function withLlmBinding(schema: NodeConfigSchema): NodeConfigSchema {
  */
 const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set(['consultation.hitlGate']);
 
+/**
+ * TASK-852 — the node types that get every runtime knob EXCEPT `enabled`.
+ *
+ * A node type carrying the registry class `mandatory` is one `rule-catalogue.ts` requires on
+ * every path from `core.start` to a terminal (`REQUIRED_PATH_THROUGH` with
+ * `throughClass: 'mandatory'` — *"nothing routes around a gate"*). `enabled: false` on such a
+ * node IS that routing-around, achieved a different way: the node stays in the graph so the
+ * structural rule still passes, while the runtime skips it. On `consultation.consentGate` that
+ * is a consent gate a tenant admin can switch off, which is a compliance defect in a healthcare
+ * product, not a feature; on `consultation.phiHop` it is a redaction hop that stops redacting.
+ *
+ * So the discriminator is the class the rule catalogue ALREADY uses to mean "must run", not a
+ * list of node names — a node type that gains the class gains the withholding for free, and one
+ * that loses it loses the withholding visibly. It is duplicated here as a literal set ONLY
+ * because `node-registry.ts` imports THIS module (reading `classesOf()` here would close an
+ * import cycle); `__tests__/node-enabled-toggle.task852.test.ts` asserts the two sets are the
+ * same one, so the projection cannot drift from the registry it mirrors.
+ *
+ * `consultation.hitlGate` is in both this set and `RUNTIME_PROPERTY_EXCLUSIONS` above, for two
+ * independent reasons — it is mandatory AND it is the one `gate`-classed type whose config the
+ * compiler, not an activity, consumes.
+ */
+const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
+  // summarization palette
+  'input.context_binding',
+  'generate.text',
+  'guardrail.check',
+  'output.deliver',
+  // stt palette
+  'stt.audioInput',
+  'stt.asrEngine',
+  'stt.transcriptOutput',
+  // consultation palette
+  'consultation.consentGate',
+  'consultation.captureBinding',
+  'consultation.phiHop',
+  'consultation.persistDraft',
+  'consultation.finalizeAssurance',
+  'consultation.hitlGate',
+]);
+
 function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
   if (RUNTIME_PROPERTY_EXCLUSIONS.has(key)) return schema;
   const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
-  const additions = Object.entries(NODE_RUNTIME_PROPERTIES).filter(([name]) => declared[name] === undefined);
+  const offered = Object.entries(NODE_RUNTIME_PROPERTIES).filter(([name]) => !(name === 'enabled' && MANDATORY_NODE_TYPES.has(key)));
+  const additions = offered.filter(([name]) => declared[name] === undefined);
   if (additions.length === 0) return schema;
   return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, ...Object.fromEntries(additions) }) });
 }
