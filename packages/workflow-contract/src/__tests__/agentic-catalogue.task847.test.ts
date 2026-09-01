@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 // a not-yet-exported symbol hangs the runner instead of failing, which makes RED unobservable.
 import * as configSchemas from '../node-config-schemas';
 import * as nodePorts from '../node-ports';
+import * as agenticContract from '../agentic-contract';
 import * as nodeRegistry from '../node-registry';
 import * as portModel from '../port-model';
 
@@ -148,6 +149,22 @@ describe('TASK-847 — the loop node is bounded on all three axes', () => {
       expect(spec.minimum, `${name} needs a floor`).toBeGreaterThan(0);
       expect(spec.maximum, `${name} needs a ceiling`).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('TASK-847 — the duplicated guard set cannot drift from the registry', () => {
+  it('matches the registry`s `guard`-classed types exactly', () => {
+    // `agentic-contract.ts` keeps `GUARD_NODE_TYPES` as a literal set because `node-registry.ts`
+    // imports `node-config-schemas.ts`, so a module the registry depends on cannot read
+    // `classesOf()` back without closing an import cycle — the same reason
+    // `MANDATORY_NODE_TYPES` is duplicated. A duplicated set needs a test, or it is just a copy.
+    const registryGuards = Object.values(WORKFLOW_NODE_REGISTRY)
+      .filter((descriptor) => descriptor.classes.includes('guard'))
+      .map((descriptor) => descriptor.key)
+      .sort();
+    // `guardrail.check` is the summarization palette's guard and is `mandatory`-classed rather
+    // than `guard`-classed, so it is named explicitly rather than derived.
+    expect([...agenticContract.GUARD_NODE_TYPES_FOR_TEST].sort()).toEqual([...registryGuards, 'guardrail.check'].sort());
   });
 });
 

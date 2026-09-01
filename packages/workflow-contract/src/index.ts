@@ -71,6 +71,25 @@ export {
 } from './port-model';
 export type { WorkflowPortDescriptor, WorkflowPortKind, WorkflowPortPrimitive } from './port-model';
 
+// TASK-847 — the `agentic` catalogue's checks a JSON Schema cannot express, and the mechanical
+// form of §3.4 rule 16 (references only). `compiledGraphLeakProblems` is the one to reach for
+// when reviewing anything that assembles a compiled config outside `compile()`.
+export {
+  FORBIDDEN_CONFIG_KEYS,
+  GENERATION_HYPERPARAMETERS,
+  agenticNodeConfigProblems,
+  compiledGraphLeakProblems,
+  forbiddenSchemaKeyProblems,
+  hyperparameterCapabilityProblems,
+} from './agentic-contract';
+export type {
+  AgenticGraphContext,
+  AgenticNodeView,
+  GenerationHyperparameter,
+  HyperparameterCapabilityProblem,
+  ProviderGenerationCapabilities,
+} from './agentic-contract';
+
 export { NODE_PORTS } from './node-ports';
 export type { WorkflowNodePorts } from './node-ports';
 
