@@ -33,15 +33,7 @@ with workflow.unsafe.imports_passed_through():
         ConsultationGateWorkflow,
         gate_workflow_id,
     )
-    from harness.temporal.interpreter.loop_workflow import (
-        AgenticLoopWorkflow,
-        agentic_loop_workflow_id,
-    )
     from harness.temporal.interpreter.models import (
-        AgenticLoopBounds,
-        AgenticLoopInput,
-        AgenticLoopNodeSpec,
-        AgenticLoopResult,
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
