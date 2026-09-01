@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as agenticContract from '../agentic-contract';
+import * as portValidation from '../port-validation';
 
 const { GENERATION_HYPERPARAMETERS, agenticNodeConfigProblems, hyperparameterCapabilityProblems } = agenticContract;
 
@@ -152,5 +153,51 @@ describe('TASK-847 — guard references are checked against the graph', () => {
 
   it('says nothing about a non-agentic node type — this is not a second validator for the pipeline palettes', () => {
     expect(agenticNodeConfigProblems({ id: 'x', type: 'generate.text', config: { taskKey: 'text.finalize' } })).toEqual([]);
+  });
+});
+
+describe('TASK-847 — the per-node checks are WIRED into the publish gate', () => {
+  // An exported helper nobody calls is not a gate. `workflowPublishProblems` is the publish
+  // boundary, so these tests are what turn `agenticNodeConfigProblems` from a function into a
+  // rule — and they use the REAL graph shape (`from`/`to`), not a hand-rolled context.
+  function graphWith(node: Record<string, unknown>) {
+    return {
+      version: 1,
+      nodes: [
+        { id: 'start', type: 'core.start', config: {} },
+        node,
+        { id: 'end', type: 'core.end', config: {} },
+      ],
+      edges: [
+        { id: 'e0', from: 'start', to: (node as { id: string }).id, fromPort: 'next', toPort: 'after' },
+        { id: 'e1', from: (node as { id: string }).id, to: 'end', fromPort: 'next', toPort: 'after' },
+      ],
+    } as never;
+  }
+
+  it('REFUSES a loop with no cost ceiling at publish', () => {
+    const problems = portValidation.workflowPublishProblems(
+      graphWith({ id: 'loop_node', type: 'agentic.loop', config: { bounds: { maxIterations: 50, maxDurationSeconds: 300 }, orchestratorNodeId: 'start' } }),
+    );
+    expect(problems.some((problem) => problem.includes('maxTotalTokens'))).toBe(true);
+  });
+
+  it('REFUSES an agent whose provider binding names neither source', () => {
+    const problems = portValidation.workflowPublishProblems(graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: {} } }));
+    expect(problems.some((problem) => problem.includes('exactly one'))).toBe(true);
+  });
+
+  it('REFUSES a guard reference naming a node that is not in the graph', () => {
+    const problems = portValidation.workflowPublishProblems(
+      graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' }, guards: { output: ['ghost'] } } }),
+    );
+    expect(problems.some((problem) => problem.includes('ghost'))).toBe(true);
+  });
+
+  it('PASSES a correctly bound agent — the gate is not simply refusing everything', () => {
+    const problems = portValidation.workflowPublishProblems(
+      graphWith({ id: 'agent_node', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' } } }),
+    );
+    expect(problems.filter((problem) => problem.includes('exactly one') || problem.includes('bounds.'))).toEqual([]);
   });
 });
