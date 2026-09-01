@@ -1,7 +1,6 @@
 import {
   IconActivity,
   IconAdjustmentsAlt,
-  IconAdjustmentsCog,
   IconApi,
   IconAtom,
   IconBinaryTree2,
@@ -20,7 +19,6 @@ import {
   IconDatabaseSearch,
   IconDna,
   IconDna2,
-  IconEngine,
   IconFileCheck,
   IconFileDescription,
   IconFileText,
@@ -243,29 +241,6 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'all']],
     implemented: true,
   },
-  // SYSTEM-tenant task-default rows; guardrail config is super-admin-only by owner directive.
-  {
-    route: '/ai-task-defaults',
-    domain: 'ai-platform',
-    label: 'AI task defaults',
-    tier: '10-19',
-    icon: IconAdjustmentsCog,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  // TASK-799 Phase 4 (E.2) — the hyperparameter / capacity / timing plane.
-  // `admin/ai-runtime-profiles` shipped five operations with no console screen,
-  // so these knobs were API-only. Every row is pinned to the SYSTEM tenant by
-  // the service, hence tier 10-19 and `manage:all`.
-  {
-    route: '/ai-runtime-profiles',
-    domain: 'ai-platform',
-    label: 'AI runtime profiles',
-    tier: '10-19',
-    icon: IconEngine,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
   {
     route: '/rate-limits',
     domain: 'platform-ops',
@@ -385,8 +360,16 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // the provider-reconciliation audit trail. Platform-wide
     // (a vendor bills the platform, not a tenant), so tier 10-19 with no
     // working-tenant gate, unlike its /ai-operations neighbours.
+    //
+    // TASK-845 step 3 moved it out of `ai-platform` and into `platform-ops`:
+    // it is a VENDOR BILLING auditor and never touches `AiModel`, a provider
+    // connection or a routing configuration. It sat in the AI domain because it
+    // shares a URL prefix with `/ai-operations/*`, which is a routing accident
+    // rather than a capability. Domain and route are independent (OD-2/OD-3),
+    // so the URL is unchanged — this is neither a rename nor a retier, and a
+    // redirect stub would be a duplicate route rather than a courtesy.
     route: '/ai-operations/reconciliation',
-    domain: 'ai-platform',
+    domain: 'platform-ops',
     label: 'Provider reconciliation',
     tier: '10-19',
     icon: IconScale,
@@ -529,6 +512,31 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
   // capability domains. Tier and ability gate are unchanged.
 
+  // TASK-845 — THE unified AI provider console. Tier 20-29 because it renders
+  // cross-tenant for a super admin and tenant-scoped for a tenant admin, and
+  // because tenancy is a CONTROL on the screen rather than a route: the SYSTEM
+  // (platform-default) tier and the working tenant are the two tiers of ONE
+  // cascade, so `/ai-task-defaults` and the AI half of `/ai-configuration`
+  // collapsed into it.
+  //
+  // The ability gate is the OR of the reads its tabs make, so a caller who can
+  // read any one of them reaches the screen and sees only the tabs they may
+  // read; each surface is separately gated inside, and the gateway stays
+  // authoritative (routing-policy writes are SUPER_ADMIN-only and answer 403,
+  // which the Providers tab renders as "managed by the platform").
+  {
+    route: '/ai-platform',
+    domain: 'ai-platform',
+    label: 'AI Platform',
+    tier: '20-29',
+    icon: IconCpu,
+    required: [
+      ['manage', 'AiRoutingPolicy'],
+      ['read', 'AiTaskDefault'],
+      ['read', 'GlobalSetting'],
+    ],
+    implemented: true,
+  },
   // TASK-846 / OD-7 (2026-09-01): `/tools-mcp` MOVED here from tier 10-19.
   // Tenant admins may configure MCP connectors, which makes this a
   // shared-audience screen — it renders cross-tenant for a super admin and
