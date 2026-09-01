@@ -156,6 +156,19 @@ therefore collapse `text.live` with `text.finalize`, and `nlp.ner` with `guardra
 default-election constraint must key on the **selection** (the task key), not the kind. Pinned by a test
 and recorded in the enum's doc comment.
 
+**F-27 — OD-11 left a false security claim in the published contract.** `UpdateHarnessPolicyRequest
+.mcpToolsEnabled`'s `@ApiPropertyOptional` description still reads *"MCP external-tools master switch
+(null = OFF). **Super-admin only.**"* (`packages/applications/src/services/harness-policy/dto/
+update-harness-policy.request.ts:155`). After OD-11 that is FALSE — a tenant admin may set it. The string
+is baked into two GENERATED artifacts: `apps/api/openapi.json` and
+`packages/vox-node/src/resources/admin/schemas.ts:4974`. A sibling copy at `schemas.ts:2164` already omits
+the clause, so the two descriptions of the same field now disagree. **Deferred deliberately**: the fix is
+one line plus a five-artifact regeneration (`api:build`, `api:route-manifest`, `api:openapi`, `api:portal`,
+`vox-node gen:admin`), and regenerating while TASK-844 and the D-3 SSRF work are in flight would force
+three-way conflicts on those large generated files. Do it once, after both land, and re-run the three
+`:check` drift gates. Surfaced by the TASK-846 E2E agent; distinct from the seed-comment item, which is
+already fixed (`b986b5d03`).
+
 **F-10 — Resolution and credentials are already correct.** Zero occurrences of the Global customer tenant
 `50000000-…` in any resolver; every cascade is exactly `[tenant, SYSTEM]`, widening only on absence.
 All credentials are Vault-Transit ciphertext in `encryptedApiKey`; writes refused unless
