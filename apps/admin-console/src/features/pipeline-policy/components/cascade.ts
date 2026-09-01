@@ -23,6 +23,14 @@ export interface ToggleColumn {
   param: string;
 }
 
+/**
+ * All three toggles govern the POST-consultation pipeline
+ * (`consultation-event.handler.ts:124,291`) only — `LiveDocumentationService`
+ * (the live transcription / live-NER / partial-summarization lane) never
+ * reads any of them (F-23, TASK-852 item 7). The screen's status banner and
+ * the editor's toggle-group note carry that scope to the admin; keep both in
+ * sync with this list if a toggle is ever added or renamed here.
+ */
 export const TOGGLE_COLUMNS: ToggleColumn[] = [
   { key: 'autoSummaryEnabled', heading: 'auto-sum', label: 'Auto-summary', param: 'auto-summary' },
   { key: 'autoNerEnabled', heading: 'auto-NER', label: 'Auto-NER', param: 'auto-ner' },

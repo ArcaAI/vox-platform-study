@@ -1,12 +1,13 @@
 /**
- * TDD screen tests for frame 39 (Realtime Pipeline Policy): matrix render
- * with inherit dashes, the cascade resolve winner highlight, the row-editor
- * PUT flow under If-Match OCC (including 412), the empty/NoTenant/error
- * states — against a URL-branching fetch stub covering the session route.
+ * TDD screen tests for frame 39 (Pipeline Policy, post-consultation): matrix
+ * render with inherit dashes, the cascade resolve winner highlight, the
+ * row-editor PUT flow under If-Match OCC (including 412), the empty/NoTenant/
+ * error states — against a URL-branching fetch stub covering the session route.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PipelinePolicyEffective, PipelinePolicyRow } from '../../api/types';
 import { PipelinePolicyScreen } from '../pipeline-policy-screen';
@@ -148,8 +149,11 @@ describe('PipelinePolicyScreen', () => {
     stubFetch();
     renderWithProviders(<PipelinePolicyScreen />);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Realtime Pipeline Policy' })).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pipeline Policy (Post-Consultation)' })).toBeDefined();
     const table = await waitFor(() => matrix());
+    // F-23 / TASK-852 item 7: the screen must not read as a live-lane control.
+    expect(screen.getByText('Post-consultation only')).toBeDefined();
+    expect(screen.getByText(/do not affect live transcription/)).toBeDefined();
     const tenantRow = within(table).getByText('tenant').closest('tr') as HTMLElement;
     // Pinned at tenant: auto-sum on; inherited (show effective default On):
     // auto-NER resolves down from the SYSTEM pin.
@@ -166,6 +170,15 @@ describe('PipelinePolicyScreen', () => {
     expect(within(card).getByText(/\u2190 wins/)).toBeDefined();
     expect(within(card).getByText(/EFFECTIVE on/)).toBeDefined();
     expect(screen.getByText(/= inherit from parent scope/)).toBeDefined();
+  });
+
+  it('has no axe violations with the status banner and the loaded matrix', async () => {
+    stubFetch();
+    const { container } = renderWithProviders(<PipelinePolicyScreen />);
+
+    await waitFor(() => matrix());
+    expect(screen.getByText('Post-consultation only')).toBeDefined();
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it('marks the SYSTEM tier as the winner for a key without a tenant pin', async () => {
@@ -197,6 +210,19 @@ describe('PipelinePolicyScreen', () => {
 
     expect(await screen.findByRole('radiogroup', { name: 'Auto-NER' })).toBeDefined();
     expect(within(matrix()).getByRole('button', { name: 'tenant' }).getAttribute('aria-pressed')).toBe('true');
+    // The editor repeats the post-consultation scope at the point of action.
+    expect(screen.getByText(/Post-consultation pipeline only/)).toBeDefined();
+  });
+
+  it('has no axe violations with the scope editor open (post-consultation note included)', async () => {
+    stubFetch();
+    const { container } = renderWithProviders(<PipelinePolicyScreen />);
+    const table = await waitFor(() => matrix());
+
+    fireEvent.click(within(table).getByText('tenant'));
+    await screen.findByRole('radiogroup', { name: 'Auto-NER' });
+
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it('PUTs a sparse row update with If-Match and expectedVersion from the read ETag', async () => {
@@ -356,7 +382,7 @@ describe('PipelinePolicyScreen', () => {
     renderWithProviders(<PipelinePolicyScreen />);
 
     expect(await screen.findByText('Select a working tenant')).toBeDefined();
-    expect(screen.getByRole('heading', { level: 1, name: 'Realtime Pipeline Policy' })).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pipeline Policy (Post-Consultation)' })).toBeDefined();
     expect(screen.queryByRole('table', { name: 'Pipeline policy scope rows' })).toBeNull();
   });
 
@@ -374,8 +400,10 @@ describe('PipelinePolicyScreen', () => {
     });
     renderWithProviders(<PipelinePolicyScreen />);
 
-    expect(await screen.findByRole('alert')).toBeDefined();
-    expect(screen.getByText('pipeline-policy unavailable')).toBeDefined();
+    // The screen's own "post-consultation only" status banner is a second,
+    // always-mounted role=alert region — narrow to the error-block copy.
+    expect(await screen.findByText('pipeline-policy unavailable')).toBeDefined();
+    expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     await waitFor(() => expect(matrix()).toBeDefined());
