@@ -1,8 +1,8 @@
 """Sarvam AI speech-to-text loader (cloud REST ASR engine).
 
 Like the Azure Speech loader this downloads no weights: it resolves
-the API key (per-tenant override first, then ``SARVAM_API_KEY`` env) and returns
-a lightweight ``LoadedModel`` whose ``.model`` is a :class:`CloudRestConfig`.
+the API key from the gateway-injected ``provider_overrides`` entry (tenant ->
+SYSTEM ``AiProviderConnection``) and returns a lightweight ``LoadedModel`` whose ``.model`` is a :class:`CloudRestConfig`.
 Actual transcription is performed by ``streaming/sarvam_asr.py`` (per-utterance,
 streaming) and ``BatchTranscriptionService._run_sarvam_inference`` (batch).
 

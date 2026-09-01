@@ -1,5 +1,6 @@
 import { AiRoutingPolicyResponse, CreateAiRoutingPolicyRequest, EffectiveRoutingPolicyResponse, UpdateAiRoutingPolicyRequest } from './dto';
 import { RoutingRequestContext } from './routing-policy.contract';
+import { ProviderConfigurationExport } from './provider-configuration';
 
 /** What a caller may tell the resolver about the request it is routing. */
 export interface ResolveRoutingOptions extends RoutingRequestContext {
@@ -27,11 +28,19 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
 /**
  * The provider ROUTING POLICY plane (TASK-818 §3A).
  *
- * WHICH candidates serve a task, in what order, and what may happen when the
- * first one fails. Sits above `AiProviderConnection` (where a provider lives +
- * how to authenticate), `AiTaskDefault` (one default model per task) and
- * `AiRuntimeProfile` (hyperparameters) — it is the ordered N-way chain over
- * those that did not previously exist.
+ * WHICH candidates serve a task, in what order, which one is the elected
+ * default, and what may happen when the first one fails.
+ *
+ * ## TASK-844 (OD-3) — this plane ABSORBED `AiTaskDefault`
+ *
+ * One row is ONE PROVIDER CONFIGURATION for one `(tenant, taskKey)`: a real FK
+ * to `AiProviderConnection` (where a provider lives + how to authenticate) and
+ * a real FK to `AiModel` (the catalogue). Many rows may exist per selection;
+ * they form the ordered chain, and EXACTLY ONE may carry `isDefault` — enforced
+ * by a partial unique index in the database, keyed on `taskKey` and NOT
+ * `taskKind` (F-26). `AiRuntimeProfile` (hyperparameters) still sits alongside.
+ *
+ * OD-3 explicitly reverses TASK-816's ruling that `AiTaskDefault` survives.
  *
  * ## Two audiences, two rules
  *
@@ -48,6 +57,58 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
 export interface IAiRoutingPolicyService {
   /** Every revision owned by one tenant, newest authored revision first. */
   list(tenantId: string, taskKey?: string): Promise<AiRoutingPolicyResponse[]>;
+
+  /**
+   * TASK-844 — ELECT this configuration as the default for its
+   * `(tenant, taskKey)`.
+   *
+   * ATOMIC: the incumbent is unset and the successor set inside ONE
+   * transaction, so the selection is never left without a default — which
+   * matters because selection is `failMode: closed`, so that window would be an
+   * outage rather than a degraded state. The partial unique index is what makes
+   * concurrent elections safe: one commits, the other is refused by the
+   * database.
+   *
+   * Idempotent — re-electing the current default returns 200 and writes nothing.
+   */
+  setDefault(id: string, tenantId: string, expectedVersion?: number): Promise<AiRoutingPolicyResponse>;
+
+  /**
+   * TASK-844 — COPY a configuration from one tenant to another the actor also
+   * administers.
+   *
+   * **No credential is copied.** The copy re-points at the TARGET tenant's own
+   * connection for the same `(service, provider)` through the standard cascade;
+   * a target with no such row lands with a NULL connection and must supply one
+   * (or inherit SYSTEM's). It always lands DRAFT and NOT default, because
+   * promotion offers a configuration — it does not switch a tenant's traffic.
+   */
+  promote(id: string, sourceTenantId: string, targetTenantId: string): Promise<AiRoutingPolicyResponse>;
+
+  /**
+   * TASK-844 — EXPORT configurations as portable JSON.
+   *
+   * The artifact carries NO credential material and no characters of any key —
+   * only a `credentialRef` LOCATOR naming which secret an importing operator
+   * must supply. Enforced at runtime by `assertNoSecretMaterial` over the
+   * finished structure, and asserted by test.
+   */
+  exportConfigurations(tenantId: string, taskKeys?: string[]): Promise<ProviderConfigurationExport>;
+
+  /**
+   * TASK-844 — IMPORT an artifact into a tenant.
+   *
+   * Rows land DRAFT and NOT default. Models are matched by SLUG on the two-tier
+   * cascade (a slug that resolves to nothing is SKIPPED, never guessed);
+   * connections are matched by `(service, provider)` against the target's own
+   * rows. `requiresCredential` reports the locators the operator still has to
+   * supply, so a missing key is stated at import time rather than discovered as
+   * a 503.
+   */
+  importConfigurations(
+    tenantId: string,
+    artifact: ProviderConfigurationExport,
+  ): Promise<{ imported: number; skipped: number; requiresCredential: string[] }>;
 
   /** One revision by id. A row outside `tenantId` is a 404, never a 403. */
   getById(id: string, tenantId: string): Promise<AiRoutingPolicyResponse>;

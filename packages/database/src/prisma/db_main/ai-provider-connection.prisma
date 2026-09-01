@@ -80,6 +80,15 @@ model AiProviderConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // relations
+  //
+  // TASK-844 — the back-relation of `AiRoutingPolicy.providerConnectionId`, the
+  // real FK that replaces F-6's `(service, provider)` string join. `Restrict`
+  // is declared on the owning side: a connection a live provider configuration
+  // binds cannot be hard-deleted. Adding a back-relation is a Prisma
+  // requirement, not a new access path — nothing reads this field.
+  routingPolicies AiRoutingPolicy[] @relation("AiRoutingPolicyConnection")
+
   // indexing — one connection per (tenant, service, provider)
   @@unique([tenantId, service, provider], name: "AiProviderConnection_tenant_service_provider_unique")
   @@index([tenantId, service], name: "AiProviderConnection_tenantId_service_idx")

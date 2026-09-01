@@ -200,7 +200,20 @@ model AiModel {
   // Tags
   tags String[] @default([])
 
-  // NO RELATIONS - models are referenced by slug in pipeline YAML
+  // Relations
+  //
+  // Historically: "NO RELATIONS — models are referenced by slug in pipeline
+  // YAML". That convention still holds for the PIPELINE surface (AsrPipeline
+  // stages, harness weight lookups) and for `AiTaskDefault.modelSlug`.
+  //
+  // TASK-844 makes ONE exception, deliberately: `AiRoutingPolicy.modelId` is a
+  // real FK, because finding F-6 identified the by-slug join as the mechanical
+  // cause of the provider-configuration fragmentation — a configuration could
+  // name a model that did not exist, and nothing could report on which
+  // configurations a model backs. This back-relation exists only to satisfy
+  // Prisma's requirement that a relation be declared on both sides; nothing
+  // reads it.
+  routingPolicies AiRoutingPolicy[] @relation("AiRoutingPolicyModel")
 
   // Indexes
   @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")
