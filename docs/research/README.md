@@ -87,6 +87,8 @@ than speeding it up. The order of operations is in the VM 200 guide.
 | [stt-realtime-batch-sota-2026-07/](./ai-ml/stt-realtime-batch-sota-2026-07/README.md) | Complete captured source material behind the assessment — 17 agent reports (7 external deep-research + 10 codebase maps/spot checks); see its README for the fleet index |
 | [whisper-onnx-apple-silicon-best-practices.md](./ai-ml/whisper-onnx-apple-silicon-best-practices.md) | Whisper + ONNX Runtime on Apple Silicon — chunking, CoreML, generation parameters, session config |
 | [whisper-onnx-optimum-inference-optimization-2025.md](./ai-ml/whisper-onnx-optimum-inference-optimization-2025.md) | Whisper inference optimization — VAD+Whisper pipelines, batched inference, faster-whisper comparison |
+| [mlflow-vllm-minio-onprem-inference-2026-09.md](./ai-ml/mlflow-vllm-minio-onprem-inference-2026-09.md) | MLflow + vLLM + MinIO for on-prem k8s inference — verdict (MinIO yes, MLflow-as-registry yes, MLflow-in-the-request-path no), the ~110x artifact-proxy measurement, and best practices |
+| [mlflow-gateway-jit-model-serving-2026-09.md](./ai-ml/mlflow-gateway-jit-model-serving-2026-09.md) | Can MLflow front inference with LM-Studio-like JIT model loading? MLflow 3.15.2 AI Gateway (exists, same process, but a stateless proxy), its four adoption constraints (PHI-by-default, no per-request model, no tenant model, no auth), vLLM v0.28.0 runtime model management (no base-model swap), and the runtimes that do deliver JIT |
 
 ## Architecture & Audits
 
