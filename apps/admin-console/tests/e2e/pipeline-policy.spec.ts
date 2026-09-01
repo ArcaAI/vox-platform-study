@@ -44,7 +44,7 @@ async function selectPipelinePolicyTenant(page: Page) {
 }
 
 async function waitForSettled(page: Page) {
-  await expect(page.getByRole('heading', { level: 1, name: 'Realtime Pipeline Policy' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Pipeline Policy (Post-Consultation)' })).toBeVisible();
   // The screen settles into the cascade matrix, the no-overrides empty
   // state or the block error state. The alert must be narrowed to the
   // error-block copy — the shell always mounts empty role=alert regions
