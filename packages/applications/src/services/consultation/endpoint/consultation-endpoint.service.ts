@@ -363,7 +363,7 @@ export class ConsultationEndpointService extends BaseService {
 
 /** Semantic equality of two endpoint blocks, ignoring the recording timestamp. */
 function sameEndpointBlock(existing: Record<string, unknown>, next: Record<string, unknown>): boolean {
-  const sequenceOf = (value: unknown) => (Array.isArray(value) ? value.join(' ') : '');
+  const sequenceOf = (value: unknown) => (Array.isArray(value) ? value.join('\0') : '');
   return (
     existing.reason === next.reason &&
     (existing.idleTimeoutSeconds ?? null) === (next.idleTimeoutSeconds ?? null) &&
@@ -387,7 +387,7 @@ export function correctionPromotionKey(proposals: readonly CorrectionProposal[])
     .map((p) => p.proposalId)
     .filter((id): id is string => typeof id === 'string' && id.length > 0)
     .sort();
-  return `${CORRECTION_CHANGE_SOURCE_PREFIX}:${sha256(ids.join(' ')).slice(0, 32)}`;
+  return `${CORRECTION_CHANGE_SOURCE_PREFIX}:${sha256(ids.join('\0')).slice(0, 32)}`;
 }
 
 /**
