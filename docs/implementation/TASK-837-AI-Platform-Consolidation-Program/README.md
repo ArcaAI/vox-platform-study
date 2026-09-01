@@ -178,6 +178,31 @@ sidecar; this makes a green gate a function of container state rather than of th
 in the gate exactly when it matters. Not caused by TASK-844 — the agent's own run and the clean re-run both
 report 626 files / 10696 passed. **Fix direction:** stub the secrets provider at the unit boundary and move
 any genuinely Vault-exercising case into the integration tier, where infra is a declared precondition.
+**Seen twice more since**: `pnpm harness:test` reported 1 failure once, then 1861 passed on two consecutive
+re-runs with no code change. The pattern is not confined to `packages/applications`.
+
+**F-29 — Four IPv6→IPv4 aliasing families are absent from the egress block table (open follow-up).**
+Found by the TASK-846 D-3 adversarial review, which otherwise returned **no bypass found**.
+`is_blocked_address()` returns `False` for `::ffff:0:169.254.169.254` (RFC 2765 IPv4-*translated*
+`::ffff:0:0/96` — `ipv4_mapped` is `None` because `ffff` sits in bytes 8-9, so no unwrap branch fires),
+`64:ff9b:1::a9fe:a9fe` (RFC 8215 local-use NAT64; only well-known `64:ff9b::/96` is checked), Teredo
+`2001::/32`, and deprecated site-local `fec0::/10`. Same holes in both twins —
+`apps/harness/src/harness/tools/egress_guard.py:77-87,128-143` and
+`packages/applications/src/common/egress/egress-guard.ts:89-96,186-198`.
+**Exploitability is UNCERTAIN and probably nil on stock k3s**: each only aliases to the metadata endpoint
+if the pod's netns actually ROUTES that prefix (a SIIT/NAT64 translator, or a Teredo tunnel). Settle it
+with `ip -6 route` on a harness worker plus whether IPv6 egress is enabled for those pods at all. **Not a
+merge blocker** — but the vectors belong in `tests/fixtures/egress-vectors.json` regardless, because that
+fixture is what stops the two implementations drifting.
+
+**F-30 — The egress allow-list ships EMPTY, so no MCP connector is reachable until configured.**
+`mcp.egress.allowedHosts` is `global-kv`, `globalOnly: true`, `failMode: 'closed'`, `default: []`.
+Deny-by-default is the correct posture, but it is a real DEPLOYMENT STEP: a platform admin must populate
+the key before any MCP connector works. Low blast radius today because `mcpToolsEnabled` also defaults off.
+Related operator footgun on the same key: `mcp-egress.descriptors.ts` `validate` rejects `*`, schemes,
+ports and paths, but cannot judge BREADTH — an entry of `.com`, or a bare `.`, would allow far more than
+intended. The address table still blocks internal pivots, so the residual exposure is reaching arbitrary
+PUBLIC hosts, not the cluster.
 
 **F-10 — Resolution and credentials are already correct.** Zero occurrences of the Global customer tenant
 `50000000-…` in any resolver; every cascade is exactly `[tenant, SYSTEM]`, widening only on absence.
