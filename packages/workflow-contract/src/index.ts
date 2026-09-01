@@ -45,15 +45,22 @@ export type { NodeConfigSchema } from './node-config-schemas';
 // checks built on it. `document -> ner` being a TYPE ERROR is a property of
 // `portPrimitiveSatisfies` + the port tables, not of any caller — see
 // `__tests__/anti-laundering.test.ts`.
+// TASK-847 adds the TIER 1 surface (`WORKFLOW_PORT_KINDS`/`portKindOf`/`portKindsCompatible`) —
+// the cheap kind pre-filter the Studio canvas runs on every drag — alongside the lattice, which
+// stays the publish-time authority. Tier 1 is coarser on purpose; see `port-model.ts`.
 export {
   CONTEXT_PRIMITIVES_MIRROR,
   PORT_PRIMITIVE_CONTEXT_PRIMITIVE,
+  PORT_PRIMITIVE_KIND,
+  WORKFLOW_PORT_KINDS,
   WORKFLOW_PORT_PRIMITIVES,
   WORKFLOW_PORT_SUPERTYPE,
   isWorkflowPortPrimitive,
+  portKindOf,
+  portKindsCompatible,
   portPrimitiveSatisfies,
 } from './port-model';
-export type { WorkflowPortDescriptor, WorkflowPortPrimitive } from './port-model';
+export type { WorkflowPortDescriptor, WorkflowPortKind, WorkflowPortPrimitive } from './port-model';
 
 export { NODE_PORTS } from './node-ports';
 export type { WorkflowNodePorts } from './node-ports';
