@@ -136,6 +136,26 @@ models the ordered candidate chain the target requires. This is the cheapest cor
 Translation, STT and TTS each route through a different mechanism. This is the largest single piece of
 work in the program.
 
+**F-25 — F-9's framing was imprecise; the task-key vocabulary is 19 strings, not one.** Verified during
+TASK-843: `AI_TASK_KEYS` declares 17, and `nlp.topic`/`nlp.intent` live in
+`tenant-nlp-task-instructions/constants.ts` but still select models through `AiTaskDefault` — 19 in total,
+spanning text generation, NER, classification, PII, safety, groundedness and vision. What F-9 got right is
+that TRANSLATION had **no mechanism at all**, and that STT/TTS route through `AsrPipeline` /
+`TenantSttConfig` / `TenantTtsConfig` rather than through task keys. What it got wrong is "text generation
+only". The taxonomy therefore landed with **11** members, not 4 — the four product tasks plus seven
+capabilities that already exist and would otherwise have been silently swallowed. `RERANK` was deliberately
+omitted: the TEI reranker and `ProviderService = 'rerank'` exist, but nothing *selects* them, so a member
+would promise a binding surface that does not exist.
+
+**F-26 — `taskKind` is COARSER than `taskKey`, which invalidates TASK-844's proposed index.** Recorded as
+F-843-A by the implementing agent and confirmed against the seeded data: the 12 `AiTaskDefault` rows carry
+**six** distinct kinds, and several kinds hold multiple keys — `TEXT_GENERATION` covers `text.live`,
+`text.finalize`, `text.test` and `harness.judge`; `PII_DETECTION` covers `guardrail.pii` and
+`guardrail.pii.spans`. **A partial unique index on `(tenantId, taskKind) WHERE isDefault = true` would
+therefore collapse `text.live` with `text.finalize`, and `nlp.ner` with `guardrail.pii`.** TASK-844's
+default-election constraint must key on the **selection** (the task key), not the kind. Pinned by a test
+and recorded in the enum's doc comment.
+
 **F-10 — Resolution and credentials are already correct.** Zero occurrences of the Global customer tenant
 `50000000-…` in any resolver; every cascade is exactly `[tenant, SYSTEM]`, widening only on absence.
 All credentials are Vault-Transit ciphertext in `encryptedApiKey`; writes refused unless
@@ -625,6 +645,11 @@ running — already predates it.
 
 ## TASK-843 — AI Task Taxonomy Unification
 
+> **Phase 1 COMPLETE 2026-09-01** — merged as `d3d448a4f`. `AiTaskKind` (11 members) added alongside
+> every existing mechanism; nothing retired. Migration `20260901051803_task_843_ai_task_taxonomy`, drift
+> proven empty. Dev DB pushed and backfilled: 60 rows, 0 unclassified. Phase 2 (retiring `AsrPipeline` /
+> `TenantSttConfig` / `TenantTtsConfig`, and the `AiRoutingPolicy` absorption) belongs to TASK-844.
+
 | | |
 |---|---|
 | **Tier / Effort** | `opus` / **xhigh** — very high: one taxonomy must absorb three independent mechanisms without breaking live inference |
@@ -738,7 +763,12 @@ with no Global-tenant leakage; all credentials Vault-Transit ciphertext; no plai
 1. Extend `AiRoutingPolicy` to be the single ordered-candidate table: `(tenantId, taskKind, providerConnectionId,
    modelRef, priority, isDefault, enabled)`. Replace string joins with **real foreign keys**.
 2. **Enforce one default per task in the database**, not only in a service: a PostgreSQL **partial unique
-   index** on `(tenantId, taskKind) WHERE isDefault = true`. A service-level guard alone is the pattern that
+   index** on `(tenantId, taskKey) WHERE isDefault = true`.
+   **⚠ NOT `taskKind` — see F-26.** `taskKind` is deliberately coarser than `taskKey`: `TEXT_GENERATION`
+   spans `text.live`, `text.finalize`, `text.test` and `harness.judge`, and `PII_DETECTION` spans
+   `guardrail.pii` and `guardrail.pii.spans`. Keying the constraint on the kind would make those mutually
+   exclusive, so a tenant could not have a default for both `text.live` and `text.finalize`. The election
+   is per SELECTION, not per kind. A service-level guard alone is the pattern that
    produced F-7. The only existing elect-one-of-many precedent is
    `AsrPipelineRepository.setDefaultForTenant:139-150` — service-level with no DB constraint; improve on it.
 3. Election semantics: setting a new default **atomically unsets the previous** inside a transaction
