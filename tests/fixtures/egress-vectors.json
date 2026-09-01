@@ -1,0 +1,354 @@
+{
+  "$comment": [
+    "TASK-846 D-3 — the SHARED SSRF egress test-vector contract.",
+    "",
+    "Two independent implementations enforce the same rule at two different moments:",
+    "  • WRITE time  — packages/applications/src/common/egress/  (TypeScript, admin feedback)",
+    "  • CALL  time  — apps/harness/src/harness/tools/egress_guard.py (Python, the real gate)",
+    "",
+    "There is deliberately NO shared runtime package (a new cross-language package was",
+    "ruled out of scope). This file is what stops the two copies drifting: BOTH suites",
+    "load it and assert the same verdict + the same reason code for every vector.",
+    "A vector added here fails one suite or the other until both agree.",
+    "",
+    "`dns` is a STUB resolver map — neither suite performs real DNS. A hostname absent",
+    "from the map, or mapped to [], is an NXDOMAIN.",
+    "",
+    "NOTE ON TEST-NET: 203.0.113.0/24 (TEST-NET-3) and 198.51.100.0/24 (TEST-NET-2) are",
+    "used as the 'legitimate public host' addresses. Python's ipaddress.is_private()",
+    "returns True for these documentation ranges, which is one of the two reasons both",
+    "implementations use an EXPLICIT CIDR list instead of the stdlib is_private flag",
+    "(the other being that an explicit list is auditable by a reviewer)."
+  ],
+
+  "defaultAllowedHosts": ["mcp.partner.example.com", ".tools.example.org"],
+
+  "dns": {
+    "mcp.partner.example.com": ["203.0.113.10"],
+    "api.tools.example.org": ["198.51.100.7"],
+    "deep.nested.tools.example.org": ["198.51.100.8"],
+    "tools.example.org": ["198.51.100.9"],
+    "v6.partner.example.com": ["2606:4700::1111"],
+    "evil.example.com": ["10.0.0.5"],
+    "rebind.example.com": ["203.0.113.20", "169.254.169.254"],
+    "metadata.example.com": ["169.254.169.254"],
+    "loopback.example.com": ["127.0.0.1"],
+    "mapped.example.com": ["::ffff:10.0.0.1"],
+    "ula.example.com": ["fd00::1"],
+    "nx.example.com": [],
+    "notallowed.example.net": ["203.0.113.99"]
+  },
+
+  "vectors": [
+    {
+      "id": "allow-plain-host",
+      "url": "https://mcp.partner.example.com/mcp",
+      "expect": "allow",
+      "pinned": ["203.0.113.10"],
+      "note": "The legitimate allowed host. If this ever denies, the guard is useless in production."
+    },
+    {
+      "id": "allow-http-scheme",
+      "url": "http://mcp.partner.example.com:8080/mcp",
+      "expect": "allow",
+      "pinned": ["203.0.113.10"],
+      "note": "Plain http and a non-default port are permitted; the allow-list governs HOSTS."
+    },
+    {
+      "id": "allow-suffix-wildcard-subdomain",
+      "url": "https://api.tools.example.org/mcp",
+      "expect": "allow",
+      "pinned": ["198.51.100.7"],
+      "note": "A leading-dot entry '.tools.example.org' matches any subdomain."
+    },
+    {
+      "id": "allow-suffix-wildcard-deep-subdomain",
+      "url": "https://deep.nested.tools.example.org/mcp",
+      "expect": "allow",
+      "pinned": ["198.51.100.8"],
+      "note": "Suffix match is not limited to one label."
+    },
+    {
+      "id": "allow-suffix-wildcard-apex",
+      "url": "https://tools.example.org/mcp",
+      "expect": "allow",
+      "pinned": ["198.51.100.9"],
+      "note": "A leading-dot entry also matches the apex itself."
+    },
+    {
+      "id": "allow-case-insensitive-host",
+      "url": "https://MCP.Partner.Example.COM/mcp",
+      "expect": "allow",
+      "pinned": ["203.0.113.10"],
+      "note": "Host comparison is case-insensitive; casing must not be a bypass or a false denial."
+    },
+    {
+      "id": "allow-public-ipv6",
+      "url": "https://v6.partner.example.com/mcp",
+      "allowedHosts": ["v6.partner.example.com"],
+      "expect": "allow",
+      "pinned": ["2606:4700::1111"],
+      "note": "A public IPv6 answer is allowed — the guard blocks ranges, not the protocol."
+    },
+
+    {
+      "id": "deny-metadata-endpoint-literal",
+      "url": "http://169.254.169.254/latest/meta-data/",
+      "allowedHosts": ["169.254.169.254"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "THE cloud metadata endpoint. Allow-listed on purpose here: proves the ADDRESS check denies it even when an operator names it."
+    },
+    {
+      "id": "deny-metadata-endpoint-via-dns",
+      "url": "http://metadata.example.com/latest/meta-data/",
+      "allowedHosts": ["metadata.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "Same endpoint reached through a name that is on the allow-list — a string check alone would pass this."
+    },
+    {
+      "id": "deny-vault-loopback",
+      "url": "http://127.0.0.1:8200/",
+      "allowedHosts": ["127.0.0.1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "Vault's dev/agent port on loopback."
+    },
+    {
+      "id": "deny-loopback-via-dns",
+      "url": "http://loopback.example.com:8200/",
+      "allowedHosts": ["loopback.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "A public name resolving to loopback."
+    },
+    {
+      "id": "deny-rfc1918-10",
+      "url": "http://10.1.2.3/mcp",
+      "allowedHosts": ["10.1.2.3"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-rfc1918-172-16",
+      "url": "http://172.16.5.6/mcp",
+      "allowedHosts": ["172.16.5.6"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-rfc1918-172-31-upper-bound",
+      "url": "http://172.31.255.255/mcp",
+      "allowedHosts": ["172.31.255.255"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "Upper edge of 172.16/12 — an off-by-one mask would let this through."
+    },
+    {
+      "id": "deny-rfc1918-192-168",
+      "url": "http://192.168.0.1/mcp",
+      "allowedHosts": ["192.168.0.1"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-ipv6-loopback",
+      "url": "http://[::1]/mcp",
+      "allowedHosts": ["::1"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-ipv4-mapped-metadata",
+      "url": "http://[::ffff:169.254.169.254]/mcp",
+      "allowedHosts": ["::ffff:169.254.169.254"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "IPv4-mapped IPv6 MUST be unwrapped and re-checked against the IPv4 rules."
+    },
+    {
+      "id": "deny-ipv4-mapped-rfc1918",
+      "url": "http://[::ffff:10.0.0.1]/mcp",
+      "allowedHosts": ["::ffff:10.0.0.1"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-ipv4-mapped-via-dns",
+      "url": "http://mapped.example.com/mcp",
+      "allowedHosts": ["mapped.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "A resolver answering with a v4-mapped v6 address must not bypass the v4 rules."
+    },
+    {
+      "id": "deny-ipv6-ula",
+      "url": "http://[fd00::1]/mcp",
+      "allowedHosts": ["fd00::1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "fc00::/7 unique-local."
+    },
+    {
+      "id": "deny-ipv6-ula-via-dns",
+      "url": "http://ula.example.com/mcp",
+      "allowedHosts": ["ula.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-ipv6-link-local",
+      "url": "http://[fe80::1]/mcp",
+      "allowedHosts": ["fe80::1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "fe80::/10 link-local."
+    },
+    {
+      "id": "deny-nat64-metadata",
+      "url": "http://[64:ff9b::a9fe:a9fe]/mcp",
+      "allowedHosts": ["64:ff9b::a9fe:a9fe"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "NAT64 well-known prefix embedding 169.254.169.254 — must be unwrapped."
+    },
+    {
+      "id": "deny-6to4-rfc1918",
+      "url": "http://[2002:0a00:0001::1]/mcp",
+      "allowedHosts": ["2002:0a00:0001::1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "6to4 (2002::/16) embedding 10.0.0.1 — must be unwrapped."
+    },
+    {
+      "id": "deny-unspecified-v4",
+      "url": "http://0.0.0.0/mcp",
+      "allowedHosts": ["0.0.0.0"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "0.0.0.0/8 — on many stacks this reaches localhost."
+    },
+    {
+      "id": "deny-cgnat",
+      "url": "http://100.64.0.1/mcp",
+      "allowedHosts": ["100.64.0.1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "100.64/10 carrier-grade NAT — routable inside many cluster/cloud fabrics."
+    },
+    {
+      "id": "deny-multicast",
+      "url": "http://224.0.0.1/mcp",
+      "allowedHosts": ["224.0.0.1"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-broadcast",
+      "url": "http://255.255.255.255/mcp",
+      "allowedHosts": ["255.255.255.255"],
+      "expect": "deny",
+      "reason": "blocked_address"
+    },
+    {
+      "id": "deny-ietf-protocol-assignments",
+      "url": "http://192.0.0.171/mcp",
+      "allowedHosts": ["192.0.0.171"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "192.0.0.0/24."
+    },
+
+    {
+      "id": "deny-hostname-resolving-to-private",
+      "url": "https://evil.example.com/mcp",
+      "allowedHosts": ["evil.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "THE headline case: an allow-listed public NAME whose A record points inside the cluster."
+    },
+    {
+      "id": "deny-mixed-answer-any-blocked",
+      "url": "https://rebind.example.com/mcp",
+      "allowedHosts": ["rebind.example.com"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "A split answer (one public, one metadata address). ANY blocked address denies the whole URL — otherwise the attacker just races the connect."
+    },
+
+    {
+      "id": "deny-host-not-on-allowlist",
+      "url": "https://notallowed.example.net/mcp",
+      "expect": "deny",
+      "reason": "host_not_allowed",
+      "note": "Deny-by-default: a perfectly public host is refused because nobody allow-listed it."
+    },
+    {
+      "id": "deny-suffix-lookalike-not-subdomain",
+      "url": "https://eviltools.example.org/mcp",
+      "expect": "deny",
+      "reason": "host_not_allowed",
+      "note": "'.tools.example.org' must NOT match 'eviltools.example.org' — suffix matching is label-aware, not substring."
+    },
+    {
+      "id": "deny-allowlist-entry-as-substring",
+      "url": "https://mcp.partner.example.com.attacker.net/mcp",
+      "expect": "deny",
+      "reason": "host_not_allowed",
+      "note": "An allowed host appearing as a LEFT-hand label of an attacker domain."
+    },
+    {
+      "id": "deny-empty-allowlist",
+      "url": "https://mcp.partner.example.com/mcp",
+      "allowedHosts": [],
+      "expect": "deny",
+      "reason": "host_not_allowed",
+      "note": "An empty allow-list denies everything — deny-by-default has no implicit membership."
+    },
+
+    {
+      "id": "deny-unresolvable-host",
+      "url": "https://nx.example.com/mcp",
+      "allowedHosts": ["nx.example.com"],
+      "expect": "deny",
+      "reason": "unresolvable",
+      "note": "No address ⇒ nothing to validate ⇒ deny. Never 'allow because we could not check'."
+    },
+
+    {
+      "id": "deny-file-scheme",
+      "url": "file:///etc/passwd",
+      "allowedHosts": ["mcp.partner.example.com"],
+      "expect": "deny",
+      "reason": "scheme_not_allowed"
+    },
+    {
+      "id": "deny-gopher-scheme",
+      "url": "gopher://mcp.partner.example.com:11211/_stats",
+      "expect": "deny",
+      "reason": "scheme_not_allowed",
+      "note": "Classic SSRF pivot protocol."
+    },
+    {
+      "id": "deny-ftp-scheme",
+      "url": "ftp://mcp.partner.example.com/x",
+      "expect": "deny",
+      "reason": "scheme_not_allowed"
+    },
+    {
+      "id": "deny-malformed-url",
+      "url": "not-a-url",
+      "expect": "deny",
+      "reason": "scheme_not_allowed",
+      "note": "An unparseable target has no scheme and no host — refuse it rather than guessing."
+    },
+    {
+      "id": "deny-credentials-in-url",
+      "url": "https://user:pass@mcp.partner.example.com/mcp",
+      "expect": "deny",
+      "reason": "userinfo_not_allowed",
+      "note": "Inline userinfo is both a credential-in-URL smell and a classic host-confusion vector across parsers."
+    }
+  ]
+}

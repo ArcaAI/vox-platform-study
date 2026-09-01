@@ -19,6 +19,7 @@ import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
 import { GUARDRAIL_POLICY_SETTINGS } from './descriptors/guardrail-policy.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { HARNESS_CLAIM_CHECK_MIN_BYTES, HARNESS_SENSOR_SETTINGS } from './descriptors/harness-sensor.descriptors';
+import { MCP_EGRESS_SETTINGS } from './descriptors/mcp-egress.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
@@ -130,6 +131,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // no admin could reach them) and the issued-secret strength policy behind
   // service-account client secrets and API keys.
   ...SECURITY_POLICY_SETTINGS,
+  // SSRF egress allow-list for tenant-authored `McpServer.baseUrl` (TASK-846 D-3).
+  // Sits beside the credential policy for the same reason: it is a floor the
+  // PLATFORM owes every tenant, against a party that is now the tenant itself.
+  ...MCP_EGRESS_SETTINGS,
 
   // ── Configuration-tier compliance ────────────────────────────────────────
   // The two consultation-pipeline `@OnEvent(ContextAdded)` kill-switches,
