@@ -148,6 +148,13 @@ class WorkflowInterpreter:
         # TASK-848: `agentic.loop` names its orchestrator and sub-agents by NODE REFERENCE, so the
         # loop body has to be resolvable from an id. Indexed once in `run`, alongside `_node_types`.
         self._nodes_by_id: dict[str, CompiledNode] = {}
+        # TASK-848 — node ids a loop claims as its BODY (orchestrator + sub-agents). The compiler
+        # lifts only `gate`-class nodes out of `stages` (`compiler.ts`: "a node bearing the `gate`
+        # class is lifted out of `stages`") and emits no `loops` collection, so a loop's body nodes
+        # remain in the stage walk. Without this set the orchestrator would run ONCE as an ordinary
+        # stage node and AGAIN on every iteration — a duplicated model call per iteration, billed
+        # and recorded twice. The loop owns its body; the walk defers.
+        self._loop_body_node_ids: set[str] = set()
         # `node_id -> node type`, built from the compiled config before the walk starts.
         # `_resolve_bound_inputs` needs the PRODUCER's type to look its declared output sockets up
         # in `NODE_REGISTRY` (TASK-809 OD-15); `_node_outputs` alone is keyed by id and says
@@ -182,6 +189,13 @@ class WorkflowInterpreter:
                 # sub-agents are ordinary nodes of this graph named by id, so the index IS the
                 # resolution: no second traversal, and no chance of the two disagreeing.
                 self._nodes_by_id[indexed_node.node_id] = indexed_node
+                if indexed_node.type == _LOOP_NODE_TYPE:
+                    orchestrator_ref = indexed_node.config.get("orchestratorNodeId")
+                    if isinstance(orchestrator_ref, str):
+                        self._loop_body_node_ids.add(orchestrator_ref)
+                    for sub_ref in indexed_node.config.get("subAgentNodeIds") or []:
+                        if isinstance(sub_ref, str):
+                            self._loop_body_node_ids.add(sub_ref)
         for indexed_gate in config.gates:
             self._node_types.setdefault(indexed_gate.node_id, "consultation.hitlGate")
 
@@ -347,6 +361,18 @@ class WorkflowInterpreter:
         #
         # A pure read of an already-deserialised `CompiledNode`: no I/O, no clock, no env, no
         # `workflow.*` call — replay-safe exactly like the two skips around it.
+        # TASK-848 — a node the loop owns is not walked by the stage that contains it. Placed
+        # BEFORE the `enabled` check on purpose: whether a loop body node is individually enabled
+        # is the loop's question to ask, not the stage walk's, and answering it here would report
+        # a reason for a node this walk is not executing either way.
+        if node.node_id in self._loop_body_node_ids:
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="SKIPPED",
+                reason="loop_body",
+            )
+
         if node.config.get("enabled") is False:
             return NodeResult(
                 node_id=node.node_id,
