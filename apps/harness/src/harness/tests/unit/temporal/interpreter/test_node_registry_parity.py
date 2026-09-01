@@ -16,10 +16,11 @@ from harness.temporal.interpreter.registry import NODE_REGISTRY
 
 _FIXTURE_PATH = (
     Path(__file__).resolve().parents[8]
-    / "docs"
-    / "implementation"
-    / "TASK-734-Workflow-Substrate-Second-Pass"
-    / "contracts"
+    / "packages"
+    / "workflow-contract"
+    / "src"
+    / "__tests__"
+    / "fixtures"
     / "node-registry.snapshot.json"
 )
 

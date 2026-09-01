@@ -1,7 +1,7 @@
 /**
  * The deterministic graph → `compiledConfig` compiler (TASK-716 Task 5). This ticket DEFINES
  * the compiled-config format — see
- * `docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json`
+ * `packages/workflow-contract/schemas/compiled-config.schema.json`
  * for the normative shape and its binding rules (no SIGNED node, `onTimeout` never means
  * approved, unknown `formatVersion` refused, `checksum` verified before execution).
  *

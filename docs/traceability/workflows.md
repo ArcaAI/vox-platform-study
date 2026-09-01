@@ -251,7 +251,7 @@ authoring→publish→invoke→status→cancel *mechanism* now is.
 3. **Node registry.** `@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY`
    (`packages/workflow-contract/src/node-registry.ts`) is the code-owned TS mirror of
    `apps/harness/.../interpreter/registry.py`'s `NODE_REGISTRY`, parity-guarded by a shared
-   fixture (`docs/implementation/TASK-734-Workflow-Substrate-Second-Pass/contracts/node-registry.snapshot.json`). Carries
+   fixture (`packages/workflow-contract/src/__tests__/fixtures/node-registry.snapshot.json`). Carries
    seven entries: the `noop`/`passthrough` seed pair plus the five Summarization palette node
    types (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate`
    / `interpreter.guardrail_check` / `interpreter.deliver`), populated on both sides + the shared
