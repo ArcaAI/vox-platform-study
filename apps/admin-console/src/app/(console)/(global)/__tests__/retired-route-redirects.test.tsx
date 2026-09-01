@@ -1,12 +1,13 @@
 /**
- * The three retired console routes.
+ * The retired console routes.
  *
  * `/prompt-studio` folded into the prompt-template Governance tab, `/pstudio`
- * was renamed `/db-studio`, and `/agents` (the Agent Catalog) retired with
- * `DepartmentAgent` itself (TASK-815). All three keep a redirect page for ONE
- * release so bookmarks and deep links survive. These specs lock the exact
- * targets: a typo'd or dropped redirect is a silent 404 for anyone with the
- * old URL saved.
+ * was renamed `/db-studio`, `/agents` (the Agent Catalog) retired with
+ * `DepartmentAgent` itself (TASK-815), and `/ai-task-defaults` became the
+ * platform-default scope of `/ai-platform` (TASK-845). Each keeps a redirect
+ * page for ONE release so bookmarks and deep links survive. These specs lock
+ * the exact targets: a typo'd or dropped redirect is a silent 404 for anyone
+ * with the old URL saved.
  *
  * TASK-816 Phase 3 added the `/agents` case plus the two structural guards
  * below. TASK-815 shipped the `/agents` redirect but pinned nothing, so its
@@ -22,7 +23,11 @@ const redirect = vi.fn((url: string) => {
   throw new Error(`NEXT_REDIRECT:${url}`);
 });
 
-vi.mock('next/navigation', () => ({ redirect }));
+// Both spellings are in use and both must be pinned: `redirect` issues a 307,
+// `permanentRedirect` a 308. Mocking only one leaves the other's page module
+// calling `undefined`, which fails as a TypeError rather than as a missing
+// redirect — a confusing way to learn a stub was never registered here.
+vi.mock('next/navigation', () => ({ redirect, permanentRedirect: redirect }));
 
 async function renderPage(path: string): Promise<string> {
   const page = await import(path);
@@ -43,6 +48,14 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   ['/prompt-studio', '../prompt-studio/page', '/prompt-templates?tab=governance'],
   ['/pstudio', '../pstudio/page', '/db-studio'],
   ['/agents', '../../(tenant)/agents/page', '/prompt-templates'],
+  // TASK-845 — a RENAME: the SYSTEM-tenant task-default screen became the
+  // platform-default SCOPE of the unified AI Platform screen, at a new URL. The
+  // stub lives in `(shared)` rather than `(global)` on purpose: the `(global)`
+  // layout `notFound()`s every non-elevated session, so a tenant admin
+  // following an old link would 404 instead of reaching the screen they can
+  // use. Contrast `/tools-mcp` (TASK-846), a route-GROUP change that kept its
+  // URL and therefore takes no stub at all.
+  ['/ai-task-defaults', '../../(shared)/ai-task-defaults/page', '/ai-platform?tab=tasks'],
 ];
 
 describe('retired route redirects', () => {
