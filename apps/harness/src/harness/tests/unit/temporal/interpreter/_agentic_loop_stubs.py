@@ -42,11 +42,17 @@ def _previous_iteration(payload: NodeActivityInput) -> int:
     and therefore safe under Temporal activity retries.
     """
     previous = payload.bound_inputs.get("in")
-    if isinstance(previous, dict):
-        value = previous.get("n")
-        if isinstance(value, int):
-            return value
-    return 0
+    if not isinstance(previous, dict):
+        return 0
+    # The carry-forward is an ENVELOPE, not the bare orchestrator output:
+    # `loop_state_checkpoint` folds one iteration into `{"orchestrator": ..., "subAgents": [...]}`
+    # so a worker's product is addressable alongside the master's. Reading `n` straight off `in`
+    # silently always returns 0 — which looks like a loop that never advances rather than a stub
+    # that is looking in the wrong place.
+    orchestrator = previous.get("orchestrator")
+    source = orchestrator if isinstance(orchestrator, dict) else previous
+    value = source.get("n")
+    return value if isinstance(value, int) else 0
 
 
 @activity.defn(name="interpreter.agentic_agent")
