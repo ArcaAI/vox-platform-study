@@ -33,7 +33,7 @@ from harness.temporal.claim_check import _MEMORY_STORE, store_blob
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
-from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
+from harness.temporal.interpreter.loop_activities import LOOP_ACTIVITIES
 from harness.temporal.interpreter.loop_workflow import (
     AgenticLoopWorkflow,
     AgenticSubAgentWorkflow,
@@ -168,7 +168,11 @@ async def _run(env, body: dict, *, orchestrator=stub_agentic_agent):
         # one is filtered out rather than shadowed.
         activities=[
             *(a for a in INTERPRETER_ACTIVITIES if _activity_name(a) != "interpreter.agentic_agent"),
-            loop_state_checkpoint,
+            # LOOP_ACTIVITIES rather than a hand-picked name: the loop gained
+            # `loop_state_rehydrate` for the claim-check offload, and a hand-maintained list here
+            # silently omitted it — the loop failed at runtime with the activity unregistered.
+            # Referencing the production list means this cannot drift again.
+            *LOOP_ACTIVITIES,
             orchestrator,
         ],
     ):
@@ -492,3 +496,81 @@ class TestHistoryStaysBounded:
             f"history grew with iteration count: {short_len} events for 2 iterations, "
             f"{long_len} for 8 — continue_as_new is not bounding it"
         )
+
+
+class TestCarryForwardOffload:
+    """A loop carries its ENTIRE memory as workflow input on every generation.
+
+    Temporal's ceiling is 2 MB per payload. A clinical deliberation that accumulates transcript
+    across iterations reaches it and the loop dies mid-run — so above a threshold the carry-forward
+    goes to object storage and only the claim-check ref travels.
+    """
+
+    async def test_a_large_carry_forward_is_offloaded_and_rehydrated(self, env):
+        """The loop must still advance when its state travelled by reference.
+
+        `_stub_bulk` makes one iteration's output exceed the inline budget, so iteration 2 can only
+        read the previous `n` if the ref was stored, carried and resolved. Asserting the loop
+        reached its iteration ceiling proves the whole round trip, because a broken rehydrate
+        would reset `n` to 0 every time and the loop would look frozen instead.
+        """
+        body = _body(
+            bounds={
+                "maxIterations": 3,
+                "maxDurationSeconds": 300,
+                "maxTotalTokens": 1_000_000,
+                "noProgressIterations": 99,
+            }
+        )
+        # Bigger than LOOP_STATE_INLINE_LIMIT_BYTES, so the checkpoint must offload.
+        body["stages"][0]["nodes"][0]["config"]["_stub_bulk_bytes"] = 300 * 1024
+
+        result, _ = await _run(env, body)
+        loop = _node(result, _LOOP_NODE)
+        assert loop is not None
+        assert loop.reason == "max_iterations", (
+            f"the loop did not advance through an offloaded carry-forward: {loop.reason}"
+        )
+
+    async def test_the_threshold_is_a_real_boundary_not_always_on(self, env):
+        """A small loop must NOT pay for object storage it does not need."""
+        from harness.temporal.interpreter.loop_activities import (
+            LOOP_STATE_INLINE_LIMIT_BYTES,
+            loop_state_checkpoint,
+        )
+        from harness.temporal.interpreter.models import LoopCheckpointInput
+
+        small = await loop_state_checkpoint(
+            LoopCheckpointInput(orchestrator_output={"text": "short"}, sub_agent_outputs=[])
+        )
+        assert small.inline is not None and small.ref is None
+
+        big = await loop_state_checkpoint(
+            LoopCheckpointInput(
+                orchestrator_output={"text": "x" * (LOOP_STATE_INLINE_LIMIT_BYTES + 1)},
+                sub_agent_outputs=[],
+            )
+        )
+        assert big.ref is not None and big.inline is None
+
+    async def test_offloading_does_not_change_what_no_progress_means(self, env):
+        """The digest is computed over the same value either way.
+
+        If offloading changed the digest, a converged loop would stop looking converged the moment
+        its state grew — the bound would silently stop working at exactly the scale it matters.
+        """
+        from harness.temporal.interpreter.loop_activities import (
+            LOOP_STATE_INLINE_LIMIT_BYTES,
+            loop_state_checkpoint,
+        )
+        from harness.temporal.interpreter.models import LoopCheckpointInput
+
+        payload = {"text": "y" * (LOOP_STATE_INLINE_LIMIT_BYTES + 1)}
+        first = await loop_state_checkpoint(
+            LoopCheckpointInput(orchestrator_output=payload, sub_agent_outputs=[])
+        )
+        second = await loop_state_checkpoint(
+            LoopCheckpointInput(orchestrator_output=dict(payload), sub_agent_outputs=[])
+        )
+        assert first.ref is not None
+        assert first.digest == second.digest

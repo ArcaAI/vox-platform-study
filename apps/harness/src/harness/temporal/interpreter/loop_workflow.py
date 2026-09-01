@@ -186,8 +186,20 @@ class AgenticLoopWorkflow:
         # 2) The ORCHESTRATOR decides. Its seed arrives on iteration 0 only; from then on it
         # reads the previous iteration's product, which is what makes this a loop rather than a
         # fan-out repeated N times.
+        # TASK-848b step 6 — the carry-forward may have been OFFLOADED by the previous
+        # iteration's checkpoint. A workflow cannot load a blob, so rehydration is an activity;
+        # it runs only when a ref is actually set, so an under-threshold loop pays nothing.
+        carried: Any = inp.state.inline
+        if inp.state.ref is not None:
+            carried = await workflow.execute_activity(
+                "interpreter.loop_state_rehydrate",
+                inp.state.ref,
+                start_to_close_timeout=_CHECKPOINT_TIMEOUT,
+                retry_policy=_CHECKPOINT_RETRY,
+            )
+
         bound_inputs = (
-            dict(inp.seed_inputs) if inp.state.iterations == 0 else {"in": inp.state.inline}
+            dict(inp.seed_inputs) if inp.state.iterations == 0 else {"in": carried}
         )
         orchestrator_output = await self._run_node(
             inp, inp.orchestrator, bound_inputs, stage_id="orchestrator"

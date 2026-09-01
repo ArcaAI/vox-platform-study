@@ -68,6 +68,11 @@ async def stub_agentic_agent(payload: NodeActivityInput) -> NodeActivityResult:
     else:
         output = {"text": f"draft-{n}", "n": n, "usage": {"total_tokens": tokens}}
 
+    bulk_bytes = config.get("_stub_bulk_bytes")
+    if isinstance(bulk_bytes, int) and bulk_bytes > 0:
+        # Pushes the carry-forward past the inline budget so the checkpoint must offload it.
+        output["bulk"] = "z" * bulk_bytes
+
     terminate_at = config.get("_stub_terminate_at")
     if isinstance(terminate_at, int) and n >= terminate_at:
         output["done"] = True

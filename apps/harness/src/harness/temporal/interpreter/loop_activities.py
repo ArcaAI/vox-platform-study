@@ -26,6 +26,8 @@ from typing import Any
 
 from temporalio import activity
 
+from harness.core.config import get_settings
+from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store, store_blob
 from harness.temporal.interpreter.models import LoopCheckpointInput, LoopStateCheckpoint
 
 #: Where a provider's usage lands, in the order we look. Every entry is a key an engine in this
@@ -68,6 +70,33 @@ def extract_tokens(output: Any) -> int:
     return 0
 
 
+# TASK-848b step 6 — the carry-forward offload threshold.
+#
+# Temporal's ceiling is 2 MB per payload / 4 MB per gRPC message, and the loop carries its ENTIRE
+# memory as input on every generation. A clinical deliberation that accumulates transcript across
+# iterations reaches that ceiling and the loop dies mid-run, which is the failure this exists to
+# prevent. 256 KiB leaves an order of magnitude of headroom for the rest of `AgenticLoopInput`
+# (bounds, node specs, seed inputs) rather than sailing close to the limit.
+LOOP_STATE_INLINE_LIMIT_BYTES = 256 * 1024
+
+
+@activity.defn(name="interpreter.loop_state_rehydrate")
+async def loop_state_rehydrate(ref: ClaimCheckRef) -> Any:
+    """Load a carry-forward that was offloaded by the previous iteration's checkpoint.
+
+    An ACTIVITY because a workflow cannot do I/O. The loop calls it only when
+    ``AgenticLoopState.ref`` is set, so an under-threshold loop pays nothing.
+
+    Integrity failures propagate unmodified — `load_blob` raises on a size or sha256 mismatch, and
+    a loop that silently resumed from a corrupted or substituted state would produce clinical
+    output nobody could account for. Fail loud, exactly as `load_config` does.
+    """
+    settings = get_settings()
+    store, _ = await open_store(settings.claim_check)
+    raw = await load_blob(ref, store=store)
+    return json.loads(raw)
+
+
 @activity.defn(name="interpreter.loop_state_checkpoint")
 async def loop_state_checkpoint(payload: LoopCheckpointInput) -> LoopStateCheckpoint:
     """Fold one iteration's product into the next generation's carry-forward."""
@@ -86,13 +115,32 @@ async def loop_state_checkpoint(payload: LoopCheckpointInput) -> LoopStateCheckp
     if payload.termination_key:
         terminated = bool(payload.orchestrator_output.get(payload.termination_key))
 
+    # TASK-848b step 6 — offload the carry-forward when it outgrows the inline budget.
+    #
+    # The digest is computed over `combined` either way, so the no-progress bound compares the
+    # same value whether the state travelled inline or by reference. Offloading must never change
+    # what "no progress" means.
+    digest = canonical_digest(combined)
+    serialized = json.dumps(combined)
+    if len(serialized.encode("utf-8")) > LOOP_STATE_INLINE_LIMIT_BYTES:
+        settings = get_settings()
+        store, location = await open_store(settings.claim_check)
+        ref = await store_blob(serialized, store=store, bucket=location.bucket)
+        return LoopStateCheckpoint(
+            inline=None,
+            ref=ref,
+            digest=digest,
+            tokens=tokens,
+            terminated=terminated,
+        )
+
     return LoopStateCheckpoint(
         inline=combined,
-        ref=None,  # 848b step 6 — see the module docstring.
-        digest=canonical_digest(combined),
+        ref=None,
+        digest=digest,
         tokens=tokens,
         terminated=terminated,
     )
 
 
-LOOP_ACTIVITIES = [loop_state_checkpoint]
+LOOP_ACTIVITIES = [loop_state_checkpoint, loop_state_rehydrate]
