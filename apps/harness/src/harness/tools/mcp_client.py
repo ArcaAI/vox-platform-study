@@ -231,6 +231,16 @@ class McpToolClient:
             ) from exc
         except McpClientError:
             raise
+        except EgressBlocked:
+            # TASK-846 D-3 (adversarial review F4): must escape UNNORMALISED. The blanket
+            # handler below would turn it into `McpClientError(is_server_error=True)`,
+            # which `call_tool` RETRIES — re-running the attacker's lookup, the exact
+            # thing `activities.py`'s late-rebind comment says must not happen. It would
+            # also make that `except EgressBlocked` handler unreachable from the
+            # transport, downgrading a real mid-session rebind from `egress_blocked`
+            # (non-retryable) to `server_error` (retryable, degraded). The connection was
+            # already refused either way; what this preserves is the DETECTION.
+            raise
         except Exception as exc:  # noqa: BLE001 — normalize any transport/protocol error
             status, is_server = _classify_transport_error(exc)
             raise McpClientError(
