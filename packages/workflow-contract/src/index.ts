@@ -35,7 +35,16 @@ export type {
 
 export { canonicalJson } from './canonical-json';
 
-export { WORKFLOW_NODE_REGISTRY, classesOf, paletteOf, nodeInfo, workflowNodeClassLookup, registryChecksum } from './node-registry';
+export {
+  AGENTIC_NODE_TYPES,
+  AGENTIC_PALETTE_KEY,
+  WORKFLOW_NODE_REGISTRY,
+  classesOf,
+  paletteOf,
+  nodeInfo,
+  workflowNodeClassLookup,
+  registryChecksum,
+} from './node-registry';
 export type { WorkflowNodeDescriptor, WorkflowNodeEvalGate, WorkflowNodeLane, WorkflowNodeTrigger } from './node-registry';
 
 export { GROUNDING_POLICY_TARGETS, NODE_CONFIG_SCHEMAS, TERMINOLOGY_PURPOSE_SCOPES } from './node-config-schemas';
