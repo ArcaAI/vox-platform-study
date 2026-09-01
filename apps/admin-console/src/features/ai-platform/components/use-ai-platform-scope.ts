@@ -12,8 +12,17 @@ export interface ResolvedAiPlatformScope {
   scope: AiPlatformScope;
   /** The tenant id every read and write on this screen is parameterised by. */
   tenantId: string;
-  /** Human label for the current scope, for the banner and the control. */
+  /** Human label for the CURRENT scope, for the banner and the footer. */
   label: string;
+  /**
+   * Human label for the WORKING TENANT, whichever tier is active.
+   *
+   * Distinct from `label` on purpose: the tier control has to name the tier it
+   * would switch TO, and naming it from `label` made the tenant button read
+   * "Tenant configuration — Platform default (SYSTEM)" whenever the system tier
+   * was the active one — a control describing the state it is leaving.
+   */
+  workingTenantLabel: string | null;
   /** Whether the SYSTEM tier can be selected at all (elevated callers only). */
   canSelectSystem: boolean;
   /**
@@ -68,6 +77,7 @@ export function useAiPlatformScope(): ResolvedAiPlatformScope {
     scope: effectiveScope,
     tenantId: effectiveScope === 'system' ? SYSTEM_TENANT_ID : (workingTenantId ?? SYSTEM_TENANT_ID),
     label: effectiveScope === 'system' ? 'Platform default (SYSTEM)' : (workingTenantName ?? workingTenantId ?? 'Working tenant'),
+    workingTenantLabel: workingTenantId ? (workingTenantName ?? workingTenantId) : null,
     canSelectSystem: elevated,
     tenantUnavailableReason,
     setScope: (next) => void setRaw(next === 'system' ? null : next),
