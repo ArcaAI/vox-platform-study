@@ -14,6 +14,43 @@ if (process.env.NODE_ENV === 'development' && !process.env.CI) {
 }
 
 const nextConfig: NextConfig = {
+  // TASK-838: baseline security headers on every response (pages, route
+  // handlers, and the BFF proxy at /api/hope/[...path] alike — Next applies
+  // config-level `headers()` at the routing layer ahead of rendering, so it
+  // covers the App Router and Route Handlers the same way).
+  //
+  // `frame-ancestors 'self'` (NOT 'none', NOT X-Frame-Options: DENY) is
+  // deliberate: the Database Studio screen
+  // (src/features/db-studio/components/db-studio-screen.tsx) embeds
+  // `/api/hope/admin/pstudio` — same-origin, proxied by this app's own
+  // src/app/api/hope/[...path]/route.ts — in a same-origin <iframe>. That
+  // proxy response also carries this header (no exemption below), so both
+  // the framing page and the framed content assert "same-origin embedding
+  // only", and 'self' is exactly what permits that self-embed. `'none'` or
+  // `DENY` would break the studio embed outright.
+  //
+  // X-Frame-Options: SAMEORIGIN rides alongside frame-ancestors as a legacy
+  // fallback for the small slice of clients that honor X-Frame-Options but
+  // not CSP3 frame-ancestors — SAMEORIGIN is the exact behavioral analog of
+  // 'self' (same-origin framing only), so it cannot be stricter than the CSP
+  // directive and cannot break the db-studio embed either.
+  //
+  // No script-src/style-src here on purpose — a real CSP needs nonce
+  // plumbing through the App Router render path, which is out of scope for
+  // this fix (see the ticket README for the follow-up recommendation).
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
   // @arcaai/ui ships raw TSX through its "./*" export (rule 13).
   transpilePackages: ['@arcaai/ui'],
   experimental: {
