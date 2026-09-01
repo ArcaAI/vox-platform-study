@@ -70,7 +70,7 @@ UPDATE global_settings SET value = 'true' WHERE key = 'S3_REJECT_UNAUTHORIZED';
 version: '3.8'
 services:
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: minio
     ports:
       - '9000:9000'
@@ -110,7 +110,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
           ports:
             - containerPort: 9000
             - containerPort: 9001
