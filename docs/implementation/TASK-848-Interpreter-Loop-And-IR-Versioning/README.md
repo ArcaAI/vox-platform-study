@@ -2,43 +2,111 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Pending` — plan expanded 2026-09-01, ready to start |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
-| **Tier / Effort** | `opus` / xhigh (consider `fable` for the determinism design stage) |
-| **Depends on** | TASK-847 |
-| **Blocked by** | TASK-847 (node contract must land first) |
+| **Tier / Effort** | `opus` / **xhigh** (consider `fable` for the determinism/versioning design stage) |
+| **Depends on** | TASK-843 ✅, TASK-844 ✅, TASK-847 ✅ — **all landed; this is unblocked** |
+| **Owns** | `apps/harness/src/harness/temporal/interpreter/`, worker deployment config |
 
 ## 1. Requirement Analysis
 
-The Loop node runs an agentic loop: a master/orchestrator agent plus sub-agents under its instruction, bounded by iteration, time **and cost**.
+The Loop node runs an agentic loop: a master/orchestrator agent plus sub-agents under its instruction,
+bounded on three axes. TASK-847 shipped the CONTRACT; this ticket ships the BODY.
 
-**Architecture — settled, do not re-litigate.** One generic versioned interpreter workflow type per IR major version, receiving a compiled immutable graph IR as workflow input; interpreter *code* changes handled by Worker Versioning `Pinned`; child workflows only for LOOP sub-agents. Temporal's constraint is on workflow **code**, not **data** — passing the graph as input puts it in history, so replay is safe. **A tenant edit becomes a data change, not a code change**; every alternative turns a tenant edit into a deploy. **"The graph cannot change mid-run" is a FEATURE** — for clinical work an auditable frozen pipeline is correct.
+**The contract you are implementing against (already merged, do not redesign it):**
+`agentic.loop` requires `bounds` and `orchestratorNodeId`, and carries `subAgentNodeIds`, a
+truthiness-keyed early exit, and four bounds — `maxIterations`, `maxDurationSeconds`, `maxTotalTokens`,
+`noProgressIterations`. `orchestratorNodeId` and `subAgentNodeIds` are **node REFERENCES**, consistent with
+the reference-only rule.
+
+**Architecture — SETTLED. Do not re-litigate.** One generic versioned interpreter workflow type per IR major
+version, receiving a compiled immutable graph IR as workflow input; interpreter *code* changes handled by
+Worker Versioning `Pinned`; child workflows only for LOOP sub-agents.
+
+The determinism argument: Temporal's constraint is on workflow **code**, not **data**. Passing the graph as
+input puts it in `WorkflowExecutionStarted` — in history — so replay feeds back the identical graph plus
+identical recorded activity results and emits the identical command sequence. This is a first-party pattern
+(`temporalio/samples-python/dsl`). **A tenant edit becomes a data change, not a code change**; every
+alternative turns a tenant edit into a deploy.
+
+**"The graph cannot change mid-run" is a FEATURE — hold that line.** For clinical work an auditable frozen
+pipeline is correct; a run that silently changed mid-flight is a compliance problem.
 
 ## 2. Current State Evaluation
 
-Program finding **F-11**. `WorkflowInterpreter` (`interpreter/workflow.py:87`) already walks `config.stages` and dispatches through `NODE_REGISTRY`. Its own docstring bounds it: *"Linear stage walk + single-level fan-out with an all-settled join. Nothing else (v1)"*. Task queue `harness-task-queue`; replay-compat fixtures at `tests/unit/temporal/test_replay_compat.py`. TASK-852 items 3–4 have already added a config-driven skip branch to `_dispatch_node`, so the pattern for extending it safely is established.
+`WorkflowInterpreter` (`interpreter/workflow.py:87`) is bounded by its own docstring:
+*"Linear stage walk + single-level fan-out with an all-settled join. Nothing else (v1)."*
+Task queue `harness-task-queue`; replay-compat fixtures at `tests/unit/temporal/test_replay_compat.py`.
+
+**What TASK-847 left explicitly for this ticket**, marked in `interpreter/nodes/agentic.py`:
+- `:22` — *"`agentic.loop` OBSERVABLE non-execution. TASK-848 owns the loop body."*
+- `:70` — *"the bounds enforced against a workflow TIMER rather than wall-clock — is TASK-848."*
+- `:99` — *"on the compiled config for the boundary check TASK-848 wires."*
+- `agentic.loop` currently returns `DEGRADED` and a test (`test_neither_ever_claims_to_have_produced_anything`)
+  pins that it never claims to have produced anything. **That test must be updated deliberately, not deleted.**
+
+**Tier 3 (runtime boundary validation) is declared, not enforced.** `ioSchema` / `onSchemaViolation` are
+carried on the compiled config (`node-config-schemas.ts:1299-1319`) and the activity does not evaluate them.
+TASK-847 stated this belongs here.
+
+**The established pattern for extending both runtimes together** is TASK-852 items 3–4: a config-driven skip
+branch in `_dispatch_node` with a `mandatory`-class exclusion and a registry-derived drift gate. Follow it.
 
 ## 3. Implementation Plan
 
-The authoritative step-by-step plan is **[TASK-837 §4 → TASK-848 — Interpreter Loop Support & IR Versioning](../TASK-837-AI-Platform-Consolidation-Program/README.md)**,
-which carries the numbered steps, the traps, and the per-step evidence requirements. It is reproduced here by
-reference rather than copied, so the two cannot drift while this ticket is unstarted.
-
-**Expand this section into the full step list at the moment work starts**, per
-`01-development-workflow.md` Phase 3 — and get owner approval before any code is written.
+1. **Extend the interpreter past the v1 bound** — iteration, with a `continue_as_new` boundary at each loop
+   iteration so history does not grow without limit. Update the class docstring; it is currently a promise
+   the code will no longer keep.
+2. **Ship orchestrator-workers ONLY.** Most named agentic patterns are already graph shapes — chaining is
+   nodes in series, routing is conditional edges, sectioning/voting is fan-out + fan-in, ReAct is the Agent
+   node's tools. The Loop node earns its existence only for **runtime-unknown step counts**.
+   Evaluator-optimizer is phase 2: same skeleton, different termination predicate. **Do not build it here.**
+3. **Sub-agents run as CHILD WORKFLOWS**, giving each its own history and retry envelope.
+4. **`irVersion` dispatch** so graph-language changes never require `workflow.patched()`.
+5. **Worker Versioning `Pinned`** for interpreter code changes. The legacy Build-ID mechanism is being
+   removed from Server around **March 2026** — do not build on it.
+6. **Claim-check to MinIO from day 1.** Payload limits are 2 MB/payload and 4 MB/gRPC message; clinical
+   transcripts exceed that. Retrofitting rewrites every activity signature.
+7. **Enforce all four TASK-847 bounds**, and make each terminate with a DISTINGUISHABLE reason.
+   **`maxDurationSeconds` must be a workflow timer, never wall-clock** — a wall-clock read inside
+   `@workflow.defn` breaks replay, meaning a clinical run that cannot be reproduced.
+8. **Wire tier 3 boundary validation** — evaluate `ioSchema` at node boundaries and honour
+   `onSchemaViolation`. If you cannot land an evaluator here, say so and leave the declaration unenforced
+   rather than claiming a safety property that does not exist.
+9. **Extend `test_replay_compat` with histories generated from REAL tenant graphs**, not synthetic ones.
+   Graph-as-data does NOT protect against interpreter *code* changes — this test is that protection.
 
 ## 4. Verification Criteria
 
-See TASK-837 §4 for this ticket's verification block. Program-wide gates in TASK-837 §3.5 apply regardless.
+- Replay-compat green against real-graph histories.
+- A loop hitting `maxIterations`, `maxDurationSeconds`, `maxTotalTokens` and `noProgressIterations` each
+  terminates cleanly with a **distinguishable** reason.
+- `continue_as_new` keeps history bounded across a long loop — **measure it**, do not assert it.
+- A determinism poison test: monkeypatch `workflow.now` / `workflow.random` to raise and prove the loop path
+  does not touch them.
+- `pnpm harness:test`, `pnpm harness:lint`, `pnpm harness:typecheck`.
+- `pnpm --filter @arcaai/workflow-contract test` if the contract moves.
+- **F-31 applies:** rebuild any package you change before running a downstream gate.
 
-## 5. Implementation Summary
+## 5. Risks
+
+| Risk | Mitigation |
+|---|---|
+| Interpreter code change breaks in-flight runs — graph-as-data does NOT protect this | Worker Versioning `Pinned` + `irVersion` + real-graph replay fixtures (steps 4, 5, 9) |
+| History explosion | `continue_as_new` per iteration; assert with a measurement, not a claim |
+| Payload limits hit by clinical transcripts | Claim-check from day 1 (step 6), never retrofitted |
+| An unbounded loop becomes an unbounded invoice | `maxTotalTokens` is required by the contract; enforce it, do not treat it as advisory |
+| Claiming tier-3 validation that is not really evaluated | Step 8's explicit escape hatch — declare unenforced rather than assert a false safety property |
+
+## 6. Implementation Summary
 
 Not started.
 
-## 6. Change History
+## 7. Change History
 
 | Date | Change |
 |---|---|
-| 2026-09-01 | Ticket document created and aligned to TASK-837 §4. Not started. |
+| 2026-09-01 | Ticket created, aligned to TASK-837 §4. |
+| 2026-09-01 | Plan expanded against the contract TASK-847 actually shipped; unblocked and ready to start. |
