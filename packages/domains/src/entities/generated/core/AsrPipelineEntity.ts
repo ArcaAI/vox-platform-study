@@ -22,6 +22,11 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   // interface for the same reason as `isDefault` (DB defaults cover creates).
   sourceTemplateSlug?: string | null;
   templateLocked?: boolean;
+  // TASK-843 — this row's place in the canonical task taxonomy. CONSTANT for
+  // the model: every ASR pipeline is a speech-to-text binding. Optional on the
+  // interface for the same reason as `isDefault` (the DB default covers
+  // creates), and non-optional on the class with the matching code default.
+  taskKind?: Enums.AiTaskKind;
   TranscriptionJobs?: Entities.TranscriptionJobEntity[] | null;
 }
 
@@ -33,6 +38,7 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
   private _isDefault: boolean;
   private _sourceTemplateSlug?: IAsrPipelineEntity['sourceTemplateSlug'];
   private _templateLocked: boolean;
+  private _taskKind: Enums.AiTaskKind;
   private _TranscriptionJobs?: IAsrPipelineEntity['TranscriptionJobs'];
 
   constructor(init: IAsrPipelineEntity) {
@@ -44,6 +50,7 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
     this._isDefault = init.isDefault ?? false;
     this._sourceTemplateSlug = init.sourceTemplateSlug ?? null;
     this._templateLocked = init.templateLocked ?? false;
+    this._taskKind = init.taskKind ?? Enums.AiTaskKind.SPEECH_TO_TEXT;
     this._TranscriptionJobs = init.TranscriptionJobs;
   }
 
@@ -101,6 +108,14 @@ export class AsrPipelineEntity extends BaseTaggedEntity {
 
   set templateLocked(value: boolean) {
     this.setProperty('templateLocked', value);
+  }
+
+  get taskKind(): Enums.AiTaskKind {
+    return this._taskKind;
+  }
+
+  set taskKind(value: Enums.AiTaskKind) {
+    this.setProperty('taskKind', value);
   }
 
   get TranscriptionJobs(): IAsrPipelineEntity['TranscriptionJobs'] {

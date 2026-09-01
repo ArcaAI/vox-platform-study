@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { AiTaskKind } from '../../../enums';
 
 // Per-tenant "default model for task X" selector: one row per
 // (tenant, taskKey); the reserved SYSTEM tenant row is the platform default.
@@ -15,18 +16,25 @@ export interface IAiTaskDefaultEntity extends IBaseTenantEntity {
   taskKey: string;
   modelSlug: string;
   configJson?: Record<string, unknown> | null;
+  // TASK-843 — the canonical task taxonomy `taskKey` belongs to, DERIVED from
+  // it via `AI_TASK_KIND_BY_TASK_KEY` in the applications layer. Optional here
+  // because Phase 1 is additive and no writer sets it yet; TASK-844 makes it
+  // required once `AiTaskDefaultService.upsertRow` does.
+  taskKind?: AiTaskKind | null;
 }
 
 export class AiTaskDefaultEntity extends BaseTenantEntity {
   private _taskKey: IAiTaskDefaultEntity['taskKey'];
   private _modelSlug: IAiTaskDefaultEntity['modelSlug'];
   private _configJson?: IAiTaskDefaultEntity['configJson'];
+  private _taskKind?: IAiTaskDefaultEntity['taskKind'];
 
   constructor(init: IAiTaskDefaultEntity) {
     super(init);
     this._taskKey = init.taskKey;
     this._modelSlug = init.modelSlug;
     this._configJson = init.configJson;
+    this._taskKind = init.taskKind;
   }
 
   get taskKey(): IAiTaskDefaultEntity['taskKey'] {
@@ -51,6 +59,14 @@ export class AiTaskDefaultEntity extends BaseTenantEntity {
 
   set configJson(value: IAiTaskDefaultEntity['configJson']) {
     this.setProperty('configJson', value);
+  }
+
+  get taskKind(): IAiTaskDefaultEntity['taskKind'] {
+    return this._taskKind;
+  }
+
+  set taskKind(value: IAiTaskDefaultEntity['taskKind']) {
+    this.setProperty('taskKind', value);
   }
 
   public override validate(): void {

@@ -11,6 +11,7 @@ export class AiTaskDefault extends BaseTenantDataModel {
   public taskKey: string;
   public modelSlug: string;
   public configJson: JsonValue | null;
+  public taskKind: Enums.AiTaskKind | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -20,6 +21,7 @@ export class AiTaskDefault extends BaseTenantDataModel {
     this.taskKey = data.taskKey;
     this.modelSlug = data.modelSlug;
     this.configJson = data.configJson;
+    this.taskKind = data.taskKind;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

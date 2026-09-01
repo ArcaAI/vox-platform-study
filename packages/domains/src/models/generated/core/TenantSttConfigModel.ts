@@ -11,6 +11,7 @@ export class TenantSttConfig extends BaseTenantDataModel {
   public fallbackPipelineId: string | null;
   public autoSwitchEnabled: boolean;
   public configJson: JsonValue | null;
+  public taskKind: Enums.AiTaskKind;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -20,6 +21,7 @@ export class TenantSttConfig extends BaseTenantDataModel {
     this.fallbackPipelineId = data.fallbackPipelineId;
     this.autoSwitchEnabled = data.autoSwitchEnabled;
     this.configJson = data.configJson;
+    this.taskKind = data.taskKind;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

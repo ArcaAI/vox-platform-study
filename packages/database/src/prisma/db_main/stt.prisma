@@ -30,6 +30,20 @@ model AsrPipeline {
   // Per-tenant default backend pipeline assignment
   isDefault Boolean @default(false)
 
+  // TASK-843 — this row's place in the canonical task taxonomy. CONSTANT for
+  // the table: every ASR pipeline is, by construction, a speech-to-text
+  // binding. It is therefore NOT NULL with the correct default rather than
+  // nullable-and-backfilled (the shape `AiTaskDefault.taskKind` needs, where
+  // the value is derived per row from `taskKey`) — a new row cannot be wrong,
+  // and `db push` fills every existing row correctly with no data step.
+  //
+  // Redundant today, and deliberately so: it is the migration SEAM. TASK-844
+  // folds AsrPipeline / TenantSttConfig / TenantTtsConfig into the unified
+  // selection table, and a uniform `taskKind` on all five sources makes that a
+  // single UNION rather than three bespoke per-table mappings. This table is
+  // NOT retired here — Phase 1 is additive so a mistake stays recoverable.
+  taskKind AiTaskKind @default(SPEECH_TO_TEXT)
+
   // Template lineage. The SYSTEM-tenant catalog rows ARE the
   // templates: they carry `sourceTemplateSlug = null` and `templateLocked = false`.
   // A tenant copy cloned from a template records the template's slug here
