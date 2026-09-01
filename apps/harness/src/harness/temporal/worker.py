@@ -36,7 +36,10 @@ from harness.temporal.activities import (
 from harness.temporal.client import get_temporal_client
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
-from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
+from harness.temporal.interpreter.loop_activities import (
+    loop_state_checkpoint,
+    loop_state_rehydrate,
+)
 from harness.temporal.interpreter.loop_workflow import (
     AgenticLoopWorkflow,
     AgenticSubAgentWorkflow,
@@ -326,6 +329,7 @@ async def run_worker() -> None:
             # TASK-848 — the loop's per-iteration checkpoint. Not part of INTERPRETER_ACTIVITIES
             # because the LOOP child executes it, not the interpreter.
             loop_state_checkpoint,
+            loop_state_rehydrate,
         ],
         graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor
