@@ -126,6 +126,18 @@ class TestEnsureMcpArgsSafe:
 # ---------------------------------------------------------------------------
 
 
+# TASK-846 D-3 — `base_url` is now subject to the SSRF egress guard, which fails CLOSED.
+# These retry cases therefore have to name an allowed host and a stub resolver; without
+# them every call is (correctly) refused before the retry loop is ever reached. The guard
+# itself is pinned by `test_egress_guard.py` and `test_mcp_client_egress.py`.
+_RETRY_HOST = "mcp.partner.example.com"
+_RETRY_URL = f"https://{_RETRY_HOST}/mcp"
+
+
+def _retry_resolver(hostname: str) -> list[str]:
+    return ["203.0.113.10"] if hostname.lower() == _RETRY_HOST else []
+
+
 class TestMcpToolClientRetry:
     @pytest.mark.asyncio
     async def test_client_error_is_not_retried(self, monkeypatch):
@@ -136,9 +148,11 @@ class TestMcpToolClientRetry:
             raise McpClientError("bad request", status=400)
 
         monkeypatch.setattr(McpToolClient, "_call_once", _once)
-        client = McpToolClient(timeout_s=1.0, max_attempts=3)
+        client = McpToolClient(
+            timeout_s=1.0, max_attempts=3, allowed_hosts=[_RETRY_HOST], resolver=_retry_resolver
+        )
         with pytest.raises(McpClientError):
-            await client.call_tool(base_url="http://x", tool="t", args={})
+            await client.call_tool(base_url=_RETRY_URL, tool="t", args={})
         assert attempts["n"] == 1  # 4xx never retried
 
     @pytest.mark.asyncio
@@ -150,9 +164,11 @@ class TestMcpToolClientRetry:
             raise McpClientError("boom", is_server_error=True, status=503)
 
         monkeypatch.setattr(McpToolClient, "_call_once", _once)
-        client = McpToolClient(timeout_s=1.0, max_attempts=2)
+        client = McpToolClient(
+            timeout_s=1.0, max_attempts=2, allowed_hosts=[_RETRY_HOST], resolver=_retry_resolver
+        )
         with pytest.raises(McpClientError) as ei:
-            await client.call_tool(base_url="http://x", tool="t", args={})
+            await client.call_tool(base_url=_RETRY_URL, tool="t", args={})
         assert attempts["n"] == 2  # bounded retry exhausted
         assert ei.value.is_server_error is True
 
@@ -162,7 +178,9 @@ class TestMcpToolClientRetry:
             return McpToolResult(content="ok", is_error=False)
 
         monkeypatch.setattr(McpToolClient, "_call_once", _once)
-        client = McpToolClient(timeout_s=1.0, max_attempts=2)
-        result = await client.call_tool(base_url="http://x", tool="t", args={})
+        client = McpToolClient(
+            timeout_s=1.0, max_attempts=2, allowed_hosts=[_RETRY_HOST], resolver=_retry_resolver
+        )
+        result = await client.call_tool(base_url=_RETRY_URL, tool="t", args={})
         assert result.content == "ok"
         assert result.is_error is False

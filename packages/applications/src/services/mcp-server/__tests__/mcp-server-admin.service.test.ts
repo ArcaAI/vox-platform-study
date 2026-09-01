@@ -47,7 +47,13 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  const svc = new McpServerAdminService(repo as any, db as any, emitter as any, cls as any);
+  // TASK-846 D-3 — the SSRF egress guard is a REQUIRED constructor dependency.
+  // Stubbed permissive here on purpose: this file is about the tenancy/privilege
+  // posture, and the guard's own behaviour (range table, allow-list matching,
+  // fail-closed) is pinned by `egress-guard.test.ts` +
+  // `mcp-server-admin.egress.task846.test.ts` against the shared vector fixture.
+  const egressPolicy = { assertUrlAllowed: vi.fn(async () => undefined) };
+  const svc = new McpServerAdminService(repo as any, db as any, emitter as any, cls as any, egressPolicy as any);
   return { svc, repo, emitter, db };
 }
 

@@ -1,0 +1,207 @@
+# TASK-846 D-3 — PROPOSAL, NOT A LIVE MANIFEST.
+#
+# The real manifests live in the SEPARATE GitLab project `arca/hope-v2-deployment`
+# (`deployment/k8s/base/` + `overlays/{dev,staging,prod}`); this repository has held no
+# k8s tree since 2026-07-24. This file is the reviewed artifact to copy there — it is
+# inert where it sits, and is deliberately not wired into anything.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHY THIS EXISTS, GIVEN THE APPLICATION ALREADY CHECKS
+#
+# The application guard (`apps/harness/src/harness/tools/egress_guard.py`) resolves the
+# host, validates the address, and pins the connection. It is good, it is tested against
+# a shared fixture, and it is SOFTWARE — one refactor, one un-pinned code path, one
+# library that re-resolves internally, and it is silently gone. This NetworkPolicy is the
+# layer that does not depend on the application being correct. It is enforced by the CNI
+# on the DESTINATION IP after DNS, so it holds against exactly the case the application
+# guard is most likely to regress on: a rebind between validation and connect.
+#
+# Neither layer subsumes the other:
+#   • the application knows WHICH hosts are allow-listed; the CNI does not;
+#   • the CNI cannot be bypassed by an application bug; the application can.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠ BEFORE MERGING THIS, VERIFY IT IS ACTUALLY ENFORCED
+#
+# A NetworkPolicy that nothing enforces is worse than none, because it reads like
+# protection in review. k3s embeds kube-router's network-policy controller by default,
+# but it is disabled by `--disable-network-policy`, and some flannel-only setups drop it
+# entirely. CONFIRM enforcement empirically before relying on this:
+#
+#   kubectl -n hope-v2-dev run netpol-probe --rm -it --restart=Never \
+#     --image=curlimages/curl -- \
+#     curl -sS --max-time 5 http://169.254.169.254/latest/meta-data/
+#
+# Run that from a pod carrying `app.kubernetes.io/component: harness-worker` labels once
+# the policy is applied. It MUST time out. If it returns metadata, the policy is inert
+# and the ONLY protection is the application guard — say so in the ticket rather than
+# assuming defence in depth that does not exist.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# SCOPE
+#
+# Targets the harness WORKER only — the Temporal worker process is the one that dials
+# `McpServer.baseUrl`. The harness FastAPI app makes no MCP calls and is deliberately not
+# selected here; giving it the same rule would be a larger blast radius for no gain.
+#
+# Selector labels below are placeholders. Reconcile them against the worker Deployment's
+# actual `spec.template.metadata.labels` in the deployment repo before applying — a
+# NetworkPolicy whose podSelector matches nothing is silently inert, which is the same
+# failure mode as no policy at all.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: harness-worker-egress
+  namespace: hope-v2-dev
+  annotations:
+    hope.arcaai/ticket: TASK-846
+    hope.arcaai/purpose: >-
+      SSRF containment for tenant-authored McpServer.baseUrl. Second layer beneath the
+      application egress guard in apps/harness/src/harness/tools/egress_guard.py.
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hope-harness
+      app.kubernetes.io/component: worker
+  policyTypes:
+    - Egress
+
+  egress:
+    # ── 1. DNS ────────────────────────────────────────────────────────────────
+    # Must come first in intent, though NetworkPolicy rules are a union (order is not
+    # semantic). Without this the pod cannot resolve anything at all — including the
+    # legitimate MCP hosts — and the egress guard's own lookups fail closed, taking the
+    # whole feature down rather than merely restricting it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # ── 2. In-cluster peers the worker legitimately needs ─────────────────────
+    # Named explicitly rather than "the whole namespace" so a future pod added to this
+    # namespace does not silently become reachable from the worker.
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - hope-api # gateway: trajectory, consent, effective-config, Vault-brokered tokens
+                  - hope-text # LLM judgement (peer service)
+                  - hope-nlp # NER / classification (peer service)
+                  - hope-guardrail # safety verdicts
+                  - hope-temporal # workflow service
+      ports:
+        - protocol: TCP
+          port: 8868 # api
+        - protocol: TCP
+          port: 8862 # text
+        - protocol: TCP
+          port: 8864 # nlp
+        - protocol: TCP
+          port: 8863 # guardrail
+        - protocol: TCP
+          port: 7233 # temporal
+
+    # ── 3. Data plane ─────────────────────────────────────────────────────────
+    # Postgres/MinIO are EXTERNAL to the cluster (rule 09: not deployed by the base), so
+    # they are reached by explicit /32s that must be filled in per overlay. Leaving these
+    # as a broad private-range allow would re-open exactly the hole rule 4 closes.
+    # TODO(deployment repo): substitute the real addresses per environment.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/32 # PLACEHOLDER — PgBouncer VIP
+      ports:
+        - protocol: TCP
+          port: 6432
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/32 # PLACEHOLDER — MinIO / S3 endpoint
+      ports:
+        - protocol: TCP
+          port: 9000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: qdrant
+      ports:
+        - protocol: TCP
+          port: 6333
+
+    # ── 4. THE RULE THIS TICKET IS ABOUT ──────────────────────────────────────
+    # Outbound to the public internet for MCP connectors — everything EXCEPT the ranges
+    # a tenant must never be able to aim the worker at. `except` is what makes this a
+    # containment boundary rather than a blanket allow.
+    #
+    # This mirrors `_BLOCKED_IPV4` in egress_guard.py. The two lists are maintained by
+    # hand in two repositories and WILL drift; the application list is the stricter and
+    # more precise of the two (it also unwraps IPv4-mapped IPv6 and NAT64), so treat this
+    # as the coarse net beneath it, never as the specification.
+    #
+    # Note the pod CIDR and service CIDR are covered by the RFC1918 exclusions below in a
+    # default k3s install. Verify for this cluster: if the pod CIDR sits outside 10/8 (it
+    # does not by default — k3s uses 10.42.0.0/16 for pods and 10.43.0.0/16 for services),
+    # add it explicitly or rules 2 and 3 above become the only in-cluster reachability,
+    # which is the intent.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8 # "this network" — reaches localhost on many stacks
+              - 10.0.0.0/8 # RFC 1918 (incl. k3s pod 10.42/16 + service 10.43/16 CIDRs)
+              - 100.64.0.0/10 # RFC 6598 CGNAT
+              - 127.0.0.0/8 # loopback — Vault agent, sidecars
+              - 169.254.0.0/16 # RFC 3927 link-local — THE cloud metadata endpoint
+              - 172.16.0.0/12 # RFC 1918
+              - 192.0.0.0/24 # IETF protocol assignments
+              - 192.168.0.0/16 # RFC 1918
+              - 198.18.0.0/15 # RFC 2544 benchmarking
+              - 224.0.0.0/4 # multicast
+              - 240.0.0.0/4 # reserved incl. broadcast
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+
+    # ── 5. IPv6 ───────────────────────────────────────────────────────────────
+    # NetworkPolicy handles address families SEPARATELY: the IPv4 rule above says nothing
+    # at all about IPv6, so on a dual-stack cluster an unrestricted v6 path would defeat
+    # the whole policy — `::ffff:169.254.169.254` and the NAT64 prefix both reach the
+    # metadata endpoint. INCLUDE this block on a dual-stack cluster; OMIT it (and confirm
+    # the pod has no v6 address at all) on a v4-only one, because an ipBlock naming a
+    # family the CNI does not run can be rejected at admission.
+    - to:
+        - ipBlock:
+            cidr: ::/0
+            except:
+              - ::/128 # unspecified
+              - ::1/128 # loopback
+              - ::ffff:0:0/96 # IPv4-mapped — re-reaches every v4 range above
+              - 64:ff9b::/96 # RFC 6052 NAT64 well-known prefix
+              - 100::/64 # RFC 6666 discard-only
+              - 2002::/16 # 6to4 — embeds an arbitrary v4 address
+              - fc00::/7 # RFC 4193 unique-local
+              - fe80::/10 # link-local
+              - ff00::/8 # multicast
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

@@ -4,6 +4,7 @@ import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { CoreDatabaseService, McpServerFactory, McpServerRepository, ResourceType, SYSTEM_TENANT_ID, SysEventType } from '@arcaai/domains';
 import { BaseService } from '../../common';
+import { EgressPolicyService } from '../../common/egress';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IMcpServerAdminService } from './IMcpServerAdminService';
@@ -51,6 +52,10 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // SSRF egress guard for the tenant-authored `baseUrl`. REQUIRED, not
+    // `@Optional()`: an unwired graph must fail loudly at construction rather
+    // than silently skip a security control.
+    private readonly egressPolicy: EgressPolicyService,
   ) {
     super(eventEmitter, clsService, ResourceType.McpServer);
   }
@@ -84,6 +89,10 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     // below is what stops it aiming at the shared SYSTEM registry.
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     this.assertCanWriteTenant(scopedTenantId);
+    // SSRF egress guard. Runs for EVERY caller including a super admin writing the
+    // SYSTEM registry — the allow-list is a platform NETWORK boundary, not a
+    // permission, and privilege does not make 169.254.169.254 safe to reach.
+    await this.assertBaseUrlReachable(dto.baseUrl, scopedTenantId);
     const tx = this.crossTenantLane(scopedTenantId);
 
     const existing = await this.mcpServerRepository.findByTenantAndName(scopedTenantId, dto.name, tx);
@@ -123,6 +132,13 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     }
     // Existence first, privilege second — see the class doc.
     this.assertCanWriteRow(existing.tenantId);
+    // Egress third, and ONLY when the URL is actually being changed: re-validating
+    // an unchanged `baseUrl` would let a transient DNS failure block an edit to the
+    // name. The row's existing URL is re-checked at CALL time by the harness anyway,
+    // which is where a URL that went bad after the write is actually caught.
+    if (dto.baseUrl !== undefined) {
+      await this.assertBaseUrlReachable(dto.baseUrl, existing.tenantId);
+    }
 
     const changes: Record<string, unknown> = {};
     if (dto.name !== undefined) changes.name = dto.name;
@@ -182,6 +198,25 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   // ────────────────────────────── internals ──────────────────────────────
+
+  /**
+   * SSRF egress guard for a tenant-authored connector URL (TASK-846 D-3).
+   *
+   * Delegates the verdict to `EgressPolicyService`, which reads the platform
+   * allow-list from `mcp.egress.allowedHosts` (`global-kv`, `failMode: 'closed'`),
+   * resolves the host, and refuses any answer in a private / loopback /
+   * link-local-metadata / CGNAT / multicast range. An unreadable allow-list denies.
+   *
+   * This is FEEDBACK, not the protection: DNS can change after the row is saved, so
+   * the authoritative gate is the harness worker's call-time check
+   * (`apps/harness/src/harness/tools/egress_guard.py`).
+   */
+  private async assertBaseUrlReachable(baseUrl: string, targetTenantId: string): Promise<void> {
+    await this.egressPolicy.assertUrlAllowed(baseUrl, {
+      tenantId: targetTenantId,
+      actorUserId: this.requestUserId ?? null,
+    });
+  }
 
   /**
    * CREATE gate — there is no row yet, so nothing to hide: every refusal here is
