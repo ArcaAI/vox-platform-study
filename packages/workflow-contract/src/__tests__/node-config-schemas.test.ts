@@ -23,6 +23,16 @@ describe('NODE_CONFIG_SCHEMAS', () => {
   it('carries a schema for every node type in the registry except `passthrough` (TASK-809 D-9)', () => {
     expect(Object.keys(NODE_CONFIG_SCHEMAS).sort()).toEqual(
       [
+        // TASK-847 — the GENERIC catalogue. Every one of the eight carries a schema, because for
+        // these types the schema IS the node: behaviour is configuration, not key.
+        'agentic.agent',
+        'agentic.data',
+        'agentic.guardrail',
+        'agentic.input',
+        'agentic.loop',
+        'agentic.output',
+        'agentic.stt',
+        'agentic.tts',
         // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
         'agent.discharge_summary',
         'agent.dna_redaction',
@@ -299,6 +309,10 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
 describe('DD-11 prompt binding survives a config-schema round-trip', () => {
   /** Node types that may legitimately carry a prompt binding. */
   const PROMPT_CARRYING_KEYS = [
+    // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+    // binding groups every other generation node does; that set-equality is what stops a new
+    // generation node shipping without an approved, version-pinned prompt.
+    'agentic.agent',
     // TASK-806 lane A — DD-9's three generation entries share `consultation.synthesize`'s
     // schema, so they inherit the DD-11 prompt binding with it.
     'agent.presummarization',
@@ -324,6 +338,7 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
     'agent.discharge_summary': { producesCode: false, onError: 'fail' },
     'prompt.template_ref': {},
     'generate.text': { taskKey: 'text.finalize' },
+    'agentic.agent': { providerConfigRef: { taskKey: 'text.finalize' } },
     'consultation.assemblePrompt': { requiresFinalized: true, onError: 'fail' },
     'consultation.synthesize': { producesCode: false, onError: 'fail' },
     'consultation.realtimeSummary': { onError: 'degrade' },
@@ -408,6 +423,10 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
 describe('DD-2 document-template binding survives a config-schema round-trip', () => {
   /** Node types that PRODUCE a document — i.e. exactly the registry's `generation` class. */
   const DOCUMENT_CARRYING_KEYS = [
+    // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+    // binding groups every other generation node does; that set-equality is what stops a new
+    // generation node shipping without an approved, version-pinned prompt.
+    'agentic.agent',
     'agent.presummarization',
     'agent.summarization',
     'agent.discharge_summary',
@@ -428,6 +447,7 @@ describe('DD-2 document-template binding survives a config-schema round-trip', (
     'agent.summarization': { producesCode: false, onError: 'fail' },
     'agent.discharge_summary': { producesCode: false, onError: 'fail' },
     'generate.text': { taskKey: 'text.finalize' },
+    'agentic.agent': { providerConfigRef: { taskKey: 'text.finalize' } },
     'consultation.synthesize': { producesCode: false, onError: 'fail' },
     'consultation.realtimeSummary': { onError: 'degrade' },
     'consultation.suggestions': { onError: 'degrade' },

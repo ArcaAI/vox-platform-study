@@ -1056,8 +1056,7 @@ export const GROUNDING_POLICY_TARGETS = Object.freeze(['transcript', 'summary', 
  */
 const GROUNDING_POLICIES_PROPERTY = Object.freeze({
   type: 'array',
-  description:
-    'The tenant-authored grounding policies this guard evaluates. Absent or empty means the guard runs its pre-existing pass unchanged.',
+  description: 'The tenant-authored grounding policies this guard evaluates. Absent or empty means the guard runs its pre-existing pass unchanged.',
   items: Object.freeze({
     type: 'object',
     additionalProperties: false,
@@ -1073,7 +1072,8 @@ const GROUNDING_POLICIES_PROPERTY = Object.freeze({
       promptVersionNumber: PROMPT_VERSION_NUMBER_PROPERTY,
       enabled: {
         type: 'boolean',
-        description: 'Turn one policy off without deleting it. Absent is ENABLED — a declared policy that silently did nothing would be worse than no policy.',
+        description:
+          'Turn one policy off without deleting it. Absent is ENABLED — a declared policy that silently did nothing would be worse than no policy.',
       },
     },
   }),
@@ -1112,6 +1112,451 @@ const GUARD_GROUNDEDNESS_SCHEMA: NodeConfigSchema = Object.freeze({
     policies: GROUNDING_POLICIES_PROPERTY,
     onError: CONSULTATION_ON_ERROR,
   },
+});
+
+// ===========================================================================================
+// TASK-847 — the GENERIC (`agentic`) node catalogue
+// ===========================================================================================
+//
+// Program finding F-12: *"Missing: Loop, Data, TTS, and any generic Agent"* — Agent existed only
+// as ~13 FIXED-PURPOSE types (`agent.summarization`, `agent.ner`, …), each of which encodes its
+// behaviour in its KEY. The eight types below encode behaviour in CONFIGURATION instead, which is
+// the whole point: a tenant composes an agent rather than picking one off a shelf. The fixed
+// types stay registered and untouched (a node type is a contract with every saved graph); new
+// work targets these.
+//
+// ## The rule that shapes every schema here: REFERENCES ONLY (§3.4 rule 16)
+//
+// A node config is TENANT GRAPH DATA. A model id, an endpoint, an API key or a deployment name
+// stored in it would be read at run time WITHOUT passing through the tenant → SYSTEM cascade, and
+// — worse, because it is silent — without passing through BYOK funding derivation, which decides
+// `BYOK` vs `CLOUD` from `row.tenantId === SYSTEM_TENANT_ID`. A graph carrying its own endpoint
+// mis-bills every run it serves and nothing fails.
+//
+// So every binding below names a ROW and stops:
+//
+//   providerConfigRef.routingPolicyId  ->  AiRoutingPolicy.id   (connection + model + modelRef)
+//   providerConfigRef.taskKey          ->  the tenant's ELECTED default for that task
+//   tools[].mcpServerId                ->  McpServer.id         (baseUrl + authRef live there)
+//   guards.input/output[]              ->  a node id IN THIS GRAPH
+//   instruction.promptTemplateId       ->  PromptTemplate.id, version-pinned
+//
+// There is deliberately no `provider`, no `model`, no `endpoint`, no `apiKey`, no `baseUrl` and
+// no `headers` key anywhere in this catalogue, and `additionalProperties: false` means one cannot
+// be smuggled in. `__tests__/reference-only.task847.test.ts` proves that mechanically over the
+// whole registry rather than trusting this comment.
+
+/** A UUID reference to a row in another table. Never the row's contents. */
+const ROW_REFERENCE_PROPERTY = Object.freeze({
+  type: 'string',
+  pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+});
+
+/**
+ * The agent node's ONE provider binding, in two mutually exclusive shapes.
+ *
+ * `routingPolicyId` PINS one specific `AiRoutingPolicy` row — the owner's *"agent nodes bind to
+ * exactly one provider configuration"*, taken literally. `taskKey` instead names the TASK and
+ * lets the standard tenant → SYSTEM cascade elect the configuration, which is what a tenant wants
+ * when they mean "whatever we currently use for finalize".
+ *
+ * Both are offered because neither alone is right: pinning a SYSTEM row id in a tenant graph
+ * freezes the platform default and takes the tenant's own override out of the picture, while
+ * task-key resolution alone cannot express "this node, specifically, uses the cheap model".
+ * EXACTLY ONE must be present — `agenticNodeConfigProblems` (`agentic-contract.ts`) enforces
+ * that, because a JSON Schema `oneOf` would need a discriminator the authorable subset requires
+ * and neither shape has a natural one.
+ */
+const PROVIDER_CONFIG_REF_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    routingPolicyId: Object.freeze({
+      ...ROW_REFERENCE_PROPERTY,
+      description:
+        'The `AiRoutingPolicy` row this node generates through — the provider CONFIGURATION (connection + model + modelRef), by id. A REFERENCE: the provider name, the model id, the endpoint and the credential all live on that row and its `AiProviderConnection`, never here. Resolution fails CLOSED on a row that is absent, disabled or owned by another tenant.',
+    }),
+    taskKey: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 64,
+      description:
+        'Resolve the tenant`s ELECTED default configuration for this task key instead of pinning one row — the standard tenant → SYSTEM cascade, widening only on absence. Mutually exclusive with `routingPolicyId`.',
+    }),
+  }),
+  description: 'Which provider configuration serves this node. Exactly one of `routingPolicyId` / `taskKey`.',
+});
+
+/**
+ * The generation hyper-parameters, INCLUDING the two program finding F-12 recorded as absent.
+ *
+ * `frequencyPenalty` and `presencePenalty` are not universally supported — llama.cpp and vLLM
+ * accept them, several managed endpoints do not, and a provider that does not accept one
+ * typically IGNORES it rather than erroring. Silently dropping a parameter a clinician tuned is
+ * worse than refusing it, so these are CAPABILITY-GATED: `hyperparameterCapabilityProblems`
+ * (`agentic-contract.ts`) refuses a graph that sets a parameter the bound provider configuration
+ * does not declare support for. The gate lives there and not here because the capability set is
+ * DATA (it comes off the resolved provider row) and this package is pure.
+ *
+ * Ranges follow the OpenAI-compatible convention every adapter in this platform speaks; they are
+ * a floor on nonsense, not a claim that every provider accepts the whole range. The real CEILING
+ * is a platform-admin descriptor enforced in `apps/text` (ticket step 5) — vLLM's
+ * `--override-generation-config` sets DEFAULTS and the caller wins, so an engine-side ceiling is
+ * not a ceiling at all.
+ */
+const GENERATION_HYPERPARAMETERS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    temperature: Object.freeze({ type: 'number', minimum: 0, maximum: 2 }),
+    maxTokens: Object.freeze({ type: 'integer', minimum: 1, maximum: 1048576 }),
+    topP: Object.freeze({ type: 'number', minimum: 0, maximum: 1 }),
+    frequencyPenalty: Object.freeze({
+      type: 'number',
+      minimum: -2,
+      maximum: 2,
+      description: 'Capability-gated: refused at publish when the bound provider configuration does not declare support for it.',
+    }),
+    presencePenalty: Object.freeze({
+      type: 'number',
+      minimum: -2,
+      maximum: 2,
+      description: 'Capability-gated: refused at publish when the bound provider configuration does not declare support for it.',
+    }),
+    stopSequences: Object.freeze({ type: 'array', maxItems: 8, items: Object.freeze({ type: 'string', minLength: 1, maxLength: 128 }) }),
+    seed: Object.freeze({ type: 'integer', minimum: 0, maximum: 2147483647 }),
+  }),
+  description: 'Generation hyper-parameters. Every key is capability-gated against the bound provider configuration — never silently dropped.',
+});
+
+/**
+ * The agent's TOOL bindings — the owner's *"tenant admin can set some tools for agents to call"*,
+ * which `WorkflowNodeDescriptor` had nowhere to hold (F-12: *"zero tool/MCP fields"*).
+ *
+ * A binding is `(mcpServerId, toolName)` and NOTHING else, and the omissions are the design.
+ * TASK-846 delivered the tenant-scoped `McpServer` registry: `baseUrl`, `transport`, `authRef`
+ * (a Vault reference, never a secret), `toolAllowlist`, `phiBoundary` and `enabled` all live on
+ * that row, behind a deny-by-default SSRF egress guard. A `baseUrl` on a graph node would route
+ * around every one of those — the guard, the allowlist, the PHI boundary and the enabled flag —
+ * so the graph names the row and the ACTIVITY resolves it.
+ */
+const AGENT_TOOLS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'array',
+  maxItems: 32,
+  items: Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    required: Object.freeze(['mcpServerId', 'toolName']),
+    properties: Object.freeze({
+      mcpServerId: Object.freeze({
+        ...ROW_REFERENCE_PROPERTY,
+        description:
+          'The tenant`s `McpServer` row (TASK-846). Its `baseUrl`/`authRef`/`toolAllowlist`/`enabled` are resolved in the activity; a disabled row FAILS CLOSED.',
+      }),
+      toolName: Object.freeze({ type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.:-]{1,128}$' }),
+    }),
+  }),
+  description: 'Tools this agent may call, as (server, tool) REFERENCES. Never a URL, a header or a credential.',
+});
+
+/** A reference to another node IN THE SAME GRAPH. Guard attachment is a graph fact. */
+const NODE_ID_REFERENCE_LIST = Object.freeze({
+  type: 'array',
+  maxItems: 8,
+  items: Object.freeze({ type: 'string', pattern: '^[a-z0-9_]{2,48}$' }),
+});
+
+/**
+ * The owner's *"optional guardrail nodes on input/output"*. Guards are NODES in the graph, and
+ * this names which ones wrap this agent — so the guardrail's own configuration, its policy
+ * binding and its verdict all stay on the guard node where the rule catalogue can already see
+ * them, rather than being duplicated into the agent's config.
+ */
+const AGENT_GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    input: NODE_ID_REFERENCE_LIST,
+    output: NODE_ID_REFERENCE_LIST,
+  }),
+  description: 'Guardrail NODE ids in this graph that wrap this agent`s input / output. References, checked at publish.',
+});
+
+/** A tenant-authored JSON Schema, carried verbatim. Validated by `authorableJsonSchemaProblems`
+ *  at publish (the same subset a `ConsultationContextSchema` is bound by) and enforced again at
+ *  the node boundary at run time — TIER 3, where correctness actually lives. */
+const TENANT_IO_SCHEMA_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  description: 'A tenant-defined JSON Schema (authorable subset) describing the payload crossing this boundary.',
+});
+
+const AGENTIC_INPUT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.input.schema.json',
+  title: 'agentic.input node config — the graph`s typed entry point',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['ioSchema']),
+  properties: Object.freeze({
+    ioSchema: TENANT_IO_SCHEMA_PROPERTY,
+    sourceKey: Object.freeze({
+      type: 'string',
+      pattern: '^[a-z0-9_]{2,48}$',
+      description: 'Which key of the run payload this node binds. Defaults to the whole payload.',
+    }),
+  }),
+});
+
+const AGENTIC_OUTPUT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.output.schema.json',
+  title: 'agentic.output node config — the graph`s typed exit point',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['ioSchema']),
+  properties: Object.freeze({
+    ioSchema: TENANT_IO_SCHEMA_PROPERTY,
+    onSchemaViolation: Object.freeze({
+      type: 'string',
+      enum: Object.freeze(['fail', 'degrade']),
+      default: 'fail',
+      description:
+        'TIER 3. `fail` refuses to emit a payload that does not match the declared schema; `degrade` emits it and marks the node DEGRADED. Never silently emits a mismatch.',
+    }),
+  }),
+});
+
+const AGENTIC_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.agent.schema.json',
+  title: 'agentic.agent node config — the GENERIC agent (behaviour is configuration, not type)',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['providerConfigRef']),
+  properties: Object.freeze({
+    providerConfigRef: PROVIDER_CONFIG_REF_PROPERTY,
+    // The INSTRUCTION prompt, as an APPROVED, version-pinned template reference — the same
+    // binding every generation node already carries (DD-11), spread whole so this node cannot
+    // fall out of step with the group. It brings `evalGate` (OD-11) with it, which is the point:
+    // the golden-set gate binds to the NODE, and a generic agent is the node most in need of one.
+    // `systemPrompt` stays available for the un-templated case and is capped, but a template is
+    // the supported path — free text on a node has no approval workflow and no version history.
+    ...PROMPT_BINDING_PROPERTIES,
+    // DD-2. A generic agent is `generation`-classed, and every generation-classed node carries
+    // the document-SHAPE binding (`node-config-schemas.test.ts` asserts that as a set equality).
+    // It is also what makes one composed agent a discharge summary and another a note without
+    // forking the model call — the same argument `agent.discharge_summary` records.
+    ...DOCUMENT_BINDING_PROPERTIES,
+    systemPrompt: Object.freeze({ type: 'string', maxLength: 50000 }),
+    generation: GENERATION_HYPERPARAMETERS_PROPERTY,
+    guards: AGENT_GUARDS_PROPERTY,
+    tools: AGENT_TOOLS_PROPERTY,
+    responseFormat: Object.freeze({ type: 'string', enum: Object.freeze(['text', 'json', 'json_schema']) }),
+    responseSchema: TENANT_IO_SCHEMA_PROPERTY,
+    onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
+  }),
+});
+
+const AGENTIC_GUARDRAIL_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.guardrail.schema.json',
+  title: 'agentic.guardrail node config — the generic guardrail, bound to a tenant policy',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['guardrailType', 'onFail']),
+  properties: Object.freeze({
+    // A guardrail TYPE is a policy key `apps/guardrail` resolves per tenant — never a model id,
+    // never a threshold literal. The threshold and the label taxonomy ride on the AiModel row
+    // the tenant → SYSTEM cascade selected (TASK-735 phases 3 & 6).
+    guardrailType: Object.freeze({ type: 'string', minLength: 1, maxLength: 64 }),
+    failOn: Object.freeze({ type: 'string', enum: Object.freeze(['unsafe_or_unknown']), default: 'unsafe_or_unknown' }),
+    // `abort` is deliberately absent for the reason `GUARDRAIL_CHECK_SCHEMA` records at length:
+    // no v1 mechanism promotes a per-node config value over the code-owned `critical` registry
+    // property, so accepting it would be a promise the runtime cannot keep.
+    onFail: Object.freeze({ type: 'string', enum: Object.freeze(['mark']) }),
+  }),
+});
+
+/**
+ * The DATA node — a deterministic reshape between two schemas, and the tier-2 ESCAPE HATCH.
+ *
+ * Tier 2 (`schema-compat.ts`) WARNS when a producer's declared output shape does not obviously
+ * satisfy a consumer's declared input shape. The warning is only useful if there is something to
+ * do about it, and this is that something: drop a Data node on the edge and map the fields. That
+ * is why the mapping language is deliberately tiny — dotted reads, renamed writes, literal
+ * constants. Anything richer is a transformation language, which is a second place for tenant
+ * logic to live and a second thing to audit.
+ */
+const AGENTIC_DATA_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.data.schema.json',
+  title: 'agentic.data node config — deterministic reshape, the tier-2 escape hatch',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['mappings']),
+  properties: Object.freeze({
+    mappings: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 64,
+      items: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['from', 'to']),
+        properties: Object.freeze({
+          from: Object.freeze({ type: 'string', minLength: 1, maxLength: 256, description: 'Dotted path into this node`s bound inputs.' }),
+          to: Object.freeze({ type: 'string', pattern: '^[a-z0-9_]{2,48}$', description: 'Key on this node`s output object.' }),
+          required: Object.freeze({
+            type: 'boolean',
+            default: false,
+            description: 'An unresolved REQUIRED mapping degrades the node observably; an optional one is simply absent.',
+          }),
+        }),
+      }),
+    }),
+    constants: Object.freeze({
+      type: 'object',
+      description: 'Literal values merged into the output. Non-secret by construction: this is graph data.',
+    }),
+    outputSchema: TENANT_IO_SCHEMA_PROPERTY,
+  }),
+});
+
+/**
+ * The LOOP node's bounds — THREE axes, and the third is the one the owner's specification did
+ * not name.
+ *
+ * `maxIterations` and `maxDurationSeconds` bound the schedule. Neither bounds the INVOICE: fifty
+ * iterations of a large model is an unbounded bill that completes successfully, on time, and
+ * looks like a healthy run. `maxTotalTokens` is the cost ceiling, and it is REQUIRED for exactly
+ * that reason — an optional ceiling is one nobody sets.
+ *
+ * `maxDurationSeconds` is spent as a TEMPORAL WORKFLOW TIMER (`workflow.sleep` /
+ * `asyncio.wait_for` on the workflow clock), never as wall-clock. Reading a wall clock inside
+ * `@workflow.defn` is non-deterministic and breaks replay — the run would take a different number
+ * of iterations the second time history is fed through it, which for a clinical pipeline means a
+ * completed run that cannot be reproduced. TASK-848 owns the enforcement; this declares what it
+ * must enforce.
+ *
+ * `noProgressIterations` is the fourth stop condition and the one that catches the common failure
+ * an iteration cap does not: an orchestrator that has converged and is now paraphrasing itself
+ * burns the whole budget to reach the same answer.
+ */
+const AGENTIC_LOOP_BOUNDS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['maxIterations', 'maxDurationSeconds', 'maxTotalTokens']),
+  properties: Object.freeze({
+    maxIterations: Object.freeze({ type: 'integer', minimum: 1, maximum: 100 }),
+    maxDurationSeconds: Object.freeze({
+      type: 'integer',
+      minimum: 1,
+      maximum: 3600,
+      description: 'Spent as a Temporal WORKFLOW TIMER, never wall-clock — a wall-clock read inside a workflow breaks replay determinism.',
+    }),
+    maxTotalTokens: Object.freeze({
+      type: 'integer',
+      minimum: 1,
+      maximum: 4000000,
+      description:
+        'The COST ceiling, summed across every iteration and every sub-agent. Required: an iteration cap bounds the schedule, not the invoice.',
+    }),
+    noProgressIterations: Object.freeze({
+      type: 'integer',
+      minimum: 1,
+      maximum: 20,
+      default: 2,
+      description: 'Stop after this many consecutive iterations that produce no change in the orchestrator`s working state.',
+    }),
+  }),
+});
+
+const AGENTIC_LOOP_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.loop.schema.json',
+  title: 'agentic.loop node config — orchestrator + sub-agents, bounded on three axes',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['bounds', 'orchestratorNodeId']),
+  properties: Object.freeze({
+    bounds: AGENTIC_LOOP_BOUNDS_PROPERTY,
+    orchestratorNodeId: Object.freeze({
+      type: 'string',
+      pattern: '^[a-z0-9_]{2,48}$',
+      description: 'The MASTER agent node in this graph. A node REFERENCE.',
+    }),
+    subAgentNodeIds: NODE_ID_REFERENCE_LIST,
+    // The Loop node earns its existence only for RUNTIME-UNKNOWN step counts (TASK-848 step 2):
+    // chaining, routing, sectioning and voting are all graph SHAPES and need no loop.
+    terminationKey: Object.freeze({
+      type: 'string',
+      pattern: '^[a-z0-9_]{2,48}$',
+      description: 'Key on the orchestrator`s output whose truthiness ends the loop early.',
+    }),
+  }),
+});
+
+const AGENTIC_STT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.stt.schema.json',
+  title: 'agentic.stt node config — BATCH transcription of a stored artifact',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['pipelineRef']),
+  properties: Object.freeze({
+    // The published `stt`-palette definition compiles to an `AsrPipeline` row (TASK-724 §1); this
+    // node names that row. Engine, model, language pack and every threshold live on it — none of
+    // them are authorable here, which is what keeps STT selection inside the same cascade every
+    // other model selection uses.
+    pipelineRef: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        pipelineId: Object.freeze({
+          ...ROW_REFERENCE_PROPERTY,
+          description: 'An `AsrPipeline` row id. A REFERENCE — never an engine name or a model id.',
+        }),
+        pipelineSlug: Object.freeze({
+          type: 'string',
+          minLength: 1,
+          maxLength: 128,
+          description: 'Resolve the tenant`s pipeline by slug through the tenant → SYSTEM cascade instead of pinning an id.',
+        }),
+      }),
+      description: 'Which ASR pipeline transcribes. Exactly one of `pipelineId` / `pipelineSlug`.',
+    }),
+    language: Object.freeze({
+      type: 'string',
+      minLength: 2,
+      maxLength: 16,
+      description: 'BCP-47 hint. Absent means the pipeline`s own language detection decides.',
+    }),
+    pollTimeoutSeconds: Object.freeze({ type: 'integer', minimum: 1, maximum: 3600, default: 900 }),
+  }),
+});
+
+const AGENTIC_TTS_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/agentic.tts.schema.json',
+  title: 'agentic.tts node config — speech synthesis to a stored artifact (OD-4)',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['providerConfigRef']),
+  properties: Object.freeze({
+    // Same binding shape as the agent node, and for the same reason: a voice is served by a
+    // provider configuration, so the connection, the model and the credential resolve through the
+    // tenant → SYSTEM cascade rather than being named here.
+    providerConfigRef: PROVIDER_CONFIG_REF_PROPERTY,
+    voiceRef: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 128,
+      description: 'A voice IDENTIFIER within the bound configuration`s catalogue — resolved against it, never an endpoint.',
+    }),
+    language: Object.freeze({ type: 'string', minLength: 2, maxLength: 16 }),
+    format: Object.freeze({ type: 'string', enum: Object.freeze(['wav', 'mp3', 'ogg', 'pcm']) }),
+    speed: Object.freeze({ type: 'number', minimum: 0.25, maximum: 4 }),
+  }),
 });
 
 /**
@@ -1185,6 +1630,17 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'guard.phi': CONSULTATION_PHI_HOP_SCHEMA,
   'guard.moderation': GUARDRAIL_CHECK_SCHEMA,
   'guard.groundedness': GUARD_GROUNDEDNESS_SCHEMA,
+  // TASK-847 — the GENERIC catalogue. Behaviour is configuration, not type; every binding is a
+  // ROW REFERENCE. See the block above `ROW_REFERENCE_PROPERTY` for why nothing here names a
+  // provider, a model, an endpoint or a credential.
+  'agentic.input': AGENTIC_INPUT_SCHEMA,
+  'agentic.output': AGENTIC_OUTPUT_SCHEMA,
+  'agentic.agent': AGENTIC_AGENT_SCHEMA,
+  'agentic.guardrail': AGENTIC_GUARDRAIL_SCHEMA,
+  'agentic.data': AGENTIC_DATA_SCHEMA,
+  'agentic.loop': AGENTIC_LOOP_SCHEMA,
+  'agentic.stt': AGENTIC_STT_SCHEMA,
+  'agentic.tts': AGENTIC_TTS_SCHEMA,
 });
 
 // ===========================================================================================
@@ -1409,7 +1865,5 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  * `GET /admin/workflow-nodes` serves, and what the Studio inspector compiles into fields.
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
-  Object.fromEntries(
-    Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withLlmBinding(withRuntimeProperties(key, schema))]),
-  ),
+  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withLlmBinding(withRuntimeProperties(key, schema))])),
 );
