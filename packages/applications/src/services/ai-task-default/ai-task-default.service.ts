@@ -5,9 +5,13 @@ import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaa
 import {
   AiModelEntity,
   AiModelRepository,
+  AiRoutingPolicyFactory,
+  AiRoutingPolicyRepository,
+  AiRoutingPolicyStatus,
   AiTaskDefaultFactory,
   AiTaskDefaultRepository,
   CoreDatabaseService,
+  CoreUnitOfWorkService,
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
@@ -19,6 +23,7 @@ import { IAiTaskDefaultService } from './IAiTaskDefaultService';
 import { AiTaskDefaultDtoMapper } from './ai-task-default.dto.mapper';
 import {
   AI_TASK_KEYS,
+  AI_TASK_KIND_BY_TASK_KEY,
   AI_TASK_MODEL_TASK_TYPES,
   AiTaskKey,
   SUPER_ADMIN_ONLY_TASK_PREFIXES,
@@ -29,6 +34,20 @@ import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultRespon
 
 /**
  * "Default model for task X" service.
+ *
+ * ## ⚠ RETIRED BY TASK-844 (owner decision OD-3, 2026-09-01)
+ *
+ * `AiRoutingPolicy` is now the source of truth for "which provider + model
+ * serves task X for tenant Y". This service survives one release as the READ
+ * COMPATIBILITY surface for the ~11 TypeScript runtime resolvers and — critically
+ * — for `apps/guardrail`, which reads `core."AiTaskDefault"` over its own
+ * read-only SQL connection and which no TypeScript change can repoint.
+ *
+ * To stop the two from drifting, {@link upsertRow} WRITES THROUGH: the
+ * `AiTaskDefault` row and its `AiRoutingPolicy` counterpart are written in ONE
+ * transaction. This is a strangler-fig transition with a stated end condition
+ * (see the RETIRED banner on `ai-task-default.prisma`), not a second home for
+ * the data. Do not add a new writer.
  *
  * Effective resolution for SUPER_ADMIN-only keys (`nlp.*`, `harness.*`) is
  * SYSTEM-row-only (tenant override rows are ignored at read time). Writes to
@@ -56,6 +75,11 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     // r2605 Finding A — the UNSCOPED base client backs the cross-tenant lane
     // (mirrors `HarnessPolicyService`'s injection of the same token).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // TASK-844 write-through. Both REQUIRED, not optional: degrading silently
+    // to a single-table write is exactly the drift this transition exists to
+    // make impossible.
+    private readonly aiRoutingPolicyRepository: AiRoutingPolicyRepository,
+    private readonly unitOfWork: CoreUnitOfWorkService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -173,7 +197,13 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
         configJson: dto.configJson ?? null,
         createdBy: this.requestUserId ?? undefined,
       });
-      const saved = await this.aiTaskDefaultRepository.create(entity, tx);
+      // TASK-844 write-through: the retired projection and the authoritative
+      // `AiRoutingPolicy` row commit TOGETHER, so they cannot diverge.
+      const saved = await this.unitOfWork.runInTransaction(async (trx) => {
+        const row = await this.aiTaskDefaultRepository.create(entity, trx);
+        await this.mirrorToRoutingPolicy(scopedTenantId, taskKey, model, dto.configJson ?? null, trx);
+        return row;
+      });
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: saved.id,
         createdAt: saved.createdAt,
@@ -212,7 +242,12 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
       return AiTaskDefaultDtoMapper.toResponse(existing);
     }
     const previousVersion = existing.version;
-    const updated = await this.aiTaskDefaultRepository.updateWithVersion(existing.id, existing, dto.expectedVersion, tx);
+    // TASK-844 write-through — same transaction as the create path above.
+    const updated = await this.unitOfWork.runInTransaction(async (trx) => {
+      const row = await this.aiTaskDefaultRepository.updateWithVersion(existing.id, existing, dto.expectedVersion, trx);
+      await this.mirrorToRoutingPolicy(scopedTenantId, taskKey, model, dto.configJson ?? null, trx);
+      return row;
+    });
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       data: { taskKey, modelSlug: updated.modelSlug, previousVersion, newVersion: updated.version },
@@ -221,6 +256,63 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   }
 
   // ────────────────────────────── internals ──────────────────────────────
+
+  /**
+   * TASK-844 write-through — project this `AiTaskDefault` row onto its
+   * authoritative `AiRoutingPolicy` counterpart.
+   *
+   * An `AiTaskDefault` row IS an elected default by definition (that is the
+   * whole content of finding F-7), so the projection is the `isDefault = true`
+   * configuration for `(tenantId, taskKey)`.
+   *
+   * Runs INSIDE the caller's transaction so the two tables commit together. The
+   * `clearDefaultFor` call is what keeps the partial unique index satisfiable —
+   * without it a second election for the same selection would be refused by the
+   * database and take the `AiTaskDefault` write down with it.
+   *
+   * ⚠ It writes `modelId`, not `modelSlug`. Resolving the slug to a catalogue
+   * FK here is the point: it is the string join finding F-6 named, performed
+   * once at write time instead of on every read. A slug that resolves to
+   * nothing cannot happen — `upsertRow` has already refused the request by then.
+   */
+  private async mirrorToRoutingPolicy(tenantId: string, taskKey: string, model: AiModelEntity, configJson: unknown, tx: unknown): Promise<void> {
+    const existing = await this.aiRoutingPolicyRepository.findCandidates([tenantId], taskKey, tx, {
+      activeOnly: false,
+      enabledOnly: false,
+    });
+    const elected = existing.find((row) => row.isDefault);
+
+    if (elected) {
+      elected.modelId = model.id;
+      elected.displayName = model.slug;
+      elected.configJson = (configJson ?? null) as never;
+      if (this.requestUserId) elected.updatedBy = this.requestUserId;
+      await this.aiRoutingPolicyRepository.updateWithVersion(elected.id, elected, elected.version, tx);
+      return;
+    }
+
+    // No counterpart yet — this selection predates the absorption, or the row
+    // was created outside the migration. Free the election slot first, then
+    // create, so the partial unique index cannot refuse the insert.
+    await this.aiRoutingPolicyRepository.clearDefaultFor(tenantId, taskKey, null, tx, this.requestUserId ?? undefined);
+    const entity = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
+      tenantId,
+      taskKey,
+      taskKind: AI_TASK_KIND_BY_TASK_KEY[taskKey as AiTaskKey] ?? null,
+      displayName: model.slug,
+      modelId: model.id,
+      isDefault: true,
+      enabled: true,
+      configJson: (configJson ?? null) as never,
+      // ACTIVE, not DRAFT: an `AiTaskDefault` row serves the moment it is
+      // written, so its projection must too — landing it as a DRAFT would make
+      // the authoritative table disagree with the live selection.
+      status: AiRoutingPolicyStatus.ACTIVE,
+      activatedAt: new Date(),
+      createdBy: this.requestUserId ?? undefined,
+    });
+    await this.aiRoutingPolicyRepository.create(entity, tx);
+  }
 
   /**
    * r2605 Finding A — the cross-tenant persistence lane.

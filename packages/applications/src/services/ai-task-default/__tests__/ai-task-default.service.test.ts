@@ -61,8 +61,26 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
   };
   // r2605 Finding A — the UNSCOPED base client the cross-tenant lane routes through.
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  const svc = new AiTaskDefaultService(repo as any, modelRepo as any, db as any, emitter as any, cls as any);
-  return { svc, repo, modelRepo, emitter, db };
+  // TASK-844 write-through — `upsertRow` now writes the retired projection and
+  // its authoritative `AiRoutingPolicy` counterpart in ONE transaction.
+  const routingRepo = {
+    findCandidates: vi.fn().mockResolvedValue([]),
+    clearDefaultFor: vi.fn().mockResolvedValue(0),
+    create: vi.fn().mockImplementation(async (entity: any) => entity),
+    updateWithVersion: vi.fn().mockImplementation(async (_id: string, entity: any) => entity),
+  };
+  const trx = { $lane: 'transaction' };
+  const unitOfWork = { runInTransaction: vi.fn().mockImplementation(async (work: any) => work(trx)) };
+  const svc = new AiTaskDefaultService(
+    repo as any,
+    modelRepo as any,
+    db as any,
+    routingRepo as any,
+    unitOfWork as any,
+    emitter as any,
+    cls as any,
+  );
+  return { svc, repo, modelRepo, emitter, db, routingRepo, unitOfWork, trx };
 }
 
 describe('AiTaskDefaultService — getEffective', () => {
@@ -230,8 +248,12 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
 
     expect(res.tenantId).toBe(TENANT);
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    // Same-tenant caller → scoped path (no cross-tenant base-client lane).
-    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), undefined);
+    // TASK-844 — the write-through runs BOTH tables in one transaction, so
+    // every write now carries the transaction client rather than `undefined`.
+    // `runInTransaction` opens it on `databaseService.baseClient`, so the
+    // client is still UNSCOPED; the entity's own `tenantId` (pinned to the
+    // caller's CLS tenant by `resolveScopedTenantId`) is what bounds the write.
+    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), ctx.trx);
   });
 
   it('accepts an text.finalize.fallback write from a tenant admin', async () => {
@@ -414,8 +436,8 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
 
     await ctx.svc.upsertRow('nlp.classification', { modelSlug: 'symps-disease-bert-v3-c41', expectedVersion: 1 });
 
-    // Same-tenant caller → the scoped path (no base-client tx).
-    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, undefined);
+    // TASK-844 write-through — see the create-path note above.
+    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
     expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
   });
 
@@ -526,7 +548,10 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
     const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
 
     expect(res.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }), ctx.db.baseClient);
+    // TASK-844 — still the UNSCOPED client, now reached through the
+    // transaction `runInTransaction` opens on it. The cross-tenant lane
+    // guarantee this test exists for is intact.
+    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }), ctx.trx);
   });
 
   it('upsert CAS targeting SYSTEM under working tenant W runs updateWithVersion through the base client (no eternal 412)', async () => {
@@ -538,7 +563,8 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
 
     await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 1 }, SYSTEM_TENANT_ID);
 
-    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.db.baseClient);
+    // TASK-844 — unscoped, and now transactional. See the note above.
+    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
   });
 
   it('super admin with an EMPTY CLS tenant (not elevated) also uses the base-client lane', async () => {
@@ -557,5 +583,78 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
     await ctx.svc.getRow('nlp.ner');
 
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'nlp.ner', undefined);
+  });
+});
+
+describe('AiTaskDefaultService — TASK-844 write-through to AiRoutingPolicy', () => {
+  /**
+   * The invariant this suite exists for: `AiTaskDefault` is RETIRED but still
+   * read (by ~11 TypeScript resolvers and by `apps/guardrail`'s direct SQL), so
+   * every write to it must land in the authoritative table too — in the SAME
+   * transaction, or the two can diverge on a partial failure.
+   */
+  it('writes BOTH tables inside ONE transaction on a create', async () => {
+    const { svc, repo, modelRepo, routingRepo, unitOfWork, trx } = makeService({ roles: ['SUPER_ADMIN'] });
+    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
+    modelRepo.findBySlug.mockResolvedValue(model);
+    repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    repo.create.mockImplementation(async (entity: any) => entity);
+
+    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
+
+    expect(unitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
+    // Both writes carry the SAME transaction client.
+    expect(repo.create.mock.calls[0][1]).toBe(trx);
+    expect(routingRepo.create.mock.calls[0][1]).toBe(trx);
+  });
+
+  it('projects the row as an ELECTED default carrying the catalogue FK, not the slug', async () => {
+    // The point of the projection: the by-slug join (finding F-6) is performed
+    // ONCE at write time and stored as `modelId`, so the authoritative table
+    // never has to repeat it.
+    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
+    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
+    modelRepo.findBySlug.mockResolvedValue(model);
+    repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    repo.create.mockImplementation(async (entity: any) => entity);
+
+    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
+
+    const projected = routingRepo.create.mock.calls[0][0];
+    expect(projected.modelId).toBe(model.id);
+    expect(projected.isDefault).toBe(true);
+    // ACTIVE, not DRAFT — an AiTaskDefault row serves the moment it is written,
+    // so its projection must too.
+    expect(projected.status).toBe('ACTIVE');
+    // Derived from the task key, never chosen.
+    expect(projected.taskKind).toBe('NAMED_ENTITY_RECOGNITION');
+  });
+
+  it('frees the election slot before inserting, so the partial unique index cannot refuse it', async () => {
+    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
+    modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
+    repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    repo.create.mockImplementation(async (entity: any) => entity);
+
+    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
+
+    expect(routingRepo.clearDefaultFor).toHaveBeenCalled();
+    expect(routingRepo.clearDefaultFor.mock.invocationCallOrder[0]).toBeLessThan(routingRepo.create.mock.invocationCallOrder[0]);
+  });
+
+  it('UPDATES the existing counterpart rather than creating a second one', async () => {
+    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
+    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
+    modelRepo.findBySlug.mockResolvedValue(model);
+    const existingRow = makeRow({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'old-model' });
+    repo.findByTenantAndTaskKey.mockResolvedValue(existingRow);
+    repo.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
+    routingRepo.findCandidates.mockResolvedValue([{ id: 'rp1', isDefault: true, version: 1, modelId: 'old', displayName: 'old' }]);
+
+    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: existingRow.version } as any, TENANT);
+
+    expect(routingRepo.updateWithVersion).toHaveBeenCalledTimes(1);
+    expect(routingRepo.create).not.toHaveBeenCalled();
+    expect(routingRepo.updateWithVersion.mock.calls[0][1].modelId).toBe(model.id);
   });
 });

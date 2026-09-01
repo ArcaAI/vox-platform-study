@@ -5,6 +5,7 @@ import {
   EffectiveRoutingPolicyResponse,
   IActiveUserContext,
   IAiRoutingPolicyService,
+  ProviderConfigurationExport,
   UpdateAiRoutingPolicyRequest,
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
@@ -267,6 +268,118 @@ export class AiRoutingPolicyAdminController {
   @ApiResponse({ status: 404, description: 'No such policy in the resolved tenant.' })
   async deleteById(@Param('id') id: string, @Query('tenantId') tenantId?: string): Promise<AiRoutingPolicyResponse> {
     return this.routingPolicyService.deleteById(id, this.resolveTenantId(tenantId));
+  }
+
+  // AUTH-NOTE: SUPER_ADMIN-only, imperatively in the service (403); a foreign
+  // configuration id is 404.
+  @Post(':id/default')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Elect this configuration as the default for its task',
+    description:
+      'ATOMIC: the incumbent default for the same (tenant, taskKey) is unset and this row set INSIDE ONE transaction, so the selection is never ' +
+      'observable without a default — which matters because model selection is fail-closed, making that window an outage rather than a degraded ' +
+      'state. A PostgreSQL partial unique index enforces "at most one default per selection" in the database, so two administrators electing ' +
+      'different rows concurrently cannot both win. Idempotent: re-electing the current default returns 200 and writes nothing. `If-Match` (RFC 7232) ' +
+      'carries the version read from the prior GET: drift → 412, missing → 428.',
+  })
+  @ApiParam({ name: 'id', description: 'Configuration id (uuid7) to elect' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Target tenant.' })
+  @ApiHeader({ name: 'If-Match', description: 'RFC 7232 strong validator carrying the version the client read.', required: true, example: '"1"' })
+  @ApiResponse({ status: 201, type: AiRoutingPolicyResponse })
+  @ApiResponse({ status: 400, description: 'The configuration is disabled or deleted and cannot be elected.' })
+  @ApiResponse({ status: 403, description: 'Routing configurations are managed by super administrators only.' })
+  @ApiResponse({ status: 404, description: 'No such configuration in the resolved tenant.' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async setDefault(
+    @Param('id') id: string,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<AiRoutingPolicyResponse> {
+    return this.routingPolicyService.setDefault(id, this.resolveTenantId(tenantId), expectedFromHeader);
+  }
+
+  // AUTH-NOTE: SUPER_ADMIN-only, imperatively in the service (403); a foreign
+  // configuration id is 404. The actor must administer BOTH tenants, which the
+  // super-admin gate satisfies by construction.
+  @Post(':id/promote')
+  @ApiOperation({
+    summary: 'Copy a configuration to another tenant',
+    description:
+      'NO CREDENTIAL IS COPIED. The copy re-points at the TARGET tenant own connection for the same (service, provider) through the standard ' +
+      'tenant → SYSTEM cascade; a target with no such connection lands with none and must supply one (or inherit the platform default). The copy ' +
+      'always lands as a DRAFT and is NEVER elected as the default, because promotion offers a configuration — it does not switch a tenant traffic. ' +
+      'Elect it afterwards with POST :id/default.',
+  })
+  @ApiParam({ name: 'id', description: 'Configuration id (uuid7) to copy' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'SOURCE tenant that owns the configuration.' })
+  @ApiQuery({ name: 'targetTenantId', required: true, description: 'TARGET tenant to copy it into. Must differ from the source.' })
+  @ApiResponse({ status: 201, type: AiRoutingPolicyResponse })
+  @ApiResponse({ status: 400, description: 'Source and target tenant are the same.' })
+  @ApiResponse({ status: 403, description: 'Routing configurations are managed by super administrators only.' })
+  @ApiResponse({ status: 404, description: 'No such configuration in the resolved source tenant.' })
+  async promote(
+    @Param('id') id: string,
+    @Query('targetTenantId') targetTenantId: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<AiRoutingPolicyResponse> {
+    if (!targetTenantId) {
+      throw new BadRequestException('`targetTenantId` is required — promotion must name the tenant to copy the configuration into.');
+    }
+    return this.routingPolicyService.promote(id, this.resolveTenantId(tenantId), targetTenantId);
+  }
+
+  // AUTH-NOTE: SUPER_ADMIN-only, imperatively in the service (403).
+  @Get('export')
+  @ApiOperation({
+    summary: 'Export provider configurations as portable JSON',
+    description:
+      'The artifact carries NO credential material and no characters of any key. Each configuration that needs a secret carries a `credentialRef` ' +
+      'LOCATOR — built only from (service, provider, keyVersion) — naming WHICH credential an importing operator must supply out of band. ' +
+      'Deliberately not a "last 4": four known characters of a live vendor key are a partial disclosure, not a mask, and producing one would ' +
+      'require decrypting a key on a path whose entire purpose is to not handle key material. The finished artifact is re-checked structurally ' +
+      'before it is returned.',
+  })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Tenant whose configurations to export.' })
+  @ApiQuery({ name: 'taskKeys', required: false, description: 'Comma-separated task keys to limit the export to. Omit for every configuration.' })
+  @ApiResponse({ status: 200, description: 'A secret-free provider-configuration artifact.' })
+  @ApiResponse({ status: 400, description: 'An unknown task key was named.' })
+  @ApiResponse({ status: 403, description: 'Routing configurations are managed by super administrators only.' })
+  async exportConfigurations(
+    @Query('tenantId') tenantId?: string,
+    @Query('taskKeys') taskKeys?: string,
+  ): Promise<ProviderConfigurationExport> {
+    const keys = taskKeys
+      ? taskKeys
+          .split(',')
+          .map((k) => k.trim())
+          .filter(Boolean)
+      : undefined;
+    keys?.forEach((key) => this.assertKnownTaskKey(key));
+    return this.routingPolicyService.exportConfigurations(this.resolveTenantId(tenantId), keys);
+  }
+
+  // AUTH-NOTE: SUPER_ADMIN-only, imperatively in the service (403).
+  @Post('import')
+  @ApiOperation({
+    summary: 'Import provider configurations from an exported artifact',
+    description:
+      'An import can NEVER restore a credential — the artifact carries none. Configurations bind to the TARGET tenant own connection for the named ' +
+      '(service, provider); where the source had a credential and the target has no connection, the row still lands and its `credentialRef` is ' +
+      'returned in `requiresCredential` so the operator is told which secrets to supply rather than discovering it as a 503 later. Models are ' +
+      'matched by SLUG on the tenant → SYSTEM cascade; a slug that resolves to nothing is SKIPPED, never guessed. Every imported row lands as a ' +
+      'DRAFT and is NEVER elected, so an import cannot unseat a default the target tenant already chose.',
+  })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Tenant to import the configurations into.' })
+  @ApiResponse({ status: 201, description: 'Counts of imported and skipped configurations, plus the credential locators still to be supplied.' })
+  @ApiResponse({ status: 400, description: 'Unrecognised artifact format, or an unknown task key.' })
+  @ApiResponse({ status: 403, description: 'Routing configurations are managed by super administrators only.' })
+  async importConfigurations(
+    @Body() artifact: ProviderConfigurationExport,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<{ imported: number; skipped: number; requiresCredential: string[] }> {
+    return this.routingPolicyService.importConfigurations(this.resolveTenantId(tenantId), artifact);
   }
 
   /** 400 for anything outside the fixed task-key registry (defense before the service re-checks). */

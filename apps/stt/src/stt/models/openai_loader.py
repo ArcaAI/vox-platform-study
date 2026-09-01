@@ -1,8 +1,8 @@
 """OpenAI speech-to-text loader (cloud REST ASR engine).
 
 Mirrors :mod:`stt.models.sarvam_loader`: downloads no weights,
-resolves the API key (per-tenant override first, then ``OPENAI_API_KEY`` env),
-and returns a ``LoadedModel`` whose ``.model`` is a :class:`CloudRestConfig`.
+resolves the API key from the gateway-injected ``provider_overrides`` entry
+(tenant -> SYSTEM ``AiProviderConnection``), and returns a ``LoadedModel`` whose ``.model`` is a :class:`CloudRestConfig`.
 ``base_url`` supports Azure-OpenAI-compatible endpoints. Transcription is done
 by ``streaming/openai_asr.py`` and
 ``BatchTranscriptionService._run_openai_inference`` via REST
