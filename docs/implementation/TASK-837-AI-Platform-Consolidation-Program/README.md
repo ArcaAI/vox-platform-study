@@ -1553,3 +1553,40 @@ investigation. **No repository or cluster change has been made** beyond the crea
 | Date | Change |
 |---|---|
 | 2026-09-01 | Program opened. Eleven-agent investigation completed; findings F-1 … F-20 recorded. Owner decisions OD-1 … OD-6 taken. Fourteen child tickets (TASK-838 … TASK-851) specified across five tracks with tier/effort alignment. Seven open questions raised. |
+
+
+---
+
+## 10. Process failure: missing ticket documents (recorded 2026-09-01)
+
+**What happened.** TASK-838, 839, 842 and 852 shipped code to `dev-2.2` with **no ticket document at all**.
+Only 843, 844 and 846 had one — and those existed because those particular agents chose to write one from
+their own reading of `01-development-workflow.md`, not because any brief required it. The owner caught this,
+not a gate.
+
+**Root cause — four compounding failures, all the orchestrator's:**
+
+1. **The program document was treated as a SUBSTITUTE for per-ticket documents rather than an INDEX over
+   them.** §4 carries all 14 ticket specs, and §0 even instructs: *"When a ticket is started, copy its §4
+   block into `docs/implementation/TASK-XXX-<Short-Name>/README.md` and expand it."* The instruction was
+   written and never executed.
+2. **No agent brief required the ticket README.** Briefs specified file boundaries, rules to read,
+   verification commands and return contracts — and never "create the ticket document before you code."
+   Three of six agents did it anyway; three did not. **That variance is the diagnostic**: a mandatory step
+   was left to agent discretion.
+3. **The Phase 3 gate was skipped by the orchestrator itself.** `01-development-workflow.md` Phase 3
+   requires the implementation plan to live in the ticket README, with the gate *"user approves the plan
+   before any code is written."* Dispatch went straight from "align agents to work now" to spawning writers.
+4. **Every completion gate was run except this one.** Builds, tests, drift gates, merge verification and
+   worktree hygiene were all checked. The checklist's line "Ticket README updated with Implementation
+   Summary and files changed" was not.
+
+**Corrective actions taken 2026-09-01:**
+
+- All 15 documents (TASK-838 … TASK-852) now exist. The four retrospective ones carry an explicit process
+  note at the top rather than being silently backdated.
+- **Standing rule for this program, effective immediately:** a ticket document must exist and be aligned
+  BEFORE any agent is dispatched against that ticket, and **every** agent brief must name the ticket
+  document as a required read and its Implementation Summary as a required deliverable.
+- Pending tickets reference §4 rather than copying it, so the two cannot drift while unstarted; each says
+  explicitly that the step list is to be expanded in place when work starts.
