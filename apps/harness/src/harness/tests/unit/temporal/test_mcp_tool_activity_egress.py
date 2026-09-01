@@ -271,3 +271,46 @@ class TestAllowlistSourcing:
 
         monkeypatch.setattr(activities, "_config_snapshot", _snapshot)
         assert await activities._mcp_egress_allowed_hosts() is None
+
+
+class TestLateRebindBetweenCheckAndConnect:
+    """The destination passed step (2.5), then the resolver's answer CHANGED.
+
+    That is a real DNS rebind, and it is the case the transport-level pinning exists
+    for. What is asserted here is the CLASSIFICATION: it must land as the same
+    non-retryable `McpEgressBlocked` / `egress_blocked` as an up-front denial, not
+    escape as a generic (retryable) failure — retrying a rebind merely re-runs the
+    attacker's lookup.
+    """
+
+    @pytest.mark.asyncio
+    async def test_client_side_egress_block_is_non_retryable_and_recorded(
+        self, env, monkeypatch
+    ):
+        from harness.tools.egress_guard import EgressBlocked, EgressDecision
+
+        class _RebindingClient:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            async def call_tool(self, *, base_url, tool, args, auth_token=None):
+                self.calls.append(base_url)
+                raise EgressBlocked(
+                    EgressDecision(
+                        allowed=False,
+                        host=ALLOWED_HOST,
+                        reason="blocked_address",
+                        detail="resolved into a restricted range",
+                    )
+                )
+
+        client, cap = _RebindingClient(), _CapTraj()
+        _wire(monkeypatch, client=client, cap=cap, allowed_hosts=[ALLOWED_HOST])
+
+        with pytest.raises(ApplicationError) as ei:
+            await env.run(activities.call_mcp_tool, _input(ALLOWED_URL))
+
+        assert ei.value.type == "McpEgressBlocked"
+        assert ei.value.non_retryable is True
+        assert client.calls == [ALLOWED_URL]  # it DID get as far as the client
+        assert "egress_blocked" in [getattr(s, "error_code", None) for s in cap.steps]

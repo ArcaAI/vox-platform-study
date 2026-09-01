@@ -163,6 +163,7 @@ from harness.temporal.prompt_cache import (
     build_segment_citations_block,
 )
 from harness.tools.egress_guard import (
+    EgressBlocked,
     HostResolver,
     default_resolver,
     evaluate_egress,
@@ -1249,6 +1250,36 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         tool_result = await _mcp_client(settings, allowed_hosts).call_tool(
             base_url=server.base_url, tool=tool, args=payload.args, auth_token=token
         )
+    except EgressBlocked as exc:
+        # Step (2.5) already vetted this destination, so reaching here means the answer
+        # CHANGED between the check and the dial — i.e. an actual DNS rebind, caught by
+        # the client's own pre-check or by the transport's per-request check. It must be
+        # classified like the step-(2.5) denial, not left to escape as a generic
+        # (retryable) failure: retrying a rebind just re-runs the attacker's lookup.
+        activity.logger.warning(
+            "harness.mcp.egress.blocked_late",
+            extra={
+                "server": server.name,
+                "tool": tool,
+                "host": exc.host,
+                "reason": exc.reason,
+            },
+        )
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool, "host": exc.host},
+            error_code="egress_blocked",
+        )
+        await batch.flush()
+        raise ApplicationError(
+            f"MCP server host became disallowed between validation and connect: "
+            f"{exc.host or '(unparsed)'}",
+            type="McpEgressBlocked",
+            non_retryable=True,
+        ) from exc
     except McpClientError as exc:
         error_code = (
             "server_error"
