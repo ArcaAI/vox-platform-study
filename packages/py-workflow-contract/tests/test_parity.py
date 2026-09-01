@@ -2,7 +2,7 @@
 
 This is the artifact that stops the fourth twin-drift (TASK-716 §2.8). The
 normative machine artifact is
-``docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json``;
+``packages/workflow-contract/schemas/compiled-config.schema.json``;
 the TypeScript producer is ``packages/workflow-contract/src/compiler.ts``. This
 package is the CONSUMER half in Python. Three independent things are asserted here:
 
@@ -58,12 +58,7 @@ from hope_workflow_contract import (
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = PACKAGE_DIR.parents[1]
 SCHEMA_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "implementation"
-    / "TASK-716-Workflow-Compiler-Validator"
-    / "contracts"
-    / "compiled-config.schema.json"
+    REPO_ROOT / "packages" / "workflow-contract" / "schemas" / "compiled-config.schema.json"
 )
 FIXTURE_PATH = (
     REPO_ROOT

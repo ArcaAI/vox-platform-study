@@ -1,7 +1,7 @@
 """The interpreter's read of ``compiledConfig`` (Task 1/5).
 
 This is a LOCAL, harness-scoped Pydantic mirror of the single normative schema —
-``docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/compiled-config.schema.json``
+``packages/workflow-contract/schemas/compiled-config.schema.json``
 — produced by ``packages/workflow-contract``'s TypeScript compiler. It is deliberately NOT the
 full cross-language parity package (``packages/py-workflow-contract`` / ``hope_workflow_contract``)
 that TASK-716's own Task 7b still owes the platform (see that ticket's README §7, "not built, not

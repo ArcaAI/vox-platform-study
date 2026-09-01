@@ -29,7 +29,7 @@ hope_workflow_contract = ["py.typed"]
 
 [project.optional-dependencies]
 # jsonschema is TEST-ONLY: tests/test_parity.py needs an independent judge of the
-# normative contracts/compiled-config.schema.json, so that the fixture's validity is
+# normative packages/workflow-contract/schemas/compiled-config.schema.json, so that the fixture's validity is
 # established by something other than the pydantic models under test. Already
 # resolved in the root uv.lock as apps/harness's dependency (jsonschema>=4.23.0) —
 # pinning the same floor here adds no new package to the workspace resolution.
