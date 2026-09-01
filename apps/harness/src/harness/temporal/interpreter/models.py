@@ -312,7 +312,14 @@ class AgenticLoopState(BaseModel):
     no_progress_streak: int = 0
     digest: str = ""
     inline: Any = None
+    #: RESERVED, and deliberately never set in this pass. The claim-check offload is TASK-848b
+    #: step 6; the field exists now so the carry-forward shape does not change when it lands
+    #: (a state model change is a replay-visible change to every in-flight loop).
     ref: ClaimCheckRef | None = None
+    #: Sub-agent CHILD workflows that did not succeed, summed across every generation. A loop
+    #: is not failed by a failing worker — the orchestrator is free to route around it — but the
+    #: count travels so the outcome is never silently clean.
+    sub_agent_failures: int = 0
 
 
 class AgenticLoopInput(BaseModel):
@@ -354,6 +361,24 @@ class AgenticLoopResult(BaseModel):
     tokens_used: int
     result: Any = None
     sub_agent_failures: int = 0
+
+
+class LoopCheckpointInput(BaseModel):
+    """What ``interpreter.loop_state_checkpoint`` receives — ONE iteration's whole product.
+
+    The orchestrator's output and the sub-agents' outputs are digested TOGETHER, on purpose:
+    ``noProgressIterations`` asks whether the ITERATION produced anything new, and an
+    orchestrator that paraphrases itself while its workers return new findings has made
+    progress. Tokens are summed over the same set, because ``maxTotalTokens`` is the contract's
+    invoice ceiling — *"summed across every iteration and every sub-agent"* — not the
+    orchestrator's own bill.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    orchestrator_output: dict[str, Any] = Field(default_factory=dict)
+    sub_agent_outputs: list[dict[str, Any]] = Field(default_factory=list)
+    termination_key: str | None = None
 
 
 class AgenticSubAgentInput(BaseModel):
