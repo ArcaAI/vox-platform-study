@@ -61,6 +61,9 @@ function makeService(opts: {
 /** The `connections` map the gateway POSTs to TEXT for this call. */
 const sentConnections = (post: ReturnType<typeof vi.fn>) => post.mock.calls[0]?.[1]?.connections ?? {};
 
+/** The headers the gateway sent on the outbound TEXT probe call. */
+const sentHeaders = (post: ReturnType<typeof vi.fn>): Record<string, string> => post.mock.calls[0]?.[2]?.headers ?? {};
+
 const dbRow = (over: Record<string, unknown> = {}) => ({
   id: 'row-1',
   slug: 'llama3-1-8b',
@@ -276,6 +279,37 @@ describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', 
     await service.discover('ollama');
 
     expect(connections.resolveConnection.mock.calls.map((c: unknown[]) => c[1])).toEqual(['ollama']);
+  });
+});
+
+// =============================================================================
+// Internal-call headers (TASK-839) — the outbound POST to TEXT must carry
+// `X-Tenant-Id` per the mandatory-tenant-header contract
+// (`.claude/rules/00-project-context.md` §"Tenant identity is mandatory on
+// internal service calls"). Before the fix this header was omitted entirely,
+// so TEXT's own auth middleware 428'd every probe.
+// =============================================================================
+describe('AiModelDiscoveryService.probeText — internal service headers', () => {
+  it('sends X-Tenant-Id on the outbound TEXT probe call', async () => {
+    const { service, post } = makeService({
+      text: [{ name: 'vllm', probe_status: 'ok', models: [] }],
+      tenantId: 'tenant-1',
+    });
+
+    await service.discover();
+
+    expect(sentHeaders(post)['X-Tenant-Id']).toBe('tenant-1');
+  });
+
+  it('declares a tenant-less internal call rather than omitting the header when there is no tenant context', async () => {
+    const { service, post } = makeService({
+      text: [{ name: 'vllm', probe_status: 'ok', models: [] }],
+      tenantId: null,
+    });
+
+    await service.discover();
+
+    expect(sentHeaders(post)['X-Tenant-Id']).toMatch(/^tenantless:/);
   });
 });
 
