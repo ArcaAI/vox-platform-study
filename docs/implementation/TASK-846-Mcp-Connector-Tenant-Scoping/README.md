@@ -403,7 +403,7 @@ So `HarnessPolicy.toolAllowlist ∩ McpServer.toolAllowlist` is enforced fail-cl
 both operands are per-tenant, **the containment boundary this ticket was asked to build already
 exists end to end.** The only missing piece is D-1's editor.
 
-### D-3 — egress allow-list for tenant-authored `baseUrl` (needs a design decision, likely schema)
+### D-3 — egress allow-list for tenant-authored `baseUrl` — ✅ RESOLVED (2026-09-01)
 
 OD-7 lets a tenant admin point a connector at an arbitrary host reachable from inside the cluster.
 `phiBoundary` defaults to `external` and the harness PHI-egress guard screens outbound args
@@ -411,8 +411,41 @@ fail-closed for external servers, so PHI does not leak by default — but SSRF r
 separate axis from PHI screening. Proposed design, for an owner decision rather than an agent's:
 a platform-level host allow-list (a `global-kv` `GlobalSetting`, no migration) validated at
 `McpServer` create/update, plus a NetworkPolicy egress restriction on the harness worker. A
-per-tenant override would need a new table; a platform-wide list would not. **Recommend starting
+a per-tenant override would need a new table; a platform-wide list would not. **Recommend starting
 platform-wide.**
+
+**Built as proposed, platform-wide, with no migration.** The design decision the note asked for was
+taken as recommended: one platform-level allow-list, no new table, no per-tenant override.
+
+| Piece | Where |
+|---|---|
+| Config key | `mcp.egress.allowedHosts` — `global-kv`, `maxScope: 'system'`, `globalOnly: true`, `failMode: 'closed'`, `consumedBy: ['harness']` (`descriptors/mcp-egress.descriptors.ts`) |
+| The rule (TS) | `packages/applications/src/common/egress/egress-guard.ts` — pure, no DI |
+| Write-time gate | `EgressPolicyService` → `McpServerAdminService.create/update` |
+| The rule (Python) | `apps/harness/src/harness/tools/egress_guard.py` |
+| Call-time gate | `call_mcp_tool` step (2.5) + `McpToolClient` pre-check |
+| Address pinning | `apps/harness/src/harness/tools/egress_transport.py` |
+| Shared contract | `tests/fixtures/egress-vectors.json` — loaded by BOTH suites |
+| NetworkPolicy | `networkpolicy-harness-egress.proposal.yaml` (this directory) |
+
+Four points a reviewer should not have to rediscover:
+
+1. **The allow-list is necessary but not sufficient.** Matching the *name* only gets a URL as far
+   as the address check; an allow-listed host resolving into RFC1918 / loopback / `169.254.0.0/16`
+   is still refused. A string-only allow-list would have been defeated by one DNS record.
+2. **Write-time is feedback; call-time is the protection.** DNS can change after the row is saved,
+   so the admin-side check exists to tell a human early, not to secure anything.
+3. **`failMode: 'closed'` is doing real work.** An unset key, a malformed value, an unreachable
+   control plane and a DNS failure all DENY. The only default a security control could fall back
+   to is "allow", which is why it must never fall back.
+4. **The list starts EMPTY, so MCP connectors are inert until a platform admin populates it.**
+   That is the intended posture (the whole MCP path was already dormant behind
+   `HarnessPolicy.mcpToolsEnabled` + `McpServer.enabled`), but it is a deployment step, not a
+   no-op: nothing reaches an MCP server until `mcp.egress.allowedHosts` names its host.
+
+Two things deliberately NOT done, because D-3 did not ask for them and neither is free: a per-tenant
+override (needs the new table the note ruled out) and a console editor for the key (it is reachable
+through the existing settings-registry write lane, which is what registering a descriptor buys).
 
 ### D-4 — a stale comment in a tree this ticket must not touch
 
@@ -428,4 +461,5 @@ follow-up.
 
 | Date | Change |
 |---|---|
+| 2026-09-01 | **D-3 RESOLVED** — SSRF egress guard for tenant-authored `McpServer.baseUrl`. Platform allow-list as `mcp.egress.allowedHosts` (`global-kv`, fail-closed, no migration); deny-by-default host matching plus RESOLVED-address validation against RFC1918/loopback/link-local-metadata/CGNAT/multicast incl. IPv4-mapped, NAT64 and 6to4 unwrapping; enforced at admin write time (`McpServerAdminService`) AND at call time in the harness (`call_mcp_tool` + `McpToolClient`), with the connection PINNED to the validated address by `PinnedEgressTransport` and `follow_redirects` turned off. Both implementations are held together by `tests/fixtures/egress-vectors.json`. NetworkPolicy authored as a proposal for `arca/hope-v2-deployment`. |
 | 2026-09-01 | Ticket opened from TASK-837 §4. Implemented OD-7 (split gate, existence-before-privilege), OD-11 (per-tenant `mcpToolsEnabled` + null-widening + `[tenant, SYSTEM]` registry union), the tier 10-19 → 20-29 console move with both modes, the `DetailDrawer` conversion, and the `05-nestjs-api.md` amendment. Found and fixed F-15b (`resolveMcpServers` was SYSTEM-only). Confirmed F-15a — credentials and the per-server allow-list needed no schema change. Status `Review`. |
