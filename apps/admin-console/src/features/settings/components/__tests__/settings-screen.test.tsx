@@ -7,6 +7,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { GlobalSetting } from '../../api/types';
 import { SettingsScreen } from '../settings-screen';
@@ -121,6 +122,28 @@ describe('SettingsScreen', () => {
     expect(screen.getAllByText('smtp').length).toBeGreaterThan(0);
     expect(screen.getByRole('grid', { name: 'Settings' })).toBeDefined();
     expect(screen.getByText(/2 settings/)).toBeDefined();
+  });
+
+  it('marks feature-flags rows with no runtime consumer as advisory, but not enable-consultation-sharing', async () => {
+    const advisory = setting({ id: 's-3', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
+    const enforced = setting({ id: 's-4', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
+    stubFetch({ rows: [advisory, enforced] });
+    renderWithProviders(<SettingsScreen />);
+
+    expect(await screen.findByText('enable-ner-extraction')).toBeDefined();
+    // F-23 / TASK-852 item 7: the hint is sr-only text next to the advisory key only.
+    expect(screen.getAllByText('Advisory only — no runtime path reads this flag today')).toHaveLength(1);
+    const enforcedRow = screen.getByText('enable-consultation-sharing').closest('[role="row"]') as HTMLElement;
+    expect(within(enforcedRow).queryByText('Advisory only — no runtime path reads this flag today')).toBeNull();
+  });
+
+  it('has no axe violations with an advisory feature-flag row rendered', async () => {
+    const advisory = setting({ id: 's-3', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
+    stubFetch({ rows: [advisory] });
+    const { container } = renderWithProviders(<SettingsScreen />);
+
+    await screen.findByText('enable-ner-extraction');
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it('mirrors the loaded layout with skeletons while the list is in flight', () => {
