@@ -18910,7 +18910,7 @@
             "type": "number"
           },
           "mcpToolsEnabled": {
-            "description": "MCP external-tools master switch (null = OFF). Super-admin only.",
+            "description": "MCP external-tools master switch. null = no opinion, which widens to the SYSTEM default; absent that, OFF. Per-tenant since OD-11 (2026-09-01) — a tenant admin may set it.",
             "nullable": true,
             "type": "boolean"
           },
