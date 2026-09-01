@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { parseAsString, useQueryState } from 'nuqs';
-import { Separator } from '@arcaai/ui/components/shadcn/separator';
+import { IconExternalLink } from '@tabler/icons-react';
+import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { RequirePermission } from '@/shared/auth/require-permission';
 import { PageHeader } from '@/shared/page/page-header';
@@ -9,72 +11,73 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { TenantScopeBanner } from '@/shared/tenant-scope/tenant-scope-banner';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { ProviderCredentialsTabs } from '@/features/ai-providers/components/provider-credentials-tabs';
 import { SttFallbackTab } from '@/features/tenant-stt-config/components/stt-fallback-tab';
 import { TtsConfigTab } from '@/features/tenant-tts-config/components/tts-config-tab';
-import { EffectiveHarnessPolicyCard } from './effective-harness-policy-card';
-import { EffectiveModelsTable } from './effective-models-table';
-import { TextModelsSection } from './text-models-section';
 
-const TAB_VALUES = ['models', 'speech', 'voice', 'providers'] as const;
+const TAB_VALUES = ['speech', 'voice'] as const;
 
 /**
- * Tenant "AI Configuration" hub (`/ai-configuration`, tier 30-49) —.
+ * Tenant speech &amp; voice configuration (`/ai-configuration`, tier 30-49).
  *
- * The single tenant AI surface: it absorbs the retired standalone screens
- * `/stt-config`, `/tts-config` and `/ai-providers` into four tabs so a tenant
- * admin configures everything AI-related in one place.
+ * ## What TASK-845 took away, and what it deliberately left
  *
- *  - "Models" — the tenant's OWN summarization selection (text-generation primary +
- *    optional fallback, one-action default-provider control) PLUS the
- *    READ-ONLY effective models / HarnessPolicy visibility for the
- *    platform-managed nlp/harness keys (guardrail is tenant-configurable via
- *    the API since TASK-735, but this hub has no edit control for it yet —
- *    see `effective-models-table.tsx`). Backed by `AiTaskDefault`.
- *  - "Speech" — the tenant STT fallback spec (pipeline, auto-switch, failure
- *    threshold), OCC-edited. Backed by `TenantSttConfig`.
- *  - "Voice" — the tenant TTS config (voices, routing, bindings), OCC-edited.
- *    Backed by `TenantTtsConfig`.
- *  - "Providers" — the ONE authoritative bring-your-own credential editor
- *    (LLM / STT / TTS) over the unified provider plane. Backed by `GlobalSetting`.
+ * This screen used to carry four tabs. Two of them — "Models" (the tenant's own
+ * `AiTaskDefault` selection) and "Providers" (the BYO credential editor) — were
+ * the TENANT HALF of a two-tier cascade whose SYSTEM half lived on a different
+ * screen entirely. An administrator comparing a tenant's choice with the
+ * platform default it overrides had to navigate between two routes to see two
+ * halves of one value. Both moved to `/ai-platform`, where the tier is a
+ * control rather than a route.
  *
- * Each tab spans a DIFFERENT backend resource, so every tab (trigger + content)
- * is wrapped in `<RequirePermission action="read" …>` — the nav entry is
- * OR-gated over the four reads, so a user who can read only one resource still
- * reaches the hub and sees only the tab(s) they may read (gateway remains
- * authoritative; this gating is UX-only). Every tab can mutate tenant data, so
- * the "Acting on «Tenant»" banner is always pinned.
+ * Speech and Voice did NOT move, and that is a judgement rather than an
+ * oversight. `TenantSttConfig` and `TenantTtsConfig` are not provider
+ * configuration: they are pipeline and voice BINDINGS — which pipeline to run,
+ * when to auto-switch, which voice speaks which language. They resolve on their
+ * own rows, not on the routing cascade, and folding them into a provider
+ * console would recreate exactly the by-which-table grouping TASK-845 exists to
+ * remove.
+ *
+ * The URL is unchanged, so there is no redirect: this is a narrowing, not a
+ * rename. The header carries a plain-href link to the surfaces that left, so an
+ * administrator who came here looking for them is not left guessing.
  */
 export function TenantAiConfigurationScreen() {
-  const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('models'));
-  const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'models';
+  const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('speech'));
+  const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'speech';
 
   return (
     <WorkingTenantGate
-      title="AI Configuration"
+      title="Speech &amp; Voice"
       meta={
         <span aria-hidden className="text-muted-foreground font-mono text-xs">
-          models · speech · voice · providers
+          speech · voice
         </span>
       }
     >
-      <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'models' ? null : next)}>
+      <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'speech' ? null : next)}>
         <ScreenTemplate
-          header={<PageHeader title="AI Configuration" meta={<span>summarization models, speech, voice &amp; bring-your-own cloud credentials</span>} />}
+          header={
+            <PageHeader
+              title="Speech &amp; Voice"
+              meta={<span>transcription pipeline and voice bindings for this tenant</span>}
+              actions={
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/ai-platform">
+                    Providers &amp; models
+                    <IconExternalLink aria-hidden />
+                  </Link>
+                </Button>
+              }
+            />
+          }
           statusBanner={<TenantScopeBanner />}
           tabs={
             <TabsList variant="line">
-              <RequirePermission action="read" subject="AiTaskDefault">
-                <TabsTrigger value="models">Models</TabsTrigger>
-              </RequirePermission>
               <RequirePermission action="read" subject="TenantSttConfig">
                 <TabsTrigger value="speech">Speech</TabsTrigger>
               </RequirePermission>
               <RequirePermission action="read" subject="TenantTtsConfig">
                 <TabsTrigger value="voice">Voice</TabsTrigger>
-              </RequirePermission>
-              <RequirePermission action="read" subject="GlobalSetting">
-                <TabsTrigger value="providers">Providers</TabsTrigger>
               </RequirePermission>
             </TabsList>
           }
@@ -82,20 +85,12 @@ export function TenantAiConfigurationScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  text: tenant-owned · guardrail: tenant-configurable (API) · nlp/harness: platform-managed · credentials: tenant-owned
+                  speech + voice: tenant-owned · providers &amp; model selection moved to /ai-platform
                 </span>
               }
             />
           }
         >
-          <TabsContent value="models" className="flex flex-col gap-6">
-            <RequirePermission action="read" subject="AiTaskDefault">
-              <TextModelsSection />
-              <Separator />
-              <EffectiveModelsTable />
-              <EffectiveHarnessPolicyCard />
-            </RequirePermission>
-          </TabsContent>
           <TabsContent value="speech">
             <RequirePermission action="read" subject="TenantSttConfig">
               <SttFallbackTab />
@@ -104,11 +99,6 @@ export function TenantAiConfigurationScreen() {
           <TabsContent value="voice">
             <RequirePermission action="read" subject="TenantTtsConfig">
               <TtsConfigTab />
-            </RequirePermission>
-          </TabsContent>
-          <TabsContent value="providers">
-            <RequirePermission action="read" subject="GlobalSetting">
-              <ProviderCredentialsTabs />
             </RequirePermission>
           </TabsContent>
         </ScreenTemplate>
