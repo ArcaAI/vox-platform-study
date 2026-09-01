@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` — loop body wired and tested; 848b/848c outstanding by design |
+| **Status** | `Review` — loop body, 848b and 848c complete; two steps closed with a reasoned NOT-BUILT |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
@@ -186,16 +186,72 @@ a loop that never advances.
 
 Full harness suite **1887 passed** (from 1876), lint clean, typecheck clean (143 files).
 
-### Still outstanding — 848b / 848c, deferred by design
+### 848b and 848c — completed 2026-09-01
 
-1. **848b** — `irVersion` dispatch (step 4), Worker Versioning `Pinned` (step 5), claim-check to MinIO
-   (step 6; `AgenticLoopState.ref` already exists unset so the carry-forward shape will not change), and
-   real-graph replay fixtures (step 9).
-2. **848c** — tier 3 `ioSchema` / `onSchemaViolation` boundary evaluation (step 8), which may fold into
-   TASK-849.
-3. **`maxDurationSeconds` is enforced by the PARENT, not the loop** (§2b) — the loop's three carried bounds
-   are covered by tests; the duration bound belongs to the parent's timer and is exercised only indirectly.
-4. **Compiler-side lift of loop bodies**, which would retire the `loop_body` skip.
+| Commit | What |
+|---|---|
+| `87f0d1d52` | **Claim-check offload** (step 6) — carry-forward above 256 KiB goes to object storage |
+| `3d565f1f6` | **Replay guards** (step 9) — a captured loop history, forward and backward |
+| `02633c6d5` | **Tier 3** (848c step 8) — the node-boundary schema check |
+
+**Claim-check, scoped deliberately.** A loop carries its entire memory as workflow input every
+generation, against a 2 MB payload ceiling. The obvious implementation — adding a ref field to
+`NodeActivityInput` — would change the activity contract for **every** node type in the interpreter.
+Instead `loop_state_rehydrate` resolves the ref at the top of an iteration (a workflow cannot do I/O), and
+runs only when a ref is set, so an under-threshold loop pays nothing. Two properties are pinned because
+both would fail silently: the digest is computed over the same value whether state travelled inline or by
+reference — *if offloading changed it, a converged loop would stop looking converged the moment its state
+grew, and the no-progress bound would quietly stop working at exactly the scale it matters* — and the
+threshold is a real boundary in both directions.
+
+**Replay guards, verified by mutation.** `interpreter_loop_v1_history.json` was captured with a companion
+to the existing interpreter capture script. Forward guard: today's in-flight loops must survive tomorrow's
+deploy. Backward guard: `interpreter_v1_history` predates the loop, so the cheap operand short-circuits and
+`workflow.patched` is never reached — proving the gate costs nothing to a graph with no loop. **Removing
+the patch gate makes the forward guard fail**, so it is protection rather than decoration.
+
+**Tier 3.** `fail` RAISES rather than returning, because `NodeActivityResult.status` cannot express FAILED
+and substituting DEGRADED would quietly downgrade the author's declaration. Defaults differ by node: an
+entry point with a non-conforming payload has nothing sound to pass downstream (fail); an exit point has
+produced something inspectable (degrade). A malformed tenant-authored schema is reported as a violation,
+not raised as a stack trace.
+
+### Two steps closed as NOT BUILT, with reasons
+
+**Step 4 — `irVersion` dispatch. Not built, and should not be.** The guard already exists:
+`formatVersion` is `Literal[1]` and an unknown value is refused with `unsupported_format_version`
+(`compiled_config.py:234`). A *dispatch* — routing v1 to one interpreter and v2 to another — requires a v2
+to exist. Building a router for a single version is speculative generality whose only interesting branch
+would be untested. **The refusal is the mechanism today; the dispatch becomes real work when a v2 IR is
+actually designed.**
+
+**Step 5 — Worker Versioning `Pinned`. Not built, deliberately.** The SDK supports it
+(`temporalio 1.31.0` exposes `deployment_config` on `Worker`), but `Pinned` is a guarantee about in-flight
+executions that only holds when BOTH halves are present: the worker declaring a deployment version, and
+the k8s Deployment setting it. **The manifests live in the external repo `arca/hope-v2-deployment`**, so
+the worker half alone would be inert — and inert deployment config is worse than none, because a reader
+sees `deployment_config` in `worker.py` and believes versioning is active when it is not.
+
+What is required, for whoever does both halves together:
+1. A deployment version on the worker (`WorkerDeploymentConfig`), sourced from the image tag so it cannot
+   drift from what CI published.
+2. The matching value on the `hope-harness-worker` Deployment in the manifest repo.
+3. Server-side registration of the deployment version before the rollout that uses it.
+Note the legacy Build-ID mechanism is being removed from Server around **March 2026** — do not build on
+`use_worker_versioning`/`build_id`.
+
+**Until that lands, the replay fixtures (step 9) are the actual protection**, and they need no deployment
+change: an interpreter edit that breaks in-flight loops fails in CI rather than in production.
+
+### Remaining follow-ups (not TASK-848)
+
+1. **Worker Versioning `Pinned`** — needs the external manifest repo; see the NOT-BUILT reasoning above.
+2. **`maxDurationSeconds` is enforced by the PARENT, not the loop** (§2b) — the loop's three carried bounds
+   are directly tested; the duration bound belongs to the parent's timer and is exercised only indirectly.
+3. **Compiler-side lift of loop bodies**, which would retire the `loop_body` skip — a TypeScript contract
+   change.
+4. **Evaluator-optimizer** as a second loop pattern (phase 2): the same skeleton, a different termination
+   predicate.
 
 ### Process note
 
