@@ -54,6 +54,35 @@ TASK-847 stated this belongs here.
 **The established pattern for extending both runtimes together** is TASK-852 items 3–4: a config-driven skip
 branch in `_dispatch_node` with a `mandatory`-class exclusion and a registry-derived drift gate. Follow it.
 
+## 2b. Design finding carried forward from the first attempt (2026-09-01)
+
+The first attempt stalled, but committed 171 lines of loop payload models first and recorded a finding worth
+keeping:
+
+> **The loop workflow runs exactly ONE iteration per generation, so its entire memory must be carried as
+> input. `maxDurationSeconds` is the one bound that CANNOT be: a workflow timer does not survive
+> `continue_as_new`, and "carrying" one would mean reading a clock inside `@workflow.defn`. That bound
+> belongs to the PARENT.**
+
+That is a real constraint on step 7 and it shapes the design: three of the four bounds travel in the
+carried state; the duration bound is enforced by the parent workflow that owns the un-reset timer.
+Commit `e0c666e93` on branch `worktree-agent-a223376f1cd9b5bb4`; a 76-line test stub is preserved in the
+session scratchpad.
+
+## 2c. Scope split (2026-09-01) — three consecutive agents stalled on the 9-step scope
+
+Three agents in this program hit the 600s stream watchdog. The two that carried no incremental commits lost
+everything; this ticket's first attempt kept 171 lines because it committed as it went. The response is to
+make the unit smaller, not to retry the same size:
+
+| Pass | Steps | Status |
+|---|---|---|
+| **848 — loop body** | 1, 2, 3, 7 — iteration + `continue_as_new`, orchestrator-workers only, sub-agents as child workflows, the four bounds | in progress |
+| **848b — durability & versioning** | 4, 5, 6, 9 — `irVersion` dispatch, Worker Versioning `Pinned`, claim-check to MinIO, real-graph replay fixtures | follow-up |
+| **848c — tier 3** | 8 — `ioSchema` / `onSchemaViolation` boundary evaluation | follow-up, may fold into TASK-849 |
+
+The steps below are unchanged; only their assignment to passes is new.
+
 ## 3. Implementation Plan
 
 1. **Extend the interpreter past the v1 bound** — iteration, with a `continue_as_new` boundary at each loop
