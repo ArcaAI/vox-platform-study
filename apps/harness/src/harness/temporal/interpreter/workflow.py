@@ -33,7 +33,15 @@ with workflow.unsafe.imports_passed_through():
         ConsultationGateWorkflow,
         gate_workflow_id,
     )
+    from harness.temporal.interpreter.loop_workflow import (
+        AgenticLoopWorkflow,
+        agentic_loop_workflow_id,
+    )
     from harness.temporal.interpreter.models import (
+        AgenticLoopBounds,
+        AgenticLoopInput,
+        AgenticLoopNodeSpec,
+        AgenticLoopResult,
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
@@ -137,6 +145,9 @@ class WorkflowInterpreter:
         # stage partitioning already guarantees this), so same-stage fan-out nodes never race
         # each other reading/writing this cache.
         self._node_outputs: dict[str, dict[str, Any]] = {}
+        # TASK-848: `agentic.loop` names its orchestrator and sub-agents by NODE REFERENCE, so the
+        # loop body has to be resolvable from an id. Indexed once in `run`, alongside `_node_types`.
+        self._nodes_by_id: dict[str, CompiledNode] = {}
         # `node_id -> node type`, built from the compiled config before the walk starts.
         # `_resolve_bound_inputs` needs the PRODUCER's type to look its declared output sockets up
         # in `NODE_REGISTRY` (TASK-809 OD-15); `_node_outputs` alone is keyed by id and says
@@ -167,6 +178,10 @@ class WorkflowInterpreter:
         for indexed_stage in config.stages:
             for indexed_node in indexed_stage.nodes:
                 self._node_types[indexed_node.node_id] = indexed_node.type
+                # TASK-848 — `_index_loop_body`'s half of the same walk. A loop's orchestrator and
+                # sub-agents are ordinary nodes of this graph named by id, so the index IS the
+                # resolution: no second traversal, and no chance of the two disagreeing.
+                self._nodes_by_id[indexed_node.node_id] = indexed_node
         for indexed_gate in config.gates:
             self._node_types.setdefault(indexed_gate.node_id, "consultation.hitlGate")
 
@@ -355,6 +370,14 @@ class WorkflowInterpreter:
                 node_id=node.node_id, node_type=node.type, status="SKIPPED", reason="sandbox"
             )
 
+        # TASK-848 — the loop runs as a CHILD WORKFLOW, not as an activity.
+        #
+        # Cheap operand first, exactly as the gate does: `workflow.patched` is only consulted for
+        # a node that is actually a loop, so a graph containing none never records the marker.
+        # Unlike the gate's, this guard is load-bearing on replay — see `_LOOP_PATCH`.
+        if node.type == _LOOP_NODE_TYPE and workflow.patched(_LOOP_PATCH):
+            return await self._run_loop(node, inp, stage_index)
+
         timeout_seconds = caps.clamp_timeout(node.timeout_seconds)
         max_attempts = caps.clamp_attempts(node.retry.maximum_attempts)
         trajectory = TrajectoryContext(
@@ -410,6 +433,135 @@ class WorkflowInterpreter:
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
+        )
+
+    def _loop_node_spec(self, node_id: str) -> AgenticLoopNodeSpec | None:
+        """Resolve ONE loop-body node reference into the spec the child workflow runs (pure).
+
+        ``None`` means the reference does not name a node of this graph, or names one whose type
+        is not registered/implemented. Both are authoring errors the compiler should have caught,
+        and both are treated the same way by the caller: the loop cannot run, which is a DEGRADED
+        node rather than a silent partial loop.
+        """
+        body_node = self._nodes_by_id.get(node_id)
+        if body_node is None:
+            return None
+        body_spec = NODE_REGISTRY.get(body_node.type)
+        if body_spec is None or not body_spec.implemented:
+            return None
+        return AgenticLoopNodeSpec(
+            node_id=body_node.node_id,
+            node_type=body_node.type,
+            activity_name=body_spec.activity_name,
+            config=body_node.config,
+            timeout_seconds=caps.clamp_timeout(body_node.timeout_seconds),
+            max_attempts=caps.clamp_attempts(body_node.retry.maximum_attempts),
+        )
+
+    async def _run_loop(
+        self,
+        node: CompiledNode,
+        inp: InterpreterInput,
+        stage_index: int,
+    ) -> NodeResult:
+        """Dispatch an ``agentic.loop`` node as a child workflow and map its stop reason.
+
+        ## Why the stop reason is not just passed through
+
+        ``LoopStopReason`` says WHY the loop stopped; ``NodeStatus`` says whether the node did its
+        job. They are not the same question, and collapsing them is how a truncated deliberation
+        gets reported as a success:
+
+        * ``termination_key`` — the author's own exit condition fired. The loop finished the job
+          it was given. SUCCEEDED.
+        * ``no_progress_iterations`` — the orchestrator CONVERGED and stopped producing anything
+          new. That is the outcome the bound exists to detect, not a failure. SUCCEEDED.
+        * every other reason — a CEILING truncated the deliberation (iterations, invoice, clock),
+          or the master agent could not run at all. The loop stopped early with work outstanding,
+          so it DEGRADES, and the reason travels with it so the ceiling that fired is observable.
+
+        `critical` promotion is left to the caller's existing rule: a critical loop that degrades
+        becomes a run-level FAILED exactly as a critical activity does.
+        """
+        loop_config = node.config
+        orchestrator_id = loop_config.get("orchestratorNodeId")
+        if not isinstance(orchestrator_id, str):
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="loop_orchestrator_missing",
+            )
+
+        orchestrator = self._loop_node_spec(orchestrator_id)
+        if orchestrator is None:
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="loop_orchestrator_unresolvable",
+            )
+
+        # A sub-agent reference that does not resolve is dropped rather than failing the loop: the
+        # orchestrator is what makes a loop a loop, and a loop with fewer workers still deliberates.
+        # The count reaching the child is what the checkpoint records, so the loss is observable.
+        raw_sub_agents = loop_config.get("subAgentNodeIds") or []
+        sub_agents = [
+            resolved
+            for resolved in (
+                self._loop_node_spec(sub_id)
+                for sub_id in raw_sub_agents
+                if isinstance(sub_id, str)
+            )
+            if resolved is not None
+        ]
+
+        bounds = AgenticLoopBounds.model_validate(loop_config.get("bounds") or {})
+        termination_key = loop_config.get("terminationKey")
+
+        loop_input = AgenticLoopInput(
+            run_id=inp.run_id,
+            node_id=node.node_id,
+            tenant_id=inp.tenant_id,
+            workflow_version_id=inp.workflow_version_id,
+            sandbox=inp.sandbox,
+            bounds=bounds,
+            orchestrator=orchestrator,
+            sub_agents=sub_agents,
+            termination_key=termination_key if isinstance(termination_key, str) else None,
+            seed_inputs=self._resolve_bound_inputs(node),
+            run_payload=inp.payload,
+        )
+
+        try:
+            result: AgenticLoopResult = await workflow.execute_child_workflow(
+                AgenticLoopWorkflow.run,
+                loop_input,
+                # Deterministic, derived from the parent's run id — never `uuid4()` inside a
+                # workflow body. ONE id for the whole continue-as-new chain.
+                id=agentic_loop_workflow_id(inp.run_id, node.node_id),
+            )
+        except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="loop_unavailable",
+            )
+
+        if result.result is not None:
+            self._node_outputs[node.node_id] = (
+                result.result if isinstance(result.result, dict) else {"result": result.result}
+            )
+
+        if result.stop_reason in ("termination_key", "no_progress_iterations"):
+            return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
+
+        return NodeResult(
+            node_id=node.node_id,
+            node_type=node.type,
+            status="DEGRADED",
+            reason=result.stop_reason,
         )
 
     async def _run_gate(
