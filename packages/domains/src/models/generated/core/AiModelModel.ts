@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { BaseTenantDataModel } from '../../../common';
+import { BaseTenantDataModel, VirtualDbProperty } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Models from './';
@@ -31,6 +31,8 @@ export class AiModel extends BaseTenantDataModel {
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
   public tags: string[];
+  @VirtualDbProperty()
+  public routingPolicies: Models.AiRoutingPolicy[] | undefined;
 
   constructor(data: AiModel & BaseTenantDataModel) {
     super(data);
@@ -57,5 +59,6 @@ export class AiModel extends BaseTenantDataModel {
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags ?? [];
+    this.routingPolicies = data.routingPolicies;
   }
 }
