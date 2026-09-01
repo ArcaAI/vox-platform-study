@@ -23,9 +23,13 @@ import {
 import type { WorkflowPortPrimitive } from '../port-model';
 
 describe('WORKFLOW_PORT_PRIMITIVES', () => {
+  // TASK-847 extended the vocabulary by TWO: `object` (the unrefined STRUCTURED type the generic
+  // agentic nodes' tenant-defined schemas need) and `audio` (a STORED artifact, sibling to the
+  // live `stream<audio>`). See `port-model.ts`'s `WORKFLOW_PORT_KINDS` docstring and
+  // `port-kinds.task847.test.ts` for why each addition cannot weaken the lattice.
   it('is the closed vocabulary TASK-809 §2b settles, plus `control` for ordering edges', () => {
     expect([...WORKFLOW_PORT_PRIMITIVES].sort()).toEqual(
-      ['context<schemaRef>', 'control', 'document', 'edits', 'entities', 'stream<audio>', 'text', 'transcript', 'verdict'].sort(),
+      ['audio', 'context<schemaRef>', 'control', 'document', 'edits', 'entities', 'object', 'stream<audio>', 'text', 'transcript', 'verdict'].sort(),
     );
   });
 
@@ -35,14 +39,26 @@ describe('WORKFLOW_PORT_PRIMITIVES', () => {
     }
   });
 
-  it('has exactly two widening pairs: transcript -> text and document -> text', () => {
+  // SIX widening pairs after TASK-847, and the split matters: TWO into `text` (a transcript and
+  // a generated document are both text) and FOUR into `object` (every STRUCTURED refinement is
+  // an object). What has NOT changed is that widening only ever goes specific -> general, so no
+  // pair here can launder provenance: nothing widens INTO `transcript`, `entities`, `document`
+  // or any other refinement, in either group.
+  it('widens only specific -> general: two pairs into `text`, four into `object`', () => {
     const widenings = Object.entries(WORKFLOW_PORT_SUPERTYPE)
       .filter(([, parent]) => parent !== null)
       .sort();
     expect(widenings).toEqual([
+      ['context<schemaRef>', 'object'],
       ['document', 'text'],
+      ['edits', 'object'],
+      ['entities', 'object'],
       ['transcript', 'text'],
+      ['verdict', 'object'],
     ]);
+    // The safety half, stated as its own assertion rather than left implicit: the only two
+    // widening TARGETS are the two general types. A refinement is never a target.
+    expect([...new Set(widenings.map(([, parent]) => parent))].sort()).toEqual(['object', 'text']);
   });
 
   it('the lattice is acyclic and bottoms out (no supertype chain loops)', () => {
@@ -80,11 +96,28 @@ describe('portPrimitiveSatisfies (produced -> consumed)', () => {
     expect(portPrimitiveSatisfies('transcript', 'document')).toBe(false);
   });
 
+  // The four STRUCTURED refinements are no longer "unrelated to everything": TASK-847 widened
+  // each of them to `object`. They stay mutually incompatible with each OTHER and with every
+  // member of the text and audio groups, which is the property this test is actually about — an
+  // `entities` producer must still never satisfy an `edits` consumer. `object` is excluded from
+  // the sweep for each of them, and only `object`.
   it('keeps every unrelated primitive mutually incompatible', () => {
-    const unrelated: readonly WorkflowPortPrimitive[] = ['control', 'stream<audio>', 'entities', 'edits', 'verdict', 'context<schemaRef>'];
+    const unrelated: readonly WorkflowPortPrimitive[] = ['control', 'stream<audio>', 'audio', 'entities', 'edits', 'verdict', 'context<schemaRef>'];
+    const widensTo: Partial<Record<WorkflowPortPrimitive, WorkflowPortPrimitive>> = {
+      entities: 'object',
+      edits: 'object',
+      verdict: 'object',
+      'context<schemaRef>': 'object',
+    };
     for (const a of unrelated) {
       for (const b of WORKFLOW_PORT_PRIMITIVES) {
         if (a === b) continue;
+        if (widensTo[a] === b) {
+          // The ONE permitted direction, asserted rather than skipped.
+          expect(portPrimitiveSatisfies(a, b)).toBe(true);
+          expect(portPrimitiveSatisfies(b, a)).toBe(false);
+          continue;
+        }
         expect(portPrimitiveSatisfies(a, b)).toBe(false);
         expect(portPrimitiveSatisfies(b, a)).toBe(false);
       }
