@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { WorkflowDefinitionStatus } from '@arcaai/domains';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
-import { KNOWN_PALETTE_KEYS } from '../../workflow-exposure/exposure-palette-policy';
+import { EXPOSURE_ALLOWED_PALETTES, KNOWN_PALETTE_KEYS } from '../../workflow-exposure/exposure-palette-policy';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
@@ -91,8 +91,16 @@ describe('TASK-790 W1 — server-side paletteKey validation (C-5/D-5)', () => {
     );
   });
 
-  it('the known set is derived from the registry and carries the three real palettes', () => {
-    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['consultation', 'stt', 'summarization']);
+  it('the known set is derived from the registry and carries the four real palettes', () => {
+    // TASK-847 added `agentic` — the eight GENERIC node types. It arrives here for free, which is
+    // the property this test is really about: `KNOWN_PALETTE_KEYS` is DERIVED from
+    // `WORKFLOW_NODE_REGISTRY.paletteKey`, so a new palette needs no edit to the service.
+    //
+    // `EXPOSURE_ALLOWED_PALETTES` is deliberately NOT widened alongside it (see the assertion
+    // below): a palette becomes AUTHORABLE by being registered, and becomes PUBLICLY INVOKABLE
+    // only by an affirmative decision. An allow-list that grows by default is not an allow-list.
+    expect([...KNOWN_PALETTE_KEYS].sort()).toEqual(['agentic', 'consultation', 'stt', 'summarization']);
+    expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['summarization']);
   });
 
   it.each(['summarisation', 'Summarization', 'stt ', 'clinical', ''])(
