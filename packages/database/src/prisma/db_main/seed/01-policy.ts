@@ -218,10 +218,15 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // The MCP registry and the agent-trajectory read
       // plane no longer borrow `manage:HarnessPolicy`; these explicit
       // grants preserve exactly the access this role had before the
-      // subject swap. MCP WRITES remain super-admin-only regardless —
-      // `McpServerAdminService` throws 403 for a tenant admin (defense in
-      // depth), so `manage` here buys the registry READ this role already
-      // had. `AgentTrajectory` is read-only by design.
+      // subject swap. Per OWNER DECISION OD-7 (2026-09-01), MCP WRITES are
+      // NOT super-admin-only: a tenant admin may create, update and delete
+      // the connectors owned by its OWN tenant, so `manage` here buys real
+      // write access, not just the registry READ. `McpServerAdminService`
+      // enforces a SYSTEM-vs-tenant-owned split gate
+      // (`assertCanWriteTenant` / `assertCanWriteRow`): a write aimed at the
+      // SYSTEM (`00000000-…`) shared registry is 403 for a tenant admin,
+      // another tenant's row is 404 (404-over-403), and its own tenant's
+      // rows are writable. `AgentTrajectory` is read-only by design.
       { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's TTS config + BYO
