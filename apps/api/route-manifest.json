@@ -6346,10 +6346,94 @@
     },
     {
       "controller": "AiRoutingPolicyAdminController",
+      "handler": "setDefault",
+      "method": "POST",
+      "path": "/api/v1/admin/routing-policies/{id}/default",
+      "routePath": "/admin/routing-policies/:id/default",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "promote",
+      "method": "POST",
+      "path": "/api/v1/admin/routing-policies/{id}/promote",
+      "routePath": "/admin/routing-policies/:id/promote",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
       "handler": "getEffective",
       "method": "GET",
       "path": "/api/v1/admin/routing-policies/effective",
       "routePath": "/admin/routing-policies/effective",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "exportConfigurations",
+      "method": "GET",
+      "path": "/api/v1/admin/routing-policies/export",
+      "routePath": "/admin/routing-policies/export",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "AiRoutingPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiRoutingPolicyAdminController",
+      "handler": "importConfigurations",
+      "method": "POST",
+      "path": "/api/v1/admin/routing-policies/import",
+      "routePath": "/admin/routing-policies/import",
       "svcScopes": [],
       "forbidServiceAccount": true,
       "apiKeyForbidden": true,

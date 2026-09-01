@@ -90,10 +90,57 @@ describe('AiRoutingPolicyEntity', () => {
     expect(entity.changes).toMatchObject({ policyVersion: 7, supersedesVersion: 6 });
   });
 
-  it('validate() rejects a policy that cannot route', () => {
+  it('validate() rejects a configuration that cannot route', () => {
     expect(() => create({ taskKey: '   ' }).validate()).toThrow(/task key/i);
-    expect(() => create({ candidatesJson: [] }).validate()).toThrow(/candidate/i);
     expect(() => create({ policyVersion: 0 }).validate()).toThrow(/policy version/i);
+    // TASK-844 — the invariant moved with the grain. It used to be "at least
+    // one entry in `candidatesJson`"; now the ROW is the candidate, so it is
+    // "this configuration must name a model".
+    expect(() => create({ candidatesJson: [] }).validate()).toThrow(/must name a model/i);
     expect(() => create().validate()).not.toThrow();
+  });
+
+  describe('TASK-844 — the provider-configuration binding', () => {
+    it('accepts a row bound by the catalogue FK', () => {
+      expect(() => create({ candidatesJson: null, modelId: 'model-1' }).validate()).not.toThrow();
+    });
+
+    it('accepts a row bound by a provider-side model id', () => {
+      // An Azure deployment or a GGUF id the catalogue does not carry.
+      expect(() => create({ candidatesJson: null, modelRef: 'gpt-4o-eu-prod' }).validate()).not.toThrow();
+    });
+
+    it('still accepts a pre-844 revision carrying only a candidate chain', () => {
+      // Refusing these would make historical revisions unreadable rather than
+      // merely deprecated.
+      expect(() => create({ modelId: null, modelRef: null }).validate()).not.toThrow();
+    });
+
+    it('rejects a row that names nothing at all', () => {
+      expect(() => create({ candidatesJson: null, modelId: null, modelRef: null }).validate()).toThrow(/must name a model/i);
+    });
+
+    it('never elects on construction — that is setDefault, in a transaction', () => {
+      // A factory that defaulted `isDefault: true` would make every create race
+      // the partial unique index.
+      expect(create().isDefault).toBe(false);
+      expect(create().enabled).toBe(true);
+    });
+
+    it('invents no residency class and assumes no BAA coverage', () => {
+      // Both are read by the §3A.4 fallback gates; guessing `baaCovered: true`
+      // for a candidate whose author did not say so is the silent PHI
+      // redirection those gates exist to prevent.
+      expect(create().residency).toBeNull();
+      expect(create().baaCovered).toBeNull();
+    });
+
+    it('routes the new setters through setProperty so only changes persist', () => {
+      const entity = create();
+      entity.isDefault = true;
+      entity.modelId = 'model-2';
+      entity.enabled = false;
+      expect(entity.changes).toMatchObject({ isDefault: true, modelId: 'model-2', enabled: false });
+    });
   });
 });

@@ -147,7 +147,11 @@ export const EXPORT_NOTICE =
  * identity — capability, provider name, and the key VERSION counter (an
  * integer the platform assigns, not a fragment of the key).
  */
-export function credentialRefFor(service: string | null | undefined, provider: string | null | undefined, keyVersion: number | null | undefined): string | null {
+export function credentialRefFor(
+  service: string | null | undefined,
+  provider: string | null | undefined,
+  keyVersion: number | null | undefined,
+): string | null {
   if (!service || !provider) return null;
   return `vault-transit:${service}:${provider}${typeof keyVersion === 'number' ? `:v${keyVersion}` : ''}`;
 }
@@ -213,7 +217,9 @@ export function assertNoSecretMaterial(artifact: unknown): void {
       for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
         const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
         if (key !== 'credentialRef' && key !== 'hasCredential' && FORBIDDEN_KEYS.includes(normalized)) {
-          throw new Error(`Export artifact carries a forbidden key '${key}' at ${path}. Provider configurations are exported WITHOUT credential material.`);
+          throw new Error(
+            `Export artifact carries a forbidden key '${key}' at ${path}. Provider configurations are exported WITHOUT credential material.`,
+          );
         }
         walk(value, `${path}.${key}`);
       }
