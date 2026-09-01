@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
-import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy } from '../../../enums';
+import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy, AiTaskKind } from '../../../enums';
 
 // The ORDERED candidate chain that serves one (tenant, taskKey) — TASK-818
 // §3A.3. One row per authored revision; the reserved SYSTEM tenant row is the
@@ -19,6 +19,11 @@ import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy } from
 // reviewer can roll back to.
 export interface IAiRoutingPolicyEntity extends IBaseTenantEntity {
   taskKey: string;
+  // TASK-843 — the canonical task taxonomy `taskKey` belongs to, DERIVED from
+  // it via `AI_TASK_KIND_BY_TASK_KEY` in the applications layer. Optional while
+  // Phase 1 is additive; TASK-844 makes it required when it absorbs
+  // `AiTaskDefault` into this model.
+  taskKind?: AiTaskKind | null;
   policyVersion: number;
   status: AiRoutingPolicyStatus;
   strategy: AiRoutingStrategy;
@@ -39,6 +44,7 @@ export interface IAiRoutingPolicyEntity extends IBaseTenantEntity {
 
 export class AiRoutingPolicyEntity extends BaseTenantEntity {
   private _taskKey: IAiRoutingPolicyEntity['taskKey'];
+  private _taskKind?: IAiRoutingPolicyEntity['taskKind'];
   private _policyVersion: IAiRoutingPolicyEntity['policyVersion'];
   private _status: IAiRoutingPolicyEntity['status'];
   private _strategy: IAiRoutingPolicyEntity['strategy'];
@@ -59,6 +65,7 @@ export class AiRoutingPolicyEntity extends BaseTenantEntity {
   constructor(init: IAiRoutingPolicyEntity) {
     super(init);
     this._taskKey = init.taskKey;
+    this._taskKind = init.taskKind;
     this._policyVersion = init.policyVersion;
     this._status = init.status;
     this._strategy = init.strategy;
@@ -83,6 +90,14 @@ export class AiRoutingPolicyEntity extends BaseTenantEntity {
 
   set taskKey(value: IAiRoutingPolicyEntity['taskKey']) {
     this.setProperty('taskKey', value);
+  }
+
+  get taskKind(): IAiRoutingPolicyEntity['taskKind'] {
+    return this._taskKind;
+  }
+
+  set taskKind(value: IAiRoutingPolicyEntity['taskKind']) {
+    this.setProperty('taskKind', value);
   }
 
   get policyVersion(): IAiRoutingPolicyEntity['policyVersion'] {

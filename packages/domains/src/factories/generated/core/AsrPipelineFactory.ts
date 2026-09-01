@@ -21,6 +21,9 @@ export interface CreateAsrPipelineProps extends BaseEntityFactoryCreateProps {
   // purpose — the tenant default is flipped only via `setDefaultForTenant`.
   sourceTemplateSlug?: IAsrPipelineEntity['sourceTemplateSlug'];
   templateLocked?: IAsrPipelineEntity['templateLocked'];
+  // TASK-843 — constant for the model; the entity supplies SPEECH_TO_TEXT when
+  // omitted, matching the DB default.
+  taskKind?: IAsrPipelineEntity['taskKind'];
 
   createdAt?: IAsrPipelineEntity['createdAt'];
   updatedAt?: IAsrPipelineEntity['updatedAt'];
@@ -52,6 +55,7 @@ export class AsrPipelineFactory {
       tags: props.tags ?? [],
       sourceTemplateSlug: props.sourceTemplateSlug ?? null,
       templateLocked: props.templateLocked ?? false,
+      taskKind: props.taskKind ?? Enums.AiTaskKind.SPEECH_TO_TEXT,
     });
   }
 
