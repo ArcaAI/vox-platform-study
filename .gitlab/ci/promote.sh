@@ -98,7 +98,7 @@ echo "── Promoting ${SOURCE_TAG} → ${DEPLOY_ENV} (env tag: ${ENV_TAG}) ─
 # forms `$REGISTRY/$CI_PROJECT_PATH/<name>` — and the `hope-v2/<name>` key the
 # overlays use. A name with no matching `sha-<sha8>` tag is skipped with a
 # warning rather than failing the whole promotion.
-SERVICES="api stt-ml-runtime stt-worker text guardrail harness harness-worker nlp tts admin-console compat-playground database qdrant-init"
+SERVICES="api lmstudio stt-ml-runtime stt-worker text guardrail harness harness-worker nlp tts admin-console compat-playground database qdrant-init"
 
 PROMOTED=""
 for svc in $SERVICES; do
