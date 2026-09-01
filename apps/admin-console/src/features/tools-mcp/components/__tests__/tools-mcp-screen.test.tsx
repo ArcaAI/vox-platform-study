@@ -30,7 +30,7 @@ const SESSION = {
   workingTenantName: null as string | null,
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null as string | null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: null as string | null,
 };
