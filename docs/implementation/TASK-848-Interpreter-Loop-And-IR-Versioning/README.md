@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` — components landed inert (`cdd17b99d`); wiring + tests outstanding |
+| **Status** | `Review` — loop body wired and tested; 848b/848c outstanding by design |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
@@ -152,14 +152,50 @@ orchestrator converged, which is what that bound exists to detect. Every ceiling
 clock — **DEGRADES**, because *a truncated clinical deliberation reported as SUCCEEDED is the false-success
 claim this substrate exists to avoid.*
 
-### Still outstanding for the next pass
+### Wiring and tests — completed 2026-09-01 by the orchestrator
 
-1. The dispatch branch in `_dispatch_node`, guarded by `workflow.patched(_LOOP_PATCH)`.
-2. `_index_loop_body` — referenced by the comments, not written.
-3. Worker registration for `AgenticLoopWorkflow`, `AgenticSubAgentWorkflow` and the checkpoint activity.
-4. Un-`DEGRADE` `agentic.loop`, updating `test_neither_ever_claims_to_have_produced_anything` deliberately.
-5. **All tests**: the four bounds each terminating distinguishably, the determinism poison test, and the
-   `continue_as_new` history-bound MEASUREMENT.
+After a fourth dispatch attempt stalled, the remaining work was finished directly. It was bounded:
+
+| Commit | What |
+|---|---|
+| `b5165c088` | The dispatch branch, `_index_loop_body` folded into the existing indexing walk, `_run_loop`, `_loop_node_spec`, worker registration |
+| `808c3604c` | **The stage walk must not execute a node the loop owns** — see below |
+| `b4cf147b9` | The four bounds, each stopping distinguishably (8 cases) |
+| `de7cb7b2c` | Determinism poison test + measured history bound (3 cases) |
+
+**A defect found while writing the tests, not after.** The compiler lifts only `gate`-class nodes out of
+`stages` and emits no `loops` collection, so a loop's orchestrator stays in the stage walk. Without a guard
+it would have run **once as an ordinary stage node and again on every iteration** — a duplicated model call
+per iteration, billed and recorded twice, with the stage-walk copy writing an output the loop never saw.
+`_loop_body_node_ids` now defers those nodes with `reason="loop_body"`, observable rather than silent.
+*The cleaner long-term fix is for the compiler to lift loop bodies the way it lifts gates* — a TypeScript
+contract change, recorded as a follow-up rather than taken here.
+
+**The activity was deliberately NOT un-DEGRADED.** `workflow.patched(_LOOP_PATCH)` routes new executions to
+the child workflow and pre-patch histories to the activity, which is what those histories recorded. The
+activity is now the replay-only path, not dead code, and
+`test_neither_ever_claims_to_have_produced_anything` remains correct as written. This corrects the plan's
+own step 4, which had assumed the activity should change.
+
+**Test-quality notes.** The bounds tests exercise the REAL `AgenticLoopWorkflow` and real bound arithmetic —
+only the model call is stubbed — because a bound is only proven if the thing being bounded is the production
+path. The history test is verified **non-vacuous by mutation** (inverting the bound makes it fail) and
+guards against reading zero events. Writing against the real path also surfaced the carry-forward envelope
+shape, `{"orchestrator": …, "subAgents": […]}`, which a stub reading the bare output would have mistaken for
+a loop that never advances.
+
+Full harness suite **1887 passed** (from 1876), lint clean, typecheck clean (143 files).
+
+### Still outstanding — 848b / 848c, deferred by design
+
+1. **848b** — `irVersion` dispatch (step 4), Worker Versioning `Pinned` (step 5), claim-check to MinIO
+   (step 6; `AgenticLoopState.ref` already exists unset so the carry-forward shape will not change), and
+   real-graph replay fixtures (step 9).
+2. **848c** — tier 3 `ioSchema` / `onSchemaViolation` boundary evaluation (step 8), which may fold into
+   TASK-849.
+3. **`maxDurationSeconds` is enforced by the PARENT, not the loop** (§2b) — the loop's three carried bounds
+   are covered by tests; the duration bound belongs to the parent's timer and is exercised only indirectly.
+4. **Compiler-side lift of loop bodies**, which would retire the `loop_body` skip.
 
 ### Process note
 
