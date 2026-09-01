@@ -398,3 +398,97 @@ class TestTheStageWalkDefersToTheLoop:
         assert worker_node is not None
         assert worker_node.status == "SKIPPED"
         assert worker_node.reason == "loop_body"
+
+
+class TestDeterminism:
+    """The loop must read no clock and no RNG.
+
+    A workflow that reads either cannot be replayed, and in this product an unreplayable run is a
+    clinical deliberation that cannot be reproduced. Asserting "we did not call it" by reading the
+    source is not evidence; poisoning the calls and running anyway is.
+    """
+
+    async def test_the_loop_path_touches_neither_clock_nor_rng(self, env, monkeypatch):
+        import temporalio.workflow as temporal_workflow
+
+        def _poisoned(*_args, **_kwargs):  # pragma: no cover - raising IS the assertion
+            raise AssertionError(
+                "the loop read a clock or an RNG inside @workflow.defn — that breaks replay"
+            )
+
+        monkeypatch.setattr(temporal_workflow, "now", _poisoned, raising=False)
+        monkeypatch.setattr(temporal_workflow, "random", _poisoned, raising=False)
+        monkeypatch.setattr(temporal_workflow, "uuid4", _poisoned, raising=False)
+
+        result, _ = await _run(
+            env,
+            _body(
+                bounds={
+                    "maxIterations": 3,
+                    "maxDurationSeconds": 300,
+                    "maxTotalTokens": 1_000_000,
+                    "noProgressIterations": 99,
+                }
+            ),
+        )
+        loop = _node(result, _LOOP_NODE)
+        assert loop is not None
+        assert loop.reason == "max_iterations"
+
+    async def test_the_child_workflow_id_is_derived_not_random(self):
+        """One id for the whole continue_as_new chain, derived from the parent's run id.
+
+        A uuid here would produce a different id on every replay, which is the same defect as
+        reading a clock — it just fails later and less obviously.
+        """
+        first = agentic_loop_workflow_id("run-1", "n_loop")
+        second = agentic_loop_workflow_id("run-1", "n_loop")
+        assert first == second
+        assert agentic_loop_workflow_id("run-2", "n_loop") != first
+        # The iteration must NOT appear: continue-as-new keeps the workflow id and changes only
+        # the run id, so an iteration-suffixed id would start a new chain every generation.
+        assert "0" not in first.removeprefix("agentic-loop-run-1-")
+
+
+class TestHistoryStaysBounded:
+    """`continue_as_new` per iteration is what keeps a long loop's history flat.
+
+    MEASURED, not asserted from the shape of the code: a loop that runs N times as long must not
+    produce a history N times as large, or a long deliberation eventually exceeds Temporal's
+    history limits and dies mid-run.
+    """
+
+    @staticmethod
+    async def _final_history_length(env, run_id: str, node_id: str) -> int:
+        handle = env.client.get_workflow_handle(agentic_loop_workflow_id(run_id, node_id))
+        events = [event async for event in handle.fetch_history_events()]
+        return len(events)
+
+    async def test_a_longer_loop_does_not_grow_its_history_proportionally(self, env):
+        def _bounds(iterations: int) -> dict:
+            return {
+                "maxIterations": iterations,
+                "maxDurationSeconds": 300,
+                "maxTotalTokens": 1_000_000,
+                "noProgressIterations": 99,
+            }
+
+        _, short_run = await _run(env, _body(bounds=_bounds(2)))
+        _, long_run = await _run(env, _body(bounds=_bounds(8)))
+
+        short_len = await self._final_history_length(env, short_run, _LOOP_NODE)
+        long_len = await self._final_history_length(env, long_run, _LOOP_NODE)
+
+        # Four times the iterations. Without continue_as_new the final history would carry every
+        # iteration's events; with it, each generation starts fresh and only the LAST one is
+        # visible here. The bound is deliberately generous — this test is about the SHAPE of the
+        # growth (flat, not linear), and pinning an exact event count would break on any
+        # unrelated change to how one iteration is recorded.
+        assert short_len > 0 and long_len > 0, (
+            f"nothing was measured: {short_len}/{long_len} events — a history test that reads "
+            "zero events proves nothing"
+        )
+        assert long_len < short_len * 2, (
+            f"history grew with iteration count: {short_len} events for 2 iterations, "
+            f"{long_len} for 8 — continue_as_new is not bounding it"
+        )
