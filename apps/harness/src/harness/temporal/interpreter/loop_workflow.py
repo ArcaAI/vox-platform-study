@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -197,7 +198,7 @@ class AgenticLoopWorkflow:
 
         # 3) The WORKERS execute, under the orchestrator's own output. All-settled: one worker
         # failing does not cancel its siblings, and does not end the loop.
-        sub_outputs: list[dict] = []
+        sub_outputs: list[dict[str, Any]] = []
         failures = 0
         if inp.sub_agents:
             settled = await asyncio.gather(
@@ -256,10 +257,10 @@ class AgenticLoopWorkflow:
         self,
         inp: AgenticLoopInput,
         node: AgenticLoopNodeSpec,
-        bound_inputs: dict,
+        bound_inputs: dict[str, Any],
         *,
         stage_id: str,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """Run ONE loop-body node as an activity. ``None`` means it did not produce.
 
         S-4 applies here exactly as it does in the interpreter: the callable comes from the
@@ -307,8 +308,8 @@ class AgenticLoopWorkflow:
         return result.output or {}
 
     async def _run_sub_agent(
-        self, inp: AgenticLoopInput, node: AgenticLoopNodeSpec, orchestrator_output: dict
-    ) -> dict | None:
+        self, inp: AgenticLoopInput, node: AgenticLoopNodeSpec, orchestrator_output: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """One worker, as a CHILD WORKFLOW. ``None`` means it did not produce."""
         try:
             result: NodeActivityResult = await workflow.execute_child_workflow(
