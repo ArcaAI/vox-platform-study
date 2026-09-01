@@ -7,7 +7,7 @@
 
 import { getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { CreateMcpServerRequest, McpServer, McpServerListResponse, UpdateMcpServerRequest } from './types';
+import type { CreateMcpServerRequest, McpGateResponse, McpServer, McpServerListResponse, UpdateMcpServerRequest } from './types';
 
 const BASE = 'admin/mcp-servers';
 
@@ -37,4 +37,15 @@ export function updateMcpServer(id: string, patch: UpdateMcpServerRequest, etag:
 /** OCC soft-delete: If-Match required (412 on drift, 428 when missing). */
 export function deleteMcpServer(id: string, etag: string): Promise<McpServer> {
   return request<McpServer>(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE', etag }).then((result) => result.data);
+}
+
+/**
+ * The effective MCP master gate for the caller's tenant (OD-11). Read off the
+ * harness policy, which the gateway already resolves tenant → SYSTEM, so no
+ * cascade is reimplemented here. Registering a connector while this is off
+ * leaves it configured but never invocable — the screen says so rather than
+ * letting the user discover it at runtime.
+ */
+export function getMcpGate(): Promise<McpGateResponse> {
+  return getJson('admin/harness/policy');
 }
