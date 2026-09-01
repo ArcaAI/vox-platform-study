@@ -9,6 +9,9 @@ import { generateId } from '../../../utils';
 export interface CreateAiRoutingPolicyProps extends BaseEntityFactoryCreateProps {
   tenantId: IAiRoutingPolicyEntity['tenantId'];
   taskKey: IAiRoutingPolicyEntity['taskKey'];
+  // TASK-843 — optional while Phase 1 is additive; derived from `taskKey` via
+  // `AI_TASK_KIND_BY_TASK_KEY` in the applications layer.
+  taskKind?: IAiRoutingPolicyEntity['taskKind'];
   candidatesJson: IAiRoutingPolicyEntity['candidatesJson'];
 
   policyVersion?: IAiRoutingPolicyEntity['policyVersion'];
@@ -48,6 +51,7 @@ export class AiRoutingPolicyFactory {
 
       tenantId: props.tenantId,
       taskKey: props.taskKey,
+      taskKind: props.taskKind ?? null,
       candidatesJson: props.candidatesJson,
 
       // Defaults MIRROR the Prisma column defaults so an entity built here and

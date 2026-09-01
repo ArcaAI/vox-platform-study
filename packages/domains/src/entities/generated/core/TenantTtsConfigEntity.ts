@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { AiTaskKind } from '../../../enums';
 
 // One row per tenant (SYSTEM tenant = platform default). Nullable /
 // empty-array fields mean "inherit from the SYSTEM default / code default"; the
@@ -19,6 +20,10 @@ export interface ITenantTtsConfigEntity extends IBaseTenantEntity {
   maxInputChars?: number | null;
   sarvamPublicApiAllowed: boolean;
   configJson?: Record<string, unknown> | null;
+  // TASK-843 — CONSTANT for the model: every row is a text-to-speech binding.
+  // Optional on the interface so the create path can omit it (the DB default
+  // covers it); non-optional on the class with the matching code default.
+  taskKind?: AiTaskKind;
 }
 
 export class TenantTtsConfigEntity extends BaseTenantEntity {
@@ -33,6 +38,7 @@ export class TenantTtsConfigEntity extends BaseTenantEntity {
   private _maxInputChars?: ITenantTtsConfigEntity['maxInputChars'];
   private _sarvamPublicApiAllowed: ITenantTtsConfigEntity['sarvamPublicApiAllowed'];
   private _configJson?: ITenantTtsConfigEntity['configJson'];
+  private _taskKind: AiTaskKind;
 
   constructor(init: ITenantTtsConfigEntity) {
     super(init);
@@ -47,6 +53,7 @@ export class TenantTtsConfigEntity extends BaseTenantEntity {
     this._maxInputChars = init.maxInputChars;
     this._sarvamPublicApiAllowed = init.sarvamPublicApiAllowed;
     this._configJson = init.configJson;
+    this._taskKind = init.taskKind ?? AiTaskKind.TEXT_TO_SPEECH;
   }
 
   get defaultVoiceEn(): ITenantTtsConfigEntity['defaultVoiceEn'] {
@@ -135,5 +142,13 @@ export class TenantTtsConfigEntity extends BaseTenantEntity {
 
   set configJson(value: ITenantTtsConfigEntity['configJson']) {
     this.setProperty('configJson', value);
+  }
+
+  get taskKind(): AiTaskKind {
+    return this._taskKind;
+  }
+
+  set taskKind(value: AiTaskKind) {
+    this.setProperty('taskKind', value);
   }
 }

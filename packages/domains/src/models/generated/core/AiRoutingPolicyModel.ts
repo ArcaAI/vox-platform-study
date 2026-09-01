@@ -9,6 +9,7 @@ import * as Models from './';
 
 export class AiRoutingPolicy extends BaseTenantDataModel {
   public taskKey: string;
+  public taskKind: Enums.AiTaskKind | null;
   public policyVersion: number;
   public status: Enums.AiRoutingPolicyStatus;
   public strategy: Enums.AiRoutingStrategy;
@@ -32,6 +33,7 @@ export class AiRoutingPolicy extends BaseTenantDataModel {
   constructor(data: AiRoutingPolicy & BaseTenantDataModel) {
     super(data);
     this.taskKey = data.taskKey;
+    this.taskKind = data.taskKind;
     this.policyVersion = data.policyVersion;
     this.status = data.status;
     this.strategy = data.strategy;

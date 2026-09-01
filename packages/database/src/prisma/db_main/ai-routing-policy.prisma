@@ -51,6 +51,16 @@ model AiRoutingPolicy {
   // core fields
   taskKey String // same vocabulary as AiTaskDefault.taskKey (e.g. text.live | text.finalize)
 
+  // TASK-843 — the canonical task taxonomy `taskKey` belongs to. Same
+  // derivation, same nullability rationale and same TASK-844 tightening as
+  // `AiTaskDefault.taskKind`; see that column's comment for both. It is added
+  // HERE as well because OD-3 makes this table the absorption target: when
+  // TASK-844 folds `AiTaskDefault` in, both sides of the migration already
+  // carry the discriminator, so the copy is a straight column-to-column move
+  // rather than a re-derivation of 12 rows against a mapping that lives in
+  // application code.
+  taskKind AiTaskKind?
+
   // The AUTHORED revision of this policy — NOT the `_version` OCC counter
   // above. `_version` is owned by the database, bumped on every write, and
   // exists so a concurrent PATCH is rejected (`updateWithVersion`).
@@ -118,5 +128,7 @@ model AiRoutingPolicy {
   // tenant-scope reads the extension injects — no separate `[tenantId]` index.
   @@unique([tenantId, taskKey, policyVersion], name: "AiRoutingPolicy_tenant_task_version_unique", map: "AiRoutingPolicy_tenantId_taskKey_policyVersion_unique")
   @@index([tenantId, taskKey], name: "AiRoutingPolicy_tenantId_taskKey_idx")
+  // TASK-843 — the by-kind read TASK-844's unified selection surface needs.
+  @@index([tenantId, taskKind], name: "AiRoutingPolicy_tenantId_taskKind_idx")
   @@schema("core")
 }

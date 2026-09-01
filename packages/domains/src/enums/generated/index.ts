@@ -12,6 +12,7 @@ export * from './AiPriceBookPlane';
 export * from './AiPriceRowKind';
 export * from './AiRoutingPolicyStatus';
 export * from './AiRoutingStrategy';
+export * from './AiTaskKind';
 export * from './AiUsageOutboxStatus';
 export * from './AiUsageUnit';
 export * from './ApiKeyStatus';

@@ -832,3 +832,86 @@ enum AiExplicitProviderMode {
 
   @@schema("core")
 }
+
+// TASK-843 — the CANONICAL AI TASK TAXONOMY.
+//
+// WHICH PLATFORM TASK a provider binding serves. This is the axis the product
+// means by "one configuration per task": text generation, translation,
+// speech-to-text and text-to-speech are four first-class tasks, and before this
+// enum only the first had any taxonomy at all. Translation had no mechanism
+// whatsoever; STT routed through `AsrPipeline` + `TenantSttConfig` and TTS
+// through `TenantTtsConfig` — three unrelated mechanisms no single query could
+// reach.
+//
+// ── Why this is NOT `ModelTaskType`, and not `AiCapability` ────────────────
+// Three enums now touch the word "task". They are orthogonal, and conflating
+// any two of them loses information the platform already relies on:
+//
+//   ModelTaskType  WHAT SHAPE OF ARTIFACT a model is — the HuggingFace
+//                  pipeline-tag vocabulary, a property of `AiModel`. 47 members
+//                  including TEXT_TO_3D and TABULAR_REGRESSION, and
+//                  parity-gated member-for-member against a Python mirror
+//                  (`apps/stt/tests/unit/test_db_enum_mirrors.py`).
+//   AiCapability   WHAT A LEDGER ROW IS BILLED UNDER — five COGS buckets
+//                  (STT/LLM/NLP/TTS/EMBEDDING). Deliberately coarse: its own
+//                  comment records that guardrail and harness LLM calls meter
+//                  under `LLM` because they are the same cost unit. Too coarse
+//                  to select with — "the translation model" is not expressible.
+//   AiTaskKind     WHICH TASK A BINDING IS FOR — this enum.
+//
+// The proof they are different axes is already in the tree:
+// `AI_TASK_MODEL_TASK_TYPES` (ai-task-default/constants.ts) is a MANY-TO-ONE
+// map from task key to `ModelTaskType`. You do not write a map between a thing
+// and itself. Concretely `ModelTaskType.TOKEN_CLASSIFICATION` serves BOTH
+// `nlp.ner` and `guardrail.pii`, and `ModelTaskType.TEXT_CLASSIFICATION` serves
+// four more keys — so keying provider selection on model SHAPE would merge
+// selections that are today different models under different governance.
+//
+// ── Granularity ───────────────────────────────────────────────────────────
+// COARSER than `taskKey`, deliberately: `taskKey` stays the fine-grained
+// selector (`text.live` and `text.finalize` are ONE kind, TWO selections) and
+// this enum is the product-visible grouping over it. The mapping is
+// `AI_TASK_KIND_BY_TASK_KEY` in
+// `packages/applications/src/services/ai-task-default/constants.ts`, whose
+// exhaustive `Record<AiTaskKey, AiTaskKind>` makes it impossible to add a task
+// key without deciding its kind.
+//
+// CONSEQUENCE FOR TASK-844, stated here because the column is what invites the
+// mistake: a "one default per task" constraint must be keyed on the SELECTION
+// (`taskKey`), NOT on this KIND. A partial unique index on
+// `(tenantId, taskKind) WHERE isDefault` would collapse `text.live` with
+// `text.finalize`, and `nlp.ner` with `guardrail.pii`.
+//
+// ── Extensibility ─────────────────────────────────────────────────────────
+// Postgres enums extend with `ALTER TYPE … ADD VALUE`. Two capabilities that
+// exist in the platform are deliberately ABSENT because nothing SELECTS them
+// yet, and a member here would promise a binding surface that does not exist:
+// RERANK (the TEI reranker on :8870, `ProviderService = 'rerank'`) and the
+// `vector` / `model-registry` `ProviderService` values, which are
+// infrastructure connections rather than AI tasks. Add them when a selection
+// surface does.
+enum AiTaskKind {
+  // The four product tasks.
+  TEXT_GENERATION // text.live | text.finalize | *.fallback | text.test | harness.judge
+  // TRANSLATION has no rows yet. Served ONLY by a provider with a NATIVE
+  // endpoint — Sarvam, which has one with explicit `ml-IN`. Azure is
+  // deliberately not offered: Azure OpenAI has no text-translation endpoint at
+  // all (`/audio/translations` is Whisper audio→English), so serving it would
+  // require Azure AI Translator — a separate resource, key and billing. Owner
+  // decision OD-8, 2026-09-01.
+  TRANSLATION
+  SPEECH_TO_TEXT // AsrPipeline + TenantSttConfig
+  TEXT_TO_SPEECH // TenantTtsConfig
+
+  // Capabilities that ALREADY exist, named so this taxonomy does not silently
+  // swallow them. Each has live rows or a live selection today.
+  VISION_EXTRACTION // vlm.extract — image + text in, text out
+  EMBEDDING // AiCapability.EMBEDDING / ProviderService 'embeddings'
+  NAMED_ENTITY_RECOGNITION // nlp.ner
+  TEXT_CLASSIFICATION // nlp.classification | .diagnosis | .sentiment | .toxicity | .topic | .intent
+  CONTENT_SAFETY // guardrail.validate | guardrail.safety
+  GROUNDEDNESS // guardrail.groundedness
+  PII_DETECTION // guardrail.pii | guardrail.pii.spans
+
+  @@schema("core")
+}
