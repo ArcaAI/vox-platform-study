@@ -96,6 +96,13 @@ export type { WorkflowNodePorts } from './node-ports';
 export { isValidConnection, nodeDescriptorContractProblems, workflowEdgePortProblems, workflowPublishProblems } from './port-validation';
 export type { PortValidationOptions } from './port-validation';
 
+// TASK-847 step 7 TIER 2 — shallow schema compatibility, WARNING-severity only. Tier 1 (the
+// port lattice, above) blocks; tier 3 is runtime validation at the node boundary. Never promote
+// this to a publish gate: it reads two DECLARATIONS and guesses, which is useful as a hint and
+// disqualifying as an authority.
+export { schemaCompatWarnings, workflowEdgeSchemaWarnings } from './schema-compat';
+export type { SchemaCompatFinding } from './schema-compat';
+
 export { compile } from './compiler';
 export type {
   CompiledWorkflowConfig,
