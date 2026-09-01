@@ -26,13 +26,26 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
  * grants in the same change, and CUSTOM (tenant-authored) policies that reached
  * this registry via `manage:HarnessPolicy` must add the new grant.
  *
- * Reads (list/get) back the console "Tools & MCP" screen — the registry
- * list/read. WRITES are SUPER_ADMIN-ONLY: the SERVICE throws a
- * `ForbiddenException` (403) for a tenant admin (the guardrail.* privilege
- * boundary; NOT the 404-over-403 tenancy posture). Cross-tenant reads are 404.
+ * Reads (list/get) back the console "Tools & MCP" screen — the caller's own
+ * tenant rows plus the SYSTEM-shared registry. Cross-tenant reads are 404.
+ *
+ * AUTH-NOTE: SYSTEM-vs-tenant-owned SPLIT GATE — the decorators UNDERSTATE the
+ * real rule, which `McpServerAdminService` enforces imperatively. Per OWNER
+ * DECISION OD-7 (2026-09-01) a tenant admin holding `manage:McpServer` MAY
+ * create, update and delete connectors **owned by its own tenant**; a write
+ * aimed at the SYSTEM (`00000000-…`) shared registry stays SUPER_ADMIN-only and
+ * returns 403 — a privilege boundary, and the row is readable so its existence
+ * is not hidden. A row belonging to ANOTHER tenant returns 404 (404-over-403),
+ * and existence is resolved BEFORE privilege so an unknown id is 404 for
+ * everyone. This reverses the former "MCP writes are super-admin only" rule;
+ * `.claude/rules/05-nestjs-api.md` was amended in the same change. No single
+ * decorator can express "super-admin for the SYSTEM row, ability-gated for every
+ * other row of the same resource" — same shape as
+ * `POST admin/prompt-templates/:id/approve`.
  *
  * SECURITY: no response ever carries secret material — `authRef` is a Vault PATH
- * only (secrets flow through the Vault path, never this API).
+ * only (secrets flow through the Vault path, never this API). That is unchanged
+ * for tenant-authored rows: a tenant admin registers a Vault path, not a token.
  */
 @ApiBearerAuth()
 @ApiTags('admin-mcp-servers')
@@ -75,15 +88,21 @@ export class McpAdminController {
   @Post()
   @CanManage('McpServer')
   @ApiOperation({
-    summary: 'Register a new MCP server (GLOBAL-ADMIN only)',
+    summary: 'Register a new MCP server (own tenant; the SYSTEM registry is GLOBAL-ADMIN only)',
     description:
-      'Creates a SYSTEM-owned registry row by default (or a specific tenant via `?tenantId=`). `authRef` is a Vault path ' +
-      '(no secret material). Super-admin only — a tenant admin gets 403. The server is dormant (`enabled: false`) unless ' +
-      'explicitly enabled, and the whole MCP path is additionally gated OFF by `HarnessPolicy.mcpToolsEnabled` (null → off).',
+      'A tenant admin holding `manage:McpServer` creates a connector owned by ITS OWN tenant. A super admin creates a ' +
+      'SYSTEM-owned registry row by default, or targets a specific tenant via `?tenantId=`. A tenant admin aiming at the ' +
+      'SYSTEM registry gets 403. `authRef` is a Vault path (no secret material). The server is dormant ' +
+      '(`enabled: false`) unless explicitly enabled, and the MCP path is additionally gated by the per-tenant ' +
+      '`HarnessPolicy.mcpToolsEnabled` (resolved tenant → SYSTEM; unset in both tiers → off).',
   })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({
+    name: 'tenantId',
+    required: false,
+    description: 'Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.',
+  })
   @ApiResponse({ status: 201, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — the MCP registry is managed by super administrators only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — the SYSTEM MCP registry is managed by super administrators only.' })
   async create(@Body() body: CreateMcpServerRequest, @Query('tenantId') tenantId?: string): Promise<McpServerResponse> {
     return this.mcpServerService.create(body, this.resolveWriteTenantId(tenantId));
   }
@@ -92,13 +111,19 @@ export class McpAdminController {
   @CanManage('McpServer')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Update a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',
+    summary: 'Update a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)',
     description:
       'Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). ' +
-      'Super-admin only (403 for tenant admins). `authRef` stays a Vault path — never secret material.',
+      'A tenant admin may patch its OWN tenant’s connectors; a SYSTEM-registry row is super-admin only (403). An id ' +
+      'belonging to another tenant returns 404, and an unknown id returns 404 for every caller. `authRef` stays a Vault ' +
+      'path — never secret material.',
   })
   @ApiParam({ name: 'id', description: 'MCP server id' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({
+    name: 'tenantId',
+    required: false,
+    description: 'Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.',
+  })
   @ApiHeader({
     name: 'If-Match',
     description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
@@ -106,7 +131,7 @@ export class McpAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — the SYSTEM MCP registry is managed by super administrators only.' })
   @ApiResponse({ status: 404, description: 'Server not found for the tenant.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -123,11 +148,17 @@ export class McpAdminController {
   @CanManage('McpServer')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Soft-delete a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',
-    description: 'Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). Super-admin only (403 for tenant admins).',
+    summary: 'Soft-delete a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)',
+    description:
+      'Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). A tenant admin may delete its OWN tenant’s ' +
+      'connectors; a SYSTEM-registry row is super-admin only (403). Another tenant’s id — or an unknown id — is 404.',
   })
   @ApiParam({ name: 'id', description: 'MCP server id' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({
+    name: 'tenantId',
+    required: false,
+    description: 'Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.',
+  })
   @ApiHeader({
     name: 'If-Match',
     description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
@@ -135,7 +166,7 @@ export class McpAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — the SYSTEM MCP registry is managed by super administrators only.' })
   @ApiResponse({ status: 404, description: 'Server not found for the tenant.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

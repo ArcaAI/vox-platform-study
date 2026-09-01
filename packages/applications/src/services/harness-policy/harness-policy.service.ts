@@ -141,9 +141,14 @@ export interface HarnessPolicyKnobs {
   maxEditReruns: number | null;
   regenFeedbackEnabled: boolean | null;
   /**
-   * Master gate for the MCP external-tools path. `null ⇒ OFF`, so
-   * the feature stays dormant until a super admin explicitly flips it AND the
-   * referenced `McpServer.enabled` is true.
+   * Master gate for the MCP external-tools path. `null ⇒ no opinion`, which
+   * widens to the SYSTEM default and, absent that too, means OFF — so the
+   * feature stays dormant until it is explicitly flipped AND the referenced
+   * `McpServer.enabled` is true.
+   *
+   * PER-TENANT since OD-11 (2026-09-01): a tenant admin sets it on its own
+   * policy row and that value wins; SYSTEM supplies the platform default for
+   * tenants with no opinion.
    *
    * This existed on the entity (and therefore in `KNOB_KEYS`, which derives from
    * `HARNESS_POLICY_DEFAULTS`) but was missing from this interface, from
@@ -179,10 +184,27 @@ const SUPER_ADMIN_ONLY_POLICY_KEYS = [
   'safetyEnabled',
   'phiEnabled',
   'phiFailClosed',
-  // MCP calls OUT of the platform boundary, so arming it is
-  // super-admin governance, never a tenant-level switch.
-  'mcpToolsEnabled',
+  // NOTE: `mcpToolsEnabled` used to live here. OWNER DECISION **OD-11**
+  // (2026-09-01) makes MCP tools PER-TENANT, so it resolves on the standard
+  // tenant → SYSTEM cascade instead (see TENANT_INHERITS_ON_NULL_KEYS below).
+  // A platform-wide emergency kill-switch may sit ABOVE it, but this list is
+  // not that switch — membership here means "SYSTEM always wins", which is
+  // exactly the semantics OD-11 removed.
 ] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
+
+/**
+ * Nullable knobs a tenant may own, where `null` means **"no opinion"** rather
+ * than "off" — so the tenant row widens to the SYSTEM default on ABSENCE, which
+ * is the two-tier cascade every other config surface uses
+ * (`09-infrastructure-devops.md` §Tenant-first resolution).
+ *
+ * Why this is not merely tidy: a tenant policy row is created on the first edit
+ * of ANY knob (a clinical threshold, say). Without null-widening, that unrelated
+ * edit would freeze `mcpToolsEnabled` at `null` ⇒ OFF for the tenant, silently
+ * revoking a platform default it had been inheriting. The tenant would have
+ * disabled MCP by editing a faithfulness threshold.
+ */
+const TENANT_INHERITS_ON_NULL_KEYS = ['mcpToolsEnabled'] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
 
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
@@ -317,10 +339,16 @@ export class HarnessPolicyService {
    * than sinking the whole effective-policy read (mirrors `resolveTextSelection`
    * and `resolveJudgeSelection`). An empty list simply means nothing is callable.
    */
-  private async resolveMcpServers(): Promise<McpServerResponse[]> {
+  private async resolveMcpServers(tenantId: string): Promise<McpServerResponse[]> {
     if (!this.mcpServerRepository) return [];
     try {
-      const rows = await this.mcpServerRepository.findAll({ where: { tenantId: SYSTEM_TENANT_ID } } as never);
+      // OD-7: tenant admins register their OWN connectors, so the worker must
+      // receive the tenant's rows ALONGSIDE the SYSTEM-shared registry. This is
+      // a UNION (a registry), not the override cascade the knobs use — the
+      // shared platform servers stay available to every tenant. Scoping to
+      // [tenant, SYSTEM] keeps the two-tier boundary: no other customer's rows.
+      const scope = tenantId === SYSTEM_TENANT_ID ? [SYSTEM_TENANT_ID] : [tenantId, SYSTEM_TENANT_ID];
+      const rows = await this.mcpServerRepository.findAll({ where: { tenantId: { in: scope } } } as never);
       return (rows ?? []).filter((entity) => entity.enabled).map((entity) => McpServerDtoMapper.toResponse(entity));
     } catch (error) {
       this.logger.warn({
@@ -418,10 +446,11 @@ export class HarnessPolicyService {
     // selection-knob overlay below). Null when unconfigured ⇒ the harness falls
     // back to its env/code judge default.
     const judge = await this.resolveJudgeSelection(tid);
-    // The MCP registry is SYSTEM-shared and independent of which
-    // policy row wins, so resolve it once and overlay onto every return path
-    // below (same pattern as the judge selection above).
-    const [mcpServers, tokenBudgetPerRun] = await Promise.all([this.resolveMcpServers(), this.resolveTokenBudgetPerRun(tid)]);
+    // The MCP registry is independent of which policy row wins, so resolve it
+    // once and overlay onto every return path below (same pattern as the judge
+    // selection above). Scoped to [tenant, SYSTEM] since OD-7 (tenant-owned
+    // connectors), not SYSTEM alone.
+    const [mcpServers, tokenBudgetPerRun] = await Promise.all([this.resolveMcpServers(tid), this.resolveTokenBudgetPerRun(tid)]);
 
     const own = await this.policyRepository.findForExactTenant(tid);
     if (own) {
@@ -434,6 +463,14 @@ export class HarnessPolicyService {
         const sysKnobs = entityToKnobs(sys);
         for (const key of SUPER_ADMIN_ONLY_POLICY_KEYS) {
           (resp as unknown as Record<string, unknown>)[key] = sysKnobs[key];
+        }
+        // OD-11 cascade: the tenant's own value wins, and SYSTEM fills in only
+        // where the tenant expressed NO opinion (null). Widening on absence —
+        // never overriding a value the tenant actually set.
+        for (const key of TENANT_INHERITS_ON_NULL_KEYS) {
+          if ((resp as unknown as Record<string, unknown>)[key] == null) {
+            (resp as unknown as Record<string, unknown>)[key] = sysKnobs[key];
+          }
         }
       }
       resp.judgeProvider = judge.judgeProvider;

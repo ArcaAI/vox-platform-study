@@ -57,3 +57,13 @@ export interface UpdateMcpServerRequest {
   enabled?: boolean;
   expectedVersion?: number;
 }
+
+/**
+ * The slice of `GET admin/harness/policy` this screen needs: the per-tenant MCP
+ * master gate (OD-11). Resolved by the gateway on the tenant → SYSTEM cascade,
+ * so the value here is already the EFFECTIVE one for the caller's tenant.
+ * `null` ⇒ neither tier expressed an opinion ⇒ OFF.
+ */
+export interface McpGateResponse {
+  mcpToolsEnabled?: boolean | null;
+}

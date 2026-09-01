@@ -2,10 +2,14 @@
  * McpServerAdminService — unit tests.
  *
  * Mirrors the `ai-task-default` test style: repository, EventEmitter2 and
- * ClsService are mocked. Asserts the SUPER_ADMIN-only write governance (403 for
- * tenant admins), OCC semantics, cross-tenant 404 reads, sys-event broadcasting,
- * and — security-critical — that NO secret material is stored or echoed
- * (authRef is a Vault path only; the model has no secret column).
+ * ClsService are mocked. Asserts the SUPER_ADMIN-only governance of the SYSTEM
+ * registry (403 for tenant admins), OCC semantics, cross-tenant 404 reads,
+ * sys-event broadcasting, and — security-critical — that NO secret material is
+ * stored or echoed (authRef is a Vault path only; the model has no secret column).
+ *
+ * OD-7 (2026-09-01) opened OWN-TENANT connectors to tenant admins. That half of
+ * the contract is pinned in `mcp-server-admin.tenant-scoping.task846.test.ts`;
+ * this file keeps the SYSTEM-tier half it never stopped covering.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,20 +51,26 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
   return { svc, repo, emitter, db };
 }
 
-describe('McpServerAdminService — write governance (GLOBAL-ADMIN only)', () => {
-  it('a tenant admin creating a server gets 403 (privilege boundary, not 404)', async () => {
+describe('McpServerAdminService — SYSTEM-registry write governance (GLOBAL-ADMIN only)', () => {
+  // OD-7 (2026-09-01) opened OWN-TENANT connectors to tenant admins; the SYSTEM
+  // registry stays super-admin-owned. Own-tenant coverage lives in
+  // `mcp-server-admin.tenant-scoping.task846.test.ts`.
+  it('a tenant admin creating into the SYSTEM registry gets 403 (privilege boundary, not 404)', async () => {
     const { svc, repo } = makeService({ roles: [] });
+    // No explicit target ⇒ the SYSTEM registry is the write target.
     await expect(svc.create({ name: 's', baseUrl: 'https://x/mcp' } as any)).rejects.toBeInstanceOf(ForbiddenException);
     expect(repo.create).not.toHaveBeenCalled();
   });
 
-  it('a tenant admin updating a server gets 403', async () => {
-    const { svc } = makeService({ roles: [] });
+  it('a tenant admin updating a SYSTEM-owned server gets 403', async () => {
+    const { svc, repo } = makeService({ roles: [] });
+    repo.findEnabledById.mockResolvedValue(makeRow()); // makeRow() defaults to the SYSTEM tenant
     await expect(svc.update('id-1', { name: 'x' } as any, 1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('a tenant admin deleting a server gets 403', async () => {
-    const { svc } = makeService({ roles: [] });
+  it('a tenant admin deleting a SYSTEM-owned server gets 403', async () => {
+    const { svc, repo } = makeService({ roles: [] });
+    repo.findEnabledById.mockResolvedValue(makeRow());
     await expect(svc.remove('id-1', 1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 

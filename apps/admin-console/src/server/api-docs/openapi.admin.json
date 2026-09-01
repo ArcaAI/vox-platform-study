@@ -35689,11 +35689,11 @@
         ]
       },
       "post": {
-        "description": "Creates a SYSTEM-owned registry row by default (or a specific tenant via `?tenantId=`). `authRef` is a Vault path (no secret material). Super-admin only — a tenant admin gets 403. The server is dormant (`enabled: false`) unless explicitly enabled, and the whole MCP path is additionally gated OFF by `HarnessPolicy.mcpToolsEnabled` (null → off).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "A tenant admin holding `manage:McpServer` creates a connector owned by ITS OWN tenant. A super admin creates a SYSTEM-owned registry row by default, or targets a specific tenant via `?tenantId=`. A tenant admin aiming at the SYSTEM registry gets 403. `authRef` is a Vault path (no secret material). The server is dormant (`enabled: false`) unless explicitly enabled, and the MCP path is additionally gated by the per-tenant `HarnessPolicy.mcpToolsEnabled` (resolved tenant → SYSTEM; unset in both tiers → off).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "McpAdminController_create",
         "parameters": [
           {
-            "description": "Super-admin only: target tenant (default SYSTEM registry).",
+            "description": "Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.",
             "in": "query",
             "name": "tenantId",
             "required": false,
@@ -35724,7 +35724,7 @@
             "description": ""
           },
           "403": {
-            "description": "Forbidden — the MCP registry is managed by super administrators only."
+            "description": "Forbidden — the SYSTEM MCP registry is managed by super administrators only."
           }
         },
         "security": [
@@ -35738,7 +35738,7 @@
             "bearer": []
           }
         ],
-        "summary": "Register a new MCP server (GLOBAL-ADMIN only)",
+        "summary": "Register a new MCP server (own tenant; the SYSTEM registry is GLOBAL-ADMIN only)",
         "tags": [
           "admin-mcp-servers"
         ],
@@ -35760,7 +35760,7 @@
     },
     "/api/v1/admin/mcp-servers/{id}": {
       "delete": {
-        "description": "Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). Super-admin only (403 for tenant admins).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). A tenant admin may delete its OWN tenant’s connectors; a SYSTEM-registry row is super-admin only (403). Another tenant’s id — or an unknown id — is 404.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "McpAdminController_remove",
         "parameters": [
           {
@@ -35773,7 +35773,7 @@
             }
           },
           {
-            "description": "Super-admin only: target tenant (default SYSTEM registry).",
+            "description": "Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.",
             "in": "query",
             "name": "tenantId",
             "required": false,
@@ -35804,7 +35804,7 @@
             "description": ""
           },
           "403": {
-            "description": "Forbidden — super-admin only."
+            "description": "Forbidden — the SYSTEM MCP registry is managed by super administrators only."
           },
           "404": {
             "description": "Server not found for the tenant."
@@ -35827,7 +35827,7 @@
             "bearer": []
           }
         ],
-        "summary": "Soft-delete a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)",
+        "summary": "Soft-delete a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)",
         "tags": [
           "admin-mcp-servers"
         ],
@@ -35915,7 +35915,7 @@
         ]
       },
       "patch": {
-        "description": "Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). Super-admin only (403 for tenant admins). `authRef` stays a Vault path — never secret material.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). A tenant admin may patch its OWN tenant’s connectors; a SYSTEM-registry row is super-admin only (403). An id belonging to another tenant returns 404, and an unknown id returns 404 for every caller. `authRef` stays a Vault path — never secret material.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:mcp-server:manage`).\n\n**Abilities** — `manage:McpServer`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "McpAdminController_update",
         "parameters": [
           {
@@ -35928,7 +35928,7 @@
             }
           },
           {
-            "description": "Super-admin only: target tenant (default SYSTEM registry).",
+            "description": "Super-admin only: target tenant (default SYSTEM registry). Tenant admins are pinned to their own tenant.",
             "in": "query",
             "name": "tenantId",
             "required": false,
@@ -35969,7 +35969,7 @@
             "description": ""
           },
           "403": {
-            "description": "Forbidden — super-admin only."
+            "description": "Forbidden — the SYSTEM MCP registry is managed by super administrators only."
           },
           "404": {
             "description": "Server not found for the tenant."
@@ -35992,7 +35992,7 @@
             "bearer": []
           }
         ],
-        "summary": "Update a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)",
+        "summary": "Update a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)",
         "tags": [
           "admin-mcp-servers"
         ],

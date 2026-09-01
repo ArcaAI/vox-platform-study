@@ -13,17 +13,34 @@ import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, Updat
 /**
  * MCP external-tools registry admin service.
  *
- * Registry rows are SYSTEM-owned initially (the shared platform registry).
- * Reads (list/get) are available to tenant admins over the SYSTEM-shared read
- * model (backs the console "Tools & MCP" screen); a cross-tenant read
- * simply misses → 404. WRITES are SUPER_ADMIN-ONLY — a tenant-admin write gets
- * a `ForbiddenException` (403), the guardrail.* privilege-boundary precedent
- * (deliberately NOT the 404-over-403 tenancy posture: it is a privilege rule on
- * a registry the caller can already read).
+ * Reads (list/get) resolve over the SYSTEM-shared read model — the caller's own
+ * tenant rows PLUS the shared platform registry; a cross-tenant read simply
+ * misses → 404.
+ *
+ * WRITES follow the SYSTEM-vs-tenant-owned SPLIT GATE (OWNER DECISION **OD-7**,
+ * 2026-09-01 — tenant admins MAY configure MCP connectors; this reverses the
+ * former "MCP writes are super-admin only" rule, and `05-nestjs-api.md` was
+ * amended in the same change). The declarative grant already existed: seeded
+ * tenant-admin roles hold `manage:McpServer` in CASL, and only the imperative
+ * check here overrode it.
+ *
+ *   | Row the write targets          | Tenant admin | Rationale                  |
+ *   |--------------------------------|--------------|----------------------------|
+ *   | SYSTEM (`00000000-…`) registry | **403**      | privilege — the row is     |
+ *   |                                |              | READABLE, so hiding its    |
+ *   |                                |              | existence would be a lie   |
+ *   | Another customer tenant's row  | **404**      | 404-over-403 tenancy       |
+ *   | Its OWN tenant's row           | allowed      | OD-7                       |
+ *
+ * ORDER IS LOAD-BEARING: existence is resolved BEFORE privilege, so an unknown
+ * id is 404 for everyone. Gating first (as this service used to) would let a
+ * caller tell "exists, not yours" (403) from "no such row" (404) and walk the
+ * id space. Same shape as `PromptManagementService.assertCanApprove`.
  *
  * SECURITY: no secret material ever enters the DB or a response. `authRef` is a
  * Vault PATH only (the DTO validates it path-like); the credential lives in
- * Vault and is never echoed.
+ * Vault and is never echoed. That holds identically for tenant-authored rows —
+ * a tenant admin registers a Vault path, never a bearer/OAuth token.
  */
 @Injectable()
 export class McpServerAdminService extends BaseService implements IMcpServerAdminService {
@@ -61,10 +78,12 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async create(dto: CreateMcpServerRequest, tenantId?: string): Promise<McpServerResponse> {
-    this.assertSuperAdmin();
-    // Registry rows are SYSTEM-owned initially; a super admin may still target
-    // a specific tenant explicitly, but the default write target is SYSTEM.
+    // The controller pins a tenant admin to its own tenant, so `tenantId` is the
+    // caller's tenant for them and `?tenantId=` (or SYSTEM) for a super admin.
+    // A tenant admin therefore lands on its OWN tenant by construction; the gate
+    // below is what stops it aiming at the shared SYSTEM registry.
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
+    this.assertCanWriteTenant(scopedTenantId);
     const tx = this.crossTenantLane(scopedTenantId);
 
     const existing = await this.mcpServerRepository.findByTenantAndName(scopedTenantId, dto.name, tx);
@@ -95,7 +114,6 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async update(id: string, dto: UpdateMcpServerRequest, expectedVersion: number | undefined, tenantId?: string): Promise<McpServerResponse> {
-    this.assertSuperAdmin();
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     const tx = this.crossTenantLane(scopedTenantId);
 
@@ -103,6 +121,8 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     if (!existing) {
       throw new NotFoundException('MCP server not found');
     }
+    // Existence first, privilege second — see the class doc.
+    this.assertCanWriteRow(existing.tenantId);
 
     const changes: Record<string, unknown> = {};
     if (dto.name !== undefined) changes.name = dto.name;
@@ -137,7 +157,6 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async remove(id: string, expectedVersion: number | undefined, tenantId?: string): Promise<McpServerResponse> {
-    this.assertSuperAdmin();
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     const tx = this.crossTenantLane(scopedTenantId);
 
@@ -145,6 +164,8 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     if (!existing) {
       throw new NotFoundException('MCP server not found');
     }
+    // Existence first, privilege second — see the class doc.
+    this.assertCanWriteRow(existing.tenantId);
     if (expectedVersion === undefined) {
       throw new OptimisticConcurrencyException('McpServer', existing.id, { expectedVersion, currentVersion: existing.version });
     }
@@ -162,10 +183,40 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
 
   // ────────────────────────────── internals ──────────────────────────────
 
-  /** Registry WRITES are super-admin only — a privilege boundary (403), not a 404 probe. */
-  private assertSuperAdmin(): void {
-    if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('The MCP server registry is managed by super administrators only.');
+  /**
+   * CREATE gate — there is no row yet, so nothing to hide: every refusal here is
+   * a privilege refusal (403). The SYSTEM registry is the shared platform tier
+   * and stays super-admin-owned; a customer tenant other than the caller's is
+   * likewise a privilege refusal (the controller's `resolveScopedTenantIdOptional`
+   * already 403s a foreign `?tenantId=` — this is the defence-in-depth copy).
+   */
+  private assertCanWriteTenant(targetTenantId: string): void {
+    if (isSuperAdmin(this.requestUser)) return;
+    if (targetTenantId === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('The SYSTEM MCP registry is managed by super administrators only.');
+    }
+    if (targetTenantId !== this.tenantId) {
+      throw new ForbiddenException('You do not have access to this tenant');
+    }
+  }
+
+  /**
+   * UPDATE / DELETE gate, applied to a row that has ALREADY been resolved.
+   *
+   * A SYSTEM row is readable by every tenant (the shared registry), so refusing
+   * it is a privilege boundary → 403, and saying so leaks nothing. A row owned
+   * by ANOTHER customer tenant must never be distinguishable from a row that
+   * does not exist → 404. In practice the extended client's `[caller, SYSTEM]`
+   * widening already makes a foreign row invisible; this branch is what keeps
+   * that true if the row ever arrives through the unscoped base-client lane.
+   */
+  private assertCanWriteRow(rowTenantId: string): void {
+    if (isSuperAdmin(this.requestUser)) return;
+    if (rowTenantId === SYSTEM_TENANT_ID) {
+      throw new ForbiddenException('The SYSTEM MCP registry is managed by super administrators only.');
+    }
+    if (rowTenantId !== this.tenantId) {
+      throw new NotFoundException('MCP server not found');
     }
   }
 

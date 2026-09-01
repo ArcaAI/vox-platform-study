@@ -83,8 +83,11 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // the rail is the platform's inventory of engines and registries.
   it('covers the full 60-route rail map across the four tiers (including /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
     expect(NAV_ENTRIES).toHaveLength(60);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(26);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
+    // TASK-846 / OD-7: /tools-mcp retiered 10-19 -> 20-29 (tenant admins may
+    // configure MCP connectors), taking 10-19 from 26 -> 25 and 20-29 from
+    // 7 -> 8. The 60-route total is unchanged — nothing was added or removed.
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(25);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(8);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
@@ -418,7 +421,6 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
   ['/ai-operations/reconciliation', '10-19', [['manage', 'all']]],
   ['/billing', '10-19', [['manage', 'all']]],
-  ['/tools-mcp', '10-19', [['manage', 'all']]],
   ['/queues', '10-19', [['manage', 'all']]],
   ['/schedulers', '10-19', [['manage', 'all']]],
   ['/audit-logs', '10-19', [['read', 'AuditLog']]],
@@ -464,6 +466,12 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['update', 'Tenant'],
     ],
   ],
+  // TASK-846 / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
+  // `['/tools-mcp', '10-19', [['manage', 'all']]]`. Tenant admins may configure
+  // MCP connectors, so this is now a shared-audience (20-29) screen gated by the
+  // resource's own `manage:McpServer` rather than the `manage:all` super-admin
+  // proxy. This table exists to make exactly this kind of move visible in a diff.
+  ['/tools-mcp', '20-29', [['manage', 'McpServer']]],
   ['/departments', '30-49', [['manage', 'Department']]],
   [
     '/identity-providers',
