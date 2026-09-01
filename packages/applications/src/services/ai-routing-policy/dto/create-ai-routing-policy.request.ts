@@ -5,6 +5,19 @@ import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
 /**
  * Author a NEW routing-policy revision (TASK-818 §3A.3).
  *
+ * ## TASK-844 — this body now authors ONE PROVIDER CONFIGURATION
+ *
+ * The grain changed: a row is one CANDIDATE, and the ordered chain is the set of
+ * rows sharing `(tenantId, taskKey)` ordered by `priority`. Supply
+ * `providerConnectionId` + `modelId` (or `modelRef`) rather than a
+ * `candidates` array; the array is still accepted so a pre-844 caller is not
+ * broken, but nothing reads it.
+ *
+ * **`isDefault` is deliberately NOT accepted here.** Electing the default has
+ * to unset the incumbent in the SAME transaction or the partial unique index
+ * `AiRoutingPolicy_tenant_task_default_unique` rejects the write — so it is its
+ * own audited transition (`POST :id/default`), not a field on a create body.
+ *
  * A new policy is always created as a DRAFT — `status` is deliberately NOT
  * accepted here. Promotion is its own audited transition (`POST :id/activate`)
  * because it is the moment PHI starts flowing to a different vendor, and the
@@ -25,16 +38,83 @@ export class CreateAiRoutingPolicyRequest {
   @MaxLength(100)
   taskKey!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Ordered candidate chain. Every entry needs `connectionRef` (the AiProviderConnection `provider` under the `llm` service), `model`, `residency` and `baaCovered` — the last two are read by the §3A.4 hard gates, so an entry omitting them is rejected rather than defaulted.',
+      'Human label for this configuration — what an administrator sees in the picker and what an export artifact is identified by. Not a key.',
+    example: 'Azure GPT-4o (EU)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  displayName?: string;
+
+  @ApiPropertyOptional({
+    description: 'AiProviderConnection id that serves this configuration. A real foreign key — the connection must exist.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  providerConnectionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'AiModel id from the tenant or platform catalogue. A real foreign key. Supply this or `modelRef`; a configuration that names no model is rejected.',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  modelId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Provider-side model identifier sent on the wire when it differs from the catalogue slug — an Azure OpenAI DEPLOYMENT name, an LM Studio GGUF id, a vLLM served-model-name.',
+    example: 'gpt-4o-eu-prod',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  modelRef?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether this candidate is servable. Defaults true. Distinct from `killSwitch` (operator stop) and soft delete (lifecycle).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Opaque residency-class label. Compared for EQUALITY only by the §3A.4 fallback gate — there is no enumerated list of clouds in code to drift from reality.',
+    example: 'AZURE_EU',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  residency?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether a BAA covers this vendor AND this model. Read by the §3A.4 BAA gate; never defaulted on your behalf.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  baaCovered?: boolean;
+
+  @ApiPropertyOptional({ description: 'Task-specific extras (thresholds and the like), absorbed from `AiTaskDefault.configJson`.', type: Object })
+  @IsOptional()
+  @IsObject()
+  configJson?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'DEPRECATED by TASK-844 — the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.',
     isArray: true,
     type: Object,
-    example: [{ rank: 0, weight: 100, connectionRef: 'azure', model: 'gpt-4o', residency: 'AZURE_US', baaCovered: true }],
+    deprecated: true,
   })
+  @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
-  candidates!: unknown[];
+  candidates?: unknown[];
 
   @ApiPropertyOptional({
     description: 'AUTHORED revision. Omit to take the next revision after the highest existing one for this (tenant, taskKey).',

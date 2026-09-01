@@ -68,4 +68,89 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
       throw err;
     }
   }
+
+  /**
+   * TASK-844 — the ORDERED CANDIDATE CHAIN for one selection, across the tiers
+   * the caller names.
+   *
+   * `tenantIds` is passed in rather than derived here on purpose: the two-tier
+   * `[requestTenant, SYSTEM]` cascade is the application service's decision and
+   * belongs where it can be read next to the widening rule it implements. This
+   * method must never add a tier of its own — in particular it must never
+   * append the Global customer tenant `50000000-…`.
+   *
+   * Ordering is `priority ASC` (lower serves first), then `policyVersion DESC`
+   * so the newest authored revision wins a tie. The ELECTED default is picked
+   * out by the service, not by this ordering, because `isDefault` outranks
+   * `priority`.
+   */
+  async findCandidates(
+    tenantIds: string[],
+    taskKey: string,
+    tx?: Prisma.TransactionClient | any,
+    options: { activeOnly?: boolean; enabledOnly?: boolean } = {},
+  ): Promise<AiRoutingPolicyEntity[]> {
+    const { activeOnly = true, enabledOnly = true } = options;
+    const where: Record<string, unknown> = {
+      tenantId: { in: tenantIds },
+      taskKey,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+    if (activeOnly) where.status = AiRoutingPolicyStatus.ACTIVE;
+    if (enabledOnly) where.enabled = true;
+
+    const orderBy = [{ priority: 'asc' as const }, { policyVersion: 'desc' as const }];
+    // `this.db` is the EXTENDED delegate (tenant-scope + soft-delete
+    // extensions applied); `tx` is the caller's transaction/base client for the
+    // super-admin cross-tenant lane. Both expose the same `findMany`.
+    const delegate = tx ? (tx as Record<string, any>).aiRoutingPolicy : this.db;
+    const rows = await delegate.findMany({ where, orderBy });
+    const mapper = AiRoutingPolicyEntityMapper.getInstance();
+    return (rows as AiRoutingPolicy[]).map((row) => mapper.toDomainEntity(row));
+  }
+
+  /**
+   * TASK-844 — the UNSET half of the default election.
+   *
+   * Clears `isDefault` on every live row of `(tenantId, taskKey)` except
+   * `exceptId`, and returns how many rows it cleared. It exists as a
+   * `updateMany` rather than a read-then-write loop because it must be ONE
+   * statement inside the caller's transaction: the partial unique index
+   * `AiRoutingPolicy_tenant_task_default_unique` is checked at statement end, so
+   * unsetting the incumbent and setting the successor in the same transaction is
+   * what makes the election atomic instead of a race that the caller has to
+   * retry.
+   *
+   * ⚠ `tx` is REQUIRED. Running the unset outside a transaction would leave a
+   * selection with NO default if the subsequent set failed — for a
+   * fail-closed selection plane that is an outage, not a degraded state.
+   *
+   * `_version` is bumped on every touched row so a concurrent OCC writer that
+   * held a stale token is still rejected.
+   */
+  async clearDefaultFor(
+    tenantId: string,
+    taskKey: string,
+    exceptId: string | null,
+    tx: Prisma.TransactionClient | any,
+    updatedBy?: string,
+  ): Promise<number> {
+    const where: Record<string, unknown> = {
+      tenantId,
+      taskKey,
+      isDefault: true,
+      resourceStatus: { not: ResourceStatusType.DELETED },
+    };
+    if (exceptId) where.id = { not: exceptId };
+
+    const result = await (tx as Record<string, any>).aiRoutingPolicy.updateMany({
+      where,
+      data: {
+        isDefault: false,
+        version: { increment: 1 },
+        ...(updatedBy ? { updatedBy } : {}),
+      },
+    });
+    return result.count as number;
+  }
 }

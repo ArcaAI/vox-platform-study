@@ -3797,22 +3797,30 @@
             "description": "Cache-affinity / sticky-routing hints",
             "type": "object"
           },
+          "baaCovered": {
+            "description": "Whether a BAA covers this vendor AND this model. Read by the §3A.4 BAA gate; never defaulted on your behalf.",
+            "type": "boolean"
+          },
           "candidates": {
-            "description": "Ordered candidate chain. Every entry needs `connectionRef` (the AiProviderConnection `provider` under the `llm` service), `model`, `residency` and `baaCovered` — the last two are read by the §3A.4 hard gates, so an entry omitting them is rejected rather than defaulted.",
-            "example": [
-              {
-                "baaCovered": true,
-                "connectionRef": "azure",
-                "model": "gpt-4o",
-                "rank": 0,
-                "residency": "AZURE_US",
-                "weight": 100
-              }
-            ],
+            "deprecated": true,
+            "description": "DEPRECATED by TASK-844 — the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.",
             "items": {
               "type": "object"
             },
             "type": "array"
+          },
+          "configJson": {
+            "description": "Task-specific extras (thresholds and the like), absorbed from `AiTaskDefault.configJson`.",
+            "type": "object"
+          },
+          "displayName": {
+            "description": "Human label for this configuration — what an administrator sees in the picker and what an export artifact is identified by. Not a key.",
+            "example": "Azure GPT-4o (EU)",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Whether this candidate is servable. Defaults true. Distinct from `killSwitch` (operator stop) and soft delete (lifecycle).",
+            "type": "boolean"
           },
           "explicitProviderMode": {
             "description": "Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting (§3A.4).",
@@ -3843,6 +3851,15 @@
             "description": "Concurrent-stream ceiling",
             "type": "number"
           },
+          "modelId": {
+            "description": "AiModel id from the tenant or platform catalogue. A real foreign key. Supply this or `modelRef`; a configuration that names no model is rejected.",
+            "type": "string"
+          },
+          "modelRef": {
+            "description": "Provider-side model identifier sent on the wire when it differs from the catalogue slug — an Azure OpenAI DEPLOYMENT name, an LM Studio GGUF id, a vLLM served-model-name.",
+            "example": "gpt-4o-eu-prod",
+            "type": "string"
+          },
           "policyVersion": {
             "description": "AUTHORED revision. Omit to take the next revision after the highest existing one for this (tenant, taskKey).",
             "example": 1,
@@ -3853,9 +3870,18 @@
             "example": 0,
             "type": "number"
           },
+          "providerConnectionId": {
+            "description": "AiProviderConnection id that serves this configuration. A real foreign key — the connection must exist.",
+            "type": "string"
+          },
           "requestsPerMinute": {
             "description": "Requests-per-minute ceiling",
             "type": "number"
+          },
+          "residency": {
+            "description": "Opaque residency-class label. Compared for EQUALITY only by the §3A.4 fallback gate — there is no enumerated list of clouds in code to drift from reality.",
+            "example": "AZURE_EU",
+            "type": "string"
           },
           "strategy": {
             "description": "Selection strategy",
@@ -3879,8 +3905,7 @@
           }
         },
         "required": [
-          "taskKey",
-          "candidates"
+          "taskKey"
         ],
         "type": "object"
       },
@@ -18255,12 +18280,28 @@
             "description": "Cache-affinity hints (DRAFT only)",
             "type": "object"
           },
+          "baaCovered": {
+            "description": "Whether a BAA covers this vendor AND this model.",
+            "type": "boolean"
+          },
           "candidates": {
             "description": "Ordered candidate chain (DRAFT only)",
             "items": {
               "type": "object"
             },
             "type": "array"
+          },
+          "configJson": {
+            "description": "Task-specific extras (thresholds and the like).",
+            "type": "object"
+          },
+          "displayName": {
+            "description": "Human label for this configuration.",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Whether this candidate is servable.",
+            "type": "boolean"
           },
           "expectedVersion": {
             "description": "OCC token. The controller folds the RFC 7232 `If-Match` header over this; a mismatch is 412, an absent header 428.",
@@ -18295,13 +18336,29 @@
             "description": "Concurrent-stream ceiling (DRAFT only)",
             "type": "number"
           },
+          "modelId": {
+            "description": "AiModel id from the tenant or platform catalogue (real FK).",
+            "type": "string"
+          },
+          "modelRef": {
+            "description": "Provider-side model id on the wire (Azure deployment, GGUF id) when it differs from the catalogue slug.",
+            "type": "string"
+          },
           "priority": {
             "description": "Tie-break priority (DRAFT only)",
             "type": "number"
           },
+          "providerConnectionId": {
+            "description": "AiProviderConnection id that serves this configuration (real FK).",
+            "type": "string"
+          },
           "requestsPerMinute": {
             "description": "Requests-per-minute ceiling (DRAFT only)",
             "type": "number"
+          },
+          "residency": {
+            "description": "Opaque residency-class label; compared for EQUALITY only by the §3A.4 gate.",
+            "type": "string"
           },
           "strategy": {
             "description": "Selection strategy (DRAFT only)",
@@ -41762,6 +41819,117 @@
         "x-hope-service-account-scopes": []
       }
     },
+    "/api/v1/admin/routing-policies/export": {
+      "get": {
+        "description": "The artifact carries NO credential material and no characters of any key. Each configuration that needs a secret carries a `credentialRef` LOCATOR — built only from (service, provider, keyVersion) — naming WHICH credential an importing operator must supply out of band. Deliberately not a \"last 4\": four known characters of a live vendor key are a partial disclosure, not a mask, and producing one would require decrypting a key on a path whose entire purpose is to not handle key material. The finished artifact is re-checked structurally before it is returned.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:AiRoutingPolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiRoutingPolicyAdminController_exportConfigurations",
+        "parameters": [
+          {
+            "description": "Tenant whose configurations to export.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated task keys to limit the export to. Omit for every configuration.",
+            "in": "query",
+            "name": "taskKeys",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A secret-free provider-configuration artifact."
+          },
+          "400": {
+            "description": "An unknown task key was named."
+          },
+          "403": {
+            "description": "Routing configurations are managed by super administrators only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export provider configurations as portable JSON",
+        "tags": [
+          "admin-ai-routing-policies"
+        ],
+        "x-hope-abilities": [
+          "manage:AiRoutingPolicy"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/routing-policies/import": {
+      "post": {
+        "description": "An import can NEVER restore a credential — the artifact carries none. Configurations bind to the TARGET tenant own connection for the named (service, provider); where the source had a credential and the target has no connection, the row still lands and its `credentialRef` is returned in `requiresCredential` so the operator is told which secrets to supply rather than discovering it as a 503 later. Models are matched by SLUG on the tenant → SYSTEM cascade; a slug that resolves to nothing is SKIPPED, never guessed. Every imported row lands as a DRAFT and is NEVER elected, so an import cannot unseat a default the target tenant already chose.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:AiRoutingPolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiRoutingPolicyAdminController_importConfigurations",
+        "parameters": [
+          {
+            "description": "Tenant to import the configurations into.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Counts of imported and skipped configurations, plus the credential locators still to be supplied."
+          },
+          "400": {
+            "description": "Unrecognised artifact format, or an unknown task key."
+          },
+          "403": {
+            "description": "Routing configurations are managed by super administrators only."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Import provider configurations from an exported artifact",
+        "tags": [
+          "admin-ai-routing-policies"
+        ],
+        "x-hope-abilities": [
+          "manage:AiRoutingPolicy"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
     "/api/v1/admin/routing-policies/{id}": {
       "delete": {
         "description": "Sets `resourceStatus` to DELETED; the row is retained for the audit trail and is no longer resolved.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:AiRoutingPolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -42071,6 +42239,171 @@
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",
         "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/routing-policies/{id}/default": {
+      "post": {
+        "description": "ATOMIC: the incumbent default for the same (tenant, taskKey) is unset and this row set INSIDE ONE transaction, so the selection is never observable without a default — which matters because model selection is fail-closed, making that window an outage rather than a degraded state. A PostgreSQL partial unique index enforces \"at most one default per selection\" in the database, so two administrators electing different rows concurrently cannot both win. Idempotent: re-electing the current default returns 200 and writes nothing. `If-Match` (RFC 7232) carries the version read from the prior GET: drift → 412, missing → 428.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:AiRoutingPolicy`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiRoutingPolicyAdminController_setDefault",
+        "parameters": [
+          {
+            "description": "Configuration id (uuid7) to elect",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Target tenant.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the version the client read.",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "example": "\"1\"",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRoutingPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The configuration is disabled or deleted and cannot be elected."
+          },
+          "403": {
+            "description": "Routing configurations are managed by super administrators only."
+          },
+          "404": {
+            "description": "No such configuration in the resolved tenant."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Elect this configuration as the default for its task",
+        "tags": [
+          "admin-ai-routing-policies"
+        ],
+        "x-hope-abilities": [
+          "manage:AiRoutingPolicy"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/admin/routing-policies/{id}/promote": {
+      "post": {
+        "description": "NO CREDENTIAL IS COPIED. The copy re-points at the TARGET tenant own connection for the same (service, provider) through the standard tenant → SYSTEM cascade; a target with no such connection lands with none and must supply one (or inherit the platform default). The copy always lands as a DRAFT and is NEVER elected as the default, because promotion offers a configuration — it does not switch a tenant traffic. Elect it afterwards with POST :id/default.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:AiRoutingPolicy`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiRoutingPolicyAdminController_promote",
+        "parameters": [
+          {
+            "description": "Configuration id (uuid7) to copy",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "TARGET tenant to copy it into. Must differ from the source.",
+            "in": "query",
+            "name": "targetTenantId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "SOURCE tenant that owns the configuration.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiRoutingPolicyResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Source and target tenant are the same."
+          },
+          "403": {
+            "description": "Routing configurations are managed by super administrators only."
+          },
+          "404": {
+            "description": "No such configuration in the resolved source tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Copy a configuration to another tenant",
+        "tags": [
+          "admin-ai-routing-policies"
+        ],
+        "x-hope-abilities": [
+          "manage:AiRoutingPolicy"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": []
       }
     },

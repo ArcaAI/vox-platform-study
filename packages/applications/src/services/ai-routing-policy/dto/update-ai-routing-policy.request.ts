@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsInt, IsObject, IsOptional, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
 
 /**
@@ -22,6 +22,57 @@ import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
  * `status` is absent by design — see `CreateAiRoutingPolicyRequest`.
  */
 export class UpdateAiRoutingPolicyRequest {
+  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  // All SEMANTIC, so all refused on a revision that is not a DRAFT: changing
+  // which model or connection serves redirects PHI to a different vendor while
+  // keeping a revision id an auditor already signed off.
+  //
+  // `isDefault` is absent on purpose — see `setDefault`.
+  @ApiPropertyOptional({ description: 'Human label for this configuration.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  displayName?: string;
+
+  @ApiPropertyOptional({ description: 'AiProviderConnection id that serves this configuration (real FK).' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  providerConnectionId?: string;
+
+  @ApiPropertyOptional({ description: 'AiModel id from the tenant or platform catalogue (real FK).' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  modelId?: string;
+
+  @ApiPropertyOptional({ description: 'Provider-side model id on the wire (Azure deployment, GGUF id) when it differs from the catalogue slug.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  modelRef?: string;
+
+  @ApiPropertyOptional({ description: 'Whether this candidate is servable.' })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Opaque residency-class label; compared for EQUALITY only by the §3A.4 gate.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  residency?: string;
+
+  @ApiPropertyOptional({ description: 'Whether a BAA covers this vendor AND this model.' })
+  @IsOptional()
+  @IsBoolean()
+  baaCovered?: boolean;
+
+  @ApiPropertyOptional({ description: 'Task-specific extras (thresholds and the like).', type: Object })
+  @IsOptional()
+  @IsObject()
+  configJson?: Record<string, unknown>;
+
   @ApiPropertyOptional({ description: 'Ordered candidate chain (DRAFT only)', isArray: true, type: Object })
   @IsOptional()
   @IsArray()
