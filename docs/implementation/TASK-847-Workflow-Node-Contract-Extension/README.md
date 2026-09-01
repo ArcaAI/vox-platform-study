@@ -10,6 +10,13 @@
 | **Depends on** | TASK-843 ✅, TASK-844 ✅, TASK-845 ✅, TASK-846 ✅, TASK-852 ✅ — all landed |
 | **Owns** | `packages/workflow-contract/`, `packages/py-workflow-contract/`, the studio inspector |
 
+> **`packages/py-workflow-contract/` is deliberately UNCHANGED.** It mirrors the `compiledConfig` CONTRACT
+> (`formatVersion`, checksum verification, the four normative consumer rules) and is *"consumer half only"* —
+> it has no node registry and no per-node schemas. This ticket changes what a node's `config` may CONTAIN;
+> `compileNode` passes `config` through wholesale, so the compiled-config SHAPE is untouched and
+> `formatVersion` stays 1. The Python side that did have to change is the interpreter's own
+> `registry.py` — see §6.
+
 ## 1. Requirement Analysis
 
 Eight node types with the contracts in the owner's specification. Agent nodes bind to **exactly one** provider
@@ -39,7 +46,7 @@ tenant-scoped `McpServer` registry plus its egress guard, so tool REFERENCES now
 
 ## 3. Implementation Plan — as executed
 
-Seven commits, one per numbered step. The plan's eight steps map onto them as noted.
+Nine commits, one per numbered step. The plan's eight steps map onto them as noted.
 
 ### Step 1 — the port vocabulary and TIER 1 (`fc9208d3b`)
 
@@ -111,12 +118,20 @@ the worker SERVES). See §6 for what each one actually does.
 
 Both regen scripts run after rebuilding `@arcaai/workflow-contract`; both now report `DRIFT: 0`.
 
-### Step 7 — the derived palette set (`ee5f6f311`)
+### Step 7 — the publish gate (`b95fbd6c5`)
+
+`agenticNodeConfigProblems` runs inside `workflowPublishProblems`. An exported helper nobody calls is not a
+gate: this is what makes the exactly-one selection source, the three-axis loop bounds and the guard/orchestrator
+node references actually refuse a bad graph. The graph supplies `nodeIds`/`nodeTypesById`, so the cross-node
+checks are exact; a node-level caller (the Studio inspector, before the node is wired) can still call the
+function with no context and get the within-node rules.
+
+### Step 8 — the derived palette set (`ee5f6f311`)
 
 `KNOWN_PALETTE_KEYS` gains `agentic` for free (it is derived from the registry). `EXPOSURE_ALLOWED_PALETTES`
 is deliberately NOT widened, and the test now asserts that too.
 
-### Step 8 — dual-language parity gate
+### Step 9 — dual-language parity gate
 
 Green in both languages: `node-registry-parity.test.ts` (TS) and `test_node_registry_parity.py` (Python) both
 assert against the same regenerated `node-registry.snapshot.json`.
@@ -129,7 +144,7 @@ assert against the same regenerated `node-registry.snapshot.json`.
 | Canonical-JSON fixture test green | ✅ — part of the 1250-test suite |
 | A graph using every new node type compiles to a valid IR | ✅ `reference-only.task847.test.ts` |
 | A provider rejecting `presencePenalty` produces a clear validation error | ✅ `agentic-contract.task847.test.ts` |
-| `pnpm --filter @arcaai/workflow-contract test` | ✅ 30 files / 1250 tests |
+| `pnpm --filter @arcaai/workflow-contract test` | ✅ 30 files / 1254 tests |
 | `pnpm harness:test` incl. replay-compat | ✅ 1876 passed |
 | `pnpm --filter @arcaai/database test` (seed moved) | ✅ 73 files / 1750 tests |
 | Both regen scripts at `DRIFT: 0` | ✅ |
@@ -223,7 +238,7 @@ keeps it the first.
 
 ```
  Test Files  30 passed (30)
-      Tests  1250 passed (1250)
+      Tests  1254 passed (1254)
 ```
 
 **`pnpm harness:test`**
