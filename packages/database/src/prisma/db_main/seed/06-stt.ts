@@ -697,7 +697,8 @@ postprocessing:
   sarvam_transcription: `version: "2.0"
 
 # TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v4), cloud REST.
-# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. TASK-586:
+# BYOK-ONLY: the credential resolves tenant -> SYSTEM through
+# AiProviderConnection. There is NO env fallback. TASK-586:
 # SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
 # "sarvam-saaras-v4" catalog row — identical in shape to the Azure Speech pipeline
 # (no inline engine block or provider shorthand needed).
@@ -737,7 +738,8 @@ postprocessing:
   openai_transcription: `version: "2.0"
 
 # TASK-567 — [openai] OpenAI speech-to-text (gpt-4o-transcribe), cloud REST.
-# BYOK: per-tenant OPENAI credential (TASK-567) or OPENAI_API_KEY env. The ASR
+# BYOK-ONLY: the credential resolves tenant -> SYSTEM through
+# AiProviderConnection. There is NO env fallback. The ASR
 # ref is an INLINE definition binding the OPENAI engine (equivalent to the
 # "openai :: gpt-4o-transcribe" shorthand).
 

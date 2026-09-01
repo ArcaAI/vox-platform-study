@@ -4,12 +4,15 @@ import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   AiExplicitProviderMode,
+  AiModelRepository,
+  AiProviderConnectionRepository,
   AiRoutingPolicyEntity,
   AiRoutingPolicyEntityMapper,
   AiRoutingPolicyFactory,
   AiRoutingPolicyRepository,
   AiRoutingPolicyStatus,
   CoreDatabaseService,
+  CoreUnitOfWorkService,
   JsonValue,
   ResourceStatusType,
   ResourceType,
@@ -34,6 +37,17 @@ import {
   parseFallback,
   parseMatch,
 } from './routing-policy.contract';
+import {
+  ConfigurationRefs,
+  EXPORT_NOTICE,
+  ExportedProviderConfiguration,
+  ProviderConfigurationExport,
+  ProviderConfigurationRow,
+  assertNoSecretMaterial,
+  rowToCandidate,
+  toExportedConfiguration,
+} from './provider-configuration';
+import { AI_TASK_KIND_BY_TASK_KEY } from '../ai-task-default/constants';
 
 /**
  * The capability discriminator a routing candidate's `connectionRef` resolves
@@ -95,10 +109,22 @@ const REJECTION = {
 export class AiRoutingPolicyService extends BaseService implements IAiRoutingPolicyService {
   constructor(
     private readonly aiRoutingPolicyRepository: AiRoutingPolicyRepository,
+    // TASK-844 — the two FKs that replaced F-6's string joins are read back
+    // through their own repositories. Both reads are by PRIMARY KEY, so neither
+    // re-implements a cascade; the tenant → SYSTEM cascade stays in exactly one
+    // place per plane (`readCandidateRows` here, `resolveConnection` there).
+    private readonly aiProviderConnectionRepository: AiProviderConnectionRepository,
+    private readonly aiModelRepository: AiModelRepository,
     @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
     // The UNSCOPED base client backs the super-admin cross-tenant lane only —
     // never a tenant-facing read. Mirrors `AiTaskDefaultService`.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+    // The DOMAINS `CoreUnitOfWorkService`, not the identically named unwired
+    // class under `services/baseServices`. REQUIRED, not optional: the default
+    // election unsets the incumbent and sets the successor, and degrading
+    // silently to a non-transactional pair would leave a fail-closed selection
+    // with NO default in the window between them.
+    private readonly unitOfWork: CoreUnitOfWorkService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -148,30 +174,41 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       this.assertSuperAdmin(`resolve routing for tenant '${tenantId}'`);
     }
 
-    // STEP 1-2 — the two-tier cascade. `readPolicies` is handed exactly two
-    // ids and can never be handed a third.
-    const rows = await this.readPolicies([tenantId, SYSTEM_TENANT_ID], {
-      taskKey,
-      status: AiRoutingPolicyStatus.ACTIVE,
-      resourceStatus: ResourceStatusType.ENABLED,
-    });
+    // STEP 1-2 — the two-tier cascade. `readCandidateRows` is handed exactly
+    // two ids and can never be handed a third.
+    const rows = await this.readCandidateRows([tenantId, SYSTEM_TENANT_ID], taskKey);
     const tenantRows = tenantId === SYSTEM_TENANT_ID ? [] : rows.filter((row) => row.tenantId === tenantId);
     const systemRows = rows.filter((row) => row.tenantId === SYSTEM_TENANT_ID);
-    // A tenant with ANY live policy for this task has expressed an opinion, so
-    // SYSTEM is not consulted — widening happens on ABSENCE, never on a miss
-    // inside a tier the tenant does own.
+    // A tenant with ANY live configuration for this task has expressed an
+    // opinion, so SYSTEM is not consulted — widening happens on ABSENCE, never
+    // on a miss inside a tier the tenant does own.
     const tier = tenantRows.length > 0 ? tenantRows : systemRows;
     const source = tenantRows.length > 0 ? 'tenant' : systemRows.length > 0 ? 'system' : null;
 
-    // STEP 3 — most-specific match wins.
-    const winner = this.selectMostSpecific(tier, options);
-    if (!winner || !source) {
+    // STEP 3 — per-ROW match. At the TASK-844 grain each row carries its own
+    // `matchJson`, so a narrowing predicate drops that CANDIDATE rather than
+    // the whole policy. Order: most-specific first, then `priority` ASC (lower
+    // serves first), then the newest authored revision.
+    const admitted = tier
+      .map((row) => ({ row, specificity: matchSpecificity(parseMatch(row.matchJson)) }))
+      .filter((entry) => matchesRequest(parseMatch(entry.row.matchJson), options))
+      .sort((a, b) => b.specificity - a.specificity || a.row.priority - b.row.priority || b.row.policyVersion - a.row.policyVersion)
+      .map((entry) => entry.row);
+
+    if (admitted.length === 0 || !source) {
       return this.emptyResolution(tenantId, taskKey, source, {
         code: REJECTION.noPolicy,
-        message: `No ACTIVE routing policy matches task '${taskKey}' for this tenant or the platform default.`,
+        message: `No ACTIVE routing configuration matches task '${taskKey}' for this tenant or the platform default.`,
         retryable: false,
       });
     }
+
+    // STEP 3b — THE ELECTION. `isDefault` outranks ordering: it is the row an
+    // administrator deliberately elected, and the partial unique index
+    // guarantees at most one of them per (tenant, taskKey). Only when the
+    // elected default did not survive the match predicate does the ordering
+    // decide, which is the same "most specific wins" rule as before.
+    const winner = admitted.find((row) => row.isDefault) ?? admitted[0];
 
     const base = this.baseResolution(tenantId, taskKey, source, winner);
     if (winner.killSwitch) {
@@ -179,19 +216,24 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
         ...base,
         rejection: {
           code: REJECTION.killSwitchEngaged,
-          message: `Routing policy '${winner.id}' (revision ${winner.policyVersion}) has its kill switch engaged; it serves nothing.`,
+          message: `Routing configuration '${winner.id}' (revision ${winner.policyVersion}) has its kill switch engaged; it serves nothing.`,
           retryable: false,
         },
       };
     }
 
-    const candidates = parseCandidates(winner.candidatesJson).sort((a, b) => a.rank - b.rank);
+    // The primary is anchored FIRST so every hop is measured against what
+    // actually serves, then the remaining rows follow in their admitted order.
+    const ordered = [winner, ...admitted.filter((row) => row.id !== winner.id)];
     const contract = parseFallback(winner.fallbackJson);
     const unhealthy = new Set(options.unhealthyProviders ?? []);
     const rejected: { candidate: RoutingCandidate; reason: RoutingHopRejection }[] = [];
 
-    // STEP 5 — derive funding once per candidate, from the connection row.
-    const funded = await Promise.all(candidates.map((candidate) => this.fundCandidate(candidate, tenantId)));
+    // STEP 5 — derive funding once per row, from the connection row its FK
+    // names. Never stamped: `resolveConnection` is the one cascade that knows
+    // AiProviderConnection's three states, so the DISABLED veto still applies
+    // in both tiers and BYOK-vs-CLOUD still comes from which tier answered.
+    const funded = await Promise.all(ordered.map((row, index) => this.fundRow(row, tenantId, index)));
 
     // STEP 4 — an explicitly named provider.
     if (options.explicitProvider) {
@@ -205,7 +247,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
         rejectedCandidates: rejected.map((r) => AiRoutingPolicyDtoMapper.toRejectedCandidate(r.candidate, r.reason)),
         rejection: {
           code: REJECTION.noEligibleCandidate,
-          message: `No candidate of routing policy '${winner.id}' can serve: every candidate was refused (see rejectedCandidates).`,
+          message: `No candidate for task '${taskKey}' can serve: every configuration was refused (see rejectedCandidates).`,
           // Every remaining reason is either a health ejection (recoverable) or
           // an unresolvable connection (a configuration fix). Neither is a gate
           // crossing, so a retry is not categorically pointless.
@@ -233,7 +275,10 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   async create(tenantId: string, dto: CreateAiRoutingPolicyRequest): Promise<AiRoutingPolicyResponse> {
     this.assertSuperAdmin('author a routing policy');
     this.assertKnownTaskKey(dto.taskKey);
-    this.assertCandidatesUsable(dto.candidates);
+    // TASK-844 — a configuration must name a model. `candidates` is still
+    // accepted for a pre-844 chain revision, and validated the old way when it
+    // is the only thing supplied, so an existing caller is not broken.
+    this.assertBindingUsable(dto);
 
     const existing = await this.readPolicies([tenantId], { tenantId, taskKey: dto.taskKey });
     const nextVersion = dto.policyVersion ?? existing.reduce((max, row) => Math.max(max, row.policyVersion), 0) + 1;
@@ -246,7 +291,23 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     const entity = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
       tenantId,
       taskKey: dto.taskKey,
-      candidatesJson: dto.candidates as JsonValue,
+      // DERIVED, never taken from the request: the mapping is
+      // `AI_TASK_KIND_BY_TASK_KEY`, and letting a caller assert a kind that
+      // disagrees with its own task key is how the two axes drift apart.
+      taskKind: AI_TASK_KIND_BY_TASK_KEY[dto.taskKey as keyof typeof AI_TASK_KIND_BY_TASK_KEY] ?? null,
+      displayName: dto.displayName ?? null,
+      providerConnectionId: dto.providerConnectionId ?? null,
+      modelId: dto.modelId ?? null,
+      modelRef: dto.modelRef ?? null,
+      // A create never elects. Election is `setDefault`, which unseats the
+      // incumbent in one transaction; allowing it here would make every create
+      // race the partial unique index.
+      isDefault: false,
+      enabled: dto.enabled ?? true,
+      residency: dto.residency ?? null,
+      baaCovered: dto.baaCovered ?? null,
+      configJson: (dto.configJson ?? null) as JsonValue,
+      candidatesJson: (dto.candidates ?? null) as JsonValue,
       policyVersion: nextVersion,
       // A new revision is always a DRAFT — see CreateAiRoutingPolicyRequest.
       status: AiRoutingPolicyStatus.DRAFT,
@@ -332,7 +393,10 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     if (draft.status !== AiRoutingPolicyStatus.DRAFT) {
       throw new ArgumentInvalidException(`Routing policy '${id}' is ${draft.status}; only a DRAFT revision can be activated.`);
     }
-    this.assertCandidatesUsable(draft.candidatesJson);
+    // TASK-844 — a revision is activatable when it names something to route TO.
+    // Before the re-grain this asserted the `candidatesJson` chain; at this
+    // grain the row IS the candidate, so the binding is what must be present.
+    this.assertBindingUsable({ modelId: draft.modelId, modelRef: draft.modelRef, candidates: draft.candidatesJson ?? undefined });
     const before = AiRoutingPolicyDtoMapper.toResponse(draft);
 
     const tx = this.crossTenantLane(tenantId);
@@ -384,6 +448,327 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     return AiRoutingPolicyDtoMapper.toResponse(activated);
   }
 
+  /**
+   * TASK-844 — ELECT a configuration as the default for its `(tenant, taskKey)`.
+   *
+   * ## Why this is one call and not two
+   *
+   * The product rule is "exactly one default per task; setting a second must be
+   * refused, or must atomically unset the first". A caller who had to unset the
+   * incumbent and then set the successor would leave the selection with NO
+   * default in between — and selection is `failMode: closed`, so that window is
+   * an outage, not a degraded state. Worse, if their second write failed they
+   * would have to know to roll back.
+   *
+   * So the unset and the set happen in ONE transaction, and the partial unique
+   * index `AiRoutingPolicy_tenant_task_default_unique` is what makes that
+   * correct rather than merely tidy: the constraint is evaluated inside the
+   * transaction, so two administrators electing different rows at the same
+   * moment cannot both win — one commits and the other is refused by the
+   * database. A service-level guard alone is exactly the pattern that produced
+   * finding F-7.
+   *
+   * Re-electing the row that is ALREADY the default is a no-op that still
+   * returns 200: this is an idempotent administrative assertion ("make this the
+   * default"), not a toggle.
+   */
+  async setDefault(id: string, tenantId: string, expectedVersion?: number): Promise<AiRoutingPolicyResponse> {
+    this.assertSuperAdmin('elect a default routing configuration');
+    const row = await this.loadOwnedRow(id, tenantId);
+    const before = AiRoutingPolicyDtoMapper.toResponse(row);
+
+    if (row.resourceStatus === ResourceStatusType.DELETED) {
+      throw new BadRequestException(`Routing configuration '${id}' is deleted and cannot be elected as the default.`);
+    }
+    // Electing a candidate that is switched off would make the selection
+    // resolve to a row the resolver then skips — a default that defaults to
+    // nothing. Refuse it rather than let it look configured.
+    if (!row.enabled) {
+      throw new BadRequestException(
+        `Routing configuration '${id}' is disabled and cannot be elected as the default for '${row.taskKey}'. Enable it first.`,
+      );
+    }
+
+    const result = await this.unitOfWork.runInTransaction(async (tx) => {
+      // Order matters: clear FIRST, then set. The reverse order would have two
+      // rows carrying `isDefault = true` at the moment the index is checked.
+      const unseated = await this.aiRoutingPolicyRepository.clearDefaultFor(row.tenantId, row.taskKey, row.id, tx, this.requestUserId ?? undefined);
+
+      if (row.isDefault) {
+        // Already the default. The clear above removed any stray sibling; there
+        // is nothing left to write, so do not bump `_version` for a no-op.
+        return { entity: row, unseated };
+      }
+
+      row.isDefault = true;
+      if (this.requestUserId) row.updatedBy = this.requestUserId;
+      const saved = await this.aiRoutingPolicyRepository.updateWithVersion(row.id, row, expectedVersion ?? row.version, tx);
+      return { entity: saved, unseated };
+    });
+
+    // §3A.8 — a routing change can redirect PHI to a different vendor, so
+    // HIPAA §164.312(b) audit controls apply. The event names how many rows
+    // were unseated so the audit trail records the whole election, not just the
+    // winner.
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: result.entity.id,
+      data: {
+        taskKey: result.entity.taskKey,
+        policyTenantId: result.entity.tenantId,
+        reason: 'default_elected',
+        unseatedCount: result.unseated,
+        before,
+        after: AiRoutingPolicyDtoMapper.toResponse(result.entity),
+      },
+    });
+    return AiRoutingPolicyDtoMapper.toResponse(result.entity);
+  }
+
+  /**
+   * TASK-844 — PROMOTE a configuration from one tenant to another.
+   *
+   * ## Secrets are never copied, and that is the whole design
+   *
+   * A provider configuration names a credential; it does not contain one. The
+   * copy carries the model binding, the ordering, the residency label and the
+   * BAA assertion — everything that describes HOW to route — and points
+   * `providerConnectionId` at the TARGET tenant's own connection for the same
+   * `(service, provider)`, resolved through the standard cascade. If the target
+   * has no such connection, the copy lands with a NULL connection and the
+   * operator must supply one; it never inherits the source tenant's row, because
+   * that row holds the source tenant's key and billing.
+   *
+   * ## It always lands NOT-default
+   *
+   * Promotion is a "here is a configuration you may use" act, not "switch your
+   * traffic to this now". Landing it elected would silently unseat whatever the
+   * target tenant had chosen, on an operation they did not perform. The operator
+   * elects it explicitly afterwards through {@link setDefault}.
+   *
+   * The actor must administer BOTH tenants; on this plane every write is
+   * already super-admin-gated, which satisfies that by construction.
+   */
+  async promote(id: string, sourceTenantId: string, targetTenantId: string): Promise<AiRoutingPolicyResponse> {
+    this.assertSuperAdmin('promote a routing configuration to another tenant');
+    if (sourceTenantId === targetTenantId) {
+      throw new ArgumentInvalidException('Source and target tenant must differ — a configuration cannot be promoted onto itself.');
+    }
+    const source = await this.loadOwnedRow(id, sourceTenantId);
+
+    const existing = await this.readPolicies([targetTenantId], { tenantId: targetTenantId, taskKey: source.taskKey });
+    const nextVersion = existing.reduce((max, row) => Math.max(max, row.policyVersion), 0) + 1;
+
+    // Re-point the connection at the TARGET tenant's own row for the same
+    // (service, provider). `resolveConnection` runs the tenant → SYSTEM cascade,
+    // so a target with no opinion legitimately inherits the SYSTEM platform
+    // connection — which is the platform default working as designed, not a
+    // cross-tenant leak.
+    const refs = await this.resolveRefs(source);
+    let providerConnectionId: string | null = null;
+    if (refs.connectionProvider && refs.connectionService) {
+      const targetRow = await this.providerConnectionService
+        .findRow(refs.connectionService as ProviderService, refs.connectionProvider, targetTenantId)
+        .catch(() => null);
+      providerConnectionId = targetRow?.id ?? null;
+    }
+
+    const entity = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
+      tenantId: targetTenantId,
+      taskKey: source.taskKey,
+      taskKind: source.taskKind ?? AI_TASK_KIND_BY_TASK_KEY[source.taskKey as keyof typeof AI_TASK_KIND_BY_TASK_KEY] ?? null,
+      displayName: source.displayName,
+      providerConnectionId,
+      // The catalogue is shared through the same two-tier cascade, so a SYSTEM
+      // model id is meaningful to every tenant and carries across unchanged.
+      modelId: source.modelId,
+      modelRef: source.modelRef,
+      // NEVER elected on arrival — see the method comment.
+      isDefault: false,
+      enabled: source.enabled,
+      residency: source.residency,
+      baaCovered: source.baaCovered,
+      configJson: source.configJson,
+      priority: source.priority,
+      policyVersion: nextVersion,
+      status: AiRoutingPolicyStatus.DRAFT,
+      strategy: source.strategy,
+      explicitProviderMode: source.explicitProviderMode,
+      matchJson: source.matchJson,
+      fallbackJson: source.fallbackJson,
+      healthJson: source.healthJson,
+      affinityJson: source.affinityJson,
+      maxConcurrentStreams: source.maxConcurrentStreams,
+      requestsPerMinute: source.requestsPerMinute,
+      tokensPerMinute: source.tokensPerMinute,
+      createdBy: this.requestUserId ?? undefined,
+    });
+
+    const saved = await this.aiRoutingPolicyRepository.create(entity, this.crossTenantLane(targetTenantId));
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: {
+        taskKey: saved.taskKey,
+        policyTenantId: saved.tenantId,
+        reason: 'promoted',
+        promotedFrom: { tenantId: sourceTenantId, id: source.id },
+        // Stated in the audit record so the absence is a documented fact rather
+        // than something a reader has to infer from a missing field.
+        credentialCopied: false,
+        before: null,
+        after: AiRoutingPolicyDtoMapper.toResponse(saved),
+      },
+    });
+    return AiRoutingPolicyDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-844 — EXPORT selected configurations as a portable, secret-free JSON
+   * artifact.
+   *
+   * The artifact is built by `toExportedConfiguration` and then re-checked by
+   * `assertNoSecretMaterial`, which walks the FINISHED structure for anything
+   * resembling credential material. That belt-and-braces is deliberate: the
+   * builder is the part most likely to gain a field in a hurry, and a structural
+   * assertion catches that where a review of the builder would not.
+   *
+   * See `provider-configuration.ts` for why the artifact carries a
+   * `credentialRef` LOCATOR and no characters of any key — including why it does
+   * not emit a "last 4".
+   */
+  async exportConfigurations(tenantId: string, taskKeys?: string[]): Promise<ProviderConfigurationExport> {
+    this.assertSuperAdmin('export routing configurations');
+    (taskKeys ?? []).forEach((key) => this.assertKnownTaskKey(key));
+
+    const filters: Record<string, unknown> = { tenantId };
+    if (taskKeys && taskKeys.length > 0) filters.taskKey = { in: taskKeys };
+    const rows = await this.readPolicies([tenantId], filters);
+
+    const configurations: ExportedProviderConfiguration[] = [];
+    for (const row of rows) {
+      const refs = await this.resolveRefs(row);
+      let hasKey = false;
+      let keyVersion: number | null = null;
+      if (row.providerConnectionId) {
+        const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(() => null);
+        // `encryptedApiKey` is READ here only to answer "is there one", and its
+        // value never leaves this expression.
+        hasKey = Boolean(connection?.encryptedApiKey);
+        keyVersion = connection?.keyVersion ?? null;
+      }
+      configurations.push(toExportedConfiguration(row as unknown as ProviderConfigurationRow, refs, { hasKey, keyVersion }));
+    }
+
+    const artifact: ProviderConfigurationExport = {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      sourceTenantId: tenantId,
+      secretsIncluded: false,
+      notice: EXPORT_NOTICE,
+      configurations,
+    };
+    assertNoSecretMaterial(artifact);
+    return artifact;
+  }
+
+  /**
+   * TASK-844 — IMPORT configurations from an artifact produced by
+   * {@link exportConfigurations}.
+   *
+   * ## An import can never restore a credential
+   *
+   * The artifact carries none, so every imported configuration binds to the
+   * TARGET tenant's own connection for the named `(service, provider)`, resolved
+   * through the standard cascade. Where the source had a credential and the
+   * target has no connection at all, the row still lands — with a NULL
+   * connection and its `credentialRef` reported back in `requiresCredential`, so
+   * the operator is told exactly which secrets to supply rather than discovering
+   * it as a 503 later.
+   *
+   * ## Imported rows land as DRAFT and NOT default
+   *
+   * Same reasoning as promotion: an import describes configurations, it does not
+   * authorise a traffic switch. Nothing an import does can unseat a default the
+   * target tenant already elected.
+   */
+  async importConfigurations(
+    tenantId: string,
+    artifact: ProviderConfigurationExport,
+  ): Promise<{ imported: number; skipped: number; requiresCredential: string[] }> {
+    this.assertSuperAdmin('import routing configurations');
+    if (artifact?.formatVersion !== 1 || !Array.isArray(artifact.configurations)) {
+      throw new ArgumentInvalidException('Unrecognised provider-configuration artifact: expected `formatVersion: 1` and a `configurations` array.');
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    const requiresCredential: string[] = [];
+
+    const existing = await this.readPolicies([tenantId], { tenantId });
+    let nextVersion = existing.reduce((max, row) => Math.max(max, row.policyVersion), 0) + 1;
+
+    for (const entry of artifact.configurations) {
+      this.assertKnownTaskKey(entry.taskKey);
+
+      // The model is named by SLUG because that is the identity that is portable
+      // across tenants; the id is not. A slug that resolves to nothing in the
+      // target is a skip, never a guess — selection is fail-closed, and a
+      // configuration bound to the wrong model is worse than one that is absent.
+      const model = entry.modelSlug ? await this.resolveModelBySlugForTenant(entry.modelSlug, tenantId) : null;
+      if (!model && !entry.modelRef) {
+        skipped += 1;
+        continue;
+      }
+
+      let providerConnectionId: string | null = null;
+      if (entry.connection) {
+        const targetRow = await this.providerConnectionService
+          .findRow(entry.connection.service as ProviderService, entry.connection.provider, tenantId)
+          .catch(() => null);
+        providerConnectionId = targetRow?.id ?? null;
+      }
+      if (entry.hasCredential && !providerConnectionId && entry.credentialRef) {
+        requiresCredential.push(entry.credentialRef);
+      }
+
+      const created = AiRoutingPolicyFactory.CreateAiRoutingPolicy({
+        tenantId,
+        taskKey: entry.taskKey,
+        taskKind: AI_TASK_KIND_BY_TASK_KEY[entry.taskKey as keyof typeof AI_TASK_KIND_BY_TASK_KEY] ?? null,
+        displayName: entry.displayName,
+        providerConnectionId,
+        modelId: model?.id ?? null,
+        modelRef: entry.modelRef,
+        isDefault: false,
+        enabled: entry.enabled,
+        residency: entry.residency,
+        baaCovered: entry.baaCovered,
+        priority: entry.priority,
+        policyVersion: nextVersion,
+        status: AiRoutingPolicyStatus.DRAFT,
+        createdBy: this.requestUserId ?? undefined,
+      });
+      nextVersion += 1;
+
+      const saved = await this.aiRoutingPolicyRepository.create(created, this.crossTenantLane(tenantId));
+      imported += 1;
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: saved.id,
+        createdAt: saved.createdAt,
+        data: {
+          taskKey: saved.taskKey,
+          policyTenantId: saved.tenantId,
+          reason: 'imported',
+          credentialCopied: false,
+          before: null,
+          after: AiRoutingPolicyDtoMapper.toResponse(saved),
+        },
+      });
+    }
+
+    return { imported, skipped, requiresCredential };
+  }
+
   async deleteById(id: string, tenantId: string): Promise<AiRoutingPolicyResponse> {
     this.assertSuperAdmin('delete a routing policy');
     const existing = await this.loadOwnedRow(id, tenantId);
@@ -404,35 +789,108 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
 
   // ───────────────────────────── resolution ──────────────────────────────
 
-  /** Most-specific `match` wins; ties by `priority`, then by authored revision. */
-  private selectMostSpecific(rows: AiRoutingPolicyEntity[], options: ResolveRoutingOptions): AiRoutingPolicyEntity | null {
-    const admitted = rows
-      .map((row) => ({ row, match: parseMatch(row.matchJson) }))
-      .filter((entry) => matchesRequest(entry.match, options))
-      .map((entry) => ({ row: entry.row, specificity: matchSpecificity(entry.match) }));
-    if (admitted.length === 0) return null;
-    admitted.sort((a, b) => b.specificity - a.specificity || b.row.priority - a.row.priority || b.row.policyVersion - a.row.policyVersion);
-    return admitted[0].row;
+  /**
+   * Read the ORDERED CANDIDATE CHAIN for one selection across an EXPLICIT set
+   * of tenant ids.
+   *
+   * The ids are always exactly `[requestTenant, SYSTEM]` — built at the one call
+   * site in `getEffective`, never assembled here — which is the first of the two
+   * guarantees that the Global customer tenant `50000000-…` cannot enter the
+   * cascade. The second is the tenant-scope extension on the non-lane path,
+   * which pins `tenantId IN [caller, SYSTEM]` itself and throws on any other
+   * pinned value.
+   *
+   * ACTIVE + ENABLED + `enabled = true` only: a DRAFT revision has not been
+   * promoted, a soft-deleted row is gone, and a parked candidate is one an
+   * administrator switched off without destroying.
+   */
+  private async readCandidateRows(tenantIds: string[], taskKey: string): Promise<AiRoutingPolicyEntity[]> {
+    const tx = this.crossTenantReadLane(tenantIds);
+    return this.aiRoutingPolicyRepository.findCandidates(tenantIds, taskKey, tx);
   }
 
   /**
-   * Derive one candidate's funding tier from the connection row that will
-   * supply its credential — the `AiProviderConnectionService.fundingOf`
-   * precedent, read rather than recomputed. `null` when no tier serves it,
-   * which the gates treat as `CONNECTION_UNRESOLVED` (fail-closed).
+   * Derive one ROW's funding tier from the connection its FK names.
+   *
+   * Two lookups, on purpose. The FK gives the exact connection ROW, but funding
+   * and the DISABLED veto are decided by `resolveConnection`, which is the only
+   * place that implements AiProviderConnection's three states (no row = no
+   * opinion so the platform default applies; enabled + keyed = the tenant wins;
+   * disabled = a VETO in BOTH tiers). Deriving funding straight off
+   * `connection.tenantId` would get the BYOK/CLOUD answer right and silently
+   * lose the veto — so the FK is used to learn WHICH provider, and the cascade
+   * is still asked WHO PAYS.
+   *
+   * `null` funding means no tier serves it, which the gates treat as
+   * `CONNECTION_UNRESOLVED` (fail-closed).
    */
-  private async fundCandidate(candidate: RoutingCandidate, tenantId: string): Promise<FundedCandidate> {
+  private async fundRow(row: AiRoutingPolicyEntity, tenantId: string, rank: number): Promise<FundedCandidate> {
+    const refs = await this.resolveRefs(row);
+    const candidate = rowToCandidate(row as unknown as ProviderConfigurationRow, refs, rank);
+
+    // A configuration served by no provider connection at all — an in-process
+    // `apps/nlp` model, for instance — is not "unfunded", it is not vendor-paid.
+    // It resolves as platform-funded so a selection that never had a connection
+    // keeps working exactly as it did through `AiTaskDefault`.
+    if (!row.providerConnectionId) {
+      return { candidate, funding: row.tenantId === SYSTEM_TENANT_ID ? 'CLOUD' : 'BYOK' };
+    }
+    if (!refs.connectionProvider) {
+      // The FK named a connection this caller cannot read. Never admit a hop
+      // because its check was unavailable.
+      return { candidate, funding: null };
+    }
+
     try {
-      const resolved = await this.providerConnectionService.resolveConnection(ROUTING_CONNECTION_SERVICE, candidate.connectionRef, tenantId);
+      const service = (refs.connectionService as ProviderService | null) ?? ROUTING_CONNECTION_SERVICE;
+      const resolved = await this.providerConnectionService.resolveConnection(service, refs.connectionProvider, tenantId);
       if (!resolved) return { candidate, funding: null };
       // 'tenant' = the tenant's own BYO row paid; 'system' = the platform
       // default did. These are the §3A.4 wire labels for the same two facts.
       return { candidate, funding: resolved.source === 'system' ? 'CLOUD' : 'BYOK' };
     } catch {
-      // A connection that cannot even be READ is not a candidate. Never admit
-      // a hop because its check was unavailable.
       return { candidate, funding: null };
     }
+  }
+
+  /**
+   * Turn a row's two FKs into the NAMES the rest of the plane speaks in — the
+   * connection's `(service, provider)` and the model's `slug`.
+   *
+   * Both reads are best-effort and independently nullable. A dangling FK cannot
+   * happen (`ON DELETE RESTRICT`), but a row a caller may not READ can — and the
+   * honest answer there is "unresolved", which fails closed one layer up, not an
+   * exception that would take down an unrelated candidate's resolution.
+   */
+  private async resolveRefs(row: AiRoutingPolicyEntity): Promise<ConfigurationRefs> {
+    const refs: ConfigurationRefs = {};
+    if (row.providerConnectionId) {
+      const connection = await this.aiProviderConnectionRepository.findById(row.providerConnectionId).catch(() => null);
+      refs.connectionProvider = connection?.provider ?? null;
+      refs.connectionService = connection?.service ?? null;
+    }
+    if (row.modelId) {
+      const model = await this.aiModelRepository.findById(row.modelId).catch(() => null);
+      refs.modelSlug = model?.slug ?? null;
+    }
+    return refs;
+  }
+
+  /**
+   * Resolve a catalogue slug on the TWO-TIER cascade — the tenant's own row
+   * first, the SYSTEM catalogue only on absence.
+   *
+   * Identical shape to `AiTaskDefaultService.resolveEnabledModelBySlug`, and
+   * deliberately so: an import must land on exactly the model the same slug
+   * would select at runtime, or the imported configuration would resolve to
+   * something the operator did not choose.
+   */
+  private async resolveModelBySlugForTenant(slug: string, tenantId: string): Promise<{ id: string } | null> {
+    if (tenantId !== SYSTEM_TENANT_ID) {
+      const own = await this.aiModelRepository.findBySlug(tenantId, slug).catch(() => null);
+      if (own) return own;
+    }
+    return this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug).catch(() => null);
   }
 
   /** Servable = credential resolves AND the router has not ejected it. */
@@ -639,6 +1097,26 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
+   * TASK-844 — a configuration must name something to route TO.
+   *
+   * `modelId` (the catalogue FK) or `modelRef` (a provider-side id for a model
+   * the catalogue does not carry) satisfies it. A pre-844 body that supplies
+   * only `candidates` is still accepted and validated the old way, so the
+   * re-grain does not break a caller that has not migrated.
+   */
+  private assertBindingUsable(dto: { modelId?: string | null; modelRef?: string | null; candidates?: unknown }): void {
+    if (dto.modelId || dto.modelRef) return;
+    if (dto.candidates !== undefined) {
+      this.assertCandidatesUsable(dto.candidates);
+      return;
+    }
+    throw new ArgumentInvalidException(
+      'A routing configuration must name a model: supply `modelId` (an AiModel in the tenant or platform catalogue) or `modelRef` ' +
+        '(the provider-side model id, e.g. an Azure deployment name).',
+    );
+  }
+
+  /**
    * At least one candidate must survive parsing. `parseCandidates` DROPS an
    * entry missing `residency` or `baaCovered` rather than defaulting it, so a
    * body full of malformed candidates would otherwise persist as a policy that
@@ -668,13 +1146,33 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     return row;
   }
 
-  /** Fields an update may touch, given the revision's lifecycle state. */
+  /**
+   * Fields an update may touch, given the revision's lifecycle state.
+   *
+   * ⚠ `isDefault` is deliberately ABSENT and must stay absent. Electing a
+   * default is not a field edit: it has to unset the incumbent in the SAME
+   * transaction or the partial unique index rejects the write, so it lives on
+   * `setDefault` where that is guaranteed. Adding it here would give callers a
+   * path that fails intermittently and looks like a database bug.
+   */
   private buildUpdateChanges(existing: AiRoutingPolicyEntity, dto: UpdateAiRoutingPolicyRequest): Record<string, unknown> {
     const changes: Record<string, unknown> = {};
     if (dto.killSwitch !== undefined) changes.killSwitch = dto.killSwitch;
 
     const semanticKeys = [
       'candidates',
+      // TASK-844 binding fields are SEMANTIC: changing which model or which
+      // connection serves is precisely the kind of edit a served revision must
+      // not absorb in place, because it redirects PHI to a different vendor
+      // while keeping the revision id an auditor already signed off.
+      'displayName',
+      'providerConnectionId',
+      'modelId',
+      'modelRef',
+      'enabled',
+      'residency',
+      'baaCovered',
+      'configJson',
       'strategy',
       'explicitProviderMode',
       'priority',
@@ -701,6 +1199,14 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       this.assertCandidatesUsable(dto.candidates);
       changes.candidatesJson = dto.candidates as JsonValue;
     }
+    if (dto.displayName !== undefined) changes.displayName = dto.displayName;
+    if (dto.providerConnectionId !== undefined) changes.providerConnectionId = dto.providerConnectionId;
+    if (dto.modelId !== undefined) changes.modelId = dto.modelId;
+    if (dto.modelRef !== undefined) changes.modelRef = dto.modelRef;
+    if (dto.enabled !== undefined) changes.enabled = dto.enabled;
+    if (dto.residency !== undefined) changes.residency = dto.residency;
+    if (dto.baaCovered !== undefined) changes.baaCovered = dto.baaCovered;
+    if (dto.configJson !== undefined) changes.configJson = dto.configJson as JsonValue;
     if (dto.strategy !== undefined) changes.strategy = dto.strategy;
     if (dto.explicitProviderMode !== undefined) changes.explicitProviderMode = dto.explicitProviderMode;
     if (dto.priority !== undefined) changes.priority = dto.priority;

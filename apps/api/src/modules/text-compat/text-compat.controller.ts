@@ -192,7 +192,9 @@ export class TextCompatController {
    * (the Sarvam translate capability). Per-tenant Sarvam BYOK is resolved from the
    * unified provider plane (`resolveTenantCloudOverrides('stt','sarvam')` — one
    * Sarvam subscription key serves every capability), and forwarded to TEXT as a
-   * `provider_overrides` entry; absent ⇒ TEXT uses its platform `TEXT_SARVAM_API_KEY`.
+   * `provider_overrides` entry. TEXT's Sarvam translator is BYOK-ONLY and
+   * connection-only, so an ABSENT override means the translate call fails — there
+   * is no platform key to fall back to.
    * FAIL-OPEN: any error (TEXT down, Sarvam failure, unexpected shape) logs a
    * warning and returns the ORIGINAL body so the summary is still produced. Flag
    * off/absent ⇒ no TEXT translate call.

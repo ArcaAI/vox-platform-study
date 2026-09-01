@@ -1,3 +1,4 @@
+import type { AiTaskKind } from '../../../generated/core-prisma-client/enums';
 import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
@@ -36,6 +37,38 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * platform default is admin-tunable at runtime and a re-seed must not clobber
  * an admin's choice. Depends on the AiModel catalog (seedStt) for the slugs.
  */
+
+/**
+ * `taskKey` → `AiTaskKind`, for the keys THIS SEED writes.
+ *
+ * A deliberate mirror of `AI_TASK_KIND_BY_TASK_KEY`
+ * (`packages/applications/src/services/ai-task-default/constants.ts`), because
+ * `packages/database` cannot import from `packages/applications` without
+ * inverting the dependency direction. It is kept honest by the same
+ * `ai-task-kind.test.ts` drift guard that pins the migration SQL: all three
+ * copies of this mapping are compared against the one declaration.
+ */
+const AI_TASK_KIND_BY_SEEDED_TASK_KEY: Record<string, AiTaskKind> = {
+  'text.live': 'TEXT_GENERATION',
+  'text.finalize': 'TEXT_GENERATION',
+  'text.live.fallback': 'TEXT_GENERATION',
+  'text.finalize.fallback': 'TEXT_GENERATION',
+  'text.test': 'TEXT_GENERATION',
+  'harness.judge': 'TEXT_GENERATION',
+  'vlm.extract': 'VISION_EXTRACTION',
+  'nlp.ner': 'NAMED_ENTITY_RECOGNITION',
+  'nlp.classification': 'TEXT_CLASSIFICATION',
+  'nlp.diagnosis': 'TEXT_CLASSIFICATION',
+  'nlp.sentiment': 'TEXT_CLASSIFICATION',
+  'nlp.toxicity': 'TEXT_CLASSIFICATION',
+  'nlp.topic': 'TEXT_CLASSIFICATION',
+  'nlp.intent': 'TEXT_CLASSIFICATION',
+  'guardrail.validate': 'CONTENT_SAFETY',
+  'guardrail.safety': 'CONTENT_SAFETY',
+  'guardrail.groundedness': 'GROUNDEDNESS',
+  'guardrail.pii': 'PII_DETECTION',
+  'guardrail.pii.spans': 'PII_DETECTION',
+};
 
 export interface AiTaskDefaultSeed {
   id: string;
@@ -317,6 +350,14 @@ export const seedAiTaskDefault = async (client: CorePrismaClient): Promise<{ suc
         tenantId: row.tenantId,
         taskKey: row.taskKey,
         modelSlug: row.modelSlug,
+        // TASK-844 — TASK-843 added the column and backfilled the dev DB through
+        // a side-car script, but never taught this writer to set it, so every
+        // freshly seeded environment landed 12 UNCLASSIFIED rows. Derived, never
+        // chosen: the mapping is `AI_TASK_KIND_BY_TASK_KEY` in the applications
+        // layer, mirrored here because the seed cannot import from it.
+        // `?? null` is fail-closed — an unrecognised key stays unclassified
+        // rather than being guessed into a plausible-but-wrong kind.
+        taskKind: AI_TASK_KIND_BY_SEEDED_TASK_KEY[row.taskKey] ?? null,
         createdBy: SYSTEM_USER_ID,
       },
     });

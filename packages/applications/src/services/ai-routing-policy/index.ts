@@ -1,3 +1,4 @@
+export * from './provider-configuration';
 export * from './routing-policy.contract';
 export * from './routing-gates';
 export * from './dto';
