@@ -4,51 +4,20 @@
  * Source: apps/api/src/modules/ai-task-default/ai-task-default-admin.controller.ts
  */
 
+import { AI_TASK_KEYS, isTenantEditableTaskKey, taskKeyService, type AiTaskKey } from '@/shared/catalog/ai-task-keys';
+
 /**
- * Fixed task-key registry — the console mirror of `AI_TASK_KEYS` in
- * `packages/applications/src/services/ai-task-default/constants.ts`.
+ * Fixed task-key registry — MOVED to `@/shared/catalog/ai-task-keys` by TASK-845
+ * and re-exported here so this feature's public surface is unchanged.
  *
- * This list had drifted to 3 keys while the backend carried 9,
- * so the tenant surface could never show the truth about six of them. Keep the
- * two lists in lockstep — a key added on the backend is invisible here until it
- * is added below.
- *
- * The invariant is no longer only a comment: `__tests__/ai-task-keys-lockstep.test.ts`
- * parses the backend `AI_TASK_KEYS` literal out of that file (text parse, not an
- * import — the BFF boundary stands) and fails when the two lists differ. That
- * guard exists because the comment alone did not hold: drift #3 (TASK-799 R6's
- * `guardrail.pii` / `guardrail.pii.spans`, added below) reached the console with
- * both PII rows silently dropped from the read-only Effective models table.
+ * It moved because the unified AI-platform screen became a second reader, and
+ * rule 13 forbids one feature importing another. The usual answer to that is a
+ * minimal copy; a copy is wrong for THIS list, which has drifted from the
+ * backend three times and is the reason `__tests__/ai-task-keys-lockstep.test.ts`
+ * exists — two copies would need two guards. One declaration, one guard, and
+ * that guard still reads the list through this re-export.
  */
-export const AI_TASK_KEYS = [
-  'guardrail.validate',
-  'guardrail.safety',
-  'guardrail.groundedness',
-  // TASK-799 R6: the platform's PII redaction selections. SUPER_ADMIN-only on
-  // write (`SUPER_ADMIN_ONLY_TASK_KEYS` on the backend), so they belong to the
-  // read-only Effective models table — the gateway already returns both rows.
-  'guardrail.pii',
-  'guardrail.pii.spans',
-  'nlp.ner',
-  'nlp.classification',
-  'nlp.diagnosis',
-  // TASK-740 D-2: the mirror had drifted again — these four backend keys were
-  // missing, so no console surface showed them. `nlp.sentiment`/`nlp.toxicity`/
-  // `vlm.extract` are read-only here (super-admin or platform-managed); the
-  // tenant-editable one, `text.test`, gets its own card below.
-  'nlp.sentiment',
-  'nlp.toxicity',
-  'text.live',
-  'text.finalize',
-  'text.test',
-  'harness.judge',
-  'vlm.extract',
-  // the text-generation fallback selections are their own tenant-editable keys
-  // (opt-in; an unset key means no fallback runs).
-  'text.live.fallback',
-  'text.finalize.fallback',
-] as const;
-export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
+export { AI_TASK_KEYS, isTenantEditableTaskKey, taskKeyService, type AiTaskKey };
 
 /**
  * Text-generation primary selection keys — tenant-editable. The provider/model
