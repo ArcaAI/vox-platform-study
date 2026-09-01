@@ -9,10 +9,31 @@ import { generateId } from '../../../utils';
 export interface CreateAiRoutingPolicyProps extends BaseEntityFactoryCreateProps {
   tenantId: IAiRoutingPolicyEntity['tenantId'];
   taskKey: IAiRoutingPolicyEntity['taskKey'];
-  // TASK-843 — optional while Phase 1 is additive; derived from `taskKey` via
-  // `AI_TASK_KIND_BY_TASK_KEY` in the applications layer.
+  // TASK-843 — derived from `taskKey` via `AI_TASK_KIND_BY_TASK_KEY` in the
+  // applications layer, never independently chosen. Optional at this boundary
+  // because the column is nullable: an un-migrated writer must land
+  // "unclassified" rather than plausible-but-wrong.
   taskKind?: IAiRoutingPolicyEntity['taskKind'];
-  candidatesJson: IAiRoutingPolicyEntity['candidatesJson'];
+
+  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  // `modelId`/`modelRef` are optional HERE and yet one of them is required by
+  // `validate()`. That is deliberate: the factory does not decide which form of
+  // model reference a caller has (a catalogue FK, or a provider-side id for a
+  // connection whose model is not catalogued), so the invariant is expressed
+  // once, on the entity, rather than duplicated as a signature the type system
+  // could not enforce anyway.
+  displayName?: IAiRoutingPolicyEntity['displayName'];
+  providerConnectionId?: IAiRoutingPolicyEntity['providerConnectionId'];
+  modelId?: IAiRoutingPolicyEntity['modelId'];
+  modelRef?: IAiRoutingPolicyEntity['modelRef'];
+  isDefault?: IAiRoutingPolicyEntity['isDefault'];
+  enabled?: IAiRoutingPolicyEntity['enabled'];
+  residency?: IAiRoutingPolicyEntity['residency'];
+  baaCovered?: IAiRoutingPolicyEntity['baaCovered'];
+  configJson?: IAiRoutingPolicyEntity['configJson'];
+
+  /** @deprecated TASK-844 — the chain is now the set of rows. Never write it. */
+  candidatesJson?: IAiRoutingPolicyEntity['candidatesJson'];
 
   policyVersion?: IAiRoutingPolicyEntity['policyVersion'];
   status?: IAiRoutingPolicyEntity['status'];
@@ -52,7 +73,27 @@ export class AiRoutingPolicyFactory {
       tenantId: props.tenantId,
       taskKey: props.taskKey,
       taskKind: props.taskKind ?? null,
-      candidatesJson: props.candidatesJson,
+
+      // TASK-844 binding. `isDefault` defaults FALSE — electing a default is an
+      // explicit administrative act that must go through
+      // `AiRoutingPolicyService.setDefault`, which unsets the incumbent in the
+      // same transaction. A factory that defaulted it TRUE would make every
+      // create race the partial unique index.
+      displayName: props.displayName ?? null,
+      providerConnectionId: props.providerConnectionId ?? null,
+      modelId: props.modelId ?? null,
+      modelRef: props.modelRef ?? null,
+      isDefault: props.isDefault ?? false,
+      // A new candidate is servable unless someone parks it.
+      enabled: props.enabled ?? true,
+      // No invented residency class and no assumed BAA coverage — the §3A.4
+      // gates read these, and guessing `baaCovered: true` for a candidate whose
+      // author did not say so is the silent PHI redirection they exist to stop.
+      residency: props.residency ?? null,
+      baaCovered: props.baaCovered ?? null,
+      configJson: props.configJson ?? null,
+
+      candidatesJson: props.candidatesJson ?? null,
 
       // Defaults MIRROR the Prisma column defaults so an entity built here and
       // a row read back from the database agree. A policy is authored before it

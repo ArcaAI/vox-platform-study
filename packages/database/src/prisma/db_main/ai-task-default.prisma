@@ -1,4 +1,46 @@
 // ============================================================================
+// ⚠⚠ RETIRED BY TASK-844 (owner decision OD-3, 2026-09-01) ⚠⚠
+//
+// This model is NO LONGER THE SOURCE OF TRUTH. Every row was migrated into
+// `AiRoutingPolicy` as an `isDefault = true` provider configuration, and
+// `AiRoutingPolicy` is now where "which provider + model serves task X for
+// tenant Y" is decided. See `ai-routing-policy.prisma`.
+//
+// **OD-3 explicitly reverses TASK-816's ruling that `AiTaskDefault` survives.**
+// The reversal instrument is TASK-844; the reason is finding F-7 — this model's
+// `@@unique([tenantId, taskKey])` permits EXACTLY ONE row per task, so there is
+// nowhere to put a second candidate and no default election to hold. The
+// product requires many configurations per task with one elected default, which
+// this shape cannot express at any amount of application code.
+//
+// ## Why the table still exists (a staged retirement, not an oversight)
+//
+// The table survives one release as a READ-COMPATIBILITY PROJECTION, because
+// dropping it in the same change would stop day-1 inference:
+//
+//   * `apps/guardrail` reads `core."AiTaskDefault"` ⋈ `core."AiModel"` over its
+//     own read-only SQL connection (`core/tenant_config.py`, the sanctioned
+//     peer-service exception) — a CROSS-LANGUAGE reader that no TypeScript
+//     change can repoint; and
+//   * ~40 TypeScript call sites resolve through `AiTaskDefaultService`.
+//
+// So `AiTaskDefaultService.upsertRow` now WRITES THROUGH: it writes the
+// authoritative `AiRoutingPolicy` row and the projection row inside ONE
+// transaction, so the two cannot drift, and a test asserts they agree. This is
+// a strangler-fig transition with a stated end condition, not a second home for
+// the data.
+//
+// ## What must happen before this table is dropped
+//
+//   1. repoint `apps/guardrail/src/guardrail/core/tenant_config.py`'s
+//      SQLAlchemy mapping onto `AiRoutingPolicy` ⋈ `AiModel` (by `modelId`);
+//   2. repoint the TypeScript readers of `AiTaskDefaultService.getEffective`;
+//   3. delete the service, its controller, its admin-console screen and
+//      `packages/vox-node/src/resources/admin/ai-task-default.ts`;
+//   4. drop the table.
+//
+// Do NOT add a new reader, a new writer, or a new row to this model.
+// ============================================================================
 // AI Task Defaults
 //
 // Per-tenant "default model for task X" selector — the Class-3 generalization
