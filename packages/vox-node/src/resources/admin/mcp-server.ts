@@ -46,9 +46,9 @@ export class AdminMcpServerResource extends AdminResource {
   }
 
   /**
-   * Register a new MCP server (GLOBAL-ADMIN only)
+   * Register a new MCP server (own tenant; the SYSTEM registry is GLOBAL-ADMIN only)
    *
-   * Creates a SYSTEM-owned registry row by default (or a specific tenant via `?tenantId=`). `authRef` is a Vault path (no secret material). Super-admin only — a tenant admin gets 403. The server is dormant (`enabled: false`) unless explicitly enabled, and the whole MCP path is additionally gated OFF by `HarnessPolicy.mcpToolsEnabled` (null → off).
+   * A tenant admin holding `manage:McpServer` creates a connector owned by ITS OWN tenant. A super admin creates a SYSTEM-owned registry row by default, or targets a specific tenant via `?tenantId=`. A tenant admin aiming at the SYSTEM registry gets 403. `authRef` is a Vault path (no secret material). The server is dormant (`enabled: false`) unless explicitly enabled, and the MCP path is additionally gated by the per-tenant `HarnessPolicy.mcpToolsEnabled` (resolved tenant → SYSTEM; unset in both tiers → off).
    *
    * `POST /api/v1/admin/mcp-servers` — `McpAdminController.create`.
    */
@@ -64,9 +64,9 @@ export class AdminMcpServerResource extends AdminResource {
   }
 
   /**
-   * Soft-delete a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)
+   * Soft-delete a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)
    *
-   * Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). Super-admin only (403 for tenant admins).
+   * Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). A tenant admin may delete its OWN tenant’s connectors; a SYSTEM-registry row is super-admin only (403). Another tenant’s id — or an unknown id — is 404.
    *
    * `DELETE /api/v1/admin/mcp-servers/{id}` — `McpAdminController.remove`.
    *
@@ -102,9 +102,9 @@ export class AdminMcpServerResource extends AdminResource {
   }
 
   /**
-   * Update a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)
+   * Update a registered MCP server under optimistic concurrency (own tenant; SYSTEM rows GLOBAL-ADMIN only)
    *
-   * Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). Super-admin only (403 for tenant admins). `authRef` stays a Vault path — never secret material.
+   * Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). A tenant admin may patch its OWN tenant’s connectors; a SYSTEM-registry row is super-admin only (403). An id belonging to another tenant returns 404, and an unknown id returns 404 for every caller. `authRef` stays a Vault path — never secret material.
    *
    * `PATCH /api/v1/admin/mcp-servers/{id}` — `McpAdminController.update`.
    *
