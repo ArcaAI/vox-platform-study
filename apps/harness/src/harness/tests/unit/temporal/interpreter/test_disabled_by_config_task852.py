@@ -87,7 +87,11 @@ class TestADisabledNodeIsSkippedObservably:
         # A node an admin switched OFF must not be reported as a wiring defect; the author's
         # intent is the more specific answer, and the activity is never going to be dispatched.
         result = await WorkflowInterpreter()._dispatch_node(
-            _node(_DURABLE_TYPE, {"enabled": False, "onError": "degrade"}, activity="interpreter.wrong"),
+            _node(
+                _DURABLE_TYPE,
+                {"enabled": False, "onError": "degrade"},
+                activity="interpreter.wrong",
+            ),
             _input(),
             0,
         )
@@ -130,7 +134,9 @@ class TestLaneOwnershipIsDecidedFirst:
         assert NODE_REGISTRY[_REALTIME_TYPE].lane == "realtime"
 
         result = await WorkflowInterpreter()._dispatch_node(
-            _node(_REALTIME_TYPE, {"enabled": False, "requiresFinalized": False, "onError": "degrade"}),
+            _node(
+                _REALTIME_TYPE, {"enabled": False, "requiresFinalized": False, "onError": "degrade"}
+            ),
             _input(),
             0,
         )
