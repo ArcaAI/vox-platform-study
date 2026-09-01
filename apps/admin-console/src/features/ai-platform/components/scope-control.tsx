@@ -60,10 +60,18 @@ export function ScopeControl({ scope }: { scope: ResolvedAiPlatformScope }) {
         <ToggleGroupItem
           value="tenant"
           disabled={tenantDisabled}
-          aria-label={tenantDisabled ? `Tenant configuration — unavailable. ${scope.tenantUnavailableReason}` : `Tenant configuration — ${scope.label}`}
+          // Names the WORKING TENANT, never `scope.label`: the control has to
+          // say which tier it switches TO, and reading the active scope made
+          // this button announce "Tenant configuration — Platform default
+          // (SYSTEM)" while the system tier was selected.
+          aria-label={
+            tenantDisabled
+              ? `Tenant configuration — unavailable. ${scope.tenantUnavailableReason}`
+              : `Tenant configuration — ${scope.workingTenantLabel ?? 'working tenant'}`
+          }
         >
           <IconBuilding aria-hidden className="size-4" />
-          {scope.scope === 'tenant' ? scope.label : 'Working tenant'}
+          {scope.workingTenantLabel ?? 'Working tenant'}
         </ToggleGroupItem>
       </ToggleGroup>
       {tenantDisabled ? <span className="text-muted-foreground text-xs">{scope.tenantUnavailableReason}</span> : null}
