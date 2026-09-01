@@ -87,8 +87,11 @@ function everyAgenticNodeGraph(agentConfigOverride?: Record<string, unknown>): W
     { id: 'end', type: 'core.end', config: {} },
   ];
   const order = nodes.map((node) => node.id);
-  const edges = order.slice(0, -1).map((from, index) => ({ id: `e${index}`, fromNodeId: from, toNodeId: order[index + 1], fromPort: 'next', toPort: 'after' }));
-  return { nodes, edges } as unknown as WorkflowGraph;
+  // `from`/`to`, NOT `fromNodeId`/`toNodeId` — `WorkflowGraphEdge` uses the short names, and an
+  // edge list using the long ones type-checks under a cast while wiring nothing at all, which
+  // would leave this graph silently edgeless and the compile assertion far weaker than it reads.
+  const edges = order.slice(0, -1).map((from, index) => ({ id: `e${index}`, from, to: order[index + 1], fromPort: 'next', toPort: 'after' }));
+  return { version: 1, nodes, edges } as unknown as WorkflowGraph;
 }
 
 function compileGraph(graph: WorkflowGraph) {
