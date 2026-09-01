@@ -346,10 +346,7 @@ export class AiRoutingPolicyAdminController {
   @ApiResponse({ status: 200, description: 'A secret-free provider-configuration artifact.' })
   @ApiResponse({ status: 400, description: 'An unknown task key was named.' })
   @ApiResponse({ status: 403, description: 'Routing configurations are managed by super administrators only.' })
-  async exportConfigurations(
-    @Query('tenantId') tenantId?: string,
-    @Query('taskKeys') taskKeys?: string,
-  ): Promise<ProviderConfigurationExport> {
+  async exportConfigurations(@Query('tenantId') tenantId?: string, @Query('taskKeys') taskKeys?: string): Promise<ProviderConfigurationExport> {
     const keys = taskKeys
       ? taskKeys
           .split(',')
