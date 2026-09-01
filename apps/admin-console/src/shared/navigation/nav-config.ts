@@ -403,15 +403,6 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   {
-    route: '/tools-mcp',
-    domain: 'ai-platform',
-    label: 'Tools & MCP',
-    tier: '10-19',
-    icon: IconPlugConnected,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
     route: '/queues',
     domain: 'platform-ops',
     label: 'Queues & jobs',
@@ -537,6 +528,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // `/developer` and `/account` used to sit here. TASK-788 moved them out of
   // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
   // capability domains. Tier and ability gate are unchanged.
+
+  // TASK-846 / OD-7 (2026-09-01): `/tools-mcp` MOVED here from tier 10-19.
+  // Tenant admins may configure MCP connectors, which makes this a
+  // shared-audience screen — it renders cross-tenant for a super admin and
+  // tenant-scoped for a tenant admin. Its ability gate narrows from the
+  // `manage:all` super-admin proxy to the resource's own `manage:McpServer`,
+  // the grant seeded tenant-admin roles have always held (`manage:all` still
+  // matches it, so super admins are unaffected). Domain stays `ai-platform`
+  // — domain and tier are orthogonal (OD-2/OD-3).
+  {
+    route: '/tools-mcp',
+    domain: 'ai-platform',
+    label: 'Tools & MCP',
+    tier: '20-29',
+    icon: IconPlugConnected,
+    required: [['manage', 'McpServer']],
+    implemented: true,
+  },
 
   // Tier 30-49 — tenant-admin scope (a super admin needs a working tenant)
   {

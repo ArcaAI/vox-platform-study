@@ -1,8 +1,15 @@
 /**
- * TDD screen tests screen 5 (Tools & MCP): MCP external-tools
- * registry — list table, create/edit (If-Match OCC),
- * delete, SUPER_ADMIN gate, empty/error/loading, axe 0-violations. Data is a
- * URL-branching fetch stub over GET/POST/PATCH/DELETE /admin/mcp-servers.
+ * TDD screen tests screen 5 (Tools & MCP): MCP external-tools registry — list
+ * table, create/edit (If-Match OCC), delete, empty/error/loading, axe
+ * 0-violations. Data is a URL-branching fetch stub over
+ * GET/POST/PATCH/DELETE /admin/mcp-servers (+ GET /admin/harness/policy for the
+ * MCP master gate).
+ *
+ * TASK-846 / OD-7 (2026-09-01): the screen-wide SUPER_ADMIN gate this file used
+ * to assert is GONE — tenant admins may configure MCP connectors. The boundary
+ * moved to the ROW: own-tenant rows are writable, SYSTEM-registry rows are
+ * read-only for a tenant admin (matching the gateway's 403). OD-11 adds the
+ * per-tenant `mcpToolsEnabled` banner.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -28,12 +35,16 @@ const SESSION = {
   effectiveTenantId: null as string | null,
 };
 
+const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+
 const TENANT_ADMIN_SESSION = {
   ...SESSION,
-  user: { ...SESSION.user, username: 'tenant_admin', roles: ['TENANT_ADMIN'] },
+  user: { ...SESSION.user, username: 'tenant_admin', roles: ['TENANT_ADMIN'], tenantId: TENANT_ID },
   isElevated: false,
-  effectiveUser: { ...SESSION.effectiveUser, username: 'tenant_admin', roles: ['TENANT_ADMIN'] },
+  workingTenantId: TENANT_ID,
+  effectiveUser: { ...SESSION.effectiveUser, username: 'tenant_admin', roles: ['TENANT_ADMIN'], tenantId: TENANT_ID },
   effectiveIsElevated: false,
+  effectiveTenantId: TENANT_ID as string | null,
 };
 
 const SERVER: McpServer = {
@@ -53,8 +64,23 @@ const SERVER: McpServer = {
   updatedAt: '2026-07-10T00:00:00.000Z',
 };
 
+/** A connector the TENANT owns — writable by its own admin under OD-7. */
+const TENANT_SERVER: McpServer = {
+  ...SERVER,
+  id: 'mcp-tenant-1',
+  tenantId: TENANT_ID,
+  name: 'tenant-tools',
+  authRef: null,
+};
+
 function envelope(items: McpServer[]): McpServerListResponse {
   return { items, total: items.length };
+}
+
+/** The effective harness policy the screen reads for the OD-11 MCP master gate. */
+const MCP_GATE_URL = '/api/hope/admin/harness/policy';
+function gateResponse(mcpToolsEnabled: boolean | null): Response {
+  return Response.json({ mcpToolsEnabled });
 }
 
 interface RecordedCall {
@@ -113,6 +139,7 @@ describe('ToolsMcpScreen', () => {
   it('renders the MCP registry table with allowlist, phi boundary, enabled, and masked auth presence', async () => {
     stubFetch((url) => {
       if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
       throw new Error(`Unhandled fetch: ${url}`);
     });
     renderWithProviders(<ToolsMcpScreen />);
@@ -130,14 +157,98 @@ describe('ToolsMcpScreen', () => {
     expect(screen.queryByText('Entity faithfulness')).toBeNull();
   });
 
-  it('gates non-elevated sessions behind the Super Admins only empty state', async () => {
-    stubFetchWithSession(TENANT_ADMIN_SESSION, () => {
-      throw new Error('mcp-servers must not be fetched for tenant admins');
+  // ── TASK-846 / OD-7 (2026-09-01) ────────────────────────────────────────
+  // This block REPLACES "gates non-elevated sessions behind the Super Admins
+  // only empty state". Tenant admins may configure MCP connectors, so the
+  // screen-wide gate is gone; the boundary is now per ROW.
+
+  it('lets a TENANT ADMIN reach the registry — the screen-wide super-admin gate is gone (OD-7)', async () => {
+    stubFetchWithSession(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([TENANT_SERVER, SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
+      throw new Error(`Unhandled fetch: ${url}`);
     });
     renderWithProviders(<ToolsMcpScreen />);
 
-    expect(await screen.findByText('Super Admins only')).toBeDefined();
-    expect(screen.queryByRole('table', { name: 'MCP servers' })).toBeNull();
+    expect(await screen.findByRole('table', { name: 'MCP servers' })).toBeDefined();
+    expect(screen.queryByText('Super Admins only')).toBeNull();
+    expect(screen.getByText('tenant-tools')).toBeDefined();
+  });
+
+  it('makes a tenant admin’s OWN connector writable and a SYSTEM row read-only, with the reason stated', async () => {
+    stubFetchWithSession(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([TENANT_SERVER, SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<ToolsMcpScreen />);
+    await screen.findByText('tenant-tools');
+
+    // Own row: enabled controls, plain accessible names.
+    expect(screen.getByRole('button', { name: 'Edit tenant-tools' })).not.toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Delete tenant-tools' })).not.toHaveProperty('disabled', true);
+
+    // SYSTEM row: the gateway would answer 403, so the UI must not offer the
+    // action — and a disabled control has to say WHY (rule 11 §5), which is
+    // why the reason rides in the accessible name rather than colour alone.
+    const lockedEdit = screen.getByRole('button', { name: /Edit fhir-terminology — unavailable: Platform connector/ });
+    expect(lockedEdit).toHaveProperty('disabled', true);
+    const lockedDelete = screen.getByRole('button', { name: /Delete fhir-terminology — unavailable: Platform connector/ });
+    expect(lockedDelete).toHaveProperty('disabled', true);
+  });
+
+  it('a super admin may write every row, including the SYSTEM registry', async () => {
+    stubFetch((url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<ToolsMcpScreen />);
+    await screen.findByText('fhir-terminology');
+
+    expect(screen.getByRole('button', { name: 'Edit fhir-terminology' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Delete fhir-terminology' })).toHaveProperty('disabled', false);
+  });
+
+  // ── OD-11: mcpToolsEnabled is per-tenant ────────────────────────────────
+
+  it('warns that connectors are configurable but NOT invocable while the per-tenant gate is off (OD-11)', async () => {
+    stubFetchWithSession(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([TENANT_SERVER]));
+      // null ⇒ no opinion in either tier ⇒ OFF.
+      if (url === MCP_GATE_URL) return gateResponse(null);
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<ToolsMcpScreen />);
+
+    expect(await screen.findByText('MCP tools are turned off for this tenant')).toBeDefined();
+    // Configuration stays available — the gate blocks invocation, not editing.
+    expect(screen.getByRole('button', { name: 'Edit tenant-tools' })).toHaveProperty('disabled', false);
+  });
+
+  it('shows no gate warning when the tenant has MCP tools on', async () => {
+    stubFetchWithSession(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([TENANT_SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<ToolsMcpScreen />);
+    await screen.findByText('tenant-tools');
+
+    expect(screen.queryByText('MCP tools are turned off for this tenant')).toBeNull();
+  });
+
+  it('renders normally when the gate cannot be read — the banner is advisory, never a permission claim', async () => {
+    stubFetchWithSession(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([TENANT_SERVER]));
+      // No read:HarnessPolicy ⇒ 403. Claiming "turned off" would be a guess.
+      if (url === MCP_GATE_URL) return Response.json({ message: 'Forbidden' }, { status: 403 });
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<ToolsMcpScreen />);
+
+    expect(await screen.findByRole('table', { name: 'MCP servers' })).toBeDefined();
+    expect(screen.queryByText('MCP tools are turned off for this tenant')).toBeNull();
   });
 
   it('mirrors the loaded layout with skeletons while the list is in flight', () => {
@@ -151,6 +262,7 @@ describe('ToolsMcpScreen', () => {
   it('shows the empty state with a register CTA when no servers exist', async () => {
     stubFetch((url) => {
       if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
       throw new Error(`Unhandled fetch: ${url}`);
     });
     renderWithProviders(<ToolsMcpScreen />);
@@ -162,6 +274,7 @@ describe('ToolsMcpScreen', () => {
   it('surfaces a block error with retry and refetches the list', async () => {
     let attempts = 0;
     stubFetch((url) => {
+      if (url === MCP_GATE_URL) return gateResponse(true);
       if (url !== '/api/hope/admin/mcp-servers') throw new Error(`Unhandled fetch: ${url}`);
       attempts += 1;
       return attempts === 1 ? Response.json({ message: 'Service Unavailable' }, { status: 503 }) : Response.json(envelope([SERVER]));
@@ -177,6 +290,7 @@ describe('ToolsMcpScreen', () => {
 
   it('registers a server by POSTing the form payload', async () => {
     const calls = stubFetch((url, method) => {
+      if (url === MCP_GATE_URL) return gateResponse(true);
       if (url === '/api/hope/admin/mcp-servers' && method === 'GET') return Response.json(envelope([]));
       if (url === '/api/hope/admin/mcp-servers' && method === 'POST') {
         return Response.json({ ...SERVER, id: 'mcp-2', name: 'local-tools' }, { status: 201 });
@@ -203,6 +317,7 @@ describe('ToolsMcpScreen', () => {
 
   it('PATCHes an edit with If-Match from the read ETag', async () => {
     const calls = stubFetch((url, method) => {
+      if (url === MCP_GATE_URL) return gateResponse(true);
       if (url === '/api/hope/admin/mcp-servers' && method === 'GET') return Response.json(envelope([SERVER]));
       if (url === `/api/hope/admin/mcp-servers/${SERVER.id}` && method === 'GET') {
         return new Response(JSON.stringify(SERVER), {
@@ -237,6 +352,7 @@ describe('ToolsMcpScreen', () => {
 
   it('DELETEs with If-Match from the list row version', async () => {
     const calls = stubFetch((url, method) => {
+      if (url === MCP_GATE_URL) return gateResponse(true);
       if (url === '/api/hope/admin/mcp-servers' && method === 'GET') return Response.json(envelope([SERVER]));
       if (url === `/api/hope/admin/mcp-servers/${SERVER.id}` && method === 'DELETE') {
         return Response.json(SERVER);
@@ -258,6 +374,7 @@ describe('ToolsMcpScreen', () => {
   it('has no axe violations with the registry rendered', async () => {
     stubFetch((url) => {
       if (url === '/api/hope/admin/mcp-servers') return Response.json(envelope([SERVER]));
+      if (url === MCP_GATE_URL) return gateResponse(true);
       throw new Error(`Unhandled fetch: ${url}`);
     });
     const { container } = renderWithProviders(<ToolsMcpScreen />);

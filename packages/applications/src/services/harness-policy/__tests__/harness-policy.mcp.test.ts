@@ -14,12 +14,14 @@
  *   2. `getEffectivePolicy` never consulted the `McpServer` registry, so
  *      `mcpServers` did not exist on the wire at all.
  *   3. the knob was absent from `SUPER_ADMIN_ONLY_POLICY_KEYS`, so once added it
- *      would have been tenant-writable — MCP is super-admin governance.
+ *      would have been tenant-writable — MCP was super-admin governance.
+ *      **Point 3 was REVERSED by OD-11 (2026-09-01): MCP tools are per-tenant,
+ *      so the knob is deliberately NOT in that list any more and resolves on the
+ *      tenant → SYSTEM cascade.** Points 1 and 2 stand unchanged.
  *
  * The flag stays default-OFF: `null ⇒ OFF` is asserted, not assumed.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
 import { HarnessPolicyFactory, SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HarnessPolicyService } from '../harness-policy.service';
 
@@ -100,8 +102,13 @@ describe('HarnessPolicyService — MCP policy plumbing', () => {
       expect(effective.mcpToolsEnabled ?? null).toBeNull();
     });
 
-    it('comes from SYSTEM even when the tenant has its own policy row', async () => {
-      // MCP is super-admin governance: a tenant row must not shadow it.
+    it("the tenant's own row WINS over SYSTEM (OD-11 — MCP tools are per-tenant)", async () => {
+      // Reversed by OWNER DECISION OD-11 (2026-09-01). It previously asserted
+      // the opposite ("comes from SYSTEM even when the tenant has its own row"),
+      // because `mcpToolsEnabled` sat in SUPER_ADMIN_ONLY_POLICY_KEYS and was
+      // overlaid from SYSTEM. It now resolves tenant → SYSTEM like any other
+      // tenant-owned knob. Full cascade coverage (incl. null-widening) lives in
+      // `harness-policy.mcp-per-tenant.task846.test.ts`.
       policyRepository.findForExactTenant.mockResolvedValue(
         HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, mcpToolsEnabled: false } as never),
       );
@@ -109,13 +116,15 @@ describe('HarnessPolicyService — MCP policy plumbing', () => {
 
       const effective = await makeService().getEffectivePolicy(TENANT);
 
-      expect(effective.mcpToolsEnabled).toBe(true);
+      expect(effective.mcpToolsEnabled).toBe(false);
     });
 
-    it('is rejected on a tenant patch (403 — super-admin only)', async () => {
+    it('is ACCEPTED on a tenant patch (OD-11 — no longer super-admin only)', async () => {
       policyRepository.findSystemDefault.mockResolvedValue(systemPolicy());
 
-      await expect(makeService().updatePolicy({ mcpToolsEnabled: true } as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
+      const updated = await makeService().updatePolicy({ mcpToolsEnabled: true } as never, 1);
+
+      expect(updated.mcpToolsEnabled).toBe(true);
     });
 
     it('is accepted on the global default patch', async () => {

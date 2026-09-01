@@ -37,13 +37,20 @@ describe('AppSidebar — scoped to the active domain', () => {
   });
 
   it('keeps tier sub-headers where a domain spans tiers, and names the domain where it does not (OD-3)', async () => {
-    // AI Platform spans 10-19 and 30-49, so the tier labels stay useful — they
-    // tell a super admin which rows are cross-tenant.
+    // AI Platform spans 10-19, 20-29 and 30-49, so the tier labels stay useful
+    // — they tell a super admin which rows are cross-tenant.
+    //
+    // TASK-846 / OD-7 (2026-09-01) added the middle one: `/tools-mcp` retiered
+    // 10-19 -> 20-29 when tenant admins gained the right to configure MCP
+    // connectors, so this domain now spans three tiers instead of two. The
+    // "Administration" header is the point of the sub-headers, not a regression:
+    // it says the MCP row is the shared-audience one in an otherwise
+    // platform-and-tenant domain.
     usePathnameMock.mockReturnValue('/ai-models');
     const { unmount } = renderInShell(<AppSidebar />);
     await screen.findByRole('link', { name: 'AI models' });
     const aiHeadings = Array.from(scopedNav('AI Platform').querySelectorAll('[data-slot="sidebar-group-label"]')).map((el) => el.textContent);
-    expect(aiHeadings).toEqual(['Platform', 'Tenant']);
+    expect(aiHeadings).toEqual(['Platform', 'Administration', 'Tenant']);
     unmount();
 
     // Clinical sits entirely in one tier; a lone "Tenant" header would say
