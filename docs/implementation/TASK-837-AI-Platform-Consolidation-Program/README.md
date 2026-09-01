@@ -204,6 +204,28 @@ ports and paths, but cannot judge BREADTH — an entry of `.com`, or a bare `.`,
 intended. The address table still blocks internal pivots, so the residual exposure is reaching arbitrary
 PUBLIC hosts, not the cluster.
 
+**F-31 — Stale `dist/` produced a misleading result THREE times in one session.** A recurring trap, not
+three coincidences. (1) `regen-workflow-definition-seed.ts` reported a false `DRIFT: 0` against a stale build
+of `@arcaai/workflow-contract`; rebuilding flipped it to `DRIFT: 2`. (2) A fresh worktree with no built
+`dist/` failed 110 admin-console test files on `Failed to resolve import "@arcaai/ui"` — noise that looks
+like a regression. (3) Post-merge on TASK-847, `packages/applications` reported a REAL failure
+(`workflow-definition.palette-key.test.ts` expecting the new `agentic` palette) purely because it resolved
+`@arcaai/workflow-contract` through a stale `dist/`; one rebuild took the suite from `1 failed | 10810
+passed` to `10819 passed`. **`dist/` is gitignored, so CI is safe** — turbo builds in topological order —
+but every LOCAL verification of a cross-package contract change must rebuild the producing package FIRST, or
+the gate is measuring yesterday's code. **Rule for this program: after touching `packages/workflow-contract`
+or any package another one imports, rebuild it before running a single downstream gate.**
+
+**F-32 — TASK-847's hyperparameter capability gate is built and tested but NOT wired (open follow-up).**
+`hyperparameterCapabilityProblems` exists in `packages/workflow-contract/src/agentic-contract.ts`, is
+exported, and is covered by tests — but is called from **nowhere** in `packages/applications` (verified by
+grep across both packages). The capability set comes from a resolved `AiRoutingPolicy`/`AiRuntimeProfile`
+row, which needs a DB read outside TASK-847's file ownership. **Consequence: a provider that rejects
+`presencePenalty` fails loudly in unit tests but NOT at publish** — which is the gap between TASK-847's
+stated verification criterion and what actually gates today. The pure check is ready; someone must call it
+from `WorkflowDefinitionService.validateGraph`. Disclosed by the implementing agent rather than left to be
+discovered — the right behaviour, and the reason it is tracked here.
+
 **F-10 — Resolution and credentials are already correct.** Zero occurrences of the Global customer tenant
 `50000000-…` in any resolver; every cascade is exactly `[tenant, SYSTEM]`, widening only on absence.
 All credentials are Vault-Transit ciphertext in `encryptedApiKey`; writes refused unless
