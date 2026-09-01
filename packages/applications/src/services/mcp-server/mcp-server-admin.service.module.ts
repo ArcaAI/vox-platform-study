@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { EgressPolicyService } from '../../common/egress';
 import { CommonServiceModule } from '../baseServices';
 import { IMcpServerAdminService } from './IMcpServerAdminService';
 import { McpServerAdminService } from './mcp-server-admin.service';
@@ -12,6 +13,10 @@ import { McpServerAdminService } from './mcp-server-admin.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
+    // The SSRF egress guard for tenant-authored `baseUrl` (TASK-846 D-3). Provided
+    // here rather than in CommonServiceModule because this is currently its only
+    // consumer; it needs IAppSettingsService, which CommonServiceModule exports.
+    EgressPolicyService,
     McpServerAdminService,
     {
       provide: IMcpServerAdminService,

@@ -162,6 +162,11 @@ from harness.temporal.prompt_cache import (
     assemble_generation_prompt,
     build_segment_citations_block,
 )
+from harness.tools.egress_guard import (
+    HostResolver,
+    default_resolver,
+    evaluate_egress,
+)
 from harness.tools.mcp_client import McpClientError, McpToolClient
 
 logger = get_logger(__name__)
@@ -650,14 +655,56 @@ def _phi_redactor() -> PhiRedactor:
     return PhiRedactor()
 
 
-def _mcp_client(settings: Settings) -> McpToolClient:
+#: The registry key holding the platform SSRF egress allow-list. Mirrored by hand from
+#: ``packages/applications/.../descriptors/mcp-egress.descriptors.ts`` — the gateway
+#: serves it on the effective-config pull route because the descriptor declares
+#: ``consumedBy: ['harness']``.
+MCP_EGRESS_ALLOWED_HOSTS_KEY = "mcp.egress.allowedHosts"
+
+
+def _mcp_client(settings: Settings, allowed_hosts: list[str] | None = None) -> McpToolClient:
     """Build the streamable-HTTP MCP tool client.
 
     Factored out like the other client factories so ``call_mcp_tool`` builds it once
     per invocation and the tests can monkeypatch it with a stub (the hermetic suite
     never touches the real ``mcp`` SDK / network).
+
+    ``allowed_hosts`` is the platform SSRF egress allow-list (TASK-846 D-3). It is
+    passed down rather than re-read here because the CLIENT's copy is what arms the
+    per-request pinning inside ``PinnedEgressTransport`` — the activity's own check
+    below stops the call, but only the transport can stop a DNS rebind mid-session.
+    ``None`` DENIES; there is no permissive default anywhere on this path.
     """
-    return McpToolClient(timeout_s=settings.mcp.timeout_s, max_attempts=settings.mcp.max_attempts)
+    return McpToolClient(
+        timeout_s=settings.mcp.timeout_s,
+        max_attempts=settings.mcp.max_attempts,
+        allowed_hosts=allowed_hosts,
+        resolver=_mcp_egress_resolver(),
+        max_response_bytes=settings.mcp.max_result_bytes,
+    )
+
+
+def _mcp_egress_resolver() -> HostResolver:
+    """The DNS resolver the egress guard uses. A seam the hermetic suite replaces."""
+    return default_resolver
+
+
+async def _mcp_egress_allowed_hosts() -> list[str] | None:
+    """The platform MCP egress allow-list, or ``None`` when it is UNRESOLVED.
+
+    ``None`` is the whole contract, and it means DENY. The key declares
+    ``failMode: 'closed'`` precisely because a security control has only one default it
+    could fall back to, and that default is "allow". Every way this can go wrong —
+    an unreachable control plane (``_config_snapshot`` returns None), an absent key, a
+    stored null, a malformed value — collapses to ``None`` here, and the guard refuses.
+    """
+    snapshot = await _config_snapshot()
+    if snapshot is None:
+        return None
+    value = snapshot.setting(MCP_EGRESS_ALLOWED_HOSTS_KEY)
+    if not isinstance(value, list) or not all(isinstance(entry, str) for entry in value):
+        return None
+    return value
 
 
 # TASK-712 (consent-abac Phase 4) — process-lifetime singleton, UNLIKE the
@@ -1154,11 +1201,52 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         await batch.flush()
         raise
 
+    # (2.5) SSRF EGRESS GUARD — `server.base_url` is TENANT-AUTHORED (OD-7), so it is
+    # checked against the platform allow-list AND its resolved address before anything
+    # is dialled. Deliberately placed BEFORE the credential resolution below: there is
+    # no reason to pull a secret out of Vault for a call that will not be made.
+    #
+    # Fail-closed: an unresolved allow-list denies. Raises rather than degrading,
+    # matching the `tool_not_allowed` policy denial above — a destination the platform
+    # forbids is a configuration or abuse signal an operator must see, not a transient
+    # fault to be quietly downgraded into reduced assurance.
+    allowed_hosts = await _mcp_egress_allowed_hosts()
+    egress = await asyncio.to_thread(
+        evaluate_egress, server.base_url, allowed_hosts, _mcp_egress_resolver()
+    )
+    if not egress.allowed:
+        # Host + reason only. `base_url` can carry a token in its query string, and the
+        # trajectory is persisted and widely readable.
+        activity.logger.warning(
+            "harness.mcp.egress.blocked",
+            extra={
+                "server": server.name,
+                "tool": tool,
+                "host": egress.host,
+                "reason": egress.reason,
+            },
+        )
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool, "host": egress.host},
+            error_code="egress_blocked",
+        )
+        await batch.flush()
+        raise ApplicationError(
+            f"MCP server host is not permitted by the platform egress policy: "
+            f"{egress.host or '(unparsed)'}",
+            type="McpEgressBlocked",
+            non_retryable=True,
+        )
+
     # (3) Bounded tool call. The gateway-resolved credential is NEVER logged/echoed,
     # and never leaves this activity frame.
     token = await _resolve_mcp_token(settings, server.auth_ref)
     try:
-        tool_result = await _mcp_client(settings).call_tool(
+        tool_result = await _mcp_client(settings, allowed_hosts).call_tool(
             base_url=server.base_url, tool=tool, args=payload.args, auth_token=token
         )
     except McpClientError as exc:

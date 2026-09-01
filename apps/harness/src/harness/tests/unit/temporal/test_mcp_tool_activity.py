@@ -146,9 +146,29 @@ class _AllowAllConsentClient:
         )
 
 
+# TASK-846 D-3 — the activity now runs an SSRF egress gate on `server.base_url`, and it
+# FAILS CLOSED: with no control-plane allow-list every call is refused before the network
+# path these tests are about. `_wire` therefore stubs the allow-list with the fixture's
+# own host plus a resolver that answers with a public (TEST-NET-3) address, so these
+# cases keep exercising the PHI / degrade / claim-check / consent gates rather than
+# tripping over egress. The egress gate itself is pinned by
+# `test_mcp_tool_activity_egress.py`, and the rule by `test_egress_guard.py`.
+_EGRESS_HOST = "terminology.local"
+
+
+def _egress_resolver(hostname: str) -> list[str]:
+    return ["203.0.113.10"] if hostname.lower() == _EGRESS_HOST else []
+
+
+async def _egress_allowed_hosts() -> list[str]:
+    return [_EGRESS_HOST]
+
+
 def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None, consent=None):
     monkeypatch.setattr(activities, "get_settings", lambda: settings or Settings())
-    monkeypatch.setattr(activities, "_mcp_client", lambda s: client)
+    monkeypatch.setattr(activities, "_mcp_client", lambda s, hosts=None: client)
+    monkeypatch.setattr(activities, "_mcp_egress_allowed_hosts", _egress_allowed_hosts)
+    monkeypatch.setattr(activities, "_mcp_egress_resolver", lambda: _egress_resolver)
     monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
     # Default: consent always allowed — the allowlist/PHI/network tests below
     # are about THOSE gates, not consent (TASK-712, consent-abac Phase 4).

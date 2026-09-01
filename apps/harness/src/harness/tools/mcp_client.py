@@ -14,16 +14,33 @@ Security posture:
   degrade (never crash) the clinical loop.
 * Bounded transport retry (``max_attempts``) covers a transient timeout / 5xx before
   the activity degrades; a 4xx (client error) is non-retryable.
+* **SSRF egress guard (TASK-846 D-3).** ``base_url`` is TENANT-AUTHORED, so before any
+  transport work the host is checked against the platform allow-list and its RESOLVED
+  address is checked against the private/loopback/link-local ranges. This is the gate
+  that actually protects — the admin-side check in ``packages/applications`` runs at
+  write time and cannot account for DNS changing afterwards. Three properties:
+  ``allowed_hosts=None`` (control plane unresolved) DENIES; the denial is raised
+  OUTSIDE the retry loop because a policy refusal is not a transient fault; and the
+  connection is PINNED to the validated address by
+  :class:`~harness.tools.egress_transport.PinnedEgressTransport`, which also re-checks
+  every subsequent request on the session. Redirects are additionally not followed.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from harness.core.logging import get_logger
+from harness.tools.egress_guard import (
+    EgressBlocked,
+    HostResolver,
+    default_resolver,
+    evaluate_egress,
+)
 
 logger = get_logger(__name__)
 
@@ -78,9 +95,24 @@ def _extract_text(call_result: Any) -> tuple[str, bool]:
 class McpToolClient:
     """Calls a single READ-ONLY MCP tool over streamable-HTTP with bounded retry."""
 
-    def __init__(self, *, timeout_s: float = 20.0, max_attempts: int = 2) -> None:
+    def __init__(
+        self,
+        *,
+        timeout_s: float = 20.0,
+        max_attempts: int = 2,
+        allowed_hosts: Sequence[str] | None = None,
+        resolver: HostResolver | None = None,
+        max_response_bytes: int | None = None,
+    ) -> None:
         self._timeout_s = timeout_s
         self._max_attempts = max(1, max_attempts)
+        # The platform egress allow-list (`mcp.egress.allowedHosts`). `None` means the
+        # control plane had no opinion — which DENIES. There is deliberately no default
+        # host set: a permissive default is the one bug this whole module exists to
+        # prevent, and it would be invisible until someone abused it.
+        self._allowed_hosts = allowed_hosts
+        self._resolver = resolver
+        self._max_response_bytes = max_response_bytes
 
     async def call_tool(
         self,
@@ -92,10 +124,17 @@ class McpToolClient:
     ) -> McpToolResult:
         """Invoke ``tool`` at ``base_url`` with ``args``; retry transient failures.
 
-        Raises :class:`McpClientError` (secret-free) on a non-retryable failure or once
-        the bounded retries are exhausted. The ``auth_token`` is sent ONLY as the
+        Raises :class:`~harness.tools.egress_guard.EgressBlocked` when ``base_url`` is
+        not reachable under the platform egress policy (checked first, never retried),
+        or :class:`McpClientError` (secret-free) on a non-retryable transport failure or
+        once the bounded retries are exhausted. The ``auth_token`` is sent ONLY as the
         ``Authorization`` bearer header and never logged.
         """
+        # SSRF egress guard, BEFORE anything is dialled or even imported, and OUTSIDE
+        # the retry loop below: a policy refusal is not a transient fault, so retrying
+        # it would only produce noise and delay the activity's degrade path.
+        self._assert_egress_allowed(base_url)
+
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else None
         last_exc: McpClientError | None = None
         for attempt in range(1, self._max_attempts + 1):
@@ -118,6 +157,25 @@ class McpToolClient:
         assert last_exc is not None  # loop ran >= 1 attempt
         raise last_exc
 
+    def _assert_egress_allowed(self, base_url: str) -> None:
+        """Refuse a ``base_url`` the platform egress policy does not permit.
+
+        Synchronous on purpose: with an INJECTED resolver (tests, and the pinned
+        transport's own re-check) nothing blocks, and on the real path the answer is
+        already in the resolver cache by the time the transport dials. The transport
+        performs the authoritative, off-loop check per request.
+        """
+        decision = evaluate_egress(base_url, self._allowed_hosts, self._resolver or default_resolver)
+        if decision.allowed:
+            return
+        # Host + reason only — a connector URL can carry a token in its query string.
+        logger.warning(
+            "harness.mcp.egress.blocked",
+            host=decision.host,
+            reason=decision.reason,
+        )
+        raise EgressBlocked(decision)
+
     async def _call_once(
         self,
         base_url: str,
@@ -130,6 +188,13 @@ class McpToolClient:
             import httpx2
             from mcp import ClientSession
             from mcp.client.streamable_http import streamable_http_client
+
+            # Imported HERE, not at module scope: it imports httpx2, which ships only
+            # with the optional 'mcp-tools' extra.
+            from harness.tools.egress_transport import (
+                DEFAULT_MAX_RESPONSE_BYTES,
+                PinnedEgressTransport,
+            )
         except ImportError as exc:  # the extra is absent — surface as a coarse failure
             raise McpClientError("mcp SDK not installed (optional 'mcp-tools' extra)") from exc
 
@@ -137,10 +202,20 @@ class McpToolClient:
             async with asyncio.timeout(self._timeout_s):
                 # mcp 2: headers/timeout live on httpx2.AsyncClient; the transport
                 # yields (read, write) only (no get_session_id callback).
+                # follow_redirects=False: a 302 to the metadata endpoint must not be
+                # chased. The pinned transport would re-validate a hop anyway, so this
+                # is the first of two independent answers, and the stricter one — a
+                # legitimate MCP server has no reason to redirect its own endpoint.
                 http_client = httpx2.AsyncClient(
                     headers=headers,
                     timeout=httpx2.Timeout(self._timeout_s),
-                    follow_redirects=True,
+                    follow_redirects=False,
+                    transport=PinnedEgressTransport(
+                        httpx2.AsyncHTTPTransport(),
+                        allowed_hosts=self._allowed_hosts,
+                        resolver=self._resolver,
+                        max_response_bytes=self._max_response_bytes or DEFAULT_MAX_RESPONSE_BYTES,
+                    ),
                 )
                 async with http_client:
                     async with streamable_http_client(base_url, http_client=http_client) as (
