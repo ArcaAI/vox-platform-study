@@ -36,6 +36,11 @@ from harness.temporal.activities import (
 from harness.temporal.client import get_temporal_client
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
+from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
+from harness.temporal.interpreter.loop_workflow import (
+    AgenticLoopWorkflow,
+    AgenticSubAgentWorkflow,
+)
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
@@ -305,6 +310,12 @@ async def run_worker() -> None:
             # inherits the parent's and must be hosted by this same worker — the identical rule
             # ConsultationLoopWorkflow/SpecialistWorkflow are on this list for.
             ConsultationGateWorkflow,
+            # TASK-848 — the same inheritance rule again, one level deeper. The interpreter starts
+            # `AgenticLoopWorkflow` as a child with no explicit task_queue; the loop in turn starts
+            # `AgenticSubAgentWorkflow` the same way. Both inherit this queue, so both must be
+            # hosted here or a loop node hangs waiting for a worker that never polls for it.
+            AgenticLoopWorkflow,
+            AgenticSubAgentWorkflow,
         ],
         activities=[
             ping_activity,
@@ -312,6 +323,9 @@ async def run_worker() -> None:
             *LOOP_ACTIVITIES,
             *REASONING_ACTIVITIES,
             *INTERPRETER_ACTIVITIES,
+            # TASK-848 — the loop's per-iteration checkpoint. Not part of INTERPRETER_ACTIVITIES
+            # because the LOOP child executes it, not the interpreter.
+            loop_state_checkpoint,
         ],
         graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor
