@@ -20,7 +20,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS, TEXT_TEST_TASK_KEYS } from '../../api/types';
+import { AI_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
@@ -209,55 +209,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TenantAiConfigurationScreen — hub structure', () => {
-  it('renders all four tab triggers for a tenant admin with full abilities', async () => {
+describe('TenantAiConfigurationScreen — narrowed hub structure (TASK-845)', () => {
+  it('renders exactly the two tabs that did not move', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'AI Configuration' })).toBeDefined();
-    expect(await screen.findByRole('tab', { name: 'Models' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Speech' })).toBeDefined();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Speech & Voice' })).toBeDefined();
+    expect(await screen.findByRole('tab', { name: 'Speech' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Voice' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'Providers' })).toBeDefined();
   });
 
-  it('no longer exposes the retired standalone surfaces (no "Cloud credentials" tab, no /ai-providers deep link)', async () => {
+  it('no longer carries the Models or Providers tabs — they moved to /ai-platform', async () => {
+    // Those two tabs were the TENANT half of a two-tier cascade whose SYSTEM
+    // half lived on a different route. Keeping a copy here would recreate the
+    // duplication TASK-845 removed, so their absence is the contract.
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 
-    await screen.findByRole('tab', { name: 'Models' });
-    expect(screen.queryByRole('tab', { name: /cloud credentials/i })).toBeNull();
-    expect(screen.queryByRole('link', { name: /manage credentials in ai providers/i })).toBeNull();
+    await screen.findByRole('tab', { name: 'Speech' });
+    expect(screen.queryByRole('tab', { name: 'Models' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Providers' })).toBeNull();
   });
-});
 
-describe('TenantAiConfigurationScreen — Models tab (default)', () => {
-  it('shows the tenant-editable text-generation cards plus the read-only effective models table', async () => {
+  it('points at the screen the moved surfaces went to, so nobody has to guess', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 
-    // Editable text-generation cards (primary + test bench + fallback).
-    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_TEST_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
-      expect(await screen.findByText(key)).toBeDefined();
-    }
-    // Read-only effective rows for the platform-managed keys.
-    for (const key of READ_ONLY_TASK_KEYS) {
-      expect(await screen.findByText(key)).toBeDefined();
-    }
-    // If-Match save per editable text-generation card
-    // (2 primary + 1 test bench + 2 fallback).
-    expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(5);
-  });
-
-  it('surfaces an error state with retry when the effective read fails', async () => {
-    stubFetch({ effectiveFails: true });
-    renderWithProviders(<TenantAiConfigurationScreen />);
-
-    expect(await screen.findByRole('button', { name: /retry/i })).toBeDefined();
+    const link = await screen.findByRole('link', { name: /providers & models/i });
+    expect(link.getAttribute('href')).toBe('/ai-platform');
   });
 });
 
-describe('TenantAiConfigurationScreen — Speech / Voice / Providers tabs', () => {
+describe('TenantAiConfigurationScreen — Speech / Voice tabs', () => {
   it('renders the STT fallback editor on the Speech tab', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=speech' });
@@ -271,26 +254,15 @@ describe('TenantAiConfigurationScreen — Speech / Voice / Providers tabs', () =
 
     expect(await screen.findByRole('heading', { name: /Tenant TTS config editor/i })).toBeDefined();
   });
-
-  it('renders the LLM/STT/TTS service sub-tabs on the Providers tab', async () => {
-    stubFetch();
-    renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=providers' });
-
-    expect(await screen.findByRole('tab', { name: 'LLM' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'STT' })).toBeDefined();
-    expect(screen.getByRole('tab', { name: 'TTS' })).toBeDefined();
-  });
 });
 
 describe('TenantAiConfigurationScreen — per-tab ability gating', () => {
-  it('shows only the tab(s) whose resource the caller can read', async () => {
+  it('shows only the tab whose resource the caller can read', async () => {
     stubFetch({ permissions: [{ action: 'read', subject: 'TenantSttConfig' }] });
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=speech' });
 
     expect(await screen.findByRole('tab', { name: 'Speech' })).toBeDefined();
-    expect(screen.queryByRole('tab', { name: 'Models' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Voice' })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Providers' })).toBeNull();
   });
 });
 
@@ -312,15 +284,13 @@ describe('TenantAiConfigurationScreen — tenant scoping', () => {
 
 describe('TenantAiConfigurationScreen — accessibility', () => {
   it.each([
-    ['models', ''],
-    ['speech', '?tab=speech'],
+    ['speech', ''],
     ['voice', '?tab=voice'],
-    ['providers', '?tab=providers'],
   ])('has no axe violations on the %s tab (light theme)', async (_label, searchParams) => {
     stubFetch();
     const { container } = renderWithProviders(<TenantAiConfigurationScreen />, { searchParams });
 
-    await screen.findByRole('heading', { level: 1, name: 'AI Configuration' });
+    await screen.findByRole('heading', { level: 1, name: 'Speech & Voice' });
     await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
   });
 
@@ -329,7 +299,7 @@ describe('TenantAiConfigurationScreen — accessibility', () => {
     try {
       stubFetch();
       const { container } = renderWithProviders(<TenantAiConfigurationScreen />);
-      await screen.findByRole('heading', { level: 1, name: 'AI Configuration' });
+      await screen.findByRole('heading', { level: 1, name: 'Speech & Voice' });
       await waitFor(async () => expect(await axe(container)).toHaveNoViolations());
     } finally {
       document.documentElement.classList.remove('dark');
