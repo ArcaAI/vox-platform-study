@@ -12,6 +12,57 @@ export class AiRoutingPolicyResponse {
   @ApiProperty({ description: 'AI task key this policy routes', example: 'text.finalize' })
   taskKey!: string;
 
+  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  //
+  // TASK-844 re-grained this table to ONE ROW PER PROVIDER CONFIGURATION and
+  // moved the ordered chain off `candidatesJson` onto the rows themselves, but
+  // the READ shape was never widened to match. Every field below already
+  // existed on `AiRoutingPolicyEntity` and in `ProviderConfigurationRow`; they
+  // were simply unreachable over HTTP, so no client could render the elected
+  // default, the provider a configuration binds to, or the model it selects —
+  // which is the whole substance of a configuration. Added by TASK-845, whose
+  // Providers and Tasks tabs are the first read client.
+
+  @ApiPropertyOptional({
+    description: 'Canonical task taxonomy this `taskKey` belongs to (TASK-843). NULL means a row an un-migrated writer left unclassified.',
+    nullable: true,
+  })
+  taskKind!: string | null;
+
+  @ApiPropertyOptional({ description: 'Human label for this configuration. Not a key, and never part of resolution.', nullable: true })
+  displayName!: string | null;
+
+  @ApiPropertyOptional({ description: 'FK → AiProviderConnection.id — WHERE this configuration sends work and how it authenticates.', nullable: true })
+  providerConnectionId!: string | null;
+
+  @ApiPropertyOptional({ description: 'FK → AiModel.id — the catalogue model this configuration selects.', nullable: true })
+  modelId!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Provider-side model id on the wire (an Azure deployment name, a GGUF id) when it differs from the catalogue slug.',
+    nullable: true,
+  })
+  modelRef!: string | null;
+
+  @ApiProperty({
+    description:
+      'The ELECTED default for this (tenantId, taskKey). At most one row per selection may carry it — a PostgreSQL partial unique index enforces that, ' +
+      'so it is a fact about the database, not a convention. Elect with POST :id/default; it is deliberately not writable through create or update.',
+  })
+  isDefault!: boolean;
+
+  @ApiProperty({ description: 'Candidate on/off without deleting the row. A disabled configuration is skipped by resolution and cannot be elected.' })
+  enabled!: boolean;
+
+  @ApiPropertyOptional({ description: 'Opaque residency-class label; compared for EQUALITY only by the §3A.4 fallback gates.', nullable: true })
+  residency!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Whether a BAA covers this vendor AND this model. NULL is read as `false` by the gates — an unanswered question is not a yes.',
+    nullable: true,
+  })
+  baaCovered!: boolean | null;
+
   @ApiProperty({
     description:
       'AUTHORED revision, part of the natural key and the rollback target. Distinct from `version`, which is the OCC counter the database owns.',
