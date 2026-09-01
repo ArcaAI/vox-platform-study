@@ -463,6 +463,44 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
     [port('in', 'document', true, false), port('transcript', 'transcript', false, false), port('findings', 'entities', false, true), AFTER],
     [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT],
   ),
+
+  // -------------------------------------------------------------------------------------------
+  // TASK-847 — the GENERIC (`agentic`) catalogue
+  //
+  // These are the first node types in the platform whose SHAPE is tenant-declared, so they are
+  // also the first that cannot be typed with a refinement. They speak `object` (the unrefined
+  // STRUCTURED type this ticket added) at every boundary the tenant's own JSON Schema describes,
+  // and `text` where the payload is genuinely prose.
+  //
+  // Two typing choices carry the safety here, and neither is cosmetic:
+  //
+  //  - `agentic.stt` consumes `audio` and NOT `stream<audio>`. Those are siblings in the lattice,
+  //    so a realtime capture cannot be wired into it at all. That is the determinism boundary of
+  //    `06-python-services.md` — no per-frame audio inside a Temporal workflow — enforced by the
+  //    type system rather than by a reviewer noticing.
+  //  - `agentic.agent` produces `text` and not `document`. `document` is the type the anti-
+  //    laundering rule keys on ("generated prose, provenance intact"), and it is claimed by the
+  //    fixed-purpose generation nodes whose output really is a clinical document. A generic agent
+  //    may be doing anything at all, so claiming `document` would be asserting a provenance the
+  //    node cannot vouch for; `text` is the honest type and `text` still cannot reach a
+  //    `transcript` consumer.
+  // -------------------------------------------------------------------------------------------
+  'agentic.input': ports([AFTER], [port('out', 'object', true, true, { outputKey: 'payload' }), NEXT]),
+  'agentic.output': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'payload' }), NEXT]),
+  // `context` is the OPTIONAL structured side-channel (retrieved evidence, bound context); `in`
+  // is the prompt material. Both optional-arity choices mirror the generation nodes above.
+  'agentic.agent': ports(
+    [port('in', 'text', false, true), port('context', 'object', false, true), AFTER],
+    [port('out', 'text', true, true, { outputKey: 'text' }), port('data', 'object', false, true, { outputKey: 'data' }), NEXT],
+  ),
+  'agentic.guardrail': ports([port('in', 'text', true, false), AFTER], [port('out', 'verdict', true, true, { outputKey: 'verdict' }), NEXT]),
+  'agentic.data': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'data' }), NEXT]),
+  // The loop's own sockets are the ORCHESTRATOR's, not its body's: the body is named by node
+  // reference in config (`orchestratorNodeId`/`subAgentNodeIds`), because a loop body is not a
+  // port and modelling it as one would put control flow in the data lattice.
+  'agentic.loop': ports([port('in', 'object', false, true), AFTER], [port('out', 'object', true, true, { outputKey: 'result' }), NEXT]),
+  'agentic.stt': ports([port('in', 'audio', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
+  'agentic.tts': ports([port('in', 'text', true, false), AFTER], [port('out', 'audio', true, true, { outputKey: 'audio' }), NEXT]),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the

@@ -1249,6 +1249,195 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     idempotent: true,
     schemaVersion: 1,
   }),
+
+  // ===========================================================================================
+  // TASK-847 — the GENERIC (`agentic`) catalogue: the eight node types of the owner's spec
+  // ===========================================================================================
+  //
+  // Program finding F-12's have/missing table, closed. `Loop`, `Data`, `TTS` and *"any generic
+  // Agent"* did not exist; `Input`, `Output` and `Guardrail` existed only as palette-specific
+  // types (`input.context_binding`, `output.deliver`, `guardrail.check`) whose config is shaped
+  // by the summarization pipeline rather than by the tenant; `STT` existed ×8 as registry-parity
+  // placeholders that return `DEGRADED` without transcribing.
+  //
+  // ## Why a new palette rather than more `agent.*` keys
+  //
+  // The ~13 fixed-purpose `agent.*` types encode behaviour in the KEY: `agent.summarization` IS
+  // summarization. These encode it in CONFIGURATION, which is a different contract with the
+  // author — one node type, composed. Mixing the two families under one palette would make the
+  // Studio's palette rail claim they are interchangeable. They are not, and the deprecation path
+  // is one-directional: new work targets `agentic.*`; the fixed types stay because a node type is
+  // a contract with every saved tenant graph and both committed seeds name them.
+  //
+  // `KNOWN_PALETTE_KEYS` (`exposure-palette-policy.ts`) is DERIVED from this field, so declaring
+  // the palette here is the whole of registering it. `EXPOSURE_ALLOWED_PALETTES` is deliberately
+  // NOT widened: an allow-list that grows by default is not an allow-list, and whether a generic
+  // agentic graph is a public-exposure product is an owner decision, not a side effect of this
+  // ticket.
+  //
+  // ## `implemented: true` on all eight, including the two whose runtime is another ticket
+  //
+  // `compile()` REFUSES any graph containing an `implemented: false` type (`nodeInfo` returns
+  // undefined), and this ticket's own verification criterion is *"a graph using every new node
+  // type compiles to a valid IR"*. So all eight are implemented and all eight have a registered
+  // activity. `agentic.loop` and `agentic.tts` are honest, OBSERVABLE non-execution: their
+  // activities return `DEGRADED` naming the ticket that owns the runtime (TASK-848 for the loop
+  // body, TASK-849 for binary audio transport), exactly as `stt_placeholder.py` does — *"fail
+  // loudly… never pass through while claiming the hop ran"*. A run that reaches one is visibly
+  // degraded on its trajectory; it never claims work that did not happen.
+  //
+  // ## `critical` / `externalWrite`, both code-owned
+  //
+  // `agentic.output` and `agentic.tts` are `externalWrite: true` — the first publishes the run's
+  // result to claim-check storage, the second writes a synthesised audio artifact — so a
+  // sandboxed run suppresses both. `agentic.stt` is `externalWrite: true` because dispatching a
+  // batch transcription CREATES a `TranscriptionJob` row through apps/api. Nothing here is
+  // `critical`: a generic node's failure must not fail the run by default, because the author,
+  // not the registry, knows whether their agent is load-bearing (`onError` is theirs to set).
+  'agentic.input': Object.freeze({
+    key: 'agentic.input',
+    implemented: true,
+    activityName: 'interpreter.agentic_input',
+    classes: Object.freeze(['boundary']),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.output': Object.freeze({
+    key: 'agentic.output',
+    implemented: true,
+    activityName: 'interpreter.agentic_output',
+    classes: Object.freeze(['boundary']),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.agent': Object.freeze({
+    key: 'agentic.agent',
+    implemented: true,
+    activityName: 'interpreter.agentic_agent',
+    classes: Object.freeze(['generation']),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 150,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    // `requires` stays EMPTY, unlike the three fixed generation entries which require
+    // `guard.groundedness`. Not an oversight: a generic agent's guards are AUTHORED
+    // (`config.guards.input`/`.output`), and `requires` is a per-TYPE mandate. Declaring both
+    // would give one policy two enforcement paths, which is exactly how the two drift apart —
+    // the reasoning this field's own docstring already records for the pipeline node types.
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.guardrail': Object.freeze({
+    key: 'agentic.guardrail',
+    implemented: true,
+    activityName: 'interpreter.agentic_guardrail',
+    classes: Object.freeze(['guard']),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.data': Object.freeze({
+    key: 'agentic.data',
+    implemented: true,
+    activityName: 'interpreter.agentic_data',
+    classes: Object.freeze([]),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.loop': Object.freeze({
+    key: 'agentic.loop',
+    implemented: true,
+    activityName: 'interpreter.agentic_loop',
+    classes: Object.freeze([]),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: false,
+    // The node's own budget is deliberately the WHOLE `maxDurationSeconds` ceiling its config
+    // schema permits, because TASK-848 spends that budget as a workflow timer INSIDE the loop.
+    // A smaller activity timeout here would cap the loop somewhere the author cannot see.
+    defaultTimeoutSeconds: 3600,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.stt': Object.freeze({
+    key: 'agentic.stt',
+    implemented: true,
+    activityName: 'interpreter.agentic_stt',
+    classes: Object.freeze(['phiBearing']),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 900,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-start',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
+  'agentic.tts': Object.freeze({
+    key: 'agentic.tts',
+    implemented: true,
+    activityName: 'interpreter.agentic_tts',
+    classes: Object.freeze([]),
+    paletteKey: 'agentic',
+    critical: false,
+    externalWrite: true,
+    defaultTimeoutSeconds: 300,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+    trigger: 'on-end',
+    lane: 'durable',
+    requires: Object.freeze([]),
+    idempotent: true,
+    schemaVersion: 1,
+  }),
 });
 
 /**
@@ -1272,6 +1461,28 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
       ];
     }),
   ),
+);
+
+/**
+ * TASK-847 — the palette the eight GENERIC node types belong to.
+ *
+ * Declared as a constant rather than typed as a string literal at each call site because three
+ * independent things key on it: `KNOWN_PALETTE_KEYS` derives the create-time validation set from
+ * the registry, the Studio's palette rail groups by it, and `AGENTIC_NODE_TYPES` below is derived
+ * from it. A fourth thing deliberately does NOT: `EXPOSURE_ALLOWED_PALETTES` stays
+ * `{summarization}`, so a generic agentic graph is not REST-invokable through the public exposure
+ * plane until someone affirmatively decides it is a product there.
+ */
+export const AGENTIC_PALETTE_KEY = 'agentic';
+
+/**
+ * The eight generic node types, DERIVED from `paletteKey` rather than re-typed. A ninth added to
+ * the palette joins this set for free; one that leaves it leaves visibly.
+ */
+export const AGENTIC_NODE_TYPES: readonly string[] = Object.freeze(
+  Object.values(WORKFLOW_NODE_REGISTRY)
+    .filter((descriptor) => descriptor.paletteKey === AGENTIC_PALETTE_KEY)
+    .map((descriptor) => descriptor.key),
 );
 
 /** The registry-declared classes for a node type — `[]` for an unknown type (never throws;

@@ -62,8 +62,10 @@
 export const WORKFLOW_PORT_PRIMITIVES = [
   'control',
   'stream<audio>',
+  'audio',
   'transcript',
   'text',
+  'object',
   'entities',
   'document',
   'edits',
@@ -72,6 +74,37 @@ export const WORKFLOW_PORT_PRIMITIVES = [
 ] as const;
 
 export type WorkflowPortPrimitive = (typeof WORKFLOW_PORT_PRIMITIVES)[number];
+
+/**
+ * TASK-847 — the FIVE tier-1 KINDS (`portKindOf` below), and the two primitives the generic
+ * `agentic` node types need before they can be typed at all.
+ *
+ * ## `object` — the unrefined STRUCTURED type
+ *
+ * Every existing STRUCTURED port type is a REFINEMENT: `entities` is an NER result, `edits` a
+ * correction set, `verdict` a guardrail decision, `context<schemaRef>` a bound context object.
+ * The generic Input/Output/Data nodes carry a TENANT-DEFINED JSON schema, so their shape is not
+ * knowable at registry-authoring time and none of the four refinements can name it honestly.
+ * `object` is that type, and the four refinements now WIDEN to it.
+ *
+ * Widening is the safe direction, and the direction is the whole argument: a refinement may be
+ * handed to a consumer that asked only for "an object", and `object` can never be handed back to
+ * a consumer that asked for `entities`. Adding it therefore cannot launder anything — a generated
+ * `document` still does not satisfy `transcript`, because `object` is not on that chain at all
+ * (`__tests__/anti-laundering.test.ts` and `port-kinds.task847.test.ts` both pin it).
+ *
+ * ## `audio` — a stored artifact, and NOT a stream
+ *
+ * `stream<audio>` types a live capture. `audio` types a stored, addressable artifact (a
+ * claim-check reference to an object in MinIO). They are SIBLINGS: neither satisfies the other,
+ * so a live stream cannot be wired into the batch transcriber and a stored file cannot be wired
+ * into the realtime lane. That refusal IS the determinism boundary of `06-python-services.md` —
+ * per-frame audio never enters a Temporal workflow — expressed in the type lattice instead of in
+ * a comment somebody has to remember.
+ */
+export const WORKFLOW_PORT_KINDS = ['control', 'text', 'object', 'audio', 'flag'] as const;
+
+export type WorkflowPortKind = (typeof WORKFLOW_PORT_KINDS)[number];
 
 /**
  * The direction-independent half of a port declaration. `required` and `multiple` describe the
@@ -143,13 +176,15 @@ export type WorkflowPortDescriptor =
 export const WORKFLOW_PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPortPrimitive | null>> = Object.freeze({
   control: null,
   'stream<audio>': null,
+  audio: null,
   transcript: 'text',
   text: null,
-  entities: null,
+  object: null,
+  entities: 'object',
   document: 'text',
-  edits: null,
-  verdict: null,
-  'context<schemaRef>': null,
+  edits: 'object',
+  verdict: 'object',
+  'context<schemaRef>': 'object',
 });
 
 /**
@@ -167,14 +202,56 @@ export const CONTEXT_PRIMITIVES_MIRROR = ['STREAM_AUDIO', 'TEXT', 'DOCUMENT', 'I
 export const PORT_PRIMITIVE_CONTEXT_PRIMITIVE: Readonly<Record<WorkflowPortPrimitive, string>> = Object.freeze({
   control: 'CONTROL',
   'stream<audio>': 'STREAM_AUDIO',
+  audio: 'STREAM_AUDIO',
   transcript: 'TEXT',
   text: 'TEXT',
+  object: 'STRUCTURED',
   entities: 'STRUCTURED',
   document: 'DOCUMENT',
   edits: 'STRUCTURED',
   verdict: 'STRUCTURED',
   'context<schemaRef>': 'STRUCTURED',
 });
+
+/**
+ * TIER 1 of TASK-847 step 7 — the cheap KIND check the Studio canvas runs on every drag, before
+ * an edge exists at all (`isValidConnection`).
+ *
+ * It is a PROJECTION of the lattice, not a second opinion about it: it collapses the eleven
+ * primitives onto five kinds and answers only "could these two ever be wired". It is
+ * deliberately COARSER than `portPrimitiveSatisfies` — `text -> transcript` is a kind match and
+ * a lattice error — because the two answer different questions at different moments. Tier 1 is
+ * a pre-filter whose job is to catch the ~80% of mistakes (audio into text, control into data)
+ * at zero cost while the user is still dragging; the lattice stays the authority at publish.
+ *
+ * A kind check that passed must NEVER be read as "this edge is legal". `workflowPublishProblems`
+ * is what says that.
+ */
+export const PORT_PRIMITIVE_KIND: Readonly<Record<WorkflowPortPrimitive, WorkflowPortKind>> = Object.freeze({
+  control: 'control',
+  'stream<audio>': 'audio',
+  audio: 'audio',
+  transcript: 'text',
+  text: 'text',
+  object: 'object',
+  entities: 'object',
+  document: 'text',
+  edits: 'object',
+  verdict: 'flag',
+  'context<schemaRef>': 'object',
+});
+
+/** The tier-1 kind of a port primitive. */
+export function portKindOf(primitive: WorkflowPortPrimitive): WorkflowPortKind {
+  return PORT_PRIMITIVE_KIND[primitive];
+}
+
+/** Tier 1: could an edge from a `produced` port to a `consumed` port ever be legal? Same kind
+ *  and nothing more. `control` matches only `control`, so an ordering edge can never be
+ *  mistaken for a data edge (and vice versa) even at this coarse grain. */
+export function portKindsCompatible(produced: WorkflowPortPrimitive, consumed: WorkflowPortPrimitive): boolean {
+  return portKindOf(produced) === portKindOf(consumed);
+}
 
 /** Whether `value` is a member of the closed vocabulary. */
 export function isWorkflowPortPrimitive(value: unknown): value is WorkflowPortPrimitive {
@@ -189,8 +266,17 @@ export function isWorkflowPortPrimitive(value: unknown): value is WorkflowPortPr
  * is the whole point: this relation is deliberately NOT symmetric.
  */
 export function portPrimitiveSatisfies(produced: WorkflowPortPrimitive, consumed: WorkflowPortPrimitive): boolean {
-  let cursor: WorkflowPortPrimitive | null = produced;
-  while (cursor !== null) {
+  let cursor: WorkflowPortPrimitive | null | undefined = produced;
+  // `!= null` and not `!== null`, deliberately. This walk was `while (cursor !== null)`, which
+  // terminates only for primitives the supertype map actually lists — a value outside the
+  // vocabulary (or a member added to `WORKFLOW_PORT_PRIMITIVES` and forgotten in
+  // `WORKFLOW_PORT_SUPERTYPE`) reads `undefined`, which is `!== null`, and the loop SPINS
+  // FOREVER rather than returning `false`. That is a hang, not a wrong answer: it was observed
+  // while adding `object` in this ticket, as a pegged test worker producing no output. The map
+  // is exhaustively typed, so this is defence against the ONE way that type can lie — a runtime
+  // caller (the Studio passing a string off an untrusted graph) reaching it with a value the
+  // compiler never saw.
+  while (cursor != null) {
     if (cursor === consumed) return true;
     cursor = WORKFLOW_PORT_SUPERTYPE[cursor];
   }
