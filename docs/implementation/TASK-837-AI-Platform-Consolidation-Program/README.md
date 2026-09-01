@@ -169,6 +169,16 @@ three-way conflicts on those large generated files. Do it once, after both land,
 `:check` drift gates. Surfaced by the TASK-846 E2E agent; distinct from the seed-comment item, which is
 already fixed (`b986b5d03`).
 
+**F-28 — `packages/applications` unit tests are coupled to a live Vault, and fail flakily without it.**
+Observed 2026-09-01 during the TASK-844 post-merge gate: the suite reported **30 failures**, then **0** on
+an immediate re-run with no code change. The cause was `hope-vault` being transiently SEALED —
+`VaultSecretsProvider` logged *"Vault AppRole re-authentication FAILED (attempt=1..3): Vault is sealed"*
+with backoff, and the Vault-dependent tests failed with it. A **unit** suite should not depend on a running
+sidecar; this makes a green gate a function of container state rather than of the code, which erodes trust
+in the gate exactly when it matters. Not caused by TASK-844 — the agent's own run and the clean re-run both
+report 626 files / 10696 passed. **Fix direction:** stub the secrets provider at the unit boundary and move
+any genuinely Vault-exercising case into the integration tier, where infra is a declared precondition.
+
 **F-10 — Resolution and credentials are already correct.** Zero occurrences of the Global customer tenant
 `50000000-…` in any resolver; every cascade is exactly `[tenant, SYSTEM]`, widening only on absence.
 All credentials are Vault-Transit ciphertext in `encryptedApiKey`; writes refused unless
