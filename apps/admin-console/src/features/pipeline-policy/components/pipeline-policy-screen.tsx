@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { IconAdjustmentsHorizontal } from '@tabler/icons-react';
+import { IconAdjustmentsHorizontal, IconInfoCircle } from '@tabler/icons-react';
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs';
+import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -127,7 +128,14 @@ function ScreenSkeleton() {
 }
 
 /**
- * Frame 39 — Realtime Pipeline Policy (/harness/pipeline-policy, tier 30-49).
+ * Frame 39 — Pipeline Policy (/harness/pipeline-policy, tier 30-49). Despite
+ * the page's former "Realtime" name, these toggles are consumed ONLY by the
+ * POST-consultation pipeline (`consultation-event.handler.ts`) — the live
+ * transcription / live-NER / partial-summarization lane
+ * (`LiveDocumentationService`) never reads them (F-23, TASK-852 item 7). The
+ * status banner and the toggle labels below exist so an admin does not read
+ * this screen as a live-lane kill-switch.
+ *
  * The API exposes one row per (scope, scopeId) — there is no list-all-rows
  * endpoint — so the matrix shows the SYSTEM + TENANT tiers plus the rows for
  * the department/doctor IDs entered in the context filters, which also drive
@@ -198,9 +206,19 @@ export function PipelinePolicyScreen() {
   const previewSubject = doctor ? `doctor ${doctor}${department ? ` @ dept ${department}` : ''}` : department ? `dept ${department}` : 'tenant';
 
   return (
-    <WorkingTenantGate title="Realtime Pipeline Policy" meta={meta}>
+    <WorkingTenantGate title="Pipeline Policy (Post-Consultation)" meta={meta}>
       <ScreenTemplate
-        header={<PageHeader title="Realtime Pipeline Policy" meta={meta} />}
+        header={<PageHeader title="Pipeline Policy (Post-Consultation)" meta={meta} />}
+        statusBanner={
+          <Alert>
+            <IconInfoCircle aria-hidden />
+            <AlertTitle>Post-consultation only</AlertTitle>
+            <AlertDescription>
+              These toggles control the pipeline that runs after a consultation recording ends. They do not affect live transcription, live entity
+              extraction, or partial summarization while the consultation is in progress.
+            </AlertDescription>
+          </Alert>
+        }
         toolbar={
           <FilterBar>
             <FilterSelect

@@ -145,6 +145,10 @@ export function ScopeRowEditor({
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" aria-label={`Edit ${scopeLabel} scope row`}>
+        <p className="text-muted-foreground text-xs">
+          Post-consultation pipeline only &mdash; these pins do not affect live transcription, live entity extraction, or partial summarization during
+          the consultation.
+        </p>
         {TOGGLE_COLUMNS.map((column) => {
           // harnessEnabled has a registered max scope of DEPARTMENT.
           const beyondMaxScope = column.key === 'harnessEnabled' && scope === 'DOCTOR';

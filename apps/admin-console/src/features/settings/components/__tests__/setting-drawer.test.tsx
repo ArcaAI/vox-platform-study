@@ -7,6 +7,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { GlobalSetting } from '../../api/types';
 import { SettingCreateDrawer, SettingDetailDrawer } from '../setting-drawer';
@@ -119,6 +120,55 @@ describe('SettingDetailDrawer', () => {
     expect(patch?.headers.get('if-match')).toBe('"2"');
     expect(patch?.body).toEqual({ value: 'mail2.local', expectedVersion: 2 });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('marks a feature-flags row with no runtime consumer as advisory (F-23 / TASK-852 item 7)', async () => {
+    const advisory = setting({ id: 's-5', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
+    stubFetch({
+      custom: (call) => {
+        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-5') {
+          return Response.json(advisory, { headers: { etag: '"2"' } });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<SettingDetailDrawer settingId="s-5" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(await screen.findByText('enable-ner-extraction')).toBeDefined();
+    expect(screen.getByText('Advisory')).toBeDefined();
+    expect(screen.getByText(/no runtime path reads this flag today/)).toBeDefined();
+  });
+
+  it('has no axe violations with the advisory badge and note rendered', async () => {
+    const advisory = setting({ id: 's-7', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
+    stubFetch({
+      custom: (call) => {
+        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-7') {
+          return Response.json(advisory, { headers: { etag: '"2"' } });
+        }
+        return undefined;
+      },
+    });
+    const { container } = renderWithProviders(<SettingDetailDrawer settingId="s-7" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+    await screen.findByText('Advisory');
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('does not mark enable-consultation-sharing as advisory — it is genuinely enforced', async () => {
+    const enforced = setting({ id: 's-6', key: 'enable-consultation-sharing', namespace: 'feature-flags', name: 'Consultation Sharing' });
+    stubFetch({
+      custom: (call) => {
+        if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-6') {
+          return Response.json(enforced, { headers: { etag: '"2"' } });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<SettingDetailDrawer settingId="s-6" onClose={vi.fn()} onDelete={vi.fn()} />);
+
+    expect(await screen.findByText('enable-consultation-sharing')).toBeDefined();
+    expect(screen.queryByText('Advisory')).toBeNull();
   });
 
   it('blocks Save while JSON is invalid and enables it once valid (no modal, real editor)', async () => {
