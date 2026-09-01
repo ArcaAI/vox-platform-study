@@ -41,6 +41,16 @@ with workflow.unsafe.imports_passed_through():
         interpreter_agent_summarization,
         interpreter_agent_transcription,
     )
+    from harness.temporal.interpreter.nodes.agentic import (
+        interpreter_agentic_agent,
+        interpreter_agentic_data,
+        interpreter_agentic_guardrail,
+        interpreter_agentic_input,
+        interpreter_agentic_loop,
+        interpreter_agentic_output,
+        interpreter_agentic_stt,
+        interpreter_agentic_tts,
+    )
     from harness.temporal.interpreter.nodes.consultation import (
         interpreter_consultation_consent_gate,
         interpreter_consultation_hitl_gate,
@@ -758,5 +768,98 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_timeout_seconds=150,
         default_max_attempts=2,
         output_keys={"out": "verdict", "next": None},
+    ),
+    # ---------------------------------------------------------------------------------------
+    # TASK-847 - the GENERIC (`agentic`) catalogue.
+    #
+    # Eight node types whose behaviour is CONFIGURATION rather than key, mirroring
+    # `node-registry.ts`. `output_keys` and `implemented` here are asserted against the SAME
+    # committed fixture the TypeScript projection is (`node-registry.snapshot.json`), so a value
+    # changed on one side only is a failing test rather than a silent drift.
+    #
+    # `agentic.loop` and `agentic.tts` are `implemented=True` and still do not run: `compile()`
+    # refuses any graph containing an unimplemented type, so the honest posture is an
+    # OBSERVABLE `DEGRADED` naming the owning ticket (TASK-848 / TASK-849) rather than a graph
+    # nobody can publish. See `nodes/agentic.py`'s module docstring.
+    # ---------------------------------------------------------------------------------------
+    "agentic.input": NodeSpec(
+        key="agentic.input",
+        implemented=True,
+        activity=interpreter_agentic_input,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=2,
+        output_keys={"out": "payload", "next": None},
+    ),
+    "agentic.output": NodeSpec(
+        key="agentic.output",
+        implemented=True,
+        activity=interpreter_agentic_output,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=30,
+        default_max_attempts=2,
+        output_keys={"out": "payload", "next": None},
+    ),
+    "agentic.agent": NodeSpec(
+        key="agentic.agent",
+        implemented=True,
+        activity=interpreter_agentic_agent,
+        critical=False,
+        default_timeout_seconds=150,
+        default_max_attempts=2,
+        output_keys={"out": "text", "data": "data", "next": None},
+    ),
+    "agentic.guardrail": NodeSpec(
+        key="agentic.guardrail",
+        implemented=True,
+        activity=interpreter_agentic_guardrail,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=2,
+        output_keys={"out": "verdict", "next": None},
+    ),
+    "agentic.data": NodeSpec(
+        key="agentic.data",
+        implemented=True,
+        activity=interpreter_agentic_data,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=2,
+        output_keys={"out": "data", "next": None},
+    ),
+    "agentic.loop": NodeSpec(
+        key="agentic.loop",
+        implemented=True,
+        activity=interpreter_agentic_loop,
+        critical=False,
+        # The whole `maxDurationSeconds` ceiling the config schema permits, because TASK-848
+        # spends that budget as a workflow timer INSIDE the loop; a smaller activity timeout
+        # would cap the loop somewhere the author cannot see.
+        default_timeout_seconds=3600,
+        default_max_attempts=1,
+        output_keys={"out": "result", "next": None},
+    ),
+    "agentic.stt": NodeSpec(
+        key="agentic.stt",
+        implemented=True,
+        activity=interpreter_agentic_stt,
+        critical=False,
+        # Dispatching a batch transcription CREATES a `TranscriptionJob` row through apps/api,
+        # so a sandboxed run must suppress it.
+        external_write=True,
+        default_timeout_seconds=900,
+        default_max_attempts=2,
+        output_keys={"out": "transcript", "next": None},
+    ),
+    "agentic.tts": NodeSpec(
+        key="agentic.tts",
+        implemented=True,
+        activity=interpreter_agentic_tts,
+        critical=False,
+        external_write=True,
+        default_timeout_seconds=300,
+        default_max_attempts=2,
+        output_keys={"out": "audio", "next": None},
     ),
 }

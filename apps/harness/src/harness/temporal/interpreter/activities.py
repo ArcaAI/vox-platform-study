@@ -27,6 +27,7 @@ from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes.agent_catalogue import AGENT_CATALOGUE_ACTIVITIES
+from harness.temporal.interpreter.nodes.agentic import AGENTIC_ACTIVITIES
 from harness.temporal.interpreter.nodes.consultation import (
     interpreter_consultation_consent_gate,
     interpreter_consultation_hitl_gate,
@@ -233,6 +234,12 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     # type needs an activity NAME of its own even when the body is shared.
     *AGENT_CATALOGUE_ACTIVITIES,
     *GUARD_ACTIVITIES,
+    # TASK-847 - the GENERIC (`agentic`) catalogue. Spread from the module's own list for the
+    # same reason the two above are: this list and `registry.py`'s NODE_REGISTRY are two SEPARATE
+    # hand-maintained lists, and a node in the registry but not here passes every static check --
+    # including the cross-language parity guard -- then fails at runtime with an
+    # unregistered-activity error.
+    *AGENTIC_ACTIVITIES,
 ]
 
 # ---------------------------------------------------------------------------
