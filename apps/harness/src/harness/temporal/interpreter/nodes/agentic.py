@@ -49,11 +49,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import jsonschema
 from temporalio import activity
 
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
+    STATUS_ERROR,
     STATUS_OK,
     now,
     record_and_flush,
@@ -88,15 +90,86 @@ def _bound_inputs(payload: NodeActivityInput) -> dict[str, Any]:
     return bound if isinstance(bound, dict) else {}
 
 
+# ── TIER 3: the node-boundary schema check (TASK-848c) ────────────────────────────────────────
+#
+# Tiers 1 and 2 live in the EDITOR: tier 1 kind-checks a connection and blocks, tier 2 warns about
+# shallow structural mismatch and never blocks. Neither runs at execution time, and neither sees
+# the actual value — an author can wire a legal edge and still hand a node something that does not
+# match the schema they declared. Tier 3 is where correctness actually lives, and it is the only
+# tier that sees data.
+#
+# `jsonschema` is already a declared harness dependency (SOAP schema_validity), so this adds no
+# new dependency and no new failure surface.
+
+_IO_SCHEMA_KEY = "ioSchema"
+_ON_VIOLATION_KEY = "onSchemaViolation"
+
+
+def _io_schema_violation(config: dict[str, Any], value: Any) -> str | None:
+    """Validate ``value`` against the node's declared ``ioSchema`` (pure).
+
+    Returns a human-readable violation, or ``None`` when the value conforms or no schema is
+    declared. Never raises: a malformed tenant-authored SCHEMA is itself a violation to report,
+    not a crash to propagate — an author who typed an invalid schema should see that, not a
+    workflow that died with a stack trace.
+    """
+    schema = config.get(_IO_SCHEMA_KEY)
+    if not isinstance(schema, dict) or not schema:
+        return None
+    try:
+        jsonschema.validate(instance=value, schema=schema)
+    except jsonschema.ValidationError as exc:
+        path = "/".join(str(part) for part in exc.absolute_path) or "(root)"
+        return f"{path}: {exc.message}"
+    except jsonschema.SchemaError as exc:
+        return f"declared ioSchema is not a valid JSON Schema: {exc.message}"
+    return None
+
+
+class IoSchemaViolation(RuntimeError):
+    """A tier-3 boundary check failed and the author asked for `fail`.
+
+    RAISED rather than returned, because `NodeActivityResult.status` cannot express FAILED — an
+    activity may only report SUCCEEDED / DEGRADED / SKIPPED, and the interpreter derives FAILED
+    from `spec.critical` when an activity errors. Returning a "FAILED" string here would not
+    typecheck, and inventing a DEGRADED for a `fail` declaration would quietly downgrade what the
+    author asked for.
+    """
+
+
+def _violation_result(
+    violation: str, config: dict[str, Any], *, default: str
+) -> NodeActivityResult:
+    """Turn a tier-3 violation into the outcome the author declared.
+
+    ``onSchemaViolation`` is the author's own choice — `fail` stops the node, `degrade` lets the
+    run continue with the node marked. The DEFAULT differs by node and is passed in rather than
+    assumed: an ENTRY point whose payload does not match its declared shape has nothing sound to
+    hand downstream, while an EXIT point has at least produced something a caller can inspect.
+
+    Note what `fail` actually buys on these two node types: both are `critical=False`, so the
+    interpreter records DEGRADED either way. The difference is the TRAJECTORY — a raise is an
+    activity error with the violation attached, which is what an operator sees when asking why a
+    run did not produce what its schema promised.
+    """
+    mode = config.get(_ON_VIOLATION_KEY)
+    mode = mode if mode in ("fail", "degrade") else default
+    if mode == "fail":
+        raise IoSchemaViolation(f"io_schema_violation: {violation}")
+    return NodeActivityResult(
+        status="DEGRADED",
+        reason=f"io_schema_violation: {violation}",
+    )
+
+
 @activity.defn(name="interpreter.agentic_input")
 async def interpreter_agentic_input(payload: NodeActivityInput) -> NodeActivityResult:
     """The graph's typed entry point.
 
     ``sourceKey`` names which key of the run payload this node binds; absent means the whole
-    payload. The declared ``ioSchema`` is TIER 3 — validated at the node boundary — and is
-    deliberately NOT enforced here yet: the schema is tenant-authored and this activity has no
-    evaluator, so claiming to validate it would be a false safety claim. It is carried through
-    on the compiled config for the boundary check TASK-848 wires.
+    payload. The declared ``ioSchema`` is enforced here (TIER 3, TASK-848c): an entry point whose
+    payload does not match the shape its author declared has nothing sound to hand downstream, so
+    it FAILS by default rather than degrading. `onSchemaViolation` overrides that.
     """
     started = now()
     config = _config(payload)
@@ -105,6 +178,11 @@ async def interpreter_agentic_input(payload: NodeActivityInput) -> NodeActivityR
 
     source_key = config.get("sourceKey")
     bound = run_payload.get(source_key) if isinstance(source_key, str) else run_payload
+
+    violation = _io_schema_violation(config, bound)
+    if violation is not None:
+        await record_and_flush(payload, status=STATUS_ERROR, started=started)
+        return _violation_result(violation, config, default="fail")
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(status="SUCCEEDED", output={"payload": bound})
@@ -163,16 +241,24 @@ async def interpreter_agentic_data(payload: NodeActivityInput) -> NodeActivityRe
 async def interpreter_agentic_output(payload: NodeActivityInput) -> NodeActivityResult:
     """The graph's typed exit point.
 
-    ``onSchemaViolation`` is declared on the config and honoured by TIER 3 once the boundary
-    evaluator lands; until then this node publishes what it was handed and never silently
-    reshapes it. It is ``external_write`` in the registry because publishing the run's result is
-    a write a sandboxed run must suppress.
+    ``onSchemaViolation`` is honoured here (TIER 3, TASK-848c) against the declared ``ioSchema``.
+    This node never silently reshapes what it was handed — a mismatch is reported, never
+    corrected. It DEGRADES by default rather than failing: an exit point has at least produced
+    something a caller can inspect, which is more useful than an empty run. It is
+    ``external_write`` in the registry because publishing the run's result is a write a sandboxed
+    run must suppress.
     """
     started = now()
     bound = _bound_inputs(payload)
     # One bound input is the normal shape (`in` is a single required port); more than one means
     # the author fanned several edges into it, so the whole map is the result.
     result: Any = next(iter(bound.values())) if len(bound) == 1 else bound
+
+    violation = _io_schema_violation(_config(payload), result)
+    if violation is not None:
+        await record_and_flush(payload, status=STATUS_ERROR, started=started)
+        return _violation_result(violation, _config(payload), default="degrade")
+
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(status="SUCCEEDED", output={"payload": result})
 
