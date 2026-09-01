@@ -73,6 +73,40 @@ INTERPRETER_WORKFLOW_ID_PREFIX = "workflow-interpreter-"
 # exactly what the idiom is for.
 _GATE_PATCH = "task-731-hitl-gate"
 
+# The patch marker for the agentic LOOP (TASK-848). Same rule as the gate above: dispatching an
+# `agentic.loop` node as a CHILD WORKFLOW instead of as an activity changes the command sequence,
+# so every recorded history that ran one as an activity must keep replaying it that way.
+#
+# Unlike the gate's, this one's cheap operand is NOT provably False on every pre-existing history:
+# TASK-847 shipped `agentic.loop` as a registered, dispatchable activity, so a run that walked a
+# graph containing one really did record an ActivityTaskScheduled for `interpreter.agentic_loop`.
+# That is exactly the case `workflow.patched` exists for, and it is why this is a real gate rather
+# than a formality.
+_LOOP_PATCH = "task-848-agentic-loop-child"
+
+# The loop's own node type. Named once: `_index_loop_body` and `_dispatch_node` must agree about
+# it, and a second spelling is how the two drift.
+_LOOP_NODE_TYPE = "agentic.loop"
+
+# How a loop's stop reason lands on the node's own record. Both halves are observable and BOTH
+# carry the reason string, so a reason is never distinguishable only in principle.
+#
+# * `termination_key` - the author's own exit condition fired. The loop finished the job it was
+#   given, so this is the unambiguous SUCCEEDED.
+# * `no_progress_iterations` - the loop CONVERGED: it stopped producing anything new, which is
+#   the outcome that bound exists to detect (`node-config-schemas.ts`: "an orchestrator that has
+#   converged and is now paraphrasing itself"). Also a success.
+# * everything else - a CEILING truncated the deliberation (iterations, invoice, clock), or the
+#   master agent could not run. A truncated clinical deliberation reported as SUCCEEDED is the
+#   false-success claim this substrate is written to avoid, so those degrade.
+_LOOP_SUCCESS_REASONS = frozenset({"termination_key", "no_progress_iterations"})
+
+# The parent-owned duration bound's own reason. It is NOT a `LoopStopReason`, because the loop
+# child never produces it: the child is cancelled by the parent's timer and never gets to say
+# why. Spelled identically to the contract's own field name so an operator reading a trajectory
+# sees the same word the graph author wrote.
+_LOOP_DURATION_REASON = "max_duration_seconds"
+
 
 def interpreter_workflow_id(run_id: str) -> str:
     """The deterministic interpreter workflow id for a run (pure)."""
