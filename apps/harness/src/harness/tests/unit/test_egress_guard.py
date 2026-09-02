@@ -52,7 +52,7 @@ def test_shared_vector_contract(vector: dict) -> None:
 
 
 def test_fixture_is_not_silently_empty() -> None:
-    assert len(_VECTORS) >= 38
+    assert len(_VECTORS) >= 46
 
 
 # ── FAIL CLOSED ────────────────────────────────────────────────────────────────
@@ -122,6 +122,11 @@ def test_resolver_failure_denies() -> None:
         "::ffff:169.254.169.254",
         "64:ff9b::a9fe:a9fe",  # NAT64-embedded metadata
         "2002:0a00:0001::1",  # 6to4-embedded RFC1918
+        "::ffff:0:169.254.169.254",  # RFC 2765 IPv4-TRANSLATED (::ffff:0:0:0/96)
+        "64:ff9b:1::a9fe:a9fe",  # RFC 8215 local-use NAT64 prefix
+        "2001:0:4136:e378:8000:63bf:3fff:fdd2",  # Teredo tunnel (2001::/32)
+        "fec0::1",  # deprecated site-local
+        "2606:4700::5efe:169.254.169.254",  # ISATAP interface id under a public prefix
     ],
 )
 def test_blocked_addresses(address: str) -> None:
@@ -141,6 +146,9 @@ def test_blocked_addresses(address: str) -> None:
         "169.253.255.255",
         "169.255.0.0",
         "2606:4700::1111",
+        # 2001:db8::/32 is the DOCUMENTATION prefix, not Teredo (2001:0000::/32).
+        # Pins that the Teredo block did not swallow the wider 2001::/16.
+        "2001:db8::1",
     ],
 )
 def test_allowed_addresses(address: str) -> None:

@@ -222,6 +222,46 @@
       "note": "6to4 (2002::/16) embedding 10.0.0.1 — must be unwrapped."
     },
     {
+      "id": "deny-ipv4-translated-metadata",
+      "url": "http://[::ffff:0:169.254.169.254]/mcp",
+      "allowedHosts": ["::ffff:0:169.254.169.254"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "RFC 2765 IPv4-TRANSLATED ::ffff:0:0:0/96 (canonically ::ffff:0:a9fe:a9fe). Its 0xffff sits in bytes 8-9, not 10-11, so the IPv4-MAPPED unwrap never fires — this needs its own branch."
+    },
+    {
+      "id": "deny-nat64-local-use-metadata",
+      "url": "http://[64:ff9b:1::a9fe:a9fe]/mcp",
+      "allowedHosts": ["64:ff9b:1::a9fe:a9fe"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "RFC 8215 LOCAL-USE NAT64 prefix 64:ff9b:1::/48 embedding 169.254.169.254. Blocked as a whole prefix rather than unwrapped: RFC 6052 allows /32../96 embeddings under it, so the v4 is not always the last 32 bits, and a local-use translation prefix is never a legitimate connector destination."
+    },
+    {
+      "id": "deny-teredo-tunnel",
+      "url": "http://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/mcp",
+      "allowedHosts": ["2001:0:4136:e378:8000:63bf:3fff:fdd2"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "Teredo 2001::/32 — IPv6-over-UDP tunnelling that reaches whatever the tunnel's far end can reach. Blocked as a whole prefix, NOT by unwrapping: this address's embedded server/client v4s are 65.54.227.120 and 192.0.2.45, both OUTSIDE the blocked v4 table, so an unwrap-only fix would still allow it."
+    },
+    {
+      "id": "deny-ipv6-site-local",
+      "url": "http://[fec0::1]/mcp",
+      "allowedHosts": ["fec0::1"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "fec0::/10 — site-local. Deprecated by RFC 3879, still configured on real networks and still forwarded by stacks that accept it."
+    },
+    {
+      "id": "deny-isatap-embedded-metadata",
+      "url": "http://[2606:4700::5efe:169.254.169.254]/mcp",
+      "allowedHosts": ["2606:4700::5efe:169.254.169.254"],
+      "expect": "deny",
+      "reason": "blocked_address",
+      "note": "ISATAP interface identifier (…:0:5efe:v4 or …:200:5efe:v4) embedding 169.254.169.254 under a PUBLIC prefix. Found by the F-29 sweep, not named in the review: as with 6to4, the embedded v4 is the destination inside the tunnelled site, so it must be unwrapped."
+    },
+    {
       "id": "deny-unspecified-v4",
       "url": "http://0.0.0.0/mcp",
       "allowedHosts": ["0.0.0.0"],
