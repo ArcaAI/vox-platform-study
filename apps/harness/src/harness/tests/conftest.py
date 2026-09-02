@@ -16,7 +16,14 @@ from harness.core.config import Settings
 from harness.main import create_app
 
 assert_source_tree(
-    ["harness", "hope_env", "hope_runtime_models", "hope_workflow_contract"], __file__
+    [
+        "harness",
+        "hope_env",
+        "hope_runtime_models",
+        "hope_workflow_contract",
+        "hope_async_contract",
+    ],
+    __file__,
 )
 
 
