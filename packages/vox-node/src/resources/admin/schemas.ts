@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 372 component schemas the generated surface transitively
+ * Only the 374 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2324,6 +2324,46 @@ export interface LiveDocEngineConfigResponse {
   updatedAt?: string;
   /** User id that last toggled the runtime override */
   updatedBy?: string;
+}
+
+export interface LiveDocRealtimeCapabilitiesResponse {
+  /** Which tier of the assignment cascade supplied the definition. `platform-default` means no tier had an opinion, or the assigned definition could not be resolved. */
+  assignmentSource: 'department' | 'tenant' | 'platform-default';
+  /** Slug of the governing workflow definition; null on the platform-default lane */
+  definitionSlug: string | null;
+  /** Published version of that definition; null on the platform-default lane */
+  definitionVersionNumber: number | null;
+  /** Department the cascade was resolved against, when one was requested */
+  departmentId?: string;
+  /** Effective `consultation.realtime.graphExecutor.enabled` for this tenant. FALSE ⇒ the legacy flush runs and there is NO lane — `laneSource` is null and `nodes` is empty. */
+  graphExecutorEnabled: boolean;
+  /** Where the executing lane came from, or null when the graph executor is off and no lane exists. */
+  laneSource: 'platform-default' | 'tenant-graph' | null;
+  /** The lane’s nodes in execution order */
+  nodes: LiveDocRealtimeNodeResponse[];
+  /** Tenant these capabilities were resolved for */
+  tenantId: string;
+}
+
+export interface LiveDocRealtimeNodeResponse {
+  /** The PIPELINE node type this one stands for. `agent.ner` and `agent.transcription` are the target catalogue’s names for existing capabilities and run the same handlers, so a consumer keyed by type must treat the alias and its canonical form as ONE capability. */
+  canonicalType: string;
+  /** Effective enabled state. Absent config reads as ENABLED; only a literal `false` disables. */
+  enabled: boolean;
+  /** Per-node retry ceiling from the compiled `retry.maximumAttempts` */
+  maxAttempts: number;
+  /** Node id as authored in the graph (trajectories cite it) */
+  nodeId: string;
+  /** Failure policy: `degrade` contributes nothing and emits an event; `fail` fails the lane */
+  onError: 'fail' | 'degrade';
+  /** Topological stage of the realtime lane; every node in a stage runs concurrently */
+  stageIndex: number;
+  /** Per-node budget in ms — each node races its own timer, never a shared per-flush one */
+  timeoutMs: number;
+  /** Whether this node type offers the `enabled` switch at all. FALSE for registry-class `mandatory` types (consent gate, capture binding, PHI hop, persist, finalize, HITL gate) — a mandatory node an admin could switch off is that gate being routed around by another means. */
+  togglable: boolean;
+  /** Registered node type, e.g. `consultation.realtimeSummary` */
+  type: string;
 }
 
 export interface LiveDocSessionStatsResponse {
