@@ -8,14 +8,19 @@ those environments.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 from hope_worktree_guard import (
+    SourceRootsUnavailable,
     SourceTreeMismatch,
     assert_source_tree,
+    declared_source_roots,
     evaluate_origin,
     find_tree_root,
+    main,
+    provided_packages,
 )
 
 PRIMARY = Path("/repo/hope-v2")
@@ -114,3 +119,139 @@ def test_assert_source_tree_raises_with_every_mismatch_listed(tmp_path, monkeypa
     message = str(excinfo.value)
     assert "guardrail" in message
     assert "hope_env" in message
+
+
+# ── declared_source_roots ──────────────────────────────────────────────────
+#
+# The launcher (scripts/dev-service.sh) and the pytest run must agree on which
+# directories are "this tree's source". They agree because BOTH read the same
+# `[tool.pytest.ini_options] pythonpath` key out of the service's own
+# pyproject.toml — there is no second list to drift.
+
+
+def _write_service(tmp_path: Path, pythonpath: list[str]) -> Path:
+    """A minimal service tree: pyproject + the roots it declares."""
+    (tmp_path / ".git").write_text("gitdir: /elsewhere\n")
+    service = tmp_path / "apps/harness"
+    service.mkdir(parents=True)
+    entries = ",\n".join(f'    "{p}"' for p in pythonpath)
+    (service / "pyproject.toml").write_text(
+        "[tool.pytest.ini_options]\npythonpath = [\n" + entries + ",\n]\n"
+    )
+    return service
+
+
+def test_declared_source_roots_resolves_relative_to_the_service_dir(tmp_path):
+    service = _write_service(tmp_path, ["src", "../../packages/py-env/src"])
+    (service / "src").mkdir()
+    (tmp_path / "packages/py-env/src").mkdir(parents=True)
+
+    assert declared_source_roots(service) == [
+        (service / "src").resolve(),
+        (tmp_path / "packages/py-env/src").resolve(),
+    ]
+
+
+def test_declared_source_roots_skips_declared_dirs_that_do_not_exist(tmp_path):
+    """A stale entry must not put a non-directory on PYTHONPATH."""
+    service = _write_service(tmp_path, ["src", "../../packages/py-gone/src"])
+    (service / "src").mkdir()
+
+    assert declared_source_roots(service) == [(service / "src").resolve()]
+
+
+def test_declared_source_roots_raises_when_the_service_declares_none(tmp_path):
+    """Silently launching unguarded is the failure mode; refuse instead."""
+    (tmp_path / ".git").write_text("gitdir: /elsewhere\n")
+    service = tmp_path / "apps/harness"
+    service.mkdir(parents=True)
+    (service / "pyproject.toml").write_text("[project]\nname = 'harness'\n")
+
+    with pytest.raises(SourceRootsUnavailable):
+        declared_source_roots(service)
+
+
+def test_declared_source_roots_raises_when_there_is_no_pyproject(tmp_path):
+    with pytest.raises(SourceRootsUnavailable):
+        declared_source_roots(tmp_path / "apps/nope")
+
+
+# ── provided_packages ──────────────────────────────────────────────────────
+
+
+def test_provided_packages_finds_packages_and_top_level_modules(tmp_path):
+    root = tmp_path / "src"
+    (root / "harness").mkdir(parents=True)
+    (root / "harness/__init__.py").write_text("")
+    (root / "notapackage").mkdir()  # no __init__.py — not importable as a name
+    (root / "hope_worktree_guard.py").write_text("")
+    (root / "__init__.py").write_text("")  # the stray apps/text/src/__init__.py
+
+    assert provided_packages([root]) == ["harness", "hope_worktree_guard"]
+
+
+def test_provided_packages_deduplicates_across_roots(tmp_path):
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    for root in (first, second):
+        (root / "hope_env").mkdir(parents=True)
+        (root / "hope_env/__init__.py").write_text("")
+
+    assert provided_packages([first, second]) == ["hope_env"]
+
+
+# ── the CLI the launcher calls ─────────────────────────────────────────────
+
+
+def test_cli_print_pythonpath_emits_the_declared_roots(tmp_path, capsys):
+    service = _write_service(tmp_path, ["src", "../../packages/py-env/src"])
+    (service / "src").mkdir()
+    (tmp_path / "packages/py-env/src").mkdir(parents=True)
+
+    assert main(["--print-pythonpath", str(service)]) == 0
+    printed = capsys.readouterr().out.strip()
+    assert printed == os.pathsep.join(
+        [str((service / "src").resolve()), str((tmp_path / "packages/py-env/src").resolve())]
+    )
+
+
+def test_cli_assert_fails_when_a_package_resolves_to_another_checkout(
+    tmp_path, capsys, monkeypatch
+):
+    service = _write_service(tmp_path, ["src"])
+    (service / "src/harness").mkdir(parents=True)
+    (service / "src/harness/__init__.py").write_text("")
+
+    monkeypatch.setattr(
+        "hope_worktree_guard.resolve_origin",
+        lambda pkg: PRIMARY / f"apps/harness/src/{pkg}/__init__.py",
+    )
+    assert main(["--assert", str(service)]) == 1
+    err = capsys.readouterr().err
+    assert "harness" in err
+    assert str(PRIMARY) in err
+
+
+def test_cli_assert_passes_when_every_package_is_in_the_invoking_tree(
+    tmp_path, capsys, monkeypatch
+):
+    service = _write_service(tmp_path, ["src"])
+    (service / "src/harness").mkdir(parents=True)
+    (service / "src/harness/__init__.py").write_text("")
+
+    monkeypatch.setattr(
+        "hope_worktree_guard.resolve_origin",
+        lambda pkg: service / f"src/{pkg}/__init__.py",
+    )
+    assert main(["--assert", str(service)]) == 0
+
+
+def test_cli_assert_reports_a_service_that_declares_no_roots(tmp_path, capsys):
+    """`apps/text` was the uncovered service; an uncovered one must not launch."""
+    (tmp_path / ".git").write_text("gitdir: /elsewhere\n")
+    service = tmp_path / "apps/text"
+    service.mkdir(parents=True)
+    (service / "pyproject.toml").write_text("[project]\nname = 'text'\n")
+
+    assert main(["--assert", str(service)]) == 1
+    assert "pythonpath" in capsys.readouterr().err

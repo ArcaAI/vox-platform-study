@@ -172,6 +172,7 @@ fi
 ENV_REPORT=()   # KEY=VALUE lines for --print (non-secret only)
 CMD=()
 RELOAD_DIR=""
+SERVICE_DIR=""  # whose pyproject declares this target's source roots
 
 # The LM Studio pairing is the ONE application default this script still
 # supplies. It is machine-specific (whichever model your LM Studio has loaded)
@@ -207,28 +208,28 @@ apply_harness_env() {
 
 case "$SERVICE" in
     stt)
+        SERVICE_DIR="apps/stt"
         : "${STT_PORT:=8861}"
         ENV_REPORT+=("HOST=$HOST" "STT_PORT=$STT_PORT")
         CMD=(uvicorn stt.main:app --host "$HOST" --port "$STT_PORT" --app-dir apps/stt/src)
         RELOAD_DIR="apps/stt/src"
         ;;
     stt-worker)
+        SERVICE_DIR="apps/stt"
         # Dramatiq batch consumer. No port, no reload. `dramatiq` has no
-        # equivalent of uvicorn's --app-dir, so apps/stt/src is put on
-        # PYTHONPATH (relative — the script cd's to the repo root) instead.
+        # equivalent of uvicorn's --app-dir; the source-provenance block below
+        # puts apps/stt/src on PYTHONPATH (absolute) for every target, which
+        # supersedes the relative one this arm used to set for itself.
         # --processes 1 (the container uses 2) keeps one copy of the
         # VAD/ASR/diarization models resident on a laptop.
-        ENV_REPORT+=("PYTHONPATH=apps/stt/src${PYTHONPATH:+:$PYTHONPATH}")
-        CMD=(
-            env "PYTHONPATH=apps/stt/src${PYTHONPATH:+:$PYTHONPATH}"
-            python -m dramatiq stt.worker --processes 1 --threads 4
-        )
+        CMD=(python -m dramatiq stt.worker --processes 1 --threads 4)
         if [ "$WATCH" = "1" ]; then
             echo -e "${YELLOW}--watch is not supported for the STT batch worker; ignoring.${NC}" >&2
             WATCH=0
         fi
         ;;
     text)
+        SERVICE_DIR="apps/text"
         : "${TEXT_PORT:=8862}"
         apply_text_env
         ENV_REPORT+=("HOST=$HOST" "TEXT_PORT=$TEXT_PORT")
@@ -236,18 +237,21 @@ case "$SERVICE" in
         RELOAD_DIR="apps/text/src"
         ;;
     nlp)
+        SERVICE_DIR="apps/nlp"
         : "${NLP_PORT:=8864}"
         ENV_REPORT+=("HOST=$HOST" "NLP_PORT=$NLP_PORT")
         CMD=(uvicorn --factory nlp.app:get_app --host "$HOST" --port "$NLP_PORT" --app-dir apps/nlp/src)
         RELOAD_DIR="apps/nlp/src"
         ;;
     guardrail)
+        SERVICE_DIR="apps/guardrail"
         : "${GUARDRAIL_PORT:=8863}"
         ENV_REPORT+=("HOST=$HOST" "GUARDRAIL_PORT=$GUARDRAIL_PORT")
         CMD=(uvicorn guardrail.main:app --host "$HOST" --port "$GUARDRAIL_PORT" --app-dir apps/guardrail/src)
         RELOAD_DIR="apps/guardrail/src"
         ;;
     harness)
+        SERVICE_DIR="apps/harness"
         : "${HARNESS_PORT:=8866}"
         apply_harness_env
         ENV_REPORT+=("HOST=$HOST" "HARNESS_PORT=$HARNESS_PORT")
@@ -255,12 +259,14 @@ case "$SERVICE" in
         RELOAD_DIR="apps/harness/src"
         ;;
     tts)
+        SERVICE_DIR="apps/tts"
         : "${TTS_PORT:=8865}"
         ENV_REPORT+=("HOST=$HOST" "TTS_PORT=$TTS_PORT")
         CMD=(uvicorn tts.main:app --host "$HOST" --port "$TTS_PORT" --app-dir apps/tts/src)
         RELOAD_DIR="apps/tts/src"
         ;;
     worker)
+        SERVICE_DIR="apps/harness"
         apply_harness_env
         CMD=(python -m harness.temporal.worker)
         if [ "$WATCH" = "1" ]; then
@@ -273,6 +279,30 @@ esac
 if [ "$WATCH" = "1" ]; then
     CMD+=(--reload --reload-dir "$RELOAD_DIR")
 fi
+
+# ----------------------------------------------------------------------------
+# Source provenance (rule 14 section 4). The conda env's editable installs put
+# ABSOLUTE paths into the PRIMARY checkout on sys.path, so a process launched
+# from a linked working tree will happily run source from a tree you are not
+# editing. Measured 2026-09-02: `worker` resolved `harness` AND all four shared
+# `hope_*` packages out of the primary checkout, and the uvicorn targets — whose
+# --app-dir rescues only the service package — resolved every shared package
+# there too.
+#
+# pytest closes this with `pythonpath` + assert_source_tree(). The two steps
+# below are the same fix for the launcher, through the SAME module, reading the
+# SAME `[tool.pytest.ini_options] pythonpath` declaration, so the launcher and
+# the test run can never disagree about which directories are this tree's source.
+# ----------------------------------------------------------------------------
+GUARD="$REPO_ROOT/scripts/pytest-support/hope_worktree_guard.py"
+
+TREE_PYTHONPATH="$(conda run -n "$CONDA_ENV" --no-capture-output \
+    python "$GUARD" --print-pythonpath "$SERVICE_DIR" | tail -n 1 | tr -d '\r')" || {
+    echo -e "${RED}Could not resolve ${SERVICE_DIR} source roots.${NC}" >&2
+    exit 1
+}
+export PYTHONPATH="${TREE_PYTHONPATH}${PYTHONPATH:+:$PYTHONPATH}"
+ENV_REPORT+=("PYTHONPATH=$PYTHONPATH")
 
 FULL_CMD=(conda run -n "$CONDA_ENV" --no-capture-output "${CMD[@]}")
 
@@ -304,6 +334,15 @@ if [ "$SERVICE" = "stt" ] || [ "$SERVICE" = "stt-worker" ]; then
 fi
 
 check_conda_env
+
+# Abort — loudly, non-zero, before the process starts — if any package still
+# resolves outside this tree. A warning would be useless: the whole failure mode
+# is that a wrong-source run looks exactly like a right one.
+if ! conda run -n "$CONDA_ENV" --no-capture-output python -m hope_worktree_guard \
+        --assert "$SERVICE_DIR"; then
+    echo -e "${RED}Refusing to start ${SERVICE} against another checkout source.${NC}" >&2
+    exit 1
+fi
 
 echo -e "${GREEN}Starting ${SERVICE} →${NC} ${FULL_CMD[*]}"
 exec "${FULL_CMD[@]}"
