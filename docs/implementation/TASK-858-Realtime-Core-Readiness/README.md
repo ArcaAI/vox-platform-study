@@ -1,4 +1,4 @@
-# TASK-857 — Realtime Core Readiness: transcription agent, three consultation workflows, local k8s, SDK integration
+# TASK-858 — Realtime Core Readiness: transcription agent, three consultation workflows, local k8s, SDK integration
 
 | Field | Value |
 |---|---|
@@ -78,4 +78,4 @@ _(filled per lane as they merge)_
 
 | Date | Change |
 |---|---|
-| 2026-09-03 | Ticket opened. Evidence gathered by 5 explorers + DB/cluster probes; plan v1 with lanes A–F. |
+| 2026-09-03 | Ticket opened as TASK-857, renumbered to TASK-858 the same day: a sibling session already holds an uncommitted TASK-857 (Bootstrap-Tenant-Admin-Login) in worktree `hope-v2-tenantadmin`. Lane worktree DIRECTORIES keep their `hope-v2-task-857-*` names (an install was running in them); their BRANCHES are `task-858-*`. Evidence gathered by 5 explorers + DB/cluster probes; plan v1 with lanes A–F. |
