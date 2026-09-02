@@ -19,14 +19,19 @@ observable rather than papered over:
                                  dispatches ``dispatch_batch_transcription``, the existing
                                  TASK-724 Task 5 batch path, instead of returning ``DEGRADED``
                                  like every ``stt.*`` placeholder does.
-``agentic.loop``                 OBSERVABLE non-execution. TASK-848 owns the loop body.
-``agentic.tts``                  OBSERVABLE non-execution. TASK-849 owns audio transport.
+``agentic.tts``                  REAL, and this is the PROMOTION TASK-849 lane B asks for: it
+                                 dispatches ``dispatch_speech_synthesis``, writes the audio to
+                                 the claim-check store, and streams frames on lane A's delta
+                                 lane. Three existing mechanisms, no fourth.
+``agentic.loop``                 OBSERVABLE non-execution on THIS path. TASK-848 made the loop
+                                 real via a child workflow; this activity is what a history
+                                 recorded before that gate replays through.
 ===============================  ==========================================================
 
-## Why the last two are ``implemented: true`` and still do not run
+## Why ``agentic.loop`` is ``implemented: true`` and still does not run here
 
 ``compile()`` REFUSES any graph containing an ``implemented: false`` node type
-(``nodeInfo()`` returns undefined), and this ticket's own verification criterion is *"a graph
+(``nodeInfo()`` returns undefined), and TASK-847's own verification criterion is *"a graph
 using every new node type compiles to a valid IR"*. So the choice is not between "runs" and
 "refused at compile" — it is between an honest ``DEGRADED`` naming the ticket that owns the work,
 and a silent ``SUCCEEDED`` for work that never happened. This module takes the first, which is
@@ -47,11 +52,13 @@ silently rather than fail.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import jsonschema
 from temporalio import activity
 
+from harness.core.config import get_settings
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
@@ -71,12 +78,6 @@ _LOOP_NOT_YET_EXECUTABLE = (
     "contract; the loop BODY — continue_as_new per iteration, sub-agents as child workflows, and "
     "the bounds enforced against a workflow TIMER rather than wall-clock — is TASK-848. This "
     "activity degrades observably rather than claiming an iteration that did not run."
-)
-
-_TTS_NOT_YET_EXECUTABLE = (
-    "agentic.tts declares its provider binding and voice reference as a contract; binary audio "
-    "TRANSPORT — synthesis dispatch and the artifact write — is TASK-849 (OD-4). This activity "
-    "degrades observably rather than claiming an audio artifact that was never produced."
 )
 
 
@@ -386,11 +387,131 @@ async def interpreter_agentic_loop(payload: NodeActivityInput) -> NodeActivityRe
 
 @activity.defn(name="interpreter.agentic_tts")
 async def interpreter_agentic_tts(payload: NodeActivityInput) -> NodeActivityResult:
-    """OBSERVABLE non-execution — TASK-849 owns binary audio transport (OD-4). See the module
-    docstring."""
+    """SPEECH SYNTHESIS to a stored artifact — TASK-849 lane B (OD-4), the promotion this node
+    was declared for.
+
+    Three existing mechanisms, no fourth. That reuse is what makes OD-4 affordable, and a second
+    bespoke audio path is the specific thing this ticket's risk table forbids:
+
+    ``dispatch_speech_synthesis``
+        ONE activity, exactly as ``agentic.stt`` dispatches ``dispatch_batch_transcription``.
+        apps/api resolves the tenant's TTS configuration — routing chains, allowed providers,
+        BYO credentials, voice bindings, the character quota and the usage row — through the
+        very cascade its user-facing speech proxy already uses, and calls ``apps/tts``. Nothing
+        is resolved here and no client is built here.
+
+    the DELTA lane (``run_event_producer().emit_token_delta``)
+        Lane A's single streaming entry point, reused verbatim for audio frames. Audio deltas
+        are base64 over the same envelope, on the same per-run Redis Stream, under the same
+        resume-token contract. They never touch Temporal — not a signal, not an activity result.
+
+    the CLAIM-CHECK store
+        The artifact write. ``store_bytes`` is the binary sibling of the ``store_blob`` call
+        ``output.deliver`` already makes, so a synthesised WAV lands in the platform bucket every
+        other offloaded blob lands in, content-addressed by its own sha256.
+
+    **Audio bytes never enter Temporal history.** What this activity RETURNS is a claim-check
+    ref — bucket, key, size, sha256, content type, ~200 bytes. The history ceiling is 51,200
+    events / 50 MB per run, and a single minute of speech would consume a measurable slice of it.
+
+    On ``providerConfigRef``: the node carries it (the contract shares the agent node's binding
+    shape) and this activity still resolves NOTHING from it. TTS provider selection lives on the
+    tenant's ``TenantTtsConfig`` routing chains, which is the same tenant → SYSTEM cascade, read
+    on the gateway side where the DB handle and the Vault client are. Sending the reference here
+    and resolving it there is the rule, not a workaround for it.
+    """
+    # Imported inside the function for the reason `agentic.stt` records: `activities.py` imports
+    # this module for `NODE_ACTIVITIES`, so a module-level import of either would be circular.
+    from harness.temporal.activities import dispatch_speech_synthesis  # noqa: PLC0415
+    from harness.temporal.claim_check import open_store, store_bytes  # noqa: PLC0415
+    from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+    from harness.temporal.models import SpeechSynthesisInput  # noqa: PLC0415
+
     started = now()
+    config = _config(payload)
+    tenant_id = getattr(payload, "tenant_id", None)
+
+    voice_ref = config.get("voiceRef")
+    if not isinstance(voice_ref, str) or not voice_ref:
+        await record_and_flush(payload, status=STATUS_OK, started=started)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=(
+                "agentic.tts: `voiceRef` is absent. A voice is an identifier within the bound "
+                "configuration's catalogue; this activity picks no default, because a default "
+                "voice would be a platform choice silently overriding a tenant's own."
+            ),
+        )
+    if not isinstance(tenant_id, str) or not tenant_id:
+        await record_and_flush(payload, status=STATUS_OK, started=started)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason="agentic.tts: no tenant id on the activity payload — synthesis is tenant-scoped work and must be attributable.",
+        )
+
+    bound = _bound_inputs(payload)
+    text = next((value for value in bound.values() if isinstance(value, str) and value), None)
+    if text is None:
+        await record_and_flush(payload, status=STATUS_OK, started=started)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason="agentic.tts: no text arrived on the `in` port — nothing to synthesize.",
+        )
+
+    speed = config.get("speed")
+    try:
+        synthesis = await dispatch_speech_synthesis(
+            SpeechSynthesisInput(
+                tenant_id=tenant_id,
+                text=text,
+                voice=voice_ref,
+                audio_format=(
+                    config.get("format") if isinstance(config.get("format"), str) else None
+                ),
+                speed=float(speed) if isinstance(speed, (int, float)) else None,
+                language=(
+                    config.get("language") if isinstance(config.get("language"), str) else None
+                ),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 — see below
+        # DEGRADE, never raise. `agentic.tts` is `critical=False`, so the interpreter records
+        # DEGRADED either way; returning it keeps the REASON on the node instead of turning an
+        # upstream 503 into a bare activity error. Nothing is claimed: no output, no artifact.
+        await record_and_flush(payload, status=STATUS_ERROR, started=started)
+        return NodeActivityResult(status="DEGRADED", reason=f"agentic.tts: synthesis failed: {exc}")
+
+    audio = synthesis.audio
+    if not audio:
+        await record_and_flush(payload, status=STATUS_ERROR, started=started)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason="agentic.tts: synthesis returned no audio — refusing to publish an empty artifact.",
+        )
+
+    # The DELTA lane, best-effort by contract (lane A): a Redis outage costs the live view and
+    # nothing else, so it is deliberately NOT allowed to fail the synthesis that already
+    # succeeded. A run with no `run_id` (additive-optional) simply does not stream.
+    run_id = getattr(payload, "run_id", "") or ""
+    if run_id:
+        producer = run_event_producer()
+        for sequence, frame in enumerate(synthesis.chunks):
+            await producer.emit_token_delta(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                node_id=payload.node_id,
+                sequence=sequence,
+                text=base64.b64encode(frame).decode("ascii"),
+            )
+
+    settings = get_settings()
+    store, location = await open_store(settings.claim_check)
+    ref = await store_bytes(
+        audio, store=store, bucket=location.bucket, content_type=synthesis.content_type
+    )
+
     await record_and_flush(payload, status=STATUS_OK, started=started)
-    return NodeActivityResult(status="DEGRADED", reason=_TTS_NOT_YET_EXECUTABLE)
+    return NodeActivityResult(status="SUCCEEDED", output={"audio": ref.model_dump()})
 
 
 # Spread into `activities.NODE_ACTIVITIES` rather than re-typed there, for the reason that list
