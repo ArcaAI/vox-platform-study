@@ -146,14 +146,20 @@ export type { LoopEvent } from './loopEvent';
 
 // Audio types
 export type {
+  // The ASR pipeline the live streaming session is transcribing on.
+  ActivePipelineInfo,
   AudioActions,
   AudioOptions,
   AudioPluginStates,
   AudioProcessingConstraints,
   AudioStartOptions,
   AudioState,
+  // Raw + noise-filtered blobs from a dual capture.
+  DualCaptureResult,
   PluginState,
   STTPluginState,
+  // Streaming-STT connection lifecycle as the store reports it.
+  SttConnectionState,
   TranscriptionResult,
   TranscriptionSegment,
   // WS-B: Structured transcript and start options
@@ -425,3 +431,4 @@ export type {
 } from './ops-admin';
 
 export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './liveSummary';
+export type { LiveAssistEvent, LiveAssistSuggestion, LiveAssistProposal, LiveAssistCorrections } from './liveAssist';

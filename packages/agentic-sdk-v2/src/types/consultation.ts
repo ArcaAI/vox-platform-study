@@ -256,6 +256,12 @@ export interface SessionActions {
   loadConsultation: (consultationId: string) => Promise<Consultation>;
   /** Update the current consultation (department/status/metadata) (SES-02) */
   update: (input: UpdateConsultationInput) => Promise<Consultation>;
+  /**
+   * Prime the current consultation — the session state machine's first
+   * checkpoint, which the gateway also uses as the AI_DOCUMENTATION consent
+   * checkpoint. Optimistically concurrent (`If-Match`), like close/reopen.
+   */
+  prime: () => Promise<Consultation>;
   /** Close the current consultation (sets status to CLOSED) */
   close: () => Promise<Consultation>;
   /** Reopen a previously closed consultation (sets status to OPEN) */

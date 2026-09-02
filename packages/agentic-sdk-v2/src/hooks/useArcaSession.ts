@@ -302,54 +302,68 @@ export function useArcaSession(): UseArcaSessionReturn {
   );
 
   /**
+   * Shared body of the three session-state transitions (TASK-858 G1).
+   *
+   * `POST :id/prime`, `:id/close` and `:id/reopen` all carry
+   * `@RequiresIfMatch()` + `@ExpectedVersion()` on the gateway, so a
+   * validator-less request answers `428 Precondition Required` — which is what
+   * a bare `apiClient.post(...)` produced for every one of them. The header
+   * rides on `postWithHeaders` (the house POST + If-Match helper, as in
+   * `useArcaSummary.approveSummary`); there is no POST-specific OCC wrapper.
+   *
+   * Same two rules `update()` follows: when the loaded row carries no
+   * `version` we send NO precondition rather than inventing one (a 428 naming
+   * the missing header beats a fabricated CAS), and a `412` surfaces as a
+   * typed `ConfigConflictError` so the caller can re-fetch and retry rather
+   * than seeing a generic failure. The 200 response replaces the stored
+   * consultation, so the NEXT transition sends the refreshed validator.
+   */
+  const transitionState = useCallback(
+    async (operation: 'prime' | 'close' | 'reopen', endpoint: (id: string) => string): Promise<Consultation> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No consultation open. Call open() first.');
+
+      const timer = logger?.startOperation(operation, {
+        component: 'useArcaSession',
+        sdk: { consultationId: consultation.id },
+      });
+
+      const expectedVersion = consultation.version;
+
+      try {
+        const updated =
+          typeof expectedVersion === 'number'
+            ? await apiClient.postWithHeaders<Consultation>(endpoint(consultation.id), {}, { 'If-Match': ifMatchFor(expectedVersion) })
+            : await apiClient.post<Consultation>(endpoint(consultation.id), {});
+        store.setConsultation(updated);
+        timer?.end(true);
+        return updated;
+      } catch (error) {
+        const mapped = typeof expectedVersion === 'number' ? toOccError(error, consultation.id, expectedVersion) : error;
+        timer?.error(mapped as Error);
+        throw mapped;
+      }
+    },
+    [store, getLogger],
+  );
+
+  /**
+   * Prime the current consultation — the session state machine's first
+   * checkpoint (and the gateway's AI_DOCUMENTATION consent checkpoint).
+   */
+  const prime = useCallback((): Promise<Consultation> => transitionState('prime', CONSULTATION_ENDPOINTS.PRIME), [transitionState]);
+
+  /**
    * Close the current consultation (transition status to CLOSED).
    */
-  const close = useCallback(async (): Promise<Consultation> => {
-    const { apiClient, consultation } = store;
-    const logger = getLogger();
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No consultation open. Call open() first.');
-
-    const timer = logger?.startOperation('close', {
-      component: 'useArcaSession',
-      sdk: { consultationId: consultation.id },
-    });
-
-    try {
-      const updated = await apiClient.post<Consultation>(CONSULTATION_ENDPOINTS.CLOSE(consultation.id), {});
-      store.setConsultation(updated);
-      timer?.end(true);
-      return updated;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+  const close = useCallback((): Promise<Consultation> => transitionState('close', CONSULTATION_ENDPOINTS.CLOSE), [transitionState]);
 
   /**
    * Reopen a previously closed consultation (transition status to OPEN).
    */
-  const reopen = useCallback(async (): Promise<Consultation> => {
-    const { apiClient, consultation } = store;
-    const logger = getLogger();
-    if (!apiClient) throw new Error('SDK not initialized');
-    if (!consultation) throw new Error('No consultation open. Call open() first.');
-
-    const timer = logger?.startOperation('reopen', {
-      component: 'useArcaSession',
-      sdk: { consultationId: consultation.id },
-    });
-
-    try {
-      const updated = await apiClient.post<Consultation>(CONSULTATION_ENDPOINTS.REOPEN(consultation.id), {});
-      store.setConsultation(updated);
-      timer?.end(true);
-      return updated;
-    } catch (error) {
-      timer?.error(error as Error);
-      throw error;
-    }
-  }, [store, getLogger]);
+  const reopen = useCallback((): Promise<Consultation> => transitionState('reopen', CONSULTATION_ENDPOINTS.REOPEN), [transitionState]);
 
   /**
    * Load all summaries for the current consultation from backend.
@@ -404,6 +418,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       loadConsultation,
       loadSummaries,
       update,
+      prime,
       close,
       reopen,
     }),
@@ -419,6 +434,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       loadConsultation,
       loadSummaries,
       update,
+      prime,
       close,
       reopen,
     ],

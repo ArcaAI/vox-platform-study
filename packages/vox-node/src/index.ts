@@ -51,6 +51,15 @@ export type {
 export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
 
 /**
+ * Inbound-webhook signature verification (TASK-858 E1). HOPE signs every
+ * delivery `X-Hope-Webhook-Signature: sha256=<hex>` over the RAW body
+ * (`services/webhook/webhook-delivery.processor.ts`); this is the receiver
+ * half. Synchronous and zero-dependency, so it runs unchanged in Node, Bun,
+ * Deno and edge runtimes.
+ */
+export { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from './core/webhook-signature';
+
+/**
  * The service-account credential shape (TASK-773 Phase C). Exported HERE, not
  * only from `core/`, because `HopeClientOptions.serviceAccount` is typed with
  * it: without this line an integrator can construct the client but cannot
