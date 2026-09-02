@@ -541,7 +541,25 @@ verify-lmstudio-runtime:
 # and `ALL-` only — the same shape as build-lmstudio, build-qdrant-init and
 # build-database.
 
-build-vllm:
+# ── vLLM is ON HOLD (owner decision, 2026-09-02) ─────────────────────────────
+# Both jobs below are DISABLED, not deleted: a leading dot makes GitLab treat a
+# top-level key as a hidden template that is never instantiated, so the whole
+# configuration survives review and `git log` while nothing builds, scans or
+# pushes a vllm image.
+#
+# The workload is already parked in the deployment repo (`base/vllm.yaml`,
+# `replicas: 0`), and vllm was never in promote.sh's SERVICES=, so nothing
+# downstream is left dangling: no overlay pins a digest this pipeline would
+# otherwise refresh. `.github/services.json` drops its vllm entry to match --
+# the services-manifest contract compares the manifest against the SERVICE_NAME
+# set, and a hidden job declares none.
+#
+# TO RE-ENABLE: remove the leading dot from BOTH keys (`.build-vllm` and
+# `.verify-vllm-plugin` -- the verify job `needs:` the build job, so re-enabling
+# only one leaves an unresolvable dependency) and restore the vllm entry in
+# `.github/services.json`.
+
+.build-vllm:
   extends: .build-template
   needs:
     - job: warm-up-base-images
@@ -578,14 +596,14 @@ build-vllm:
 # NVIDIA device and buildkit exposes none — so, exactly as in
 # verify-lmstudio-runtime above, this asserts IMAGE CONTENTS, never host
 # capability. That distinction is the whole lesson of job 15218.
-verify-vllm-plugin:
+.verify-vllm-plugin:
   stage: build
   tags: [build]
   image: docker:28
   timeout: 30m
   interruptible: true
   needs:
-    - job: build-vllm
+    - job: .build-vllm
   before_script:
     - !reference [.buildx-registry-login, before_script]
   script:
