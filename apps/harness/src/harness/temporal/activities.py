@@ -879,7 +879,7 @@ async def _resolve_ref(settings: Settings, inline: str, ref: ClaimCheckRef | Non
     """
     if ref is None:
         return inline
-    store, _ = await open_store(settings.claim_check)
+    store, _ = await open_store(settings.claim_check, ref)
     return await load_blob(ref, store=store)
 
 
@@ -908,12 +908,18 @@ async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckR
 async def _resolve_knowledge_chunks(
     settings: Settings, inline: dict[str, str], refs: dict[str, ClaimCheckRef]
 ) -> dict[str, str]:
-    """Merge the inline chunk texts with any offloaded (ref) ones, resolving each ref."""
+    """Merge the inline chunk texts with any offloaded (ref) ones, resolving each ref.
+
+    The store is opened PER REF, not once for the batch: each ref records the backend
+    its blob was written to, and a set of chunks can legitimately mix them (an offload
+    written before a deploy switched `HARNESS_CLAIM_CHECK_STORE`, say). Opening one
+    store for the batch would read some of them from the wrong place.
+    """
     if not refs:
         return inline
-    store, _ = await open_store(settings.claim_check)
     out = dict(inline)
     for chunk_id, ref in refs.items():
+        store, _ = await open_store(settings.claim_check, ref)
         out[chunk_id] = await load_blob(ref, store=store)
     return out
 
