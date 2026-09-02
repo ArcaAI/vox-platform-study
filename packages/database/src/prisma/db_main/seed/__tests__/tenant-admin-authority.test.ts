@@ -23,9 +23,9 @@ import { DEFAULT_ROLES } from '../03-role';
  *   apps/api/src/modules | sort -u
  * ```
  *
- * ## The result, and why the ten exceptions are correct
+ * ## The result, and why the eleven exceptions are correct
  *
- * TENANT_ADMIN satisfies every declared pair except ten. All ten are
+ * TENANT_ADMIN satisfies every declared pair except eleven. All eleven are
  * PLATFORM-plane, and granting any of them from a tenant-scoped role would be
  * cross-tenant escalation rather than "completing" the role:
  *
@@ -38,6 +38,7 @@ import { DEFAULT_ROLES } from '../03-role';
  * | `manage:UsageAnalytics`, `manage:PlatformMetrics` | Cross-tenant platform telemetry |
  * | `manage:PrismaStudio` | Direct database access |
  * | `manage:AiPriceBook` | The platform rate card |
+ * | `manage:AiRoutingPolicy` | Platform routing governance. `ai-routing-policy-admin.controller.ts` is SUPER_ADMIN-only imperatively on every route (`AUTH-NOTE:` per handler), and its own note for the one conditional route states the intent outright: *"In practice this route is still super-admin-only: `manage:AiRoutingPolicy` is granted by the SUPER_ADMIN `manage:all` rule and by no tenant-admin policy in the RBAC seed."* Listed here so that documented intent is a CHECKED fact — a later grant would now fail this test rather than silently widen platform governance. |
  * | `manage:ChangelogEntry` | Platform-wide release notes (tenant admins hold `read` via `user-profile-own`) |
  *
  * The role DOES hold the tenant-scoped read/list side of the two RBAC surfaces
@@ -105,8 +106,10 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['delete', 'PromptTemplate'],
   ['delete', 'Storage'],
   ['delete', 'UserVoiceProfile'],
+  ['execute', 'ConsultationWorkflow'],
   ['list', 'WorkflowDefinition'],
   ['manage', 'AiPriceBook'],
+  ['manage', 'AiRoutingPolicy'],
   ['manage', 'AiTaskDefault'],
   ['manage', 'ApiKey'],
   ['manage', 'AsrPipeline'],
@@ -117,6 +120,7 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['manage', 'ConsultationContextSchema'],
   ['manage', 'Department'],
   ['manage', 'DnaWritingStyleReport'],
+  ['manage', 'DocumentTemplate'],
   ['manage', 'GlobalSetting'],
   ['manage', 'HarnessEval'],
   ['manage', 'HarnessPolicy'],
@@ -145,6 +149,7 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['manage', 'UserVoiceProfile'],
   ['manage', 'Webhook'],
   ['manage', 'WorkflowDefinition'],
+  ['manage', 'WorkflowInvariantRule'],
   ['manage', 'WorkflowTestFixture'],
   ['manage', 'all'],
   ['read', 'AgentTrajectory'],
@@ -175,6 +180,7 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
   ['read', 'WorkflowDefinition'],
   ['read', 'WorkflowRun'],
   ['update', 'ApiKey'],
+  ['update', 'Consultation'],
   ['update', 'GlobalSetting'],
   ['update', 'PromptTemplate'],
   ['update', 'Storage'],
@@ -184,15 +190,16 @@ const ROUTE_DECLARED_PAIRS: ReadonlyArray<readonly [action: string, subject: str
 ];
 
 /**
- * The ten abilities a tenant administrator deliberately does NOT hold. Every
+ * The eleven abilities a tenant administrator deliberately does NOT hold. Every
  * one is platform-plane; see the module doc for the per-row justification.
  *
- * This is an EXACT set, asserted in both directions: an eleventh appearing means
+ * This is an EXACT set, asserted in both directions: a twelfth appearing means
  * a tenant surface became unreachable, and one disappearing means a tenant-scoped
  * role acquired platform authority. Both are regressions.
  */
 const DELIBERATE_PLATFORM_ONLY: ReadonlyArray<readonly [action: string, subject: string]> = [
   ['manage', 'AiPriceBook'],
+  ['manage', 'AiRoutingPolicy'],
   ['manage', 'ChangelogEntry'],
   ['manage', 'PlatformMetrics'],
   ['manage', 'Policy'],
@@ -218,7 +225,7 @@ describe('TENANT_ADMIN holds every tenant-scoped ability the API declares', () =
     });
   }
 
-  it('lacks EXACTLY the ten platform-plane abilities, no more and no fewer', () => {
+  it('lacks EXACTLY the eleven platform-plane abilities, no more and no fewer', () => {
     const missing = ROUTE_DECLARED_PAIRS.filter(([a, s]) => !can(abilities, a, s))
       .map(([a, s]) => `${a}:${s}`)
       .sort();
@@ -242,7 +249,7 @@ describe('the tenant-scoped role does not leak into the platform plane', () => {
     expect(can(abilities, 'manage', 'Policy')).toBe(false);
   });
 
-  it('SUPER_ADMIN keeps the manage:all grant that covers all ten', () => {
+  it('SUPER_ADMIN keeps the manage:all grant that covers all eleven', () => {
     const superAdmin = abilitiesFor('SUPER_ADMIN');
     for (const [action, subject] of DELIBERATE_PLATFORM_ONLY) {
       expect(can(superAdmin, action, subject)).toBe(true);
