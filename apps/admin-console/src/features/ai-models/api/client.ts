@@ -2,7 +2,18 @@
 
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { ListParams, WithEtag } from '@/shared/api';
-import type { AiModel, CreateModelRequest, DiscoveryResponse, PaginatedModels, RegisterDiscoveredModelRequest, UpdateModelRequest } from './types';
+import { SYSTEM_TENANT_ID } from '@/shared/catalog';
+import type {
+  AiModel,
+  CreateModelRequest,
+  DiscoveryResponse,
+  ModelDownloadState,
+  ModelRegistryConnectionStatus,
+  PaginatedModels,
+  RegisterDiscoveredModelRequest,
+  StartModelDownloadResponse,
+  UpdateModelRequest,
+} from './types';
 
 const BASE = 'admin/ai-models';
 
@@ -50,4 +61,29 @@ export function discoverModels(provider?: string): Promise<DiscoveryResponse> {
 /** Explicit `discovered` → `registered` transition; the only mutating discovery path. */
 export function registerDiscoveredModel(body: RegisterDiscoveredModelRequest): Promise<AiModel> {
   return postJson(`${BASE}/discovery/register`, body);
+}
+
+// =============================================================================
+// Download — FROZEN contract (a sibling lane owns the gateway side; see
+// api/types.ts). 409 surfaces as a GatewayError the caller maps to a message.
+// =============================================================================
+
+/** Starts (or reports 409 already-in-flight for) a weight download. */
+export function startModelDownload(id: string): Promise<StartModelDownloadResponse> {
+  return postJson(`${BASE}/${encodeURIComponent(id)}/download`);
+}
+
+/** Current download job state — poll this while `status === 'DOWNLOADING'`. */
+export function getModelDownloadState(id: string): Promise<ModelDownloadState> {
+  return getJson(`${BASE}/${encodeURIComponent(id)}/download`);
+}
+
+/**
+ * Read-only status of the platform's S3 model-registry connection (the
+ * SYSTEM row — TASK-799 owner ruling: the weight-fetch plane is
+ * platform-managed, so this is pinned to SYSTEM regardless of the caller's
+ * working tenant). `features/ai-providers` owns the editor for this row.
+ */
+export function getModelRegistryConnectionStatus(): Promise<ModelRegistryConnectionStatus> {
+  return getJson('admin/providers/model-registry/s3', { tenantId: SYSTEM_TENANT_ID });
 }
