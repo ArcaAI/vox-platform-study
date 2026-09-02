@@ -26,6 +26,36 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
 }
 
 /**
+ * TASK-847 finding F-32 — a workflow node's `providerConfigRef`, as the routing plane sees it.
+ *
+ * Exactly one field is meaningful, which is the node schema's own rule (`agenticNodeConfigProblems`
+ * enforces it at authoring time). Both are optional here because this type describes what a caller
+ * READ off a graph, and a graph that failed that rule must still get an answer rather than a throw.
+ */
+export interface GenerationCapabilitySelector {
+  readonly routingPolicyId?: string | null;
+  readonly taskKey?: string | null;
+}
+
+/** What the resolved provider configuration says about generation tuning. */
+export interface ResolvedGenerationCapabilities {
+  /**
+   * How to NAME the configuration in an author-facing message — the display name, else
+   * `taskKey (revision N)`, with the resolved model slug appended. Falls back to naming the
+   * unresolved reference itself, so a message is always actionable.
+   */
+  readonly label: string;
+  /**
+   * The declared set, or `undefined` when nothing declared one.
+   *
+   * `undefined` is UNKNOWN and NOT "supports nothing" — the distinction is the whole severity
+   * split in `hyperparameterCapabilityProblems`, and collapsing it would turn every unprofiled
+   * configuration into a publish-blocking error.
+   */
+  readonly supportedGenerationParams?: readonly string[];
+}
+
+/**
  * The provider ROUTING POLICY plane (TASK-818 §3A).
  *
  * WHICH candidates serve a task, in what order, which one is the elected
@@ -120,6 +150,16 @@ export interface IAiRoutingPolicyService {
    * rejection when nothing may serve.
    */
   getEffective(tenantId: string, taskKey: string, options?: ResolveRoutingOptions): Promise<EffectiveRoutingPolicyResponse>;
+
+  /**
+   * TASK-847 finding F-32 — which generation hyper-parameters the configuration a node binds to
+   * accepts, for the workflow publish gate.
+   *
+   * Resolves through the SAME two-tier cascade as everything else on this plane, and never
+   * throws: an unresolvable reference answers `supportedGenerationParams: undefined` (UNKNOWN),
+   * because a capability question must not be what fails a publish.
+   */
+  resolveGenerationCapabilities(tenantId: string, selector: GenerationCapabilitySelector): Promise<ResolvedGenerationCapabilities>;
 
   /** Author a new DRAFT revision. SUPER_ADMIN only. */
   create(tenantId: string, dto: CreateAiRoutingPolicyRequest): Promise<AiRoutingPolicyResponse>;
