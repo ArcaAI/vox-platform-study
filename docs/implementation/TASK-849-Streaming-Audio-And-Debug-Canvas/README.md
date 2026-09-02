@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan expanded 2026-09-01; **blocked on TASK-848** |
+| **Status** | `In Progress` — UNBLOCKED 2026-09-01 (TASK-848 complete); split into three lanes |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
 | **Tier / Effort** | `opus` / **xhigh** (transport design); `sonnet` / high (debug canvas UI); `sonnet` / medium (a11y outline view) |
-| **Depends on** | TASK-847 ✅; **TASK-848 (in progress)** |
+| **Depends on** | TASK-847 ✅; TASK-848 ✅ |
 | **Owns** | `apps/api/src/modules/workflows/`, harness activities, the studio debug surface |
 
 ## 1. Requirement Analysis
@@ -64,6 +64,24 @@ SSE with a Redis message id per event for resume.
    differentiator over every prior-art tool. Build it.
 8. **A canvas cannot pass WCAG 2.2 AA alone.** Budget the keyboard-navigable **outline view** as a
    first-class alternative (est. 3–5 days), not as a discovery at the axe gate.
+
+## 3b. Execution split — three lanes, sequenced
+
+Track D stalled four dispatch attempts when a whole ticket went to one agent. This ticket is bigger than
+TASK-848 was, so it is split at its natural seams and sequenced by real dependency, not run all at once.
+
+| Lane | Steps | Tier / Effort | Owns | Depends on |
+|---|---|---|---|---|
+| **849a — producer + two-lane transport** | 1–4 | `opus` / xhigh | `apps/harness/.../interpreter/` (emission), `apps/api/src/modules/workflows/` | — |
+| **849b — binary audio / TTS** | 5 | `opus` / high | `apps/harness/.../nodes/agentic.py`, the audio path | 849a's Redis lane |
+| **849c — debug canvas + a11y outline** | 6–8 | `sonnet` / high | `apps/admin-console/src/features/workflow-studio/` | 849a's event contract |
+
+**849a runs alone first** — both other lanes consume what it defines. 849b and 849c can then run in
+parallel: one is a harness node, the other is admin-console, and they share no file.
+
+**Anti-stall constraints on every lane** (what made TASK-845 and the TASK-848 finish succeed): no
+sub-agents; `pnpm install` to completion before any other work; **commit after each numbered step**; read
+this ticket plus §1/§3 of the program document only, not its full ~1600 lines.
 
 ## 4. Verification Criteria
 
