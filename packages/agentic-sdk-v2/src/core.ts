@@ -370,6 +370,14 @@ export type {
   TranscriptWord,
   VADEvent,
   VADEventType,
+  // TASK-858 G3 — argument/return shapes of already-public audio surfaces
+  // (`audio.start(options)`, dual capture, the store's pipeline/connection
+  // state). Types only: erased at build, so `/core` stays audio-code-free.
+  ActivePipelineInfo,
+  AudioProcessingConstraints,
+  AudioStartOptions,
+  DualCaptureResult,
+  SttConnectionState,
 } from './types';
 
 // =============================================================================
