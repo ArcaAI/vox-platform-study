@@ -5,9 +5,12 @@ import {
   discoverModels,
   getModel,
   getModelBySlug,
+  getModelDownloadState,
+  getModelRegistryConnectionStatus,
   listModels,
   listModelsPaginated,
   registerDiscoveredModel,
+  startModelDownload,
   updateModel,
 } from '../client';
 import { aiModelKeys } from '../keys';
@@ -122,5 +125,61 @@ describe('discovery client', () => {
     expect(aiModelKeys.discovery()).not.toEqual(aiModelKeys.discovery('ollama'));
     expect(aiModelKeys.discovery()[0]).toBe('ai-models');
     expect(aiModelKeys.discovery()).not.toEqual(aiModelKeys.all());
+  });
+});
+
+// =============================================================================
+// Download client — FROZEN contract (TASK-855)
+// =============================================================================
+describe('download client', () => {
+  it('POSTs :id/download with no body and returns the 202 job envelope', async () => {
+    const calls = installFetchMock(() => Response.json({ jobId: 'job-1', status: 'DOWNLOADING' }, { status: 202 }));
+
+    const result = await startModelDownload('m-1');
+
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toBe('/api/hope/admin/ai-models/m-1/download');
+    expect(calls[0].body).toBeUndefined();
+    expect(result).toEqual({ jobId: 'job-1', status: 'DOWNLOADING' });
+  });
+
+  it('GETs :id/download for the polled job state', async () => {
+    const calls = installFetchMock(() =>
+      Response.json({ status: 'DOWNLOADED', fileSizeMb: 512, sha256: 'abc', localPath: '/mnt/models-bucket/m/v/', finishedAt: '2026-09-01T00:00:00.000Z' }),
+    );
+
+    const result = await getModelDownloadState('m-1');
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toBe('/api/hope/admin/ai-models/m-1/download');
+    expect(result.status).toBe('DOWNLOADED');
+    expect(result.fileSizeMb).toBe(512);
+  });
+
+  it('surfaces a 409 (already in flight) as a GatewayError', async () => {
+    installFetchMock(() => Response.json({ message: 'A download is already running for this model.' }, { status: 409 }));
+
+    await expect(startModelDownload('m-1')).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('keys the download poll per model id, under the ai-models root', () => {
+    expect(aiModelKeys.download('m-1')).not.toEqual(aiModelKeys.download('m-2'));
+    expect(aiModelKeys.download('m-1')[0]).toBe('ai-models');
+  });
+});
+
+// =============================================================================
+// Model-registry connection status — read-only, pinned to the SYSTEM tenant
+// =============================================================================
+describe('model-registry connection status client', () => {
+  it('GETs admin/providers/model-registry/s3 pinned to the SYSTEM tenant', async () => {
+    const calls = installFetchMock(() => Response.json({ enabled: true, hasKey: true, version: 3 }));
+
+    const result = await getModelRegistryConnectionStatus();
+
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].url).toContain('admin/providers/model-registry/s3');
+    expect(calls[0].url).toContain('tenantId=00000000-0000-0000-0000-000000000000');
+    expect(result).toEqual({ enabled: true, hasKey: true, version: 3 });
   });
 });

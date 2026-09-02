@@ -6,6 +6,7 @@
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { AiModel, PaginatedModels } from '../../api/types';
 import { AiModelsScreen } from '../ai-models-screen';
@@ -113,6 +114,33 @@ describe('AiModelsScreen', () => {
 
     expect(await screen.findByText('built-in')).toBeDefined();
     expect(screen.getByText('whisper')).toBeDefined();
+  });
+
+  it('renders the weight-source and download-state chips per row — the catalog view (TASK-855)', async () => {
+    // MODEL: sourceUri is a bare HF id (hub-id), localPath is null, downloadStatus DOWNLOADED.
+    stubFetch(() => Response.json(envelope([MODEL])));
+    renderWithProviders(<AiModelsScreen />);
+
+    await screen.findByText('Whisper Large v4');
+    expect(screen.getByText('Hub ID')).toBeDefined();
+    expect(screen.getByText('Downloaded')).toBeDefined();
+  });
+
+  it('the weight-source chip prefers "Mounted" over the sourceUri form whenever localPath is set', async () => {
+    stubFetch(() => Response.json(envelope([{ ...MODEL, localPath: '/mnt/models-bucket/whisper-large-v4/q4-0-451faffb5a16/' }])));
+    renderWithProviders(<AiModelsScreen />);
+
+    await screen.findByText('Whisper Large v4');
+    expect(screen.getByText('Mounted')).toBeDefined();
+    expect(screen.queryByText('Hub ID')).toBeNull();
+  });
+
+  it('the download-state chip reflects a model that has never been downloaded', async () => {
+    stubFetch(() => Response.json(envelope([{ ...MODEL, downloadStatus: 'NOT_DOWNLOADED' }])));
+    renderWithProviders(<AiModelsScreen />);
+
+    await screen.findByText('Whisper Large v4');
+    expect(screen.getByText('Not downloaded')).toBeDefined();
   });
 
   it('registers a model with the runtime provider and architecture fields', async () => {
@@ -316,5 +344,18 @@ describe('AiModelsScreen discovery action', () => {
 
     await screen.findByText('Whisper Large v4');
     expect(calls.some((call) => call.url.includes('/discovery'))).toBe(false);
+  });
+});
+
+// =============================================================================
+// Accessibility — the grid with the new "Weight source" / "Download" columns
+// =============================================================================
+describe('AiModelsScreen accessibility', () => {
+  it('has no axe violations with the loaded grid rendered', async () => {
+    stubFetch(() => Response.json(envelope([MODEL])));
+    const { container } = renderWithProviders(<AiModelsScreen />);
+
+    await screen.findByText('Whisper Large v4');
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

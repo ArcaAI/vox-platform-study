@@ -86,6 +86,50 @@ export interface UpdateModelRequest {
   memorySizeMb?: number;
   computeType?: string;
   tags?: string[];
+  /**
+   * Operator/admin weight-directory override (Mode M) — HIGHEST precedence in
+   * every service resolver, ahead of `sourceUri` scheme dispatch. Only the
+   * update DTO accepts it (the create DTO does not); an empty string clears
+   * the override. Also populated by download bookkeeping.
+   */
+  localPath?: string;
+}
+
+// =============================================================================
+// Download (POST/GET admin/ai-models/:id/download) — FROZEN contract (TASK-855)
+// =============================================================================
+
+/** POST /admin/ai-models/:id/download — 202 body. 409 = a download is already in flight. */
+export interface StartModelDownloadResponse {
+  jobId: string;
+  status: Extract<AiModelDownloadStatus, 'DOWNLOADING'>;
+}
+
+/** GET /admin/ai-models/:id/download — polled while `status` is `DOWNLOADING`. */
+export interface ModelDownloadState {
+  status: AiModelDownloadStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  fileSizeMb?: number | null;
+  sha256?: string | null;
+  localPath?: string | null;
+  error?: string | null;
+}
+
+// =============================================================================
+// Model-registry provider connection (read-only here — @arcaai/ai-providers owns writes)
+// =============================================================================
+
+/**
+ * Minimal read of `GET admin/providers/model-registry/s3` (the SYSTEM row).
+ * Mode U (`s3://` sourceUri) fails closed unless this connection is enabled
+ * and keyed. `features/ai-providers` owns the editor (rule 13); this is the
+ * same minimal-copy read-only shape `features/ai-platform`'s CatalogueTab uses
+ * in reverse for `features/ai-models`.
+ */
+export interface ModelRegistryConnectionStatus {
+  enabled: boolean;
+  hasKey: boolean;
 }
 
 // =============================================================================

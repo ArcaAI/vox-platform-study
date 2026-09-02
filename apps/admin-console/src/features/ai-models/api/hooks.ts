@@ -8,9 +8,12 @@ import {
   discoverModels,
   getModel,
   getModelBySlug,
+  getModelDownloadState,
+  getModelRegistryConnectionStatus,
   listModels,
   listModelsPaginated,
   registerDiscoveredModel,
+  startModelDownload,
   updateModel,
 } from './client';
 import { aiModelKeys } from './keys';
@@ -32,18 +35,18 @@ export function useModelBySlug(slug: string) {
   return useQuery({ queryKey: aiModelKeys.bySlug(slug), queryFn: () => getModelBySlug(slug), enabled: !!slug });
 }
 
-function useInvalidateModels() {
+/** Public so `useModelDownload` can refresh the grid once a poll reaches a terminal state. */
+export function useInvalidateAiModels() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: aiModelKeys.root });
 }
-
 export function useCreateModel() {
-  const invalidate = useInvalidateModels();
+  const invalidate = useInvalidateAiModels();
   return useMutation({ mutationFn: (body: CreateModelRequest) => createModel(body), onSuccess: invalidate });
 }
 
 export function useUpdateModel() {
-  const invalidate = useInvalidateModels();
+  const invalidate = useInvalidateAiModels();
   return useMutation({
     mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateModelRequest; etag: string }) => updateModel(id, patch, etag),
     onSuccess: invalidate,
@@ -51,7 +54,7 @@ export function useUpdateModel() {
 }
 
 export function useDeleteModel() {
-  const invalidate = useInvalidateModels();
+  const invalidate = useInvalidateAiModels();
   return useMutation({ mutationFn: (id: string) => deleteModel(id), onSuccess: invalidate });
 }
 
@@ -76,9 +79,43 @@ export function useModelDiscovery(provider: string | undefined, enabled: boolean
  * (→ `registered`) and the registry grid behind it refresh — no manual reload.
  */
 export function useRegisterDiscoveredModel() {
-  const invalidate = useInvalidateModels();
+  const invalidate = useInvalidateAiModels();
   return useMutation({
     mutationFn: (body: RegisterDiscoveredModelRequest) => registerDiscoveredModel(body),
     onSuccess: invalidate,
   });
+}
+
+// =============================================================================
+// Download — FROZEN contract (endpoints may not exist on the gateway yet; a
+// sibling lane owns that side. See api/client.ts / api/types.ts.)
+// =============================================================================
+
+/**
+ * Polls the download job while `enabled`. `refetchInterval` re-reads its own
+ * last result every tick, so polling stops itself the moment the state turns
+ * terminal (`DOWNLOADED`/`DOWNLOAD_FAILED`) — no manual interval bookkeeping,
+ * and no risk of polling past the outcome the caller already toasted.
+ */
+export function useModelDownloadStatus(id: string, options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: aiModelKeys.download(id),
+    queryFn: () => getModelDownloadState(id),
+    enabled: options.enabled && id !== '',
+    refetchInterval: (query) => (query.state.data?.status === 'DOWNLOADING' ? 2_000 : false),
+  });
+}
+
+/**
+ * Starts a download. Does NOT invalidate the registry list itself — the
+ * caller (`useModelDownload`) invalidates once the poll reaches a terminal
+ * state, so the grid's `downloadStatus`/`localPath`/`fileSizeMb` refresh with
+ * the finished row instead of the mid-flight one.
+ */
+export function useStartModelDownload() {
+  return useMutation({ mutationFn: (id: string) => startModelDownload(id) });
+}
+
+export function useModelRegistryConnectionStatus() {
+  return useQuery({ queryKey: aiModelKeys.modelRegistryConnection(), queryFn: getModelRegistryConnectionStatus });
 }

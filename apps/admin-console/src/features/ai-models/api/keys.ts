@@ -9,4 +9,8 @@ export const aiModelKeys = {
   bySlug: (slug: string) => [...aiModelKeys.root, 'slug', slug] as const,
   /** Live merge view, keyed per provider filter. */
   discovery: (provider?: string) => [...aiModelKeys.root, 'discovery', provider ?? 'all'] as const,
+  /** Download job state, per model. */
+  download: (id: string) => [...aiModelKeys.root, 'download', id] as const,
+  /** Read-only status of the SYSTEM `model-registry`/`s3` provider connection. */
+  modelRegistryConnection: () => [...aiModelKeys.root, 'model-registry-connection'] as const,
 };
