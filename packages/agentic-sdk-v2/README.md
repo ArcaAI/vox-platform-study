@@ -162,7 +162,16 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 ### Consultation session lifecycle
 
 1. `session.open({ patientId, appointmentDate? })` — get-or-create the consultation; related visits are exposed via `session.relatedConsultations` and `useConsultationChain`.
-2. `audio.start(...)` — capture + pipeline; transcripts land in `context.transcriptions`; entities in `context.entities`.
+2. `audio.start({ pipelineId })` — capture + pipeline; transcripts land in `context.transcriptions`; entities in `context.entities`.
+   Omit `pipelineId` and the tenant's default engine runs; pass one to bind this session to a specific
+   published STT pipeline. List them with `usePipelines().list()` (`GET /audio/pipelines`) — its
+   `createPipeline`/`updatePipeline`/… siblings target the admin plane and are not reachable from a
+   browser. `audio.start` also takes `language`, `languageMode`, `deviceId`, and `secondaryDeviceId`
+   (mixed with the primary via `@arcaai/room`'s `AudioMixer`).
+   Read live transcript off `useArcaAudio()`: `transcriptSegments` (finalized `TranscriptSegment[]`)
+   and `currentTranscript` (the interim string).
+   *Note: the `AudioStartOptions` type itself is not exported from any entry point today — pass an
+   object literal rather than annotating it.*
 3. `context.addCaseNote(...)`, `context.extractEntities()` — enrich the record.
 4. `summary.generateSummary(...)` (or `generateSummaryAsync` for job-based generation with SSE progress) — versioning, diffs, and approval flows are exposed on `useArcaSummary`.
 5. `audio.stop()`, then `useArcaSession().close()` (or a status `update`) closes out the visit; `reopen()` reverses it.
@@ -235,6 +244,32 @@ they are distinct states on purpose.
 in the platform yet; the field exists so that declaring one later is additive rather than something
 you have to discover. Note also that a consultation-governing graph takes no caller input at all —
 the interpreter payload is built server-side.
+
+### Running workflows
+
+`useWorkflowRun` is the browser half of the workflow invocation plane; `@arcaai/vox-node`'s
+`hope.workflows` / `hope.consultations.workflows` is the server half, over the same routes.
+
+```tsx
+const { workflows, start, events, status, isRunning, cancel } = useWorkflowRun();
+
+await start(slug, { note });                    // unbound plane
+await start(slug, input, { consultationId });   // writes into a clinical record
+```
+
+- **`workflows: null` is not `[]`.** `null` means the catalogue read has not resolved (or failed);
+  `[]` means the tenant published none. Collapsing the two tells a user they have no workflows
+  because a request blipped — the same rule `useSelectableConsultationWorkflows` follows.
+- **The stream resumes.** `start()` streams by default and reconnects with `lastEventId`, so a
+  disconnect costs latency, not frames. `watch(slug, runId, lastEventId?)` attaches to a run started
+  earlier — e.g. one whose id you persisted across a page reload.
+- **Never put a reserved key in `input`.** `consultationId`, `externalPatientId`, `userId`, `jobId`
+  and `sessionId` are stamped server-side; the hook throws `ReservedRunIdentityError` synchronously
+  rather than letting the gateway 400. The consultation is named by `options.consultationId`, not by
+  the payload.
+- **There is no "list my runs" call.** The business plane exposes a run only by `runId`
+  (`GET /workflows/:slug/runs/:runId`); listing is admin-plane and API-key-forbidden. Keep the
+  `runId` you were handed — you cannot re-discover it.
 
 ### Personalization and models
 
@@ -390,6 +425,7 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 | Group            | Hooks                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useSelectableConsultationWorkflows`, `useAudioRecordings`                                |
+| Live streams²    | `useArcaLiveSummary`, `useConsultationEvents`, `useWorkflowRun`                                                                                                                                                                                          |
 | Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
 | Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
 | Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
@@ -406,6 +442,28 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 > The reason is credential class, not privilege: an API key is a long-lived static bearer secret
 > with no MFA, no session expiry, no revocation-on-logout and no impersonation audit trail.
 > Headless administration is unsupported until the platform's service-account credential ships.
+
+> **² Live streams are SSE, and each opens with a single-use ticket.** All three follow the same
+> shape — `start(id)` / `stop()` plus `status` (`idle | connecting | open | error | closed`) — and
+> connect against `apiClient.getStreamBaseUrl()`, so long-lived connections bypass a BFF and go to
+> the gateway directly. `POST /auth/stream-ticket` is **JWT-only**: an API key cannot mint a ticket,
+> so these hooks require `credentials: { accessToken }`.
+>
+> | Hook | Stream | Carries |
+> | --- | --- | --- |
+> | `useArcaLiveSummary` | `GET /consultations/:id/live-summary/stream` | **Full-state** snapshots: `runningSummary`, `sections`, `entities`, `vitals`. Keep only the latest — it is not a log. |
+> | `useConsultationEvents` | `GET /consultations/:id/loop/stream` | **Append-only** `LoopEvent`s (`kind` is an open string namespace, e.g. `action.started`). Capped at the last 500. **No resume** — frames published while disconnected are gone, and there is no server-side buffer. |
+> | `useWorkflowRun` | `GET /workflows/:slug/runs/:runId/stream` | Workflow run frames, **with** resume (`Last-Event-ID`). Also does the listing, starting and cancelling — see [Running workflows](#running-workflows). |
+>
+> `useArcaLiveSummary`'s `snapshot.entities[]` gives you `{ text, type, confidence?, icd10?, start?, end? }`.
+> **`start`/`end` are character offsets into `snapshot.runningSummary`, not into the transcript** —
+> use them to highlight the summary, and match on `text` if you need to mark up the transcript.
+>
+> **Not covered by any hook: grammar corrections and suggestions.** The `agent.grammar` node
+> publishes to a fourth stream, `GET /consultations/:id/live-assist/stream` (ticket scope
+> `consultation_live_assist:<id>`), and this SDK has no hook, endpoint constant or scope helper for
+> it. Rendering corrections today means hand-rolling an `EventSource` against that route. Do not go
+> looking for them on `useConsultationEvents` — the loop stream carries ids and labels only.
 
 ### Which credential to use — this SDK is JWT-first
 
