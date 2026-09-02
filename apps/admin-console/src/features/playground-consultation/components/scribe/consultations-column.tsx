@@ -338,12 +338,13 @@ export function ConsultationsColumn({
                   <SelectContent>
                     {workflows.map((workflow) => (
                       <SelectItem key={workflow.slug} value={workflow.slug}>
-                        <span className="flex flex-col items-start gap-0.5">
-                          <span className="flex items-center gap-1.5">
-                            {workflow.name}
-                            {workflow.isTenantDefault ? <Badge variant="secondary">Default</Badge> : null}
-                          </span>
-                          <span className="text-muted-foreground font-mono text-xs">{workflow.slug}</span>
+                        {/* One ROW, not a stack: `SelectValue` mirrors this content into the
+                            trigger, which is a fixed-height `line-clamp-1` flex row — a
+                            two-line item would be clipped there. */}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{workflow.name}</span>
+                          {workflow.isTenantDefault ? <Badge variant="secondary">Default</Badge> : null}
+                          <span className="text-muted-foreground truncate font-mono text-xs">{workflow.slug}</span>
                         </span>
                       </SelectItem>
                     ))}

@@ -278,6 +278,24 @@ describe('ConsultationsColumn — workflow selection on open', () => {
     expect(screen.queryByText(/no published workflows/i)).toBeNull();
   });
 
+  it('lists every published workflow and marks the tenant default when the picker is opened', async () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_soap', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining('Consultation SOAP'),
+      expect.stringContaining('Consultation with Medical NER'),
+    ]);
+    // Slugs are shown too — the tenant default is a preselection, not a promise, so the
+    // clinician has to be able to tell two similarly-named graphs apart.
+    expect(options[0].textContent).toContain('arcaai_consultation_soap');
+    // Only the tenant-default entry carries the marker.
+    expect(options[0].textContent).toContain('Default');
+    expect(options[1].textContent).not.toContain('Default');
+  });
+
   it('shows a skeleton, not a claim, while the list is still loading', () => {
     const { container } = setup({ workflows: null, workflowsLoading: true });
     openNewForm();
