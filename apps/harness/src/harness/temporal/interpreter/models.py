@@ -116,6 +116,80 @@ class StageResult(BaseModel):
     nodes: list[NodeResult]
 
 
+#: The keys the consultation palette reads as RUN IDENTITY — ``RunIdentity``
+#: (``nodes/_consultation_shared.py``) plus the two ``nodes/consultation.py`` reads. This tuple
+#: IS the contract: the dispatcher strips exactly these from a caller's payload and re-stamps
+#: exactly these from :class:`RunSubject`, so the thirteen ``run_identity(...)`` call sites and
+#: the consent gate keep reading ``run_payload`` with no edit while becoming incapable of
+#: reading a caller's value. Adding a key here without adding it to ``RunSubject`` would strip
+#: an identity nothing can then supply — ``test_task850_run_subject.py`` pins both halves.
+RESERVED_RUN_IDENTITY_KEYS: tuple[str, ...] = (
+    "consultationId",
+    "externalPatientId",
+    "userId",
+    "jobId",
+    "sessionId",
+)
+
+
+class RunSubject(BaseModel):
+    """The SERVER-RESOLVED clinical subject a run acts on (TASK-850 lane A, closing C-8 link 1).
+
+    This exists because ``payload`` cannot be trusted to carry identity. The exposure plane
+    forwards a caller's ``input`` into ``payload`` verbatim with ``sandbox=False``, and the
+    interpreter's ``external_write`` suppression fires only in sandbox — so a payload-sourced
+    ``consultationId`` let a caller name any live consultation and reach the same
+    ``persist_draft`` activity the real consultation workflow uses.
+
+    The invariant this field carries, from TASK-852 §5: *consultation identity comes from the URL
+    and is re-resolved against the caller's tenant — never from a caller-composed payload.* The
+    gateway populates it ONLY from a path parameter it has re-resolved through a tenant-scoped
+    read; there is no request shape that lets a caller write it and no field on
+    ``InvokeWorkflowRequest`` that reaches it.
+
+    Absent (``None``) means the run has no clinical subject — which is a real state, not a
+    default to fill in: an unbound exposure-plane run legitimately has none, and every
+    consultation activity then degrades with ``no_consultation_id`` rather than writing
+    somewhere arbitrary.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    consultation_id: str = Field(alias="consultationId")
+    external_patient_id: str | None = Field(default=None, alias="externalPatientId")
+    user_id: str | None = Field(default=None, alias="userId")
+
+    def as_run_payload_identity(self) -> dict[str, Any]:
+        """The identity keys as the consultation palette already spells them.
+
+        Only non-``None`` values are emitted: ``RunIdentity`` maps a missing key and an explicit
+        ``None`` to the same ``None``, but emitting the key would make a
+        ``"externalPatientId": None`` look like a supplied-and-empty value to any future reader.
+        """
+        stamped: dict[str, Any] = {"consultationId": self.consultation_id}
+        if self.external_patient_id is not None:
+            stamped["externalPatientId"] = self.external_patient_id
+        if self.user_id is not None:
+            stamped["userId"] = self.user_id
+        return stamped
+
+
+def sanitize_run_payload(
+    payload: dict[str, Any] | None, subject: RunSubject | None
+) -> dict[str, Any]:
+    """A run payload that cannot carry identity, plus the server's own identity re-stamped.
+
+    Pure, and deliberately unconditional — it does NOT ask whether the caller "looked
+    trustworthy", whether the graph is a consultation graph, or whether ``sandbox`` is set. A
+    conditional strip is a strip somebody eventually reasons their way around; this one has no
+    branch to argue with.
+    """
+    clean = {k: v for k, v in (payload or {}).items() if k not in RESERVED_RUN_IDENTITY_KEYS}
+    if subject is not None:
+        clean.update(subject.as_run_payload_identity())
+    return clean
+
+
 class InterpreterInput(BaseModel):
     """WorkflowInterpreter's ``@workflow.run`` input.
 
@@ -132,6 +206,12 @@ class InterpreterInput(BaseModel):
     tenant_id: str
     run_id: str
     sandbox: bool = False
+    # TASK-850 lane A, additive-optional. The run's SERVER-RESOLVED clinical subject — see
+    # `RunSubject`. Carried alongside `payload` rather than inside it so the two channels are
+    # visibly different things in a Temporal history: `payload` is what a caller sent, `subject`
+    # is what the server resolved. `payload` is sanitized against this field by
+    # `sanitize_run_payload` BEFORE the workflow starts, so the two can never disagree.
+    subject: RunSubject | None = None
     # Additive-optional (TASK-720 Task 5): the raw invocation payload, threaded generically
     # into every node's `NodeActivityInput.run_payload` — see that field's docstring.
     # NOTE (honesty, not fabrication): `WorkflowExposureService.invoke()`

@@ -16,6 +16,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio.client import Client
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
@@ -23,6 +24,7 @@ from harness.api.endpoints.internal import require_service_token
 from harness.core.config import Settings
 from harness.core.logging import get_logger
 from harness.temporal.claim_check import ClaimCheckRef
+from harness.temporal.interpreter.models import RunSubject, sanitize_run_payload
 
 logger = get_logger(__name__)
 
@@ -78,10 +80,15 @@ class StartWorkflowRunRequest(BaseModel):
     config_ref: ClaimCheckRef = Field(alias="configRef")
     sandbox: bool = Field(default=False)
     # Additive-optional (TASK-721 Workbench, closing the gap `InterpreterInput.payload`'s own
-    # docstring named): the raw invocation/test payload, forwarded verbatim into
-    # `InterpreterInput.payload` -> every node's `NodeActivityInput.run_payload`. Never required —
-    # a real (non-sandbox) exposure-plane invoke may still omit it and get `{}`.
+    # docstring named): the raw invocation/test payload. NO LONGER forwarded verbatim — as of
+    # TASK-850 lane A it is passed through `sanitize_run_payload`, which removes every
+    # `RESERVED_RUN_IDENTITY_KEYS` entry before the workflow starts. Never required — a real
+    # (non-sandbox) exposure-plane invoke may still omit it and get `{}`.
     payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-850 lane A. The run's SERVER-RESOLVED clinical subject, on its own channel so a
+    # caller-composed `payload` cannot impersonate one. See `RunSubject` for why this is a
+    # separate field rather than a convention about `payload`'s contents.
+    subject: RunSubject | None = Field(default=None)
 
 
 @router.post(
@@ -104,20 +111,45 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         tenant_id=body.tenant_id,
         run_id=body.run_id,
         sandbox=body.sandbox,
-        payload=body.payload,
+        # TASK-850 lane A (C-8 link 1). The caller's payload is stripped of every
+        # `RESERVED_RUN_IDENTITY_KEYS` entry and the SERVER-resolved subject is stamped in its
+        # place. Unconditional: no branch on sandbox, palette or caller — a strip with a branch
+        # is a strip somebody eventually reasons their way around.
+        payload=sanitize_run_payload(body.payload, body.subject),
+        subject=body.subject,
     )
 
+    started_flag: bool | None = None
     try:
-        await client.start_workflow(
+        handle = await client.start_workflow(
             WorkflowInterpreter.run,
             wf_input,
             id=workflow_id,
             task_queue=settings.temporal.task_queue,
+            # TASK-850 lane A step 6 — the two policies that make a RETRY join rather than
+            # double-bill, and they cover DIFFERENT cases:
+            #   * `USE_EXISTING` — the prior execution is still RUNNING. Temporal returns a
+            #     handle to it instead of raising, so a retried webhook attaches to the run
+            #     already in flight.
+            #   * `REJECT_DUPLICATE` — the prior execution has CLOSED. This is the case the
+            #     previous `WorkflowAlreadyStartedError` catch could not cover: Temporal's
+            #     DEFAULT reuse policy is `ALLOW_DUPLICATE`, so a webhook retried after the run
+            #     finished started a SECOND, separately-billed execution under the same id and
+            #     reported it as a fresh start. It now raises, and is reported as a join.
+            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         )
-        status = "started"
+        # `USE_EXISTING` does NOT raise when it joins — the distinction rides on the start
+        # response's `started` flag. Read defensively: a client stub (or a server too old to set
+        # the field) leaves it unknown, and "assume started" is the honest default there, since
+        # `REJECT_DUPLICATE` already turns every closed-run duplicate into the exception path.
+        start_response = getattr(handle, "_start_workflow_response", None)
+        started_flag = getattr(start_response, "started", None)
+        status = "started" if started_flag is not False else "already_running"
     except WorkflowAlreadyStartedError:
-        # Idempotent: a run already exists for this run id — return it, HTTP 200, never a
-        # second execution (ticket §4 Task 10).
+        # A CLOSED prior execution under this workflow id (`REJECT_DUPLICATE`), or a server that
+        # does not honour the conflict policy. Either way: return the existing run, HTTP 200,
+        # never a second execution (ticket §4 Task 10).
         status = "already_running"
 
     handle = client.get_workflow_handle(workflow_id)
