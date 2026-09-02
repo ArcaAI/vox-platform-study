@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Body, Query, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
@@ -120,6 +120,18 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
+  // Declared explicitly rather than left to the Swagger plugin's inference, which emits every
+  // header/query parameter as `required: true` (see the `Idempotency-Key` header on `invoke`).
+  // Both of these are OPTIONAL by construction — a first connect sends neither — and documenting
+  // a resume cursor as mandatory would tell a client to invent one, which is the exact thing
+  // async-contract §3.6 forbids.
+  @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'Opaque resume token from a previous frame’s `id`. Omit on a first connect.' })
+  @ApiQuery({
+    name: 'lastEventId',
+    required: false,
+    description: 'Fallback for a client that cannot set headers. The header wins when both are present.',
+  })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async streamRunStatus(
     @Param('slug') slug: string,
     @Param('runId') runId: string,
