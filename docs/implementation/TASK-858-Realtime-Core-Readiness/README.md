@@ -100,6 +100,10 @@ Deployment repo (`hope-v2-deployment@task-858-orbstack-overlay`): `overlays/orbs
 | Medical NER | `POST /text-analyses/entities` → `blaze999/Medical-NER` entities with UMLS/SNOMED/ICD codes (loaded from `AiModel.localPath`, Mode M) |
 | Platform-admin catalog flows | `POST /admin/ai-models` (super admin, `X-Tenant-Id`), `POST /admin/audio/pipelines`, `PUT /admin/providers/llm/lm-studio` (If-Match) all 200/201 |
 
+| Clinician selects a workflow (API/SDK path) | As `arcaai_doctor`: `POST /consultations/open` with `workflowDefinitionSlug: arcaai-consultation-medical-ner` → 201; `GET /consultations/:id/workflow` → `governed: true`, that slug, a durable `workflowRunId` (Temporal dispatch succeeded); `GET /admin/harness/live/capabilities?consultationId=` → `laneSource: tenant-graph`, `assignmentSource: consultation`, nodes `captureBinding → realtimeSummary → extractEntities` — Lanes A, A2 and B working together, after the slug-grammar fix |
+
+A console fact the acceptance criteria should be read against: the Consultation Scribe and Live Transcription playgrounds live under the `(tenant)` route group, whose layout `notFound()`s any user who is not a TENANT_ADMIN or elevated — a DOCTOR login lands on "Page not found". They are the tenant admin's test surfaces (rule 13, tier 50–59); the clinician end-user path is the SDK/API one verified above.
+
 Two local-only facts worth knowing: the platform provider key had to be re-saved through the admin API because the laptop's in-memory dev Vault (and its Transit key) had been re-initialised by an OrbStack restart; and the private q8_0 whisper weights are not on this machine (HF token needed), so a `q5_0` stand-in row + pipeline were registered through the admin API for the live-transcription proof — the seeded q8_0 default fails closed until the weights are published.
 
 ## 5. Change History
