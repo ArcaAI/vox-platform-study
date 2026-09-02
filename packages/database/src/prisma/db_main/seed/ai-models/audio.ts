@@ -332,7 +332,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
     source: AiModelSource.LOCAL,
-    sourceUri: 'taphuynh/whisper-large-en-medical-260726-merged-gguf',
+    // Verified against the HF API 2026-09-02: the repo is
+    // `taphuynh/whisper-large-en-medical-2607.26-merged-gguf` (dotted date) —
+    // the previous `260726` (no dot) spelling does not exist.
+    sourceUri: 'taphuynh/whisper-large-en-medical-2607.26-merged-gguf',
     sourceRevision: 'main',
     format: AiModelFormat.WHISPER_CPP,
     provider: 'built-in',
@@ -355,7 +358,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.QUANTIZED_MODEL,
     source: AiModelSource.LOCAL,
-    sourceUri: 'taphuynh/whisper-large-en-medical-260726-merged-ct2',
+    // Verified against the HF API 2026-09-02: the repo is
+    // `taphuynh/whisper-large-en-medical-2607.26-merged-ct2` (dotted date) —
+    // the previous `260726` (no dot) spelling does not exist.
+    sourceUri: 'taphuynh/whisper-large-en-medical-2607.26-merged-ct2',
     sourceRevision: 'main',
     format: AiModelFormat.FASTER_WHISPER,
     provider: 'built-in',
