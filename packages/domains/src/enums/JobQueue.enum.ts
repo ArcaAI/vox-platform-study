@@ -35,6 +35,12 @@ export enum JobQueue {
   // per the outbox-drain handoff).
   AiUsageOutboxDrain = 'AiUsageOutboxDrain',
 
+  // TASK-855 lane L3 — admin-triggered AiModel weight download: fetch from
+  // the model's sourceUri (HuggingFace repo or an existing s3:// prefix),
+  // verify, publish into the hope-models bucket, and write back the AiModel
+  // registry row. See `AiModelDownloadService` / `AiModelDownloadProcessor`.
+  DownloadAiModel = 'DownloadAiModel',
+
   // TASK-727: per-webhook delivery attempts. Deliberately a SEPARATE queue
   // from `SysEvent` — `WebhookDeliveryProcessor` (`@Processor(SysEvent)`)
   // matches a fired SysEvent against subscribed `Webhook` rows and fans out

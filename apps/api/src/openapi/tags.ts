@@ -433,6 +433,14 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'platform',
     description: 'Service-to-service STT callbacks. Excluded from the public reference; reachable only with the internal service token.',
   },
+  {
+    name: 'internal-model-registry',
+    displayName: 'Internal — Model Registry',
+    plane: 'platform',
+    description:
+      'The generic model-registry credential resolver every backend service (nlp, tts, harness, stt) uses for s3:// weight sources. ' +
+      'Excluded from the public reference; reachable only with an internal service token.',
+  },
   { name: 'health', displayName: 'Health', plane: 'platform', description: 'Liveness, readiness, and dependency health probes.' },
   // Emitted by the VENDORED `@willsoto/nestjs-prometheus` controller, which we
   // do not own and therefore cannot re-tag at the source. Declared verbatim

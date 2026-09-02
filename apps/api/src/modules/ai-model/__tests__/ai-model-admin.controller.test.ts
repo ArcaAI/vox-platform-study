@@ -6,8 +6,8 @@
  * and plain delegation to `AiModelService`, including the OCC `If-Match` fold.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
-import { RequestMethod } from '@nestjs/common';
+import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
+import { RequestMethod, HttpStatus } from '@nestjs/common';
 import { AiModelAdminController } from '../ai-model-admin.controller';
 
 // =============================================================================
@@ -59,7 +59,7 @@ describe('AiModelAdminController delegation', () => {
       { id: 'm2', resourceStatus: 'DISABLED' },
     ]);
     const getAll = vi.fn().mockResolvedValue([]);
-    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never);
+    const controller = new AiModelAdminController({ getAllForAdmin, getAll } as never, {} as never);
 
     const result = await controller.fetchAll();
 
@@ -76,7 +76,7 @@ describe('AiModelAdminController delegation', () => {
       getBySlug: vi.fn().mockResolvedValue({ id: 'm1' }),
       delete: vi.fn().mockResolvedValue(undefined),
     } as never;
-    const controller = new AiModelAdminController(svc);
+    const controller = new AiModelAdminController(svc, {} as never);
 
     await controller.create({ name: 'x' } as never);
     await controller.fetchById('m1');
@@ -96,7 +96,7 @@ describe('AiModelAdminController delegation', () => {
 describe('AiModelAdminController update — OCC If-Match fold', () => {
   const build = () => {
     const update = vi.fn().mockResolvedValue({ id: 'm1', name: 'Updated', version: 8 });
-    return { controller: new AiModelAdminController({ update } as never), update };
+    return { controller: new AiModelAdminController({ update } as never, {} as never), update };
   };
 
   it('forwards the body unchanged when If-Match header is absent (body wins)', async () => {
@@ -115,5 +115,52 @@ describe('AiModelAdminController update — OCC If-Match fold', () => {
     const { controller, update } = build();
     const result = await controller.update('m1', { name: 'Updated', expectedVersion: 7 } as never, undefined);
     expect(result).toEqual(expect.objectContaining({ id: 'm1', version: 8 }));
+  });
+});
+
+// =============================================================================
+// Download action (TASK-855 lane L3) — route metadata + delegation
+// =============================================================================
+describe('AiModelAdminController download route metadata', () => {
+  it('triggerDownload is bound to POST :id/download, HttpCode 202', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, AiModelAdminController.prototype.triggerDownload)).toBe(':id/download');
+    expect(Reflect.getMetadata(METHOD_METADATA, AiModelAdminController.prototype.triggerDownload)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, AiModelAdminController.prototype.triggerDownload)).toBe(HttpStatus.ACCEPTED);
+  });
+
+  it('getDownloadStatus is bound to GET :id/download', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, AiModelAdminController.prototype.getDownloadStatus)).toBe(':id/download');
+    expect(Reflect.getMetadata(METHOD_METADATA, AiModelAdminController.prototype.getDownloadStatus)).toBe(RequestMethod.GET);
+  });
+});
+
+describe('AiModelAdminController download delegation', () => {
+  it('triggerDownload delegates to AiModelDownloadService.triggerDownload and returns its result verbatim', async () => {
+    const triggerDownload = vi.fn().mockResolvedValue({ jobId: 'job-1', status: 'DOWNLOADING' });
+    const controller = new AiModelAdminController({} as never, { triggerDownload } as never);
+
+    const result = await controller.triggerDownload('m1');
+
+    expect(triggerDownload).toHaveBeenCalledWith('m1');
+    expect(result).toEqual({ jobId: 'job-1', status: 'DOWNLOADING' });
+  });
+
+  it('getDownloadStatus delegates to AiModelDownloadService.getDownloadStatus and returns its result verbatim', async () => {
+    const getDownloadStatus = vi.fn().mockResolvedValue({
+      status: 'DOWNLOADED',
+      startedAt: null,
+      finishedAt: null,
+      fileSizeMb: 3350,
+      sha256: 'abc',
+      localPath: '/mnt/models-bucket/gemma4-e2b-it-qat/q4-0-451faffb5a16/',
+      error: null,
+    });
+    const controller = new AiModelAdminController({} as never, { getDownloadStatus } as never);
+
+    const result = await controller.getDownloadStatus('m1');
+
+    expect(getDownloadStatus).toHaveBeenCalledWith('m1');
+    expect(result.status).toBe('DOWNLOADED');
+    expect(result.localPath).toBe('/mnt/models-bucket/gemma4-e2b-it-qat/q4-0-451faffb5a16/');
   });
 });
