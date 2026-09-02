@@ -12,7 +12,30 @@ export interface InvokeWorkflowOptions {
   idempotencyKey?: string;
   /** `request['apiKey'].id` when the caller authenticated with an API key — audit provenance only. */
   apiKeyId?: string;
+  /**
+   * The consultation this run acts on, **from the URL PATH** — TASK-850 lane A.
+   *
+   * A controller may set this ONLY from a route parameter on a consultation-scoped path
+   * (`POST /consultations/:consultationId/workflows/:slug/runs`). It must never be read from a
+   * body, a query string or a header: those are all caller-composed, which is precisely the C-8
+   * shape this option exists to replace. The service does not trust it either — it re-resolves
+   * the id through `IConsultationService.getById` (tenant-scoped ⇒ a foreign or unknown id is a
+   * 404) before anything downstream sees it.
+   *
+   * Presence is what admits the `consultation` palette (`CONSULTATION_BOUND_ALLOWED_PALETTES`);
+   * absence keeps the original, unchanged `EXPOSURE_ALLOWED_PALETTES` boundary.
+   */
+  consultationId?: string;
 }
+
+/** Which catalogue `list()` should answer — the discovery half of the two exposure planes. */
+export interface ListWorkflowOptions {
+  /** `true` on a consultation-scoped path, so the catalogue matches what that plane can invoke. */
+  consultationBound?: boolean;
+}
+
+/** How the caller wants the response delivered (TASK-850 lane A step 7). */
+export type WorkflowRunResponseMode = 'async' | 'blocking' | 'stream';
 
 /**
  * The exposure plane's application service (TASK-722 Task 5): invoke a
@@ -26,7 +49,7 @@ export interface InvokeWorkflowOptions {
  */
 export interface IWorkflowExposureService {
   /** The tenant's published + ACTIVE workflows (slug + identity only — no per-definition input schema exists yet). */
-  list(): Promise<WorkflowSummaryListResponse>;
+  list(opts?: ListWorkflowOptions): Promise<WorkflowSummaryListResponse>;
 
   /**
    * Start a run of the tenant's ACTIVE PUBLISHED version of `slug`.
