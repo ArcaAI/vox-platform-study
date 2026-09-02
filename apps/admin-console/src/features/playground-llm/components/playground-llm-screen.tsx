@@ -1,8 +1,16 @@
 'use client';
 
 /**
- * Frame 54 / artboard 4f — Agent Playground (tier 50–59, matrix row 38). The
- * Text generation tab: prompt + generate via the `text-generations/*` gateway proxy
+ * Frame 54 / artboard 4f — LLM Playground (tier 50–59, matrix row 38).
+ *
+ * RENAMED from "Agent Playground" by TASK-858 Lane D (route unchanged). Nothing
+ * agent- or workflow-shaped runs here: the three tabs are raw calls to the text,
+ * guardrail and NLP services. Agents and workflows are authored in
+ * `/workflow-studio` and exercised in `/playground/workbench` and
+ * `/playground/consultation`, so the old name pointed a clinician at the wrong
+ * screen for the job.
+ *
+ * The Text generation tab: prompt + generate via the `text-generations/*` gateway proxy
  * (sync or streaming, assembled mode with the admin-only debug meta,
  * provider/guardrail catalogs with the elevated __GLOBAL__ view; streaming
  * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
@@ -181,7 +189,7 @@ function footerStatus(run: RunState, stream: TaskStreamState, isPending: boolean
 export function PlaygroundLlmScreen() {
   return (
     <WorkingTenantGate
-      title="Agent Playground"
+      title="LLM Playground"
       meta={<span>POST /text-generations/generate · SSE /text-generations/tasks/:taskId/stream · providers from the tenant catalog</span>}
       description="Playground generations run inside a tenant’s provider catalog and HarnessPolicy. Pick a working tenant from the switcher in the top bar."
     >
@@ -318,7 +326,7 @@ function PlaygroundLlmBody() {
         header={
           <div className="mx-auto w-full max-w-[1440px] px-4">
             <CanvasHeader
-              title="Agent Playground"
+              title="LLM Playground"
               description={'Compose → run → stream · runs under your own account'}
               actions={
                 <Button onClick={handleGenerate} disabled={isPending || !canGenerate}>

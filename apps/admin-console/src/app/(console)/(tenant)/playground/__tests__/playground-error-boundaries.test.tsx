@@ -20,7 +20,7 @@ const CASES: Array<{ name: string; Component: typeof ConsultationError; title: R
   { name: 'consultation', Component: ConsultationError, title: /consultation scribe failed to load/i },
   { name: 'dna-writing-style', Component: DnaWritingStyleError, title: /dna writing style failed to load/i },
   { name: 'live-transcription', Component: LiveTranscriptionError, title: /live transcription failed to load/i },
-  { name: 'llm', Component: LlmError, title: /agent playground failed to load/i },
+  { name: 'llm', Component: LlmError, title: /llm playground failed to load/i },
   { name: 'voice-profiles', Component: VoiceProfilesError, title: /voice enrollment.*failed to load/i },
 ];
 

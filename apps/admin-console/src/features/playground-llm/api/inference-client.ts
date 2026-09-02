@@ -1,5 +1,5 @@
 /**
- * Agent Playground → Guardrails + NER tabs. Both hit the user-plane
+ * LLM Playground → Guardrails + NER tabs. Both hit the user-plane
  * `/ai/*` gateway proxy over the BFF (`/api/hope/ai/*`). Requests are camelCase
  * (the gateway DTO maps to the upstream snake_case); responses are the Python
  * services' shapes, proxied verbatim — keep them snake_case in ./types.ts.

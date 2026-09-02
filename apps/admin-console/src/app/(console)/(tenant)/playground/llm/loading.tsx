@@ -1,6 +1,6 @@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 
-/** Skeleton mirroring the Agent Playground canvas: header, tabs, prompt/output/providers panes. */
+/** Skeleton mirroring the LLM Playground canvas: header, tabs, prompt/output/providers panes. */
 export default function PlaygroundLlmLoading() {
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6">
