@@ -55,3 +55,23 @@ export function getRunGate(runId: string): Promise<RunGateState> {
 export function approveRunGate(runId: string, body: ApproveRunGateBody): Promise<RunGateState> {
   return postJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}/gate/approve`, body);
 }
+
+/**
+ * The run-event SSE endpoint (TASK-849 lane A/C). Lives on a DIFFERENT controller
+ * (`WorkflowsController`, `@Controller('workflows')`) than the rest of this client —
+ * the tenant-scoped runs/observability plane above reads the trajectory-backed trace,
+ * this one is the interpreter's own snapshot-then-delta push. `slug` (not just `runId`)
+ * is required because the route is `:slug/runs/:runId/stream`; callers get it off the
+ * already-fetched `WorkflowRun.workflowSlug`.
+ *
+ * Path is relative to /api/v1 — the browser connects DIRECTLY to the gateway with a
+ * single-use ticket (`useEventStream`), never through the BFF proxy `getJson` uses.
+ */
+export function workflowRunStreamPath(slug: string, runId: string): string {
+  return `workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/stream`;
+}
+
+/** Ticket scope — must match the route's `@StreamScope({ namespace: 'workflow_run', param: 'runId' })`. */
+export function workflowRunStreamScope(runId: string): string {
+  return `workflow_run:${runId}`;
+}
