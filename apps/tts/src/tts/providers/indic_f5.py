@@ -42,6 +42,26 @@ _NATIVE_RATE = 24000  # IndicF5 is 24 kHz native (no resample)
 _MAX_SENTENCE_CHARS = 300
 
 
+async def _resolve_s3_override(config: IndicF5Config) -> IndicF5Config:
+    """Materialise an ``s3://`` local-mirror override into a real directory.
+
+    ``model_path`` is a plain local-mirror path (Mode M — an operator/admin-
+    staged directory, mirroring ``IndicParlerProvider``'s field of the same
+    name); this resolves the ONE new case, an ``s3://bucket/prefix`` value,
+    via the mirrored resolver (``tts.models.source_resolver``) BEFORE
+    ``_load_model`` (unchanged) ever sees it. A config with no ``s3://``
+    override is returned UNCHANGED (same object), so the existing local-path /
+    gated-hub behaviour is byte-for-byte preserved.
+    """
+    if not config.model_path.startswith("s3://"):
+        return config
+
+    from tts.models.source_resolver import resolve_local_override
+
+    resolved = await resolve_local_override(config.model_path, slug="indic_f5-model")
+    return config.model_copy(update={"model_path": resolved})
+
+
 class IndicF5Provider:
     name = "indic_f5"
     supported_locales = {"ml-IN", "en-IN"}
@@ -80,7 +100,11 @@ class IndicF5Provider:
 
     async def _load_generate(self, _key: str) -> Callable[[str], np.ndarray]:
         """Build the generate callable. Runs in a thread — a heavy, blocking load."""
-        builder = self._generate_factory or self._load_model
+        # Resolve any `s3://` local-mirror override HERE, in the coroutine —
+        # never inside the thread the blocking torch/transformers load runs on
+        # (no event loop to `await` an async download against there).
+        effective_config = await _resolve_s3_override(self._config)
+        builder = self._generate_factory or (lambda: self._load_model(effective_config))
         generate = await asyncio.to_thread(builder)
 
         TTS_MODEL_LOADED.labels(model="indic_f5").set(1)
@@ -106,13 +130,17 @@ class IndicF5Provider:
         """Release the model if it has been idle past its TTL."""
         return await self._cache.sweep()
 
-    def _load_model(self) -> Callable[[str], np.ndarray]:
+    def _load_model(self, config: IndicF5Config | None = None) -> Callable[[str], np.ndarray]:
         from transformers import AutoModel
 
-        source = self._config.model_path or self._config.hf_model  # local mirror or gated hub
-        model = AutoModel.from_pretrained(source, trust_remote_code=True).to(self._config.device)
-        ref_audio = self._config.ref_audio_path
-        ref_text = self._config.ref_text
+        # `config` is the s3-override-resolved config `_load_generate` builds;
+        # defaults to `self._config` so a direct call (existing tests that
+        # inject `generate_factory` never reach this method at all) is unchanged.
+        cfg = config if config is not None else self._config
+        source = cfg.model_path or cfg.hf_model  # local mirror or gated hub
+        model = AutoModel.from_pretrained(source, trust_remote_code=True).to(cfg.device)
+        ref_audio = cfg.ref_audio_path
+        ref_text = cfg.ref_text
 
         def _generate(text: str) -> np.ndarray:
             audio = model(text, ref_audio_path=ref_audio, ref_text=ref_text)
