@@ -194,8 +194,7 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
             "secret key is missing. These are not environment variables — "
             "configure the 'model-registry' / 's3' provider connection for the "
             "tenant that OWNS this model, or for the SYSTEM tenant to serve "
-            "every model that has no owner of its own. (tts has no gateway "
-            "route to that credential yet — see the module docstring.)"
+            "every model that has no owner of its own."
         )
 
     try:
