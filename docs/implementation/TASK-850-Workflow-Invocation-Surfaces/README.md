@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` |
+| **Status** | `Review` |
 | **Type** | `feature` |
 | **Branch** | `dev-2.2` |
 | **Parent** | [TASK-837](../TASK-837-AI-Platform-Consolidation-Program/README.md) — Track D |
@@ -74,10 +74,78 @@ See TASK-837 §4 for this ticket's verification block. Program-wide gates in TAS
 
 ## 5. Implementation Summary
 
-Not started.
+**Lane A is complete.** A tenant's published **consultation** workflow is now invocable by that
+tenant's developer, and finding **C-8 is closed harder than it was before** — the payload channel
+that carried the vulnerability cannot carry identity at all any more, for any caller.
+
+### 5.1 The C-8 chain, link by link
+
+C-8 was a chain of four. Breaking any one closes it; this change breaks three and turns the
+fourth into a non-issue.
+
+| C-8 link | What it is now | Where |
+|---|---|---|
+| **1. `consultationId` from caller-controlled `dto.input`** | **BROKEN, structurally.** Identity travels on `InterpreterInput.subject`, a field no request shape can write. `sanitize_run_payload` strips every `RESERVED_RUN_IDENTITY_KEYS` entry from the payload and re-stamps the server's, **unconditionally** — no branch on sandbox, palette or caller. At the composition point the gateway additionally **400s** on a reserved key rather than dropping it silently. | `interpreter/models.py`, `api/endpoints/interpreter.py`, `exposure-palette-policy.ts` |
+| **2. `sandbox: false`, so external-write suppression never fires** | **Still true, and no longer load-bearing.** Suppression answered *"may this run write?"*; the binding answers *"WHERE may it write?"* — one row the caller was already authorised for. A boolean could never have expressed that, which is why the fix is a binding and not a flag. | `RunSubject` |
+| **3. `consultation.persistDraft` reaches the shared activity** | **Unchanged, and now the FEATURE.** It writes to the caller's own consultation. All 13 `run_identity(...)` call sites plus the consent gate read `run_payload` exactly as before — and can only ever see server-stamped values. | untouched |
+| **4. API-key reachable; `paletteKey` is free text** | **Narrowed.** The gate still resolves NODE types, never the declared palette. `EXPOSURE_ALLOWED_PALETTES` is **unchanged** (`{'summarization'}`); a second set `CONSULTATION_BOUND_ALLOWED_PALETTES` applies **only** on a plane where the binding exists. Plus `execute:ConsultationWorkflow` and a **new top-level** `workflows:execute` scope — deliberately outside the `workflow:` prefix, since scope matching is by prefix and a key holding bare `workflow` must not inherit a clinical-write plane. | `exposure-palette-policy.ts`, `consultation-workflow-runs.controller.ts` |
+
+**The allow-list was NOT lifted.** It is byte-identical, and a test pins it.
+
+### 5.2 What was built
+
+| Area | Change |
+|---|---|
+| Harness | `RunSubject` + `RESERVED_RUN_IDENTITY_KEYS` + `sanitize_run_payload` (`interpreter/models.py`); dispatcher strips/re-stamps and declares `id_conflict_policy=USE_EXISTING` + `id_reuse_policy=REJECT_DUPLICATE` |
+| Applications | `CONSULTATION_BOUND_ALLOWED_PALETTES`, plane-aware `exposureBoundaryViolation`, realtime-only refusal, `reservedIdentityKeysIn`, `deterministicRunId`, consultation re-resolution, durable idempotent join; `ConsultationWorkflowDispatchService` moved to `subject` |
+| API | `POST /workflows/:slug/runs` (canonical) + `/invoke` alias; `ConsultationWorkflowRunsController`; `deliverRun` (one response-mode implementation); `WorkflowStreamService.awaitTerminal` |
+| Auth | `workflows:execute` scope; `execute:ConsultationWorkflow` seeded for tenant admins |
+
+### 5.3 Two live findings this verification produced
+
+Both are **pre-existing local-dev defects**, found only because the run was real:
+
+1. **The Temporal worker imports the PRIMARY checkout, not the invoking worktree.**
+   `scripts/dev-service.sh worker` runs `python -m harness.temporal.worker` with **no `--app-dir`
+   and no `PYTHONPATH`**, so `harness` resolves through the conda editable install's `.pth` — an
+   absolute path into the primary tree. This is exactly the hazard `14-multi-agent-worktrees.md`
+   §4 documents for pytest, and the `pythonpath` fix applied there **does not cover the worker**,
+   because it lives in pytest config. It surfaced here as
+   `InterpreterInput.subject: extra_forbidden` — the worker running code that predated the field.
+   A worktree agent changing interpreter models will otherwise test the wrong source and see a
+   green suite.
+2. **`HARNESS_CLAIM_CHECK_STORE` defaults to `memory` while the gateway always writes to MinIO.**
+   `WorkflowExposureService` mints the compiled-config claim-check into MinIO unconditionally, so
+   on a default dev box every exposure-plane invoke starts a run whose config the interpreter
+   cannot load (`ClaimCheckNotFound`). Pre-dates this ticket (TASK-722's path).
+
+### 5.4 Deployment ordering — a hazard this change introduces
+
+`InterpreterInput` is `extra="forbid"`. Adding `subject` is safe for **replay** (an old history
+lacks the field and the default applies — the 19 replay-compat tests pass), but it is **not**
+safe for a dispatcher that outruns its worker: a NEW harness API sending `subject` to an OLD
+worker fails **every** run at argument decoding. **Roll the Temporal worker before the harness
+API and the gateway.** The reverse order is safe.
+
+### 5.5 Scoped out, named rather than stubbed
+
+- **Webhook HMAC + replay window** (TASK-837 §4 step 5) — a Vault-backed credential surface; it
+  belongs with the webhook lane, not the invocation boundary. Not built, not stubbed.
+- **Realtime-lane consultation capabilities over this plane** — the durable interpreter skips
+  `lane: 'realtime'` nodes, so a realtime-only graph is refused on BOTH planes rather than
+  accepted and silently no-op'd. Those capabilities stay on TASK-852's session-bound path.
+- **Service accounts cannot reach either plane** (`svcScopes: []`), matching the pre-existing
+  exposure plane: `svc:*` is the PLATFORM machine identity, and declaring one on a route that
+  writes a tenant's clinical rows is the credential-space mixing the TASK-708 ruling forbids.
 
 ## 6. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-01 | Ticket document created and aligned to TASK-837 §4. Not started. |
+| 2026-09-02 | Lane A implemented. Status `Pending` -> `In Progress`. §3 expanded into the executed step list. |
+| 2026-09-02 | C-8 closed structurally: `RunSubject` + `sanitize_run_payload` make the run payload incapable of carrying consultation identity, for every caller of the dispatcher. `EXPOSURE_ALLOWED_PALETTES` unchanged; `CONSULTATION_BOUND_ALLOWED_PALETTES` added for the bound plane only. |
+| 2026-09-02 | Idempotency moved off the best-effort Redis cache: derived run id + `USE_EXISTING` + `REJECT_DUPLICATE`. Proven live — a retry after the run CLOSED returns `already_running` with still exactly ONE Temporal execution (previously `ALLOW_DUPLICATE` would have billed a second). |
+| 2026-09-02 | LIVE verification against a real gateway, harness dispatcher, Temporal worker and the dev DB: a published consultation workflow ran (`202`, real interpreter execution); Temporal history shows `subject` carrying the server-resolved consultation and the attacker's keys absent; blocking mode hit its 60s ceiling with a 504 and also returned 200 on a fast run; a mid-stream disconnect left the Temporal execution `COMPLETED`, and `Last-Event-ID` resumed. |
+| 2026-09-02 | Two pre-existing local-dev defects found by that run and recorded in §5.3 (Temporal worker imports the primary checkout; claim-check store defaults to `memory` while the gateway writes to MinIO). Deployment-ordering hazard recorded in §5.4 — roll the worker first. |
+| 2026-09-02 | Webhook HMAC and realtime-lane invocation deliberately scoped OUT and named in §5.5 rather than stubbed. |
