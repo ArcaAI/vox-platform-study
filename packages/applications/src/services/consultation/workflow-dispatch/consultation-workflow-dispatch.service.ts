@@ -217,6 +217,13 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       // (`interpreter/nodes/_consultation_shared.py`). Omitting it is what made TASK-789 C-2 look
       // like a broken invoke path: `input.context_binding` is `critical=True`, so a run without
       // identity fails at its first node.
+      //
+      // TASK-850 lane A moved it from `payload` to `subject`. It is the SAME three values
+      // reaching the same `run_identity(...)` readers — the dispatcher re-stamps them into
+      // `run_payload` — but they now travel on a channel a caller cannot compose. This call site
+      // was always safe (its `consultationId` comes from a consultation the gateway just opened,
+      // not from a request body); it moves because the dispatcher now STRIPS those keys out of
+      // `payload` unconditionally, and a conditional strip is one somebody reasons around.
       await this.harnessGateway.startWorkflowRun({
         runId,
         sessionId,
@@ -224,7 +231,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         tenantId,
         configRef,
         sandbox: false,
-        payload: { consultationId, userId, externalPatientId: externalPatientId ?? null },
+        subject: { consultationId, userId, externalPatientId: externalPatientId ?? undefined },
       });
 
       // TASK-795 W1 — record the decision AFTER the run has actually started. The
