@@ -118,3 +118,65 @@ describe('deriveModelVersion', () => {
     expect(deriveModelVersion('q4-0', sumsA)).not.toBe(deriveModelVersion('q4-0', sumsB));
   });
 });
+
+/**
+ * TASK-855 — the fetch allowlist must actually reach the weights of the three
+ * models nominated for end-to-end validation. Before this suite, two of the
+ * three published NO weight file at all, silently: the selection simply
+ * returned companions (or nothing) and the publish "succeeded".
+ *
+ * File lists below are the REAL repo contents, read from the HuggingFace API
+ * on 2026-09-02, not invented fixtures.
+ */
+describe('isRelevantModelSourceFile — real repo listings (TASK-855)', () => {
+  const MEDICAL_NER = [
+    '.gitattributes',
+    'README.md',
+    'added_tokens.json',
+    'config.json',
+    'model.safetensors',
+    'special_tokens_map.json',
+    'spm.model',
+    'tokenizer.json',
+    'tokenizer_config.json',
+    'training_args.bin',
+  ];
+  const QWEN3_GGUF = ['Qwen3-0.6B-Q4_K_S.gguf'];
+  const WHISPER_GGML = [
+    '.gitattributes',
+    'README.md',
+    'ggml-whisper-large-en-medical-2607.26-f16.bin',
+    'ggml-whisper-large-en-medical-2607.26-q5_0.bin',
+    'ggml-whisper-large-en-medical-2607.26-q8_0.bin',
+  ];
+
+  const kept = (files: string[]) => files.filter(isRelevantModelSourceFile);
+
+  it('blaze999/Medical-NER: keeps the safetensors weights and the sentencepiece model', () => {
+    const files = kept(MEDICAL_NER);
+    expect(files).toContain('model.safetensors');
+    expect(files).toContain('spm.model');
+    expect(files).toContain('added_tokens.json');
+  });
+
+  it('blaze999/Medical-NER: drops trainer bookkeeping that shares the .bin extension', () => {
+    expect(kept(MEDICAL_NER)).not.toContain('training_args.bin');
+  });
+
+  it('unsloth/Qwen3-0.6B-GGUF: keeps the GGUF (unchanged behaviour)', () => {
+    expect(kept(QWEN3_GGUF)).toEqual(['Qwen3-0.6B-Q4_K_S.gguf']);
+  });
+
+  it('whisper ggml: keeps .bin weights even though the repo name says gguf', () => {
+    const files = kept(WHISPER_GGML);
+    expect(files).toContain('ggml-whisper-large-en-medical-2607.26-q5_0.bin');
+    expect(files).not.toContain('README.md');
+  });
+
+  it('every nominated repo yields at least one weight file', () => {
+    for (const files of [MEDICAL_NER, QWEN3_GGUF, WHISPER_GGML]) {
+      const weights = kept(files).filter((f) => /\.(gguf|safetensors|bin|onnx|nemo|pt|pth)$/i.test(f));
+      expect(weights.length).toBeGreaterThan(0);
+    }
+  });
+});
