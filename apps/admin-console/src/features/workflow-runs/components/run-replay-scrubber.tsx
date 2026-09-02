@@ -43,12 +43,15 @@ export function RunReplayScrubber({
   const atEnd = step >= totalSteps;
 
   useEffect(() => {
-    if (!playing) return;
-    if (atEnd) {
-      setPlaying(false);
-      return;
-    }
-    const timer = setTimeout(() => onStepChange(Math.min(step + 1, totalSteps)), AUTO_ADVANCE_MS);
+    if (!playing || atEnd) return;
+    // setPlaying(false) below runs inside the timer's OWN callback, not synchronously in the
+    // effect body — the sanctioned "calling setState in a callback when external state changes"
+    // shape (react-hooks/set-state-in-effect), not the disallowed synchronous-in-effect one.
+    const timer = setTimeout(() => {
+      const next = Math.min(step + 1, totalSteps);
+      onStepChange(next);
+      if (next >= totalSteps) setPlaying(false);
+    }, AUTO_ADVANCE_MS);
     return () => clearTimeout(timer);
   }, [playing, step, totalSteps, atEnd, onStepChange]);
 
