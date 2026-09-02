@@ -370,7 +370,9 @@ async def interpreter_agentic_stt(payload: NodeActivityInput) -> NodeActivityRes
             + (" (poll timed out; the job is still running)" if result.timed_out else ""),
             output={"transcript": None, "jobId": result.job_id},
         )
-    return NodeActivityResult(status="SUCCEEDED", output={"transcript": None, "jobId": result.job_id})
+    return NodeActivityResult(
+        status="SUCCEEDED", output={"transcript": None, "jobId": result.job_id}
+    )
 
 
 @activity.defn(name="interpreter.agentic_loop")

@@ -218,7 +218,10 @@ async def generate_json(
     settings = get_settings()
     redactor = _phi_redactor()
     safe_prompt = screen(
-        json.dumps(user_payload, ensure_ascii=False), judgement=judgement, settings=settings, redactor=redactor
+        json.dumps(user_payload, ensure_ascii=False),
+        judgement=judgement,
+        settings=settings,
+        redactor=redactor,
     )
     safe_system = screen(system_prompt, judgement=judgement, settings=settings, redactor=redactor)
 

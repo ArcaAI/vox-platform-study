@@ -22173,8 +22173,10 @@
             "enum": [
               "control",
               "stream<audio>",
+              "audio",
               "transcript",
               "text",
+              "object",
               "entities",
               "document",
               "edits",
@@ -33329,7 +33331,7 @@
     },
     "/api/v1/workflows/{slug}/runs/{runId}/stream": {
       "get": {
-        "description": "Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet — see the class doc on WorkflowStreamService) — every reconnect resyncs from the CURRENT live status rather than resuming a gap (no synthetic resume token is minted for a non-resumable transport, per the async-contract §3.6 rule).\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Snapshot-then-delta. The first frame is a `workflow.run.progress`/`workflow.run.completed` snapshot of current status; every frame after it is an event PUSHED by the interpreter as it happens (node started/completed/failed, run completed), carried on the run event stream. Each pushed frame's `id` is an opaque resume token — echo it back as `Last-Event-ID` to resume exactly where you left off. The snapshot frame carries no `id` (there is no stream position to name). If your position has aged out of the retained window, the stream re-sends a snapshot rather than silently skipping the gap.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_streamRunStatus",
         "parameters": [
           {
@@ -33347,11 +33349,32 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Opaque resume token from a previous frame’s `id`. Omit on a first connect.",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Fallback for a client that cannot set headers. The header wins when both are present.",
+            "in": "query",
+            "name": "lastEventId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "description": ""
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
           }
         },
         "security": [

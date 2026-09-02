@@ -140,9 +140,19 @@ async def _evaluate_policy(
             user_payload={"appliesTo": policy.get("appliesTo"), "subject": subject},
         )
     except PhiEgressBlocked as exc:
-        return {**row, "status": "UNEVALUATED", "reason": f"phi egress blocked: {exc}", "errorCode": "phi_egress_blocked"}
+        return {
+            **row,
+            "status": "UNEVALUATED",
+            "reason": f"phi egress blocked: {exc}",
+            "errorCode": "phi_egress_blocked",
+        }
     except TextServiceError as exc:
-        return {**row, "status": "UNEVALUATED", "reason": str(exc), "errorCode": "text_generate_failed"}
+        return {
+            **row,
+            "status": "UNEVALUATED",
+            "reason": str(exc),
+            "errorCode": "text_generate_failed",
+        }
 
     if parsed is None:
         return {
@@ -219,7 +229,11 @@ async def interpreter_guard_groundedness(payload: NodeActivityInput) -> NodeActi
             }
             for policy in policies
         ]
-        return NodeActivityResult(status="DEGRADED", reason=f"grounding policies unevaluated ({error_code})", output=output)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=f"grounding policies unevaluated ({error_code})",
+            output=output,
+        )
 
     verdicts: list[dict[str, Any]] = []
     for policy in policies:

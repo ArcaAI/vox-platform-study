@@ -198,9 +198,7 @@ class AgenticLoopWorkflow:
                 retry_policy=_CHECKPOINT_RETRY,
             )
 
-        bound_inputs = (
-            dict(inp.seed_inputs) if inp.state.iterations == 0 else {"in": carried}
-        )
+        bound_inputs = dict(inp.seed_inputs) if inp.state.iterations == 0 else {"in": carried}
         orchestrator_output = await self._run_node(
             inp, inp.orchestrator, bound_inputs, stage_id="orchestrator"
         )
@@ -244,9 +242,7 @@ class AgenticLoopWorkflow:
             # progress rather than accumulating, so `noProgressIterations` means "N consecutive",
             # exactly as the schema's own description says.
             no_progress_streak=(
-                0
-                if checkpoint.digest != inp.state.digest
-                else inp.state.no_progress_streak + 1
+                0 if checkpoint.digest != inp.state.digest else inp.state.no_progress_streak + 1
             ),
             digest=checkpoint.digest,
             inline=checkpoint.inline,

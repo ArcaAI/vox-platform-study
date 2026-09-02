@@ -13,10 +13,19 @@ future interpreter change is most likely to break (ticket §4 Task 9):
 3. One DEGRADED node (a `config["raise_error"]` noop) alongside a SUCCEEDED sibling in the
    SAME stage, proving the all-settled join's command shape is captured too.
 
+TASK-849 adds the ``--stream`` era: the SAME scenario, recorded with
+``_STREAM_PATCH`` live, so the run-event mirror's own `execute_activity` calls are part of
+the captured command sequence. Both fixtures are kept — the pre-stream one proves the patch
+gate costs a pre-existing history nothing, the stream one proves today's in-flight runs
+survive tomorrow's deploy.
+
 Usage (from the repo root, conda env `arcaenv`):
 
     PYTHONPATH=apps/harness/src python -m harness.tests.unit.temporal._capture_interpreter_replay_fixture \
         apps/harness/src/harness/tests/unit/temporal/fixtures/interpreter_v1_history.json
+
+    PYTHONPATH=apps/harness/src python -m harness.tests.unit.temporal._capture_interpreter_replay_fixture \
+        apps/harness/src/harness/tests/unit/temporal/fixtures/interpreter_stream_v1_history.json
 """
 
 from __future__ import annotations
@@ -115,7 +124,11 @@ async def capture(out_path: Path) -> None:
                     session_id="s-fixture-1",
                     workflow_version_id="v-fixture-1",
                     config_ref=ref,
-                    tenant_id="t-fixture-1",
+                    # A REAL uuid since TASK-849: the run-event mirror builds an `AsyncEnvelope`,
+                    # whose `tenantId` is uuid-typed. A placeholder id would make every emit
+                    # reject its own envelope, and the fixture would then record a command shape
+                    # no production run can ever produce.
+                    tenant_id="22222222-2222-2222-2222-222222222222",
                     run_id="run-fixture-1",
                     sandbox=False,
                 ),
