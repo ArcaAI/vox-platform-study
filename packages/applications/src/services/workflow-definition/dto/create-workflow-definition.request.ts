@@ -1,12 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-import { WORKFLOW_NODE_ID_PATTERN } from '@arcaai/workflow-contract';
+import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
 /**
- * `slug` reuses the platform-wide tenant-authored-key grammar
- * (`WORKFLOW_NODE_ID_PATTERN` from `@arcaai/workflow-contract`, itself mirroring
- * `AGENT_KIND_KEY_PATTERN`) — the same shape a graph node id must match, since both are
- * tenant-invented identifiers in the same substrate.
+ * `slug` follows `WORKFLOW_DEFINITION_SLUG_PATTERN` from `@arcaai/workflow-contract` —
+ * lowercase alphanumerics, `-` and `_`, 2–80 chars. AMENDED (TASK-858): it used to reuse the
+ * node-id grammar (`WORKFLOW_NODE_ID_PATTERN`, no hyphen), which rejected every seeded,
+ * hyphenated lineage key (`platform-default-summarization`, `arcaai-consultation-soap`, …).
  *
  * `tenantId` is NEVER a field here — read from CLS by the service, and the global pipe's
  * `forbidNonWhitelisted` rejects a forged one. Server-owned columns
@@ -18,7 +18,7 @@ import { WORKFLOW_NODE_ID_PATTERN } from '@arcaai/workflow-contract';
 export class CreateWorkflowDefinitionRequest {
   @ApiProperty({ description: 'Stable tenant-invented lineage key, unique per (tenant, slug, versionNumber).', example: 'discharge_summary' })
   @IsString()
-  @Matches(WORKFLOW_NODE_ID_PATTERN, { message: 'slug must match [a-z0-9_]{2,48}' })
+  @Matches(WORKFLOW_DEFINITION_SLUG_PATTERN, { message: 'slug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric' })
   slug: string;
 
   @ApiProperty({ description: 'Human-readable name.' })

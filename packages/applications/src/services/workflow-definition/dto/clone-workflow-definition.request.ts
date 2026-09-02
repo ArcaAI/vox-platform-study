@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
-import { WORKFLOW_NODE_ID_PATTERN } from '@arcaai/workflow-contract';
+import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
 /**
  * TASK-856 — seed a NEW workflow from an existing one.
@@ -26,7 +26,7 @@ export class CloneWorkflowDefinitionRequest {
     example: 'discharge_summary_copy',
   })
   @IsString()
-  @Matches(WORKFLOW_NODE_ID_PATTERN, { message: 'targetSlug must match [a-z0-9_]{2,48}' })
+  @Matches(WORKFLOW_DEFINITION_SLUG_PATTERN, { message: 'targetSlug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric' })
   targetSlug: string;
 
   @ApiPropertyOptional({ description: 'Human-readable name for the clone. Defaults to "<source name> (copy)".' })

@@ -45,6 +45,19 @@ export interface WorkflowGraph {
 /** Platform-wide tenant-authored-key grammar (mirrors `AGENT_KIND_KEY_PATTERN`). */
 export const WORKFLOW_NODE_ID_PATTERN = /^[a-z0-9_]{2,48}$/;
 
+/**
+ * The grammar of a `WorkflowDefinition.slug` — the lineage key a tenant invents and every
+ * consumer addresses a workflow by (`GET /workflows/:slug`, `WorkflowAssignment`, session-open
+ * selection, the compiled `wf-stt-<slug>` pipeline).
+ *
+ * Deliberately NOT `WORKFLOW_NODE_ID_PATTERN`: every seeded slug is hyphenated
+ * (`platform-default-summarization`, `arcaai-consultation-soap`, …) and the node-id grammar
+ * admits no hyphen, so the three DTOs that reused it (create, clone, session-open) rejected
+ * every real workflow with a 400 — found live by TASK-858. Lowercase alphanumerics, `-` and
+ * `_`, 2–80 characters, must start and end with an alphanumeric.
+ */
+export const WORKFLOW_DEFINITION_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/;
+
 /** Authoring bounds — untrusted input walked on every validate/compile call. */
 export const MAX_GRAPH_NODES = 256;
 export const MAX_GRAPH_EDGES = 1024;

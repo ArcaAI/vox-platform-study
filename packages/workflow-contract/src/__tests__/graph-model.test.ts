@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES, WORKFLOW_NODE_ID_PATTERN, workflowGraphProblems } from '../graph-model';
+import { MAX_GRAPH_EDGES, MAX_GRAPH_NODES, WORKFLOW_DEFINITION_SLUG_PATTERN, WORKFLOW_NODE_ID_PATTERN, workflowGraphProblems } from '../graph-model';
 
 const validGraph = {
   version: 1,
@@ -158,3 +158,17 @@ describe('workflowGraphProblems', () => {
     });
   });
 });
+
+describe('WORKFLOW_DEFINITION_SLUG_PATTERN (TASK-858)', () => {
+  it('accepts every seeded slug shape — hyphenated lineage keys', () => {
+    for (const slug of ['platform-default-summarization', 'arcaai-consultation-soap', 'arcaai-consultation-ner-grammar-fix', 'wf-stt-arcaai-realtime-transcription-medical-en', 'discharge_summary_copy', 'ab']) {
+      expect(WORKFLOW_DEFINITION_SLUG_PATTERN.test(slug), slug).toBe(true);
+    }
+  });
+  it('rejects what could never name a row', () => {
+    for (const slug of ['', 'a', '-leading', 'trailing-', 'Upper-Case', 'has space', 'dots.no', 'x'.repeat(81)]) {
+      expect(WORKFLOW_DEFINITION_SLUG_PATTERN.test(slug), JSON.stringify(slug)).toBe(false);
+    }
+  });
+});
+

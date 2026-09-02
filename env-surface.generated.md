@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 122 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 24 |
-| Python declared fields | 353 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 402 |
-| `turbo.json#globalEnv` entries | 530 |
+| Python declared fields | 355 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 404 |
+| `turbo.json#globalEnv` entries | 532 |
 
 ## Variables — the TypeScript platform surface
 
@@ -192,7 +192,9 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 
 | Variable | Service | Required | Secret | Default | In file | Also accepted |
 |---|---|---|---|---|---|---|
+| `API_GATEWAY_KEY` | `apps/nlp` | no | yes | `CHANGE_ME` | live | `NLP_API_GATEWAY_KEY` |
 | `API_GATEWAY_KEY` | `apps/stt` | no | yes | `CHANGE_ME` | live | — |
+| `API_GATEWAY_KEY` | `apps/tts` | no | yes | `CHANGE_ME` | live | — |
 | `API_GATEWAY_TIMEOUT__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `30` | commented | — |
 | `API_GATEWAY_URL` | `apps/stt` | no | no | `http://localhost:8868/api/v1` | commented | — |
 | `APP_NAME__MOVED_TO_CONTROL_PLANE_TASK_799` | `apps/stt` | no | no | `stt` | commented | — |
@@ -567,7 +569,7 @@ promotion into its service’s `BaseSettings`.
 | `HARNESS_PROMPTFOO_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_PROMPTFOO_MODEL` | `apps/harness/eval/promptfoo/provider.py` |
 | `HARNESS_VERDICT_CACHE_HMAC_KEY` | `apps/harness/src/harness/sensors/inferential/verdict_cache.py` |
-| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py` |
+| `HF_HUB_OFFLINE` | `apps/harness/src/harness/models/source_resolver.py`, `apps/nlp/src/nlp/models/source_resolver.py`, `apps/stt/src/stt/models/source_resolver.py`, `apps/tts/src/tts/models/source_resolver.py` |
 | `HOPE_SECRETS_DIR` | `packages/py-env/src/hope_env/settings_sources.py` |
 | `HOSTNAME` | `packages/py-env/src/hope_env/service_registration.py` |
 | `LOG_FILE_PATH` | `apps/nlp/src/nlp/core/logging.py` |
@@ -577,6 +579,7 @@ promotion into its service’s `BaseSettings`.
 | `OPENAI_BASE_URL` | `apps/harness/eval/promptfoo/provider.py` |
 | `QDRANT_API_KEY` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_HOST` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
+| `QDRANT_HTTPS` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_KNOWLEDGE_COLLECTION` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_KNOWLEDGE_DIM` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
 | `QDRANT_PORT` | `infrastructure/docker/scripts/init-qdrant-collections.py` |
