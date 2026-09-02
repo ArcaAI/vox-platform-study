@@ -234,8 +234,12 @@ async def test_file_scheme_missing_path_raises(config: ModelSourceConfig) -> Non
 async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, monkeypatch) -> None:
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
-    def _snapshot(**kwargs):  # pragma: no cover - offline guard fires first
-        raise AssertionError("resolver attempted a hub call while offline")
+    def _snapshot(**kwargs):
+        # A cache MISS under HF_HUB_OFFLINE: huggingface_hub raises rather than
+        # reaching the network. The resolver no longer pre-empts this call (that
+        # would also block a cache HIT), so this stub IS invoked, and the
+        # offline-specific message is produced from the miss.
+        raise OSError("no local snapshot for this repo (offline)")
 
     monkeypatch.setattr("harness.models.source_resolver._hf_snapshot_download", _snapshot)
 
@@ -246,6 +250,41 @@ async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, mon
         )
 
     assert "HF_HUB_OFFLINE" in str(exc.value)
+
+
+async def test_hf_offline_cached_is_served_from_cache(
+    config: ModelSourceConfig, monkeypatch
+) -> None:
+    """Offline + ALREADY CACHED must resolve, not raise.
+
+    The sibling test above is named `..._offline_uncached_raises_cleanly`, and
+    that "uncached" was always the intent: `huggingface_hub` honours
+    HF_HUB_OFFLINE by serving the LOCAL CACHE and never touching the network.
+    Raising before the call made the resolver's own advice -- "pre-populate the
+    hub cache" -- impossible to follow.
+
+    Unlike `apps/tts`, harness sets HF_HUB_OFFLINE on no pod today, and its one
+    production entry point (`resolve_atomic_fact_model_path`) passes
+    `allow_network=False`, which refuses `hf:` one branch earlier. The bug is
+    therefore LATENT here rather than live -- but `resolve_model_dir` is public
+    and the mirrored-implementation discipline is the whole point of this file:
+    the copy that drifts is the copy nobody notices until it is the live one.
+    """
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    cached = Path(config.hf_cache_dir) / "models--openai--whisper-large-v3" / "snapshots" / "abc"
+    cached.mkdir(parents=True, exist_ok=True)
+
+    def _snapshot(**kwargs):
+        # What snapshot_download does under HF_HUB_OFFLINE: cache hit, no network.
+        return str(cached)
+
+    monkeypatch.setattr("harness.models.source_resolver._hf_snapshot_download", _snapshot)
+
+    resolved = await resolve_model_dir(
+        identity(source_uri="hf:openai/whisper-large-v3", source="HUGGINGFACE"),
+        config=config,
+    )
+    assert Path(resolved) == cached
 
 
 async def test_hf_bare_id_is_accepted(config: ModelSourceConfig, monkeypatch) -> None:
@@ -320,3 +359,35 @@ async def test_s3_without_credentials_errors_cleanly(
         await resolve_model_dir(identity(), config=bare)
 
     assert "S3" in str(exc.value)
+
+
+async def test_s3_credential_error_names_the_real_source_not_env_vars(
+    tmp_path: Path,
+) -> None:
+    """The unresolved-credential message must not send operators to dead env vars.
+
+    It used to say: "Set the *_MODEL_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY
+    environment variables." Those are not merely deprecated -- TASK-799 removed
+    the env-credential model platform-wide (`apps/stt` renamed its fields'
+    aliases to `..._ENV_REMOVED_TASK_799` so the old names can never bind), and
+    `HARNESS_MODEL_S3_*` never existed in this repo at all. Following that
+    advice does nothing, which makes it an operator-facing lie on top of a
+    rule-09 config-tier violation: an S3 credential is `vault-kv`/`db-secret`
+    behind an `AiProviderConnection`, never `env`.
+    """
+    bare = ModelSourceConfig(cache_dir=str(tmp_path / "cache"))
+
+    with pytest.raises(ModelSourceError) as exc:
+        await resolve_model_dir(identity(), config=bare)
+
+    message = str(exc.value)
+    # The dead names must not appear at all: a string an operator can grep for
+    # reads as live advice however it is framed.
+    assert "MODEL_S3" not in message, "names env vars that do not exist"
+    # The defect was the IMPERATIVE ("Set the ... environment variables"), not
+    # the noun. The three fixed siblings all still say "These are not environment
+    # variables", which is the correct and useful denial — so pin the denial in
+    # place of the instruction, rather than banning the word.
+    assert "Set the" not in message, "must not instruct the operator to set anything in env"
+    assert "not environment variables" in message, "must say plainly that env is not the tier"
+    assert "model-registry" in message, "must name the provider connection instead"
