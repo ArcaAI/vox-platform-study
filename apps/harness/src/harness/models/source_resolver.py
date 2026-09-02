@@ -106,10 +106,25 @@ class ModelSourceConfig:
 def _make_s3_client(config: ModelSourceConfig) -> Any:
     """Build a MinIO-compatible S3 client. Imported lazily and stubbed in tests."""
     if not config.s3_endpoint or not config.s3_access_key or not config.s3_secret_key:
+        # This message used to read "Set the *_MODEL_S3_ENDPOINT / _ACCESS_KEY /
+        # _SECRET_KEY environment variables", which was two lies in one breath:
+        # TASK-799 removed the env-credential model platform-wide (`apps/stt`
+        # renamed its aliases to `..._ENV_REMOVED_TASK_799` so the old names can
+        # never bind again), and `HARNESS_MODEL_S3_*` never existed in this repo
+        # at all. An S3 credential is `vault-kv`/`db-secret` behind an
+        # `AiProviderConnection` — never `env` (rule 09 §Configuration Tiers).
+        # The dead names are deliberately NOT repeated below: an error message
+        # says what to DO, and a string an operator can still grep for reads as
+        # live advice however it is framed.
         raise ModelSourceError(
-            "Cannot resolve an S3 model source: S3 endpoint/access key/secret key "
-            "are not configured for this service. Set the *_MODEL_S3_ENDPOINT / "
-            "_ACCESS_KEY / _SECRET_KEY environment variables."
+            "Cannot resolve an S3 model source: the endpoint, access key id or "
+            "secret key is missing. These are not environment variables — "
+            "configure the 'model-registry' / 's3' provider connection for the "
+            "tenant that OWNS this model, or for the SYSTEM tenant to serve "
+            "every model that has no owner of its own. (harness cannot READ that "
+            "credential yet: it ships no `core/model_credentials.py` and builds "
+            "ModelSourceConfig with the cache dir alone, so an s3:// source "
+            "cannot resolve from harness today — see the TASK-855 L6 follow-on.)"
         )
 
     # boto3 is already a harness dependency (claim-check) and is imported
@@ -263,14 +278,15 @@ async def _resolve_hf(
             f"s3:// source_uri."
         )
 
+    # NO pre-emptive raise on HF_HUB_OFFLINE. `huggingface_hub` honours that
+    # variable by serving the LOCAL CACHE and never touching the network, which
+    # IS the "pre-populate the hub cache" path the error below recommends —
+    # raising before the call made that advice impossible to follow, and turned
+    # every AiModel-driven load into a hard failure on a pod whose weights are
+    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # still reported distinctly, but only once a cache MISS has actually
+    # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}
-    if offline:
-        raise ModelSourceError(
-            f"HF_HUB_OFFLINE is set, so HuggingFace repo {repo_id!r} for model "
-            f"'{identity.slug}' cannot be fetched. Pre-populate the hub cache "
-            f"({config.hf_cache_dir}), or set AiModel.localPath / a file:// "
-            f"source_uri instead."
-        )
 
     try:
         snapshot = await asyncio.to_thread(
@@ -283,6 +299,13 @@ async def _resolve_hf(
     except ModelSourceError:
         raise
     except Exception as exc:
+        if offline:
+            raise ModelSourceError(
+                f"HF_HUB_OFFLINE is set and HuggingFace repo {repo_id!r} for model "
+                f"'{identity.slug}' is NOT in the local hub cache. Pre-populate the "
+                f"hub cache ({config.hf_cache_dir}), or set AiModel.localPath / a "
+                f"file:// source_uri instead. Underlying error: {exc}"
+            ) from exc
         raise ModelSourceError(
             f"Failed to fetch HuggingFace weights {repo_id!r} for model "
             f"'{identity.slug}': {exc}"
