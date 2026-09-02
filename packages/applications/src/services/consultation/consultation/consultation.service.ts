@@ -43,6 +43,7 @@ import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 import { readGoverningEngineMarker } from '../governing-engine';
+import { withWorkflowSelectionMarker } from './workflow-selection';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
@@ -317,13 +318,31 @@ export class ConsultationService extends BaseService implements IConsultationSer
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
     // Create new consultation
+    // TASK-858 lane A — record the AUTHORIZED selection on the row itself, here, before dispatch
+    // is even attempted.
+    //
+    // The only existing record of a caller's pick is `metadata.governingEngine`, and that marker
+    // requires a non-empty `workflowRunId` — so it exists ONLY when the durable dispatch actually
+    // started a Temporal run. Every other outcome (harness unreachable, no claim-check storage,
+    // dispatcher not wired, definition without a compiled config) returns `dispatched: false` and
+    // leaves nothing behind, and those are precisely the deployments where the REALTIME lane still
+    // runs. Without this write, the realtime resolver has nothing to honour and the clinician
+    // silently gets the tenant default's live nodes.
+    //
+    // Two keys, two claims: `workflowSelection` says what was ASKED FOR, `governingEngine` says
+    // what TOOK OWNERSHIP. Neither is inferred from the other. Caller metadata is merged, not
+    // replaced — see `workflow-selection.ts` for why the key is not stripped from caller input.
+    const metadata = request.workflowDefinitionSlug
+      ? withWorkflowSelectionMarker(request.metadata, request.workflowDefinitionSlug)
+      : request.metadata;
+
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
       patientId: request.patientId,
       appointmentDate,
       doctorId,
       departmentId: request.departmentId,
-      metadata: request.metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
+      metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
       createdBy: userId ?? undefined,
     });
 

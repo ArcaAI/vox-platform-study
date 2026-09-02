@@ -144,6 +144,17 @@ export class LiveDocRealtimeNodeResponse {
 export type LiveDocRealtimeLaneSource = 'platform-default' | 'tenant-graph';
 
 /**
+ * WHICH tier supplied the definition — a different question from {@link LiveDocRealtimeLaneSource},
+ * which says whether that tier produced an executable lane.
+ *
+ * `consultation` (TASK-858) is the tier ABOVE the assignment cascade: the workflow this
+ * consultation itself selected at open. It exists because a per-consultation choice and a
+ * per-tenant assignment are not the same decision, and reporting the tenant tier for a
+ * clinician-selected workflow is precisely the misattribution this field exists to prevent.
+ */
+export type LiveDocRealtimeAssignmentSource = 'consultation' | 'department' | 'tenant' | 'platform-default';
+
+/**
  * TASK-852 item 6 — which realtime capabilities are actually live for a tenant
  * (`GET /admin/harness/live/capabilities`).
  *
@@ -158,6 +169,13 @@ export class LiveDocRealtimeCapabilitiesResponse {
 
   @ApiPropertyOptional({ description: 'Department the cascade was resolved against, when one was requested' })
   departmentId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Consultation the read-out was resolved FOR, when one was requested. With it, the answer is the lane a live session for that consultation would actually walk — including the workflow the clinician selected at open, which no tenant-level read can show.',
+    nullable: true,
+  })
+  consultationId?: string | null;
 
   @ApiProperty({
     description:
@@ -180,10 +198,10 @@ export class LiveDocRealtimeCapabilitiesResponse {
 
   @ApiProperty({
     description:
-      'Which tier of the assignment cascade supplied the definition. `platform-default` means no tier had an opinion, or the assigned definition could not be resolved.',
-    enum: ['department', 'tenant', 'platform-default'],
+      'Which tier supplied the definition. `consultation` means THIS consultation selected the workflow at open and it beat the cascade; `department`/`tenant` are the assignment cascade; `platform-default` means no tier had an opinion, or the resolved definition could not be used.',
+    enum: ['consultation', 'department', 'tenant', 'platform-default'],
   })
-  assignmentSource: 'department' | 'tenant' | 'platform-default';
+  assignmentSource: LiveDocRealtimeAssignmentSource;
 
   @ApiProperty({ description: 'The lane’s nodes in execution order', type: [LiveDocRealtimeNodeResponse] })
   nodes: LiveDocRealtimeNodeResponse[];

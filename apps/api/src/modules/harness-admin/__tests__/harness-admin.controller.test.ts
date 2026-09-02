@@ -43,6 +43,7 @@ function makeController(ctx: Ctx) {
     getSessionStats: vi.fn().mockResolvedValue(null),
     getEngineConfig: vi.fn().mockResolvedValue({ enabled: true, envDefault: true, source: 'env-default' }),
     setEngineEnabled: vi.fn().mockResolvedValue({ enabled: false, envDefault: true, source: 'redis-override' }),
+    getRealtimeCapabilities: vi.fn().mockResolvedValue({ tenantId: 't1', graphExecutorEnabled: true, laneSource: 'tenant-graph', nodes: [] }),
   };
   const evalService = {
     listGoldenSets: vi.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -364,6 +365,49 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
     const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     liveDocumentationService.getSessionStats.mockResolvedValue(null);
     await expect(controller.getLiveSession('c-missing', {})).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+/**
+ * TASK-858 lane A — `?consultationId=` on the realtime-capabilities read-out.
+ *
+ * The parameter is what makes the read-out able to answer "which workflow is governing THIS
+ * consultation's live plane", which since TASK-813 can differ from the tenant's assignment. The
+ * controller's whole job is to thread it and to keep the existing tenant pinning; the 404 for an
+ * unknown or foreign consultation is the service's (it owns the row read).
+ */
+describe('HarnessAdminController — realtime capabilities per consultation (TASK-858)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('threads the consultation id through to the resolver', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+
+    await controller.getRealtimeCapabilities({ consultationId: 'c-42' });
+
+    expect(liveDocumentationService.getRealtimeCapabilities).toHaveBeenCalledWith('t1', null, 'c-42');
+  });
+
+  it('treats a BLANK consultationId as omitted — a cleared filter box is not a missing consultation', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+
+    await controller.getRealtimeCapabilities({ consultationId: '   ' });
+
+    expect(liveDocumentationService.getRealtimeCapabilities).toHaveBeenCalledWith('t1', null, null);
+  });
+
+  it('keeps the tenant-level answer byte-identical when no consultation is named', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+
+    await controller.getRealtimeCapabilities({ departmentId: 'd-1' });
+
+    expect(liveDocumentationService.getRealtimeCapabilities).toHaveBeenCalledWith('t1', 'd-1', null);
+  });
+
+  it('still pins a tenant admin to their own tenant', async () => {
+    const { controller, liveDocumentationService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+
+    await expect(controller.getRealtimeCapabilities({ tenantId: 't2', consultationId: 'c-42' })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(liveDocumentationService.getRealtimeCapabilities).not.toHaveBeenCalled();
   });
 });
 

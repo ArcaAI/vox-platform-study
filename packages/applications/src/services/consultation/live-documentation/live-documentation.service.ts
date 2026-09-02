@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable, Logger, type MessageEvent, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, type MessageEvent, NotFoundException, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -43,6 +43,7 @@ import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemove
 import {
   LiveDocEngineConfigResponse,
   LiveDocRealtimeCapabilitiesResponse,
+  type LiveDocRealtimeAssignmentSource,
   LiveDocSessionStatsResponse,
   LiveDocSessionsListResponse,
   LiveSummaryEntityDto,
@@ -99,7 +100,13 @@ import {
   type RealtimeLane,
   type RealtimeRunResult,
 } from './realtime';
-import { tenantWorkflowGoverns } from '../governing-engine';
+import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
+// TASK-858 lane A — the consultation's OWN workflow selection, durable from create.
+import { readWorkflowSelectionMarker } from '../consultation/workflow-selection';
+// The palette predicate the TASK-813 authorization gate and the selectable-set listing both call.
+// Imported rather than restated: a third copy of "may this graph govern a consultation?" is
+// exactly how the three answers would come apart.
+import { consultationSelectionViolation } from '../workflow-dispatch/consultation-selection-policy';
 import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, CONSULTATION_GATE_DEFAULTS } from '../consultation-gates.constants';
 import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowAssignmentService';
 import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-json-repair';
@@ -1096,7 +1103,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Assignment cascade -> ACTIVE PUBLISHED definition -> compiled config -> lane.
+   * This consultation's OWN selection -> assignment cascade -> ACTIVE PUBLISHED definition ->
+   * compiled config -> lane.
    *
    * Returns the assignment's SOURCE alongside the lane because the two answer different
    * questions and only together explain what an admin is looking at: `assignmentSource` says
@@ -1104,13 +1112,41 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * They can disagree — a tenant assignment pointing at a definition with no realtime nodes
    * resolves `tenant` + `platform-default`, which is precisely the silent misconfiguration this
    * read-out exists to surface.
+   *
+   * ## TASK-858 (G1) — the consultation tier, above the cascade
+   *
+   * TASK-813 let a clinician CHOOSE the workflow at session open. The choice was authorized and
+   * honoured by the durable dispatcher, and then dropped here: this function consulted only
+   * `workflowAssignments.resolve(...)`, so a clinician who selected workflow B got workflow A's
+   * realtime nodes — different live NER, different partial summarization, different grammar
+   * pass — while `GET /consultations/:id/workflow` reported B. Silent, and in the direction that
+   * looks like success: a note is still produced.
+   *
+   * So the consultation's own selection is resolved FIRST, and the cascade is not consulted at
+   * all when it resolves. Consulting it anyway and discarding the answer would put a second,
+   * invisible slug in the logs for an operator to mistake for the one that ran.
+   *
+   * NEVER throws (unchanged): every failure — an unpublished, foreign or wrong-palette slug, a
+   * graph contributing no realtime nodes, an unreadable row — falls back to the cascade, and the
+   * cascade falls back to the platform lane. A consultation documented by the tenant default is a
+   * better clinical outcome than one documented by nothing.
    */
   private async resolveTenantLane(
     tenantId: string,
     departmentId: string | null,
     consultationId?: string,
-  ): Promise<{ lane: RealtimeLane | null; assignmentSource: 'department' | 'tenant' | 'platform-default' }> {
-    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return { lane: null, assignmentSource: 'platform-default' };
+  ): Promise<{ lane: RealtimeLane | null; assignmentSource: LiveDocRealtimeAssignmentSource }> {
+    // Kept as the FIRST statement so a deployment without the definition repository does exactly
+    // what it did before — in particular it performs no consultation read, which is what keeps
+    // "the marker is resolved once per session" true for those deployments.
+    if (!this.workflowDefinitionRepository) return { lane: null, assignmentSource: 'platform-default' };
+
+    if (consultationId) {
+      const selected = await this.resolveConsultationSelectedLane(tenantId, consultationId);
+      if (selected) return { lane: selected, assignmentSource: 'consultation' };
+    }
+
+    if (!this.workflowAssignments) return { lane: null, assignmentSource: 'platform-default' };
     try {
       const assignment = await this.workflowAssignments.resolve(tenantId, 'consultation', departmentId);
       if (!assignment.workflowDefinitionSlug) return { lane: null, assignmentSource: assignment.source };
@@ -1124,6 +1160,113 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         error: error instanceof Error ? error.message : String(error),
       });
       return { lane: null, assignmentSource: 'platform-default' };
+    }
+  }
+
+  /**
+   * TASK-858 (G1) — the lane this CONSULTATION selected, or `null` to fall back to the cascade.
+   *
+   * ## Two recorded selections, read in this order
+   *
+   * | Key | Claim | Written when |
+   * |---|---|---|
+   * | `metadata.governingEngine` (TASK-795) | the durable interpreter run OWNS this consultation | after a run actually started |
+   * | `metadata.workflowSelection` (TASK-858) | the clinician ASKED for this workflow | at consultation create |
+   *
+   * `governingEngine` first, because what actually governs beats what was asked for. It is also
+   * the weaker of the two here in practice, and deliberately so: a well-formed `governingEngine`
+   * marker ALSO makes {@link ensureSubstrateResolved} stand this engine down, so on a live
+   * session the lane it selects is never walked. It is read anyway because the capabilities
+   * read-out must report the same resolution the runtime would perform, and because the day that
+   * gate is relaxed this is the answer that must already be right. `workflowSelection` is what
+   * steers a session that actually runs — it survives the failed dispatch that leaves no marker.
+   *
+   * ## Re-authorized on every read, not trusted
+   *
+   * `Consultation.metadata` is client-writable at open, so both keys are re-resolved through the
+   * tenant-scoped `findPublishedBySlug` and the same `consultationSelectionViolation` palette
+   * predicate the TASK-813 gate uses. A forged value can therefore only ever name a workflow the
+   * caller was already entitled to select, in their own tenant.
+   */
+  private async resolveConsultationSelectedLane(tenantId: string, consultationId: string): Promise<RealtimeLane | null> {
+    if (!this.consultationRepository) return null;
+
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      // A consultation this tenant does not own must never choose this tenant's lane. The
+      // repository read is already tenant-scoped in a request context; this is the second,
+      // independent check, and it is also what the capabilities read-out turns into a 404.
+      if (!consultation || consultation.tenantId !== tenantId) return null;
+
+      const slug =
+        readGoverningEngineMarker(consultation.metadata)?.workflowDefinitionSlug ||
+        readWorkflowSelectionMarker(consultation.metadata)?.workflowDefinitionSlug;
+      if (!slug) return null;
+
+      const definition = await this.workflowDefinitionRepository!.findPublishedBySlug(tenantId, slug);
+      if (!definition) {
+        this.logger.warn({
+          message: 'Consultation names a workflow that is not published for this tenant — falling back to the assignment cascade',
+          consultationId,
+          workflowDefinitionSlug: slug,
+        });
+        return null;
+      }
+
+      const violation = consultationSelectionViolation(definition);
+      if (violation) {
+        this.logger.warn({
+          message: `Consultation names a workflow that ${violation} — falling back to the assignment cascade`,
+          consultationId,
+          workflowDefinitionSlug: slug,
+        });
+        return null;
+      }
+
+      const lane = buildRealtimeLane(definition.compiledConfig as never);
+      if (!lane) {
+        // Published, selectable, and contributes NO realtime node. Distinct from every case
+        // above and worth its own line: the tenant authored a graph that governs the durable
+        // plane only, and the live plane legitimately falls back.
+        this.logger.warn({
+          message: 'Consultation-selected workflow contributes no realtime nodes — falling back to the assignment cascade',
+          consultationId,
+          workflowDefinitionSlug: slug,
+        });
+        return null;
+      }
+
+      this.logger.log({
+        message: 'Realtime lane resolved from the workflow THIS consultation selected, ahead of the assignment cascade',
+        consultationId,
+        workflowDefinitionSlug: slug,
+      });
+      return lane;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Consultation workflow selection could not be read — falling back to the assignment cascade',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * TASK-858 — the read-out's 404 half.
+   *
+   * `resolveConsultationSelectedLane` is deliberately silent about a missing or foreign
+   * consultation (a session must degrade, never fail). The READ-OUT must not be: an admin who
+   * asks about a consultation that is not theirs has to be told, and told the same thing whether
+   * the id is unknown or belongs to another tenant — 404 either way, so the status code is not an
+   * existence oracle over the id space.
+   */
+  private async assertConsultationReadable(tenantId: string, consultationId: string): Promise<void> {
+    if (!this.consultationRepository) return;
+
+    const consultation = await this.consultationRepository.findById(consultationId);
+    if (!consultation || consultation.tenantId !== tenantId) {
+      throw new NotFoundException(`Consultation ${consultationId} not found`);
     }
   }
 
@@ -1154,17 +1297,37 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * | Graph executor OFF | `laneSource: null`, `nodes: []` — there IS no lane; the legacy flush runs |
    * | ON, no resolvable assignment | `platform-default` and the platform lane's own nodes, because those genuinely execute |
    * | ON + assignment | `tenant-graph`, the slug and version, and the tenant's realtime nodes |
+   * | ON + a consultation that SELECTED a workflow | `tenant-graph` with `assignmentSource: 'consultation'` — the clinician's own pick, not the tenant default (TASK-858) |
    *
    * Tenant-scoped by construction: the caller's tenant is the only one resolved, and the
    * definition lookup is itself tenant-scoped, so a guessed slug cannot cross the boundary.
+   *
+   * ## TASK-858 — `consultationId`, and why it is not decoration
+   *
+   * Without it this answers "what would a NEW session for this tenant get". With it, it answers
+   * "what would a session for THIS consultation get" — which since TASK-813 can differ, because
+   * the clinician selected the workflow at open. A read-out that could only ever report the
+   * tenant cascade would report the wrong graph for exactly the consultations someone is most
+   * likely to be asking about. An unknown or foreign consultation id is a 404, never a silent
+   * fall-through to the cascade: quietly answering the tenant question when the consultation
+   * question was asked is how a misconfiguration gets confirmed as healthy.
    */
-  async getRealtimeCapabilities(tenantId: string, departmentId: string | null = null): Promise<LiveDocRealtimeCapabilitiesResponse> {
+  async getRealtimeCapabilities(
+    tenantId: string,
+    departmentId: string | null = null,
+    consultationId: string | null = null,
+  ): Promise<LiveDocRealtimeCapabilitiesResponse> {
+    // Before anything is described, including before the kill-switch answer: the caller asked
+    // about a specific consultation, so "that consultation is not yours" is the answer they get.
+    if (consultationId) await this.assertConsultationReadable(tenantId, consultationId);
+
     const graphExecutorEnabled = await this.isGraphExecutorEnabled(tenantId);
 
     if (!graphExecutorEnabled) {
       return {
         tenantId,
         departmentId,
+        consultationId,
         graphExecutorEnabled: false,
         laneSource: null,
         definitionSlug: null,
@@ -1174,12 +1337,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const { lane: tenantLane, assignmentSource } = await this.resolveTenantLane(tenantId, departmentId);
+    const { lane: tenantLane, assignmentSource } = await this.resolveTenantLane(tenantId, departmentId, consultationId ?? undefined);
     const lane = tenantLane ?? PLATFORM_REALTIME_LANE;
 
     return {
       tenantId,
       departmentId,
+      consultationId,
       graphExecutorEnabled: true,
       laneSource: lane.source,
       definitionSlug: lane.definitionSlug,
