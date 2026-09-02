@@ -14,10 +14,12 @@ import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource'
 import type {
   CreateModelRequest,
   DiscoveryResponse,
+  ModelDownloadStatusResponse,
   ModelResponse,
   PaginatedModelResponse,
   PaginatedResponse,
   RegisterDiscoveredModelRequest,
+  TriggerModelDownloadResponse,
   UpdateModelRequest,
 } from './schemas';
 
@@ -29,7 +31,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AiModelAdminController, AiModelDiscoveryController
- * (9 routes). Several controllers sharing one scope share one
+ * (11 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -108,6 +110,34 @@ export class AdminAiModelResource extends AdminResource {
       path: `admin/ai-models/${encodePathSegment(String(id))}`,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Poll the status of the most recent download job for this model.
+   *
+   * `GET /api/v1/admin/ai-models/{id}/download` — `AiModelAdminController.getDownloadStatus`.
+   */
+  getDownloadStatus(id: string, options: AdminRequestOptions = {}): Promise<ModelDownloadStatusResponse> {
+    return this.request<ModelDownloadStatusResponse>({
+      method: 'GET',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/download`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Trigger an async download of this model's weights into the hope-models bucket.
+   *
+   * `POST /api/v1/admin/ai-models/{id}/download` — `AiModelAdminController.triggerDownload`.
+   */
+  triggerDownload(id: string, options: AdminRequestOptions = {}): Promise<TriggerModelDownloadResponse> {
+    return this.request<TriggerModelDownloadResponse>({
+      method: 'POST',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/download`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

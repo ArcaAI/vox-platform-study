@@ -9986,6 +9986,55 @@
         ],
         "type": "object"
       },
+      "ModelDownloadStatusResponse": {
+        "properties": {
+          "error": {
+            "description": "Failure message from the most recent DOWNLOAD_FAILED job, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "fileSizeMb": {
+            "description": "Total downloaded size in MB.",
+            "nullable": true,
+            "type": "number"
+          },
+          "finishedAt": {
+            "description": "When the most recent download job finished (success or failure).",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "localPath": {
+            "description": "Mount-path the s3fs sidecar serves this version at, e.g. /mnt/models-bucket/<slug>/<version>/.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA256 of the primary weights object.",
+            "nullable": true,
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "When the most recent download job started.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "NOT_DOWNLOADED",
+              "DOWNLOADING",
+              "DOWNLOADED",
+              "DOWNLOAD_FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "ModelResponse": {
         "properties": {
           "architecture": {
@@ -18329,6 +18378,29 @@
         ],
         "type": "object"
       },
+      "TriggerModelDownloadResponse": {
+        "properties": {
+          "jobId": {
+            "description": "BullMQ job id for the enqueued download — poll with GET :id/download.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Always DOWNLOADING on a successful trigger.",
+            "enum": [
+              "NOT_DOWNLOADED",
+              "DOWNLOADING",
+              "DOWNLOADED",
+              "DOWNLOAD_FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "status"
+        ],
+        "type": "object"
+      },
       "TtsCatalogProvider": {
         "properties": {
           "name": {
@@ -24232,6 +24304,123 @@
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",
         "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": [
+          "svc:admin:ai-model:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/ai-models/{id}/download": {
+      "get": {
+        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-model:manage`).\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiModelAdminController_getDownloadStatus",
+        "parameters": [
+          {
+            "description": "Model ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelDownloadStatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Poll the status of the most recent download job for this model.",
+        "tags": [
+          "admin-ai-models"
+        ],
+        "x-hope-abilities": [
+          "manage:all"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:ai-model:manage"
+        ]
+      },
+      "post": {
+        "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:ai-model:manage`).\n\n**Abilities** — `manage:all`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AiModelAdminController_triggerDownload",
+        "parameters": [
+          {
+            "description": "Model ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerModelDownloadResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Model not found"
+          },
+          "409": {
+            "description": "A download for this model is already in progress"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Trigger an async download of this model's weights into the hope-models bucket.",
+        "tags": [
+          "admin-ai-models"
+        ],
+        "x-hope-abilities": [
+          "manage:all"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:admin:ai-model:manage"
         ]
@@ -65468,6 +65657,10 @@
     {
       "description": "Service-to-service STT callbacks. Excluded from the public reference; reachable only with the internal service token.",
       "name": "internal-stt"
+    },
+    {
+      "description": "The generic model-registry credential resolver every backend service (nlp, tts, harness, stt) uses for s3:// weight sources. Excluded from the public reference; reachable only with an internal service token.",
+      "name": "internal-model-registry"
     },
     {
       "description": "Liveness, readiness, and dependency health probes.",

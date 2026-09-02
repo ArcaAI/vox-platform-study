@@ -1,5 +1,15 @@
-import { AiModelService, CreateModelRequest, HttpMethod, ModelResponse, PaginatedModelResponse, UpdateModelRequest } from '@arcaai/applications';
-import { Body, Controller, NotFoundException, Param, Query } from '@nestjs/common';
+import {
+  AiModelDownloadService,
+  AiModelService,
+  CreateModelRequest,
+  HttpMethod,
+  ModelDownloadStatusResponse,
+  ModelResponse,
+  PaginatedModelResponse,
+  TriggerModelDownloadResponse,
+  UpdateModelRequest,
+} from '@arcaai/applications';
+import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
@@ -23,7 +33,10 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey,
 @Controller('admin/ai-models')
 @Authorize(['manage', 'all'])
 export class AiModelAdminController {
-  constructor(private readonly aiModelService: AiModelService) {}
+  constructor(
+    private readonly aiModelService: AiModelService,
+    private readonly aiModelDownloadService: AiModelDownloadService,
+  ) {}
 
   @ApiEndpoint({
     returnedModel: ModelResponse,
@@ -139,5 +152,37 @@ export class AiModelAdminController {
   @ApiResponse({ status: 404, description: 'Model not found' })
   async delete(@Param('id') id: string): Promise<void> {
     return this.aiModelService.delete(id);
+  }
+
+  /**
+   * Trigger an async download of this model's weights from its current
+   * `sourceUri` (a HuggingFace repo id or an `s3://` prefix) into the
+   * `hope-models` bucket. Long work runs on the `DownloadAiModel` BullMQ
+   * queue — this returns as soon as the row is flipped to DOWNLOADING and
+   * the job is enqueued, never after the transfer completes.
+   *
+   * Plain `@Post`/`@HttpCode` (not `@ApiEndpoint`) because the success status
+   * is `202 Accepted`, not `@ApiEndpoint`'s default `201` — same pattern as
+   * `WorkflowSandboxRunController.start`.
+   */
+  @Post(':id/download')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: "Trigger an async download of this model's weights into the hope-models bucket." })
+  @ApiParam({ name: 'id', description: 'Model ID', type: String })
+  @ApiResponse({ status: 202, type: TriggerModelDownloadResponse })
+  @ApiResponse({ status: 404, description: 'Model not found' })
+  @ApiResponse({ status: 409, description: 'A download for this model is already in progress' })
+  async triggerDownload(@Param('id') id: string): Promise<TriggerModelDownloadResponse> {
+    return this.aiModelDownloadService.triggerDownload(id);
+  }
+
+  /** Poll the status of the most recent download job for this model. */
+  @Get(':id/download')
+  @ApiOperation({ summary: 'Poll the status of the most recent download job for this model.' })
+  @ApiParam({ name: 'id', description: 'Model ID', type: String })
+  @ApiResponse({ status: 200, type: ModelDownloadStatusResponse })
+  @ApiResponse({ status: 404, description: 'Model not found' })
+  async getDownloadStatus(@Param('id') id: string): Promise<ModelDownloadStatusResponse> {
+    return this.aiModelDownloadService.getDownloadStatus(id);
   }
 }

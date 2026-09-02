@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 374 component schemas the generated surface transitively
+ * Only the 376 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2463,6 +2463,22 @@ export interface MlflowStatusResponse {
   version?: string;
 }
 
+export interface ModelDownloadStatusResponse {
+  /** Failure message from the most recent DOWNLOAD_FAILED job, if any. */
+  error?: string | null;
+  /** Total downloaded size in MB. */
+  fileSizeMb?: number | null;
+  /** When the most recent download job finished (success or failure). */
+  finishedAt?: string | null;
+  /** Mount-path the s3fs sidecar serves this version at, e.g. /mnt/models-bucket/<slug>/<version>/. */
+  localPath?: string | null;
+  /** SHA256 of the primary weights object. */
+  sha256?: string | null;
+  /** When the most recent download job started. */
+  startedAt?: string | null;
+  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
+}
+
 export interface ModelResponse {
   /** Model architecture family */
   architecture?: string | null;
@@ -4802,6 +4818,13 @@ export interface TrialInfoResponse {
 export interface TriggerDowngradeRequest {
   /** The plan to downgrade the tenant to (e.g. STARTER). */
   plan: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER';
+}
+
+export interface TriggerModelDownloadResponse {
+  /** BullMQ job id for the enqueued download — poll with GET :id/download. */
+  jobId: string;
+  /** Always DOWNLOADING on a successful trigger. */
+  status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
 }
 
 export interface TtsCatalogProvider {
