@@ -63,11 +63,13 @@ def _patch_store(monkeypatch: pytest.MonkeyPatch, store: InMemoryBlobStore) -> N
     `location` a caller writes to is the bootstrap bucket, unchanged, because no
     snapshot is served here.
     """
-    monkeypatch.setattr(activities, "build_blob_store", lambda cc, location=None: store)
+    monkeypatch.setattr(
+        activities, "build_blob_store", lambda cc, location=None, store_name=None: store
+    )
     monkeypatch.setattr(
         activities,
         "open_store",
-        lambda cc: _resolved(store, cc),
+        lambda cc, ref=None: _resolved(store, cc),
     )
 
 

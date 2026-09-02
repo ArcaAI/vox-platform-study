@@ -275,7 +275,7 @@ async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
     bounds). A corrupt/invalid config must fail the run — never execute a partial graph.
     """
     settings = get_settings()
-    store, _ = await open_store(settings.claim_check)
+    store, _ = await open_store(settings.claim_check, ref)
     # ClaimCheckNotFound / ClaimCheckIntegrityError propagate unmodified — fail loud
     # (S-2's contract), never substitute an empty config.
     raw = await load_blob(ref, store=store)

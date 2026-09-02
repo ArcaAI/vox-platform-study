@@ -92,7 +92,7 @@ async def loop_state_rehydrate(ref: ClaimCheckRef) -> Any:
     output nobody could account for. Fail loud, exactly as `load_config` does.
     """
     settings = get_settings()
-    store, _ = await open_store(settings.claim_check)
+    store, _ = await open_store(settings.claim_check, ref)
     raw = await load_blob(ref, store=store)
     return json.loads(raw)
 
