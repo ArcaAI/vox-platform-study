@@ -1,5 +1,31 @@
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, type AiModelSeed } from './shared';
+import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, type AiModelSeed, type GenerationParamName } from './shared';
+
+/**
+ * TASK-847 finding F-32 — the generation hyper-parameters this platform can actually deliver to
+ * a provider, declared once and shared by every generation row below.
+ *
+ * This is a MEASURED fact about `apps/text`, not a vendor capability matrix:
+ *
+ *   - `apps/text/src/text/core/defaults.py:41-43` defines the whole resolved parameter set as
+ *     `{temperature, max_tokens, top_p}`, and `:69-71` is where a request's values enter it.
+ *   - `AiRuntimeProfile` carries exactly `temperature`, `topP`, `maxTokens` and no other
+ *     generation column (`ai-runtime-profile.prisma:28-30`).
+ *   - No adapter in `apps/text/src/text/providers/` mentions a penalty parameter at all —
+ *     `grep -rn "penalty" apps/text/src/text/providers/` returns nothing. `bedrock.py:168-170`
+ *     and `anthropic.py:158-160` show the shape: three keys, forwarded, nothing else.
+ *
+ * So on THIS platform, a node that sets `presencePenalty`, `frequencyPenalty`, `seed` or
+ * `stopSequences` is tuning a value that never reaches a provider. Declaring the honest set is
+ * what lets the publish gate say so at authoring time instead of letting it be discovered in a
+ * consultation.
+ *
+ * A tenant whose own `AiProviderConnection` reaches an endpoint that DOES honour more may
+ * register its own `AiModel` row declaring a wider set — the tenant row wins over these SYSTEM
+ * rows on the standard two-tier cascade, which is precisely why this is a row and not a constant
+ * in application code.
+ */
+const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'maxTokens', 'topP'];
 
 /**
  * LLM (text generation / summarization) + guardrail model catalog
@@ -120,6 +146,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'default', 'summarization'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
     id: '80000000-0000-0000-0007-000000000005',
@@ -141,6 +168,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
     id: '80000000-0000-0000-0007-000000000006',
@@ -162,6 +190,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q5_k_m',
     tags: ['llm', 'lm-studio', 'medical'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
     id: '80000000-0000-0000-0007-000000000007',
@@ -183,6 +212,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
     id: '80000000-0000-0000-0007-000000000008',
@@ -204,6 +234,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q5_k_xl',
     tags: ['llm', 'lm-studio', 'medical'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -229,7 +260,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 0,
     computeType: 'cloud',
     tags: ['llm', 'cloud', 'azure'],
-    metaData: { azureDeployment: '' },
+    metaData: { azureDeployment: '', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -256,6 +287,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 55296,
     computeType: 'bf16',
     tags: ['llm', 'vllm', 'medical', 'self-host'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -281,6 +313,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 3584,
     computeType: 'q5_k_m',
     tags: ['llm', 'llama-cpp', 'medical', 'self-host'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -307,6 +340,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 0,
     computeType: 'cloud',
     tags: ['llm', 'cloud', 'bedrock'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -333,6 +367,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 3072,
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'judge'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
@@ -368,5 +403,6 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 3072,
     computeType: 'q5_k_xl',
     tags: ['vision', 'lm-studio', 'medical'],
+    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 ];
