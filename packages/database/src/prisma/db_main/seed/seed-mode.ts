@@ -42,7 +42,20 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * | `09-consultation`                      | Synthetic, Vault-encrypted PHI |
  * | `10-audit-log`                         | Fabricated rows in the HIPAA audit trail |
  * | `23-arcaai-workflow-authoring`         | FABRICATED GOVERNANCE — see below |
+ * | `23a-realtime-transcription-agent-arcaai` | FABRICATED GOVERNANCE — the ArcaAI half of TASK-858 D2 |
  * | `91-user`                              | Demo accounts (`*@example.com`) with a documented default password |
+ *
+ * ## A phase string is a FILE STEM, with one suffix (TASK-858)
+ *
+ * `23a-realtime-transcription-agent` seeds BOTH a SYSTEM-owned platform half and
+ * an ArcaAI tenant-authored half, and the two halves belong on opposite sides of
+ * this list. Splitting
+ * it into two files would separate a graph from the compiled artifact whose
+ * only correctness property is "equals what the compiler emits for that graph",
+ * so instead the file exports two seed functions and `index.ts` gates them
+ * with two phase strings: the bare stem for the SYSTEM half, and the stem plus
+ * `-arcaai` for the tenant half. Nothing else in this list uses a suffix, and
+ * nothing else should without the same reason.
  *
  * ## Why `23-arcaai-workflow-authoring` stays excluded (TASK-852 item 2, re-decided 2026-09-02)
  *
@@ -64,7 +77,10 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  *
  * The SYSTEM-owned platform default (`21-workflow-definition`, `createdBy: SYSTEM_USER_ID`) is
  * deliberately NOT excluded — that IS platform configuration, and it is what a `safe` bootstrap
- * needs so a tenant with no graph of its own still resolves a lane.
+ * needs so a tenant with no graph of its own still resolves a lane. The same reasoning keeps the
+ * SYSTEM half of `23a-realtime-transcription-agent` IN every mode: they are the clone-from-template library
+ * `findSystemTemplates` serves, so excluding them would ship a production tenant a Workflow
+ * Studio with nothing to start from.
  *
  * Kept as an explicit deny-list rather than an allow-list so that adding a new
  * platform-config phase does not silently require a second edit here — but
@@ -79,6 +95,7 @@ export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '09-consultation',
   '10-audit-log',
   '23-arcaai-workflow-authoring',
+  '23a-realtime-transcription-agent-arcaai',
   '91-user',
 ] as const;
 
