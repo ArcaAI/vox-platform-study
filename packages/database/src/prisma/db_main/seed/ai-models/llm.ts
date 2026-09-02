@@ -344,9 +344,11 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // Harness LLM-as-judge model (catalogued alternate; the `harness.judge`
-  // AiTaskDefault currently targets `lms-gemma-4-e2b-it-qat` — see
-  // 16-ai-task-default.ts — not this row).
+  // Harness LLM-as-judge model — a catalogued ALTERNATE. The `harness.judge`
+  // AiTaskDefault targets `lms-gemma-4-e4b-it-qat` (owner directive
+  // 2026-09-03, TASK-858 D4), not this row: both are E4B, but that one names
+  // the QAT wire id the deployed LM Studio serves. Kept catalogued so a super
+  // admin can select the un-quantized build deliberately.
   // =========================================================================
   {
     id: '80000000-0000-0000-0007-000000000023',
