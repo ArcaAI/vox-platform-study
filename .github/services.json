@@ -239,7 +239,7 @@
       "context": "infrastructure/docker/lmstudio/",
       "target": null,
       "pythonBase": false,
-      "promotable": false,
+      "promotable": true,
       "platforms": [
         "linux/amd64"
       ],
@@ -365,6 +365,21 @@
         "packages/py-otel/**",
         "packages/py-runtime-models/**",
         "uv.lock"
+      ]
+    },
+    {
+      "name": "vllm",
+      "tagPrefixes": [],
+      "dockerfile": "infrastructure/docker/vllm/Dockerfile",
+      "context": "infrastructure/docker/vllm/",
+      "target": null,
+      "pythonBase": false,
+      "promotable": false,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "paths": [
+        "infrastructure/docker/vllm/**"
       ]
     }
   ]
