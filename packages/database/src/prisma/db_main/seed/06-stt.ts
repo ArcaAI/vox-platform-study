@@ -1822,6 +1822,9 @@ export const seedAiModels = async (client: CorePrismaClient) => {
           source: modelData.source,
           sourceUri: modelData.sourceUri,
           sourceRevision: modelData.sourceRevision,
+          // TASK-855: keep the operator-override path in sync on re-seed,
+          // same as every other source-resolution field above.
+          localPath: modelData.localPath ?? null,
           format: modelData.format,
           memorySizeMb: modelData.memorySizeMb,
           computeType: modelData.computeType,
