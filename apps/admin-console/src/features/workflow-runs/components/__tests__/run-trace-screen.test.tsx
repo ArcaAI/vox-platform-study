@@ -147,6 +147,19 @@ describe('RunTraceScreen — list view (?view=list)', () => {
     await screen.findByText('Passthrough');
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it('has no axe violations in the dark theme (pattern: changelog-screen.test.tsx)', async () => {
+    document.documentElement.classList.add('dark');
+    try {
+      stubRoutes();
+      const { container } = renderWithProviders(<RunTraceScreen runId={RUN_ID} />, { searchParams: '?view=list' });
+      await screen.findByText('Triage Workflow');
+      await screen.findByText('Passthrough');
+      expect(await axe(container)).toHaveNoViolations();
+    } finally {
+      document.documentElement.classList.remove('dark');
+    }
+  });
 });
 
 describe('RunTraceScreen — canvas view (default)', () => {
@@ -185,6 +198,40 @@ describe('RunTraceScreen — canvas view (default)', () => {
     // list-view peer.
     await waitFor(() => expect(screen.getAllByText('OK').length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.getAllByText('Error').length).toBeGreaterThan(0));
+  });
+
+  it('shows the replay toolbar for a terminal run and has no axe violations, light and dark', async () => {
+    stubRoutes();
+    const { container } = renderWithProviders(<RunTraceScreen runId={RUN_ID} />);
+    expect(await screen.findByRole('button', { name: 'Replay this run' })).toBeDefined();
+    await waitFor(() => expect(screen.getAllByText('Error').length).toBeGreaterThan(0));
+    expect(await axe(container)).toHaveNoViolations();
+
+    document.documentElement.classList.add('dark');
+    try {
+      expect(await axe(container)).toHaveNoViolations();
+    } finally {
+      document.documentElement.classList.remove('dark');
+    }
+  });
+
+  it('scrubs the canvas back to an earlier step, hiding not-yet-revealed nodes', async () => {
+    stubRoutes();
+    renderWithProviders(<RunTraceScreen runId={RUN_ID} />);
+    const replayButton = await screen.findByRole('button', { name: 'Replay this run' });
+    await waitFor(() => expect(screen.getAllByText('Error').length).toBeGreaterThan(0));
+
+    replayButton.click();
+    // At the full step count both badges are still visible — replay opens fully revealed.
+    await waitFor(() => expect(screen.getAllByText('OK').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Error').length).toBeGreaterThan(0));
+
+    const previousStepButton = await screen.findByRole('button', { name: 'Previous step' });
+    previousStepButton.click();
+    // Stepping back one (of two) reveals only the first node's rollup — the second node's
+    // "Error" badge (and its problem border) must disappear, not just dim.
+    await waitFor(() => expect(screen.getAllByText('OK').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.queryByText('Error')).toBeNull());
   });
 });
 
