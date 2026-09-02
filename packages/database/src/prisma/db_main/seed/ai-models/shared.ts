@@ -246,6 +246,43 @@ export type AiModelCapability = 'extract_entities' | 'classify_text';
 /** Historical alias — same closed set. */
 export type NlpModelCapability = AiModelCapability;
 
+/**
+ * TASK-847 finding F-32 — which GENERATION hyper-parameters a catalogue row, as served by its
+ * provider, actually accepts.
+ *
+ * The vocabulary is `GENERATION_HYPERPARAMETERS` from `@arcaai/workflow-contract`, restated here
+ * for the same reason `AiModelCapability` is a literal union rather than an import: this seed
+ * module is a database-package leaf and must not depend on the workflow contract. Parity is
+ * asserted by test rather than trusted to this comment.
+ *
+ * ## Why this is a ROW and not a table in TypeScript
+ *
+ * Provider capabilities are CONFIG. A per-provider `switch` in application code would be exactly
+ * the hardcoded configuration `00-project-context.md` §Configuration Principles rule 1 forbids,
+ * and it could never express a tenant's own endpoint — a tenant running vLLM behind
+ * `AiProviderConnection` may well accept parameters the platform's managed default does not. It
+ * lives on `_metadata` alongside `labelTaxonomy` (guardrail), `clinicalTaxonomy` (nlp) and
+ * `entailment`, all of which are model-declared descriptors resolved through the SAME tenant →
+ * SYSTEM cascade that chose the model. `_metadata` is a `Json?` column, so carrying one more
+ * descriptor needs no migration.
+ *
+ * ## ABSENT is "unknown", not "unsupported"
+ *
+ * Omitting the key means nobody has profiled this row. `hyperparameterCapabilityProblems` then
+ * emits a WARNING, never an ERROR — refusing every graph bound to an unprofiled configuration
+ * would block the platform on data entry rather than on a real conflict. Declaring the key is
+ * what makes the gate bite.
+ *
+ * ## What the platform can actually serve today
+ *
+ * `apps/text`'s generation plane forwards exactly three parameters to every adapter —
+ * `temperature`, `max_tokens`, `top_p` (`apps/text/src/text/core/defaults.py:41-43,69-71`), and
+ * `AiRuntimeProfile` carries those same three columns and no others. No adapter in
+ * `apps/text/src/text/providers/` references a penalty parameter at all. So a row declaring the
+ * three is stating a verified fact about this platform, not a vendor's brochure.
+ */
+export type GenerationParamName = 'temperature' | 'maxTokens' | 'topP' | 'frequencyPenalty' | 'presencePenalty' | 'stopSequences' | 'seed';
+
 /** Shape of one `DEFAULT_AI_MODELS` seed row. */
 export interface AiModelSeed {
   id: string;
@@ -287,6 +324,7 @@ export interface AiModelSeed {
     labelTaxonomy?: LabelTaxonomy;
     clinicalTaxonomy?: ClinicalTaxonomy;
     entailment?: EntailmentCalibration;
+    supportedGenerationParams?: GenerationParamName[];
   };
   /** Only set when a row must seed in a non-default status (indic-f5). */
   resourceStatus?: ResourceStatusType;

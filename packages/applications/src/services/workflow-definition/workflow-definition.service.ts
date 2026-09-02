@@ -18,6 +18,7 @@ import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/except
 import {
   canonicalJson,
   compile,
+  hyperparameterCapabilityProblems,
   nodeInfo as registryNodeInfo,
   registryChecksum,
   validate,
@@ -46,7 +47,10 @@ import {
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
 } from './dto';
+import { collectGenerationBindings } from './node-generation-binding';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
+import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
+import type { IAiRoutingPolicyService as IAiRoutingPolicyServicePort } from '../ai-routing-policy/IAiRoutingPolicyService';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
@@ -55,6 +59,15 @@ const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
 /** `WorkflowFinding.ruleId` `validate()` stamps when `workflowGraphProblems` short-circuits the
  *  rule catalogue (`validate.ts`) — the ONLY finding source that is always publish/write-blocking. */
 const SHAPE_FINDING_RULE_ID = 'WF-SHAPE';
+
+/**
+ * TASK-847 finding F-32 — the rule id every hyper-parameter capability finding carries.
+ *
+ * Distinct from the DRAFT rule catalogue so `publish()` can tell "a clinically-unreviewed rule
+ * fired" (never blocking, decision #3) from "this graph tunes a parameter that reaches nothing"
+ * (blocking) apart, exactly as `SHAPE_FINDING_RULE_ID` separates a malformed graph from both.
+ */
+const HYPERPARAMETER_CAPABILITY_RULE_ID = 'WF-CAP-001';
 
 /** Server-authored compile/validate metadata (TASK-716's design.md §Data flow). Bumping either
  *  is a deliberate release event, not tenant-configurable — same posture as
@@ -158,6 +171,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // publish still succeeds: an unpinned artifact is worse than a pinned one, but refusing to
     // publish at all would be worse than both, and the graph-derived bindings do not need it.
     @Optional() @Inject(IConsultationContextSchemaService) private readonly contextSchemaService?: IConsultationContextSchemaServicePort,
+    // TASK-847 F-32 — the provider plane, for the hyper-parameter capability gate.
+    // `@Optional()` + trailing for the same reason as the five above (positional unit fixtures);
+    // production DI supplies it via `AiRoutingPolicyServiceModule`. Absent ⇒ no capability set
+    // resolves, so every tuned node reports the UNKNOWN warning and publish still succeeds —
+    // which is the same posture as an unprofiled configuration, and strictly safer than a gate
+    // that fails a publish because its own dependency was missing.
+    @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicyService?: IAiRoutingPolicyServicePort,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -381,6 +401,22 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
     if (reportIsShapeBroken(report)) {
       throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
+    }
+
+    // TASK-847 F-32 — the gate, at the moment it matters. A node that tunes a parameter its bound
+    // provider configuration does not accept is refused HERE, at authoring time, rather than
+    // having the value silently dropped on the wire during a clinical consultation. WARNING-level
+    // capability findings (an unprofiled configuration) are recorded on the report and do NOT
+    // block — "unknown" is not "unsupported", and blocking on it would gate the platform on data
+    // entry. Runs BEFORE compile and before any entity mutation, so a refusal writes nothing.
+    const capabilityErrors = report.findings.filter(
+      (finding) => finding.ruleId === HYPERPARAMETER_CAPABILITY_RULE_ID && finding.severity === 'ERROR',
+    );
+    if (capabilityErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'The workflow sets generation hyper-parameters the bound provider configuration does not accept.',
+        findings: capabilityErrors,
+      });
     }
 
     // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
@@ -813,13 +849,67 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * `ok: false`, never an exception and never `ok: true`.
    */
   private async validateGraph(graph: WorkflowGraph, paletteKey: string, tenantId: string): Promise<WorkflowValidationReport> {
-    if (this.workflowValidator) {
-      return this.workflowValidator.validateGraph(tenantId, paletteKey, graph);
-    }
-    return validate(
-      graph,
-      { paletteKey, registry: workflowNodeClassLookup },
-      { ruleSetVersion: RULE_SET_VERSION, registryChecksum: registryChecksum() },
+    const report = this.workflowValidator
+      ? await this.workflowValidator.validateGraph(tenantId, paletteKey, graph)
+      : validate(
+          graph,
+          { paletteKey, registry: workflowNodeClassLookup },
+          { ruleSetVersion: RULE_SET_VERSION, registryChecksum: registryChecksum() },
+        );
+
+    // TASK-847 F-32 — merged into the SAME report rather than reported through a second channel,
+    // so the Studio maps a capability problem onto a canvas node exactly like every other
+    // finding, and a draft save records it as authoring feedback long before publish refuses it.
+    const capability = await this.hyperparameterCapabilityFindings(graph, tenantId);
+    if (capability.length === 0) return report;
+
+    return {
+      ...report,
+      ok: report.ok && !capability.some((finding) => finding.severity === 'ERROR'),
+      findings: [...report.findings, ...capability],
+    };
+  }
+
+  /**
+   * TASK-847 finding F-32 — the gate the ticket built and never wired.
+   *
+   * `hyperparameterCapabilityProblems` is a PURE function: it compares what a node tuned against
+   * what the bound configuration declares it accepts. TASK-847 could not call it because the
+   * capability set is DATA — it comes off the `AiModel` row the node's `providerConfigRef`
+   * resolves to — and that read lives outside a package with no database. This is that read.
+   *
+   * The severity split is the contract's and is preserved exactly: a DECLARED set that omits the
+   * parameter is an ERROR (the platform KNOWS it will be dropped), and an ABSENT set is a WARNING
+   * ("nobody profiled this configuration" is not evidence of non-support).
+   *
+   * Resolution is one call per tuned node, run concurrently, through
+   * `IAiRoutingPolicyService.resolveGenerationCapabilities` — the plane that owns the tenant →
+   * SYSTEM cascade. Nothing here re-derives it, and nothing here can reach the Global customer
+   * tenant `50000000-…`.
+   */
+  private async hyperparameterCapabilityFindings(graph: WorkflowGraph, tenantId: string): Promise<WorkflowFinding[]> {
+    const bindings = collectGenerationBindings(graph);
+    if (bindings.length === 0 || !this.routingPolicyService) return [];
+    const routingPolicyService = this.routingPolicyService;
+
+    const resolved = await Promise.all(
+      bindings.map(async (binding) => ({
+        binding,
+        // A resolution failure is an UNKNOWN capability set, never a failed publish — the
+        // service already contracts not to throw, and this is the belt to that suspenders.
+        capabilities: await routingPolicyService.resolveGenerationCapabilities(tenantId, binding.providerConfigRef).catch(() => undefined),
+      })),
+    );
+
+    return resolved.flatMap(({ binding, capabilities }) =>
+      hyperparameterCapabilityProblems(binding.generation, capabilities).map((problem) => ({
+        ruleId: HYPERPARAMETER_CAPABILITY_RULE_ID,
+        ruleClass: 'invariant' as const,
+        severity: problem.severity,
+        nodeId: binding.nodeId,
+        path: `/config/generation/${problem.parameter}`,
+        message: problem.message,
+      })),
     );
   }
 

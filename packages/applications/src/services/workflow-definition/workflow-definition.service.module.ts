@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
+import { AiRoutingPolicyServiceModule } from '../ai-routing-policy/ai-routing-policy.service.module';
 import { ConsultationContextSchemaServiceModule } from '../consultation-context-schema/consultation-context-schema.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { PipelineServiceModule } from '../stt/pipeline/pipeline.service.module';
@@ -34,6 +35,12 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  *   every compile used to carry. That module imports only `CommonServiceModule` +
  *   `CoreDatabaseModule`, so this import closes no cycle.
  *
+ * - AiRoutingPolicyServiceModule -> `IAiRoutingPolicyService` (TASK-847 F-32). `validateGraph()`
+ *   asks it what generation hyper-parameters each agent node's bound provider configuration
+ *   accepts, so a node tuning one the provider drops is refused at publish instead of being
+ *   silently ignored at runtime. That module imports `CommonServiceModule` + `CoreDatabaseModule`
+ *   + `AiProviderConnectionServiceModule`, none of which reach back here, so this closes no cycle.
+ *
  * `SttPipelineResolverService` is exported (not just provided) because its consumer — the
  * session/consultation-open call site that resolves `pipelineId` — is a FUTURE, separate wiring
  * pass (README §4 Task 6; deliberately not this ticket's diff, proved by
@@ -41,6 +48,7 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  */
 @Module({
   imports: [
+    AiRoutingPolicyServiceModule,
     CommonServiceModule,
     ConsultationContextSchemaServiceModule,
     CoreDatabaseModule,

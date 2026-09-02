@@ -24,7 +24,12 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { AI_TASK_KEYS } from '../ai-task-default/constants';
 import { IProviderConnectionService, ProviderService } from '../ai-provider-connection/IProviderConnectionService';
-import { IAiRoutingPolicyService, ResolveRoutingOptions } from './IAiRoutingPolicyService';
+import {
+  GenerationCapabilitySelector,
+  IAiRoutingPolicyService,
+  ResolveRoutingOptions,
+  ResolvedGenerationCapabilities,
+} from './IAiRoutingPolicyService';
 import { AiRoutingPolicyDtoMapper } from './ai-routing-policy.dto.mapper';
 import { AiRoutingPolicyResponse, CreateAiRoutingPolicyRequest, EffectiveRoutingPolicyResponse, UpdateAiRoutingPolicyRequest } from './dto';
 import { FundedCandidate, RoutingHopRejection, evaluateHop } from './routing-gates';
@@ -268,6 +273,91 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       relaxedGates: this.relaxedGates(contract),
       rejection: null,
     };
+  }
+
+  /**
+   * TASK-847 finding F-32 — what GENERATION hyper-parameters the configuration a workflow node
+   * binds to actually accepts.
+   *
+   * Answers the authoring-time question the workflow publish gate asks: *"this node tunes
+   * `presencePenalty` — will that reach anything?"* The answer is a property of the RESOLVED
+   * configuration, so it is derived here, in the plane that owns the cascade, rather than
+   * re-derived by the caller. A second copy of a two-tier cascade is the failure mode
+   * `resolveContextSchemaVersionId` names: *"a second, silently-diverging copy of a resolution
+   * the platform already has one answer for."*
+   *
+   * ## Both `providerConfigRef` shapes, each through the resolution that already exists
+   *
+   * | Selector | Path |
+   * |---|---|
+   * | `routingPolicyId` | the pinned row, read on the `[tenant, SYSTEM]` lane — a tenant graph may legitimately pin the platform default |
+   * | `taskKey` | `getEffective`, whose election (tier, match, `isDefault`) is the runtime's own |
+   *
+   * Either way the winning row's `modelId` FK names the `AiModel` whose `_metadata` carries the
+   * declaration. `50000000-…` ("Global") cannot enter either path: `readCandidateRows` is handed
+   * exactly `[tenantId, SYSTEM_TENANT_ID]`, and the pinned read goes through the same two ids.
+   *
+   * ## Never throws, and `undefined` params is a real answer
+   *
+   * A capability question must not be the thing that fails a publish. Every miss — no row, a
+   * killed row, no `modelId`, a model the caller cannot read, a row that declares nothing —
+   * resolves to `supportedGenerationParams: undefined`, which the contract reads as UNKNOWN and
+   * reports as a WARNING. That is deliberate and is not the `failMode: closed` rule being
+   * relaxed: SELECTION still fails closed at runtime. These are tuning knobs, and refusing every
+   * graph bound to an unprofiled configuration would block the platform on data entry.
+   */
+  async resolveGenerationCapabilities(tenantId: string, selector: GenerationCapabilitySelector): Promise<ResolvedGenerationCapabilities> {
+    const row = await this.resolveConfigurationRow(tenantId, selector).catch(() => null);
+    if (!row) {
+      // Name what the AUTHOR wrote. A problem that cannot be traced back to the field that
+      // caused it is a problem the author cannot act on.
+      const unresolved = selector.routingPolicyId ? `routingPolicyId '${selector.routingPolicyId}'` : `taskKey '${selector.taskKey ?? ''}'`;
+      return { label: unresolved, supportedGenerationParams: undefined };
+    }
+
+    const label = row.displayName ?? `${row.taskKey} (revision ${row.policyVersion})`;
+    if (!row.modelId) return { label, supportedGenerationParams: undefined };
+
+    // Mirrors `resolveRefs`: the un-laned read goes through the tenant-scope extension, which
+    // pins `tenantId IN [caller, SYSTEM]` itself — so a SYSTEM-owned model stays readable and
+    // another customer's does not.
+    const model = await this.aiModelRepository.findById(row.modelId).catch(() => null);
+    if (!model) return { label, supportedGenerationParams: undefined };
+
+    const declared = (model.metaData as Record<string, unknown> | null | undefined)?.supportedGenerationParams;
+    const named = model.slug ? `${label} → ${model.slug}` : label;
+    if (!Array.isArray(declared)) return { label: named, supportedGenerationParams: undefined };
+
+    return { label: named, supportedGenerationParams: declared.filter((entry): entry is string => typeof entry === 'string') };
+  }
+
+  /** The winning `AiRoutingPolicy` row for a node's `providerConfigRef`, or `null`. */
+  private async resolveConfigurationRow(tenantId: string, selector: GenerationCapabilitySelector): Promise<AiRoutingPolicyEntity | null> {
+    if (selector.routingPolicyId) {
+      return this.readPinnedRow(tenantId, selector.routingPolicyId);
+    }
+    if (!selector.taskKey || !AI_TASK_KEYS.includes(selector.taskKey as (typeof AI_TASK_KEYS)[number])) return null;
+
+    const effective = await this.getEffective(tenantId, selector.taskKey);
+    return effective.policyId ? this.readPinnedRow(tenantId, effective.policyId) : null;
+  }
+
+  /**
+   * One row BY ID, admissible only if it belongs to the request tenant or to SYSTEM.
+   *
+   * A pinned id may legitimately name the tenant's OWN row or the SYSTEM default it inherited —
+   * `PROVIDER_CONFIG_REF_PROPERTY`'s doc comment contemplates both. Nothing else is reachable, and
+   * the ownership test is made HERE rather than left to the tenant-scope extension: `loadOwnedRow`
+   * asserts `row.tenantId` for the same reason. An extension is a backstop, not the statement of
+   * intent, and a guarantee that lives only in a `$extends` hook is one no test of this method can
+   * see. A foreign row answers `null` — the capability set is then UNKNOWN, which is the
+   * 404-over-403 posture expressed in the only currency this method has.
+   */
+  private async readPinnedRow(tenantId: string, id: string): Promise<AiRoutingPolicyEntity | null> {
+    const rows = await this.readPolicies([tenantId, SYSTEM_TENANT_ID], { id });
+    const row = rows[0];
+    if (!row || (row.tenantId !== tenantId && row.tenantId !== SYSTEM_TENANT_ID)) return null;
+    return row;
   }
 
   // ─────────────────────────────── writes ────────────────────────────────
