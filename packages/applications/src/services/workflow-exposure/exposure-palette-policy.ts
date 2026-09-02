@@ -11,13 +11,7 @@ import { paletteOf, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
  * while the run acted on something else (or nothing) — the failure would surface as missing
  * clinical data, hours later, with no error anywhere. A 400 naming the key is the honest answer.
  */
-export const RESERVED_RUN_IDENTITY_KEYS: readonly string[] = Object.freeze([
-  'consultationId',
-  'externalPatientId',
-  'userId',
-  'jobId',
-  'sessionId',
-]);
+export const RESERVED_RUN_IDENTITY_KEYS: readonly string[] = Object.freeze(['consultationId', 'externalPatientId', 'userId', 'jobId', 'sessionId']);
 
 /** The reserved identity keys present in a caller's invocation input — empty when it is clean. */
 export function reservedIdentityKeysIn(input: Record<string, unknown> | undefined): string[] {
