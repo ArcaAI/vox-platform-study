@@ -125,9 +125,12 @@ class WhisperCppLoader(BaseModelLoader):
         Accepts both extensions whisper.cpp ships ggml weights under: the modern
         ``.gguf`` and the classic ``ggml-*.bin`` naming (e.g.
         ``ggml-whisper-turbo-…-q8_0.bin``) — pywhispercpp loads either by path.
-        Prefers a filename containing the configured quantization (e.g. ``q8_0``)
-        when the directory ships more than one quantized variant. Fetching is the
-        resolver's job; this is only the selection tail.
+        Requires a filename containing the configured quantization (e.g.
+        ``q8_0``) when one is set — selection is ``failMode: closed`` (see
+        ``.claude/rules/09-infrastructure-devops.md`` §Configuration Tiers): a
+        registry row declaring ``q8_0`` must never silently load an ``f16`` (or
+        any other) file just because it happened to be first alphabetically.
+        Fetching is the resolver's job; this is only the selection tail.
         """
         candidates = sorted(
             c
@@ -159,6 +162,12 @@ class WhisperCppLoader(BaseModelLoader):
             matching = [c for c in candidates if quant in os.path.basename(c).lower()]
             if matching:
                 return matching[0]
+            seen = ", ".join(os.path.basename(c) for c in candidates)
+            raise ModelLoadError(
+                f"No ggml weights matching requested quantization {quant!r} for "
+                f"whisper.cpp model '{model_config.slug}' (dir={repo_dir}); "
+                f"candidates seen: {seen}"
+            )
 
         return candidates[0]
 

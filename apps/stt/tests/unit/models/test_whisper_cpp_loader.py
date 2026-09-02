@@ -136,6 +136,43 @@ def test_no_gguf_raises(tmp_path):
         WhisperCppLoader._select_gguf_file(str(tmp_path), _config("q8_0"))
 
 
+def test_quant_mismatch_raises_instead_of_silently_substituting(tmp_path):
+    """A requested quant with no matching candidate must fail closed (selection
+    is `failMode: closed` — see .claude/rules/09-infrastructure-devops.md
+    §Configuration Tiers), not silently return an unrelated quantization.
+    """
+    repo = str(tmp_path)
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-f16.bin"))
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-q5_0.bin"))
+
+    with pytest.raises(ModelLoadError) as exc_info:
+        WhisperCppLoader._select_gguf_file(repo, _config("q8_0"))
+
+    message = str(exc_info.value)
+    assert "whisper-large-v3-turbo-gguf" in message  # slug
+    assert "q8_0" in message  # requested quant
+    assert "ggml-whisper-turbo-ml-en-codeswitch-f16.bin" in message  # candidate seen
+    assert "ggml-whisper-turbo-ml-en-codeswitch-q5_0.bin" in message  # candidate seen
+
+
+def test_quant_mismatch_within_whisper_cpp_subfolder_raises(tmp_path):
+    """The whisper.cpp/ subdirectory preference is applied before quant
+    matching, so a mismatch is judged only against the subfolder's candidates
+    — a top-level file that WOULD have matched must not rescue the request.
+    """
+    repo = str(tmp_path)
+    _touch(os.path.join(repo, "whisper-large-v3-turbo-q8_0.gguf"))  # top-level decoy
+    _touch(os.path.join(repo, "whisper.cpp", "whisper-large-v3-turbo-q4_k.gguf"))
+
+    with pytest.raises(ModelLoadError) as exc_info:
+        WhisperCppLoader._select_gguf_file(repo, _config("q8_0"))
+
+    message = str(exc_info.value)
+    assert "q8_0" in message  # requested quant
+    assert "whisper-large-v3-turbo-q4_k.gguf" in message  # subfolder candidate seen
+    assert "whisper-large-v3-turbo-q8_0.gguf" not in message  # top-level decoy excluded
+
+
 # ── load: failed-init detection ──────────────────────────────────────────────
 
 
