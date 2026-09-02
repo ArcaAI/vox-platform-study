@@ -101,7 +101,13 @@ describe('ConsultationWorkflowDispatchService', () => {
     );
   });
 
-  it('forwards a real identity payload — without it every consultation node fails its binding', async () => {
+  // TASK-850 lane A moved run identity from `payload` to `subject`. The INTENT of this test is
+  // unchanged and is the reason it must keep passing: the three identity values still reach the
+  // same `run_identity(...)` readers (the dispatcher re-stamps them into `run_payload`), and
+  // without them `input.context_binding` — `critical=True` — fails at the first node. Only the
+  // CHANNEL changed, because `payload` is now stripped of identity keys unconditionally so that
+  // a caller-composed one can never carry them (finding C-8, link 1).
+  it('forwards a real identity subject — without it every consultation node fails its binding', async () => {
     deps.assignments.resolve.mockResolvedValue({ workflowDefinitionSlug: publishedDefinition.slug, source: 'tenant' });
     deps.definitionRepository.findPublishedBySlug.mockResolvedValue(publishedDefinition);
 
@@ -115,7 +121,10 @@ describe('ConsultationWorkflowDispatchService', () => {
 
     const call = deps.harnessGateway.startWorkflowRun.mock.calls[0][0];
     expect(call.sandbox).toBe(false);
-    expect(call.payload).toMatchObject({ consultationId: CONSULTATION, userId: USER, externalPatientId: 'p-9' });
+    expect(call.subject).toMatchObject({ consultationId: CONSULTATION, userId: USER, externalPatientId: 'p-9' });
+    // And it is NOT smuggled through the payload as well — one channel, so the two can never
+    // disagree about which consultation a run may write to.
+    expect(call.payload).toBeUndefined();
   });
 
   it('records the run BEFORE dispatching, so a started run is always attributable', async () => {

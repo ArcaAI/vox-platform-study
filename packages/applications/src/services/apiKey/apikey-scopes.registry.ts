@@ -653,6 +653,26 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'read', subject: 'WorkflowRun' }],
   },
 
+  // TASK-850 lane A — the CONSULTATION-BOUND invocation plane
+  // (`POST /consultations/:consultationId/workflows/:slug/runs`).
+  //
+  // Deliberately `workflows:` (plural) and NOT under the `workflow:` prefix the three scopes
+  // above share. `apikey.service.ts`'s `hasScope` matches by prefix, so a key holding the bare
+  // `workflow` scope grants all of `workflow:*` — and a plane that can write real `ContextItem`
+  // rows into a live consultation must never be inherited by a key that was granted "workflows"
+  // in the general sense. It has to be granted on purpose, as its own thing.
+  //
+  // The two gates still compose as AND: this scope binds the CREDENTIAL, and
+  // `execute:ConsultationWorkflow` binds the human it is bound to.
+  'workflows:execute': {
+    description: 'Execute a consultation-bound workflow run against a consultation the caller may already access',
+    category: 'Workflow',
+    implies: [
+      { action: 'execute', subject: 'ConsultationWorkflow' },
+      { action: 'create', subject: 'WorkflowRun' },
+    ],
+  },
+
   // Wildcards
   'stt:*': { description: 'Full STT service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'tts:*': { description: 'Full TTS service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },

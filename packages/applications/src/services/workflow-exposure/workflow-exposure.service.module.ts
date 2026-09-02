@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { RedisCacheModule } from '../baseServices/redis';
+import { ConsultationServiceModule } from '../consultation/consultation/consultation.service.module';
 import { HarnessGatewayServiceModule } from '../consultation/harness/harness-gateway.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { WorkflowRunServiceModule } from '../workflow-run';
@@ -30,6 +31,11 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     HarnessGatewayServiceModule,
     WorkflowRunServiceModule,
     EntitlementsServiceModule,
+    // TASK-850 lane A -> `IConsultationService`, used ONLY to re-resolve the PATH
+    // `consultationId` against the caller's tenant before it may become a run's `subject`. No
+    // cycle: ConsultationServiceModule imports neither this module nor anything leading back to
+    // it (its own module doc records the same check for ConsentServiceModule).
+    ConsultationServiceModule,
   ],
   providers: [
     WorkflowExposureService,
