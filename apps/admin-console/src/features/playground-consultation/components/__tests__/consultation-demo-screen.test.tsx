@@ -377,10 +377,21 @@ describe('ConsultationDemoScreen — workflow selection and governance', () => {
     renderWithProviders(<ConsultationDemoScreen />);
     await openNewForm();
 
-    expect(await screen.findByLabelText(/^workflow$/i)).toBeTruthy();
+    const picker = await screen.findByLabelText(/^workflow$/i);
+    expect(picker).toBeTruthy();
+    // Nothing is preselected — the default is the assignment cascade.
+    expect(picker.textContent).toContain('Use assigned workflow');
   });
 
-  it('opens the consultation with the preselected tenant default', async () => {
+  /**
+   * The DEFAULT sends no slug.
+   *
+   * Preselecting the tenant default would put a slug on every open, and an explicit slug wins
+   * over the whole WorkflowAssignment cascade — so a tenant that assigned a different workflow
+   * to a DEPARTMENT would have had that assignment silently overridden by this screen.
+   * `isTenantDefault` describes the tenant tier, not this consultation.
+   */
+  it('opens with NO slug by default, leaving the assignment cascade in charge', async () => {
     stubFetch();
     renderWithProviders(<ConsultationDemoScreen />);
     await openNewForm();
@@ -388,8 +399,27 @@ describe('ConsultationDemoScreen — workflow selection and governance', () => {
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
 
+    await waitFor(() => expect(sdk.arca.session.open).toHaveBeenCalled());
+    expect(sdk.arca.session.open.mock.calls[0][0]).not.toHaveProperty('workflowDefinitionSlug');
+    expect(sdk.arca.session.open.mock.calls[0][0]).toMatchObject({ patientId: 'P-900' });
+  });
+
+  it('sends the slug the clinician actually picked', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+    const options = await screen.findAllByRole('option');
+    fireEvent.click(options[2]);
+
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-903' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
     await waitFor(() =>
-      expect(sdk.arca.session.open).toHaveBeenCalledWith(expect.objectContaining({ patientId: 'P-900', workflowDefinitionSlug: 'arcaai_consultation_soap' })),
+      expect(sdk.arca.session.open).toHaveBeenCalledWith(
+        expect.objectContaining({ patientId: 'P-903', workflowDefinitionSlug: 'arcaai_consultation_ner' }),
+      ),
     );
   });
 

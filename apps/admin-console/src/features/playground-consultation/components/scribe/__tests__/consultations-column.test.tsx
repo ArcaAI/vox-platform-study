@@ -260,7 +260,7 @@ describe('ConsultationsColumn — workflow selection on open', () => {
     await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', undefined, 'arcaai_consultation_ner'));
   });
 
-  it('omits the slug when nothing is selected (the assignment cascade decides)', async () => {
+  it('omits the slug by DEFAULT so the assignment cascade decides', async () => {
     const { props } = setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
     openNewForm();
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-901' } });
@@ -278,22 +278,46 @@ describe('ConsultationsColumn — workflow selection on open', () => {
     expect(screen.queryByText(/no published workflows/i)).toBeNull();
   });
 
-  it('lists every published workflow and marks the tenant default when the picker is opened', async () => {
-    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_soap', onWorkflowChange: vi.fn() });
+  it('offers "Use assigned workflow" first, then the published workflows with the tenant default marked', async () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
     openNewForm();
     fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
 
     const options = await screen.findAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining('Use assigned workflow'),
       expect.stringContaining('Consultation SOAP'),
       expect.stringContaining('Consultation with Medical NER'),
     ]);
-    // Slugs are shown too — the tenant default is a preselection, not a promise, so the
-    // clinician has to be able to tell two similarly-named graphs apart.
-    expect(options[0].textContent).toContain('arcaai_consultation_soap');
-    // Only the tenant-default entry carries the marker.
-    expect(options[0].textContent).toContain('Default');
-    expect(options[1].textContent).not.toContain('Default');
+    // The default says WHY it is the default rather than leaving the clinician to guess.
+    expect(options[0].textContent).toContain('the department or tenant assignment decides');
+    // Slugs are shown — the clinician has to be able to tell two similarly-named graphs apart.
+    expect(options[1].textContent).toContain('arcaai_consultation_soap');
+    // The marker is a HINT about the tenant tier, and only the tenant default carries it.
+    expect(options[1].textContent).toContain('Default');
+    expect(options[2].textContent).not.toContain('Default');
+  });
+
+  it('shows "Use assigned workflow" as the selected value until the clinician picks one', () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+
+    expect(screen.getByLabelText(/^workflow$/i).textContent).toContain('Use assigned workflow');
+    // Never the tenant default: preselecting it would send a slug on every open.
+    expect(screen.getByLabelText(/^workflow$/i).textContent).not.toContain('Consultation SOAP');
+  });
+
+  it('clears the selection back to no slug when the clinician returns to "Use assigned workflow"', async () => {
+    const onWorkflowChange = vi.fn();
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_ner', onWorkflowChange });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+
+    const options = await screen.findAllByRole('option');
+    fireEvent.click(options[0]);
+
+    // The sentinel is a Radix implementation detail; the caller only ever sees the empty slug.
+    expect(onWorkflowChange).toHaveBeenCalledWith('');
   });
 
   it('shows a skeleton, not a claim, while the list is still loading', () => {
@@ -330,6 +354,20 @@ describe('ConsultationsColumn — workflow selection on open', () => {
     const { container } = setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_soap', onWorkflowChange: vi.fn() });
     openNewForm();
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no axe violations with the picker OPEN (the options live in a portal)', async () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+    await screen.findAllByRole('option');
+
+    // The LISTBOX, not the container and not document.body: Radix renders the options in a
+    // portal (invisible to a container scan), and a whole-body scan in an isolated component
+    // render reports Radix's own focus guards (`aria-hidden-focus`) plus `region` for portal
+    // content that has no page landmarks around it — both artifacts of the test harness, not
+    // of this markup.
+    expect(await axe(screen.getByRole('listbox'))).toHaveNoViolations();
   });
 
   it('has no axe violations in the degraded (unreadable) state', async () => {

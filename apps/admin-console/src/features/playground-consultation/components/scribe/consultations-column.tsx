@@ -75,6 +75,7 @@ export interface ConsultationsColumnProps {
   workflows?: WorkflowSelectionOption[] | null;
   /** Read in flight ⇒ skeleton, never a premature "none". */
   workflowsLoading?: boolean;
+  /** Empty ⇒ "use the assigned workflow", i.e. send no slug and let the cascade decide. */
   selectedWorkflowSlug?: string;
   onWorkflowChange?: (slug: string) => void;
   /**
@@ -116,6 +117,15 @@ export interface WorkflowSelectionOption {
 const NO_DEPARTMENT = '__none__';
 
 /**
+ * Sentinel for "send no slug at all" — the DEFAULT, and the only value that leaves the
+ * WorkflowAssignment cascade intact. Sending the tenant default explicitly would silently
+ * override a DEPARTMENT assignment, which is a different consultation from the one the tenant
+ * configured; `isTenantDefault` is a hint about the tenant tier, never a promise about this
+ * consultation.
+ */
+const ASSIGNED_WORKFLOW = '__assigned__';
+
+/**
  * The department picker's DEGRADED state — a designed state, not a failure.
  *
  * Follows the same idiom as `/playground/dna-writing-style`'s
@@ -154,8 +164,8 @@ function WorkflowSelectionNotice({ unavailable }: { unavailable: boolean }) {
       </div>
       <p className="text-muted-foreground text-xs">
         {unavailable
-          ? 'The workflow list could not be read. The consultation still opens \u2014 the tenant\u2019s assigned workflow governs it.'
-          : 'This tenant has published no consultation workflow. The consultation still opens \u2014 the platform default engine governs it.'}
+          ? 'The workflow list could not be read, so there is nothing to pick. The consultation still opens \u2014 the assigned workflow governs it.'
+          : 'This tenant has published no consultation workflow, so there is nothing to pick. The consultation still opens \u2014 the platform default engine governs it.'}
       </p>
     </div>
   );
@@ -331,11 +341,22 @@ export function ConsultationsColumn({
             ) : (
               <>
                 <Label htmlFor="scribe-workflow">Workflow</Label>
-                <Select value={selectedWorkflowSlug || undefined} onValueChange={(next) => onWorkflowChange?.(next)}>
+                <Select
+                  value={selectedWorkflowSlug || ASSIGNED_WORKFLOW}
+                  onValueChange={(next) => onWorkflowChange?.(next === ASSIGNED_WORKFLOW ? '' : next)}
+                >
                   <SelectTrigger id="scribe-workflow" className="w-full">
-                    <SelectValue placeholder="Assigned workflow" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* The default: no slug leaves the department → tenant assignment in
+                        charge, which is what the tenant actually configured. */}
+                    <SelectItem value={ASSIGNED_WORKFLOW}>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">Use assigned workflow</span>
+                        <span className="text-muted-foreground truncate text-xs">the department or tenant assignment decides</span>
+                      </span>
+                    </SelectItem>
                     {workflows.map((workflow) => (
                       <SelectItem key={workflow.slug} value={workflow.slug}>
                         {/* One ROW, not a stack: `SelectValue` mirrors this content into the
@@ -343,6 +364,8 @@ export function ConsultationsColumn({
                             two-line item would be clipped there. */}
                         <span className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate">{workflow.name}</span>
+                          {/* A hint about the TENANT tier, not the preselection — a department
+                              override can still win when nothing is picked. */}
                           {workflow.isTenantDefault ? <Badge variant="secondary">Default</Badge> : null}
                           <span className="text-muted-foreground truncate font-mono text-xs">{workflow.slug}</span>
                         </span>
@@ -351,7 +374,7 @@ export function ConsultationsColumn({
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  Governs this consultation&apos;s realtime and drafting agents. A selection wins over the department and tenant assignment.
+                  Governs this consultation&apos;s realtime and drafting agents. An explicit pick overrides the department and tenant assignment.
                 </p>
               </>
             )}
