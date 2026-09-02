@@ -10,6 +10,7 @@
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { ConsultationDemoScreen } from '../consultation-demo-screen';
@@ -23,6 +24,9 @@ const sdk = vi.hoisted(() => ({
   storeApi: null as any,
   userSettings: null as any,
   liveSummary: null as any,
+  // TASK-858 Lane D — the two TASK-813 discovery hooks the screen now calls.
+  selectableWorkflows: null as any,
+  governingWorkflow: null as any,
 }));
 /* eslint-enable @typescript-eslint/no-explicit-any -- end of the SDK-double block */
 
@@ -34,7 +38,36 @@ vi.mock('@arcaai/vox', () => ({
   useUserSettings: () => sdk.userSettings,
   useArcaLiveSummary: () => sdk.liveSummary,
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn(async () => undefined) }),
+  useSelectableConsultationWorkflows: () => sdk.selectableWorkflows,
+  useConsultationWorkflow: () => sdk.governingWorkflow,
 }));
+
+/** Published consultation workflows the tenant may select at open. */
+const WORKFLOWS = [
+  { slug: 'arcaai_consultation_soap', name: 'Consultation SOAP', description: null, isTenantDefault: true },
+  { slug: 'arcaai_consultation_ner', name: 'Consultation with Medical NER', description: null, isTenantDefault: false },
+];
+
+function makeSelectableWorkflows(workflows: typeof WORKFLOWS | null = WORKFLOWS, isLoading = false) {
+  return {
+    workflows,
+    tenantDefault: workflows?.find((workflow) => workflow.isTenantDefault) ?? null,
+    isLoading,
+    error: null,
+    refresh: vi.fn(async () => workflows),
+  };
+}
+
+function makeGoverningWorkflow(overrides: Record<string, unknown> = {}) {
+  return {
+    workflow: null,
+    isGoverned: false,
+    isLoading: false,
+    error: null,
+    refresh: vi.fn(async () => null),
+    ...overrides,
+  };
+}
 
 const CONSULTATIONS = [
   { id: 'c-1', patientId: 'P-448', status: 'OPEN', createdAt: '2026-07-06T14:02:00.000Z' },
@@ -163,6 +196,8 @@ beforeEach(() => {
   sdk.storeApi = { getState: () => ({}) };
   sdk.userSettings = makeUserSettings();
   sdk.liveSummary = { snapshot: null, status: 'idle', error: null, start: vi.fn(), stop: vi.fn() };
+  sdk.selectableWorkflows = makeSelectableWorkflows();
+  sdk.governingWorkflow = makeGoverningWorkflow();
 });
 
 afterEach(() => {
@@ -194,7 +229,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     expect(screen.getByText('P-702')).toBeTruthy();
 
     // Footer model selectors.
-    expect(screen.getByText('Transcription Listener')).toBeTruthy();
+    expect(screen.getByText('Transcription agent (STT pipeline)')).toBeTruthy();
     expect(screen.getByText('Note assistant')).toBeTruthy();
   });
 
@@ -320,5 +355,121 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: /^Start$/ })).toHaveProperty('disabled', false));
       expect(screen.queryByText(/no active AI documentation consent on record/i)).toBeNull();
     });
+  });
+});
+
+/**
+ * TASK-858 Lane D — a clinician selects the workflow that governs the consultation.
+ *
+ * TASK-813 shipped both halves of this (selection at open, and the read-back that says what
+ * actually took the consultation) and the console called NEITHER: `useSelectableConsultation-
+ * Workflows` had zero call sites, so every session ran whatever the assignment cascade picked
+ * and nothing on screen said which engine that was.
+ */
+describe('ConsultationDemoScreen — workflow selection and governance', () => {
+  async function openNewForm() {
+    await screen.findByRole('region', { name: /consultations/i });
+    fireEvent.click(screen.getByRole('button', { name: /^new$/i }));
+  }
+
+  it('offers the tenant\u2019s published workflows in the open form', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+
+    expect(await screen.findByLabelText(/^workflow$/i)).toBeTruthy();
+  });
+
+  it('opens the consultation with the preselected tenant default', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() =>
+      expect(sdk.arca.session.open).toHaveBeenCalledWith(expect.objectContaining({ patientId: 'P-900', workflowDefinitionSlug: 'arcaai_consultation_soap' })),
+    );
+  });
+
+  it('omits the slug entirely when the tenant has published none (the platform default governs)', async () => {
+    stubFetch();
+    sdk.selectableWorkflows = makeSelectableWorkflows([]);
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+
+    expect(screen.getByText(/no published workflows/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-901' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(sdk.arca.session.open).toHaveBeenCalled());
+    expect(sdk.arca.session.open.mock.calls[0][0]).not.toHaveProperty('workflowDefinitionSlug');
+  });
+
+  it('a failed discovery read never blocks the open (fail-open, and it says so)', async () => {
+    stubFetch();
+    sdk.selectableWorkflows = makeSelectableWorkflows(null);
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+
+    expect(screen.getByText(/workflow selection unavailable/i)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-902' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(sdk.arca.session.open).toHaveBeenCalled());
+  });
+
+  it('names the governing workflow once a consultation is open', async () => {
+    stubFetch();
+    sdk.governingWorkflow = makeGoverningWorkflow({
+      workflow: {
+        consultationId: 'c-1',
+        governed: true,
+        workflowDefinitionSlug: 'arcaai_consultation_ner',
+        name: 'Consultation with Medical NER',
+        activeVersionNumber: 2,
+      },
+      isGoverned: true,
+    });
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openConsultation();
+
+    expect(await screen.findByText(/Governed by Consultation with Medical NER/)).toBeTruthy();
+  });
+
+  it('reports an unresolved governance read as unknown, not as the default engine', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openConsultation();
+
+    expect(await screen.findByText(/governing workflow unknown/i)).toBeTruthy();
+    expect(screen.queryByText(/default engine governs/i)).toBeNull();
+  });
+
+  it('says nothing about governance before a consultation exists', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await screen.findByRole('region', { name: /consultations/i });
+
+    expect(screen.queryByText(/governing workflow unknown/i)).toBeNull();
+    expect(screen.queryByText(/governed by/i)).toBeNull();
+  });
+
+  /**
+   * Scoped to the session-open column ON PURPOSE. A whole-container scan fails on a
+   * PRE-EXISTING defect outside this lane: `@arcaai/ui`'s `ResizableHandle` renders
+   * `role="separator"` with `tabindex=0` and no `aria-valuenow`, which axe reports as
+   * `aria-required-attr` (serious) twice — once per handle in the 3-column group. That is a
+   * `packages/ui` fix, not a Scribe one, and scoping here keeps a REAL zero-violation gate on
+   * the surface this change actually touches instead of deleting the assertion.
+   */
+  it('has no axe violations with the workflow picker open', async () => {
+    stubFetch();
+    renderWithProviders(<ConsultationDemoScreen />);
+    await openNewForm();
+    await screen.findByLabelText(/^workflow$/i);
+
+    expect(await axe(screen.getByRole('region', { name: /consultations/i }))).toHaveNoViolations();
   });
 });
