@@ -15,6 +15,7 @@ import {
 } from '@arcaai/applications';
 import type { ResolvedProviderCredential, SttProviderOverrides, StreamingSessionTeardownSummary } from '@arcaai/applications';
 import { SttStreamingUsagePushbackRequest } from './dto/stt-streaming-usage.request';
+import { resolveModelRegistryCredential } from './model-registry-credential.util';
 import {
   BadRequestException,
   Body,
@@ -303,7 +304,16 @@ export class SttInternalController {
    * broken/absent key simply drops out of the map (worker falls back to env).
    */
   /**
-   * TASK-799 — resolve ONE `model-registry` credential for the weight fetcher.
+   * TASK-799 — resolve ONE `model-registry` credential for the STT weight fetcher.
+   *
+   * SUPERSEDED (TASK-855 follow-on) by the generic
+   * `GET /internal/model-registry-credential`
+   * (`ModelRegistryInternalController`), which every backend service —
+   * including STT — can reach. This path is kept ALIVE, not retired: the STT
+   * worker calls it in production today
+   * (`apps/stt/src/stt/core/api_client/gateway.py`), and retiring it needs
+   * the worker migrated to the generic route FIRST, in its own change — never
+   * remove this method to "tidy up" without that migration landing.
    *
    * `HUGGINGFACE_TOKEN` and the `STT_MODEL_S3_*` pair were the last two
    * credentials this service read from the environment. They now live on
@@ -325,33 +335,26 @@ export class SttInternalController {
    * `denied`/`unavailable`, because after the env paths are closed there is no
    * longer anything to fall back TO — and a fault silently read as "no
    * credential configured" would downgrade an entitled pull to an anonymous one.
+   *
+   * The body itself is NOT duplicated — both this route and the generic one
+   * delegate to `resolveModelRegistryCredential()`
+   * (`model-registry-credential.util.ts`). Only the guard differs: this route
+   * stays on `SttInternalController`'s reserved-API-key-scope posture
+   * (`ensureInternalApiKey` + the class-level `@RequiredScopes`); the guard
+   * itself is untouched by this change.
    */
   @Get('model-registry-credential')
-  @ApiOperation({ summary: 'Resolve one model-registry credential (tenant → SYSTEM) for the STT weight fetcher' })
+  @ApiOperation({
+    summary:
+      'Resolve one model-registry credential (tenant → SYSTEM) for the STT weight fetcher. Superseded by GET /internal/model-registry-credential.',
+  })
   async getModelRegistryCredential(
     @Req() request: RequestWithAuth,
     @Query('provider') provider?: string,
     @Query('tenantId') tenantId?: string,
   ): Promise<ResolvedProviderCredential> {
     this.ensureInternalApiKey(request);
-    if (!provider?.trim()) {
-      throw new BadRequestException('provider query parameter is required');
-    }
-    if (!tenantId?.trim()) {
-      throw new BadRequestException('tenantId query parameter is required');
-    }
-    if (!this.providerConnections || !this.cls) {
-      throw new BadRequestException('The provider-connection plane is not configured on this gateway');
-    }
-    const scopedTenantId = tenantId.trim();
-    // The connection model is tenant-scoped and its Prisma extension fails
-    // closed without a tenant context; a service-to-service call carries none.
-    // Pinned to the SAME tenant the cascade reads, exactly as the sibling
-    // `provider-overrides` route does.
-    return this.cls.run(async () => {
-      this.cls!.set('tenantId', scopedTenantId);
-      return this.providerConnections!.resolveCredential('model-registry', provider.trim(), scopedTenantId);
-    });
+    return resolveModelRegistryCredential(this.providerConnections, this.cls, provider, tenantId);
   }
 
   @Get('provider-overrides')

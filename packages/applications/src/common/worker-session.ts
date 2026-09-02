@@ -37,7 +37,10 @@ export type WorkerSessionKind =
   // Session-timeout sweep tick (TASK-711 state-machine.md §1a): transitions
   // stale sweep-eligible consultations to CLOSED_INCOMPLETE. One context PER
   // ROW — the sweep query itself spans every tenant.
-  | 'session-timeout-sweep';
+  | 'session-timeout-sweep'
+  // Admin-triggered AiModel weight download (TASK-855 lane L3): fetch from
+  // HuggingFace/s3://, verify, publish into hope-models, write back the row.
+  | 'ai-model-download';
 
 /**
  * Init shape for `createWorkerSession`.
