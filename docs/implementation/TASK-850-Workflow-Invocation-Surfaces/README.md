@@ -138,6 +138,112 @@ API and the gateway.** The reverse order is safe.
   exposure plane: `svc:*` is the PLATFORM machine identity, and declaring one on a route that
   writes a tenant's clinical rows is the credential-space mixing the TASK-708 ruling forbids.
 
+---
+
+## 5.6 Lane B — the SDK invocation surfaces
+
+Lane A built the gateway. **Lane B is the surface a developer writes code against**, and the
+requirement it answers is the owner's: *"the developer will utilize the SDK Vox or Vox-node for
+implementing the features."* Both SDKs speak the routes lane A shipped — no new endpoints, no
+second contract.
+
+### 5.6.1 What shipped
+
+| Package | Surface |
+|---|---|
+| `@arcaai/vox-node` | `hope.workflows` — `list` · `run` · `runAndWait` · `runAndStream` · `getRun` · `cancelRun` · `streamRun` · `waitForRun`.<br>`hope.consultations.workflows` — `list` · `run` · `runAndWait` · `runAndStream`. |
+| `@arcaai/vox` | `useWorkflowRun()` — `workflows` · `start` · `watch` · `events` · `status` · `isRunning` · `fetchStatus` · `cancel` · `stopWatching` · `lastEventId`. Exported from `/core` (no audio, no ML). |
+
+Both planes share one engine per package, for the same reason the gateway's two controllers share
+one `deliverRun`: two copies would be two places for resume, the reserved-key refusal and the
+blocking ceiling to drift apart.
+
+### 5.6.2 The five things "complete" required
+
+| # | Requirement | How |
+|---|---|---|
+| 1 | List what a consultation can run | `hope.consultations.workflows.list(id)` / `useWorkflowRun({ consultationId })` — the WIDER catalogue (adds the `consultation` palette) |
+| 2 | Start async / blocking / streaming | `run` (202) · `runAndWait` (`?mode=blocking`) · `runAndStream` (`?mode=stream`) |
+| 3 | Consume the stream and RESUME after a disconnect | Both SDKs track each frame's opaque `id` and reconnect with `Last-Event-ID` (`?lastEventId=` in the browser) |
+| 4 | Retry safely and JOIN the existing run | `Idempotency-Key` header; the handle reports `already_running` when a join happened |
+| 5 | Typed, actionable errors | `BadRequestError` · `PermissionError` · `NotFoundError` · `GatewayTimeoutError` · `ReservedRunIdentityError` · `CredentialClassError` |
+
+### 5.6.3 Resume is the load-bearing part, and it is subtle in both runtimes
+
+**Node.** The cursor advances **only on a frame that carried an `id:`**. Lane A's snapshot frame
+deliberately carries none (async-contract §3.6 forbids minting a token the transport cannot resume
+from) — treating that absence as "no cursor" would replay the entire retained window on every
+reconnect. `runAndStream` resumes on the **run** (`GET …/runs/{runId}/stream`), never by re-POSTing:
+a re-POST would start a second run, or with a key re-open a second view of the first while the SDK
+already held the `runId` from the snapshot frame.
+
+**Browser.** `EventSource` tracks `lastEventId` and replays it on ITS OWN internal reconnect — but
+`SSEClient` never uses that reconnect. Every reconnect there closes the `EventSource` and builds a
+new one, because each connect must mint a fresh single-use ticket, and a new `EventSource` starts
+with an empty `lastEventId`. **The browser's resume was therefore being discarded on exactly the
+path this client takes.** Closed with an opt-in `{ resume: true }` that appends `?lastEventId=` —
+the escape hatch lane A's own controller doc names for a client that cannot set headers. Opt-in
+because appending an unrecognized query parameter to every existing SSE consumer's URL would change
+routes that never asked for it.
+
+### 5.6.4 The reserved-identity refusal, and why the SDK duplicates a server check
+
+The gateway's 400 is correct and sufficient for safety. It is a poor **teacher**: restating the
+consultation id in the body is the natural mistake (you just put it in the URL), and discovering it
+as an HTTP 400 costs a round trip and a guess about which field was disliked. Both SDKs refuse
+before the request is issued, naming **every** offending key at once.
+
+**The list is five, not three:** `consultationId`, `externalPatientId`, `userId`, `jobId`,
+`sessionId` — taken from `exposure-palette-policy.ts`, which is the gateway's own copy of the
+harness's list. A contract test reads that file off disk and asserts equality, so a fourth spelling
+cannot drift silently.
+
+### 5.6.5 Credential class: this plane is API-key only
+
+`route-manifest.json` records `svcScopes: []` on all seven routes — deny-by-default for a service
+account (§5.5 records lane A's reasoning). A service-account client would therefore get a 403 that
+**no role grant can fix**, and an integrator would go looking for a scope that does not exist. Both
+SDK planes refuse at the call site instead, naming the credential CLASS as the problem. This makes
+`hope.workflows` the exact mirror of `hope.admin`, which is service-account only.
+
+### 5.6.6 Two defects found while building, fixed rather than worked around
+
+- **`504` was retryable.** `core/retry.ts` treats every 5xx as transient, and the non-idempotent-POST
+  guard does not stop a POST that carries an `Idempotency-Key` — so a keyed `runAndWait` would have
+  spent a second and third 60s ceiling to reach the identical answer. Added
+  `nonRetryableStatuses`, a per-request opt-out checked before every other rule; blocking runs
+  declare `{504}`. The 504 is a deterministic ceiling, not a transient failure.
+- **`maxResumeAttempts` counted connections, not resumes**, so `streamRun` made one fewer attempt
+  than asked for. The loop now takes a CONNECTION budget and each caller states its own
+  (`streamRun`: resumes + 1, since it opens the first; the `runAndStream` hand-off: resumes only,
+  since the POST already spent one).
+
+### 5.6.7 A deliberate asymmetry between the two SDKs
+
+The browser hook offers **no** `mode=blocking` and no `mode=stream` start. `blocking` would hold a
+fetch open against a ~60s gateway ceiling from a UI thread; `stream` would put the run's whole event
+stream on a POST the browser cannot resume (a resume must be a GET on the run). The browser starts
+async and then WATCHES. The server SDK, which can hold a socket and resume off the `runId`, offers
+all three. Same contract, different runtimes — stated here so the gap reads as a decision.
+
+### 5.6.8 Contract conformance — verified, not assumed
+
+`packages/vox-node/src/resources/__tests__/workflows.contract.task850.test.ts` reads
+`apps/api/route-manifest.json` **off disk** and asserts, for every route the SDK calls: it exists,
+`apiKeyForbidden: false`, `apiKeyScopes` non-empty, `svcScopes: []`, `isPublic: false`, plus the
+exact scope and ability per plane. Without it the behavioural suite is only self-consistent — a
+lane-A rename would leave it green. No route decorators or metadata were changed, so **no artifact
+regeneration was needed or performed.**
+
+### 5.6.9 Scoped out
+
+- **Live-gateway verification.** The gateway was **not running on :8868** during this lane
+  (connection refused). Conformance rests on the committed `route-manifest.json` and the controller
+  sources, which are the authoritative artifacts; lane A already verified the same routes live
+  (§5.3).
+- **A `HopeClient` catalogue cache / polling fallback.** `waitForRun` uses the event stream and
+  falls back to ONE authoritative `getRun` when resume attempts are exhausted — never a poll loop.
+
 ## 6. Change History
 
 | Date | Change |
@@ -149,3 +255,11 @@ API and the gateway.** The reverse order is safe.
 | 2026-09-02 | LIVE verification against a real gateway, harness dispatcher, Temporal worker and the dev DB: a published consultation workflow ran (`202`, real interpreter execution); Temporal history shows `subject` carrying the server-resolved consultation and the attacker's keys absent; blocking mode hit its 60s ceiling with a 504 and also returned 200 on a fast run; a mid-stream disconnect left the Temporal execution `COMPLETED`, and `Last-Event-ID` resumed. |
 | 2026-09-02 | Two pre-existing local-dev defects found by that run and recorded in §5.3 (Temporal worker imports the primary checkout; claim-check store defaults to `memory` while the gateway writes to MinIO). Deployment-ordering hazard recorded in §5.4 — roll the worker first. |
 | 2026-09-02 | Webhook HMAC and realtime-lane invocation deliberately scoped OUT and named in §5.5 rather than stubbed. |
+| 2026-09-02 | **Lane B implemented** — SDK invocation surfaces in both SDKs. `@arcaai/vox-node`: `hope.workflows` + `hope.consultations.workflows` (list / run / runAndWait / runAndStream / getRun / cancelRun / streamRun / waitForRun). `@arcaai/vox`: `useWorkflowRun()` exported from `/core`. See §5.6. |
+| 2026-09-02 | Lane B: resume made REAL in both runtimes. Node tracks each frame's opaque `id` and reconnects with `Last-Event-ID`, advancing the cursor only on frames that carry one (the snapshot frame deliberately has none). `runAndStream` resumes on the RUN, never by re-POSTing — a re-POST starts a second run. |
+| 2026-09-02 | Lane B found and closed a REAL browser gap: `SSEClient` rebuilds its `EventSource` on every reconnect (each connect mints a fresh single-use ticket), which discards the browser's own `lastEventId` — so its resume never fired on the path this client actually takes. Closed with opt-in `{ resume: true }` → `?lastEventId=`, the fallback lane A's controller doc names. All 45 pre-existing `SSEClient` tests still green. |
+| 2026-09-02 | Lane B: the reserved run-identity list is **five** keys, not the three the lane brief quoted — `consultationId`, `externalPatientId`, `userId`, `jobId`, `sessionId`. Both SDKs refuse them before the request is issued, and a contract test reads `exposure-palette-policy.ts` off disk to keep the copies equal. |
+| 2026-09-02 | Lane B fixed two defects found while building: `504` was retryable (a keyed `runAndWait` would have burned a second and third 60s ceiling — added `nonRetryableStatuses`), and `maxResumeAttempts` counted connections rather than resumes (the loop now takes a connection budget each caller states). |
+| 2026-09-02 | Lane B: service-account clients are refused at the call site on both SDK planes, since `route-manifest.json` records `svcScopes: []` on all seven routes — a 403 no role grant can fix is a worse answer than naming the credential class. Mirror image of `hope.admin`. |
+| 2026-09-02 | Lane B verification: `@arcaai/vox-node` 296 tests / 22 files, `tsc --noEmit` clean, `eslint` clean, `tsup` CJS+ESM+DTS, `check:exports` green (node10 / node16-CJS / node16-ESM / bundler) + publint "All good!". `@arcaai/vox` 4268 tests / 274 files, typecheck clean, lint clean, build green. Route decorators unchanged, so **no artifact regeneration performed**. The README usage example is an executed, type-checked test rather than prose. |
+| 2026-09-02 | Lane B could NOT verify against a live gateway — nothing was listening on :8868 (connection refused). Conformance rests on the committed `route-manifest.json` + controller sources; lane A verified the same routes live (§5.3). Recorded in §5.6.9. |
