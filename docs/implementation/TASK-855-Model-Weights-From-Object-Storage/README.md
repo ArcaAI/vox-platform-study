@@ -286,9 +286,9 @@ catch**: a registry row is only as good as the artifact behind it.
 | L0 | run in-session on OrbStack | n/a | P0-1a/b, P0-2, P0-3, P0-4, **P0-5 pass**; only P0-1c outstanding (lab egress) | n/a |
 | **L1** mount | `task-855-l1-mount` @ `fbdb1f5` (deployment repo) | **blocked on publish** | 7 of 8 repo CI gates PASS; `patch-hygiene` red **but already red on `main`** | branch in the existing clone |
 | **L2** registry | `task-855-l2-registry` | **ready — awaiting owner go-ahead** | typecheck clean; `migrate diff` empty; 1709 tests pass (2 files fail at import on unbuilt workspace deps — the known fresh-worktree condition, rule 14 §4) | `../hope-v2-task-855-l2` |
-| **L3** download API | `task-855-l3-download` | not yet | in flight | `../hope-v2-task-855-l3-download` |
-| **L4** catalog UI | `task-855-l4-catalog` | not yet | in flight | `../hope-v2-task-855-l4-catalog` |
-| **L6** s3:// parity | `task-855-l6-s3uri` | not yet | in flight | `../hope-v2-task-855-l6-s3uri` |
+| **L3** download API | `task-855-l3-download` | **ready + follow-on in flight** | applications build clean · **10 937 tests** · `api:build` clean · all 5 artifacts regenerated · all 3 `:check` gates green | `../hope-v2-task-855-l3-download` |
+| **L4** catalog UI | `task-855-l4-catalog` | **ready** | build OK · lint 0 warnings · **2305/2305 tests** · axe 0 violations. Themes not eye-verified (no live gateway/DB) | `../hope-v2-task-855-l4-catalog` |
+| **L6** s3:// parity | `task-855-l6-s3uri` | **code done, NOT yet functional** | nlp 553 pass / lint / typecheck clean; tts 444 pass / lint / typecheck clean; `uv lock` re-run by the orchestrator | `../hope-v2-task-855-l6-s3uri` |
 
 ⚠️ **`dev-2.2` advanced 5 commits** while L1/L2 ran (another session is active). L2's branch is based
 on `f92313d1f`; L3/L4/L6 are based on `d78cb0446`. L2 needs its base refreshed before it merges —
@@ -394,6 +394,121 @@ Secrets, so this needs a **hand edit on the live Secret plus a rollout restart**
 now written into `secrets.dev.yaml.example`. Baseline showed exactly 5 `HUGGINGFACE_TOKEN`
 `secretKeyRef`s, all on stt/stt-worker, so removing the keys breaks no other workload's explicit
 reference.
+
+### L6 delivered — and correctly reported that it is not enough on its own
+
+Mirrored `source_resolver.py` into `apps/nlp` and `apps/tts` (scheme dispatch, `local_path`
+precedence, single-flight, SHA256, atomic replace, lazy `minio` import) and — the part that matters —
+**wired it into real call sites**, not left as dead code: `nlp/dependencies.py::_weights_source()`
+now dispatches `s3://` and `file://` before handing the value to `from_pretrained`, and the TTS
+providers resolve an `s3://` override in the coroutine *before* the blocking load thread starts.
+Gates green on both services. `uv lock` re-run by the orchestrator (489 packages).
+
+**But Mode U still cannot resolve in production, and L6 said so rather than hiding it.**
+
+`apps/stt` gets its S3 credentials from `GET /internal/stt/model-registry-credential?provider=&tenantId=`
+(`apps/api/src/modules/internal/stt-internal.controller.ts:329`), guarded by the internal gateway
+secret and resolving tenant → SYSTEM through `IProviderConnectionService`. **There is no nlp or tts
+equivalent**, so `config_from_settings()` in the new modules supplies cache-dir and TLS only, and an
+`s3://` resolve raises `_make_s3_client`'s "not configured" `ModelSourceError`. L6 refused to invent
+env-var credentials for it — correct, since TASK-799 explicitly closed that door and the brief bans
+new `*_API_KEY` vars.
+
+**The fix is one route, not three.** That endpoint is generic in everything but its path: it takes
+`provider` and `tenantId` and delegates to the provider-connection service. A shared
+`GET /internal/model-registry-credential` serves all three services. Assigned as a follow-on to **L3**,
+which already owns `apps/api` this round — a second writer there would collide on the five generated
+artifacts (`route-manifest.json`, `openapi.json`, the portal, the vox-node admin SDK), which must be
+regenerated exactly once.
+
+Two further findings from L6, neither actioned:
+- **`apps/harness` has the same defect today** — its resolver's real caller builds a
+  `ModelSourceConfig` with no credentials either. Same shared route would fix it.
+- **`nlp/core/guard_model_reference.py`** (GLiNER2 guard, MiniCheck entailment) keeps its own
+  deliberately fail-closed, synchronous local-path resolution and still cannot load `s3://`. It is a
+  clinical safety gate with 12 existing sync assertions; L6 judged an async signature change
+  out of scope. Owner call whether it needs Mode U at all.
+- Historical note L6 dug up: `nlp` **used to have** this exact resolver (`core/model_source.py`),
+  deleted in TASK-799 as dead code because its only caller was its own test. This lane is that work
+  redone *and connected*.
+
+### L4 delivered — and corrected the brief
+
+**The brief was stale: `sourceUri` was already in the model form.** The real gaps were `localPath`,
+the download affordance, and any catalog-level view of weight source and download state. L4 also
+found that `/ai-platform` (TASK-845, shipped by another lane) already has a read-only "Catalogue" tab
+linking to `/ai-models`, and followed that established pattern in reverse rather than inventing one.
+
+Shipped: `localPath` in the form (disabled with a stated reason in register mode, since the create DTO
+does not accept it; `toUpdateRequest()` always sends it — including `""` — so clearing actually
+clears rather than being silently dropped); help text distinguishing Mode U from Mode M and warning
+that `<version>` is content-derived; two read-only grid columns (`WeightSourceBadge`: Mounted / S3
+URI / Hub ID / No source, with `localPath` winning — and `DownloadStatusBadge`), both using the
+codebase's `StatusBadge` + `StatusDot` + distinct-label pattern so state is never colour alone; the
+download panel in the `DetailDrawer` with 2s polling, one toast per transition, 409 → "already in
+progress", and a disabled button with a visible adjacent reason when a model has no source.
+
+The `model-registry`/`s3` connection is surfaced read-only with a plain link to
+`/ai-platform?tab=providers&psvc=model-registry` — no cross-feature import, per rule 13. Orchestrator
+verified the endpoint it reads is real: `GET admin/providers/:service/:provider`
+(`ai-provider-connection.controller.ts:80`).
+
+**A real bug caught in passing:** L4's first draft used `text-primary` for the link, which a repo-wide
+emphasis-canon guard bans because `--primary` ≈ `--foreground`. It found this via the failing test and
+fixed it to the established `text-foreground … hover:underline` convention.
+
+**Stated limitation, not glossed:** both themes were verified by grep (no hardcoded colours; every new
+element uses already dual-theme-verified semantic tokens) but **not confirmed by eye** — `/ai-models`
+is SUPER_ADMIN-only behind BFF session auth and no gateway/DB was running. Worth one manual pass
+before release.
+
+Open questions from L4: download lives in the drawer rather than the grid row (a 48px fixed-height row
+cannot carry an accessible disabled-reason without breaking the no-wrap grid contract); "Hub ID" is a
+catch-all for any non-`s3://` source; and the grid does not poll while a download runs elsewhere.
+
+### L3 delivered — the download action exists
+
+Both routes ship on the existing `AiModelAdminController`, inheriting its `@ForbidApiKey()` /
+`@RequiredSvcScopes('svc:admin:ai-model:manage')` / `@Authorize(['manage','all'])`, verified in the
+regenerated manifest. 404-over-403 falls out of the repository + tenant-scope extension. 409 covers
+both the already-`DOWNLOADING` case **and** the CAS race — an `OptimisticConcurrencyException` on the
+`updateWithVersion` write is remapped to `Conflict`, deliberately not left as a 412, since 412 is
+reserved for a client-supplied stale `If-Match` and this action never uses one. No enum members added.
+
+**Version derivation is real, not stubbed:** the processor computes SHA256 per file, builds a
+`SHA256SUMS` body matching `shasum -a 256` output, hashes that, and takes 12 hex chars — validated end
+to end against both live bucket examples (`q4-0-…`, `q4-k-m-…`). Quant token comes from `computeType`
+when present, else regex from the source, else the bare hash.
+
+Credentials route entirely through the existing `IS3Service` (`S3_ENDPOINT` from `AppSettingsService`
+db-config, keys from `SecretsService` vault-kv). **No new env var anywhere** — the constraint held.
+
+`startedAt`/`finishedAt`/`error` have no `AiModel` columns and no migration was available to this lane,
+so they ride in the existing `_metadata` JSONB under `metaData.download`, following the entity's own
+documented precedent (TTS `metaData.voices`).
+
+**Boundary excursion, reviewed and accepted:** L3 touched `JobQueue.enum.ts` and `worker-session.ts`
+outside its stated ownership. A background job needs a queue, no other lane touches either file, and
+the orchestrator confirmed no collision.
+
+**Owner questions raised and deliberately NOT resolved by the lane:**
+1. `computeType` (documented as float32/float16/int8) is **reused as the GGUF quant selector** and
+   version label. Works for both examples, but it repurposes a field's stated meaning.
+2. `HOPE_MODELS_BUCKET = 'hope-models'` is a literal. Defensible — `apps/stt`'s `path_resolver.py`
+   defaults the same literal, and only endpoint/credentials vary per environment — but it sits against
+   the letter of "never hardcode configuration".
+3. **The HF fetch allowlist is GGUF-focused.** A plain safetensors repo would fetch nothing. That
+   directly affects `blaze999/Medical-NER` and the TTS models, which are **not** GGUF — so the download
+   action cannot yet publish them. Real limitation, must be closed before the publish step runs.
+4. `attempts: 1` on the queue (no silent retry after a row is already `DOWNLOAD_FAILED`) — accepted.
+
+### Follow-on now in flight: making Mode U actually work
+
+Both halves of the credential path, dispatched in parallel to the lanes that own each side:
+- **L3** — one shared `GET /internal/model-registry-credential`, mirroring the stt route's guard and
+  tenant → SYSTEM resolution, with the stt-specific path left working and marked superseded.
+- **L6** — the Python client in `nlp`/`tts` that calls it, mirroring `stt/core/model_credentials.py`,
+  failing closed on absence, with `X-Tenant-Id` mandatory.
 
 ### Phase 1 merge gate (orchestrator-owned)
 
