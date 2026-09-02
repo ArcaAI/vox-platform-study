@@ -342,6 +342,120 @@ polling `jobs.get` if the stream drops before a terminal status arrives —
 you don't need to choose between the two. See
 [`examples/03-consultation-async.ts`](./examples/03-consultation-async.ts).
 
+## Receiving webhooks
+
+HOPE pushes a notification to your endpoint when a resource you subscribed to
+changes. Two halves: subscribe with `hope.admin.webhookEvent` (service account
+only), then verify each delivery with `verifyWebhookSignature`.
+
+### Subscribing
+
+```ts
+const { webhook, rawSecret } = await hope.admin.webhookEvent.create({
+  name: 'consultation-events',
+  url: 'https://your-service.example.com/hooks/hope',
+  resourceTypeName: 'Consultation', // the ResourceType to watch
+  // resourceId: '…',               // optional: one specific row, not the whole type
+});
+
+// `rawSecret` is shown ONCE, here. HOPE stores only a hash and can never
+// show it again — persist it now or rotate to get a new one.
+```
+
+| Method | What it does |
+|---|---|
+| `create(body)` | Subscribe. Returns `{ webhook, rawSecret }` — the only sight of the secret. |
+| `fetchAll(opts)` / `fetchAllIterate(opts)` | List subscriptions (paginated; the `Iterate` form is an async iterator). |
+| `fetchById(id)` | One subscription. |
+| `update(id, body, { ifMatch })` | Change url/name/resource type. Versioned — see [Optimistic concurrency](#optimistic-concurrency). |
+| `rotateSecret(id, body)` | Issue a new signing secret; returns it once, like `create`. |
+| `fetchDeliveries(id)` / `fetchDeliveriesIterate(id)` | Delivery history — status, response code, attempts. Start debugging here. |
+| `delete(id)` | Unsubscribe. |
+
+The scope is `svc:webhook:event:write`, which **predates the `svc:admin:*`
+convention and is therefore NOT granted by `svc:admin:*`** — ask for it
+explicitly (see [Scopes](#scopes)).
+
+`resourceTypeName` is matched against the fired event's `resourceType` by plain
+string equality, and the gateway does **not** validate it against a list. A
+typo, or a resource type that emits no sys-events, is accepted at create time
+and then simply never fires — check `fetchDeliveries` before assuming your
+receiver is at fault.
+
+### What arrives
+
+A subscription is per **resource type**, not per event type: you receive
+`ResourceCreated`, `ResourceUpdated`, `ResourceDeleted` and friends for that
+type, and branch on `eventType` yourself.
+
+The body is **references, never content** — HOPE will not push resource data,
+PHI included, to a third-party endpoint:
+
+```jsonc
+{
+  "eventType": "ResourceUpdated",
+  "resourceType": "Consultation",
+  "resourceId": "0192…",
+  "tenantId": "5000…",
+  "occurredAt": "2026-09-03T10:15:30.000Z",
+  "fetchUrl": "https://api.example.com/api/v1/admin/consultations/0192…"
+}
+```
+
+So a receiver's job is: verify, enqueue, then fetch what it needs with its own
+credentials. Do not expect the payload to grow a `data` field.
+
+### Verifying the signature
+
+Every delivery carries `X-Hope-Webhook-Signature: sha256=<hex>` — an
+HMAC-SHA256 of the **raw** body under your `rawSecret`.
+
+```ts
+import express from 'express';
+import { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from '@arcaai/vox-node';
+
+app.post('/hooks/hope', express.raw({ type: 'application/json' }), (req, res) => {
+  const signature = req.header(WEBHOOK_SIGNATURE_HEADER) ?? '';
+  if (!verifyWebhookSignature(req.body, signature, process.env.HOPE_WEBHOOK_SECRET!)) {
+    return res.status(401).end(); // reject BEFORE parsing
+  }
+
+  const event = JSON.parse(req.body.toString('utf8'));
+  enqueue(event); // ack fast; fetch and process out of band
+  res.status(204).end();
+});
+```
+
+Three things that silently break verification:
+
+- **Parsing before verifying.** The digest covers the exact bytes on the wire.
+  A `JSON.parse` → `JSON.stringify` round trip reorders and reformats, and the
+  signature will never match. Reach for `express.raw` (or `express.json`'s
+  `verify` hook, or a Fastify `preValidation` raw-body hook).
+- **Using the hashed secret.** The signing key is the `rawSecret` from `create`
+  or `rotateSecret`, not anything readable from `fetchById` later.
+- **Treating a missing header as unsigned.** A subscription created without a
+  secret is not signed at all; one created *with* one always is. If your
+  handler falls through when the header is absent, an attacker just omits it.
+
+`verifyWebhookSignature` never throws — a malformed header, a wrong secret or a
+non-string argument all return `false` — so it is safe to call directly in a
+route guard. It is synchronous and dependency-free, so it works unchanged in
+Node, Bun, Deno and edge runtimes. Comparison is constant-time.
+
+### Which events actually fire
+
+Any resource type whose service broadcasts a sys-event on mutation — which is
+most of the CRUD surface (`Consultation`, `Department`, `User`, `ApiKey`,
+`Tenant`, `WorkflowDefinition`, `WorkflowAssignment`, …).
+
+**Workflow *runs* are not among them.** `WorkflowRun` is deliberately exempt
+from sys-events, so there is no "run completed" webhook to subscribe to today —
+see [Known gateway quirks](#known-gateway-quirks-the-sdk-deliberately-does-not-hide)
+and, for the full analysis, the
+[clinician integration guide](../../docs/architecture/clinician-integration-guide.md#webhooks).
+Poll `hope.workflows.getRun(slug, runId)` or hold the SSE stream instead.
+
 ## Errors
 
 Every non-2xx gateway response is thrown as a typed subclass of
@@ -397,7 +511,7 @@ try {
 
 ## Known gateway quirks the SDK deliberately does not hide
 
-The SDK types the gateway's real behavior faithfully, including two rough
+The SDK types the gateway's real behavior faithfully, including three rough
 edges it does not paper over:
 
 - **Two different job-status vocabularies for the same workflow (G5).**
@@ -434,6 +548,22 @@ edges it does not paper over:
     ifMatch: currentEtag, // sent, but currently has no server-side effect
   });
   ```
+
+- **A workflow run's terminal status is only recorded when somebody asks
+  (G9).** `WorkflowRun` rows are written `RUNNING` at dispatch, but nothing
+  server-side observes the finish: the only two calls that write a terminal
+  status sit inside `syncTerminalStatus`, reachable exclusively from a
+  `getRunStatus` read (`workflow-exposure.service.ts:369`,
+  `workflow-sandbox-run.service.ts:156`). So a run whose result nobody reads
+  stays `RUNNING` in the read model indefinitely, and a cancelled run's row is
+  never updated at all. There is also, by deliberate design, no `WorkflowRun`
+  sys-event — so **no webhook can carry "run completed"**.
+
+  What this means for your integration: do not fire-and-forget. Either hold the
+  stream (`runAndStream` / `streamRun`, which read terminal status as a side
+  effect) or poll `getRun` until `isTerminalRunStatus(status)`. The full analysis
+  and the design a push notification would need are in the
+  [clinician integration guide](../../docs/architecture/clinician-integration-guide.md#webhooks).
 
 ## PHI/logging posture
 
