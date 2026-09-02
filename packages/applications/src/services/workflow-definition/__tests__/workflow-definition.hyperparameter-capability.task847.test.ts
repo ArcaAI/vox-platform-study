@@ -150,7 +150,10 @@ describe('F-32 — publish must refuse a hyper-parameter the bound provider conf
 
   it('the refusal message is actionable — parameter, node and configuration', async () => {
     const error = await service.publish('def-1', {}).catch((e: BadRequestException) => e);
-    const response = (error as BadRequestException).getResponse() as { message: string; findings: { nodeId: string; path: string; message: string; severity: string }[] };
+    const response = (error as BadRequestException).getResponse() as {
+      message: string;
+      findings: { nodeId: string; path: string; message: string; severity: string }[];
+    };
 
     expect(response.findings).toHaveLength(1);
     const [finding] = response.findings;
