@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
-import { IconLayoutGrid, IconList, IconRoute } from '@tabler/icons-react';
+import { useMemo, useState } from 'react';
+import { IconHistory, IconLayoutGrid, IconList, IconRoute } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
-import { WorkflowCanvas } from '@arcaai/ui/components/workflow-canvas';
+import { WorkflowCanvas, type WorkflowCanvasNodeProblem } from '@arcaai/ui/components/workflow-canvas';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/shared/format';
@@ -13,15 +13,19 @@ import { StatusFooter } from '@/shared/page/status-footer';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
+import { useRunLiveEvents } from '../api/live-events';
 import { useRunTrace, useWorkflowDefinitionVersion } from '../api/hooks';
 import { isNonTerminalRunStatus } from '../api/polling';
 import type { RunNodeRollup, WorkflowGraph } from '../api/types';
-import { toCanvasGraph } from '../lib/graph-layout';
+import { humanizeNodeType, toCanvasGraph } from '../lib/graph-layout';
+import { problemForLiveNode, problemForRollup } from '../lib/node-problem';
 import { correlateRollupsToGraphNodes } from '../lib/rollup-correlation';
 import { FailurePanel } from './failure-panel';
 import { GateApprovalPanel } from './gate-approval-panel';
 import { NodeRunBadge } from './node-run-badge';
+import { RunLiveActivity } from './run-live-activity';
 import { RunNodeDetailDrawer } from './run-node-detail-drawer';
+import { RunReplayScrubber } from './run-replay-scrubber';
 import { RunStatusBadge } from './run-status-badge';
 import { RunTraceListView } from './run-trace-list-view';
 import { TracePrunedState } from './trace-pruned-state';
@@ -44,18 +48,74 @@ function isWorkflowGraph(value: unknown): value is WorkflowGraph {
 }
 
 function TraceBody({ runId }: { runId: string }) {
-  const traceQuery = useRunTrace(runId);
+  // Fed back by the SSE hook below once it knows its own status — see that hook's own doc
+  // comment for why this two-hook wiring can't be collapsed into one call.
+  const [streamDegraded, setStreamDegraded] = useState(false);
+  const traceQuery = useRunTrace(runId, streamDegraded);
   const trace = traceQuery.data;
+  const isLiveRun = isNonTerminalRunStatus(trace?.run.status);
   const definitionQuery = useWorkflowDefinitionVersion(trace?.run.workflowVersionId ?? null);
   const [viewParam, setViewParam] = useQueryState('view', parseAsString.withDefault('canvas'));
   const view: View = (VIEW_VALUES as readonly string[]).includes(viewParam) ? (viewParam as View) : 'canvas';
   const [selectedKey, setSelectedKey] = useQueryState('node', parseAsString);
 
+  // Replay/scrub (TASK-849 lane C, step 7) — reads only the durable REST trace already
+  // fetched above; `replayStep` is the count of `orderedNodes` REVEALED so far. Only offered
+  // for a terminal run (a live run already has its own live front — scrubbing a run that is
+  // still moving underneath you is a different feature this ticket doesn't ask for).
+  const orderedNodes = useMemo(() => [...(trace?.nodes ?? [])].sort((a, b) => a.order - b.order), [trace]);
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayStep, setReplayStep] = useState(0);
+  const effectiveRollups = useMemo(
+    () => (replayActive ? orderedNodes.slice(0, replayStep) : (trace?.nodes ?? [])),
+    [replayActive, orderedNodes, replayStep, trace],
+  );
+
+  const live = useRunLiveEvents({
+    runId,
+    // `WorkflowRun.workflowSlug` — unknown until the trace resolves.
+    slug: trace?.run.workflowSlug ?? null,
+    enabled: isLiveRun,
+    onResnapshot: () => void traceQuery.refetch(),
+  });
+  // Adjusted DURING RENDER, not in an effect (same idiom as `live-events.ts`'s reset-on-runId —
+  // react-hooks/set-state-in-effect forbids a synchronous setState in an effect body, and this
+  // is the sanctioned "derive one piece of state from another" exception to that rule).
+  const [streamStatusSeen, setStreamStatusSeen] = useState(live.status);
+  if (live.status !== streamStatusSeen) {
+    setStreamStatusSeen(live.status);
+    setStreamDegraded(live.status === 'error');
+  }
+
   const graph = definitionQuery.data && isWorkflowGraph(definitionQuery.data.graph) ? definitionQuery.data.graph : null;
   const canvasGraph = useMemo(() => (graph ? toCanvasGraph(graph) : null), [graph]);
   const correlation = useMemo(
-    () => (graph && trace ? correlateRollupsToGraphNodes(graph.nodes, trace.nodes) : new Map<string, RunNodeRollup>()),
-    [graph, trace],
+    () => (graph ? correlateRollupsToGraphNodes(graph.nodes, effectiveRollups) : new Map<string, RunNodeRollup>()),
+    [graph, effectiveRollups],
+  );
+  // Per-graph-node canvas border (TASK-849 lane C step 6): the durable rollup first, then the
+  // LIVE control frame for that exact `nodeId` overrides it — the live frame can arrive before
+  // the next REST re-snapshot resolves, and a retry that just started must clear a stale ERROR
+  // border from the previous attempt. Replay never consults live state (a completed run's live
+  // hook is disabled anyway — see `enabled: isLiveRun` above).
+  const nodeProblemById = useMemo(() => {
+    const map = new Map<string, WorkflowCanvasNodeProblem>();
+    for (const [nodeId, rollup] of correlation) {
+      const problem = problemForRollup(rollup);
+      if (problem) map.set(nodeId, problem);
+    }
+    if (!replayActive) {
+      for (const [nodeId, payload] of live.nodeStatusById) {
+        const problem = problemForLiveNode(payload);
+        if (problem) map.set(nodeId, problem);
+        else map.delete(nodeId);
+      }
+    }
+    return map;
+  }, [correlation, live.nodeStatusById, replayActive]);
+  const canvasNodes = useMemo(
+    () => canvasGraph?.nodes.map((node) => (nodeProblemById.has(node.id) ? { ...node, problem: nodeProblemById.get(node.id) } : node)) ?? [],
+    [canvasGraph, nodeProblemById],
   );
   // Inverse of `correlation`, keyed the same way selection is keyed, so a
   // canvas click (graph node id) and a list click (rollup) resolve to the
@@ -96,7 +156,7 @@ function TraceBody({ runId }: { runId: string }) {
   }
 
   const { run, nodes, truncated, tracePruned } = trace;
-  const isLive = isNonTerminalRunStatus(run.status);
+  const isLive = isLiveRun;
 
   return (
     <ScreenTemplate
@@ -156,7 +216,39 @@ function TraceBody({ runId }: { runId: string }) {
               waiting. */}
           <GateApprovalPanel run={run} />
           <FailurePanel run={run} nodes={nodes} />
+          <RunLiveActivity status={live.status} events={live.events} />
         </div>
+      }
+      toolbar={
+        !isLive && !tracePruned && nodes.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant={replayActive ? 'secondary' : 'outline'}
+              size="sm"
+              aria-pressed={replayActive}
+              onClick={() => {
+                if (replayActive) {
+                  setReplayActive(false);
+                } else {
+                  setReplayActive(true);
+                  setReplayStep(orderedNodes.length);
+                }
+              }}
+            >
+              <IconHistory aria-hidden />
+              {replayActive ? 'Exit replay' : 'Replay this run'}
+            </Button>
+            {replayActive ? (
+              <RunReplayScrubber
+                totalSteps={orderedNodes.length}
+                step={replayStep}
+                onStepChange={setReplayStep}
+                stepLabel={replayStep > 0 && replayStep <= orderedNodes.length ? humanizeNodeType(orderedNodes[replayStep - 1].nodeType) : null}
+              />
+            ) : null}
+          </div>
+        ) : undefined
       }
       footer={
         <StatusFooter
@@ -189,11 +281,11 @@ function TraceBody({ runId }: { runId: string }) {
         // React Flow's internal pane; the list needs an explicit scroll
         // container of its own so it never grows the page instead.
         <div className="h-full min-h-0 overflow-y-auto">
-          <RunTraceListView nodes={nodes} onSelect={(rollup) => void setSelectedKey(rollupKey(rollup))} />
+          <RunTraceListView nodes={replayActive ? effectiveRollups : nodes} onSelect={(rollup) => void setSelectedKey(rollupKey(rollup))} />
         </div>
       ) : (
         <WorkflowCanvas
-          nodes={canvasGraph.nodes}
+          nodes={canvasNodes}
           edges={canvasGraph.edges}
           readOnly
           selectedNodeId={selectedGraphNodeId}
@@ -210,6 +302,7 @@ function TraceBody({ runId }: { runId: string }) {
         open={!!selectedKey}
         nodeType={selectedNodeType}
         rollup={selectedRollup}
+        liveOutputPreview={selectedGraphNodeId ? live.liveOutputByNodeId.get(selectedGraphNodeId) : undefined}
         onOpenChange={(open) => !open && void setSelectedKey(null)}
       />
     </ScreenTemplate>

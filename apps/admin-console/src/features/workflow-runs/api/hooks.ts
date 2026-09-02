@@ -25,13 +25,23 @@ export function useWorkflowRun(runId: string | null) {
   });
 }
 
-/** The CQRS-lite trace read: run row + per-node rollup in one call (Task 5). */
-export function useRunTrace(runId: string | null) {
+/**
+ * The CQRS-lite trace read: run row + per-node rollup in one call (Task 5).
+ *
+ * TASK-849 lane C: the primary transport for a LIVE run is the SSE push
+ * (`useRunLiveEvents`, `live-events.ts`) re-fetching this query on a control
+ * frame — never a fixed interval. `pollAsFallback` mirrors
+ * `useTranscriptionJob`'s own documented fallback (`transcription-jobs/api/hooks.ts`):
+ * pass it only while the stream sits on `error`, so the screen keeps
+ * updating (at the old 5 s cadence) until the stream reconnects or the run
+ * settles, rather than going silent.
+ */
+export function useRunTrace(runId: string | null, pollAsFallback = false) {
   return useQuery({
     queryKey: workflowRunsKeys.trace(runId ?? ''),
     queryFn: () => getRunTrace(runId as string),
     enabled: !!runId,
-    refetchInterval: (query) => runRefetchInterval(query.state.data?.run.status),
+    refetchInterval: (query) => (pollAsFallback ? runRefetchInterval(query.state.data?.run.status) : false),
     refetchIntervalInBackground: false,
   });
 }
