@@ -51,18 +51,27 @@ const services = manifest.services;
 const buildYml = read('.gitlab/ci/build.yml');
 
 /**
- * Split build.yml into top-level job blocks. Anchors on a column-0 key, which
- * excludes the `.build-common-rules` YAML anchor (leading dot) — that block
- * carries no SERVICE_NAME and must not be mistaken for a job.
+ * Split build.yml into top-level job blocks.
+ *
+ * Boundaries are EVERY column-0 key, dotted ones included; only the undotted
+ * ones are returned as jobs. Splitting and job-hood have to be separate
+ * questions: a leading dot makes GitLab treat a key as a hidden template that
+ * never runs, so `.build-vllm` is not a job — but its body still contains
+ * `SERVICE_NAME: vllm`, and if a hidden key does not END the preceding block,
+ * that SERVICE_NAME is silently attributed to whichever real job happens to
+ * sit above it. That is not hypothetical: with vLLM on hold, `.build-vllm`
+ * follows `verify-lmstudio-runtime`, which declares no SERVICE_NAME of its
+ * own and therefore inherited `vllm` — reporting drift against a manifest
+ * that was in fact correct.
  */
 function buildJobBlocks(): Map<string, string> {
   const blocks = new Map<string, string>();
-  const headings = [...buildYml.matchAll(/^([a-z][a-z0-9-]*):$/gm)];
+  const headings = [...buildYml.matchAll(/^(\.?[a-z][a-z0-9-]*):$/gm)];
 
   headings.forEach((heading, index) => {
     const start = heading.index!;
     const end = index + 1 < headings.length ? headings[index + 1].index! : buildYml.length;
-    blocks.set(heading[1], buildYml.slice(start, end));
+    if (!heading[1].startsWith('.')) blocks.set(heading[1], buildYml.slice(start, end));
   });
 
   return blocks;
