@@ -777,10 +777,13 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
     # committed fixture the TypeScript projection is (`node-registry.snapshot.json`), so a value
     # changed on one side only is a failing test rather than a silent drift.
     #
-    # `agentic.loop` and `agentic.tts` are `implemented=True` and still do not run: `compile()`
+    # `agentic.loop` is `implemented=True` and still does not run on THIS path: `compile()`
     # refuses any graph containing an unimplemented type, so the honest posture is an
-    # OBSERVABLE `DEGRADED` naming the owning ticket (TASK-848 / TASK-849) rather than a graph
-    # nobody can publish. See `nodes/agentic.py`'s module docstring.
+    # OBSERVABLE `DEGRADED` naming the owning ticket rather than a graph nobody can publish.
+    # TASK-848 made the loop real via a CHILD WORKFLOW; this activity is the replay-only path
+    # a pre-gate history walks through. `agentic.tts` is now REAL (TASK-849 lane B): it
+    # dispatches synthesis, streams frames on the delta lane and writes an audio artifact.
+    # See `nodes/agentic.py`'s module docstring.
     # ---------------------------------------------------------------------------------------
     "agentic.input": NodeSpec(
         key="agentic.input",
