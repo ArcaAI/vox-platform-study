@@ -38,6 +38,8 @@ import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
+import { seedArcaaiTranscriptionAgent, seedPlatformTranscriptionAgentTemplate } from './23a-realtime-transcription-agent';
+import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflowTemplates } from './24-example-consultation-workflows';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
@@ -314,6 +316,37 @@ export const seed = async () => {
     // are skipped; see `substrate-exclusivity-guard.ts`.
     if (isPhaseEnabled('23-arcaai-workflow-authoring', mode)) {
       await seedArcaaiWorkflowAuthoring(client);
+      console.log('');
+    }
+    // TASK-858 D2/D3 — the realtime transcription AGENT (stt palette) and the
+    // three example consultation workflows, each seeded twice.
+    //
+    // The SYSTEM halves are platform configuration: SYSTEM-tenant, createdBy
+    // SYSTEM_USER_ID, asserting no human authorship, and they are what
+    // `findSystemTemplates` serves to the Studio's clone-from-template flow — so
+    // they run in EVERY seeding mode, exactly like 21-workflow-definition.
+    //
+    // The ArcaAI halves carry `createdBy: <the ArcaAI tenant admin>`, which in a
+    // real database is a published clinical workflow attributed to a named human
+    // who never authored it. Same objection that gates 23; same deny-list.
+    //
+    // Ordered after 21 (the platform default must exist first) and after 23 (the
+    // ArcaAI transcription phase reconciles the tenant's default AsrPipeline, and
+    // must have the last word over `seedStt`'s own reconciler in Phase 2).
+    if (isPhaseEnabled('23a-realtime-transcription-agent', mode)) {
+      await seedPlatformTranscriptionAgentTemplate(client);
+      console.log('');
+    }
+    if (isPhaseEnabled('23a-realtime-transcription-agent-arcaai', mode)) {
+      await seedArcaaiTranscriptionAgent(client);
+      console.log('');
+    }
+    if (isPhaseEnabled('24-example-consultation-workflows', mode)) {
+      await seedExampleConsultationWorkflowTemplates(client);
+      console.log('');
+    }
+    if (isPhaseEnabled('24-example-consultation-workflows-arcaai', mode)) {
+      await seedArcaaiExampleConsultationWorkflows(client);
       console.log('');
     }
 
