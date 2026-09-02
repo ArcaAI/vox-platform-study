@@ -54,14 +54,34 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
+@pytest.fixture(autouse=True)
+def _no_control_plane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the control-plane seam CLOSED for every test in this module.
+
+    `_offload_text` reads the platform snapshot (`_config_snapshot` ->
+    `get_effective_config_client().get()` against the gateway) and lets it OVERRIDE the
+    bootstrap `min_bytes`. That precedence is correct in production, but it makes these
+    tests depend on whether a gateway happens to be listening: with the local stack up,
+    the platform threshold (65536) supersedes the fixture's `min_bytes=16` and the
+    400-byte note is never offloaded. Serving `None` — the same value a degraded control
+    plane yields — makes the fixture's `min_bytes` authoritative, exactly as `_patch_store`
+    pins the store seams.
+    """
+
+    async def _absent() -> None:
+        return None
+
+    monkeypatch.setattr(activities, "_config_snapshot", _absent)
+
+
 def _patch_store(monkeypatch: pytest.MonkeyPatch, store: InMemoryBlobStore) -> None:
     """Pin BOTH store-construction seams to one in-memory fake.
 
     TASK-799 A.2 introduced `open_store` (resolve the platform storage location, then
     build) alongside the primitive `build_blob_store`. Patching only one leaves the
     other reaching for the real control plane, so they are patched together — and the
-    `location` a caller writes to is the bootstrap bucket, unchanged, because no
-    snapshot is served here.
+    `location` a caller writes to is the bootstrap bucket, unchanged, because
+    `_no_control_plane` serves no snapshot.
     """
     monkeypatch.setattr(activities, "build_blob_store", lambda cc, location=None: store)
     monkeypatch.setattr(
