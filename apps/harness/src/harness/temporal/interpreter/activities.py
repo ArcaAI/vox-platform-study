@@ -297,11 +297,19 @@ _RUN_EVENT_REDIS: Any | None = None
 _RUN_EVENT_REDIS_BUILT = False
 
 
-def _run_event_producer() -> RunEventProducer:
+def run_event_producer() -> RunEventProducer:
     """One producer per worker process. Built lazily; a failure yields a no-op producer.
 
     Lazy because a worker must boot with Redis down (`redis_client.py`'s whole posture), and
     because `Redis.from_url` binds to the running event loop.
+
+    PUBLIC on purpose: this is the DELTA lane's entry point for any node activity that
+    streams — a token stream, and (lane B) STT/TTS audio. Call
+    ``run_event_producer().emit_token_delta(...)`` from inside the activity, never from the
+    workflow body, and never route a delta through a signal or an activity-per-chunk. Signals
+    land in Temporal history, whose ceiling is 51,200 events / 50 MB per run, so a long
+    deliberation streamed through Temporal dies mid-flight. ``test_task849_two_lane_split.py``
+    MEASURES that this stays true.
     """
     global _RUN_EVENT_REDIS, _RUN_EVENT_REDIS_BUILT  # noqa: PLW0603 — process-wide singleton
     if not _RUN_EVENT_REDIS_BUILT:
@@ -369,7 +377,7 @@ async def emit_run_events(batch: RunEventBatch) -> int:
                 "harness.run_events.envelope_rejected "
                 f"run_id={batch.run_id} event_type={spec.event_type} error={exc}"
             )
-    return len(await _run_event_producer().emit_many(envelopes))
+    return len(await run_event_producer().emit_many(envelopes))
 
 
 # Registered on the worker (Task 8) alongside DOCUMENT_ACTIVITIES/LOOP_ACTIVITIES/

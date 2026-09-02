@@ -552,6 +552,7 @@ class WorkflowInterpreter:
             trajectory=trajectory,
             bound_inputs=self._resolve_bound_inputs(node),
             run_payload=inp.payload,
+            run_id=inp.run_id,
         )
 
         try:
