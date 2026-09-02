@@ -15,7 +15,7 @@
 import { ServiceAccountTokenProvider } from './core/service-account-token';
 import type { ServiceAccountCredentials } from './core/service-account-token';
 import { Transport } from './core/transport';
-import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource, TenantsResource } from './resources';
+import { AdminNamespace, ConsultationsResource, JobsResource, SummarizationResource, TenantsResource, WorkflowsResource } from './resources';
 
 /**
  * Structured logger hook for `HopeClient`. Every method is optional so a
@@ -98,6 +98,20 @@ export class HopeClient {
    */
   readonly tenants: TenantsResource;
   /**
+   * The WORKFLOW INVOCATION plane (TASK-850) — run a tenant's published
+   * workflows as products, async / blocking / streaming.
+   *
+   * API-key credential ONLY: `route-manifest.json` records `svcScopes: []` on
+   * every route here, so a service-account client is refused at the call site
+   * with an explanation rather than a 403 no grant can fix. That makes this
+   * the exact mirror of {@link admin}, which is service-account only.
+   *
+   * To run a workflow AGAINST a consultation, use
+   * `hope.consultations.workflows` — a different plane, with its own ability
+   * and its own scope.
+   */
+  readonly workflows: WorkflowsResource;
+  /**
    * The `/api/v1/admin/**` administration plane — 52 areas, one property per
    * `svc:admin:*` scope (TASK-773).
    *
@@ -162,10 +176,17 @@ export class HopeClient {
       fetch: serviceAccountTokens ? serviceAccountTokens.authenticatedFetch(options.fetch ?? fetch) : options.fetch,
     });
 
+    // Which credential class this client carries is fixed at construction (the
+    // two are mutually exclusive, enforced above), so it is passed down once
+    // rather than re-derived per call. The workflow plane is the only surface
+    // that acts on it — see `resources/workflows.ts#assertApiKeyPlane`.
+    const isServiceAccount = options.serviceAccount !== undefined;
+
     this.summarization = new SummarizationResource(transport);
-    this.consultations = new ConsultationsResource(transport);
+    this.consultations = new ConsultationsResource(transport, isServiceAccount);
     this.jobs = new JobsResource(transport);
     this.tenants = new TenantsResource(transport);
+    this.workflows = new WorkflowsResource(transport, isServiceAccount);
     this.admin = new AdminNamespace(transport);
   }
 }

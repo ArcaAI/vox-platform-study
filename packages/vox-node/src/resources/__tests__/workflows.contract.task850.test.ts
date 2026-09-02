@@ -15,8 +15,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RESERVED_RUN_IDENTITY_KEYS } from '../../core/run-identity';
 import { WORKFLOW_PLANE_ROUTES } from '../workflows';
@@ -31,9 +30,13 @@ interface ManifestRoute {
   svcScopes: string[] | null;
 }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-/** packages/vox-node/src/resources/__tests__ -> repo root */
-const REPO_ROOT = resolve(HERE, '..', '..', '..', '..', '..');
+/**
+ * Vitest runs with this package as its root (`packages/vox-node`), so the repo
+ * root is two levels up. Derived from `process.cwd()` rather than
+ * `import.meta.url` because this package's tsconfig emits CommonJS, where
+ * `import.meta` is a hard type error.
+ */
+const REPO_ROOT = resolve(process.cwd(), '..', '..');
 
 function loadManifest(): ManifestRoute[] {
   const raw = JSON.parse(readFileSync(join(REPO_ROOT, 'apps', 'api', 'route-manifest.json'), 'utf8')) as unknown;
