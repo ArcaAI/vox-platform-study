@@ -88,7 +88,7 @@ describe('WorkbenchScreen', () => {
     stubWorkbenchFetch();
     renderWithProviders(<WorkbenchScreen />);
 
-    expect(screen.getByRole('link', { name: /agent playground/i }).getAttribute('href')).toBe('/playground/llm');
+    expect(screen.getByRole('link', { name: /llm playground/i }).getAttribute('href')).toBe('/playground/llm');
     expect(screen.getByRole('link', { name: /live transcription/i }).getAttribute('href')).toBe('/playground/live-transcription');
   });
 

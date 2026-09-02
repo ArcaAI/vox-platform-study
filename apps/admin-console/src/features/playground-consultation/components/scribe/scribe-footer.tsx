@@ -1,15 +1,20 @@
 'use client';
 
 /**
- * Scribe workspace footer: the transcription-Listener (ASR
+ * Scribe workspace footer: the transcription-agent (ASR
  * pipeline) and note-assistant model selectors, plus real per-session metric
  * cards. Metrics are REAL or an em-dash — throughput/latency come from the
  * live-summary SSE stats (`useLiveMetrics`); bandwidth stays em-dash until the
  * SDK uplink-bitrate signal lands (SDK follow-up), never fabricated.
  *
- * Naming (Family 2 clinician vocabulary): the ASR pipeline is the
- * "Listener" capability — never labeled an "agent" on this clinician-facing
- * surface.
+ * Naming — AMENDED by TASK-858 Lane D. The Family 2 rollout called the ASR
+ * pipeline the "Listener" capability and forbade the word "agent" here. That is
+ * reversed: TASK-858 R1 makes the ASR pipeline a single-task TRANSCRIPTION
+ * AGENT (an `stt`-palette workflow definition compiled into an `AsrPipeline`),
+ * and this screen now offers a second, different choice — the consultation
+ * WORKFLOW, picked at session-open. The two selectors have to read as agent vs
+ * workflow, so the label names what the thing is and parenthesises the
+ * substrate it compiles to. `naming.test.ts` locks the new wording.
  */
 
 import { ModelSelector, type ModelOption } from '@arcaai/ui/components/custom/model-selector';
@@ -93,7 +98,7 @@ export function ScribeFooter({
     <footer className="bg-card flex shrink-0 flex-wrap items-stretch gap-3 border-t p-3">
       <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
         <ModelSelector
-          label="Transcription Listener"
+          label="Transcription agent (STT pipeline)"
           models={transcriptionModels}
           selectedModelId={selectedTranscriptionId}
           onChange={onTranscriptionChange}

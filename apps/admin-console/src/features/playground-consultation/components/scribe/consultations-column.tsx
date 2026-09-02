@@ -61,8 +61,23 @@ export interface ConsultationsColumnProps {
    * a department. `departmentId` is what makes the department prompt tier and
    * the workflow-assignment department tier reachable at all (TASK-789 H-4).
    */
-  onOpenPatient: (patientId: string, departmentId?: string) => Promise<void>;
+  onOpenPatient: (patientId: string, departmentId?: string, workflowDefinitionSlug?: string) => Promise<void>;
   activeIsRecording: boolean;
+  /**
+   * TASK-858 Lane D — the published consultation workflows this caller may pass as
+   * `session.open({ workflowDefinitionSlug })` (SDK `useSelectableConsultationWorkflows`).
+   *
+   * THREE source states, never collapsed — the SDK keeps them apart for the same reason:
+   * `undefined` = the caller did not wire the picker (render nothing), `null` = we could not
+   * ask (offline/503/unauthorized), `[]` = the tenant has published none. Telling a clinician
+   * their tenant has no workflows because a request blipped is the failure this prevents.
+   */
+  workflows?: WorkflowSelectionOption[] | null;
+  /** Read in flight ⇒ skeleton, never a premature "none". */
+  workflowsLoading?: boolean;
+  /** Empty ⇒ "use the assigned workflow", i.e. send no slug and let the cascade decide. */
+  selectedWorkflowSlug?: string;
+  onWorkflowChange?: (slug: string) => void;
   /**
    * Departments the CALLER may scope to — `users/me/departments`, the
    * clinician plane (TASK-815 §12 / P-4). Empty is a real, explainable state,
@@ -84,8 +99,31 @@ export interface DepartmentOption {
   name: string;
 }
 
+/**
+ * One selectable consultation workflow — the console-side shape of the SDK's
+ * `SelectableConsultationWorkflow`. Deliberately structural: the screen passes the SDK objects
+ * straight through, and this column stays testable without the SDK.
+ */
+export interface WorkflowSelectionOption {
+  /** The value sent as `workflowDefinitionSlug`. */
+  slug: string;
+  name: string;
+  description?: string | null;
+  /** `true` for the slug the TENANT-level assignment names — the sensible preselection. */
+  isTenantDefault: boolean;
+}
+
 /** Sentinel for "no department" — Radix Select forbids an empty-string value. */
 const NO_DEPARTMENT = '__none__';
+
+/**
+ * Sentinel for "send no slug at all" — the DEFAULT, and the only value that leaves the
+ * WorkflowAssignment cascade intact. Sending the tenant default explicitly would silently
+ * override a DEPARTMENT assignment, which is a different consultation from the one the tenant
+ * configured; `isTenantDefault` is a hint about the tenant tier, never a promise about this
+ * consultation.
+ */
+const ASSIGNED_WORKFLOW = '__assigned__';
 
 /**
  * The department picker's DEGRADED state — a designed state, not a failure.
@@ -111,6 +149,28 @@ function DepartmentScopingNotice({ unavailable }: { unavailable: boolean }) {
   );
 }
 
+/**
+ * The workflow picker's DEGRADED states — designed states, not failures, and the two are NOT
+ * the same fact: `unavailable` means the read failed, `none` means the tenant has published no
+ * consultation workflow. Both are non-blocking; the consultation still opens and the assignment
+ * cascade (department → tenant → platform default) decides which engine governs.
+ */
+function WorkflowSelectionNotice({ unavailable }: { unavailable: boolean }) {
+  return (
+    <div role="status" className="border-border bg-muted/40 flex flex-col gap-1.5 rounded-md border p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{unavailable ? 'Workflow selection unavailable' : 'No published workflows'}</span>
+        <StatusBadge label={unavailable ? 'UNAVAILABLE' : 'NONE'} colorRole={unavailable ? 'warning' : 'neutral'} />
+      </div>
+      <p className="text-muted-foreground text-xs">
+        {unavailable
+          ? 'The workflow list could not be read, so there is nothing to pick. The consultation still opens \u2014 the assigned workflow governs it.'
+          : 'This tenant has published no consultation workflow, so there is nothing to pick. The consultation still opens \u2014 the platform default engine governs it.'}
+      </p>
+    </div>
+  );
+}
+
 export function ConsultationsColumn({
   rows,
   isLoading,
@@ -124,6 +184,10 @@ export function ConsultationsColumn({
   departmentsError = false,
   selectedDepartmentId = '',
   onDepartmentChange,
+  workflows,
+  workflowsLoading = false,
+  selectedWorkflowSlug = '',
+  onWorkflowChange,
 }: ConsultationsColumnProps) {
   const [query, setQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
@@ -168,7 +232,7 @@ export function ConsultationsColumn({
     setPatientIdError(null);
     setOpenPending(true);
     try {
-      await onOpenPatient(trimmed, selectedDepartmentId || undefined);
+      await onOpenPatient(trimmed, selectedDepartmentId || undefined, selectedWorkflowSlug || undefined);
       setShowNewForm(false);
     } finally {
       setOpenPending(false);
@@ -259,6 +323,60 @@ export function ConsultationsColumn({
               </>
             ) : (
               <DepartmentScopingNotice unavailable={departmentsError} />
+            )}
+            {/* Workflow selection (TASK-858 Lane D). TASK-813 shipped
+                `session.open({ workflowDefinitionSlug })` and the discovery route that says
+                which slugs are accepted; nothing in the console offered the choice, so a
+                clinician always got whatever the assignment cascade picked. `undefined` keeps
+                the control off entirely for callers that do not wire it. */}
+            {workflows === undefined ? null : workflowsLoading ? (
+              <>
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-9 w-full" />
+              </>
+            ) : workflows === null ? (
+              <WorkflowSelectionNotice unavailable />
+            ) : workflows.length === 0 ? (
+              <WorkflowSelectionNotice unavailable={false} />
+            ) : (
+              <>
+                <Label htmlFor="scribe-workflow">Workflow</Label>
+                <Select
+                  value={selectedWorkflowSlug || ASSIGNED_WORKFLOW}
+                  onValueChange={(next) => onWorkflowChange?.(next === ASSIGNED_WORKFLOW ? '' : next)}
+                >
+                  <SelectTrigger id="scribe-workflow" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* The default: no slug leaves the department → tenant assignment in
+                        charge, which is what the tenant actually configured. */}
+                    <SelectItem value={ASSIGNED_WORKFLOW}>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate">Use assigned workflow</span>
+                        <span className="text-muted-foreground truncate text-xs">the department or tenant assignment decides</span>
+                      </span>
+                    </SelectItem>
+                    {workflows.map((workflow) => (
+                      <SelectItem key={workflow.slug} value={workflow.slug}>
+                        {/* One ROW, not a stack: `SelectValue` mirrors this content into the
+                            trigger, which is a fixed-height `line-clamp-1` flex row — a
+                            two-line item would be clipped there. */}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{workflow.name}</span>
+                          {/* A hint about the TENANT tier, not the preselection — a department
+                              override can still win when nothing is picked. */}
+                          {workflow.isTenantDefault ? <Badge variant="secondary">Default</Badge> : null}
+                          <span className="text-muted-foreground truncate font-mono text-xs">{workflow.slug}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Governs this consultation&apos;s realtime and drafting agents. An explicit pick overrides the department and tenant assignment.
+                </p>
+              </>
             )}
           </form>
         ) : (

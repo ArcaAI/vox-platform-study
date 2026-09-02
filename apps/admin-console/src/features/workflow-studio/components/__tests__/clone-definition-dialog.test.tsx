@@ -123,6 +123,35 @@ describe('CloneDefinitionDialog — starting from a platform template', () => {
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ sourceId: 'sys-1', targetSlug: 'my_summary' }));
   });
 
+  /**
+   * TASK-858 Lane D — the library now holds templates from DIFFERENT palettes: three
+   * `consultation` example workflows and the `stt` transcription agent. Cloning an `stt`
+   * definition when you wanted a consultation one produces a workflow that cannot govern a
+   * consultation at all, so the palette has to be scannable, not buried in a mono line.
+   */
+  it('badges each template with its palette so an stt agent is not mistaken for a consultation workflow', () => {
+    render(
+      <CloneDefinitionDialog
+        open
+        source={null}
+        templates={[
+          definition({ id: 'tpl-ner', slug: 'consultation_ner', name: 'Consultation with Medical NER', paletteKey: 'consultation' }),
+          definition({ id: 'tpl-stt', slug: 'transcription_agent', name: 'Realtime Transcription Agent', paletteKey: 'stt' }),
+        ]}
+        templatesLoading={false}
+        onOpenChange={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Consultation with Medical NER')).toBeTruthy();
+    expect(screen.getByText('Realtime Transcription Agent')).toBeTruthy();
+    expect(screen.getByText('consultation')).toBeTruthy();
+    expect(screen.getByText('stt')).toBeTruthy();
+    // The slug stays visible too — it is the lineage key the new slug is suggested from.
+    expect(screen.getByText('consultation_ner')).toBeTruthy();
+  });
+
   it('cannot submit before a template is picked', () => {
     const onConfirm = vi.fn();
     render(

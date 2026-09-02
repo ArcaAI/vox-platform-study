@@ -12,6 +12,7 @@
 
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
+import { axe } from 'vitest-axe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { GenerateTextResponse, TextProvider, StreamingGenerateAck } from '../../api/types';
@@ -193,6 +194,17 @@ afterEach(() => {
 });
 
 describe('PlaygroundLlmScreen', () => {
+  // TASK-858 Lane D — the screen was renamed (Agent Playground → LLM Playground), so its
+  // accessibility gate is re-run against the loaded canvas rather than assumed.
+  it('has no axe violations once the canvas has loaded', async () => {
+    stubLlm();
+    const { container } = renderWithProviders(<PlaygroundLlmScreen />);
+    await screen.findByRole('heading', { level: 1, name: 'LLM Playground' });
+    await screen.findByLabelText('Provider');
+
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
   it('gates an elevated session without a working tenant and fires no text/* query', async () => {
     const calls = stubLlm((call, parsed) => {
       if (parsed.pathname === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
@@ -201,7 +213,7 @@ describe('PlaygroundLlmScreen', () => {
     renderWithProviders(<PlaygroundLlmScreen />);
 
     expect(await screen.findByText('Select a working tenant')).toBeDefined();
-    expect(screen.getByRole('heading', { level: 1, name: 'Agent Playground' })).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'LLM Playground' })).toBeDefined();
     expect(calls.filter((call) => call.url.includes('/api/hope/text-generations/'))).toHaveLength(0);
   });
 
@@ -213,7 +225,7 @@ describe('PlaygroundLlmScreen', () => {
     const { container } = renderWithProviders(<PlaygroundLlmScreen />);
 
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
-    expect(screen.getByRole('heading', { level: 1, name: 'Agent Playground' })).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'LLM Playground' })).toBeDefined();
   });
 
   it('renders the provider picker from text-generations/providers: default preselected, unavailable options disabled', async () => {

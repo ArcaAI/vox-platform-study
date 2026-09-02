@@ -77,8 +77,12 @@ import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
  * reviewed 2026-07-04: AI models re-tiered to 10-19, tenant frontend config
  * folded into the tenant-detail tab). All design gates cleared (B0/B1/B2
  * approved 2026-07-05; Playground 50-59 approved 2026-07-06). The
- * sidebar only renders implemented entries the caller's ability grants;
- * AI models is hidden (implemented: false).
+ * sidebar only renders implemented entries the caller's ability grants.
+ *
+ * (Corrected by TASK-858 Lane D: this comment claimed "AI models is hidden
+ * (implemented: false)". It has not been hidden since the screen became the
+ * AI-models HUB — the entry below is `implemented: true`, gated on
+ * `manage:all`. The stale sentence read as a live rule and is gone.)
  */
 export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
 
@@ -876,7 +880,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [],
     implemented: true,
   },
-  { route: '/playground/llm', domain: 'playground', label: 'Agent Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
+  { route: '/playground/llm', domain: 'playground', label: 'LLM Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
   // TASK-721: deliberate divergence from the `required: []` convention above.
   // The five entries before this one are own-account end-user demo planes
   // whose backend guards are plain @Authorize() (comment above). The

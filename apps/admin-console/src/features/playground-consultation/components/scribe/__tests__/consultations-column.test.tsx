@@ -70,7 +70,7 @@ describe('ConsultationsColumn', () => {
     fireEvent.click(screen.getByRole('button', { name: /new/i }));
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
-    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', undefined));
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', undefined, undefined));
   });
 
   it('validates a required patient id before opening', () => {
@@ -106,7 +106,7 @@ describe('ConsultationsColumn', () => {
       fireEvent.click(screen.getByRole('button', { name: /new/i }));
       fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-first-time' } });
       fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
-      await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-first-time', undefined));
+      await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-first-time', undefined, undefined));
     });
 
     it('0 axe violations on the New form with the patient-lookup datalist wired up', async () => {
@@ -151,7 +151,7 @@ describe('ConsultationsColumn — department scoping on open', () => {
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
 
-    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', 'dept-cardio'));
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', 'dept-cardio', undefined));
   });
 
   it('omits the department when none is chosen (tenant tier applies)', async () => {
@@ -161,7 +161,7 @@ describe('ConsultationsColumn — department scoping on open', () => {
     fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-901' } });
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
 
-    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-901', undefined));
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-901', undefined, undefined));
   });
 });
 
@@ -227,6 +227,152 @@ describe('ConsultationsColumn — department scoping degrades explicitly (P-4)',
     const { container } = setup({ departments: [], departmentsError: true });
     openNewForm();
 
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * TASK-858 Lane D — workflow selection at open.
+ *
+ * TASK-813 shipped `session.open({ workflowDefinitionSlug })` and the two discovery hooks, and
+ * the console called neither: a clinician could not choose which published consultation workflow
+ * governs the session. The picker's three source states stay distinct here for the same reason
+ * the SDK keeps them distinct (`useSelectableConsultationWorkflows`): `null` is "we could not
+ * ask", `[]` is "the tenant has published none" — collapsing them would tell a clinician their
+ * tenant has no workflows because a request blipped.
+ */
+describe('ConsultationsColumn — workflow selection on open', () => {
+  const WORKFLOWS = [
+    { slug: 'arcaai_consultation_soap', name: 'Consultation SOAP', description: null, isTenantDefault: true },
+    { slug: 'arcaai_consultation_ner', name: 'Consultation with Medical NER', description: null, isTenantDefault: false },
+  ];
+
+  function openNewForm() {
+    fireEvent.click(screen.getByRole('button', { name: /^new$/i }));
+  }
+
+  it('sends the selected workflow slug with the open request', async () => {
+    const { props } = setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_ner', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-900' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-900', undefined, 'arcaai_consultation_ner'));
+  });
+
+  it('omits the slug by DEFAULT so the assignment cascade decides', async () => {
+    const { props } = setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.change(screen.getByLabelText(/patient id/i), { target: { value: 'P-901' } });
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => expect(props.onOpenPatient).toHaveBeenCalledWith('P-901', undefined, undefined));
+  });
+
+  it('renders the picker with the workflows the tenant published', () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_soap', onWorkflowChange: vi.fn() });
+    openNewForm();
+    expect(screen.getByLabelText(/^workflow$/i)).toBeTruthy();
+    // No degraded notice for a list that resolved.
+    expect(screen.queryByText(/workflow selection unavailable/i)).toBeNull();
+    expect(screen.queryByText(/no published workflows/i)).toBeNull();
+  });
+
+  it('offers "Use assigned workflow" first, then the published workflows with the tenant default marked', async () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining('Use assigned workflow'),
+      expect.stringContaining('Consultation SOAP'),
+      expect.stringContaining('Consultation with Medical NER'),
+    ]);
+    // The default says WHY it is the default rather than leaving the clinician to guess.
+    expect(options[0].textContent).toContain('the department or tenant assignment decides');
+    // Slugs are shown — the clinician has to be able to tell two similarly-named graphs apart.
+    expect(options[1].textContent).toContain('arcaai_consultation_soap');
+    // The marker is a HINT about the tenant tier, and only the tenant default carries it.
+    expect(options[1].textContent).toContain('Default');
+    expect(options[2].textContent).not.toContain('Default');
+  });
+
+  it('shows "Use assigned workflow" as the selected value until the clinician picks one', () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+
+    expect(screen.getByLabelText(/^workflow$/i).textContent).toContain('Use assigned workflow');
+    // Never the tenant default: preselecting it would send a slug on every open.
+    expect(screen.getByLabelText(/^workflow$/i).textContent).not.toContain('Consultation SOAP');
+  });
+
+  it('clears the selection back to no slug when the clinician returns to "Use assigned workflow"', async () => {
+    const onWorkflowChange = vi.fn();
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_ner', onWorkflowChange });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+
+    const options = await screen.findAllByRole('option');
+    fireEvent.click(options[0]);
+
+    // The sentinel is a Radix implementation detail; the caller only ever sees the empty slug.
+    expect(onWorkflowChange).toHaveBeenCalledWith('');
+  });
+
+  it('shows a skeleton, not a claim, while the list is still loading', () => {
+    const { container } = setup({ workflows: null, workflowsLoading: true });
+    openNewForm();
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    expect(screen.queryByText(/no published workflows/i)).toBeNull();
+  });
+
+  it('says the list could not be read (null) without claiming the tenant has none', () => {
+    setup({ workflows: null, workflowsLoading: false });
+    openNewForm();
+    // A live region: the notice resolves asynchronously, so it must be ANNOUNCED, not just drawn.
+    expect(screen.getByText(/workflow selection unavailable/i).closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByText(/no published workflows/i)).toBeNull();
+  });
+
+  it('says the tenant has published none ([]) as a designed state', () => {
+    setup({ workflows: [], workflowsLoading: false });
+    openNewForm();
+    expect(screen.getByText(/no published workflows/i).closest('[role="status"]')).not.toBeNull();
+    expect(screen.queryByText(/workflow selection unavailable/i)).toBeNull();
+  });
+
+  it('renders nothing at all when the caller does not wire the picker', () => {
+    setup();
+    openNewForm();
+    expect(screen.queryByLabelText(/^workflow$/i)).toBeNull();
+    expect(screen.queryByText(/workflow selection unavailable/i)).toBeNull();
+    expect(screen.queryByText(/no published workflows/i)).toBeNull();
+  });
+
+  it('has no axe violations with the picker wired', async () => {
+    const { container } = setup({ workflows: WORKFLOWS, selectedWorkflowSlug: 'arcaai_consultation_soap', onWorkflowChange: vi.fn() });
+    openNewForm();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no axe violations with the picker OPEN (the options live in a portal)', async () => {
+    setup({ workflows: WORKFLOWS, selectedWorkflowSlug: '', onWorkflowChange: vi.fn() });
+    openNewForm();
+    fireEvent.keyDown(screen.getByLabelText(/^workflow$/i), { key: 'ArrowDown' });
+    await screen.findAllByRole('option');
+
+    // The LISTBOX, not the container and not document.body: Radix renders the options in a
+    // portal (invisible to a container scan), and a whole-body scan in an isolated component
+    // render reports Radix's own focus guards (`aria-hidden-focus`) plus `region` for portal
+    // content that has no page landmarks around it — both artifacts of the test harness, not
+    // of this markup.
+    expect(await axe(screen.getByRole('listbox'))).toHaveNoViolations();
+  });
+
+  it('has no axe violations in the degraded (unreadable) state', async () => {
+    const { container } = setup({ workflows: null, workflowsLoading: false });
+    openNewForm();
     expect(await axe(container)).toHaveNoViolations();
   });
 });
