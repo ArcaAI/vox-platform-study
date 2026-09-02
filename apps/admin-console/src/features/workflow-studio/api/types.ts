@@ -129,8 +129,10 @@ export interface PublishWorkflowDefinitionRequest {
 export type WorkflowPortPrimitive =
   | 'control'
   | 'stream<audio>'
+  | 'audio'
   | 'transcript'
   | 'text'
+  | 'object'
   | 'entities'
   | 'document'
   | 'edits'
