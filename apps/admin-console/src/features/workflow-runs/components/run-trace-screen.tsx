@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconHistory, IconLayoutGrid, IconList, IconRoute } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { WorkflowCanvas, type WorkflowCanvasNodeProblem } from '@arcaai/ui/components/workflow-canvas';
@@ -66,7 +66,10 @@ function TraceBody({ runId }: { runId: string }) {
   const orderedNodes = useMemo(() => [...(trace?.nodes ?? [])].sort((a, b) => a.order - b.order), [trace]);
   const [replayActive, setReplayActive] = useState(false);
   const [replayStep, setReplayStep] = useState(0);
-  const effectiveRollups = replayActive ? orderedNodes.slice(0, replayStep) : (trace?.nodes ?? []);
+  const effectiveRollups = useMemo(
+    () => (replayActive ? orderedNodes.slice(0, replayStep) : (trace?.nodes ?? [])),
+    [replayActive, orderedNodes, replayStep, trace],
+  );
 
   const live = useRunLiveEvents({
     runId,
@@ -75,9 +78,14 @@ function TraceBody({ runId }: { runId: string }) {
     enabled: isLiveRun,
     onResnapshot: () => void traceQuery.refetch(),
   });
-  useEffect(() => {
+  // Adjusted DURING RENDER, not in an effect (same idiom as `live-events.ts`'s reset-on-runId —
+  // react-hooks/set-state-in-effect forbids a synchronous setState in an effect body, and this
+  // is the sanctioned "derive one piece of state from another" exception to that rule).
+  const [streamStatusSeen, setStreamStatusSeen] = useState(live.status);
+  if (live.status !== streamStatusSeen) {
+    setStreamStatusSeen(live.status);
     setStreamDegraded(live.status === 'error');
-  }, [live.status]);
+  }
 
   const graph = definitionQuery.data && isWorkflowGraph(definitionQuery.data.graph) ? definitionQuery.data.graph : null;
   const canvasGraph = useMemo(() => (graph ? toCanvasGraph(graph) : null), [graph]);

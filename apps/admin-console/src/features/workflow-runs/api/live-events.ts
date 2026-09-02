@@ -120,12 +120,17 @@ export function useRunLiveEvents(options: {
     onResnapshotRef.current = onResnapshot;
   }, [onResnapshot]);
 
-  // A remount (new runId) must not carry the previous run's log/status map forward.
-  useEffect(() => {
+  // A remount (new runId) must not carry the previous run's log/status map forward. Adjusted
+  // DURING RENDER (React's documented "resetting state when a prop changes" idiom) rather than
+  // in an effect — an effect body may not call setState synchronously (react-hooks/set-state-in-
+  // effect), and this is exactly the sanctioned exception to that rule.
+  const [resetForRunId, setResetForRunId] = useState(runId);
+  if (runId !== resetForRunId) {
+    setResetForRunId(runId);
     setEvents([]);
     setNodeStatusById(new Map());
     setLiveOutputByNodeId(new Map());
-  }, [runId]);
+  }
 
   const path = runId && slug ? workflowRunStreamPath(slug, runId) : null;
   const scope = runId ? workflowRunStreamScope(runId) : null;
