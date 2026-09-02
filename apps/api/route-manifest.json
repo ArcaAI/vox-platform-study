@@ -10003,6 +10003,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "clone",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/{id}/clone",
+      "routePath": "/admin/workflow-definitions/:id/clone",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "updateNodePrompt",
       "method": "PUT",
       "path": "/api/v1/admin/workflow-definitions/{id}/nodes/{nodeId}/prompt",
@@ -10099,6 +10122,29 @@
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/{id}/versions",
       "routePath": "/admin/workflow-definitions/:id/versions",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "fetchTemplates",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/templates",
+      "routePath": "/admin/workflow-definitions/templates",
       "svcScopes": [
         "svc:admin:workflow-definition:manage"
       ],

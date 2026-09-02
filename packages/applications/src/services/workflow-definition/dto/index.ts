@@ -1,4 +1,5 @@
 export * from './create-workflow-definition.request';
+export * from './clone-workflow-definition.request';
 export * from './update-workflow-definition.request';
 export * from './publish-workflow-definition.request';
 export * from './workflow-definition.response';

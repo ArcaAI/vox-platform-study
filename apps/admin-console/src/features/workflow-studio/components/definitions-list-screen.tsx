@@ -7,7 +7,7 @@
  * the same program, already built against a real `admin/workflow-*` endpoint.
  */
 import { useState } from 'react';
-import { IconLayoutGrid, IconListNumbers, IconListTree, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconCopy, IconLayoutGrid, IconListNumbers, IconListTree, IconPlus, IconRefresh, IconTemplate } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -21,9 +21,12 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { workflowStudioKeys, useWorkflowDefinitions } from '../api';
+import { workflowStudioKeys, useCloneWorkflowDefinition, useWorkflowDefinitions, useWorkflowTemplates } from '../api';
 import type { WorkflowDefinition } from '../api/types';
 import { EndpointSequenceEditor } from './endpoint-sequence';
+import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-definition-dialog';
+import { GatewayError } from '@/shared/api';
+import { toast } from 'sonner';
 
 const PAGE_SIZE = 25;
 
@@ -42,8 +45,40 @@ function DefinitionsListBody() {
   // taking a slot on this page: the screen is `contentMode="fill"` (the grid owns the height), so
   // an inline panel would either nest a second scroll container or squeeze the grid.
   const [endpointOpen, setEndpointOpen] = useState(false);
+  // TASK-856 — one dialog, two entry points. `cloneSource` null WITH the dialog open is
+  // "start from a platform template" (the dialog renders the library picker); a row's Clone
+  // action sets the source, so no picker is shown.
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [cloneSource, setCloneSource] = useState<WorkflowDefinition | null>(null);
+  const [cloneError, setCloneError] = useState<string | null>(null);
 
   const definitionsQuery = useWorkflowDefinitions({ page, limit: PAGE_SIZE });
+  // Deferred until the dialog opens — the library is a cross-tenant read nobody needs on a
+  // page load that may never reach the clone flow.
+  const templatesQuery = useWorkflowTemplates(cloneOpen && cloneSource === null);
+  const cloneMutation = useCloneWorkflowDefinition();
+
+  function openClone(source: WorkflowDefinition | null) {
+    setCloneSource(source);
+    setCloneError(null);
+    setCloneOpen(true);
+  }
+
+  async function handleClone({ sourceId, targetSlug, name }: CloneDefinitionSubmission) {
+    setCloneError(null);
+    try {
+      const created = await cloneMutation.mutateAsync({ sourceId, body: { targetSlug, name } });
+      setCloneOpen(false);
+      toast.success(`Cloned into “${created.name}”.`);
+      router.push(`/workflow-studio/${encodeURIComponent(created.id)}`);
+    } catch (cause) {
+      // The gateway's own message is the useful one here — it names the colliding slug, the
+      // exceeded quota, or the nodes whose bindings block a template clone.
+      const message = cause instanceof GatewayError ? cause.message : 'Failed to clone the workflow.';
+      setCloneError(message);
+      toast.error(message);
+    }
+  }
   const rows = definitionsQuery.data?.data ?? [];
 
   const queryState: DataQueryState = { pagination: { mode: 'offset', page, limit: PAGE_SIZE }, sorting: [], filters: [], globalSearch: undefined };
@@ -95,6 +130,31 @@ function DefinitionsListBody() {
         </span>
       ),
     },
+    {
+      id: 'actions',
+      header: '',
+      meta: { label: 'Actions' },
+      enableSorting: false,
+      minSize: 110,
+      // A PUBLISHED row is immutable, which is exactly when cloning matters most — so this is
+      // offered on every status, unlike edit.
+      cell: ({ row }) => (
+        <span className="flex w-full items-center justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Clone ${row.original.name}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              openClone(row.original);
+            }}
+          >
+            <IconCopy aria-hidden />
+            Clone
+          </Button>
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -115,6 +175,10 @@ function DefinitionsListBody() {
               <Button variant="outline" onClick={() => setEndpointOpen(true)}>
                 <IconListNumbers aria-hidden />
                 Endpoint sequence
+              </Button>
+              <Button variant="outline" onClick={() => openClone(null)}>
+                <IconTemplate aria-hidden />
+                Start from template
               </Button>
               <Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root })}>
                 <IconRefresh aria-hidden />
@@ -169,16 +233,35 @@ function DefinitionsListBody() {
           <EmptyState
             icon={IconListTree}
             title="No workflow definitions yet"
-            description="Create one from the node registry — Studio v1 renders whatever node types the registry serves."
+            description="Start from a platform template and edit your copy, or build one from scratch — the Studio renders whatever node types the registry serves."
             action={
-              <Button onClick={() => router.push('/workflow-studio/new')}>
-                <IconPlus aria-hidden />
-                New definition
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button onClick={() => openClone(null)}>
+                  <IconTemplate aria-hidden />
+                  Start from template
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/workflow-studio/new')}>
+                  <IconPlus aria-hidden />
+                  New definition
+                </Button>
+              </div>
             }
           />
         }
         onRowClick={(row) => router.push(`/workflow-studio/${encodeURIComponent(row.id)}`)}
+      />
+      <CloneDefinitionDialog
+        open={cloneOpen}
+        onOpenChange={(next) => {
+          setCloneOpen(next);
+          if (!next) setCloneError(null);
+        }}
+        source={cloneSource}
+        templates={templatesQuery.data ?? []}
+        templatesLoading={templatesQuery.isLoading}
+        onConfirm={(submission) => void handleClone(submission)}
+        confirming={cloneMutation.isPending}
+        error={cloneError}
       />
       <DetailDrawer
         open={endpointOpen}

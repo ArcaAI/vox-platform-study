@@ -8,6 +8,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  cloneWorkflowDefinition,
   createWorkflowAssignment,
   createWorkflowDefinition,
   deleteWorkflowAssignment,
@@ -21,6 +22,7 @@ import {
   listWorkflowDefinitionVersions,
   listWorkflowDefinitions,
   listWorkflowNodes,
+  listWorkflowTemplates,
   publishWorkflowDefinition,
   updateNodePrompt,
   updateWorkflowAssignment,
@@ -29,6 +31,7 @@ import {
 } from './client';
 import { workflowStudioKeys } from './keys';
 import type {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   PublishWorkflowDefinitionRequest,
   UpdateNodePromptRequest,
@@ -60,6 +63,12 @@ export function usePromptTemplateOptions() {
   return useQuery({ queryKey: workflowStudioKeys.promptTemplates(), queryFn: listPromptTemplateOptions, staleTime: 60 * 1000 });
 }
 
+/** TASK-856 — the platform template library. Platform-release cadence, so it is worth a
+ *  staleTime; `enabled` lets the clone dialog defer the read until it is actually opened. */
+export function useWorkflowTemplates(enabled = true) {
+  return useQuery({ queryKey: workflowStudioKeys.templates(), queryFn: listWorkflowTemplates, staleTime: 5 * 60 * 1000, enabled });
+}
+
 function useInvalidateWorkflowStudio() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root });
@@ -68,6 +77,16 @@ function useInvalidateWorkflowStudio() {
 export function useCreateWorkflowDefinition() {
   const invalidate = useInvalidateWorkflowStudio();
   return useMutation({ mutationFn: (body: CreateWorkflowDefinitionRequest) => createWorkflowDefinition(body), onSuccess: invalidate });
+}
+
+/** TASK-856 — clone into a NEW lineage. Invalidates the whole namespace like every other
+ *  mutation here: the clone adds a row to the tenant's definition list. */
+export function useCloneWorkflowDefinition() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({
+    mutationFn: ({ sourceId, body }: { sourceId: string; body: CloneWorkflowDefinitionRequest }) => cloneWorkflowDefinition(sourceId, body),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDeleteWorkflowDefinition() {

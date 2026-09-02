@@ -14,6 +14,7 @@
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, putWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   DepartmentOption,
   NodePromptBinding,
@@ -60,6 +61,20 @@ export function listWorkflowDefinitionVersions(id: string): Promise<WorkflowDefi
 
 export function createWorkflowDefinition(body: CreateWorkflowDefinitionRequest): Promise<WorkflowDefinition> {
   return postJson(BASE, body);
+}
+
+/**
+ * TASK-856 — clone a definition (the caller's own row, or a SYSTEM template) into a NEW draft
+ * lineage. NOT an If-Match route: it reads a source and creates a different row, so there is no
+ * row being compare-and-swapped. A `targetSlug` the tenant already uses comes back 409.
+ */
+export function cloneWorkflowDefinition(sourceId: string, body: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinition> {
+  return postJson(`${definitionPath(sourceId)}/clone`, body);
+}
+
+/** TASK-856 — the platform template library (SYSTEM-tenant, live published). Read-only. */
+export function listWorkflowTemplates(): Promise<WorkflowDefinition[]> {
+  return getJson(`${BASE}/templates`);
 }
 
 /** Autosave / edit: OCC PATCH — If-Match header + body `expectedVersion` derived from the ETag
