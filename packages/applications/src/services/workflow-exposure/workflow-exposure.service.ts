@@ -8,11 +8,13 @@ import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
 import { IRedisCacheService } from '../baseServices/redis';
 import { IS3Service } from '../baseServices/storage';
-import { GetWorkflowRunResult, HarnessGatewayService } from '../consultation/harness/harness-gateway.service';
+import { IConsultationService } from '../consultation/consultation/IConsultationService';
+import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
-import { exposureBoundaryViolation } from './exposure-palette-policy';
+import { deterministicRunId } from './deterministic-run-id';
+import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
 import {
   InvokeWorkflowRequest,
   WorkflowInvokeResponse,
@@ -20,7 +22,7 @@ import {
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from './dto';
-import { IWorkflowExposureService, InvokeWorkflowOptions } from './IWorkflowExposureService';
+import { IWorkflowExposureService, InvokeWorkflowOptions, ListWorkflowOptions } from './IWorkflowExposureService';
 import { WorkflowExposureDtoMapper } from './workflow-exposure.dto.mapper';
 
 /** Default self-hosted MinIO bucket for the compiled-config claim-check — mirrors the harness's
@@ -49,11 +51,16 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-850 lane A. Used for ONE thing: re-resolving the PATH `consultationId` against the
+    // caller's tenant before it may become a run's `subject`. Optional so a minimal fixture can
+    // construct the service; absent, a consultation-bound invoke fails loud rather than
+    // dispatching with an unverified id.
+    @Optional() @Inject(IConsultationService) private readonly consultationService?: IConsultationService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
 
-  async list(): Promise<WorkflowSummaryListResponse> {
+  async list(opts: ListWorkflowOptions = {}): Promise<WorkflowSummaryListResponse> {
     const tenantId = this.requireTenantId();
     this.assertExposureEnabled();
 
@@ -61,11 +68,19 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     // W1 (C-8): the catalogue and the invoke gate must agree. Listing a slug that `invoke` then
     // 404s would be an incoherent contract — and would disclose that a non-exposable definition
-    // exists. Filtered with the SAME predicate `invoke` enforces, never a second rule.
-    const invokable = rows.filter((row) => exposureBoundaryViolation(row) === null);
+    // exists. Filtered with the SAME predicate `invoke` enforces, never a second rule — and now
+    // with the SAME plane context, so the consultation-bound catalogue and the consultation-bound
+    // gate cannot drift apart either.
+    const context = { consultationBound: opts.consultationBound === true };
+    const invokable = rows.filter((row) => exposureBoundaryViolation(row, context) === null);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { action: 'listInvokable', count: invokable.length, excludedByPaletteBoundary: rows.length - invokable.length },
+      data: {
+        action: 'listInvokable',
+        count: invokable.length,
+        excludedByPaletteBoundary: rows.length - invokable.length,
+        consultationBound: context.consultationBound,
+      },
     });
 
     return { data: invokable.map((row) => WorkflowExposureDtoMapper.toSummaryResponse(row)) };
@@ -75,10 +90,20 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     this.assertExposureEnabled();
     const tenantId = this.requireTenantId();
 
+    // TASK-850 step 6. With an `Idempotency-Key` the run id is DERIVED, so a retry addresses the
+    // same durable row and the same Temporal workflow id with no coordination. Without one, a
+    // fresh id per call is correct — the caller asked for a new run.
+    const runId = opts.idempotencyKey ? deterministicRunId(tenantId, slug, opts.idempotencyKey) : generateId();
+
     const idempotencyRedisKey = opts.idempotencyKey ? `${IDEMPOTENCY_KEY_PREFIX}${tenantId}:${slug}:${opts.idempotencyKey}` : null;
     if (idempotencyRedisKey) {
       const cached = await this.tryReadIdempotencyCache(idempotencyRedisKey);
       if (cached) return cached;
+      // The DURABLE layer, consulted when the cache misses (eviction, cold node, Redis down —
+      // all of which the cache read swallows by design). A run row under this derived id means a
+      // prior delivery already started it; JOIN it rather than dispatching a second billed run.
+      const joined = await this.tryJoinExistingRun(tenantId, slug, runId);
+      if (joined) return joined;
     }
 
     // 404-over-403: a foreign tenant's slug, an unpublished/inactive slug, or an unknown slug
@@ -97,14 +122,43 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // 404, not 403: consistent with `assertExposureEnabled` and with `findPublishedBySlug`'s
     // unpublished/cross-tenant posture — a definition that is not an exposure product simply does
     // not exist on this plane, and the reason is never disclosed to the caller.
-    const boundaryViolation = exposureBoundaryViolation(definition);
+    //
+    // TASK-850 lane A: the boundary is now PLANE-AWARE. `consultationBound` is true only when
+    // the caller reached a consultation-scoped URL, and it widens the allow-list to
+    // `CONSULTATION_BOUND_ALLOWED_PALETTES`. The unbound plane's set is untouched.
+    const consultationBound = opts.consultationId !== undefined;
+    const boundaryViolation = exposureBoundaryViolation(definition, { consultationBound });
     if (boundaryViolation) {
       this.broadcastSysEvent(SysEventType.ResourceViewed, {
         resourceId: definition.id,
-        data: { action: 'invokeRefusedByPaletteBoundary', slug: definition.slug, reason: boundaryViolation, apiKeyId: opts.apiKeyId ?? null },
+        data: {
+          action: 'invokeRefusedByPaletteBoundary',
+          slug: definition.slug,
+          reason: boundaryViolation,
+          consultationBound,
+          apiKeyId: opts.apiKeyId ?? null,
+        },
       });
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
+
+    // TASK-850 step 2 (C-8 link 1, at the composition point). A caller may not supply the keys
+    // the interpreter reads as identity — 400, never a silent drop: dropping would let a caller
+    // believe it had addressed a consultation while the run acted on something else. Checked
+    // AFTER the boundary gate so a non-exposable slug still answers a bare 404 and this
+    // validation never becomes an existence oracle over the slug space.
+    const smuggled = reservedIdentityKeysIn(dto.input);
+    if (smuggled.length > 0) {
+      throw new BadRequestException(
+        `Reserved run-identity field(s) [${smuggled.join(', ')}] may not be supplied in 'input'. ` +
+          'Consultation identity comes from the request path and is resolved server-side.',
+      );
+    }
+
+    // The binding itself: RE-RESOLVED against the caller's tenant, never taken on trust. A
+    // foreign or unknown id reads as absent (the Prisma tenant-scope extension filters it) and
+    // is a 404 — the same posture the slug lookup above already takes.
+    const subject = consultationBound ? await this.resolveConsultationSubject(opts.consultationId as string) : undefined;
 
     if (this.entitlements?.isEnforcementEnabled()) {
       await this.entitlements.assertMeterQuota(tenantId, 'monthlyWorkflowInvocations');
@@ -131,7 +185,6 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       this.s3Service!.putFile(b, key, data, contentType),
     );
 
-    const runId = generateId();
     const sessionId = interpreterSessionId(runId);
 
     // Write the ownership-anchor row BEFORE calling the harness dispatcher. A durable row for a
@@ -165,7 +218,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // "required kind '<k>' (from 'payload.<k>') missing from run payload". The field already
       // existed on `StartWorkflowRunInput` for TASK-721's Workbench path; only this call site
       // omitted it.
+      //
+      // "Verbatim" no longer means "including identity": `dto.input` has been proven free of
+      // every `RESERVED_RUN_IDENTITY_KEYS` entry above, and the dispatcher strips them again on
+      // its side regardless of what any caller sends.
       payload: dto.input,
+      // The server-resolved clinical subject — the ONLY channel run identity travels on.
+      subject,
     });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -178,6 +237,9 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         principalType: opts.apiKeyId ? 'apiKey' : 'user',
         apiKeyId: opts.apiKeyId ?? null,
         idempotencyKey: opts.idempotencyKey ?? null,
+        // Attributable by construction: which consultation this run may write to, as the SERVER
+        // resolved it. Never the caller's claim.
+        consultationId: subject?.consultationId ?? null,
       },
     });
 
@@ -231,6 +293,64 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
   private assertExposureEnabled(): void {
     if (this.configService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED') !== true) {
       throw new NotFoundException('Not found.');
+    }
+  }
+
+  /**
+   * The run's clinical subject, re-resolved from the PATH `consultationId` against the caller's
+   * tenant (TASK-850 lane A — the invariant TASK-852 §5 states).
+   *
+   * `IConsultationService.getById` IS the tenant boundary, and it is already two layers deep:
+   * the Prisma tenant-scope extension filters a foreign row out of the read (⇒ `null`), and
+   * `assertEqualTenants` inside that method fails closed on a row that reached it anyway (a
+   * stale CLS, a future unscoped read path) with a generic `NotFoundException`. Both answer 404,
+   * never 403 — a caller must not learn that a consultation it cannot touch exists.
+   *
+   * This method deliberately does NOT re-compare `tenantId` itself: `ConsultationResponse`
+   * carries no `tenantId` field (neither the DTO nor its mapper populate one), so such a compare
+   * would read `undefined` and pass for every row — a guard that cannot fail is worse than none,
+   * because it invites the reader to stop looking for the real one.
+   *
+   * `userId` is the ACTING principal from CLS, not anything the caller sent. It may legitimately
+   * be absent on a machine-credential call, and the consultation activities treat that as "no
+   * acting user" rather than substituting one.
+   */
+  private async resolveConsultationSubject(consultationId: string): Promise<StartWorkflowRunSubject> {
+    if (!this.consultationService) {
+      // No resolver wired (a minimal fixture) — fail loud rather than dispatching a consultation
+      // run with an UNVERIFIED id, which is the C-8 shape itself.
+      throw new BadRequestException('Consultation-bound workflow invocation is unavailable: no consultation resolver is configured.');
+    }
+
+    // A cross-tenant id raises inside `getById`; an unknown one returns null. Both -> 404 here.
+    const consultation = await this.consultationService.getById(consultationId).catch(() => null);
+    if (!consultation) {
+      throw new NotFoundException(`Consultation '${consultationId}' not found.`);
+    }
+
+    return {
+      consultationId: consultation.id,
+      externalPatientId: consultation.patientId ?? undefined,
+      userId: this.requestUserId ?? undefined,
+    };
+  }
+
+  /**
+   * The DURABLE half of idempotency: a run row already exists under the derived id, so a retried
+   * delivery joins it instead of dispatching a second billed run.
+   *
+   * A miss is the normal first-delivery case and must not be an error, so `getRun`'s 404 is
+   * swallowed. Any OTHER failure is swallowed too and the invoke proceeds — the same posture the
+   * Redis fast path takes, and safe for the same reason: Temporal's own `USE_EXISTING` +
+   * `REJECT_DUPLICATE` still refuse a second execution under that workflow id.
+   */
+  private async tryJoinExistingRun(tenantId: string, slug: string, runId: string): Promise<WorkflowInvokeResponse | null> {
+    try {
+      const existing = await this.workflowRunService.getRun(tenantId, runId);
+      if (existing.workflowSlug !== slug) return null;
+      return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
+    } catch {
+      return null;
     }
   }
 

@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { IConfigService, IWorkflowExposureService } from '@arcaai/applications';
+import { IConfigService, IWorkflowExposureService, WorkflowRunStatusResponse } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken, parseAsyncEnvelope } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import Redis from 'ioredis';
@@ -188,6 +188,76 @@ export class WorkflowStreamService implements OnModuleDestroy {
         if (envelope.type === WORKFLOW_RUN_COMPLETED) return;
       }
     }
+  }
+
+  /**
+   * Wait for a run to reach a terminal status, or give up at `ceilingMs` (TASK-850 lane A
+   * step 7 — the BLOCKING response mode).
+   *
+   * Returns the terminal status, or `null` when the ceiling arrives first. `null` is not an
+   * error and must not be reported as one by the caller's own logic beyond the 504: the run is
+   * still going, and the caller can still reach it through `statusUrl` / `streamUrl`.
+   *
+   * **This is the SAME transport the SSE path reads, not a second one.** Blocking mode is the
+   * streaming mode with the frames thrown away — one `XREAD` loop, one producer, one terminal
+   * definition (`WORKFLOW_RUN_COMPLETED`, cross-checked against the status snapshot). Polling
+   * `getRunStatus` on a timer here would have been a second progress mechanism with its own
+   * latency and its own idea of "finished"; TASK-849 lane A deleted exactly that from the SSE
+   * path and this must not reintroduce it (F-21).
+   *
+   * **A client disconnect does not reach this method.** It has no `Response` and registers no
+   * `close` handler: the run's lifetime is Temporal's, and abandoning the HTTP request abandons
+   * only the wait. That is the durable-execution guarantee, and it is a property of what this
+   * method does NOT do.
+   */
+  async awaitTerminal(slug: string, runId: string, ceilingMs: number): Promise<WorkflowRunStatusResponse | null> {
+    const deadline = Date.now() + ceilingMs;
+
+    // One authoritative read first: a run that is ALREADY terminal (a fast graph, or a retry
+    // that joined a finished run) publishes nothing more, so waiting on the stream would burn
+    // the whole ceiling and then 504 on a completed run. This read also performs the
+    // tenant-ownership check, exactly as the SSE path's snapshot does.
+    const snapshot = await this.workflowExposureService.getRunStatus(slug, runId);
+    if (isTerminalRunStatus(snapshot.status)) return snapshot;
+
+    const redis = this.reader();
+    // No push transport: the honest answer is "I cannot tell you here". A 504 pointing at the
+    // status URL beats silently polling, and beats claiming a completion nothing observed.
+    if (redis === null) return null;
+
+    const streamKey = runEventStreamKey(runId);
+    let cursor = RESUME_FROM_BEGINNING;
+
+    while (Date.now() < deadline) {
+      const block = Math.min(WORKFLOW_STREAM_BLOCK_MS, Math.max(1, deadline - Date.now()));
+      let entries: [string, string[]][];
+      try {
+        const result = await redis.xread('COUNT', WORKFLOW_STREAM_READ_COUNT, 'BLOCK', block, 'STREAMS', streamKey, cursor);
+        if (!result) continue; // BLOCK expired with nothing new — re-check the deadline.
+        entries = result[0][1] as [string, string[]][];
+      } catch (err) {
+        this.logger.warn({
+          message: 'Workflow run blocking wait read failed — falling back to the status read',
+          runId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        break;
+      }
+
+      for (const [entryId, fields] of entries) {
+        cursor = entryId;
+        const envelope = this.parseEntry(fields);
+        if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
+        // The producer says it is done; re-read the authoritative status so the caller gets the
+        // same shape (and the same `resultRef`) the async and streaming paths return.
+        return this.workflowExposureService.getRunStatus(slug, runId);
+      }
+    }
+
+    // Deadline reached, or the transport failed. One last authoritative read closes the race
+    // where the run finished between the final BLOCK expiring and this line.
+    const final = await this.workflowExposureService.getRunStatus(slug, runId);
+    return isTerminalRunStatus(final.status) ? final : null;
   }
 
   /** `Last-Event-ID` -> a Redis stream cursor, or "from the beginning" when absent/unusable. */

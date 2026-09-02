@@ -11370,6 +11370,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "ConsultationWorkflowRunsController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/consultations/{consultationId}/workflows",
+      "routePath": "/consultations/:consultationId/workflows",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflows:execute"
+      ],
+      "requiredPermissions": [
+        [
+          "execute",
+          "ConsultationWorkflow"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationWorkflowRunsController",
+      "handler": "startRun",
+      "method": "POST",
+      "path": "/api/v1/consultations/{consultationId}/workflows/{slug}/runs",
+      "routePath": "/consultations/:consultationId/workflows/:slug/runs",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflows:execute"
+      ],
+      "requiredPermissions": [
+        [
+          "execute",
+          "ConsultationWorkflow"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsultationController",
       "handler": "getById",
       "method": "GET",
@@ -15100,6 +15146,29 @@
       "method": "POST",
       "path": "/api/v1/workflows/{slug}/invoke",
       "routePath": "/workflows/:slug/invoke",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:write"
+      ],
+      "requiredPermissions": [
+        [
+          "create",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "startRun",
+      "method": "POST",
+      "path": "/api/v1/workflows/{slug}/runs",
+      "routePath": "/workflows/:slug/runs",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

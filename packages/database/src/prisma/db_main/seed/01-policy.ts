@@ -290,6 +290,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // needs the same subjects... seed them once, in one place").
       { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'WorkflowRun', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-850 lane A — the consultation-BOUND invocation plane
+      // (`POST /consultations/:consultationId/workflows/:slug/runs`). A SEPARATE subject from
+      // `WorkflowRun` on purpose: that one covers running a workflow, this one covers running
+      // one AGAINST A CONSULTATION, which can write real clinical rows. Keeping them apart is
+      // what lets a future role hold ordinary workflow rights without the clinical-write plane.
+      // Super admins already reach it through `manage: all`; this grant is what makes it
+      // reachable for tenant admins, and it requires a reseed to take effect.
+      { action: 'execute', subject: 'ConsultationWorkflow', conditions: { tenantId: '${context.tenantId}' } },
       // Billing: a tenant admin reads its OWN invoices. billing-admin.controller.ts's
       // own contract says "a tenant-bound caller is pinned. Cross-tenant BY-ID access
       // returns 404 (never 403) from the service" — but no policy ever granted

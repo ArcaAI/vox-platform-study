@@ -230,6 +230,23 @@ export interface HarnessClaimCheckRef {
 }
 
 /** Body for `POST /workflow-runs:start` (TASK-718 Task 10 / TASK-722 Task 5). */
+/**
+ * The SERVER-RESOLVED clinical subject a run acts on (TASK-850 lane A, closing C-8 link 1).
+ *
+ * Mirrors `RunSubject` in `apps/harness/src/harness/temporal/interpreter/models.py`. It is a
+ * SEPARATE field from `payload` on purpose: `payload` is what a caller sent and can never be
+ * trusted with identity, while this is what the gateway resolved by re-reading the consultation
+ * named in the request PATH against the caller's tenant. The dispatcher strips every reserved
+ * identity key out of `payload` and re-stamps them from this, so the two can never disagree.
+ *
+ * Never populate this from a request body, query string or header.
+ */
+export interface StartWorkflowRunSubject {
+  consultationId: string;
+  externalPatientId?: string;
+  userId?: string;
+}
+
 export interface StartWorkflowRunInput {
   runId: string;
   sessionId: string;
@@ -237,8 +254,11 @@ export interface StartWorkflowRunInput {
   tenantId: string;
   configRef: HarnessClaimCheckRef;
   sandbox?: boolean;
-  /** Forwarded verbatim into `InterpreterInput.payload` (TASK-721 Workbench sandbox test input). */
+  /** Forwarded into `InterpreterInput.payload` (TASK-721 Workbench sandbox test input) — with
+   *  every `RESERVED_RUN_IDENTITY_KEYS` entry stripped by the dispatcher (TASK-850 lane A). */
   payload?: Record<string, unknown>;
+  /** See {@link StartWorkflowRunSubject}. Omitted ⇒ the run has no clinical subject. */
+  subject?: StartWorkflowRunSubject;
 }
 
 /** Response of `POST /workflow-runs:start`. */
@@ -502,6 +522,10 @@ export class HarnessGatewayService {
       configRef: input.configRef,
       sandbox: input.sandbox ?? false,
       payload: input.payload ?? {},
+      // Omitted entirely when absent — the dispatcher's `subject` is `RunSubject | None`, and a
+      // `null` on the wire and a missing key mean the same thing there, but sending the key only
+      // when there IS a subject keeps a Temporal history honest about which runs were bound.
+      ...(input.subject ? { subject: input.subject } : {}),
     };
     const response = await this.httpService.axiosRef.post(url, body, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run started', runId: input.runId, status: (response.data as StartWorkflowRunResult)?.status });
