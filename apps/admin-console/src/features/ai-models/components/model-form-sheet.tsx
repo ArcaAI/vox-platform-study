@@ -17,7 +17,8 @@ import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useCreateModel, useModel, useUpdateModel } from '../api/hooks';
-import type { AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType } from '../api/types';
+import type { AiModel, AiModelFormat, AiModelSource, CreateModelRequest, ModelCategory, ModelType, UpdateModelRequest } from '../api/types';
+import { ModelDownloadPanel } from './model-download';
 import {
   CATEGORY_OPTIONS,
   FORMAT_OPTIONS,
@@ -27,6 +28,7 @@ import {
   SOURCE_OPTIONS,
   humanizeEnum,
 } from './model-meta';
+import { ModelRegistryConnectionStatus } from './model-registry-connection-status';
 
 /** Radix SelectItem forbids the empty string; sentinel for "no runtime provider". */
 const PROVIDER_NONE = 'none';
@@ -47,6 +49,8 @@ interface ModelFormValues {
   memorySizeMb: string;
   computeType: string;
   tags: string;
+  /** Mode M override — edit-only; the create DTO does not accept this field. */
+  localPath: string;
 }
 
 function toValues(model?: AiModel): ModelFormValues {
@@ -66,6 +70,7 @@ function toValues(model?: AiModel): ModelFormValues {
     memorySizeMb: model?.memorySizeMb != null ? String(model.memorySizeMb) : '',
     computeType: model?.computeType ?? '',
     tags: model?.tags.join(', ') ?? '',
+    localPath: model?.localPath ?? '',
   };
 }
 
@@ -96,6 +101,16 @@ function toRequest(values: ModelFormValues): CreateModelRequest {
         }
       : {}),
   };
+}
+
+/**
+ * Same payload as `toRequest`, plus the Mode M override — `localPath` is
+ * accepted by `UpdateModelRequest` only (never `CreateModelRequest`), and is
+ * ALWAYS sent so clearing the field can send `""` to remove a previously-set
+ * override (the DTO's documented clear semantics), not silently omit it.
+ */
+function toUpdateRequest(values: ModelFormValues): UpdateModelRequest {
+  return { ...toRequest(values), localPath: values.localPath.trim() };
 }
 
 function isOccError(error: unknown): boolean {
@@ -272,10 +287,9 @@ export function ModelFormSheet({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = toRequest(values);
     if (isEdit && model) {
       updateMutation.mutate(
-        { id: model.id, patch: body, etag },
+        { id: model.id, patch: toUpdateRequest(values), etag },
         {
           onSuccess: () => {
             toast.success('Model updated');
@@ -289,7 +303,7 @@ export function ModelFormSheet({
       );
       return;
     }
-    createMutation.mutate(body, {
+    createMutation.mutate(toRequest(values), {
       onSuccess: () => {
         toast.success('Model registered');
         close();
@@ -346,122 +360,169 @@ export function ModelFormSheet({
             onRetry={() => void detail.refetch()}
           />
         ) : (
-          <form id={formId} onSubmit={handleSubmit} className="grid auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
-            <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
-              <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
-            </Field>
-            <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
-              <Input
-                id={`${uid}-slug`}
-                value={values.slug}
-                onChange={(event) => set('slug', event.target.value)}
-                required
-                className="font-mono"
-                placeholder="whisper-large-v4"
-              />
-            </Field>
-            <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
-              <Textarea id={`${uid}-description`} value={values.description} onChange={(event) => set('description', event.target.value)} rows={2} />
-            </Field>
-            <Field id={`${uid}-category`} label="Category" required>
-              <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
-            </Field>
-            <Field id={`${uid}-model-type`} label="Model type" required>
-              <EnumSelect
-                id={`${uid}-model-type`}
-                value={values.modelType}
-                onChange={(value) => set('modelType', value)}
-                options={MODEL_TYPE_OPTIONS}
-              />
-            </Field>
-            <Field id={`${uid}-task-type`} label="Task type" required className="sm:col-span-2">
-              <Input
-                id={`${uid}-task-type`}
-                value={values.taskType}
-                onChange={(event) => set('taskType', event.target.value)}
-                required
-                className="font-mono"
-                placeholder="AUTOMATIC_SPEECH_RECOGNITION"
-              />
-            </Field>
-            <Field id={`${uid}-source`} label="Source" required>
-              <EnumSelect
-                id={`${uid}-source`}
-                value={values.source}
-                onChange={(value) => set('source', value)}
-                options={SOURCE_OPTIONS}
-                labels={SOURCE_LABELS}
-              />
-            </Field>
-            <Field id={`${uid}-format`} label="Format" required>
-              <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
-            </Field>
-            <Field id={`${uid}-provider`} label="Runtime provider">
-              <Select
-                value={values.provider === '' ? PROVIDER_NONE : values.provider}
-                onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
+          <>
+            <form id={formId} onSubmit={handleSubmit} className="grid auto-rows-min grid-cols-1 content-start gap-4 sm:grid-cols-2">
+              <Field id={`${uid}-name`} label="Name" required className="sm:col-span-2">
+                <Input id={`${uid}-name`} value={values.name} onChange={(event) => set('name', event.target.value)} required />
+              </Field>
+              <Field id={`${uid}-slug`} label="Slug" required className="sm:col-span-2">
+                <Input
+                  id={`${uid}-slug`}
+                  value={values.slug}
+                  onChange={(event) => set('slug', event.target.value)}
+                  required
+                  className="font-mono"
+                  placeholder="whisper-large-v4"
+                />
+              </Field>
+              <Field id={`${uid}-description`} label="Description" className="sm:col-span-2">
+                <Textarea
+                  id={`${uid}-description`}
+                  value={values.description}
+                  onChange={(event) => set('description', event.target.value)}
+                  rows={2}
+                />
+              </Field>
+              <Field id={`${uid}-category`} label="Category" required>
+                <EnumSelect id={`${uid}-category`} value={values.category} onChange={(value) => set('category', value)} options={CATEGORY_OPTIONS} />
+              </Field>
+              <Field id={`${uid}-model-type`} label="Model type" required>
+                <EnumSelect
+                  id={`${uid}-model-type`}
+                  value={values.modelType}
+                  onChange={(value) => set('modelType', value)}
+                  options={MODEL_TYPE_OPTIONS}
+                />
+              </Field>
+              <Field id={`${uid}-task-type`} label="Task type" required className="sm:col-span-2">
+                <Input
+                  id={`${uid}-task-type`}
+                  value={values.taskType}
+                  onChange={(event) => set('taskType', event.target.value)}
+                  required
+                  className="font-mono"
+                  placeholder="AUTOMATIC_SPEECH_RECOGNITION"
+                />
+              </Field>
+              <Field id={`${uid}-source`} label="Source" required>
+                <EnumSelect
+                  id={`${uid}-source`}
+                  value={values.source}
+                  onChange={(value) => set('source', value)}
+                  options={SOURCE_OPTIONS}
+                  labels={SOURCE_LABELS}
+                />
+              </Field>
+              <Field id={`${uid}-format`} label="Format" required>
+                <EnumSelect id={`${uid}-format`} value={values.format} onChange={(value) => set('format', value)} options={FORMAT_OPTIONS} />
+              </Field>
+              <Field id={`${uid}-provider`} label="Runtime provider">
+                <Select
+                  value={values.provider === '' ? PROVIDER_NONE : values.provider}
+                  onValueChange={(next) => set('provider', next === PROVIDER_NONE ? '' : next)}
+                >
+                  <SelectTrigger id={`${uid}-provider`} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
+                    {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
+                      <SelectItem key={provider} value={provider} className="font-mono">
+                        {provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field id={`${uid}-architecture`} label="Architecture">
+                <Input
+                  id={`${uid}-architecture`}
+                  value={values.architecture}
+                  onChange={(event) => set('architecture', event.target.value)}
+                  className="font-mono"
+                  placeholder="gemma4"
+                />
+              </Field>
+              <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">
+                <Input
+                  id={`${uid}-source-uri`}
+                  value={values.sourceUri}
+                  onChange={(event) => set('sourceUri', event.target.value)}
+                  required
+                  className="font-mono"
+                  placeholder="openai/whisper-large-v4"
+                  aria-describedby={`${uid}-weight-source-help`}
+                />
+              </Field>
+              <Field id={`${uid}-local-path`} label="Local path (mount override)" className="sm:col-span-2">
+                <Input
+                  id={`${uid}-local-path`}
+                  value={values.localPath}
+                  onChange={(event) => set('localPath', event.target.value)}
+                  disabled={!isEdit}
+                  className="font-mono"
+                  placeholder="/mnt/models-bucket/whisper-large-v4/q4-0-451faffb5a16/"
+                  aria-describedby={!isEdit ? `${uid}-local-path-hint` : `${uid}-weight-source-help`}
+                />
+                {!isEdit ? (
+                  <p id={`${uid}-local-path-hint`} className="text-muted-foreground text-xs">
+                    Available once the model is registered — set a mount override from its edit drawer.
+                  </p>
+                ) : null}
+              </Field>
+              <div
+                id={`${uid}-weight-source-help`}
+                className="text-muted-foreground flex flex-col gap-1.5 rounded-md border border-dashed p-3 text-xs sm:col-span-2"
               >
-                <SelectTrigger id={`${uid}-provider`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={PROVIDER_NONE}>(none)</SelectItem>
-                  {RUNTIME_PROVIDER_OPTIONS.map((provider) => (
-                    <SelectItem key={provider} value={provider} className="font-mono">
-                      {provider}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field id={`${uid}-architecture`} label="Architecture">
-              <Input
-                id={`${uid}-architecture`}
-                value={values.architecture}
-                onChange={(event) => set('architecture', event.target.value)}
-                className="font-mono"
-                placeholder="gemma4"
-              />
-            </Field>
-            <Field id={`${uid}-source-uri`} label="Source URI" required className="sm:col-span-2">
-              <Input
-                id={`${uid}-source-uri`}
-                value={values.sourceUri}
-                onChange={(event) => set('sourceUri', event.target.value)}
-                required
-                className="font-mono"
-                placeholder="openai/whisper-large-v4"
-              />
-            </Field>
-            <Field id={`${uid}-source-revision`} label="Source revision">
-              <Input
-                id={`${uid}-source-revision`}
-                value={values.sourceRevision}
-                onChange={(event) => set('sourceRevision', event.target.value)}
-                className="font-mono"
-              />
-            </Field>
-            <Field id={`${uid}-memory`} label="Memory size (MB)">
-              <Input
-                id={`${uid}-memory`}
-                type="number"
-                min={0}
-                value={values.memorySizeMb}
-                onChange={(event) => set('memorySizeMb', event.target.value)}
-              />
-            </Field>
-            <Field id={`${uid}-compute-type`} label="Compute type">
-              <Input
-                id={`${uid}-compute-type`}
-                value={values.computeType}
-                onChange={(event) => set('computeType', event.target.value)}
-                placeholder="float16"
-              />
-            </Field>
-            <Field id={`${uid}-tags`} label="Tags (comma-separated)">
-              <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
-            </Field>
-          </form>
+                <p>
+                  <span className="text-foreground font-medium">Mode U — S3 URI:</span>{' '}
+                  <code className="font-mono">sourceUri = s3://hope-models/&lt;slug&gt;/&lt;version&gt;/</code> — the service fetches and
+                  SHA256-verifies it into its cache.
+                </p>
+                <p>
+                  <span className="text-foreground font-medium">Mode M — mount:</span>{' '}
+                  <code className="font-mono">localPath = /mnt/models-bucket/&lt;slug&gt;/&lt;version&gt;/</code> — an s3fs sidecar mounts the bucket
+                  and the weights are read in place, never copied. Local path wins whenever both are set.
+                </p>
+                <p>
+                  <code className="font-mono">&lt;version&gt;</code> is content-derived (e.g. <code className="font-mono">q4-0-451faffb5a16</code>),
+                  not a constant like <code className="font-mono">v1</code> — it is normally written by the Download action once the model is
+                  registered, not typed by hand.
+                </p>
+                <ModelRegistryConnectionStatus />
+              </div>
+              <Field id={`${uid}-source-revision`} label="Source revision">
+                <Input
+                  id={`${uid}-source-revision`}
+                  value={values.sourceRevision}
+                  onChange={(event) => set('sourceRevision', event.target.value)}
+                  className="font-mono"
+                />
+              </Field>
+              <Field id={`${uid}-memory`} label="Memory size (MB)">
+                <Input
+                  id={`${uid}-memory`}
+                  type="number"
+                  min={0}
+                  value={values.memorySizeMb}
+                  onChange={(event) => set('memorySizeMb', event.target.value)}
+                />
+              </Field>
+              <Field id={`${uid}-compute-type`} label="Compute type">
+                <Input
+                  id={`${uid}-compute-type`}
+                  value={values.computeType}
+                  onChange={(event) => set('computeType', event.target.value)}
+                  placeholder="float16"
+                />
+              </Field>
+              <Field id={`${uid}-tags`} label="Tags (comma-separated)">
+                <Input id={`${uid}-tags`} value={values.tags} onChange={(event) => set('tags', event.target.value)} placeholder="stt, fallback" />
+              </Field>
+            </form>
+            {/* Download needs an id — no create-time equivalent, so this is edit-only. */}
+            {isEdit && model ? <ModelDownloadPanel model={model} /> : null}
+          </>
         )}
       </DetailDrawer>
       <ConfirmDialog

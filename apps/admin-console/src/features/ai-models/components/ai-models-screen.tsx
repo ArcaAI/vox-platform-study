@@ -20,8 +20,10 @@ import { ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { useDeleteModel, useModelsPaginated } from '../api/hooks';
 import type { AiModel } from '../api/types';
 import { DiscoveryDrawer } from './discovery-drawer';
+import { DownloadStatusBadge } from './download-status-badge';
 import { ModelFormSheet } from './model-form-sheet';
 import { CATEGORY_OPTIONS, RUNTIME_PROVIDER_OPTIONS, SOURCE_LABELS, SOURCE_OPTIONS, humanizeEnum } from './model-meta';
+import { WeightSourceBadge } from './weight-source-badge';
 
 /** Omni search targets (→ gateway `searchFields`) and the implicit sort — stable refs for the hook. */
 const AI_MODEL_SEARCH_FIELDS = ['name', 'slug'];
@@ -136,6 +138,24 @@ export function AiModelsScreen() {
           </span>
         ),
         size: 170,
+      },
+      {
+        // Which of the two weight-loading modes sourceUri/localPath currently
+        // resolve to — the catalog answer to "where do the weights come from".
+        id: 'weightSource',
+        header: 'Weight source',
+        enableSorting: false,
+        meta: { label: 'Weight source' },
+        cell: ({ row }) => <WeightSourceBadge model={row.original} />,
+        size: 140,
+      },
+      {
+        id: 'downloadStatus',
+        header: 'Download',
+        enableSorting: false,
+        meta: { label: 'Download' },
+        cell: ({ row }) => <DownloadStatusBadge status={row.original.downloadStatus} />,
+        size: 160,
       },
       {
         accessorKey: 'source',
