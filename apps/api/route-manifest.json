@@ -3643,6 +3643,29 @@
     },
     {
       "controller": "HarnessAdminController",
+      "handler": "getRealtimeCapabilities",
+      "method": "GET",
+      "path": "/api/v1/admin/harness/live/capabilities",
+      "routePath": "/admin/harness/live/capabilities",
+      "svcScopes": [
+        "svc:admin:harness:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "HarnessWorkflow"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "HarnessAdminController",
       "handler": "getLiveConfig",
       "method": "GET",
       "path": "/api/v1/admin/harness/live/config",

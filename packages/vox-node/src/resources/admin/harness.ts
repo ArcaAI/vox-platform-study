@@ -28,6 +28,7 @@ import type {
   HarnessAuditListResponse,
   HarnessPolicyResponse,
   LiveDocEngineConfigResponse,
+  LiveDocRealtimeCapabilitiesResponse,
   LiveDocSessionStatsResponse,
   LiveDocSessionsListResponse,
   PromoteExemplarRequest,
@@ -45,7 +46,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller HarnessAdminController
- * (28 routes). Several controllers sharing one scope share one
+ * (29 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -329,6 +330,25 @@ export class AdminHarnessResource extends AdminResource {
     return this.request<EvalRunTriggerResponse>({
       method: 'POST',
       path: `admin/harness/golden-sets/${encodePathSegment(String(id))}/run`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)
+   *
+   * Resolves the realtime lane the way a recording session does — graph-executor flag, then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Three answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.
+   *
+   * `GET /api/v1/admin/harness/live/capabilities` — `HarnessAdminController.getRealtimeCapabilities`.
+   */
+  getRealtimeCapabilities(
+    options: AdminRequestOptions & { query?: { departmentId?: QueryValue; tenantId?: QueryValue } } = {},
+  ): Promise<LiveDocRealtimeCapabilitiesResponse> {
+    return this.request<LiveDocRealtimeCapabilitiesResponse>({
+      method: 'GET',
+      path: 'admin/harness/live/capabilities',
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
