@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CommonServiceModule, WorkflowExposureServiceModule } from '@arcaai/applications';
+import { ConsultationWorkflowRunsController } from './consultation-workflow-runs.controller';
 import { WorkflowsController } from './workflows.controller';
 import { WorkflowStreamService } from './workflow-stream.service';
 
@@ -14,7 +15,11 @@ import { WorkflowStreamService } from './workflow-stream.service';
  */
 @Module({
   imports: [CommonServiceModule, WorkflowExposureServiceModule],
-  controllers: [WorkflowsController],
+  // TASK-850 lane A mounts a SECOND controller here rather than in the consultation module: both
+  // planes are the same handler with the same service, and the whole safety argument is that the
+  // difference between them is one path parameter. Splitting them across modules would put that
+  // difference two files apart from the code that depends on it.
+  controllers: [WorkflowsController, ConsultationWorkflowRunsController],
   providers: [WorkflowStreamService],
 })
 export class WorkflowsModule {}

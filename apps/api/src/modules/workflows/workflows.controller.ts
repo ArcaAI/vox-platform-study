@@ -3,6 +3,7 @@ import {
   IWorkflowExposureService,
   WorkflowInvokeResponse,
   WorkflowRunCancelResponse,
+  WorkflowRunResponseMode,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from '@arcaai/applications';
@@ -13,6 +14,7 @@ import type { Response } from 'express';
 import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import type { RequestWithAuth } from '../../types/request-with-auth';
+import { deliverRun } from './deliver-run';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
@@ -50,6 +52,47 @@ export class WorkflowsController {
     return this.workflowExposureService.list();
   }
 
+  @Post(':slug/runs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @CanCreate('WorkflowRun')
+  @RequiredScopes('workflow:run:write')
+  @Throttle({ heavy: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary: "Start a run of the tenant's active published version of :slug. The canonical invocation entry point.",
+    description:
+      'The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. ' +
+      '**Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; ' +
+      '`blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s ' +
+      'with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as ' +
+      '`GET :slug/runs/:runId/stream`. ' +
+      '**Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — ' +
+      'the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. ' +
+      '**Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. ' +
+      'To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation ' +
+      'graph is not invocable here, and consultation identity is never accepted in the request body.',
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiQuery({ name: 'mode', required: false, enum: ['async', 'blocking', 'stream'], description: 'Response mode. Default `async`.' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value joins the existing run.' })
+  @ApiResponse({ status: 202, type: WorkflowInvokeResponse, description: '`mode=async` — the run handle.' })
+  @ApiResponse({ status: 200, type: WorkflowRunStatusResponse, description: '`mode=blocking` — the terminal run status.' })
+  @ApiResponse({ status: 400, description: 'Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here.' })
+  @ApiResponse({ status: 404, description: 'Unknown, unpublished, cross-tenant, or non-exposable slug.' })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
+  @ApiResponse({ status: 504, description: '`mode=blocking` ceiling reached — the run continues; switch to streaming or poll `statusUrl`.' })
+  async startRun(
+    @Param('slug') slug: string,
+    @Body() dto: InvokeWorkflowRequest,
+    @Req() req: RequestWithAuth,
+    @Res({ passthrough: true }) res: Response,
+    @Query('mode') mode?: WorkflowRunResponseMode,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
+    const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id });
+    return deliverRun(this.workflowStreamService, slug, started, res, mode);
+  }
+
   @Post(':slug/invoke')
   @HttpCode(HttpStatus.ACCEPTED)
   @CanCreate('WorkflowRun')
@@ -61,8 +104,11 @@ export class WorkflowsController {
   // for workflow-scoped keys; this tier is the platform-wide backstop.
   @Throttle({ heavy: { limit: 20, ttl: 60000 } })
   @ApiOperation({
-    summary: "Start a run of the tenant's active published version of :slug.",
+    summary: "DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.",
     description:
+      'Superseded by `POST :slug/runs` (TASK-850), which is the same handler plus response modes. Retained because the ' +
+      'shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always ' +
+      'answers `mode=async`. New integrations should use `:slug/runs`. ' +
       "If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default " +
       "configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure " +
       'does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed ' +
