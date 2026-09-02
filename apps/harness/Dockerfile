@@ -60,6 +60,13 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
+# Async task/event envelope (`hope-async-contract`, TASK-717). Same workspace
+# path-dependency rule: harness declares it (pyproject `hope-async-contract =
+# { workspace = true }`), so `uv sync` needs it on disk or layer 1 fails with
+# "Distribution not found at: file:///app/packages/py-async-contract" — which
+# is exactly how pipeline #1100's build-harness / build-harness-worker failed
+# (TASK-858). Zero runtime deps.
+COPY packages/py-async-contract ./packages/py-async-contract
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
         --no-install-project --no-editable
