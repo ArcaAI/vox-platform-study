@@ -76,7 +76,15 @@ interface GateSeed {
   description: string;
 }
 
-const GATES: GateSeed[] = [
+export const GATES: GateSeed[] = [
+    {
+      key: 'consultation.realtime.graphExecutor.enabled',
+      name: 'Realtime graph executor',
+      value: 'true',
+      defaultValue: 'false',
+      description:
+        "Routes the live consultation through the tenant's PUBLISHED workflow graph instead of the hardcoded legacy flush(). Without this row the descriptor default (OFF) wins everywhere, so a tenant admin can author, validate, publish and assign a six-stage realtime graph while the running session ignores every realtime node in it - authoring becomes a picture rather than the engine. Seeded ON as the platform default a tenant inherits absent its own opinion; defaultValue stays at the fail-safe so a reset-to-default still falls back to the legacy engine, and per-tenant rollout remains possible (maxScope 'tenant'). Locked - only SUPER_ADMIN may change it.",
+    },
   {
     key: 'consultation.ocr.enabled',
     name: 'Server-side OCR enrichment',
