@@ -14,7 +14,7 @@
  * a diff here is a REPORT, not a fix.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RESERVED_RUN_IDENTITY_KEYS } from '../../core/run-identity';
@@ -31,12 +31,26 @@ interface ManifestRoute {
 }
 
 /**
- * Vitest runs with this package as its root (`packages/vox-node`), so the repo
- * root is two levels up. Derived from `process.cwd()` rather than
- * `import.meta.url` because this package's tsconfig emits CommonJS, where
- * `import.meta` is a hard type error.
+ * Located by ASCENDING from `process.cwd()` to the workspace marker, not by a
+ * fixed number of `..` hops: this suite runs under two different roots —
+ * `packages/vox-node` for `pnpm --filter @arcaai/vox-node test`, and the repo
+ * root for the workspace-wide `pnpm test:unit`. A hop count is correct for
+ * exactly one of them and silently ENOENTs on the other.
+ *
+ * Derived from `process.cwd()` rather than `import.meta.url` because this
+ * package's tsconfig emits CommonJS, where `import.meta` is a hard type error.
  */
-const REPO_ROOT = resolve(process.cwd(), '..', '..');
+function findRepoRoot(): string {
+  let dir = process.cwd();
+  for (;;) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const parent = resolve(dir, '..');
+    if (parent === dir) throw new Error('could not locate the repo root (no pnpm-workspace.yaml above ' + process.cwd() + ')');
+    dir = parent;
+  }
+}
+
+const REPO_ROOT = findRepoRoot();
 
 function loadManifest(): ManifestRoute[] {
   const raw = JSON.parse(readFileSync(join(REPO_ROOT, 'apps', 'api', 'route-manifest.json'), 'utf8')) as unknown;
