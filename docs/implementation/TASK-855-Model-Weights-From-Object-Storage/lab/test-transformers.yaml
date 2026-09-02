@@ -1,0 +1,107 @@
+# P0-1 / P0-2 / P0-4 — can `transformers.from_pretrained` load a model IN PLACE
+# from an s3fs FUSE mount of the MinIO bucket, writing nothing to a local cache?
+#
+# The s3fs container is a copy of the proven block in the deployment repo's
+# base/lmstudio.yaml, with TLS and the private CA stripped: this lab tests FUSE
+# semantics, not transport.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p0-transformers
+  namespace: hope-lab
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: s3fs
+          restartPolicy: Always          # native sidecar
+          image: efrecon/s3fs:1.95
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            privileged: true             # FUSE needs SYS_ADMIN + /dev/fuse
+          env:
+            - { name: AWS_ACCESS_KEY_ID,     value: labadmin }
+            - { name: AWS_SECRET_ACCESS_KEY, value: labadmin12345 }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > /tmp/passwd-s3fs
+              chmod 600 /tmp/passwd-s3fs
+              mkdir -p /mnt/models-bucket
+              i=0
+              until wget -q -O /dev/null http://minio:9000/minio/health/live 2>/dev/null; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "minio unreachable"; exit 1; }; sleep 2
+              done
+              echo "minio reachable after $((i*2))s"
+              exec s3fs hope-models /mnt/models-bucket -f \
+                -o passwd_file=/tmp/passwd-s3fs \
+                -o url=http://minio:9000 \
+                -o use_path_request_style \
+                -o ro -o allow_other \
+                -o uid=0 -o gid=0 -o umask=0022
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: Bidirectional
+      containers:
+        - name: probe
+          image: python:3.11-slim
+          env:
+            # Prove R3: no hub access, and any cache write would have to land here.
+            - { name: HF_HUB_OFFLINE,   value: "1" }
+            - { name: TRANSFORMERS_OFFLINE, value: "1" }
+            - { name: HF_HOME,          value: /tmp/hf-cache-canary }
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "── install ─────────────────────────────────────────────"
+              export PIP_DEFAULT_TIMEOUT=30
+              # NOTE: download.pytorch.org is unreachable from this cluster (ReadTimeoutError),
+              # so use plain PyPI, which resolved fine for the other probes.
+              timeout 600 pip install -q --disable-pip-version-check --retries 8 \
+                torch transformers
+              echo "torch + transformers installed"
+              mkdir -p "$HF_HOME"
+              echo "── mount ───────────────────────────────────────────────"
+              ls -la /mnt/models-bucket/medical-ner/v1/ | head -20
+              python - <<'PY'
+              import os, time, pathlib
+              from transformers import AutoTokenizer, AutoModelForTokenClassification, pipeline
+
+              SRC = "/mnt/models-bucket/medical-ner/v1"
+              canary = pathlib.Path(os.environ["HF_HOME"])
+
+              t0 = time.perf_counter()
+              tok = AutoTokenizer.from_pretrained(SRC, local_files_only=True)
+              t1 = time.perf_counter()
+              model = AutoModelForTokenClassification.from_pretrained(SRC, local_files_only=True)
+              t2 = time.perf_counter()
+
+              print(f"P0-1  tokenizer load  {t1-t0:6.2f}s")
+              print(f"P0-1  model load      {t2-t1:6.2f}s   (total {t2-t0:.2f}s)")
+
+              ner = pipeline("token-classification", model=model, tokenizer=tok,
+                             aggregation_strategy="simple")
+              out = ner("The patient reports severe chest pain and was given 5mg of amlodipine.")
+              print(f"P0-1  inference       {len(out)} entities: "
+                    f"{[(e['entity_group'], e['word']) for e in out][:6]}")
+
+              written = [p for p in canary.rglob('*') if p.is_file()]
+              size = sum(p.stat().st_size for p in written)
+              print(f"P0-2  cache canary    {len(written)} files, {size/1e6:.2f} MB written to {canary}")
+              print("P0-2  VERDICT         " + ("PASS - nothing copied" if size == 0
+                                                else "FAIL - weights were cached locally"))
+              PY
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: HostToContainer
+              readOnly: true
+      volumes:
+        - name: models-bucket
+          emptyDir: {}

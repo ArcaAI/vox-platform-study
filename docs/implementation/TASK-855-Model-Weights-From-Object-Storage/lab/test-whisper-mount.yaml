@@ -1,0 +1,101 @@
+# P0-1 / P0-2 / P0-4 — can `transformers.from_pretrained` load a model IN PLACE
+# from an s3fs FUSE mount of the MinIO bucket, writing nothing to a local cache?
+#
+# The s3fs container is a copy of the proven block in the deployment repo's
+# base/lmstudio.yaml, with TLS and the private CA stripped: this lab tests FUSE
+# semantics, not transport.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p0-whisper-mount
+  namespace: hope-lab
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: s3fs
+          restartPolicy: Always          # native sidecar
+          image: efrecon/s3fs:1.95
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            privileged: true             # FUSE needs SYS_ADMIN + /dev/fuse
+          env:
+            - { name: AWS_ACCESS_KEY_ID,     value: labadmin }
+            - { name: AWS_SECRET_ACCESS_KEY, value: labadmin12345 }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > /tmp/passwd-s3fs
+              chmod 600 /tmp/passwd-s3fs
+              mkdir -p /mnt/models-bucket
+              i=0
+              until wget -q -O /dev/null http://minio:9000/minio/health/live 2>/dev/null; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "minio unreachable"; exit 1; }; sleep 2
+              done
+              echo "minio reachable after $((i*2))s"
+              exec s3fs hope-models /mnt/models-bucket -f \
+                -o passwd_file=/tmp/passwd-s3fs \
+                -o url=http://minio:9000 \
+                -o use_path_request_style \
+                -o ro -o allow_other \
+                -o uid=0 -o gid=0 -o umask=0022
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: Bidirectional
+      containers:
+        - name: probe
+          image: python:3.11-slim
+          env:
+            # Prove R3: no hub access, and any cache write would have to land here.
+            - { name: HF_HUB_OFFLINE,   value: "1" }
+            - { name: TRANSFORMERS_OFFLINE, value: "1" }
+            - { name: HF_HOME,          value: /tmp/hf-cache-canary }
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              mkdir -p "$HF_HOME"
+              python - <<'PY'
+              import hashlib, mmap, os, pathlib, time
+
+              SRC = pathlib.Path("/mnt/models-bucket/whisper-medical-gguf/v1")
+              f = sorted(SRC.glob("*.bin"))[0]
+              EXPECT = "c36b521ea8a7e0f4d84e43cc44b6c230259dbb08e827064e64246cb96e4f09f8"
+              canary = pathlib.Path(os.environ["HF_HOME"])
+
+              size = f.stat().st_size
+              print(f"P0-5  file          {f.name}  {size/1e6:.1f} MB")
+
+              # mmap the whole model the way a ggml/gguf engine does, and hash every page.
+              t0 = time.perf_counter()
+              h = hashlib.sha256()
+              with open(f, "rb") as fh:
+                  with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                      for off in range(0, size, 8 << 20):
+                          h.update(mm[off:off + (8 << 20)])
+              dt = time.perf_counter() - t0
+              got = h.hexdigest()
+
+              print(f"P0-5  mmap read     {dt:6.2f}s = {size/1e6/dt:.0f} MB/s over FUSE")
+              print(f"P0-5  sha256        {got}")
+              print(f"P0-5  integrity     {'MATCH' if got == EXPECT else 'MISMATCH'} vs the file published from the host")
+
+              written = [p for p in canary.rglob('*') if p.is_file()]
+              print(f"P0-5  cache canary  {len(written)} files, "
+                    f"{sum(p.stat().st_size for p in written)/1e6:.2f} MB")
+              print("P0-2  VERDICT " + ("PASS - 1 GB model mmapped in place, byte-identical, nothing copied"
+                                        if got == EXPECT and not written else "FAIL"))
+              PY
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: HostToContainer
+              readOnly: true
+      volumes:
+        - name: models-bucket
+          emptyDir: {}

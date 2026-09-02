@@ -1,0 +1,72 @@
+# P0-5 — can whisper.cpp mmap a ggml model straight off the s3fs FUSE mount and
+# transcribe? Same mechanism as P0-3, different engine and a much larger file, so
+# it also serves as the size stress for the mount.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p0-whisper
+  namespace: hope-lab
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: s3fs
+          restartPolicy: Always
+          image: efrecon/s3fs:1.95
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            privileged: true
+          env:
+            - { name: AWS_ACCESS_KEY_ID,     value: labadmin }
+            - { name: AWS_SECRET_ACCESS_KEY, value: labadmin12345 }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > /tmp/passwd-s3fs
+              chmod 600 /tmp/passwd-s3fs
+              mkdir -p /mnt/models-bucket
+              i=0
+              until wget -q -O /dev/null http://minio:9000/minio/health/live 2>/dev/null; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "minio unreachable"; exit 1; }; sleep 2
+              done
+              exec s3fs hope-models /mnt/models-bucket -f \
+                -o passwd_file=/tmp/passwd-s3fs \
+                -o url=http://minio:9000 \
+                -o use_path_request_style \
+                -o ro -o allow_other \
+                -o uid=0 -o gid=0 -o umask=0022
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: Bidirectional
+      containers:
+        - name: probe
+          image: ghcr.io/ggml-org/whisper.cpp:main
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              M=$(ls /mnt/models-bucket/whisper-medical-gguf/v1/*.bin | head -1)
+              echo "model: $M"; ls -la "$M"
+              A=$(ls /app/samples/*.wav 2>/dev/null | head -1 || ls ./samples/*.wav 2>/dev/null | head -1)
+              echo "audio: ${A:-<none>}"
+
+              echo "── P0-5  whisper.cpp transcribe from the FUSE mount ─────"
+              S=$(date +%s)
+              ./build/bin/whisper-cli -m "$M" -f "$A" -t 4 -np 2>&1 | tail -12 \
+                || whisper-cli -m "$M" -f "$A" -t 4 -np 2>&1 | tail -12 \
+                || ./main -m "$M" -f "$A" -t 4 -np 2>&1 | tail -12
+              echo "P0-5 total elapsed: $(( $(date +%s) - S ))s"
+              echo "P0-5 VERDICT: transcript text above = whisper serves from the mount"
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: HostToContainer
+              readOnly: true
+      volumes:
+        - name: models-bucket
+          emptyDir: {}

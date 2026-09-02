@@ -1,0 +1,82 @@
+# P0-3 / P0-4 — can a GGUF engine mmap a model directly off an s3fs FUSE mount?
+#
+# This is the riskiest assumption in the whole plan. llama.cpp mmaps the GGUF and
+# faults pages in on demand; over FUSE every fault becomes an HTTP range request.
+# The run compares default (mmap) against --no-mmap (read the whole file up front),
+# which is exactly the "stream vs warm" decision for the GGUF serving tier.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p0-gguf
+  namespace: hope-lab
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: s3fs
+          restartPolicy: Always
+          image: efrecon/s3fs:1.95
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            privileged: true
+          env:
+            - { name: AWS_ACCESS_KEY_ID,     value: labadmin }
+            - { name: AWS_SECRET_ACCESS_KEY, value: labadmin12345 }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > /tmp/passwd-s3fs
+              chmod 600 /tmp/passwd-s3fs
+              mkdir -p /mnt/models-bucket
+              i=0
+              until wget -q -O /dev/null http://minio:9000/minio/health/live 2>/dev/null; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "minio unreachable"; exit 1; }; sleep 2
+              done
+              exec s3fs hope-models /mnt/models-bucket -f \
+                -o passwd_file=/tmp/passwd-s3fs \
+                -o url=http://minio:9000 \
+                -o use_path_request_style \
+                -o ro -o allow_other \
+                -o uid=0 -o gid=0 -o umask=0022
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: Bidirectional
+      containers:
+        - name: probe
+          image: ghcr.io/ggml-org/llama.cpp:full
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              M=$(ls /mnt/models-bucket/qwen3-0.6b-gguf/v1/*.gguf | head -1)
+              echo "model: $M"; ls -la "$M"
+
+              echo "── P0-3a  mmap ON (default) — pages faulted in over FUSE ─"
+              S=$(date +%s)
+              ./llama-bench -m "$M" -p 32 -n 8 -r 1 2>&1 | tail -6
+              echo "P0-3a total elapsed: $(( $(date +%s) - S ))s"
+
+              echo "── P0-3b  mmap OFF — whole file read up front ───────────"
+              S=$(date +%s)
+              ./llama-bench -m "$M" -p 32 -n 8 -r 1 -mmp 0 2>&1 | tail -6
+              echo "P0-3b total elapsed: $(( $(date +%s) - S ))s"
+
+              echo "── P0-3c  real generation from the mount ───────────────"
+              S=$(date +%s)
+              ./llama-cli -m "$M" -p "List three symptoms of pneumonia:" -n 24 --temp 0 -st 2>&1 | tail -6 \
+                || ./llama-cli -m "$M" -p "List three symptoms of pneumonia:" -n 24 --temp 0 2>&1 </dev/null | tail -6
+              echo "P0-3c total elapsed: $(( $(date +%s) - S ))s"
+              echo "P0-3 VERDICT: timings above = GGUF loads and runs from the FUSE mount"
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: HostToContainer
+              readOnly: true
+      volumes:
+        - name: models-bucket
+          emptyDir: {}

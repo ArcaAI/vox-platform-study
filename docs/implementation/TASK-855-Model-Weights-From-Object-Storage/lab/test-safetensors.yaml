@@ -1,0 +1,104 @@
+# P0-1 / P0-2 / P0-4 — can `transformers.from_pretrained` load a model IN PLACE
+# from an s3fs FUSE mount of the MinIO bucket, writing nothing to a local cache?
+#
+# The s3fs container is a copy of the proven block in the deployment repo's
+# base/lmstudio.yaml, with TLS and the private CA stripped: this lab tests FUSE
+# semantics, not transport.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: p0-safetensors
+  namespace: hope-lab
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: s3fs
+          restartPolicy: Always          # native sidecar
+          image: efrecon/s3fs:1.95
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            privileged: true             # FUSE needs SYS_ADMIN + /dev/fuse
+          env:
+            - { name: AWS_ACCESS_KEY_ID,     value: labadmin }
+            - { name: AWS_SECRET_ACCESS_KEY, value: labadmin12345 }
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              printf '%s:%s' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" > /tmp/passwd-s3fs
+              chmod 600 /tmp/passwd-s3fs
+              mkdir -p /mnt/models-bucket
+              i=0
+              until wget -q -O /dev/null http://minio:9000/minio/health/live 2>/dev/null; do
+                i=$((i+1)); [ "$i" -gt 60 ] && { echo "minio unreachable"; exit 1; }; sleep 2
+              done
+              echo "minio reachable after $((i*2))s"
+              exec s3fs hope-models /mnt/models-bucket -f \
+                -o passwd_file=/tmp/passwd-s3fs \
+                -o url=http://minio:9000 \
+                -o use_path_request_style \
+                -o ro -o allow_other \
+                -o uid=0 -o gid=0 -o umask=0022
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: Bidirectional
+      containers:
+        - name: probe
+          image: python:3.11-slim
+          env:
+            # Prove R3: no hub access, and any cache write would have to land here.
+            - { name: HF_HUB_OFFLINE,   value: "1" }
+            - { name: TRANSFORMERS_OFFLINE, value: "1" }
+            - { name: HF_HOME,          value: /tmp/hf-cache-canary }
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install -q --disable-pip-version-check safetensors numpy
+              mkdir -p "$HF_HOME"
+              python - <<'PY'
+              import os, time, json, pathlib
+              from safetensors import safe_open
+
+              SRC = pathlib.Path("/mnt/models-bucket/medical-ner/v1")
+              canary = pathlib.Path(os.environ["HF_HOME"])
+
+              t0 = time.perf_counter()
+              cfg = json.loads((SRC / "config.json").read_text())
+              tokj = json.loads((SRC / "tokenizer.json").read_text())
+              t1 = time.perf_counter()
+              print(f"P0-1a small random reads (config+tokenizer, {len(tokj.get('model',{}).get('vocab',{}))} vocab) {t1-t0:6.2f}s")
+
+              t2 = time.perf_counter()
+              n = 0
+              total = 0
+              with safe_open(str(SRC / "model.safetensors"), framework="numpy") as f:
+                  keys = list(f.keys())
+                  for k in keys:
+                      t = f.get_tensor(k)      # mmap-backed read of every tensor
+                      n += 1
+                      total += t.nbytes
+              t3 = time.perf_counter()
+              print(f"P0-1b mmap read of ALL {n} tensors ({total/1e6:.0f} MB) {t3-t2:6.2f}s "
+                    f"= {total/1e6/(t3-t2):.0f} MB/s over FUSE")
+              print(f"P0-1  architecture: {cfg.get('architectures')}, labels: {len(cfg.get('id2label', {}))}")
+
+              written = [p for p in canary.rglob('*') if p.is_file()]
+              size = sum(p.stat().st_size for p in written)
+              print(f"P0-2  cache canary  {len(written)} files, {size/1e6:.2f} MB written to {canary}")
+              print("P0-2  VERDICT " + ("PASS - weights read in place, nothing copied" if size == 0
+                                        else "FAIL - something was cached locally"))
+              PY
+          volumeMounts:
+            - name: models-bucket
+              mountPath: /mnt/models-bucket
+              mountPropagation: HostToContainer
+              readOnly: true
+      volumes:
+        - name: models-bucket
+          emptyDir: {}
