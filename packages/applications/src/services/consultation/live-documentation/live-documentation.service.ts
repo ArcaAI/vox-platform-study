@@ -42,6 +42,7 @@ import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultServi
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
+  LiveDocRealtimeCapabilitiesResponse,
   LiveDocSessionStatsResponse,
   LiveDocSessionsListResponse,
   LiveSummaryEntityDto,
@@ -92,6 +93,7 @@ import {
   PLATFORM_REALTIME_LANE,
   buildRealtimeLane,
   canonicalRealtimeNodeType,
+  realtimeNodeIsTogglable,
   runRealtimeLane,
   type RealtimeCapabilities,
   type RealtimeLane,
@@ -1049,30 +1051,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * flush must not fail because a definition could not be read.
    */
   private async ensureLaneResolved(session: LiveSession): Promise<RealtimeLane | null> {
-    // The code default is the last fallback in the cascade, and it is `false`:
-    // absence resolves to the LEGACY engine, which is both fail-safe and today's
-    // behaviour.
-    let enabled: boolean = CONSULTATION_GATE_DEFAULTS[CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY];
-    if (this.effectiveSettings) {
-      try {
-        const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, { tenantId: session.tenantId });
-        enabled = resolved.value === true || resolved.value === 'true';
-      } catch (error) {
-        this.logger.warn({
-          message: 'Realtime graph-executor flag could not be resolved — running the legacy flush for this session',
-          consultationId: session.consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        enabled = false;
-      }
-    }
+    const enabled = await this.isGraphExecutorEnabled(session.tenantId, session.consultationId);
 
     if (!enabled) {
       session.laneSnapshot = null;
       return null;
     }
 
-    const lane = (await this.resolveTenantLane(session)) ?? PLATFORM_REALTIME_LANE;
+    const lane = (await this.resolveTenantLane(session.tenantId, null, session.consultationId)).lane ?? PLATFORM_REALTIME_LANE;
     session.laneSnapshot = lane;
     this.logger.log({
       message: 'Froze the realtime lane for this session',
@@ -1084,23 +1070,135 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return lane;
   }
 
-  /** Assignment cascade -> ACTIVE PUBLISHED definition -> compiled config -> lane. */
-  private async resolveTenantLane(session: LiveSession): Promise<RealtimeLane | null> {
-    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return null;
+  /**
+   * Effective `consultation.realtime.graphExecutor.enabled` for one tenant.
+   *
+   * Extracted from {@link ensureLaneResolved} so the TASK-852 read-out resolves the flag through
+   * the same call a session does. A read-out with its own copy of this cascade would report the
+   * engine an admin *configured* rather than the one that will *run*.
+   */
+  private async isGraphExecutorEnabled(tenantId: string, consultationId?: string): Promise<boolean> {
+    // The code default is the last fallback in the cascade, and it is `false`:
+    // absence resolves to the LEGACY engine, which is both fail-safe and today's
+    // behaviour.
+    if (!this.effectiveSettings) return CONSULTATION_GATE_DEFAULTS[CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY];
     try {
-      const assignment = await this.workflowAssignments.resolve(session.tenantId, 'consultation', null);
-      if (!assignment.workflowDefinitionSlug) return null;
-      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(session.tenantId, assignment.workflowDefinitionSlug);
-      if (!definition?.compiledConfig) return null;
-      return buildRealtimeLane(definition.compiledConfig as never);
+      const resolved = await this.effectiveSettings.resolveEffective(CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY, { tenantId });
+      return resolved.value === true || resolved.value === 'true';
+    } catch (error) {
+      this.logger.warn({
+        message: 'Realtime graph-executor flag could not be resolved — running the legacy flush for this session',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Assignment cascade -> ACTIVE PUBLISHED definition -> compiled config -> lane.
+   *
+   * Returns the assignment's SOURCE alongside the lane because the two answer different
+   * questions and only together explain what an admin is looking at: `assignmentSource` says
+   * which TIER was consulted, `lane.source` says whether that tier produced an executable lane.
+   * They can disagree — a tenant assignment pointing at a definition with no realtime nodes
+   * resolves `tenant` + `platform-default`, which is precisely the silent misconfiguration this
+   * read-out exists to surface.
+   */
+  private async resolveTenantLane(
+    tenantId: string,
+    departmentId: string | null,
+    consultationId?: string,
+  ): Promise<{ lane: RealtimeLane | null; assignmentSource: 'department' | 'tenant' | 'platform-default' }> {
+    if (!this.workflowAssignments || !this.workflowDefinitionRepository) return { lane: null, assignmentSource: 'platform-default' };
+    try {
+      const assignment = await this.workflowAssignments.resolve(tenantId, 'consultation', departmentId);
+      if (!assignment.workflowDefinitionSlug) return { lane: null, assignmentSource: assignment.source };
+      const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, assignment.workflowDefinitionSlug);
+      if (!definition?.compiledConfig) return { lane: null, assignmentSource: assignment.source };
+      return { lane: buildRealtimeLane(definition.compiledConfig as never), assignmentSource: assignment.source };
     } catch (error) {
       this.logger.warn({
         message: 'Tenant realtime lane could not be resolved — serving the platform lane',
-        consultationId: session.consultationId,
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
+      return { lane: null, assignmentSource: 'platform-default' };
     }
+  }
+
+  /**
+   * TASK-852 item 6 — which realtime capabilities are LIVE for a tenant.
+   *
+   * ## Why this exists
+   *
+   * Everything it reports already existed and none of it was readable. The lane source,
+   * definition slug/version and per-node enabled state were computed at `start()` and written to
+   * ONE log line; there was no API. So activating the runtime (flipping the kill-switch, landing
+   * an assignment) produced no observable change an admin could confirm — and the failure mode
+   * that matters here is silent: a lane that fell back to `PLATFORM_REALTIME_LANE` still produces
+   * a note, so "my published graph governs consultations" and "my published graph governs
+   * nothing" look identical from outside.
+   *
+   * ## It resolves, it does not describe
+   *
+   * The flag comes from {@link isGraphExecutorEnabled} and the lane from
+   * {@link resolveTenantLane} — the SAME two calls `ensureLaneResolved` makes for a real session.
+   * Nothing here is restated from a constant or a catalogue, which is what keeps the read-out
+   * from drifting into a description of what the runtime is supposed to do.
+   *
+   * ## Its three answers
+   *
+   * | State | What it reports |
+   * |---|---|
+   * | Graph executor OFF | `laneSource: null`, `nodes: []` — there IS no lane; the legacy flush runs |
+   * | ON, no resolvable assignment | `platform-default` and the platform lane's own nodes, because those genuinely execute |
+   * | ON + assignment | `tenant-graph`, the slug and version, and the tenant's realtime nodes |
+   *
+   * Tenant-scoped by construction: the caller's tenant is the only one resolved, and the
+   * definition lookup is itself tenant-scoped, so a guessed slug cannot cross the boundary.
+   */
+  async getRealtimeCapabilities(tenantId: string, departmentId: string | null = null): Promise<LiveDocRealtimeCapabilitiesResponse> {
+    const graphExecutorEnabled = await this.isGraphExecutorEnabled(tenantId);
+
+    if (!graphExecutorEnabled) {
+      return {
+        tenantId,
+        departmentId,
+        graphExecutorEnabled: false,
+        laneSource: null,
+        definitionSlug: null,
+        definitionVersionNumber: null,
+        assignmentSource: 'platform-default',
+        nodes: [],
+      };
+    }
+
+    const { lane: tenantLane, assignmentSource } = await this.resolveTenantLane(tenantId, departmentId);
+    const lane = tenantLane ?? PLATFORM_REALTIME_LANE;
+
+    return {
+      tenantId,
+      departmentId,
+      graphExecutorEnabled: true,
+      laneSource: lane.source,
+      definitionSlug: lane.definitionSlug,
+      definitionVersionNumber: lane.definitionVersionNumber,
+      assignmentSource,
+      nodes: lane.stages.flatMap((stage) =>
+        stage.nodes.map((node) => ({
+          nodeId: node.nodeId,
+          type: node.type,
+          canonicalType: canonicalRealtimeNodeType(node.type),
+          stageIndex: stage.stageIndex,
+          enabled: node.enabled,
+          togglable: realtimeNodeIsTogglable(node.type),
+          onError: node.onError,
+          timeoutMs: node.timeoutMs,
+          maxAttempts: node.maxAttempts,
+        })),
+      ),
+    };
   }
 
   /** Per-section store, constructed on first use (its repository is optional). */
