@@ -250,6 +250,56 @@ class RunEventProducer:
                 written.append(message_id)
         return written
 
+    async def emit_loop_iteration(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        node_id: str,
+        iteration: int,
+        max_iterations: int,
+        tokens_used: int,
+        max_total_tokens: int,
+        digest: str,
+        terminated: bool,
+    ) -> str | None:
+        """One ``agentic.loop`` iteration, settled. The CONTROL lane's per-iteration entry point.
+
+        Called from ``interpreter.loop_state_checkpoint`` — the activity that already runs
+        exactly once per iteration — so this adds NO Temporal command and needs no
+        ``workflow.patched`` gate. The durable record of the iteration is that activity's own
+        history event plus the ``continue_as_new`` boundary; this is the live mirror the debug
+        canvas reads, exactly as the node-boundary control events are (``emit_run_events``).
+
+        **The payload is scalars only, and that is a constraint rather than a preference.** A
+        loop's carry-forward may be megabytes and may be claim-check offloaded above 256 KiB
+        (``LOOP_STATE_INLINE_LIMIT_BYTES``); embedding it here would put that blob back on the
+        wire once per iteration and defeat the offload entirely. What travels is identity
+        (``nodeId``), the drill-down's position (``iteration`` / ``maxIterations``) and the
+        STOP-RELEVANT counters — the invoice, the convergence digest, and whether the
+        orchestrator declared itself done.
+
+        ``iteration`` is ONE-BASED and names the iteration that just completed, so a client
+        renders ``3/12`` rather than ``2/12`` for the third one.
+        """
+        return await self.emit(
+            build_run_event(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_type=EVENT_LOOP_ITERATION,
+                idempotency_key=loop_iteration_key(run_id, node_id, iteration),
+                payload={
+                    "nodeId": node_id,
+                    "iteration": iteration,
+                    "maxIterations": max_iterations,
+                    "tokensUsed": tokens_used,
+                    "maxTotalTokens": max_total_tokens,
+                    "digest": digest,
+                    "terminated": terminated,
+                },
+            )
+        )
+
     async def emit_token_delta(
         self,
         *,
