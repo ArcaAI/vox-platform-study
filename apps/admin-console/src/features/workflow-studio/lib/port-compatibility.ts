@@ -41,13 +41,15 @@ import type { WorkflowNodeDescriptor, WorkflowNodePort, WorkflowPortPrimitive } 
 export const PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPortPrimitive | null>> = Object.freeze({
   control: null,
   'stream<audio>': null,
+  audio: null,
   transcript: 'text',
   text: null,
-  entities: null,
+  object: null,
+  entities: 'object',
   document: 'text',
-  edits: null,
-  verdict: null,
-  'context<schemaRef>': null,
+  edits: 'object',
+  verdict: 'object',
+  'context<schemaRef>': 'object',
 });
 
 /** Derived from `PORT_SUPERTYPE`'s own keys rather than hand-listed again, so there is exactly
