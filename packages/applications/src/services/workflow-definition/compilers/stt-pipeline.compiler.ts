@@ -134,7 +134,7 @@ export function compileSttGraphToYaml(compiledConfig: CompiledWorkflowConfig): s
 
 /**
  * The deterministic `AsrPipeline` slug for a given `stt`-palette `WorkflowDefinition.slug`.
- * `WorkflowDefinition.slug` matches `WORKFLOW_NODE_ID_PATTERN` (`[a-z0-9_]{2,48}`, may start or
+ * `WorkflowDefinition.slug` matches `WORKFLOW_DEFINITION_SLUG_PATTERN` (TASK-858; formerly the node-id grammar `[a-z0-9_]{2,48}`, may start or
  * end with `_`); `AsrPipeline.slug` requires `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (hyphens only, must
  * start/end alphanumeric) — the two grammars are NOT interchangeable, so this is a real,
  * tested mapping, not a bare string swap.

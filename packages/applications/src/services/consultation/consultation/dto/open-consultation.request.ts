@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsDateString, IsObject, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WORKFLOW_NODE_ID_PATTERN } from '@arcaai/workflow-contract';
+import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
 /**
  * Open Consultation Request
@@ -50,10 +50,10 @@ export class OpenConsultationRequest {
    * a slug this tenant cannot see is a 404, one it can see but may not use to
    * govern a consultation is a 403.
    *
-   * Grammar is the platform-wide tenant-authored-key grammar
-   * (`WORKFLOW_NODE_ID_PATTERN`, `[a-z0-9_]{2,48}`) — the same one
+   * Grammar is `WORKFLOW_DEFINITION_SLUG_PATTERN` — the same one
    * `CreateWorkflowDefinitionRequest.slug` enforces, so a value that could
-   * never name a real row is refused at the edge.
+   * never name a real row is refused at the edge. AMENDED (TASK-858): the node-id
+   * grammar this used to reuse admits no hyphen, and every seeded slug has one.
    *
    * Honoured by `POST /consultations/open` ONLY. Consultation-open dispatch
    * fires on CREATE, so a revisit (`POST /consultations/:id/revisit`) has no
@@ -66,7 +66,7 @@ export class OpenConsultationRequest {
   })
   @IsOptional()
   @IsString()
-  @Matches(WORKFLOW_NODE_ID_PATTERN, { message: 'workflowDefinitionSlug must match [a-z0-9_]{2,48}' })
+  @Matches(WORKFLOW_DEFINITION_SLUG_PATTERN, { message: 'workflowDefinitionSlug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric' })
   workflowDefinitionSlug?: string;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })

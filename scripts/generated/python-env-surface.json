@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 402,
+  "distinctNames": 404,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -1853,6 +1853,20 @@
           "dataType": "boolean",
           "default": "true",
           "description": "Performance settings"
+        },
+        {
+          "name": "API_GATEWAY_KEY",
+          "aliases": [
+            "NLP_API_GATEWAY_KEY"
+          ],
+          "class": "NLPServiceConfig",
+          "field": "api_gateway_key",
+          "prefix": "NLP_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "Internal service authentication key presented as X-Internal-Service-Key on gateway /internal/* calls."
         },
         {
           "name": "HF_HOME",
@@ -4062,6 +4076,18 @@
           "description": "phase 2: WebSocket streaming API"
         },
         {
+          "name": "API_GATEWAY_KEY",
+          "aliases": [],
+          "class": "Settings",
+          "field": "api_gateway_key",
+          "prefix": "TTS_",
+          "required": false,
+          "secret": true,
+          "dataType": "secret",
+          "default": null,
+          "description": "Internal service authentication key presented as X-Internal-Service-Key on gateway /internal/* calls."
+        },
+        {
           "name": "INTERNAL_ACCESS_TOKEN",
           "aliases": [],
           "class": "Settings",
@@ -4374,7 +4400,9 @@
     ],
     "HF_HUB_OFFLINE": [
       "apps/harness/src/harness/models/source_resolver.py",
-      "apps/stt/src/stt/models/source_resolver.py"
+      "apps/nlp/src/nlp/models/source_resolver.py",
+      "apps/stt/src/stt/models/source_resolver.py",
+      "apps/tts/src/tts/models/source_resolver.py"
     ],
     "HOPE_SECRETS_DIR": [
       "packages/py-env/src/hope_env/settings_sources.py"
@@ -4401,6 +4429,9 @@
       "infrastructure/docker/scripts/init-qdrant-collections.py"
     ],
     "QDRANT_HOST": [
+      "infrastructure/docker/scripts/init-qdrant-collections.py"
+    ],
+    "QDRANT_HTTPS": [
       "infrastructure/docker/scripts/init-qdrant-collections.py"
     ],
     "QDRANT_KNOWLEDGE_COLLECTION": [

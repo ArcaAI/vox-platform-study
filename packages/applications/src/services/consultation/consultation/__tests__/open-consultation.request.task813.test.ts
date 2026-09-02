@@ -38,10 +38,19 @@ describe('OpenConsultationRequest — TASK-813 workflow selector wire contract',
     await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: { slug: 'x' } }, metatype)).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('accepts the hyphenated slugs every seeded workflow actually carries (TASK-858)', async () => {
+    // AMENDED (TASK-858): TASK-813 reused the node-id grammar, which admits no hyphen, while
+    // every seeded definition is hyphenated — so no real workflow could ever be selected.
+    for (const slug of ['arcaai-consultation-medical-ner', 'arcaai-consultation-soap', 'platform-default-summarization']) {
+      await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: slug }, metatype)).resolves.toMatchObject({ workflowDefinitionSlug: slug });
+    }
+  });
+
   it('rejects a selector that is not a well-formed slug — the grammar is the same one `CreateWorkflowDefinitionRequest` enforces', async () => {
-    // `[a-z0-9_]{2,48}` (WORKFLOW_NODE_ID_PATTERN). Anything else could never name a real row,
-    // so it is refused at the edge rather than carried down to a repository lookup.
-    for (const bad of ['Caller_Picked', 'caller-picked', 'a', '../etc/passwd', 'a'.repeat(49), '']) {
+    // WORKFLOW_DEFINITION_SLUG_PATTERN: lowercase alphanumerics, `-` and `_`, 2–80 chars.
+    // Anything else could never name a real row, so it is refused at the edge rather than
+    // carried down to a repository lookup.
+    for (const bad of ['Caller_Picked', 'a', '../etc/passwd', 'a'.repeat(81), '', '-leading', 'trailing-']) {
       await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: bad }, metatype)).rejects.toBeInstanceOf(BadRequestException);
     }
   });

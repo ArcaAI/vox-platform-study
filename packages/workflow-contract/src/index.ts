@@ -14,7 +14,7 @@
  */
 
 export type { WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge, WorkflowNodePosition } from './graph-model';
-export { MAX_GRAPH_NODES, MAX_GRAPH_EDGES, MAX_GRAPH_DEPTH, WORKFLOW_NODE_ID_PATTERN, workflowGraphProblems } from './graph-model';
+export { MAX_GRAPH_NODES, MAX_GRAPH_EDGES, MAX_GRAPH_DEPTH, WORKFLOW_NODE_ID_PATTERN, WORKFLOW_DEFINITION_SLUG_PATTERN, workflowGraphProblems } from './graph-model';
 
 export { topologicalLevels, reachableFrom, reachesAny, pathExists, allPathsPassThrough } from './graph-algorithms';
 export type { TopologicalLevelsResult } from './graph-algorithms';
