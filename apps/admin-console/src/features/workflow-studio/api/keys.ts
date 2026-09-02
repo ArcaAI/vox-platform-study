@@ -7,6 +7,10 @@ export const workflowStudioKeys = {
   detail: (id: string) => [...workflowStudioKeys.root, 'detail', id] as const,
   versions: (id: string) => [...workflowStudioKeys.root, 'versions', id] as const,
   registry: () => [...workflowStudioKeys.root, 'registry'] as const,
+  // TASK-856 — the SYSTEM template library. Its own leaf, not a variant of `list()`: it is a
+  // different tenant's rows on a different cadence (platform releases, not tenant authoring),
+  // and folding it into the tenant list key would serve one as the other on invalidation.
+  templates: () => [...workflowStudioKeys.root, 'templates'] as const,
   promptTemplates: () => [...workflowStudioKeys.root, 'prompt-templates'] as const,
   // TASK-733 half (a) — assignment matrix.
   assignments: (paletteKey: string) => [...workflowStudioKeys.root, 'assignments', paletteKey] as const,

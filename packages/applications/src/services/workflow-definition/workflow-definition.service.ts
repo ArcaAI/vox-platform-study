@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -8,6 +8,7 @@ import {
   PromptVersionRepository,
   ResourceType,
   SysEventType,
+  SYSTEM_TENANT_ID,
   WorkflowDefinitionEntity,
   WorkflowDefinitionFactory,
   WorkflowDefinitionRepository,
@@ -36,6 +37,7 @@ import { KNOWN_PALETTE_KEYS } from '../workflow-exposure/exposure-palette-policy
 import { WorkflowValidatorService } from '../workflow-validator/workflow-validator.service';
 import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
@@ -291,6 +293,114 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     });
 
     return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-856 — seed a NEW lineage from an existing definition. See
+   * `IWorkflowDefinitionService.clone` for the contract; the two things worth reading in the
+   * code below are WHERE the slug-collision check sits (inside the transaction, fused with the
+   * version mint) and WHAT is deliberately not carried over from the source row.
+   */
+  async clone(sourceId: string, dto: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context required');
+    }
+
+    // Byte-for-byte the precheck `create` runs. A clone writes a row, so a clone path that
+    // skipped this would be a `maxWorkflowDefinitions` bypass with extra steps.
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
+    }
+
+    // `tenantId IN [caller, SYSTEM]`, SYSTEM narrowed to the live published library. Another
+    // customer tenant's id resolves to `null` here and leaves as a 404, exactly like an id that
+    // never existed (404-over-403).
+    const source = await this.workflowDefinitionRepository.findCloneSource(sourceId, tenantId, this.databaseService.baseClient);
+    if (!source) {
+      throw new NotFoundException(`WorkflowDefinition ${sourceId} was not found.`);
+    }
+
+    const fromSystemTemplate = source.tenantId === SYSTEM_TENANT_ID;
+    const graph = this.parseGraphOrThrow(source.graph as unknown as Record<string, unknown>);
+    if (fromSystemTemplate) {
+      this.assertNoUnresolvableCatalogBindings(graph);
+    }
+
+    this.assertKnownPaletteKey(source.paletteKey);
+
+    // Recomputed for THIS tenant against the CURRENT registry — never copied. A report produced
+    // under another tenant's invariant rules, or against an older registry, is a stale claim
+    // about a graph that now lives somewhere else.
+    const report = await this.validateGraph(graph, source.paletteKey, tenantId);
+    if (reportIsShapeBroken(report)) {
+      throw new BadRequestException({ message: 'The source workflow graph is not valid.', findings: report.findings });
+    }
+
+    const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
+      // The collision check IS the version mint, read from the TX client. `create` would have
+      // happily minted `max + 1` here — which is precisely the failure a clone must not have:
+      // a "clone" landing as version N+1 of a lineage that may be published and serving
+      // traffic. Doing it inside the transaction also closes the check-then-write window
+      // against a concurrent clone into the same slug; the `(tenantId, slug, versionNumber)`
+      // unique index is the backstop behind that.
+      const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(tenantId, dto.targetSlug, tx);
+      if (maxVersionNumber > 0) {
+        throw new ConflictException(
+          `Slug '${dto.targetSlug}' is already in use by this tenant. Choose another slug, or open that workflow and create a new version of it instead.`,
+        );
+      }
+
+      const entity = WorkflowDefinitionFactory.CreateDefinition({
+        tenantId,
+        slug: dto.targetSlug,
+        name: dto.name ?? `${source.name} (copy)`,
+        description: dto.description ?? source.description ?? null,
+        paletteKey: source.paletteKey,
+        versionNumber: maxVersionNumber + 1,
+        // A clone is a NEW lineage. `parentVersionId` means "branched inside THIS slug"
+        // (`create` enforces `parent.slug === dto.slug`), so a cross-slug parent is
+        // structurally wrong here, not merely unused.
+        parentVersionId: null,
+        graph: source.graph,
+        graphChecksum: graphChecksum(graph),
+        validationReport: report as unknown as JsonValue,
+        validatedAt: new Date(),
+        createdBy: this.requestUserId ?? undefined,
+      });
+
+      // Every server-owned publish column is left at its factory default: `compiledConfig` +
+      // both checksums null, `publishedAt`/`deprecatedAt` null, `status` DRAFT, `isActive`
+      // false, `tags` empty. A clone has been reviewed by nobody, and the SYSTEM template's
+      // `['platform-default', …]` tags would assert something false about a tenant row.
+      this.compileGraphOrThrow(entity, graph, null);
+
+      return this.workflowDefinitionRepository.create(entity, tx);
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: {
+        slug: saved.slug,
+        versionNumber: saved.versionNumber,
+        paletteKey: saved.paletteKey,
+        clonedFromId: sourceId,
+        clonedFromSystemTemplate: fromSystemTemplate,
+      },
+    });
+
+    return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  /** TASK-856 — the SYSTEM template library, read-only. */
+  async listTemplates(): Promise<WorkflowDefinitionResponse[]> {
+    const templates = await this.workflowDefinitionRepository.findSystemTemplates(this.databaseService.baseClient);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, { data: { action: 'listTemplates', items: templates.map((template) => template.id) } });
+
+    return templates.map((template) => WorkflowDefinitionDtoMapper.toResponse(template));
   }
 
   async update(id: string, dto: UpdateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
@@ -774,6 +884,46 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * The valid set is DERIVED from `WORKFLOW_NODE_REGISTRY` (see `KNOWN_PALETTE_KEYS`), never
    * re-typed here — a palette added to the registry is accepted with no edit to this service.
    */
+  /**
+   * TASK-856 — refuse to clone a SYSTEM template that pins a catalog ROW the destination tenant
+   * cannot resolve.
+   *
+   * A node may bind a prompt (`promptTemplateId`) or a document shape (`documentTemplateId`) by
+   * row id. Neither `PromptTemplate` nor `DocumentTemplate` is a SYSTEM-shared read
+   * (`tenant-scope.ts`), and both reach a tenant as PER-TENANT CLONES WITH DIFFERENT IDS
+   * (`seed/07-prompt-template.ts`) — so copying a SYSTEM template's id into a tenant row
+   * produces a reference that tenant can neither read nor repair from the Studio.
+   *
+   * We fail LOUDLY rather than take either alternative: stripping the binding silently mutates
+   * a clinical graph, and copying it verbatim ships a broken reference that only surfaces later,
+   * further from the person who could fix it. The message names the nodes so it is actionable.
+   *
+   * Own-tenant clones never reach this check — every id in the tenant's own graph is already the
+   * tenant's, because it could not have resolved anything else to author it.
+   *
+   * No-op on the shipped platform default, whose generation node binds by `taskKey` and resolves
+   * through the tenant -> SYSTEM cascade (`seed/21-workflow-definition.ts`) — which is what a
+   * clonable template should do.
+   */
+  private assertNoUnresolvableCatalogBindings(graph: WorkflowGraph): void {
+    const promptBound = collectPromptBindings(graph).map((binding) => binding.nodeId);
+    const documentBound = (graph.nodes ?? [])
+      .filter((node) => {
+        const config = node.config as Record<string, unknown> | undefined;
+        const templateId = config?.[DOCUMENT_TEMPLATE_ID_KEY];
+        return typeof templateId === 'string' && templateId.length > 0;
+      })
+      .map((node) => node.id);
+
+    const offenders = [...new Set([...promptBound, ...documentBound])];
+    if (offenders.length === 0) return;
+
+    throw new BadRequestException(
+      `This platform template pins catalog rows that belong to the platform, not to your tenant (nodes: ${offenders.join(', ')}). ` +
+        'Cloning it would copy references your tenant cannot resolve. Author an equivalent workflow and bind your own prompt or document template on those nodes.',
+    );
+  }
+
   private assertKnownPaletteKey(paletteKey: string): void {
     if (KNOWN_PALETTE_KEYS.has(paletteKey)) return;
     const known = [...KNOWN_PALETTE_KEYS].sort().join(', ');

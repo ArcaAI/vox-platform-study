@@ -1,4 +1,5 @@
 import {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   IWorkflowDefinitionService,
   NodePromptBindingResponse,
@@ -59,6 +60,22 @@ export class WorkflowDefinitionController {
     return this.workflowDefinitionService.list(query);
   }
 
+  // ⚠ DECLARATION ORDER IS LOAD-BEARING: Nest matches routes in declaration order, so this must
+  // stay ABOVE `@Get(':id')` — otherwise `:id` swallows `templates` and the library read becomes
+  // a 404 lookup of a definition literally named "templates".
+  @Get('templates')
+  @ApiOperation({
+    summary: 'List the platform workflow template library a tenant can clone from',
+    description:
+      'The SYSTEM tenant’s live published definitions — one row per slug. Read-only and cross-tenant BY DESIGN, ' +
+      'bounded to exactly the SYSTEM tenant: another customer tenant’s definitions can never appear here. This is ' +
+      'the discovery half of `POST :id/clone`; the two share one predicate, so everything listed here is clonable.',
+  })
+  @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
+  async fetchTemplates(): Promise<WorkflowDefinitionResponse[]> {
+    return this.workflowDefinitionService.listTemplates();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get one workflow definition version' })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
@@ -114,6 +131,32 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 404, description: 'Not found (or cross-tenant).' })
   async delete(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.deleteById(id);
+  }
+
+  @Post(':id/clone')
+  @ApiOperation({
+    summary: 'Clone an existing workflow (or a platform template) into a NEW draft workflow',
+    description:
+      'Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source ' +
+      'definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the ' +
+      'source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming ' +
+      'version N+1 of that lineage.\n\n' +
+      'Clonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live ' +
+      'published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss.\n\n' +
+      'The graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are ' +
+      'NOT carried over, and the validation report is recomputed for this tenant against the current node ' +
+      'registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.',
+  })
+  @ApiParam({ name: 'id', description: 'Source WorkflowDefinition id — the caller’s own row, or a SYSTEM template.' })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({
+    status: 400,
+    description: 'The source graph fails shape/engine validation, or a SYSTEM template pins prompt/document catalog rows this tenant cannot resolve.',
+  })
+  @ApiResponse({ status: 404, description: 'Source not found (or another tenant’s).' })
+  @ApiResponse({ status: 409, description: 'targetSlug is already in use by this tenant, or the maxWorkflowDefinitions quota is exceeded.' })
+  async clone(@Param('id') id: string, @Body() request: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
+    return this.workflowDefinitionService.clone(id, request);
   }
 
   @Post(':id/validate')

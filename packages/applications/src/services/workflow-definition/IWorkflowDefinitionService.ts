@@ -1,5 +1,6 @@
 import { PaginatedQuery } from '../../common';
 import {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
@@ -43,6 +44,42 @@ export interface IWorkflowDefinitionService {
    * reviewed rules) are recorded on `validationReport` but never block create (decision #3).
    */
   create(dto: CreateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * TASK-856 — seed a NEW workflow (new `(tenantId, slug)` lineage, `versionNumber` 1, DRAFT)
+   * from an existing definition's graph.
+   *
+   * This is NOT `create` with a `parentVersionId`: that branches a new version INSIDE the
+   * source's slug, and the clone deliberately gets its own. The distinction is enforced, not
+   * documented — a `targetSlug` the tenant already uses is a `ConflictException`, because
+   * `create`'s `max(versionNumber) + 1` mint would otherwise turn a clone into version N+1 of a
+   * lineage that may be published and serving traffic.
+   *
+   * Clonable sources are the caller tenant's own definitions (any status) and the SYSTEM
+   * tenant's live published templates — see `WorkflowDefinitionRepository.findCloneSource`.
+   *
+   * The graph is copied VERBATIM; every publish artifact (`compiledConfig` + both checksums,
+   * `publishedAt`, `isActive`, `tags`) is dropped, and `validationReport`/`graphChecksum` are
+   * RECOMPUTED for the destination tenant rather than carried over — a report produced under
+   * another tenant's rules or an older node registry is a stale claim about a graph that now
+   * lives somewhere else.
+   *
+   * @throws NotFoundException — unknown, soft-deleted, or another tenant's id (404-over-403)
+   * @throws ConflictException — `targetSlug` is already in use by this tenant
+   * @throws BadRequestException — the source graph fails the shape/engine gate, or a SYSTEM
+   *   template pins a `promptTemplateId`/`documentTemplateId` (a row id the destination tenant
+   *   cannot resolve — those catalogs are per-tenant clones with different ids, and neither is
+   *   a SYSTEM-shared read)
+   * @throws QuotaExceededException — `maxWorkflowDefinitions`, on the same precheck as `create`
+   */
+  clone(sourceId: string, dto: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
+
+  /**
+   * TASK-856 — the platform template library a tenant may clone from: the SYSTEM tenant's live
+   * published definitions. Read-only and cross-tenant BY DESIGN, bounded to exactly the SYSTEM
+   * tenant; a customer tenant's rows can never appear here.
+   */
+  listTemplates(): Promise<WorkflowDefinitionResponse[]>;
 
   /**
    * Versioned PATCH (`If-Match`/`expectedVersion`). Throws `BadRequestException` on a

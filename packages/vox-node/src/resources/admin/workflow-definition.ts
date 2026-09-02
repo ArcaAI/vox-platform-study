@@ -12,6 +12,7 @@ import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
+  CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
   NodePromptBindingResponse,
   NodePromptUpdateResponse,
@@ -35,7 +36,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (19 routes). Several controllers sharing one scope share one
+ * (21 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -285,6 +286,23 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
+   * Clone an existing workflow (or a platform template) into a NEW draft workflow
+   *
+   * Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming version N+1 of that lineage. Clonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss. The graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are NOT carried over, and the validation report is recomputed for this tenant against the current node registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.
+   *
+   * `POST /api/v1/admin/workflow-definitions/{id}/clone` — `WorkflowDefinitionController.clone`.
+   */
+  clone(id: string, body: CloneWorkflowDefinitionRequest, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+    return this.request<WorkflowDefinitionResponse>({
+      method: 'POST',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/clone`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Edit a node’s prompt from within the node: mint a new version if the content changed, and move this node’s pin
    *
    * One of DD-11’s TWO update paths, and the only one that moves a pin. When `content` (and `variables`) differ from the template’s latest version, both writes happen in a single transaction: a new immutable `PromptVersion` is minted and THIS node’s `promptVersionNumber` is moved to it. Splitting them would leave either a version nothing points at, or a pin naming a version that was never created. Other nodes bound to the same template are untouched. ADOPTING is not authoring: when the submitted content is byte-identical to the template’s latest version, NOTHING is minted — the pin simply moves to that existing version, and the shared template head is left alone. Because an out-of-band template edit deliberately moves no pin, adoption is the COMMON path, and minting a duplicate on each one made the version list unreadable exactly where an admin goes to read it. Read `promptVersionMinted` on the response to tell the two outcomes apart. Only a DRAFT/VALIDATED definition may be edited — a PUBLISHED graph is immutable, so re-pointing a published workflow’s prompt means branching a new draft. `If-Match` (RFC 7232) is REQUIRED, and is checked on BOTH branches: an unchanged body never buys a stale client a silent 200.
@@ -367,6 +385,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
     return this.request<WorkflowDefinitionResponse[]>({
       method: 'GET',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/versions`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List the platform workflow template library a tenant can clone from
+   *
+   * The SYSTEM tenant’s live published definitions — one row per slug. Read-only and cross-tenant BY DESIGN, bounded to exactly the SYSTEM tenant: another customer tenant’s definitions can never appear here. This is the discovery half of `POST :id/clone`; the two share one predicate, so everything listed here is clonable.
+   *
+   * `GET /api/v1/admin/workflow-definitions/templates` — `WorkflowDefinitionController.fetchTemplates`.
+   */
+  fetchTemplates(options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse[]> {
+    return this.request<WorkflowDefinitionResponse[]>({
+      method: 'GET',
+      path: 'admin/workflow-definitions/templates',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

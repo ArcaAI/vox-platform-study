@@ -108,6 +108,15 @@ export interface CreateWorkflowDefinitionRequest {
   parentVersionId?: string;
 }
 
+/** TASK-856 — `POST admin/workflow-definitions/:id/clone`. Deliberately carries NO `graph` or
+ *  `paletteKey`: both are derived server-side from the source row, so a caller can never pair
+ *  one definition's provenance with another definition's bytes. */
+export interface CloneWorkflowDefinitionRequest {
+  targetSlug: string;
+  name?: string;
+  description?: string;
+}
+
 /** No `paletteKey` — set once at create, never edited (confirmed absent from the delivered DTO). */
 export interface UpdateWorkflowDefinitionRequest {
   name?: string;
