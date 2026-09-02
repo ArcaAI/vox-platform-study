@@ -88,10 +88,27 @@ export class ModelSourceFetcherService {
   }
 }
 
-/** A GGUF file matching the quant filter, OR any non-GGUF/mmproj companion file. */
+/**
+ * Extensions whose filenames carry a quantisation token. `.safetensors` is
+ * deliberately ABSENT: a repo publishes one safetensors set, unquantised, so
+ * applying a quant filter to it would exclude the only weights present.
+ */
+const QUANTISABLE_WEIGHT_EXTENSIONS = ['.gguf', '.bin'] as const;
+
+/**
+ * A quantised WEIGHT file matching the filter, OR any companion/projector file.
+ *
+ * TASK-855: this used to exempt everything that was not `.gguf`, which was
+ * correct while GGUF was the only quantised format fetched. Now that
+ * `isRelevantModelSourceFile` also accepts `.bin`/`.safetensors`, that
+ * exemption would silently defeat the filter: `taphuynh/whisper-…-gguf` ships
+ * `ggml-…-f16.bin`, `-q5_0.bin` and `-q8_0.bin`, so a `Q5_0` request would
+ * publish all three — ~3x the bytes, and an ambiguous prefix with no way for a
+ * consumer to tell which file to serve.
+ */
 function matchesQuantOrIsCompanion(path: string, quantFilter: string): boolean {
   const base = (path.split('/').pop() ?? path).toLowerCase();
-  if (!base.endsWith('.gguf')) return true;
+  if (!QUANTISABLE_WEIGHT_EXTENSIONS.some((ext) => base.endsWith(ext))) return true;
   if (base.includes('mmproj')) return true;
   const normalizedFilter = quantFilter.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const normalizedBase = base.replace(/[^a-z0-9]+/g, '');

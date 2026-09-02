@@ -24,6 +24,49 @@ import { createHash } from 'node:crypto';
  */
 const QUANT_TOKEN_RE = /(?:^|[-_])(I?Q\d(?:_\d)?(?:_[A-Z0-9]+)*)(?=[-_.]|$)/i;
 
+/**
+ * Weight-file extensions this platform can actually serve.
+ *
+ * TASK-855: `.gguf` alone was not enough, and the omission was silent — a
+ * repo with no matching file simply published nothing rather than failing.
+ * Measured against the three models the owner nominated for validation:
+ *
+ * | Repo | Weight file | Fetched before |
+ * |---|---|---|
+ * | `unsloth/Qwen3-0.6B-GGUF` | `*.gguf` | yes |
+ * | `blaze999/Medical-NER` | `model.safetensors` | **no** |
+ * | `taphuynh/whisper-…-gguf` | `ggml-…-q5_0.bin` | **no** |
+ *
+ * Two of three fetched ZERO weights; the whisper repo fetched nothing at all,
+ * because a whisper.cpp `ggml-*.bin` is not a `.gguf` despite the repo name.
+ */
+const WEIGHT_EXTENSIONS = [
+  '.gguf', // llama.cpp / LM Studio
+  '.safetensors', // transformers (nlp, tts, whisper fp16)
+  '.bin', // whisper.cpp ggml, legacy pytorch_model.bin
+  '.onnx', // silero-vad, ONNX exports
+  '.nemo', // NVIDIA NeMo ASR
+  '.pt', // torch checkpoints (kokoro voices)
+  '.pth',
+  '.model', // sentencepiece (spm.model)
+] as const;
+
+/**
+ * `.bin` is load-bearing for whisper.cpp AND the extension HuggingFace uses for
+ * training bookkeeping, so it needs a denylist rather than a blanket accept.
+ * These are trainer state, never inference weights — pulling them wastes
+ * bandwidth and bloats the published prefix.
+ */
+const NON_WEIGHT_BASENAMES = new Set([
+  'training_args.bin',
+  'optimizer.bin',
+  'optimizer.pt',
+  'scheduler.bin',
+  'scheduler.pt',
+  'rng_state.bin',
+  'trainer_state.json',
+]);
+
 /** Known non-weight companion files a served model needs alongside its weights. */
 const RELEVANT_BASENAMES = new Set([
   'config.json',
@@ -33,6 +76,11 @@ const RELEVANT_BASENAMES = new Set([
   'merges.txt',
   'special_tokens_map.json',
   'generation_config.json',
+  // TASK-855 additions, each required by a model in the live catalogue:
+  'added_tokens.json', // blaze999/Medical-NER
+  'preprocessor_config.json', // whisper / feature-extractor models
+  'model.safetensors.index.json', // sharded safetensors manifest
+  'pytorch_model.bin.index.json', // sharded legacy manifest
 ]);
 
 /**
@@ -71,7 +119,9 @@ export function deriveQuantTokenFromFilenames(candidates: string[]): string | nu
  */
 export function isRelevantModelSourceFile(path: string): boolean {
   const base = (path.split('/').pop() ?? path).toLowerCase();
-  if (base.endsWith('.gguf')) return true;
+  // Trainer bookkeeping first: it shares `.bin`/`.pt` with real weights.
+  if (NON_WEIGHT_BASENAMES.has(base)) return false;
+  if (WEIGHT_EXTENSIONS.some((ext) => base.endsWith(ext))) return true;
   return RELEVANT_BASENAMES.has(base);
 }
 
