@@ -32,6 +32,9 @@ function makeController() {
     deleteById: vi.fn().mockResolvedValue(definitionResponse({ resourceStatus: 'DELETED' })),
     validate: vi.fn().mockResolvedValue(definitionResponse({ status: 'VALIDATED' })),
     publish: vi.fn().mockResolvedValue(definitionResponse({ status: 'PUBLISHED' })),
+    // TASK-856
+    clone: vi.fn().mockResolvedValue(definitionResponse({ id: 'def-2', slug: 'discharge_summary_copy' })),
+    listTemplates: vi.fn().mockResolvedValue([definitionResponse({ id: 'sys-1', tenantId: '00000000-0000-0000-0000-000000000000', status: 'PUBLISHED' })]),
   };
   const controller = new WorkflowDefinitionController(workflowDefinitionService as never);
   return { controller, workflowDefinitionService };
@@ -55,6 +58,27 @@ describe('WorkflowDefinitionController — authorization metadata', () => {
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.validate)).toBe(RequestMethod.POST);
     expect(Reflect.getMetadata(PATH_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(':id/publish');
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(RequestMethod.POST);
+  });
+
+  // TASK-856 — the two clone routes.
+  it('declares POST :id/clone (a creation, so Nest\'s default 201 stands — not a 200 transition)', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, WorkflowDefinitionController.prototype.clone)).toBe(':id/clone');
+    expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.clone)).toBe(RequestMethod.POST);
+    // A clone MINTS a new row, unlike validate/publish which transition an existing one, so it
+    // must NOT carry an explicit 200 override.
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, WorkflowDefinitionController.prototype.clone)).toBeUndefined();
+  });
+
+  it('declares GET templates BEFORE GET :id — declaration order is what stops :id swallowing it', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, WorkflowDefinitionController.prototype.fetchTemplates)).toBe('templates');
+    expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.fetchTemplates)).toBe(RequestMethod.GET);
+
+    // Nest registers routes in prototype declaration order, so a `templates` handler declared
+    // AFTER `:id` is unreachable — every request would resolve as `getById('templates')` and
+    // 404. This asserts the ordering itself, because nothing else can.
+    const methods = Object.getOwnPropertyNames(WorkflowDefinitionController.prototype);
+    expect(methods.indexOf('fetchTemplates')).toBeGreaterThan(-1);
+    expect(methods.indexOf('fetchTemplates')).toBeLessThan(methods.indexOf('fetchById'));
   });
 
   it('answers validate/publish with 200, not Nest\'s default 201 for POST (TASK-780 F-2)', () => {
@@ -122,6 +146,21 @@ describe('WorkflowDefinitionController — delegation', () => {
     const result = await controller.validate('def-1');
     expect(workflowDefinitionService.validate).toHaveBeenCalledWith('def-1');
     expect(result.status).toBe('VALIDATED');
+  });
+
+  it('clone delegates the source id and body to the service (TASK-856)', async () => {
+    const { controller, workflowDefinitionService } = makeController();
+    const request = { targetSlug: 'discharge_summary_copy', name: 'Discharge Summary (copy)' };
+    const result = await controller.clone('def-1', request as never);
+    expect(workflowDefinitionService.clone).toHaveBeenCalledWith('def-1', request);
+    expect(result).toMatchObject({ id: 'def-2', slug: 'discharge_summary_copy' });
+  });
+
+  it('fetchTemplates delegates to listTemplates (TASK-856)', async () => {
+    const { controller, workflowDefinitionService } = makeController();
+    const result = await controller.fetchTemplates();
+    expect(workflowDefinitionService.listTemplates).toHaveBeenCalledTimes(1);
+    expect(result[0].tenantId).toBe('00000000-0000-0000-0000-000000000000');
   });
 
   it('publish delegates to the service, defaulting an undefined body to {}', async () => {

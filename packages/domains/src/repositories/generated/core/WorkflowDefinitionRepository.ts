@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@arcaai/database';
+import { Prisma, SYSTEM_TENANT_ID } from '@arcaai/database';
 import { DataNotFoundException } from '@arcaai/exceptions';
 
 import { Repository } from '../../../common';
@@ -88,6 +88,58 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
       _max: { versionNumber: true },
     });
     return result?._max?.versionNumber ?? 0;
+  }
+
+  /**
+   * TASK-856 — the ONE row a clone may be seeded from: `tenantId IN [caller, SYSTEM]`, and the
+   * SYSTEM half narrowed to the platform template library ({@link PUBLISHED_AND_ACTIVE}).
+   * Returns `null` for every other id, so the caller maps a foreign tenant's definition to a
+   * 404 exactly like a nonexistent one (404-over-403).
+   *
+   * `client` is REQUIRED and is the UNSCOPED base client. `WorkflowDefinition` is deliberately
+   * NOT a `SYSTEM_SHARED_READ_MODELS` member (`tenant-scope.ts`: "the SYSTEM-tenant
+   * platform-default rows reach a tenant via the clone path, not shared read"), so the extended
+   * client would THROW on the SYSTEM branch of this filter rather than serve it. Widening the
+   * allow-list instead would leak SYSTEM rows into every tenant's `list()`, where `getById`
+   * then 404s them. The tenant pin therefore lives HERE, explicitly, in the only query that is
+   * allowed to see two tenants — the same posture (and the same justification) as
+   * `TenantService.provisionTenantDepartmentCatalog`'s golden-department read.
+   *
+   * A tenant's OWN row is clonable at any status: forking your own draft is the ordinary case.
+   * A SYSTEM row must be PUBLISHED + ACTIVE — a SYSTEM draft is unreleased platform work.
+   */
+  async findCloneSource(id: string, tenantId: string, client: unknown): Promise<WorkflowDefinitionEntity | null> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors findMaxVersionNumber; the caller-supplied client's delegate shape isn't exposed through DomainModel typings.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const row = await model.findFirst({
+      where: {
+        id,
+        resourceStatus: ResourceStatusType.ENABLED,
+        OR: [{ tenantId }, { tenantId: SYSTEM_TENANT_ID, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE }],
+      },
+    });
+    return row ? WorkflowDefinitionEntityMapper.getInstance().toDomainEntity(row) : null;
+  }
+
+  /**
+   * TASK-856 — the platform template library: the SYSTEM tenant's live published definitions,
+   * one row per slug (the movable `isActive` pointer guarantees that). Same
+   * {@link PUBLISHED_AND_ACTIVE} predicate `findCloneSource` accepts for a SYSTEM source, so
+   * what a tenant can SEE in the library and what it can CLONE are the same set by
+   * construction — a listed template that then refuses to clone would be the exact gap that
+   * constant exists to prevent.
+   *
+   * Takes the UNSCOPED client for the reason spelled out on `findCloneSource`.
+   */
+  async findSystemTemplates(client: unknown): Promise<WorkflowDefinitionEntity[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findCloneSource.
+    const model: any = (client as Record<string, any>)[this._modelName];
+    const rows = await model.findMany({
+      where: { tenantId: SYSTEM_TENANT_ID, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE },
+      orderBy: [{ paletteKey: 'asc' }, { slug: 'asc' }],
+    });
+    const mapper = WorkflowDefinitionEntityMapper.getInstance();
+    return rows.map((row: WorkflowDefinition) => mapper.toDomainEntity(row));
   }
 
   /**
