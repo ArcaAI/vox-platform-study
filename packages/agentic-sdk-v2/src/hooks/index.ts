@@ -21,6 +21,7 @@ export {
 export { useArcaContext } from './useArcaContext';
 export { useArcaSummary } from './useArcaSummary';
 export { useArcaLiveSummary, type UseArcaLiveSummaryReturn, type LiveSummaryStreamStatus } from './useArcaLiveSummary';
+export { useArcaLiveAssist, type UseArcaLiveAssistReturn, type LiveAssistStreamStatus } from './useArcaLiveAssist';
 export { useArcaPipelines } from './useArcaPipelines';
 export type { UseArcaPipelineControl } from './useArcaPipelines';
 

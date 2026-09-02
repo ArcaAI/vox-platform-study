@@ -233,21 +233,37 @@ labels only.
 > there is no server-side buffer for this stream. If you need a complete
 > history, read it from where the loop persists its own record.
 
-### 2.5 Grammar corrections and suggestions — not available through the SDK
+### 2.5 Grammar corrections and suggestions
 
-This is a real gap, not an omission in this guide.
+The `agent.grammar` node publishes to a **fourth** stream,
+`GET /api/v1/consultations/{id}/live-assist/stream` (ticket scope
+`consultation_live_assist:<id>`), read with `useArcaLiveAssist`:
 
-The `agent.grammar` node publishes corrections to a **fourth** stream,
-`GET /api/v1/consultations/{id}/live-assist/stream`, with ticket scope
-`consultation_live_assist:<id>`. `@arcaai/vox` has no hook, no endpoint constant
-and no scope helper for it — the whole package contains zero references to
-`live-assist`.
+```tsx
+const assist = useArcaLiveAssist(consultation.id);  // omit the id to drive start()/stop() yourself
+
+assist.suggestions   // LiveAssistSuggestion[] — { suggestionId, text, category?, … }
+assist.corrections   // LiveAssistCorrections | null — { proposals, applied, textSha256? }
+assist.lastEvent     // the raw full-state snapshot
+assist.connected     // status === 'open'
+```
+
+Each event is a **full-state snapshot carrying both branches** — the gateway
+folds back the branch a publish did not carry — so keep only the latest and
+never merge successive events: an absent branch means "there are none", and
+re-merging resurrects withdrawn PHI. Unlike the live-summary feed there is **no
+terminal event**; the client closes it (`stop()`, unmount, or an id change).
+
+**Nothing here has been applied.** `corrections.applied` is `false` under
+proposal-first — the clinician decides. Each proposal's `start`/`end` are
+character offsets into the text named by `corrections.textSha256`; check that
+hash against the text you are about to patch, or the offsets may land on
+drifted content. The feed carries PHI: `original` quotes the clinician's own
+text verbatim.
 
 They are **not** on `useConsultationEvents` (the loop stream carries ids and
 labels only) and **not** on `useArcaLiveSummary` (that DTO has no `corrections`
-field). Rendering them today means hand-rolling an `EventSource` against that
-route with a ticket you mint yourself. Closing this properly means a
-`useConsultationAssist` hook modeled on `useArcaLiveSummary`.
+field).
 
 ### 2.6 Stop, and finalize
 
@@ -262,13 +278,12 @@ await generateSummary({ /* … */ });   // or generateSummaryAsync for SSE progr
 await session.close();
 ```
 
-> ⚠️ **`session.close()` is broken today.** `POST /consultations/{id}/close`
-> carries `@RequiresIfMatch()` (`requiresIfMatch: true` in the manifest), but the
-> SDK sends a plain `apiClient.post(...)` with no headers
-> (`useArcaSession.ts:319`), so the gateway answers **428 Precondition
-> Required**. `reopen` and `prime` are the same shape. Until this is fixed, close
-> a consultation with `update({ status })`, which does go through
-> `patchWithIfMatch` (`useArcaSession.ts:288`).
+> **`close()`, `reopen()` and `prime()` are optimistically concurrent.** All
+> three routes carry `@RequiresIfMatch()`, so the SDK echoes the strong
+> validator it read with the consultation and refreshes it from the response.
+> A `412` surfaces as a `ConfigConflictError` — re-load the consultation and
+> retry. (`prime()` is new: previously only the route existed, and `close()` /
+> `reopen()` sent no `If-Match` at all, so every call answered 428.)
 
 ### Routes behind this section
 
@@ -279,7 +294,7 @@ await session.close();
 | `GET /api/v1/consultations/{id}/workflow` | JWT or API key | `consultation:session:read` |
 | `GET /api/v1/consultations/{id}/live-summary/stream` | **JWT** (ticket) | `consultation:session:write` |
 | `GET /api/v1/consultations/{id}/loop/stream` | **JWT** (ticket) | `consultation:session:write` |
-| `GET /api/v1/consultations/{id}/live-assist/stream` | **JWT** (ticket) | `consultation:session:write` — no SDK hook |
+| `GET /api/v1/consultations/{id}/live-assist/stream` | **JWT** (ticket) | `consultation:session:write` |
 | `POST /api/v1/consultations/{id}/summary` | JWT or API key | `consultation:report:write` |
 | `POST /api/v1/consultations/{id}/close` | JWT or API key | `consultation:session:write` · **If-Match required** |
 
@@ -526,11 +541,8 @@ Hold the stream (`runAndStream` / `streamRun`), or poll `getRun` until
 | # | Gap | Impact |
 |---|---|---|
 | G9 | No `WorkflowRun` sys-event; terminal status only written on a lazy read | No "run completed" webhook; a fire-and-forget run stays `RUNNING` forever |
-| — | No SDK surface for `live-assist/stream` | Grammar corrections and suggestions cannot be rendered with `@arcaai/vox` |
 | — | No business-plane run listing | A run is reachable only by a `runId` you kept |
-| — | `AudioStartOptions` not exported from any entry point | Cannot be imported as a type; pass an object literal |
 | — | `useConsultationEvents` has no resume | Frames published while disconnected are lost, with no server-side buffer |
-| — | `session.close()`/`reopen()`/`prime()` send no `If-Match` against routes that require it | Every call returns 428; use `update({ status })` instead |
 
 ## Further reading
 
