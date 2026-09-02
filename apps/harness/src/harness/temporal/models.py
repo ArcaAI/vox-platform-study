@@ -756,6 +756,61 @@ class DispatchBatchTranscriptionOutput(BaseModel):
     timed_out: bool = False
 
 
+class SpeechSynthesisInput(BaseModel):
+    """Inputs for the ``dispatch_speech_synthesis`` activity (TASK-849 lane B, step 5).
+
+    The TTS mirror of :class:`DispatchBatchTranscriptionInput`, and deliberately the same
+    SHAPE: harness names what it wants by REFERENCE and apps/api resolves it. ``voice`` is an
+    identifier within the tenant's resolved voice catalogue — never a provider voice name, never
+    an endpoint, never a credential. Which provider serves it, on whose key, comes off the
+    tenant's ``TenantTtsConfig`` routing chains and ``AiProviderConnection`` rows on the gateway
+    side, through the standard tenant → SYSTEM cascade the harness holds no handle to.
+
+    There is no ``consultation_id`` idempotency correlator here, unlike the STT input: synthesis
+    creates no job row to deduplicate against. It is a pure function of (text, voice, format,
+    speed), and the artifact key is the sha256 of the AUDIO, so a retried activity attempt
+    re-synthesises and writes to the SAME content-addressed key — idempotent by construction
+    rather than by bookkeeping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    text: str
+    voice: str
+    # `format` shadows no builtin here but reads badly next to `response_format` on the wire;
+    # named for the node's own config key so the two are greppable together.
+    audio_format: str | None = None
+    speed: float | None = None
+    language: str | None = None
+
+
+class SpeechSynthesisResult(BaseModel):
+    """Output of ``dispatch_speech_synthesis``: the synthesised audio, in order.
+
+    ``chunks`` is a LIST rather than one blob because the delta lane replays them in the order
+    apps/tts produced them — a browser can start playing the first frame before the last one
+    exists. The concatenation is the artifact.
+
+    **This model never becomes an activity RESULT.** ``dispatch_speech_synthesis`` is called as a
+    plain coroutine from inside ``interpreter.agentic_tts`` (exactly as ``agentic.stt`` calls
+    ``dispatch_batch_transcription``), so the bytes live and die as a local variable inside one
+    activity body. What Temporal records is the claim-check ref the node returns.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    chunks: list[bytes] = Field(default_factory=list)
+    content_type: str = "application/octet-stream"
+    provider: str | None = None
+    characters: int = 0
+
+    @property
+    def audio(self) -> bytes:
+        """The whole artifact — every chunk, in order."""
+        return b"".join(self.chunks)
+
+
 class RunSensorsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

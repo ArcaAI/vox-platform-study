@@ -9,7 +9,6 @@ import {
   SecretsService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
-import type { ProviderOverrides } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -20,6 +19,7 @@ import type { AxiosError } from 'axios';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import type { Response } from 'express';
 import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
+import { resolveTtsTenantConfig } from './tts-tenant-config';
 import { RequiredScopes } from '../../decorators';
 
 // Raw s16le mono PCM: 2 bytes/sample. WAV carries the same payload behind a
@@ -110,16 +110,13 @@ export class SpeechProxyController {
     const tenantId = this.cls?.get('tenantId');
     if (!this.tenantTtsConfig || !tenantId) return body;
     try {
-      const [eff, resolved] = await Promise.all([
-        this.tenantTtsConfig.getEffective(tenantId),
-        this.providerConnectionService
-          ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId)
-          : Promise.resolve({ overrides: {} as ProviderOverrides }),
-      ]);
-      // The map now spans two tiers (the tenant's own rows over the
-      // SYSTEM-tenant platform default) and each entry carries its `funding`,
-      // which `classifyTtsProvider` reads back to stamp the usage row.
-      const overrides = resolved.overrides;
+      // The RESOLVE is shared with the harness's internal synthesis route
+      // (`tts-tenant-config.ts`); the MAPPING below stays here, because this route honours a
+      // caller-supplied format/speed and that one takes the workflow node's config.
+      const { eff, overrides } = await resolveTtsTenantConfig(tenantId, {
+        tenantTtsConfig: this.tenantTtsConfig,
+        providerConnectionService: this.providerConnectionService,
+      });
       return {
         ...body,
         response_format: body.response_format ?? (eff.defaultFormat as 'pcm' | 'wav' | 'mp3'),

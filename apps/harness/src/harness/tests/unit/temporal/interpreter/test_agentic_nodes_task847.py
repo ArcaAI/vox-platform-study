@@ -101,16 +101,21 @@ class TestObservableNonExecution:
         assert result.status == "DEGRADED"
         assert "TASK-848" in (result.reason or "")
 
-    async def test_tts_degrades_and_names_the_ticket_that_owns_the_transport(self) -> None:
-        result = await agentic.interpreter_agentic_tts(_payload("agentic.tts"))
-        assert result.status == "DEGRADED"
-        assert "TASK-849" in (result.reason or "")
-
-    async def test_neither_ever_claims_to_have_produced_anything(self) -> None:
-        for fn in (agentic.interpreter_agentic_loop, agentic.interpreter_agentic_tts):
-            result = await fn(_payload("agentic.loop"))
-            assert result.status != "SUCCEEDED"
-            assert not result.output
+    # TASK-849 lane B NARROWED this class from two node types to one, deliberately.
+    #
+    # `agentic.tts` is now REAL — it dispatches synthesis and writes an audio artifact — so a
+    # test asserting it can never report SUCCEEDED would fail for the RIGHT reason and be
+    # "fixed" by deleting the guard on `agentic.loop` alongside it. `agentic.loop`'s pin STAYS,
+    # and it is still load-bearing for a subtler reason than before: TASK-848 made the loop real
+    # via a CHILD WORKFLOW, and this activity is the REPLAY-ONLY path that survives for
+    # histories recorded before that gate. It must never start claiming iterations it did not
+    # run. `agentic.tts`'s own honesty is pinned by `test_task849_agentic_tts.py`
+    # (`TestItStillResolvesNothingItself`), which asserts every unresolvable binding still
+    # degrades and produces no output — the same property, moved to where the behaviour lives.
+    async def test_the_loop_never_claims_to_have_produced_anything(self) -> None:
+        result = await agentic.interpreter_agentic_loop(_payload("agentic.loop"))
+        assert result.status != "SUCCEEDED"
+        assert not result.output
 
 
 class TestInputNode:

@@ -1,0 +1,329 @@
+import {
+  IActiveUserContext,
+  IConfigService,
+  IEntitlementsService,
+  IProviderConnectionService,
+  ITenantTtsConfigService,
+  IUsageLedgerService,
+  SecretsService,
+  UsageIdempotencyKey,
+} from '@arcaai/applications';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
+import { HttpService } from '@nestjs/axios';
+import { BadRequestException, Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, UseGuards } from '@nestjs/common';
+import { ApiExcludeController, ApiOperation, ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { AxiosError } from 'axios';
+import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ClsService } from 'nestjs-cls';
+
+import { Public } from '../../decorators';
+import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
+import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.guard';
+import { classifyTtsProvider } from './tts-provider-classification';
+import { resolveTtsTenantConfig } from './tts-tenant-config';
+
+// Raw s16le mono PCM: 2 bytes/sample; WAV carries the same payload behind a fixed 44-byte
+// header. Same constants (and same reason) as `speech-proxy.controller.ts`.
+const PCM_BYTES_PER_SAMPLE = 2;
+const WAV_HEADER_BYTES = 44;
+
+/** `apps/tts` accepts these; the node's own config schema declares the same set plus `ogg`. */
+const SUPPORTED_FORMATS = ['pcm', 'wav', 'mp3'] as const;
+
+class HarnessSynthesizeSpeechRequest {
+  @ApiProperty({ description: 'Tenant the harness is acting on behalf of. Never optional — synthesis must be attributable.' })
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiProperty({ description: 'Text to synthesize (the workflow node`s bound `in` port).' })
+  @IsString()
+  @IsNotEmpty()
+  // `apps/tts` owns the real ceiling (`max_input_chars`) and answers 413; this is a floor on
+  // nonsense so a runaway graph cannot post a megabyte before the quota check even runs.
+  @MaxLength(100_000)
+  text: string;
+
+  @ApiProperty({ description: 'Voice identifier within the tenant`s resolved catalogue — never a provider voice name.' })
+  @IsString()
+  @IsNotEmpty()
+  voice: string;
+
+  @ApiPropertyOptional({ description: 'Audio format. Omitted ⇒ the tenant`s configured default.' })
+  @IsOptional()
+  @IsIn(SUPPORTED_FORMATS)
+  format?: (typeof SUPPORTED_FORMATS)[number];
+
+  @ApiPropertyOptional({ description: 'Speaking rate. Omitted ⇒ the tenant`s configured default.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.25)
+  @Max(4)
+  speed?: number;
+
+  @ApiPropertyOptional({ description: 'BCP-47 hint.' })
+  @IsOptional()
+  @IsString()
+  language?: string;
+}
+
+class HarnessSynthesizeSpeechResponse {
+  @ApiProperty({ description: 'The whole synthesized artifact, base64-encoded.' })
+  audioBase64: string;
+
+  @ApiProperty({ description: 'MIME type of the decoded audio (audio/pcm, audio/wav, audio/mpeg).' })
+  contentType: string;
+
+  @ApiPropertyOptional({ description: 'Which provider won failover, as reported by apps/tts.' })
+  provider?: string;
+
+  @ApiProperty({ description: 'Characters apps/tts accepted — the metered unit.' })
+  characters: number;
+}
+
+/**
+ * HarnessTtsInternalController — the `agentic.tts` node's synthesis dispatch (TASK-849 lane B).
+ *
+ * The TTS counterpart of `internal/harness/stt/batch-jobs`, and the same division of labour: the
+ * harness names WHAT to synthesize and in WHICH voice, and this gateway resolves everything the
+ * tenant owns around it — routing chains, allowed providers, BYO credentials, voice bindings,
+ * the character quota and the usage row — through the SAME `TenantTtsConfig` /
+ * `AiProviderConnection` cascade `SpeechProxyController` already uses (`tts-tenant-config.ts`).
+ *
+ * ## Why this route exists rather than harness calling apps/tts directly
+ *
+ * `apps/tts` is the reference STATELESS, gateway-injected-config service (rule 06 §Per-tenant
+ * config): it opens no DB connection and holds no credential, so every caller must arrive with
+ * the tenant's resolved configuration already folded into the body. A Temporal worker has no DB
+ * handle and no Vault client by design, so it cannot fold anything — a harness→tts direct call
+ * could only run on `apps/tts`'s own static settings, which is a platform default silently
+ * winning over a tenant's own configuration: the exact cascade bypass §3.4 rule 16 exists to
+ * prevent, and one that would mis-derive BYOK vs CLOUD funding while it did so.
+ *
+ * ## Why it lives in the speech module, not on `HarnessInternalController`
+ *
+ * Every dependency it needs is already imported HERE (`SpeechModule` wires the TTS config
+ * resolver, the provider-connection plane, the usage ledger and the entitlements port).
+ * Putting it on the consultation module's harness controller would mean threading five more
+ * optional providers through a constructor that already carries fourteen, to reach services
+ * that module has no other reason to know about.
+ *
+ * BATCH, never SSE — the same rule the STT poll route records: a Temporal activity is not a
+ * long-lived connection. The browser's live view of a synthesis is served from the run's Redis
+ * delta lane, which the node writes each frame to; this route is what a retriable activity can
+ * actually re-issue.
+ *
+ * `@Public()` exempts it from the user-JWT chain and the boot-time route-permission audit; it is
+ * authenticated service-to-service by `HarnessServiceTokenGuard`, exactly as every other
+ * `internal/harness/*` route is. `@Public()` only sets the skip-auth label — it does not disable
+ * the explicitly applied token guard.
+ */
+@ApiExcludeController()
+@Public()
+@UseGuards(HarnessServiceTokenGuard)
+@Controller('internal/harness/tts')
+export class HarnessTtsInternalController {
+  private readonly logger = new Logger(HarnessTtsInternalController.name);
+
+  constructor(
+    private readonly httpService: HttpService,
+    @Inject(IConfigService) private readonly configService: IConfigService,
+    private readonly cls: ClsService<IActiveUserContext>,
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // All four are `@Optional()` for the reason `SpeechProxyController` records: positional test
+    // construction keeps its arity, and a stack without them still boots. Absent config/overrides
+    // ⇒ apps/tts falls back to its own settings (fail-open, synthesis still happens); absent
+    // ledger/entitlements ⇒ no metering and no quota check, never a blocked synthesis.
+    @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
+  ) {}
+
+  @Post('synthesize')
+  @ApiOperation({ summary: 'Synthesize speech for an agentic.tts workflow node (batch, service-to-service)' })
+  async synthesize(@Body() dto: HarnessSynthesizeSpeechRequest): Promise<HarnessSynthesizeSpeechResponse> {
+    const base = this.configService.getConfigValue('TTS_URL');
+    if (!base) {
+      throw new BadRequestException('TTS is not wired on this deployment');
+    }
+
+    // The harness calls out-of-band of the API edge CLS middleware, so tenant context is
+    // re-established from the body — the same thing every `internal/harness/*` route does. The
+    // tenant-scope Prisma extension reads it, so both service calls below MUST run inside it.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+
+      const forwardBody = await this.buildForwardBody(dto);
+
+      // PRE-FLIGHT `monthlyTtsCharacters`, before any upstream call. Unicode CODE POINTS, the
+      // CHARACTER unit's own counting rule — `.length` would over-count surrogate pairs.
+      const characterEstimate = [...dto.text].length;
+      if (this.entitlementsService) {
+        await this.entitlementsService.assertMeterQuota(dto.tenantId, 'monthlyTtsCharacters', characterEstimate);
+      }
+
+      let upstream;
+      try {
+        upstream = await this.httpService.axiosRef.post(`${base}/api/v1/audio/speech`, forwardBody, {
+          headers: this.forwardHeaders(),
+          responseType: 'arraybuffer',
+          timeout: 300_000,
+        });
+      } catch (err) {
+        throw this.upstreamException(err);
+      }
+
+      const audio = Buffer.from(upstream.data as ArrayBuffer);
+      const headers = upstream.headers as Record<string, unknown>;
+      const provider = (headers['x-tts-provider'] as string | undefined) || undefined;
+      const characters = this.characterCount(headers, characterEstimate);
+
+      this.emitUsage({
+        tenantId: dto.tenantId,
+        provider,
+        characters,
+        audioSeconds: this.audioSeconds(headers, audio.length),
+        overrides: forwardBody.provider_overrides,
+      });
+
+      return {
+        audioBase64: audio.toString('base64'),
+        contentType: (headers['content-type'] as string | undefined) ?? 'application/octet-stream',
+        provider,
+        characters,
+      };
+    });
+  }
+
+  /**
+   * Fold the tenant's resolved TTS configuration onto the node's request.
+   *
+   * Fails OPEN, exactly as the user-facing proxy does: a config-resolution error degrades to
+   * apps/tts's own settings rather than failing a synthesis. It is logged, never swallowed
+   * silently — a run that quietly stopped honouring a tenant's provider chain is worth seeing.
+   */
+  private async buildForwardBody(dto: HarnessSynthesizeSpeechRequest): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { input: dto.text, voice: dto.voice };
+    if (dto.format) body.response_format = dto.format;
+    if (dto.speed !== undefined) body.speed = dto.speed;
+
+    if (!this.tenantTtsConfig) return body;
+    try {
+      const { eff, overrides } = await resolveTtsTenantConfig(dto.tenantId, {
+        tenantTtsConfig: this.tenantTtsConfig,
+        providerConnectionService: this.providerConnectionService,
+      });
+      return {
+        ...body,
+        response_format: dto.format ?? eff.defaultFormat,
+        speed: dto.speed ?? eff.defaultSpeed,
+        routing_en: eff.routingEn,
+        routing_ml: eff.routingMl,
+        allowed_providers: eff.allowedProviders,
+        ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
+        ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
+      };
+    } catch (err) {
+      this.logger.warn({
+        message: 'Tenant TTS config resolve failed for a harness synthesis; forwarding with service defaults',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return body;
+    }
+  }
+
+  private forwardHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/octet-stream' };
+    const serviceToken = this.secretsService?.getSecretSync('TTS_SERVICE_TOKEN');
+    if (serviceToken) {
+      headers['X-Service-Token'] = serviceToken;
+    }
+    return headers;
+  }
+
+  /** apps/tts's own ACCEPTED count when it reported one; the pre-flight estimate otherwise. */
+  private characterCount(headers: Record<string, unknown>, fallback: number): number {
+    const header = headers['x-tts-characters'];
+    const parsed = typeof header === 'string' ? Number(header) : NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  }
+
+  /**
+   * Prefers tts's own EXACT duration (batch mode carries `X-Tts-Audio-Seconds`); falls back to
+   * the same PCM/WAV byte math tts uses internally. MP3 is not derivable from a byte count.
+   */
+  private audioSeconds(headers: Record<string, unknown>, bytes: number): number | null {
+    const exact = headers['x-tts-audio-seconds'];
+    if (typeof exact === 'string' && exact.length > 0) {
+      const parsed = Number(exact);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const sampleRate = Number(headers['x-tts-sample-rate']);
+    const format = headers['x-tts-audio-format'];
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0 || bytes <= 0) return null;
+    if (format === 'pcm') return bytes / (PCM_BYTES_PER_SAMPLE * sampleRate);
+    if (format === 'wav') {
+      const payload = bytes - WAV_HEADER_BYTES;
+      return payload > 0 ? payload / (PCM_BYTES_PER_SAMPLE * sampleRate) : null;
+    }
+    return null;
+  }
+
+  /**
+   * Stamp the CHARACTER + AUDIO_SECOND usage row. Fire-and-forget and fail-open: synthesis has
+   * already happened, so a metering failure must never surface to the caller.
+   *
+   * `funding` is DERIVED from the override entry the cascade actually supplied
+   * (`classifyTtsProvider`), never stamped by this call site — a call site that stamps it
+   * mis-bills silently.
+   */
+  private emitUsage(args: { tenantId: string; provider?: string; characters: number; audioSeconds: number | null; overrides?: unknown }): void {
+    if (!this.usageLedger) return;
+    const { deployment, costBasis } = args.provider
+      ? classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1])
+      : { deployment: undefined, costBasis: undefined };
+    const requestId = generateId();
+    this.usageLedger
+      .recordUsage({
+        common: {
+          tenantId: args.tenantId,
+          idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+          occurredAt: new Date(),
+          capability: AiCapability.TTS,
+          operation: 'tts.synthesize',
+          provider: args.provider ?? 'none',
+          model: null,
+          deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+          ...(costBasis ? { costBasis } : {}),
+          requestId,
+          // No `attributesJson`. `UsageAttributes` is a deliberately CLOSED allow-list that
+          // keeps PHI and free text out of the ledger, and none of its declared keys means
+          // "which internal surface called this" — `endpointKind` is which API shape the
+          // normalizer branched on. Widening the allow-list for a provenance nicety would
+          // trade that guarantee for nothing the row does not already carry via `operation`.
+        },
+        units: [
+          { unit: AiUsageUnit.CHARACTER, quantity: args.characters },
+          ...(args.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: args.audioSeconds }] : []),
+        ],
+      })
+      .catch((err: unknown) => {
+        this.logger.warn({
+          message: 'TTS usage emission failed for a harness synthesis',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
+  /** Never forward or log the upstream body — a synthesis error can echo the input text (PHI). */
+  private upstreamException(err: unknown): HttpException {
+    const status = (err as AxiosError)?.response?.status;
+    this.logger.error({ message: 'TTS upstream error for a harness synthesis (body redacted — may contain PHI)', upstreamStatus: status });
+    if (typeof status === 'number') {
+      return new HttpException({ detail: 'TTS synthesize failed' }, status);
+    }
+    const kind = classifyDownstreamFailure(err);
+    return new HttpException({ detail: 'TTS synthesize failed' }, kind ? downstreamStatusFor(kind) : HttpStatus.BAD_GATEWAY);
+  }
+}

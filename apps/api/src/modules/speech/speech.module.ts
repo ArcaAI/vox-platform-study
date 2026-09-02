@@ -7,6 +7,7 @@ import {
 } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
+import { HarnessTtsInternalController } from './harness-tts-internal.controller';
 import { SpeechProxyController } from './speech-proxy.controller';
 import { TtsWsGateway } from './tts-ws.gateway';
 
@@ -35,7 +36,12 @@ import { TtsWsGateway } from './tts-ws.gateway';
     // not break the build — it refuses every browser origin instead.
     OriginRegistryServiceModule,
   ],
-  controllers: [SpeechProxyController],
+  // `HarnessTtsInternalController` is the `agentic.tts` node's synthesis dispatch
+  // (TASK-849 lane B). It lives here rather than on the consultation module's harness
+  // controller because every dependency it needs — the TTS config resolver, the
+  // provider-connection plane, the usage ledger, the entitlements port — is already
+  // imported above; see that controller's own docstring.
+  controllers: [SpeechProxyController, HarnessTtsInternalController],
   providers: [TtsWsGateway],
 })
 export class SpeechModule {}
