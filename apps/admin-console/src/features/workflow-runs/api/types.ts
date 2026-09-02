@@ -207,7 +207,17 @@ export interface WorkflowNodeEventPayload {
 }
 
 /** Payload shape for `workflow.run.progress` / `workflow.run.completed` (the snapshot
- *  frame — `WorkflowRunEventPayload` in `workflow-run-event.ts`). */
+ *  frame — `WorkflowRunEventPayload` in `workflow-run-event.ts`). Emitted by the GATEWAY
+ *  itself (`buildWorkflowRunEventEnvelope`) exactly twice per connection at most — once on
+ *  connect, once more on a trimmed-gap resync.
+ *
+ *  **`workflow.run.completed` is dual-shaped — read `payload.stages` before trusting either
+ *  shape.** The harness's own control-lane mirror (`_envelope_for`'s `EVENT_RUN_COMPLETED`
+ *  branch, `apps/harness/.../interpreter/activities.py`) ALSO emits an envelope of this exact
+ *  type, forwarded raw by `WorkflowStreamService` — but shaped as {@link WorkflowNodeEventPayload}
+ *  (just `status`/`reason`, no `stages`), not this snapshot shape. A consumer that assumes every
+ *  `workflow.run.completed` frame carries `stages` will read `undefined` on the harness-forwarded
+ *  one; treat `stages` as optional-in-practice on this type and narrow on its presence. */
 export interface WorkflowRunSnapshotPayload {
   runId: string;
   slug: string;
@@ -217,3 +227,36 @@ export interface WorkflowRunSnapshotPayload {
   startedAt: string | null;
   endedAt: string | null;
 }
+
+/**
+ * Payload shape for `workflow.token.delta` — the DELTA lane
+ * (`RunEventProducer.emit_token_delta`, `run_events.py`). Never routed through Temporal
+ * (`test_task849_two_lane_split.py` measures that split); this is the one event type that
+ * makes the debug surface feel live rather than a status poller, since it is the only frame
+ * that arrives mid-node rather than at a node boundary. `sequence` is per-`nodeId`, monotonic
+ * within one run — a consumer that needs ordering across a reconnect must key on it, though
+ * today's client (`api/live-events.ts`) simply appends in arrival order within one connection.
+ */
+export interface WorkflowTokenDeltaPayload {
+  nodeId: string;
+  sequence: number;
+  text: string;
+}
+
+/**
+ * The seven event `type` strings a run's SSE stream can carry (`CONTROL_EVENT_TYPES` +
+ * `DELTA_EVENT_TYPES` in `run_events.py`, plus the gateway's own `workflow.run.progress`
+ * snapshot frame which the harness never emits). Kept here as the single documented
+ * enumeration; the runtime string constants live in `api/live-events.ts` (`WORKFLOW_*`) so
+ * `useEventStream`'s `eventNames` list and this union can never silently drift from each other
+ * — update both together.
+ */
+export type WorkflowRunEventType =
+  | 'workflow.run.progress'
+  | 'workflow.run.completed'
+  | 'workflow.node.started'
+  | 'workflow.node.completed'
+  | 'workflow.node.failed'
+  | 'workflow.loop.iteration'
+  | 'workflow.guardrail.verdict'
+  | 'workflow.token.delta';
