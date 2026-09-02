@@ -12,7 +12,7 @@ export default function LlmError({ reset }: { error: Error & { digest?: string }
           <EmptyMedia variant="icon">
             <IconAlertTriangle />
           </EmptyMedia>
-          <EmptyTitle>Agent Playground failed to load</EmptyTitle>
+          <EmptyTitle>LLM Playground failed to load</EmptyTitle>
           <EmptyDescription>The rest of the console keeps working. Try the screen again.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>

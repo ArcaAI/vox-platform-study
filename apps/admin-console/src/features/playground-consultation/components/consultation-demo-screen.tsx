@@ -24,7 +24,15 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AgenticProvider, useArca, useArcaLiveSummary, useArcaSttLanguageModes, useStoreApi } from '@arcaai/vox';
+import {
+  AgenticProvider,
+  useArca,
+  useArcaLiveSummary,
+  useArcaSttLanguageModes,
+  useConsultationWorkflow,
+  useSelectableConsultationWorkflows,
+  useStoreApi,
+} from '@arcaai/vox';
 import { toast } from 'sonner';
 import { GatewayError } from '@/shared/api';
 import { PURPOSE_META, grantLifecycle, isConsentDenied, usePatientConsentGrants } from '@/features/consent/api';
@@ -67,6 +75,7 @@ import { useLiveMetrics } from '../hooks/use-live-metrics';
 import { useNoteEditor, type EditableDraft } from '../hooks/use-note-editor';
 import { CaseNoteColumn } from './scribe/case-note-column';
 import { ConsultationsColumn, type ConsultationListRow } from './scribe/consultations-column';
+import { GoverningWorkflowMeta } from './scribe/governing-workflow-meta';
 import { LiveSessionColumn, type SdkTranscriptSegment, type TranscriptReviewHighlight } from './scribe/live-session-column';
 import { ScribeFooter } from './scribe/scribe-footer';
 
@@ -228,6 +237,13 @@ function ScribeWorkspace() {
   // feeds the workflow-assignment cascade); `dnaStyleId` is bound at GENERATE.
   const [departmentId, setDepartmentId] = useState('');
   const [dnaStyleId, setDnaStyleId] = useState('');
+  // TASK-858 Lane D — which PUBLISHED consultation workflow governs the session being opened.
+  // Bound at OPEN like `departmentId` (it is a property of the consultation, not of the
+  // capture). EMPTY IS THE DEFAULT and means "send no slug": the department → tenant
+  // WorkflowAssignment cascade decides, which is what the tenant configured. Preselecting the
+  // tenant default would have sent a slug on every open and silently overridden a DEPARTMENT
+  // assignment — `isTenantDefault` describes the tenant tier, not this consultation.
+  const [workflowChoice, setWorkflowChoice] = useState('');
   const languageModes = useArcaSttLanguageModes();
   // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
@@ -236,6 +252,16 @@ function ScribeWorkspace() {
 
   const pipelines = useAudioPipelines();
   const departments = useScopingDepartments();
+  /**
+   * TASK-858 Lane D — the selectable workflow set and the governing read-back, both from
+   * TASK-813 and both previously uncalled anywhere in the console.
+   *
+   * `workflows.workflows` is deliberately tri-state (`null` could-not-ask vs `[]` none
+   * published) and both hooks fail OPEN — a discovery read must never stop a consultation.
+   * Nothing is preselected: the default is to send no slug and let the assignment cascade
+   * decide. `tenantDefault` is surfaced in the picker as a HINT about the tenant tier.
+   */
+  const selectableWorkflows = useSelectableConsultationWorkflows();
   const dnaStyles = useDnaStyleOptions();
   const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
   const pipelineId = pipelineChoice || defaultPipelineId;
@@ -253,6 +279,9 @@ function ScribeWorkspace() {
   const summaryEdit = useUpdateSummary();
 
   const consultationId = consultation?.id ?? null;
+  // Which engine ACTUALLY took the consultation — a selection at open is not a guarantee
+  // (dispatch is best-effort so a harness outage never blocks an open).
+  const governingWorkflow = useConsultationWorkflow(consultationId ?? undefined);
   const isRecording = (consultation?.status ?? '').toUpperCase() === 'RECORDING';
   const isClosed = (consultation?.status ?? '').toUpperCase() === 'CLOSED';
 
@@ -385,11 +414,16 @@ function ScribeWorkspace() {
     }
   }
 
-  async function handleOpenPatient(patientId: string, department?: string) {
+  async function handleOpenPatient(patientId: string, department?: string, workflowDefinitionSlug?: string) {
     try {
-      // `departmentId` reaches the gateway DTO verbatim; the SDK forwards the
-      // input object as the request body.
-      const opened = await sdkSession.open({ patientId, ...(department ? { departmentId: department } : {}) });
+      // `departmentId` and `workflowDefinitionSlug` reach the gateway DTO verbatim; the SDK
+      // forwards the input object as the request body. The slug is authorized by the same
+      // predicate that produced the selectable list, so anything offered here is accepted.
+      const opened = await sdkSession.open({
+        patientId,
+        ...(department ? { departmentId: department } : {}),
+        ...(workflowDefinitionSlug ? { workflowDefinitionSlug } : {}),
+      });
       const row: ConsultationListRow = {
         id: opened.id,
         patientId: opened.patientId,
@@ -585,7 +619,18 @@ function ScribeWorkspace() {
     // gives the workspace the page-level h1 it previously lacked (rule 11 §6).
     <ScreenTemplate
       contentMode="fill"
-      header={<PageHeader title="Consultation Scribe" meta="Live capture → transcription → personalized note → sign-off, on @arcaai/vox." />}
+      header={
+        <PageHeader
+          title="Consultation Scribe"
+          meta={
+            <>
+              <span>Live capture → transcription → personalized note → sign-off, on @arcaai/vox.</span>
+              {/* Which engine is actually writing this note (TASK-858 Lane D). */}
+              <GoverningWorkflowMeta workflow={governingWorkflow.workflow} isLoading={governingWorkflow.isLoading} hasConsultation={!!consultationId} />
+            </>
+          }
+        />
+      }
       footer={
         <ScribeFooter
           transcriptionModels={transcriptionModels}
@@ -637,6 +682,12 @@ function ScribeWorkspace() {
               departmentsError={departments.isError}
               selectedDepartmentId={departmentId}
               onDepartmentChange={setDepartmentId}
+              // The workflow the clinician picks at open. Tri-state by design: `null` reaches
+              // the column as "could not read", `[]` as "none published" (rule 11 §5).
+              workflows={selectableWorkflows.workflows}
+              workflowsLoading={selectableWorkflows.isLoading}
+              selectedWorkflowSlug={workflowChoice}
+              onWorkflowChange={setWorkflowChoice}
             />
           </ResizablePanel>
           <ResizableHandle withHandle />

@@ -1,5 +1,5 @@
 /**
- * Agent Playground Guardrails tab. fetch is stubbed at the network
+ * LLM Playground Guardrails tab. fetch is stubbed at the network
  * boundary; covers the idle prompt, the analyze flow (POST to the safety-checks
  * proxy), and the safe/unsafe verdict with issues + confidence.
  */
