@@ -94,7 +94,22 @@ describe('WorkflowsController', () => {
 
     await controller.streamRunStatus('discharge_summary', 'run-1', res);
 
-    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res);
+    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, undefined);
+  });
+
+  it('forwards the resume cursor, preferring the Last-Event-ID header over the query fallback', async () => {
+    // The SSE spec sends the header by itself on reconnect; the query parameter exists only for
+    // a client that cannot set headers. The header wins so a real browser's own reconnect is
+    // never overridden by a stale link. This value is a stream CURSOR, never a credential —
+    // the ticket's "never put a JWT in a URL" rule is about the ticket parameter, not this.
+    const { controller, workflowStreamService } = makeController();
+    const res = {} as never;
+
+    await controller.streamRunStatus('discharge_summary', 'run-1', res, 'from-header', 'from-query');
+    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, 'from-header');
+
+    await controller.streamRunStatus('discharge_summary', 'run-1', res, undefined, 'from-query');
+    expect(workflowStreamService.stream).toHaveBeenLastCalledWith('discharge_summary', 'run-1', res, 'from-query');
   });
 
   it('the stream route carries @StreamScope({ namespace: "workflow_run", param: "runId" })', () => {

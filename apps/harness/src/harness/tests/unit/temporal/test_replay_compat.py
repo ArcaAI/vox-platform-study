@@ -497,6 +497,48 @@ class TestWorkflowInterpreterReplayCompatibility:
         await replayer.replay_workflow(_history("interpreter_v1_history"))
 
 
+class TestRunEventStreamReplayCompatibility:
+    """TASK-849 lane A step 2 — the run-event mirror's replay guards, in both directions.
+
+    The mirror added THREE `execute_activity` calls (`interpreter.emit_run_events`) to the
+    shared per-stage path, gated behind `workflow.patched(_STREAM_PATCH)`. Unlike the gate's,
+    this gate's cheap operand cannot be proven False from a config: the emit happens on every
+    stage boundary of every graph, so `workflow.patched` is the ONLY thing standing between
+    this change and a non-determinism error on every in-flight clinical run.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_stream_era_history_replays_on_the_current_definition(self):
+        """FORWARD guard: today's in-flight runs must survive tomorrow's deploy.
+
+        `interpreter_stream_v1_history` is a real recorded history carrying the patch marker
+        and seven `interpreter.emit_run_events` activity events across the same three-stage /
+        fan-out / degraded-sibling scenario the pre-stream fixture covers. Moving, reordering
+        or ungating an emit changes the command sequence, and this is what makes that fail
+        here rather than in production.
+        """
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_stream_v1_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_pre_stream_history_still_replays_with_no_emits(self):
+        """BACKWARD guard, and the one that actually justifies the patch.
+
+        `interpreter_v1_history` was recorded before the mirror existed and carries NO
+        `emit_run_events` at all. `workflow.patched` returns False on it, the three emits are
+        skipped, and the command sequence still lines up. Deleting the gate — or "simplifying"
+        it to an unconditional emit — breaks exactly here.
+        """
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_v1_history"))
+
+
 class TestAgenticLoopReplayCompatibility:
     """TASK-848b step 9 — the loop's own replay guards, in both directions.
 
