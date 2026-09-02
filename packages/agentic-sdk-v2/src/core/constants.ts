@@ -1186,3 +1186,43 @@ export type UserRole = (typeof USER_ROLES)[number];
  * clinical note generation silently never starts.
  */
 export const TRANSCRIPT_SEGMENT_SUBTYPE = 'TRANSCRIPT_SEGMENT';
+
+/**
+ * Workflow INVOCATION endpoints (TASK-850) — running a tenant's published
+ * workflows, and running one against a consultation.
+ *
+ * Two route FAMILIES, deliberately not one with a flag. `RUNS` is the unbound
+ * plane (`create:WorkflowRun` + scope `workflow:run:write`); `CONSULTATION_RUNS`
+ * is the clinical plane (`execute:ConsultationWorkflow` + scope
+ * `workflows:execute`, outside the `workflow:` prefix so a key holding bare
+ * `workflow` cannot inherit it). A run may write into a consultation only when
+ * the consultation is named by the URL — never by the request body.
+ *
+ * Runs started on EITHER plane are read back through `RUN` / `RUN_STREAM` /
+ * `RUN_CANCEL`: the gateway ships no consultation-scoped status route, and the
+ * 202's `statusUrl`/`streamUrl` point here for that reason.
+ */
+export const WORKFLOW_ENDPOINTS = {
+  /** The tenant's published, invokable workflows. */
+  LIST: '/workflows',
+  /** Start a run. `?mode=async|blocking|stream`; `Idempotency-Key` header joins an in-flight run. */
+  RUNS: (slug: string) => `/workflows/${encodeURIComponent(slug)}/runs`,
+  /** Live run status, stages and delivered result. */
+  RUN: (slug: string, runId: string) => `/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}`,
+  /** Snapshot-then-delta SSE. Resume with `Last-Event-ID` (or `?lastEventId=` from a browser). */
+  RUN_STREAM: (slug: string, runId: string) => `/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/stream`,
+  /** Send the interpreter's allow-listed cancel signal. */
+  RUN_CANCEL: (slug: string, runId: string) => `/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/cancel`,
+  /** What may be run AGAINST this consultation — wider than `LIST` (adds the `consultation` palette). */
+  CONSULTATION_LIST: (consultationId: string) => `/consultations/${encodeURIComponent(consultationId)}/workflows`,
+  /** Run a published workflow against THIS consultation. The id is in the URL, never the body. */
+  CONSULTATION_RUNS: (consultationId: string, slug: string) =>
+    `/consultations/${encodeURIComponent(consultationId)}/workflows/${encodeURIComponent(slug)}/runs`,
+} as const;
+
+/**
+ * The SSE ticket scope for a workflow run stream. Mirrors the gateway's
+ * `@StreamScope({ namespace: 'workflow_run', param: 'runId' })` — a ticket is
+ * minted for ONE run, so the scope carries the run id.
+ */
+export const workflowRunStreamScope = (runId: string): string => `workflow_run:${runId}`;
