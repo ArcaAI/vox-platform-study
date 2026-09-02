@@ -620,7 +620,7 @@ export class HarnessAdminController {
   @ApiOperation({
     summary: 'Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)',
     description:
-      'Resolves the realtime lane the way a recording session does — graph-executor flag, then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Three answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.',
+      'Resolves the realtime lane the way a recording session does — graph-executor flag, then the workflow THIS consultation selected at open (when `consultationId` is given), then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version; ON with a consultation that selected a workflow returns that workflow and `assignmentSource: consultation`. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.',
   })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
   @ApiQuery({
@@ -628,11 +628,26 @@ export class HarnessAdminController {
     required: false,
     description: 'Resolve the assignment cascade against a department override. Omitted resolves the tenant default.',
   })
+  @ApiQuery({
+    name: 'consultationId',
+    required: false,
+    description:
+      'Report the lane a live session for THIS consultation would walk, including the workflow its clinician selected at open (TASK-813). Unknown or belonging to another tenant → 404, never a silent fall-through to the tenant cascade.',
+  })
   @ApiResponse({ status: 200, type: LiveDocRealtimeCapabilitiesResponse })
   @ApiResponse({ status: 403, description: 'Forbidden — a tenant admin may not read another tenant’s capabilities.' })
-  async getRealtimeCapabilities(@Query() query: { tenantId?: string; departmentId?: string }): Promise<LiveDocRealtimeCapabilitiesResponse> {
+  @ApiResponse({
+    status: 404,
+    description: 'Not found — no such consultation for this tenant (cross-tenant ids are indistinguishable from unknown ones).',
+  })
+  async getRealtimeCapabilities(
+    @Query() query: { tenantId?: string; departmentId?: string; consultationId?: string },
+  ): Promise<LiveDocRealtimeCapabilitiesResponse> {
     const tenantId = this.resolveReadTenantId(query.tenantId);
-    return this.liveDocumentationService.getRealtimeCapabilities(tenantId, query.departmentId ?? null);
+    // A blank `?consultationId=` is an omitted parameter, not an id that misses: answering 404 to
+    // a UI that cleared its own filter box would be a lie about a consultation nobody named.
+    const consultationId = query.consultationId?.trim() || null;
+    return this.liveDocumentationService.getRealtimeCapabilities(tenantId, query.departmentId ?? null, consultationId);
   }
 
   @Get('live/config')
