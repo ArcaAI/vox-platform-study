@@ -49735,6 +49735,158 @@
         ]
       }
     },
+    "/api/v1/consultations/{consultationId}/workflows": {
+      "get": {
+        "description": "The consultation-bound catalogue. Wider than `GET /workflows` — it also lists `consultation`-palette definitions — and it is filtered with the SAME predicate the invoke gate enforces, so a slug listed here is a slug that runs here. A graph whose every node is `lane: realtime` is excluded: the durable interpreter skips those, so invoking one would report success for work that never happened.",
+        "operationId": "ConsultationWorkflowRunsController_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "consultationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowSummaryListResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Scope or ability violation."
+          },
+          "404": {
+            "description": "Unknown or cross-tenant consultation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The published workflows runnable AGAINST a consultation.",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/consultations/{consultationId}/workflows/{slug}/runs": {
+      "post": {
+        "description": "The clinical invocation entry point: the run may read and write this consultation, and nothing else. The consultation is identified by the URL and re-resolved server-side against your tenant — supplying `consultationId` (or any other reserved run-identity field) in `input` is a 400, never a silent override. `?mode=` and `Idempotency-Key` behave exactly as on `POST /workflows/{slug}/runs`, including the ~60s blocking ceiling and the guarantee that disconnecting never cancels the run.",
+        "operationId": "ConsultationWorkflowRunsController_startRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "consultationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response mode. Default `async`.",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "enum": [
+                "async",
+                "blocking",
+                "stream"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Retry-safe key. The same value joins the existing run.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvokeWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunStatusResponse"
+                }
+              }
+            },
+            "description": "`mode=blocking` — the terminal run status."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvokeResponse"
+                }
+              }
+            },
+            "description": "`mode=async` — the run handle."
+          },
+          "400": {
+            "description": "A reserved run-identity field was supplied in `input`."
+          },
+          "403": {
+            "description": "Scope or ability violation."
+          },
+          "404": {
+            "description": "Unknown/cross-tenant consultation or slug, or a definition not runnable on this plane."
+          },
+          "429": {
+            "description": "monthlyWorkflowInvocations quota exhausted."
+          },
+          "504": {
+            "description": "`mode=blocking` ceiling reached — the run continues."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run a published workflow against THIS consultation.",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}": {
       "get": {
         "operationId": "ConsultationController_getById",
@@ -55575,7 +55727,7 @@
     },
     "/api/v1/workflows/{slug}/invoke": {
       "post": {
-        "description": "If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.",
+        "description": "Superseded by `POST :slug/runs` (TASK-850), which is the same handler plus response modes. Retained because the shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always answers `mode=async`. New integrations should use `:slug/runs`. If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.",
         "operationId": "WorkflowsController_invoke",
         "parameters": [
           {
@@ -55634,7 +55786,105 @@
             "bearer": []
           }
         ],
-        "summary": "Start a run of the tenant's active published version of :slug.",
+        "summary": "DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{slug}/runs": {
+      "post": {
+        "description": "The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. **Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; `blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as `GET :slug/runs/:runId/stream`. **Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. **Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation graph is not invocable here, and consultation identity is never accepted in the request body.",
+        "operationId": "WorkflowsController_startRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Response mode. Default `async`.",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "enum": [
+                "async",
+                "blocking",
+                "stream"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Retry-safe key. The same value joins the existing run.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvokeWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunStatusResponse"
+                }
+              }
+            },
+            "description": "`mode=blocking` — the terminal run status."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowInvokeResponse"
+                }
+              }
+            },
+            "description": "`mode=async` — the run handle."
+          },
+          "400": {
+            "description": "Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Unknown, unpublished, cross-tenant, or non-exposable slug."
+          },
+          "429": {
+            "description": "monthlyWorkflowInvocations quota exhausted."
+          },
+          "504": {
+            "description": "`mode=blocking` ceiling reached — the run continues; switch to streaming or poll `statusUrl`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start a run of the tenant's active published version of :slug. The canonical invocation entry point.",
         "tags": [
           "workflows"
         ]
