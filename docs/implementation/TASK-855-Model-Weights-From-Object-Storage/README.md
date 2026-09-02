@@ -359,6 +359,55 @@ unchanged. Same shape, genuine multi-file lift — deliberately not attempted.
 
 Gates after the follow-on: **nlp 582 passed, tts 466 passed**, lint and typecheck clean on both.
 
+### L6b — the same `source_resolver.py` bug in the two copies `2502ac387` did not reach
+
+`2502ac387` fixed the `HF_HUB_OFFLINE` pre-emption in **two of the four** copies of
+`models/source_resolver.py`. `tts` and `harness` still carried it. Fixed here.
+
+**The bug.** `_resolve_hf` raised as soon as `HF_HUB_OFFLINE` was set, *before* calling
+`snapshot_download` — while its own message advised the operator to "pre-populate the hub cache".
+`huggingface_hub` honours that variable by SERVING the local cache and never touching the network,
+so the guard pre-empted exactly the behaviour it recommended. The offline case is still reported
+distinctly, but now only after a real cache MISS, which is when the message is true.
+
+**Live in tts, latent in harness.** `deployment/k8s/base/tts-v2.yaml:220` sets `HF_HUB_OFFLINE=1`
+alongside the read-only `s3://hope-models` mount, so every hub-sourced resolve on that pod raised
+with the weights present. Harness's one production entry (`resolve_atomic_fact_model_path`) passes
+`allow_network=False`, which refuses `hf:` one branch earlier — but `resolve_model_dir` is public,
+and the copy nobody notices is the copy that bites when it becomes the live one.
+
+**Divergence after the change**, measured by normalising the service token and diffing `_resolve_hf`:
+
+| pair | result |
+|---|---|
+| nlp vs stt | identical |
+| nlp vs harness | identical |
+| nlp vs tts | 3 lines — all the **pre-existing, deliberate** "tts has no `AiModel.localPath`" wording (`Stage the weights locally`, `set a local mirror path`), documented in tts's own module docstring |
+
+**Third defect, fixed with it.** `harness._make_s3_client` still told operators to *"Set the
+`*_MODEL_S3_ENDPOINT` / `_ACCESS_KEY` / `_SECRET_KEY` environment variables."* Two lies in one
+breath: TASK-799 removed the env-credential model platform-wide (`apps/stt` renamed its aliases to
+`..._ENV_REMOVED_TASK_799` so the old names can never bind), and **`HARNESS_MODEL_S3_*` never
+existed in this repo at all** — the only occurrence anywhere was the error string itself. A
+rule-09 config-tier violation on top of an operator-facing lie: an S3 credential is
+`vault-kv`/`db-secret` behind an `AiProviderConnection`, never `env`. The message now names that
+tier and states plainly that harness cannot yet READ it (it ships no `core/model_credentials.py`,
+which the L6 follow-on already recorded as a genuine multi-file lift). The dead names are
+deliberately NOT repeated in the new text — a string an operator can still grep for reads as live
+advice however it is framed — and a test pins that.
+
+**boto3 in harness: deliberate, kept.** `boto3` is a pre-existing harness dependency with two other
+production consumers (`temporal/claim_check.py`'s `S3BlobStore`, `eval/judge/providers.py`'s Bedrock
+judge) and harness ships **no `minio`**, which the other three do. Swapping to `minio` would add a
+dependency to the harness image for a client it already has. `_Boto3MinioAdapter` confines the
+divergence to `_make_s3_client` so the resolver body stays identical, and `list_objects_v2` without
+a `Delimiter` matches minio's `recursive=True`. One cosmetic nit, not worth a change: the adapter
+accepts a `recursive` argument it never reads (it is always recursive; every call site passes
+`True`).
+
+**Consolidation: recommended, but as its own ticket.** ~55% of each copy (≈283 of 490–541 lines) is
+the identical dispatch core; the divergent ~45% is real and per-service. See §10.
+
 ### L7 — the fetch allowlist could not reach two of the three test models
 
 Found while scoping L3's flagged limitation, and **worse than L3 reported.**
@@ -411,6 +460,84 @@ gate.
 
 ---
 
+---
+
+## 10. Assessment — should the four `source_resolver.py` copies become one shared module?
+
+**Owner decision, not executed here.** The audit that called the mirroring *"a real, realised risk,
+and the ticket that touched two of four copies is the proof"* is correct, and L6b is the second
+proof: a fix landed in two copies and the other two kept the bug for a day.
+
+### What is actually shared
+
+Measured by function, not by eye:
+
+| service | total | shared dispatch core | share | service-specific |
+|---|---|---|---|---|
+| stt | 541 | 283 | 52% | `config_from_settings`, `config_for_model`, `identity_from_model_config`, `resolve_for_model_config`, `resolve_weights_or_hf_id`, `_make_s3_client` |
+| nlp | 490 | 283 | 57% | `config_from_settings`, `config_for_model`, `_make_s3_client` |
+| tts | 504 | 282 | 55% | `config_from_settings`, `config_for_model`, `resolve_local_override`, `_make_s3_client` |
+| harness | 528 | 294 | 55% | `_make_s3_client`, `_Boto3MinioAdapter`, `resolve_atomic_fact_model_path` |
+
+The shared core is `resolve_model_dir` + `_looks_like_hf_id` / `_resolve_file` / `_resolve_hf` /
+`_resolve_s3` / `_download_s3_prefix` / `_sha256` / `_verify_checksum_sync` / `_verify_dir_checksum`
+/ `_hf_snapshot_download`, plus the three types. That is the **highest-risk** half — checksum
+verification, atomic download-then-rename, and the offline handling that just drifted twice.
+
+The divergent half is genuinely divergent, and consolidation must not flatten it: stt has an
+`AiModelConfig` type and five entry points; tts has `resolve_local_override` and zero-arg config
+builders; harness has `resolve_atomic_fact_model_path` and no config builders at all.
+
+### Recommendation
+
+**Extract the core into `packages/py-model-source` (`hope_model_source`); keep a thin per-service
+`models/source_resolver.py` holding only that service's seams and entry points, re-exporting the
+shared names so no call site changes.** Precedent is established and proven: `packages/py-env`
+(985 LOC) and `packages/py-runtime-models` (991 LOC) are already consumed by **all four** of these
+services, so the packaging, `uv` workspace wiring and pytest `pythonpath` pattern are known-good.
+
+**Cost: one focused ticket, one agent, roughly a day.** ~350 LOC moved, ~400 LOC of tests, plus 4
+service `pyproject.toml` edits (dependency + `{ workspace = true }` + `pythonpath`) and a root
+`uv lock`. The four near-duplicate conformance suites collapse into one parameterised suite, which
+is where most of the day goes.
+
+### What would break — read this before scheduling it
+
+1. **The monkeypatch seams, silently.** Every suite stubs at
+   `monkeypatch.setattr("<svc>.models.source_resolver._hf_snapshot_download", ...)` and
+   `..._make_s3_client`. If the body moves and the service module merely re-exports those names,
+   patching the service name rebinds the *shim's* attribute while the shared body still resolves
+   its own module global — the stub is bypassed and the hermetic suites reach the real network.
+   That fails as a hang or a surprise 200, not as a red test. **Mitigation must be designed up
+   front**: pass the client factory and the snapshot function as explicit injected seams rather
+   than module globals. This is what makes the job a design change, not a mechanical extraction.
+2. **Worktree provenance (rule 14 §4).** Each service's `pytest` `pythonpath` needs the new
+   package, *and* the new package name must be added to every
+   `assert_source_tree([...], __file__)` call in the four `conftest.py` files — otherwise a
+   worktree run silently imports the PRIMARY checkout's resolver, which is precisely the failure
+   mode that guard exists to catch.
+3. **The harness hermetic constraint (rule 06).** harness ships no `minio`. The shared package must
+   never import it at module scope, so the S3 client factory has to stay a per-service injection —
+   it cannot be absorbed into the shared body.
+4. **mypy.** Three services carry a `module = ["minio", "minio.*"]` override; the shared package
+   needs its own config, and harness must keep resolving `boto3-stubs`.
+5. **`ModelSourceError` becomes one class.** Re-export keeps `except` clauses working, but anything
+   comparing `type(...).__module__` changes. Grep before moving.
+6. **`uv.lock`** regenerates for the whole workspace (one root lock).
+
+### Cheaper interim guard, available now without an owner decision
+
+Nothing in CI compares the four copies today — which is *why* this drifted twice. A single
+conformance test that normalises the service token and asserts the shared region is byte-identical
+across all four files would have caught both drifts at the commit that introduced them. It costs
+about an hour, needs no owner decision, and stays useful whether or not the consolidation is ever
+approved. Reproduce the check with:
+
+```
+diff <(sed 's/nlp/SVC/g' apps/nlp/src/nlp/models/source_resolver.py) \
+     <(sed 's/tts/SVC/g' apps/tts/src/tts/models/source_resolver.py)
+```
+
 ## 9. Change History
 
 | Date | Change |
@@ -418,3 +545,5 @@ gate.
 | 2026-09-02 | Ticket opened. R1–R3 audited against both repos and the live cluster; six-lane plan v1 authored. |
 | 2026-09-02 | **Plan v2.** Second pass found mount-point loading already implemented in all four model-hosting services via `AiModel.localPath` — correcting v1's claim that `nlp`/`tts` could not be pointed at MinIO. Restructured around two named modes (M = mount, U = URI), cut the critical path to one no-code deployment change, added the OrbStack Phase 0 proof with the three owner-named test models, folded the catalog UI in as Phase 2, and reduced six lanes to four (one `opus`, down from two). OD-1 resolved by the directive; OD-3 (Kokoro) and OD-4 (privileged sidecar) added. |
 | 2026-09-02 | **Phase 0 executed.** Lab stood up on OrbStack; all three owner-named models published to `hope-models`. P0-1a/b, P0-2, P0-3, P0-4 and P0-5 pass — weights load in place at 186–503 MB/s with zero local writes, and llama.cpp generates text straight off the mount. P0-1c blocked by lab egress (large-wheel timeouts from two CDNs), not by the design. Found and recorded a live registry defect: three seeded `taphuynh/*` ASR rows point at non-existent HF repos. |
+| 2026-09-02 | **L6b PLAN (written before any code, per the standing rule).** `2502ac387` fixed the `HF_HUB_OFFLINE` pre-emption in **two of the four** `models/source_resolver.py` copies (stt, nlp). `tts` and `harness` still carry the pre-emptive raise. Plan: (1) TDD — add `test_hf_offline_cached_is_served_from_cache` to `apps/tts/src/tts/tests/unit/test_model_source_resolver.py` and `apps/harness/src/harness/tests/unit/test_model_source_resolver.py`, watch both RED; (2) port the `2502ac387` fix verbatim into both resolvers (drop the pre-emptive raise, keep `offline`, emit the offline-specific message from the `except` handler after a REAL cache miss) and repair the now-false `# pragma: no cover - offline guard fires first` stub comment in the sibling `..._offline_uncached_raises_cleanly` test; (3) fix `harness._make_s3_client`'s credential error, which still instructs operators to set `*_MODEL_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY` — env vars TASK-799 removed and which **never existed for harness at all** (rule-09 config-tier violation + an operator-facing lie), TDD'd by an assertion that the message names no env var; (4) ASSESS ONLY (no execution) whether the four copies should collapse into one shared package. Gates: `pnpm {tts,harness}:{test,lint,typecheck}` plus a `stt`/`nlp` regression re-run. Boto3 in harness is to be judged, not ripped out. |
+| 2026-09-02 | **L6b DONE.** `HF_HUB_OFFLINE` pre-emption removed from the `tts` and `harness` resolvers (TDD: both new `test_hf_offline_cached_is_served_from_cache` cases shown RED against the pre-emptive raise first), the now-false `# pragma: no cover - offline guard fires first` stub comments corrected in both sibling tests, and harness's credential error re-pointed from three env vars that do not exist to the `model-registry`/`s3` provider connection. `_resolve_hf` is now byte-identical across stt/nlp/harness; tts keeps only its documented "no `AiModel.localPath`" wording. boto3 in harness assessed and KEPT (pre-existing dep, two other production consumers, no `minio` in that image). Gates: **tts 467 passed, harness 1976 passed, nlp 583 passed, stt 3079 passed** (e2e excluded — needs a live gateway), lint + typecheck clean on tts and harness. Shared-module consolidation assessed and written up in §10 — **not executed**, it is an owner decision. |
