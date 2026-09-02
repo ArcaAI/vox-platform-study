@@ -160,3 +160,60 @@ export interface ApproveRunGateBody {
   contextItemVersionId?: string;
   attestationHash?: string;
 }
+
+/**
+ * TASK-849 lane C — the run-event SSE contract `GET /workflows/:slug/runs/:runId/stream`
+ * mints (`apps/api/src/modules/workflows/workflow-stream.service.ts` +
+ * `workflow-run-event.ts`). Re-declared here for the same cross-feature reason as the rest
+ * of this file — the console never imports server packages.
+ *
+ * Wire envelope carried by every SSE frame (`AsyncEnvelope` from `@arcaai/async-contract`,
+ * `by_alias=True` camelCase on both the TS and Python sides — see
+ * `apps/harness/.../interpreter/run_events.py`'s `encode_run_event`).
+ */
+export interface WorkflowRunEventEnvelope<TPayload = Record<string, unknown>> {
+  schemaVersion: number;
+  id: string;
+  tenantId: string;
+  type: string;
+  occurredAt: string;
+  correlationId: string | null;
+  causationId: string | null;
+  idempotencyKey: string;
+  payload: TPayload;
+}
+
+/**
+ * Payload shape for `workflow.node.started` / `.completed` / `.failed` (and the
+ * `workflow.loop.iteration` / `workflow.guardrail.verdict` types the harness DEFINES and
+ * handles but does not yet EMIT — see `_envelope_for` in
+ * `apps/harness/.../interpreter/activities.py`). Every field is optional because the
+ * producer only sets what that event type carries.
+ *
+ * `nodeId` is the AUTHORED graph node id (`WorkflowGraphNode.id`) — stamped by the
+ * interpreter from the compiled stage, not derived. Unlike `RunNodeRollup.nodeType`
+ * (best-effort type+order correlation, `lib/rollup-correlation.ts`), a live event's
+ * `nodeId` is exact and can be used to highlight the precise node that fired it.
+ */
+export interface WorkflowNodeEventPayload {
+  nodeId?: string;
+  nodeType?: string;
+  stageIndex?: number;
+  status?: string;
+  reason?: string;
+  /** Present only on `workflow.loop.iteration` — not emitted by any lane today (see the
+   *  ticket's recorded gap). Never fabricate a value when this is absent. */
+  iteration?: number;
+}
+
+/** Payload shape for `workflow.run.progress` / `workflow.run.completed` (the snapshot
+ *  frame — `WorkflowRunEventPayload` in `workflow-run-event.ts`). */
+export interface WorkflowRunSnapshotPayload {
+  runId: string;
+  slug: string;
+  workflowVersionNumber: number;
+  status: string;
+  stages: Record<string, unknown>[];
+  startedAt: string | null;
+  endedAt: string | null;
+}
