@@ -112,6 +112,13 @@ export interface TransportRequestOptions {
    * `body`, not a header.
    */
   hasIdempotencyKey?: boolean;
+  /**
+   * Statuses this request must never retry, overriding the general rules —
+   * see `core/retry.ts#ShouldRetryInput.nonRetryableStatuses`. Used by
+   * `mode=blocking` workflow runs, whose 504 is a deterministic ceiling
+   * rather than a transient failure.
+   */
+  nonRetryableStatuses?: ReadonlySet<number>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,6 +209,7 @@ export class Transport {
       method: options.method ?? 'GET',
       hasIdempotencyKey: options.hasIdempotencyKey,
       maxRetries: options.maxRetries ?? this.config.maxRetries,
+      nonRetryableStatuses: options.nonRetryableStatuses,
       baseDelayMs: this.config.baseDelayMs,
       maxDelayMs: this.config.maxDelayMs,
       random: this.config.random,

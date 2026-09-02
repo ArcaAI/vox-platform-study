@@ -24,7 +24,7 @@ import { RESERVED_RUN_IDENTITY_KEYS } from '../../core/run-identity';
 function stubFetch(responses: Array<() => Response>): { fetch: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   let index = 0;
-  const impl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const impl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     calls.push({ url: String(input), init: init ?? {} });
     const next = responses[Math.min(index, responses.length - 1)];
     index += 1;

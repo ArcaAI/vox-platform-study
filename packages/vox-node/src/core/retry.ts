@@ -30,6 +30,21 @@ export interface ShouldRetryInput {
   attempt: number;
   /** Maximum number of retries allowed. */
   maxRetries: number;
+  /**
+   * Statuses this particular request must NEVER retry, whatever the general
+   * rules say — an escape hatch for a status that is retryable-shaped but
+   * deterministic for the route in question.
+   *
+   * The motivating case (TASK-850) is `POST …/runs?mode=blocking`: its 504 is
+   * a fixed ~60s CEILING on the HTTP wait, not a transient upstream failure.
+   * It is a 5xx, so the default rule would retry it — and because that POST
+   * carries an `Idempotency-Key`, the non-idempotent-POST guard would not stop
+   * it either. The retry would then wait the same 60s, join the same still-
+   * running run, and time out identically: three minutes spent to reach the
+   * same answer. Streaming or polling is the recovery, and only the caller can
+   * choose it.
+   */
+  nonRetryableStatuses?: ReadonlySet<number>;
 }
 
 /**
@@ -45,6 +60,10 @@ export interface ShouldRetryInput {
  */
 export function shouldRetry(input: ShouldRetryInput): boolean {
   if (input.attempt >= input.maxRetries) return false;
+
+  // Checked FIRST: an explicit per-request refusal outranks every rule below,
+  // including the connection-error rule. See `nonRetryableStatuses`.
+  if (input.status !== undefined && input.nonRetryableStatuses?.has(input.status)) return false;
 
   const isNonIdempotentPost = input.method.toUpperCase() === 'POST';
   if (isNonIdempotentPost && !input.hasIdempotencyKey) return false;
@@ -106,6 +125,8 @@ export interface ExecuteWithRetryOptions {
   random?: () => number;
   /** Default a real `setTimeout`-based sleep. Inject a stub in tests — never use real timers. */
   sleep?: (ms: number) => Promise<void>;
+  /** See {@link ShouldRetryInput.nonRetryableStatuses}. */
+  nonRetryableStatuses?: ReadonlySet<number>;
 }
 
 /**
@@ -143,6 +164,7 @@ export async function executeWithRetry<T>(attempt: (attemptNumber: number) => Pr
         hasIdempotencyKey: options.hasIdempotencyKey,
         attempt: attemptNumber,
         maxRetries,
+        nonRetryableStatuses: options.nonRetryableStatuses,
       });
       if (!canRetry) throw err;
 
