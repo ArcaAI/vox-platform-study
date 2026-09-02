@@ -97,6 +97,55 @@ async def loop_state_rehydrate(ref: ClaimCheckRef) -> Any:
     return json.loads(raw)
 
 
+async def _emit_iteration_event(
+    payload: LoopCheckpointInput, *, digest: str, tokens: int, terminated: bool
+) -> None:
+    """Mirror this iteration onto the run's event stream. Best-effort, never raises.
+
+    **Why here.** This is the ONE place that runs exactly once per loop iteration and is
+    allowed to do I/O. Emitting from the workflow body would need a new activity — a new
+    Temporal command per iteration, therefore a ``workflow.patched`` era and a recaptured
+    replay fixture — to publish a fact this activity already holds. Emitting here changes no
+    command sequence at all: activity bodies are never replayed.
+
+    **Best-effort by contract**, exactly like the rest of the run-event lane
+    (``run_events.py``'s module docstring, ``emit_run_events``' own guard). The durable record
+    of this iteration is Temporal history; a Redis outage, or an envelope this run's ids cannot
+    satisfy, costs the live view and nothing else. A checkpoint that failed because an
+    observability mirror was unreachable would abort a clinical deliberation to protect a
+    debug canvas.
+
+    A run with no ``run_id`` simply does not stream — the fields are additive-optional, so a
+    caller from before they existed (or a fixture-capture script) is silently a no-op rather
+    than an error. Same posture ``agentic.tts`` takes on the delta lane.
+    """
+    if not payload.run_id:
+        return
+    # Imported inside the function for the reason `nodes/agentic.py` records at its own
+    # function-local import: `activities.py` pulls in the whole node tree, and a module-level
+    # import from here would be a needless heavy edge out of the loop's own module.
+    from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+
+    try:
+        await run_event_producer().emit_loop_iteration(
+            tenant_id=payload.tenant_id,
+            run_id=payload.run_id,
+            node_id=payload.node_id,
+            iteration=payload.iteration,
+            max_iterations=payload.max_iterations,
+            tokens_used=payload.tokens_used_before + tokens,
+            max_total_tokens=payload.max_total_tokens,
+            digest=digest,
+            terminated=terminated,
+        )
+    except Exception as exc:  # noqa: BLE001 — see the docstring: a mirror never fails the loop
+        activity.logger.warning(
+            "harness.run_events.loop_iteration_failed "
+            f"run_id={payload.run_id} node_id={payload.node_id} "
+            f"iteration={payload.iteration} error={exc}"
+        )
+
+
 @activity.defn(name="interpreter.loop_state_checkpoint")
 async def loop_state_checkpoint(payload: LoopCheckpointInput) -> LoopStateCheckpoint:
     """Fold one iteration's product into the next generation's carry-forward."""
@@ -126,21 +175,28 @@ async def loop_state_checkpoint(payload: LoopCheckpointInput) -> LoopStateCheckp
         settings = get_settings()
         store, location = await open_store(settings.claim_check)
         ref = await store_blob(serialized, store=store, bucket=location.bucket)
-        return LoopStateCheckpoint(
+        checkpoint = LoopStateCheckpoint(
             inline=None,
             ref=ref,
             digest=digest,
             tokens=tokens,
             terminated=terminated,
         )
+    else:
+        checkpoint = LoopStateCheckpoint(
+            inline=combined,
+            ref=None,
+            digest=digest,
+            tokens=tokens,
+            terminated=terminated,
+        )
 
-    return LoopStateCheckpoint(
-        inline=combined,
-        ref=None,
-        digest=digest,
-        tokens=tokens,
-        terminated=terminated,
-    )
+    # LAST, and after the offload rather than before it: the event announces an iteration that
+    # actually checkpointed. If `store_blob` raises, the activity retries and no event claimed
+    # an iteration that did not settle. A retry that gets this far twice re-emits under the SAME
+    # per-(run, node, iteration) idempotency key, which is exactly what that key is for.
+    await _emit_iteration_event(payload, digest=digest, tokens=tokens, terminated=terminated)
+    return checkpoint
 
 
 LOOP_ACTIVITIES = [loop_state_checkpoint, loop_state_rehydrate]

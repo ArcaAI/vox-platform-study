@@ -243,6 +243,61 @@ Note the legacy Build-ID mechanism is being removed from Server around **March 2
 **Until that lands, the replay fixtures (step 9) are the actual protection**, and they need no deployment
 change: an interpreter edit that breaks in-flight loops fails in CI rather than in production.
 
+### Follow-up completed 2026-09-02 — the `workflow.loop.iteration` emitter
+
+TASK-849 lane A shipped the run-event producer and lane C shipped the `◀ 3/12 ▶` per-iteration
+drill-down, but **nothing produced the event between them**. `run_events.py` defined
+`EVENT_LOOP_ITERATION`, wrote the `loop_iteration_key` recipe for it, and `_envelope_for`
+HANDLED it — while no code path ever constructed one. The consequence was a shipped affordance
+with no data source: `LoopIterationDrilldown` rendered permanently disabled for every run, and
+the handler was unreachable code.
+
+**Where it emits, and why no patch gate.** `interpreter.loop_state_checkpoint` already runs
+exactly once per loop iteration and is already permitted I/O. Emitting from inside it issues
+**no new Temporal command** — the `ScheduleActivityTask` was already there; only the activity's
+INPUT (`LoopCheckpointInput`) gains fields, all defaulted so an older history still
+deserializes — and activity bodies are never replayed at all. The lane-A design note that
+predicted this seam was verified against the code before being built on, and it held.
+
+| File | Change |
+|---|---|
+| `interpreter/models.py` | `LoopCheckpointInput` gains `run_id`, `node_id`, `tenant_id`, `iteration`, `max_iterations`, `max_total_tokens`, `tokens_used_before` — all defaulted |
+| `interpreter/run_events.py` | `RunEventProducer.emit_loop_iteration(...)`, the control lane's per-iteration entry point, keyed by the existing `loop_iteration_key` |
+| `interpreter/loop_activities.py` | `_emit_iteration_event(...)` + its call at the end of `loop_state_checkpoint`, after the claim-check offload so only a settled iteration is announced |
+| `interpreter/loop_workflow.py` | Threads run/node/tenant identity and the two bounds onto the checkpoint input — all from this generation's own input, so no clock and no RNG |
+
+**Payload** (scalars only): `nodeId`, `iteration` (1-based, naming the iteration that just
+completed), `maxIterations`, `tokensUsed`, `maxTotalTokens`, `digest`, `terminated`. The
+carry-forward NEVER rides along — it may be megabytes and may be claim-check offloaded above
+`LOOP_STATE_INLINE_LIMIT_BYTES`, so embedding it would undo 848b's offload once per iteration.
+A regression test drives a loop with a 400 KB carry-forward and asserts the event stays under
+2 KB.
+
+**Client cross-check.** `iteration` lands on `WorkflowNodeEventPayload.iteration`
+(`apps/admin-console/src/features/workflow-runs/api/types.ts:206`), which is `current` in
+`LoopIterationState`. `maxIterations` is emitted for `total`, which **has no wire field on that
+interface yet** — see follow-up 5 below; until lane C adds it and populates the
+`loopIterations` prop (supplied by nobody today), the drill-down stays disabled on the client
+side even though the data now exists on the stream.
+
+**Evidence.** 9 new tests in
+`tests/unit/temporal/interpreter/test_task849_loop_iteration_emitter.py`, driving the real
+`WorkflowInterpreter` over the real `AgenticLoopWorkflow` against an ephemeral Temporal server;
+the expected count is read off `AgenticLoopResult.iterations` rather than typed in. Measured:
+5 iterations performed → 5 events emitted; 6 iterations → 42 interpreter history events both
+with the producer live and with it disabled, i.e. **zero history impact** (payloads decoded
+before searching, per lane A's base64 finding). `test_replay_compat.py` still 23/23; full
+harness suite 1951 passed; ruff and mypy clean.
+
+**`workflow.guardrail.verdict` — DEFERRED, deliberately.** It is not the same kind of gap.
+Lane A wrote a key recipe for `loop.iteration` (`loop_iteration_key`) and none for the
+guardrail verdict, no UI affordance is disabled by its absence, and its natural home is
+`nodes/guardrail_check.py` — an unrelated seam from the loop checkpoint. **Latent defect found
+while deciding:** `_envelope_for`'s `else` branch would hand a `guardrail.verdict` spec
+`run_completed_key(run_id)`, so whoever builds that producer must add a
+`guardrail_verdict_key` and its own branch first, or every verdict would collide on the run's
+terminal-event key. Recorded, not fixed — nothing constructs such a spec today.
+
 ### Remaining follow-ups (not TASK-848)
 
 1. **Worker Versioning `Pinned`** — needs the external manifest repo; see the NOT-BUILT reasoning above.
@@ -252,6 +307,17 @@ change: an interpreter edit that breaks in-flight loops fails in CI rather than 
    change.
 4. **Evaluator-optimizer** as a second loop pattern (phase 2): the same skeleton, a different termination
    predicate.
+5. **Client half of the loop drill-down** (lane C, `apps/admin-console`). The harness now emits
+   `workflow.loop.iteration`; two things remain on the client before `◀ 3/12 ▶` can enable itself:
+   `WorkflowNodeEventPayload` needs a `maxIterations?: number` field (the producer emits it; the
+   interface has no home for `LoopIterationState.total`), and `run-node-detail-drawer.tsx`'s
+   `loopIterations` prop needs an actual producer — nothing supplies it today. The stale "not emitted
+   by any lane today" comments in `types.ts:204-205` and `loop-iteration-drilldown.tsx:14-26` should be
+   corrected in the same change. **Deliberately not done here**: lane C's files were uncommitted in the
+   primary checkout while this worked in a worktree, and editing them from a stale base would have
+   destroyed that work.
+6. **`workflow.guardrail.verdict` producer** — see the deferral above, including the
+   `_envelope_for` key-collision defect that must be fixed as part of building it.
 
 ### Process note
 
@@ -270,3 +336,4 @@ one.**
 | 2026-09-01 | Plan expanded against the contract TASK-847 actually shipped; unblocked and ready to start. |
 | 2026-09-01 | Scope split into loop body / durability+versioning / tier 3 after three stalls (§2c). |
 | 2026-09-01 | Components merged INERT as `cdd17b99d`. Wiring and tests outstanding; Status → `In Progress`. |
+| 2026-09-02 | Follow-up: `workflow.loop.iteration` is now PRODUCED, from `interpreter.loop_state_checkpoint` — no new Temporal command, no patch gate, zero measured history impact. `workflow.guardrail.verdict` deferred with reasons (and a latent `_envelope_for` key-collision defect recorded). Client half of the drill-down listed as follow-up 5. |

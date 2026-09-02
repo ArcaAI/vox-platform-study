@@ -387,6 +387,29 @@ class LoopCheckpointInput(BaseModel):
     sub_agent_outputs: list[dict[str, Any]] = Field(default_factory=list)
     termination_key: str | None = None
 
+    # --- the `workflow.loop.iteration` run event (TASK-848 follow-up) -------------------
+    #
+    # Identity and counters the checkpoint needs in order to EMIT, not to compute. The
+    # checkpoint already runs exactly once per iteration, so emitting from inside it costs no
+    # new Temporal command — what changes is this payload, and every field below is defaulted
+    # so a history recorded before they existed still deserializes.
+    #
+    # `tokens_used_before` is the loop's cumulative total as of the START of this iteration.
+    # The activity adds its own `tokens` to it so the event reports the same running figure
+    # the workflow will put on `AgenticLoopState.tokens_used` a moment later — the ONE piece
+    # of the bound arithmetic the activity cannot see for itself.
+    #
+    # Everything here is a scalar. The carry-forward itself must never join them: it may be
+    # megabytes and may be claim-check offloaded, and putting it on a per-iteration event
+    # would undo the offload TASK-848b exists for.
+    run_id: str = ""
+    node_id: str = ""
+    tenant_id: str = ""
+    iteration: int = 0
+    max_iterations: int = 0
+    max_total_tokens: int = 0
+    tokens_used_before: int = 0
+
 
 class AgenticSubAgentInput(BaseModel):
     """``AgenticSubAgentWorkflow``'s input — ONE sub-agent, ONE iteration.

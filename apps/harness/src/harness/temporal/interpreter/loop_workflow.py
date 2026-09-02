@@ -230,6 +230,22 @@ class AgenticLoopWorkflow:
                 orchestrator_output=orchestrator_output,
                 sub_agent_outputs=sub_outputs,
                 termination_key=inp.termination_key,
+                # Identity + counters for the `workflow.loop.iteration` run event the
+                # checkpoint emits. These are INPUT fields on a command that was already being
+                # issued, so the command sequence is untouched and no `workflow.patched` era is
+                # needed — the emission itself happens inside the activity, which is never
+                # replayed. All of it is already in this generation's input: no clock, no RNG,
+                # no read that could differ on replay.
+                run_id=inp.run_id,
+                node_id=inp.node_id,
+                tenant_id=inp.tenant_id,
+                # ONE-BASED and naming the iteration that is completing: `state.iterations` is
+                # the count of iterations finished BEFORE this one, so the first pass reports
+                # `1`. That is what makes the client's `3/12` read as the third iteration.
+                iteration=inp.state.iterations + 1,
+                max_iterations=inp.bounds.max_iterations,
+                max_total_tokens=inp.bounds.max_total_tokens,
+                tokens_used_before=inp.state.tokens_used,
             ),
             start_to_close_timeout=_CHECKPOINT_TIMEOUT,
             retry_policy=_CHECKPOINT_RETRY,
