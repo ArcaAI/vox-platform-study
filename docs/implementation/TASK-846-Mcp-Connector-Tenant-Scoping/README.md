@@ -341,6 +341,110 @@ The three required authorization outcomes, each asserted by name:
 [vox-node-codegen] no drift (52 areas, 408 routes, 372 schemas)
 ```
 
+### F-29 follow-up (2026-09-02) — four IPv6 aliasing families, and one more found in the sweep
+
+An adversarial review of the D-3 guard found four IPv6→IPv4 aliasing families absent from the block
+table **in both implementations**. Each aliases an IPv4 address the table already refuses, so the
+table could be walked around by spelling the destination differently.
+
+| Vector | Family | Why the existing unwrap missed it |
+|---|---|---|
+| `::ffff:0:169.254.169.254` | RFC 2765 IPv4-**translated** `::ffff:0:0:0/96` | the 0xffff is in bytes 8-9, not 10-11, so `ipv4_mapped` is `None` and no branch fired |
+| `64:ff9b:1::a9fe:a9fe` | RFC 8215 local-use NAT64 `64:ff9b:1::/48` | only the well-known `64:ff9b::/96` was checked |
+| `2001:0:4136:e378:8000:63bf:3fff:fdd2` | Teredo `2001::/32` | never consulted at all |
+| `fec0::1` | RFC 3879 site-local `fec0::/10` | absent from the IPv6 table |
+| `2606:4700::5efe:169.254.169.254` | **ISATAP** interface id under a public /64 | found by this sweep, not named in the review — same shape as 6to4, which *is* unwrapped |
+
+**Two mechanisms, chosen per family — the choice is not cosmetic.** IPv4-translated and ISATAP put
+the destination IPv4 in the last 32 bits, so they are UNWRAPPED and re-checked against the IPv4
+table. Teredo cannot be handled that way: the canonical test address above embeds server
+`65.54.227.120` and client `192.0.2.45`, **both outside the blocked IPv4 table**, so an unwrap-only
+fix would still have allowed it — the prefix itself is refused. The RFC 8215 prefix is likewise
+blocked whole (RFC 6052 permits /32../96 embeddings under it, so the IPv4 is not reliably the last
+32 bits, and a local-use translation prefix is never a legitimate connector destination). The
+well-known `64:ff9b::/96` is untouched and still unwrapped, so a NAT64 route to a public IPv4 keeps
+working.
+
+RED first, both sides, before either guard was touched — 5 URL vectors + 5 classifier entries each:
+
+```
+# conda run -n arcaenv pytest apps/harness/src/harness/tests/unit/test_egress_guard.py
+FAILED …::test_shared_vector_contract[deny-ipv4-translated-metadata]
+FAILED …::test_shared_vector_contract[deny-nat64-local-use-metadata]
+FAILED …::test_shared_vector_contract[deny-teredo-tunnel]
+FAILED …::test_shared_vector_contract[deny-ipv6-site-local]
+FAILED …::test_shared_vector_contract[deny-isatap-embedded-metadata]
+FAILED …::test_blocked_addresses[::ffff:0:169.254.169.254]
+FAILED …::test_blocked_addresses[64:ff9b:1::a9fe:a9fe]
+FAILED …::test_blocked_addresses[2001:0:4136:e378:8000:63bf:3fff:fdd2]
+FAILED …::test_blocked_addresses[fec0::1]
+FAILED …::test_blocked_addresses[2606:4700::5efe:169.254.169.254]
+10 failed, 91 passed in 3.71s
+
+# npx vitest run src/common/egress (packages/applications)
+FAIL  egress-guard.test.ts > the shared vector contract > deny-ipv4-translated-metadata
+FAIL  egress-guard.test.ts > the shared vector contract > deny-nat64-local-use-metadata
+FAIL  egress-guard.test.ts > the shared vector contract > deny-teredo-tunnel
+FAIL  egress-guard.test.ts > the shared vector contract > deny-ipv6-site-local
+FAIL  egress-guard.test.ts > the shared vector contract > deny-isatap-embedded-metadata
+FAIL  egress-guard.test.ts > isBlockedAddress … > blocks ::ffff:0:169.254.169.254
+FAIL  egress-guard.test.ts > isBlockedAddress … > blocks 64:ff9b:1::a9fe:a9fe
+FAIL  egress-guard.test.ts > isBlockedAddress … > blocks 2001:0:4136:e378:8000:63bf:3fff:fdd2
+FAIL  egress-guard.test.ts > isBlockedAddress … > blocks fec0::1
+FAIL  egress-guard.test.ts > isBlockedAddress … > blocks 2606:4700::5efe:169.254.169.254
+Tests  10 failed | 81 passed (91)
+```
+
+GREEN after the fix — and the ALLOW vectors never moved (they pass in both the RED and GREEN runs):
+
+```
+# conda run -n arcaenv pytest …/test_egress_guard.py -q      -> 101 passed in 0.07s
+# npx vitest run …/egress-guard.test.ts                      -> Test Files 1 passed | Tests 91 passed
+
+# PATH=…/miniconda3/bin:$PATH pnpm harness:test              -> 1910 passed, 1 warning in 97.97s
+# pnpm --filter @arcaai/applications build                   -> rimraf dist && tsc, clean
+# pnpm --filter @arcaai/applications test                    -> Test Files 631 passed | 1 skipped (632)
+#                                                                Tests 10830 passed | 4 skipped (10834)
+# conda run -n arcaenv ruff check apps/harness/src/          -> All checks passed!
+# conda run -n arcaenv mypy … apps/harness/src/              -> Success: no issues found in 143 source files
+# npx eslint packages/applications/src/common/egress          -> clean
+# npx prettier --check <changed .ts/.json>                    -> All matched files use Prettier code style!
+```
+
+The shared fixture went **41 → 46 vectors**, and both suites' "no silent skips" floors were raised
+from 38 to 46 so a dropped vector now fails rather than passing quietly. Both sides assert the same
+verdict AND the same reason code (`blocked_address`) for all five.
+
+**Cross-implementation differential, beyond the fixture.** 28 addresses — every transition form the
+two guards know about, plus the ones that must stay ALLOWED (`2001:db8::1`, `3fff::1`,
+`64:ff9b::8.8.8.8`, `::ffff:0:8.8.8.8`, `2606:4700::5efe:8.8.8.8`, `2606:4700::1111`) — were run
+through `is_blocked_address` and `isBlockedAddress` and diffed: **identical verdicts, all 28**.
+
+**The rest of the sweep, stated plainly.** Nothing further of this kind was found. Every other
+IPv4-in-IPv6 embedding either was already covered (IPv4-mapped, IPv4-compatible `::/96`, 6to4,
+well-known NAT64) or is now. Three residual observations, none closed, each deliberate:
+
+1. **A site-specific NAT64 prefix is undetectable from the address alone.** RFC 6052 lets a network
+   translate through any prefix out of its own space; the guard can only know the well-known and
+   local-use ones. That is a bound on the technique, not a bug — and the IPv4 table still catches the
+   translated destination whenever DNS hands back a v4 answer.
+2. **Reason-code (not verdict) divergence on alternate host spellings.** `http://2130706433/` and
+   `http://0x7f.0.0.1/` are `blocked_address` in TypeScript (WHATWG normalises the host to
+   `127.0.0.1`) but reach the resolver in Python, where `getaddrinfo` returns `127.0.0.1` — so the
+   call-time verdict is `blocked_address` too. `http://[fe80::1%eth0]/` is `scheme_not_allowed` in
+   TypeScript (the WHATWG parser rejects the zone id) and `host_not_allowed` in Python. **Every one
+   of these DENIES on both sides**; only the logged reason differs, and none is in the fixture.
+3. **`2001:2::/48` (RFC 5180 IPv6 benchmarking) is not blocked**, though its IPv4 analogue
+   `198.18.0.0/15` is. That is a policy addition rather than an aliasing gap, so it was left for an
+   owner decision rather than taken unilaterally.
+
+**Exploitability, not inflated.** Probably nil on stock k3s, and the review said so first: each
+vector only reaches anything if the pod's netns actually ROUTES that prefix — a SIIT/NAT64 translator
+on `::ffff:0:0:0/96` or `64:ff9b:1::/48`, a Teredo tunnel, an ISATAP router. On a stock node none
+route and the connect simply fails. The reason to fix it anyway is drift: the fixture is the ONLY
+thing holding the two hand-written guards together, and a guard whose halves disagree is worse than
+either half alone.
+
 ### One gate NOT green, and it is not ours
 
 `pnpm --filter @arcaai/admin-console build` fails. **Verified pre-existing**: the failure is entirely
@@ -370,6 +474,13 @@ complete in this tree (§6), and `next dev` for this app needs the gateway plus 
 infra, which is the orchestrator's shared surface and off-limits to a worktree agent. Both themes and
 the WCAG pass therefore rest on the jsdom + axe suite only. **A headed pass on `/tools-mcp` as both a
 super admin and a tenant admin should be part of accepting this ticket.**
+
+**F-29 (2026-09-02) — no NETWORK verification of the aliasing families either.** The five new
+vectors are verified at the classifier and URL level in both languages, which is the whole of what
+the guard decides. Proving the *reachability* half — that a SIIT, NAT64, Teredo or ISATAP route
+would otherwise have carried a packet to `169.254.169.254` — needs a netns configured with those
+translators and was not attempted. That is why §6 states the exploitability as probably nil rather
+than claiming a demonstrated exploit.
 
 ---
 
@@ -461,5 +572,6 @@ follow-up.
 
 | Date | Change |
 |---|---|
+| 2026-09-02 | **D-3 follow-up — finding F-29 CLOSED.** Four IPv6→IPv4 aliasing families were absent from the egress block table in BOTH implementations: RFC 2765 IPv4-translated `::ffff:0:0:0/96`, RFC 8215 local-use NAT64 `64:ff9b:1::/48`, Teredo `2001::/32` and deprecated site-local `fec0::/10`. A sweep of the unwrap chain found a fifth, ISATAP (`<any /64>:0:5efe:v4` / `:200:5efe:v4`) under a public prefix. Translated + ISATAP are unwrapped and re-checked against the IPv4 table; Teredo, the RFC 8215 prefix and `fec0::/10` are blocked whole (Teredo's embedded v4s are public, so unwrapping cannot decide it). Fixture 41 → 46 vectors, both floors 38 → 46; RED 10 failures per side, GREEN 101 (harness file) / 91 (applications file), 1910 (full harness suite) / 10830 (full applications suite). Verdicts diffed across both guards on 28 addresses: identical. Exploitability on stock k3s: probably nil (nothing routes those prefixes) — fixed because the fixture is what stops the two hand-written guards drifting. |
 | 2026-09-01 | **D-3 RESOLVED** — SSRF egress guard for tenant-authored `McpServer.baseUrl`. Platform allow-list as `mcp.egress.allowedHosts` (`global-kv`, fail-closed, no migration); deny-by-default host matching plus RESOLVED-address validation against RFC1918/loopback/link-local-metadata/CGNAT/multicast incl. IPv4-mapped, NAT64 and 6to4 unwrapping; enforced at admin write time (`McpServerAdminService`) AND at call time in the harness (`call_mcp_tool` + `McpToolClient`), with the connection PINNED to the validated address by `PinnedEgressTransport` and `follow_redirects` turned off. Both implementations are held together by `tests/fixtures/egress-vectors.json`. NetworkPolicy authored as a proposal for `arca/hope-v2-deployment`. |
 | 2026-09-01 | Ticket opened from TASK-837 §4. Implemented OD-7 (split gate, existence-before-privilege), OD-11 (per-tenant `mcpToolsEnabled` + null-widening + `[tenant, SYSTEM]` registry union), the tier 10-19 → 20-29 console move with both modes, the `DetailDrawer` conversion, and the `05-nestjs-api.md` amendment. Found and fixed F-15b (`resolveMcpServers` was SYSTEM-only). Confirmed F-15a — credentials and the per-server allow-list needed no schema change. Status `Review`. |
