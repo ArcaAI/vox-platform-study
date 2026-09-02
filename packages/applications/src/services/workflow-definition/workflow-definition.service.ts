@@ -851,7 +851,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private async validateGraph(graph: WorkflowGraph, paletteKey: string, tenantId: string): Promise<WorkflowValidationReport> {
     const report = this.workflowValidator
       ? await this.workflowValidator.validateGraph(tenantId, paletteKey, graph)
-      : validate(graph, { paletteKey, registry: workflowNodeClassLookup }, { ruleSetVersion: RULE_SET_VERSION, registryChecksum: registryChecksum() });
+      : validate(
+          graph,
+          { paletteKey, registry: workflowNodeClassLookup },
+          { ruleSetVersion: RULE_SET_VERSION, registryChecksum: registryChecksum() },
+        );
 
     // TASK-847 F-32 — merged into the SAME report rather than reported through a second channel,
     // so the Studio maps a capability problem onto a canvas node exactly like every other

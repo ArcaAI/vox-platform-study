@@ -62,7 +62,9 @@ function makeService(opts: { rows?: any[]; modelCapabilities?: Record<string, st
     findCandidates: vi
       .fn()
       .mockImplementation(async (tenantIds: string[], taskKey: string) =>
-        rows.filter((r: any) => tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE && r.enabled !== false),
+        rows.filter(
+          (r: any) => tenantIds.includes(r.tenantId) && r.taskKey === taskKey && r.status === AiRoutingPolicyStatus.ACTIVE && r.enabled !== false,
+        ),
       ),
     clearDefaultFor: vi.fn(),
     create: vi.fn(),
@@ -181,7 +183,7 @@ describe('F-32 — the cascade is request tenant → SYSTEM, and nothing else', 
     expect(result.label).toBe("taskKey 'text.finalize'");
   });
 
-  it("a pinned id owned by the Global playground resolves to nothing for another tenant", async () => {
+  it('a pinned id owned by the Global playground resolves to nothing for another tenant', async () => {
     const { svc } = makeService({
       rows: [makeConfig({ tenantId: GLOBAL_CUSTOMER_TENANT, id: 'pol-global' })],
       modelCapabilities: { 'lms-gemma-4-e2b-it-qat': TEXT_PLANE },
