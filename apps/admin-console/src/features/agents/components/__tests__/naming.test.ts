@@ -2,10 +2,17 @@
  * naming rollout — regression lock (source-scan, node project so it
  * doesn't need jsdom/happy-dom).
  *
- * Family 2 (clinician-facing): the shared NER capability is "Insight" and the
- * ASR pipeline is "Listener" — neither may ever render as "NER agent" or a
- * bare "agent" label on a clinician-visible playground surface. Family 6
+ * Family 2 (clinician-facing): the shared NER capability is "Insight" — it may
+ * never render as "NER agent" on a clinician-visible playground surface. Family 6
  * (admin vocabulary): the per-tenant container is "Agent Catalog".
+ *
+ * AMENDED by TASK-858 Lane D: the ASR pipeline's "Listener" label is RETIRED. The
+ * platform now ships a single-task realtime TRANSCRIPTION AGENT (an `stt`-palette
+ * workflow definition compiled into an `AsrPipeline`, TASK-858 R1), and the Scribe
+ * offers a second, different choice next to it — the consultation WORKFLOW selected
+ * at session-open. Calling one of them "Listener" hid exactly the distinction the
+ * clinician now has to make, so the ASR selector reads "Transcription agent (STT
+ * pipeline)". The NER case below is untouched: a shared skill is still not an agent.
  */
 
 import { readFileSync } from 'node:fs';
@@ -35,10 +42,11 @@ describe('naming rollout (Family 2/6)', () => {
     }
   });
 
-  it('labels the ASR pipeline "Listener", not "agent", on the clinician-facing Scribe workspace', () => {
+  it('names the ASR selector after the transcription agent, with the pipeline it compiles to', () => {
     const source = readSrc('features/playground-consultation/components/scribe/scribe-footer.tsx');
-    expect(source).toContain('Transcription Listener');
-    expect(source).not.toMatch(/transcription agent/i);
+    expect(source).toContain('Transcription agent (STT pipeline)');
+    // The retired label must not come back alongside the new one.
+    expect(source).not.toContain('Transcription Listener');
   });
 
   // The Agent Catalog screen's own vocabulary case lived here until TASK-815
