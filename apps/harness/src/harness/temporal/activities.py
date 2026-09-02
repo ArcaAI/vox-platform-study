@@ -14,6 +14,7 @@ runtime (allowed in activities) and construct a client per call.
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import itertools
@@ -156,6 +157,8 @@ from harness.temporal.models import (
     SpecialistAnalysisInput,
     SpecialistFinding,
     SpecialistResult,
+    SpeechSynthesisInput,
+    SpeechSynthesisResult,
     TrajectoryContext,
 )
 from harness.temporal.prompt_cache import (
@@ -1811,6 +1814,70 @@ async def dispatch_batch_transcription(
     return _stt_batch_job_output(latest)
 
 
+#: Delta-lane framing size for synthesised audio. A WIRE detail, not a tunable policy — the same
+#: category as lane A's `RUN_EVENT_STREAM_MAX_LEN`, and deliberately not a settings field: nothing
+#: about a tenant, a provider or a deployment changes what a sensible SSE frame is. 32 KiB of
+#: s16le mono at 24 kHz is ~0.7 s of speech, which is small enough that a listener hears the first
+#: frame promptly and large enough that a minute of audio is ~60 frames rather than thousands.
+_AUDIO_DELTA_FRAME_BYTES = 32 * 1024
+
+
+@activity.defn
+async def dispatch_speech_synthesis(payload: SpeechSynthesisInput) -> SpeechSynthesisResult:
+    """TASK-849 lane B step 5 — the TTS palette's synthesis-trigger activity.
+
+    The exact counterpart of :func:`dispatch_batch_transcription`, and built the same way for the
+    same reason: apps/api owns the tenant → SYSTEM resolution (routing chains, allowed providers,
+    BYO credentials, voice bindings, the character quota and the usage row), harness owns only
+    "synthesise THIS text in THAT voice". No second TTS resolution path, no vendor credential in
+    a Temporal worker, and no per-frame audio inside a workflow.
+
+    Idempotent by CONSTRUCTION rather than by bookkeeping: synthesis creates no job row, and the
+    artifact the caller writes is keyed by the sha256 of the audio, so a retried attempt
+    overwrites the identical object at the identical key.
+
+    Returns the audio FRAMED for the delta lane. Framing here rather than in the node keeps the
+    node free of wire concerns, and keeps the one place that knows how big an audio frame should
+    be next to the one place that knows the artifact is bytes.
+    """
+    settings = get_settings()
+    client = _api_client(settings)
+
+    try:
+        response = await client.synthesize_speech(
+            tenant_id=payload.tenant_id,
+            text=payload.text,
+            voice=payload.voice,
+            audio_format=payload.audio_format,
+            speed=payload.speed,
+            language=payload.language,
+        )
+    except ApiServiceError as exc:
+        raise ApplicationError(
+            f"dispatch_speech_synthesis: synthesize failed: {exc}", type="TtsSynthesizeFailed"
+        ) from exc
+
+    try:
+        audio = base64.b64decode(response.audio_base64, validate=True)
+    except ValueError as exc:  # `binascii.Error` is a ValueError subclass
+        # A body that does not decode is a CONTRACT failure, not silence to pass downstream.
+        raise ApplicationError(
+            f"dispatch_speech_synthesis: response audio is not valid base64: {exc}",
+            type="TtsSynthesizeFailed",
+        ) from exc
+
+    frames = [
+        audio[offset : offset + _AUDIO_DELTA_FRAME_BYTES]
+        for offset in range(0, len(audio), _AUDIO_DELTA_FRAME_BYTES)
+    ]
+    return SpeechSynthesisResult(
+        chunks=frames,
+        content_type=response.content_type,
+        provider=response.provider,
+        characters=response.characters,
+    )
+
+
 @activity.defn
 async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     """Build the SensorContext + provenance and run all computational sensors.
@@ -2995,6 +3062,10 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     report_progress,
     # TASK-724 Task 5 — the STT palette's batch-trigger activity.
     dispatch_batch_transcription,
+    # TASK-849 lane B — its TTS counterpart. Registered for the same reason: the node calls it
+    # as a plain coroutine today, but an unregistered activity is a runtime error waiting for
+    # the first caller that schedules it properly (the trap `AGENTIC_ACTIVITIES` records).
+    dispatch_speech_synthesis,
 ]
 
 # ---------------------------------------------------------------------------

@@ -13178,6 +13178,22 @@
       "apiExcluded": true
     },
     {
+      "controller": "HarnessTtsInternalController",
+      "handler": "synthesize",
+      "method": "POST",
+      "path": "/api/v1/internal/harness/tts/synthesize",
+      "routePath": "/internal/harness/tts/synthesize",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "ServiceReleaseInternalController",
       "handler": "register",
       "method": "POST",
