@@ -283,6 +283,24 @@ class SttBatchJobResponse(BaseModel):
     error_code: str | None = Field(default=None, alias="errorCode")
 
 
+class SpeechSynthesisResponse(BaseModel):
+    """apps/api ``POST /internal/harness/tts/synthesize`` response (TASK-849 lane B).
+
+    ``audio_base64`` is the WHOLE artifact, base64 over JSON. Base64 rather than a raw byte
+    stream because this is a Temporal ACTIVITY's outbound call, not a browser's: an activity is
+    not a long-lived connection (the same reasoning the STT poll route already records), and a
+    bounded one-shot body is what a retriable activity can actually re-issue. The browser's live
+    view is served from the Redis DELTA lane instead, which is where streaming belongs.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    audio_base64: str = Field(alias="audioBase64")
+    content_type: str = Field(default="application/octet-stream", alias="contentType")
+    provider: str | None = None
+    characters: int = 0
+
+
 class ApiClient:
     """Thin async client for the apps/api ``/internal/harness/*`` endpoints."""
 
@@ -539,6 +557,42 @@ class ApiClient:
         never a stream (a Temporal activity is not a long-lived connection)."""
         data = await self._get(f"/stt/batch-jobs/{job_id}", {"tenantId": tenant_id})
         return SttBatchJobResponse.model_validate(data)
+
+    async def synthesize_speech(
+        self,
+        *,
+        tenant_id: str,
+        text: str,
+        voice: str,
+        audio_format: str | None = None,
+        speed: float | None = None,
+        language: str | None = None,
+    ) -> SpeechSynthesisResponse:
+        """`POST /internal/harness/tts/synthesize` (TASK-849 lane B, step 5).
+
+        The TTS counterpart of :meth:`create_stt_batch_job`, and the same division of labour:
+        harness names the VOICE and apps/api resolves everything the tenant owns around it —
+        routing chains, allowed providers, BYO credentials and voice bindings — through the
+        very ``TenantTtsConfig`` / ``AiProviderConnection`` cascade its user-facing speech proxy
+        already uses. Harness holds no DB handle and no Vault client, so a credential must never
+        cross this boundary; only the finished audio does.
+
+        Raises :class:`ApiServiceError` on any transport/HTTP failure. The caller DEGRADES on
+        that rather than retrying forever — a synthesis that did not happen must never be
+        reported as an artifact that exists.
+        """
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "text": text,
+                "voice": voice,
+                "format": audio_format,
+                "speed": speed,
+                "language": language,
+            }
+        )
+        data = await self._post("/tts/synthesize", body)
+        return SpeechSynthesisResponse.model_validate(data)
 
     async def assemble(
         self,

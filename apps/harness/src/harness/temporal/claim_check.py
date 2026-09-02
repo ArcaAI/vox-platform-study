@@ -375,18 +375,37 @@ def should_offload(text: str, *, min_bytes: int) -> bool:
     return len(text.encode("utf-8")) >= min_bytes
 
 
-async def store_blob(text: str, *, store: BlobStore, bucket: str) -> ClaimCheckRef:
-    """Write ``text`` out-of-band and return its content-addressed claim-check ref."""
-    data = text.encode("utf-8")
+async def store_bytes(
+    data: bytes, *, store: BlobStore, bucket: str, content_type: str
+) -> ClaimCheckRef:
+    """Write raw BYTES out-of-band and return their content-addressed claim-check ref.
+
+    The binary sibling of :func:`store_blob`, added for the ``agentic.tts`` artifact write
+    (TASK-849 lane B). Audio is not text: ``store_blob`` encodes utf-8, and a WAV body has no
+    valid utf-8 decoding, so routing audio through it would either raise or silently mangle.
+
+    This is deliberately the SAME mechanism, not a second one — same store, same
+    content-addressed key, same integrity fields, same ref shape — so a synthesised audio
+    artifact lands wherever the platform already puts offloaded blobs and needs no second
+    lifecycle, no second bucket and no second retention rule. The only thing that varies is
+    ``content_type``, which the ref already carries as a field.
+    """
     key = content_key(data)
-    await store.put(bucket, key, data, CONTENT_TYPE)
+    await store.put(bucket, key, data, content_type)
     return ClaimCheckRef(
         store=store.name,
         bucket=bucket,
         key=key,
         size=len(data),
         sha256=_sha256_hex(data),
-        content_type=CONTENT_TYPE,
+        content_type=content_type,
+    )
+
+
+async def store_blob(text: str, *, store: BlobStore, bucket: str) -> ClaimCheckRef:
+    """Write ``text`` out-of-band and return its content-addressed claim-check ref."""
+    return await store_bytes(
+        text.encode("utf-8"), store=store, bucket=bucket, content_type=CONTENT_TYPE
     )
 
 
