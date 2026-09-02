@@ -113,11 +113,19 @@ def _split_cache_key(key: str) -> tuple[str, str | None]:
     return (name, path) if sep else (name, None)
 
 
-def _weights_source(model_name: str, model_path: str | None) -> str:
+async def _weights_source(model_name: str, model_path: str | None) -> str:
     """What `from_pretrained` should load: the staged path when usable, else the id.
 
     A set-but-missing path falls THROUGH to the hub id with a warning rather than
     failing the request — the same precedence the other three services apply.
+
+    `model_name` (`AiModel.sourceUri`) may itself be an `s3://bucket/prefix` or
+    `file:///abs/path` URI (TASK-855 L6) rather than a HuggingFace hub id — those
+    two schemes are materialised to a real local directory through the mirrored
+    resolver (`nlp.models.source_resolver`) before being handed to `from_pretrained`.
+    An `hf:`-prefixed or bare hub id is returned UNCHANGED, exactly as before, so
+    every existing HuggingFace-backed caller keeps its current fetch mechanism
+    (the runtime's own hub download) untouched.
     """
     if model_path:
         if Path(model_path).exists():
@@ -128,12 +136,41 @@ def _weights_source(model_name: str, model_path: str | None) -> str:
             model_path=model_path,
             detail="configured model_path does not exist; falling back to model_name",
         )
+
+    uri = (model_name or "").strip()
+    if uri.startswith(("s3://", "file://")):
+        from nlp.core.config import settings as _settings
+        from nlp.models.source_resolver import (
+            ModelWeightIdentity,
+            config_for_model,
+            config_from_settings,
+            resolve_model_dir,
+        )
+
+        # Only `s3://` needs a credential (TASK-855 L6 follow-on,
+        # `nlp.core.model_credentials`). `file://` stays on the
+        # credential-free, gateway-independent config, so a pre-staged
+        # on-prem file resolves even when the control plane cannot be
+        # reached — the credential fetch would otherwise raise
+        # `CredentialUnavailable` and break a resolve that never needed
+        # the network at all.
+        config = (
+            await config_for_model(_settings.service)
+            if uri.startswith("s3://")
+            else config_from_settings(_settings.service)
+        )
+        resolved = await resolve_model_dir(
+            ModelWeightIdentity(slug=model_name, source_uri=uri),
+            config=config,
+        )
+        return str(resolved)
+
     return model_name
 
 
 async def _create_token_classifier(cache_key: str) -> TokenClassifier:
     model_name, model_path = _split_cache_key(cache_key)
-    source = _weights_source(model_name, model_path)
+    source = await _weights_source(model_name, model_path)
     configs = TokenClassificationConfig(model_name=source, tokenizer_name=source)
     instance = TransformerTokenClassifier(configs=configs)
     await instance.initialize()
@@ -142,7 +179,7 @@ async def _create_token_classifier(cache_key: str) -> TokenClassifier:
 
 async def _create_text_classifier(cache_key: str) -> TextClassifier:
     model_name, model_path = _split_cache_key(cache_key)
-    model_name = _weights_source(model_name, model_path)
+    model_name = await _weights_source(model_name, model_path)
     config = TextClassificationConfig(model_name=model_name, tokenizer_name=model_name)
     instance = TransformerTextClassifier(config=config)
     await instance.initialize()
@@ -171,7 +208,7 @@ def _split_suggester_cache_key(key: str) -> tuple[str, str | None, str, str | No
 
 async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
     model_name, model_path, ner_model_name, ner_model_path = _split_suggester_cache_key(cache_key)
-    source = _weights_source(model_name, model_path)
+    source = await _weights_source(model_name, model_path)
     config = MedicalSuggesterConfig(model_name=source, tokenizer_name=source)
     # The internal NER is the caller's selection too. It used to be the process
     # singleton — i.e. the hardcoded default — which is how half of this route
@@ -179,7 +216,7 @@ async def _create_medical_suggester(cache_key: str) -> MedicalSuggester:
     # DEDICATED instance, not one borrowed from the token-classifier cache: the
     # suggester's own eviction calls `shutdown()` on it, which would unload
     # weights that cache still believes it is serving.
-    ner_source = _weights_source(ner_model_name, ner_model_path)
+    ner_source = await _weights_source(ner_model_name, ner_model_path)
     instance = MedicalSuggester(
         config=config,
         token_classifier=TransformerTokenClassifier(

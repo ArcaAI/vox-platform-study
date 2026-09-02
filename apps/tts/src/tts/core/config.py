@@ -379,6 +379,26 @@ class Settings(BaseSettings):
     # TRANSPORT (the address of the config source), NOT config authority.
     gateway_url: str = "http://localhost:8868/api/v1"
 
+    # ── Gateway internal-route credential (TASK-855 L6 follow-on) ──────────
+    # NOT the same credential as `internal_access_token` above. That one is
+    # the shared `X-Service-Token` this process ACCEPTS inbound and PRESENTS
+    # on PEER (service-to-service) calls. `api_gateway_key` is presented as
+    # `X-Internal-Service-Key` on calls to the gateway's `/internal/*`
+    # surface specifically (here: `GET /internal/model-registry-credential`,
+    # the generic model-registry credential route) — the SAME header + field
+    # shape `apps/stt` already uses for the identical purpose
+    # (`stt.core.model_credentials`, `stt.core.config.settings.Settings.
+    # api_gateway_key`). This class carries `env_prefix = "TTS_"`, but
+    # `API_GATEWAY_KEY` is a single platform-wide credential (a registered
+    # `ApiKey` row) already declared in `turbo.json#globalEnv` and read the
+    # identical bare-name way by `apps/stt` and `apps/api`'s own
+    # `admin-console` instrumentation — not a new secret this field invents.
+    api_gateway_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("API_GATEWAY_KEY"),
+        description="Internal service authentication key presented as X-Internal-Service-Key on gateway /internal/* calls.",
+    )
+
     # How this process REACHES Redis, for the `arca:config:invalidate`
     # subscriber (owner decision D-5). Genuinely env-tier for the same reason
     # `gateway_url` is: it is the address of a propagation channel, not a value
