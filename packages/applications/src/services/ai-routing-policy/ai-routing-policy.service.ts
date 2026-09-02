@@ -329,17 +329,30 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   /** The winning `AiRoutingPolicy` row for a node's `providerConfigRef`, or `null`. */
   private async resolveConfigurationRow(tenantId: string, selector: GenerationCapabilitySelector): Promise<AiRoutingPolicyEntity | null> {
     if (selector.routingPolicyId) {
-      // A pinned id may name the tenant's OWN row or the SYSTEM default it inherited; both are
-      // legitimate for a node, and nothing else is reachable.
-      const rows = await this.readPolicies([tenantId, SYSTEM_TENANT_ID], { id: selector.routingPolicyId });
-      return rows[0] ?? null;
+      return this.readPinnedRow(tenantId, selector.routingPolicyId);
     }
     if (!selector.taskKey || !AI_TASK_KEYS.includes(selector.taskKey as (typeof AI_TASK_KEYS)[number])) return null;
 
     const effective = await this.getEffective(tenantId, selector.taskKey);
-    if (!effective.policyId) return null;
-    const rows = await this.readPolicies([tenantId, SYSTEM_TENANT_ID], { id: effective.policyId });
-    return rows[0] ?? null;
+    return effective.policyId ? this.readPinnedRow(tenantId, effective.policyId) : null;
+  }
+
+  /**
+   * One row BY ID, admissible only if it belongs to the request tenant or to SYSTEM.
+   *
+   * A pinned id may legitimately name the tenant's OWN row or the SYSTEM default it inherited —
+   * `PROVIDER_CONFIG_REF_PROPERTY`'s doc comment contemplates both. Nothing else is reachable, and
+   * the ownership test is made HERE rather than left to the tenant-scope extension: `loadOwnedRow`
+   * asserts `row.tenantId` for the same reason. An extension is a backstop, not the statement of
+   * intent, and a guarantee that lives only in a `$extends` hook is one no test of this method can
+   * see. A foreign row answers `null` — the capability set is then UNKNOWN, which is the
+   * 404-over-403 posture expressed in the only currency this method has.
+   */
+  private async readPinnedRow(tenantId: string, id: string): Promise<AiRoutingPolicyEntity | null> {
+    const rows = await this.readPolicies([tenantId, SYSTEM_TENANT_ID], { id });
+    const row = rows[0];
+    if (!row || (row.tenantId !== tenantId && row.tenantId !== SYSTEM_TENANT_ID)) return null;
+    return row;
   }
 
   // ─────────────────────────────── writes ────────────────────────────────
