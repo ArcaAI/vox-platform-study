@@ -253,13 +253,13 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     id: '86000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.live',
-    modelSlug: 'lms-gemma-4-e4b-it-qat',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   {
     id: '86000000-0000-0000-0000-000000000005',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.finalize',
-    modelSlug: 'lms-gemma-4-e4b-it-qat',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // BUG-018 — the prompt-template Test button's own routing key. It exists so
   // the Test path resolves through AiTaskDefault ALONE: before this row the
@@ -277,7 +277,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     id: '86000000-0000-0000-0000-000000000010',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.test',
-    modelSlug: 'lms-gemma-4-e4b-it-qat',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // Guardrail selection moved out of env into the DB control plane
   // (Phase B). Both keys are SUPER_ADMIN-only.
@@ -348,7 +348,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     // it is why the eval gate's CI-provisioning path is still an open choice.
     // `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed —
     // existing databases move via the TASK-858 data migration.
-    modelSlug: 'lms-gemma-4-e4b-it-qat',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
 ];
 
