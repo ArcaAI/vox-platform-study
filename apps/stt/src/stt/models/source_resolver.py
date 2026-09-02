@@ -367,14 +367,15 @@ async def _resolve_hf(
             f"s3:// source_uri."
         )
 
+    # NO pre-emptive raise on HF_HUB_OFFLINE. `huggingface_hub` honours that
+    # variable by serving the LOCAL CACHE and never touching the network, which
+    # IS the "pre-populate the hub cache" path the error below recommends —
+    # raising before the call made that advice impossible to follow, and turned
+    # every AiModel-driven load into a hard failure on a pod whose weights are
+    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # still reported distinctly, but only once a cache MISS has actually
+    # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}
-    if offline:
-        raise ModelSourceError(
-            f"HF_HUB_OFFLINE is set, so HuggingFace repo {repo_id!r} for model "
-            f"'{identity.slug}' cannot be fetched. Pre-populate the hub cache "
-            f"({config.hf_cache_dir}), or set AiModel.localPath / a file:// "
-            f"source_uri instead."
-        )
 
     try:
         snapshot = await asyncio.to_thread(
@@ -387,6 +388,13 @@ async def _resolve_hf(
     except ModelSourceError:
         raise
     except Exception as exc:
+        if offline:
+            raise ModelSourceError(
+                f"HF_HUB_OFFLINE is set and HuggingFace repo {repo_id!r} for model "
+                f"'{identity.slug}' is NOT in the local hub cache. Pre-populate the "
+                f"hub cache ({config.hf_cache_dir}), or set AiModel.localPath / a "
+                f"file:// source_uri instead. Underlying error: {exc}"
+            ) from exc
         raise ModelSourceError(
             f"Failed to fetch HuggingFace weights {repo_id!r} for model "
             f"'{identity.slug}': {exc}"

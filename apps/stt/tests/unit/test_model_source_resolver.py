@@ -234,8 +234,12 @@ async def test_file_scheme_missing_path_raises(config: ModelSourceConfig) -> Non
 async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, monkeypatch) -> None:
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
-    def _snapshot(**kwargs):  # pragma: no cover - offline guard fires first
-        raise AssertionError("resolver attempted a hub call while offline")
+    def _snapshot(**kwargs):
+        # A cache MISS under HF_HUB_OFFLINE: huggingface_hub raises rather than
+        # reaching the network. The resolver no longer pre-empts this call (that
+        # would also block a cache HIT), so this stub IS invoked, and the
+        # offline-specific message is produced from the miss.
+        raise OSError("no local snapshot for this repo (offline)")
 
     monkeypatch.setattr("stt.models.source_resolver._hf_snapshot_download", _snapshot)
 
@@ -246,6 +250,32 @@ async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, mon
         )
 
     assert "HF_HUB_OFFLINE" in str(exc.value)
+
+
+async def test_hf_offline_cached_is_served_from_cache(config: ModelSourceConfig, monkeypatch) -> None:
+    """Offline + ALREADY CACHED must resolve, not raise.
+
+    The sibling test above is named `..._offline_uncached_raises_cleanly`, and
+    that "uncached" was always the intent: `huggingface_hub` honours
+    HF_HUB_OFFLINE by serving the LOCAL CACHE and never touching the network.
+    Raising before the call made the resolver's own advice -- "pre-populate the
+    hub cache" -- impossible to follow, and broke every AiModel-driven load on a
+    pod whose weights are mounted read-only from the model bucket.
+    """
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    cached = Path(config.hf_cache_dir) / "models--openai--whisper-large-v3" / "snapshots" / "abc"
+    cached.mkdir(parents=True, exist_ok=True)
+
+    def _snapshot(**kwargs):
+        return str(cached)
+
+    monkeypatch.setattr("stt.models.source_resolver._hf_snapshot_download", _snapshot)
+
+    resolved = await resolve_model_dir(
+        identity(source_uri="hf:openai/whisper-large-v3", source="HUGGINGFACE"),
+        config=config,
+    )
+    assert Path(resolved) == cached
 
 
 async def test_hf_bare_id_is_accepted(config: ModelSourceConfig, monkeypatch) -> None:
