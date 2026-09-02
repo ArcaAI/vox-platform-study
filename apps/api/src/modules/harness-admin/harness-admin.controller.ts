@@ -22,6 +22,7 @@ import {
   IActiveUserContext,
   isSuperAdmin,
   LiveDocEngineConfigResponse,
+  LiveDocRealtimeCapabilitiesResponse,
   LiveDocSessionsListResponse,
   LiveDocSessionStatsResponse,
   LiveDocumentationService,
@@ -612,6 +613,26 @@ export class HarnessAdminController {
     const stats = await this.liveDocumentationService.getSessionStats(tenantId, id);
     if (!stats) throw new NotFoundException('No active live-documentation session for this consultation.');
     return stats;
+  }
+
+  @Get('live/capabilities')
+  @Authorize(['read', 'HarnessWorkflow'])
+  @ApiOperation({
+    summary: 'Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)',
+    description:
+      'Resolves the realtime lane the way a recording session does — graph-executor flag, then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Three answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.',
+  })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiQuery({
+    name: 'departmentId',
+    required: false,
+    description: 'Resolve the assignment cascade against a department override. Omitted resolves the tenant default.',
+  })
+  @ApiResponse({ status: 200, type: LiveDocRealtimeCapabilitiesResponse })
+  @ApiResponse({ status: 403, description: 'Forbidden — a tenant admin may not read another tenant’s capabilities.' })
+  async getRealtimeCapabilities(@Query() query: { tenantId?: string; departmentId?: string }): Promise<LiveDocRealtimeCapabilitiesResponse> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.liveDocumentationService.getRealtimeCapabilities(tenantId, query.departmentId ?? null);
   }
 
   @Get('live/config')

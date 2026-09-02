@@ -104,6 +104,15 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
     expect(isPhaseEnabled(phase, 'safe')).toBe(false);
   });
 
+  // TASK-852 item 2. The assertions above are all `toContain`/one-way, so they catch a demo phase
+  // that ESCAPED the deny-list and nothing else. The opposite mistake is just as bad and much
+  // quieter: a PLATFORM-CONFIG phase added here by reflex leaves a production `safe` bootstrap
+  // silently missing configuration, and no test above would notice. Pinning the set exactly makes
+  // both directions a deliberate act — which is what the deny-list's own docstring promises.
+  it('is EXACTLY this set — growing it silently would break a production bootstrap', () => {
+    expect([...SEED_PHASES_EXCLUDED_FROM_SAFE].sort()).toEqual([...DANGEROUS].sort());
+  });
+
   it('still runs platform-config phases in "safe"', () => {
     for (const phase of ['01-policy', '03-role', '15-entitlements', '20-ai-price-book']) {
       expect(isPhaseEnabled(phase, 'safe')).toBe(true);

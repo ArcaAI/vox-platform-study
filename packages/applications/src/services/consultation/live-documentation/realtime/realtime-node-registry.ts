@@ -22,7 +22,13 @@
  * cannot widen `consultation.extractEntities.in` from `transcript` to `text`,
  * because it does not own the declaration.
  */
-import { NODE_PORTS, WORKFLOW_NODE_REGISTRY, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import {
+  NODE_CONFIG_SCHEMAS,
+  NODE_PORTS,
+  WORKFLOW_NODE_REGISTRY,
+  type WorkflowNodePorts,
+  type WorkflowPortDescriptor,
+} from '@arcaai/workflow-contract';
 import type { HarnessLiveAssistProposalDto } from '../../harness/dto';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
 
@@ -462,4 +468,28 @@ const REALTIME_ALIAS_OF: Readonly<Record<string, string>> = Object.freeze({
 
 export function canonicalRealtimeNodeType(type: string): string {
   return REALTIME_ALIAS_OF[type] ?? type;
+}
+
+/**
+ * TASK-852 item 6 — whether a node type offers the `enabled` switch at all.
+ *
+ * DERIVED from the shipped config schema, never from a list of names. `node-config-schemas.ts`
+ * folds `enabled` into every node type EXCEPT the registry-class `mandatory` ones (items 3-4), so
+ * "does this schema declare `enabled`?" is the same question as "may a tenant turn this node
+ * off?" — asked of the artifact that actually decides it. Every schema is
+ * `additionalProperties: false`, so a node type without the property cannot be authored with one:
+ * a read-out that showed such a node as togglable would advertise a switch the publish-time
+ * validator rejects.
+ *
+ * Restating the mandatory set here instead would give the platform two answers to one question,
+ * which is exactly the drift the derivation in `REALTIME_NODE_TYPES` above exists to avoid.
+ */
+export function realtimeNodeIsTogglable(type: string): boolean {
+  // `NodeConfigSchema` is `Readonly<Record<string, unknown>>` — a JSON Schema document, not a
+  // typed shape — so the walk down to `properties.enabled` is narrowed rather than asserted. An
+  // unregistered type answers `false`, which is the safe direction: it withholds a switch rather
+  // than advertising one that does not exist.
+  const properties = (NODE_CONFIG_SCHEMAS[type] as Record<string, unknown> | undefined)?.properties;
+  if (typeof properties !== 'object' || properties === null) return false;
+  return (properties as Record<string, unknown>).enabled !== undefined;
 }
