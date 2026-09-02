@@ -239,7 +239,10 @@ function ScribeWorkspace() {
   const [dnaStyleId, setDnaStyleId] = useState('');
   // TASK-858 Lane D — which PUBLISHED consultation workflow governs the session being opened.
   // Bound at OPEN like `departmentId` (it is a property of the consultation, not of the
-  // capture); empty ⇒ the clinician has not chosen and the tenant default is offered below.
+  // capture). EMPTY IS THE DEFAULT and means "send no slug": the department → tenant
+  // WorkflowAssignment cascade decides, which is what the tenant configured. Preselecting the
+  // tenant default would have sent a slug on every open and silently overridden a DEPARTMENT
+  // assignment — `isTenantDefault` describes the tenant tier, not this consultation.
   const [workflowChoice, setWorkflowChoice] = useState('');
   const languageModes = useArcaSttLanguageModes();
   // the citation currently highlighted in the live-session
@@ -255,15 +258,13 @@ function ScribeWorkspace() {
    *
    * `workflows.workflows` is deliberately tri-state (`null` could-not-ask vs `[]` none
    * published) and both hooks fail OPEN — a discovery read must never stop a consultation.
-   * The preselection is the tenant default, which is what governs when nothing is chosen.
+   * Nothing is preselected: the default is to send no slug and let the assignment cascade
+   * decide. `tenantDefault` is surfaced in the picker as a HINT about the tenant tier.
    */
   const selectableWorkflows = useSelectableConsultationWorkflows();
   const dnaStyles = useDnaStyleOptions();
   const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
   const pipelineId = pipelineChoice || defaultPipelineId;
-  // Derived, not an effect: the tenant default becomes the selection as soon as the list
-  // resolves, and an explicit choice always wins over it.
-  const workflowSlug = workflowChoice || selectableWorkflows.tenantDefault?.slug || '';
 
   const recordingStart = useStartRecording();
   const recordingStop = useStopRecording();
@@ -685,7 +686,7 @@ function ScribeWorkspace() {
               // the column as "could not read", `[]` as "none published" (rule 11 §5).
               workflows={selectableWorkflows.workflows}
               workflowsLoading={selectableWorkflows.isLoading}
-              selectedWorkflowSlug={workflowSlug}
+              selectedWorkflowSlug={workflowChoice}
               onWorkflowChange={setWorkflowChoice}
             />
           </ResizablePanel>
