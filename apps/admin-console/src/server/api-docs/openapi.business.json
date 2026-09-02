@@ -9986,6 +9986,55 @@
         ],
         "type": "object"
       },
+      "ModelDownloadStatusResponse": {
+        "properties": {
+          "error": {
+            "description": "Failure message from the most recent DOWNLOAD_FAILED job, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "fileSizeMb": {
+            "description": "Total downloaded size in MB.",
+            "nullable": true,
+            "type": "number"
+          },
+          "finishedAt": {
+            "description": "When the most recent download job finished (success or failure).",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "localPath": {
+            "description": "Mount-path the s3fs sidecar serves this version at, e.g. /mnt/models-bucket/<slug>/<version>/.",
+            "nullable": true,
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA256 of the primary weights object.",
+            "nullable": true,
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "When the most recent download job started.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "NOT_DOWNLOADED",
+              "DOWNLOADING",
+              "DOWNLOADED",
+              "DOWNLOAD_FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "ModelResponse": {
         "properties": {
           "architecture": {
@@ -18326,6 +18375,29 @@
         },
         "required": [
           "plan"
+        ],
+        "type": "object"
+      },
+      "TriggerModelDownloadResponse": {
+        "properties": {
+          "jobId": {
+            "description": "BullMQ job id for the enqueued download — poll with GET :id/download.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Always DOWNLOADING on a successful trigger.",
+            "enum": [
+              "NOT_DOWNLOADED",
+              "DOWNLOADING",
+              "DOWNLOADED",
+              "DOWNLOAD_FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "status"
         ],
         "type": "object"
       },

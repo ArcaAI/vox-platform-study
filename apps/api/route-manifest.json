@@ -378,6 +378,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelAdminController",
+      "handler": "getDownloadStatus",
+      "method": "GET",
+      "path": "/api/v1/admin/ai-models/{id}/download",
+      "routePath": "/admin/ai-models/:id/download",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "triggerDownload",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/{id}/download",
+      "routePath": "/admin/ai-models/:id/download",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelDiscoveryController",
       "handler": "discover",
       "method": "GET",
@@ -13252,6 +13298,22 @@
       "method": "POST",
       "path": "/api/v1/internal/harness/tts/synthesize",
       "routePath": "/internal/harness/tts/synthesize",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "ModelRegistryInternalController",
+      "handler": "getModelRegistryCredential",
+      "method": "GET",
+      "path": "/api/v1/internal/model-registry-credential",
+      "routePath": "/internal/model-registry-credential",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
