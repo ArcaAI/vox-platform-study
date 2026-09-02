@@ -73,6 +73,13 @@ class NodeActivityInput(BaseModel):
     trajectory: TrajectoryContext | None = None
     bound_inputs: dict[str, Any] = Field(default_factory=dict)
     run_payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-849 lane A, additive-optional. The DELTA lane's stream key is per-RUN
+    # (`wf:run:<runId>:events`), so an activity that streams tokens has to know which run it
+    # belongs to — `trajectory` carries a workflow VERSION id and a stage/node id, never a run
+    # id. Empty default keeps every pre-existing fixture byte-identical; an activity that
+    # cannot resolve a run id simply does not stream, which costs observability and nothing
+    # else. Lanes B (binary audio) and C (debug canvas) both consume this.
+    run_id: str = ""
 
 
 class NodeActivityResult(BaseModel):
