@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@arcaai/ui/components/
 const LINKS = [
   {
     href: '/playground/llm',
-    label: 'Agent Playground',
+    label: 'LLM Playground',
     description: 'Free-form text generation, guardrails, and NER testing.',
     Icon: IconSparkles,
   },

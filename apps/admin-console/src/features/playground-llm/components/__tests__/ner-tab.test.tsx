@@ -1,5 +1,5 @@
 /**
- * Agent Playground NER tab. fetch is stubbed at the network
+ * LLM Playground NER tab. fetch is stubbed at the network
  * boundary; covers the idle prompt, the extract flow (POST to the text-analyses
  * proxy), the entity list, and the empty result.
  */
