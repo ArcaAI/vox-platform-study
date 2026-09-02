@@ -296,6 +296,23 @@ export interface AiModelSeed {
   source: (typeof AiModelSource)[keyof typeof AiModelSource];
   sourceUri: string;
   sourceRevision: string;
+  /**
+   * Operator/admin override — HIGHEST precedence in every service's
+   * `resolve_model_dir` (stt, guardrail, nlp, harness; `stt.prisma:178-182`),
+   * ahead of `sourceUri` scheme dispatch. Weights are read IN PLACE from this
+   * path, never copied.
+   *
+   * DELIBERATELY NOT HAND-SET on any seed row (TASK-855). The path segment
+   * under the slug is CONTENT-DERIVED — `<quant>-<first 12 of
+   * sha256(SHA256SUMS)>`, produced by the `hope-models-publish` Job — so it
+   * cannot be known, let alone typed here, before a model is actually
+   * published to the `hope-models` bucket. The TASK-855 Phase 2 download
+   * action writes this field back automatically once a model is fetched,
+   * alongside `downloadStatus`/`checksum` — do NOT hand-author a value here;
+   * an absent value simply falls through to `sourceUri` scheme dispatch with
+   * a structlog warning, so it is always safe to omit.
+   */
+  localPath?: string | null;
   format: (typeof AiModelFormat)[keyof typeof AiModelFormat];
   /** Canonical serving provider. */
   provider: AiModelProvider;
