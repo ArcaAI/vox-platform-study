@@ -147,6 +147,89 @@ export function resolveBootstrapTenantAdminConfig(env: NodeJS.ProcessEnv = proce
   return { username, email, password, tenantKey };
 }
 
+/**
+ * TASK-857 — the department a bootstrap tenant administrator joins, by preference.
+ *
+ * Login requires BOTH halves of tenant membership for a non-super-admin: an
+ * active role assignment AND an active `UserDepartment`
+ * (`auth.controller.ts` → `UserDepartmentService.findActiveDepartmentForUserInTenant`,
+ * which reads `{ userId, tenantId, resourceStatus: ENABLED }`). Without the
+ * second half this phase minted an administrator that could not sign in.
+ *
+ * We JOIN an existing department rather than creating one. `Department` is a
+ * clinically load-bearing lookup — consultation routing, prompt/agent
+ * resolution, context-schema scoping — so inventing an "Administration" row
+ * inside a customer's clinical catalog would be exactly the fabricated data
+ * `safe` mode exists to keep out.
+ *
+ * The order below is the intent `91-user.ts` already encodes for the DEMO
+ * tenant administrators (`PRIMARY_DEPARTMENT_CODE_BY_USERNAME`): `arcaai_admin`
+ * → `GEN` (General Medicine), Global's `tenant_admin` → `OPD` (the
+ * care-setting catalog's front door). A tenant whose catalog uses neither code
+ * falls back to its alphabetically-first ENABLED department, which is arbitrary
+ * but DETERMINISTIC and logged — and reassignable in one click afterwards, so
+ * it is a starting point, not a clinical claim.
+ */
+export const BOOTSTRAP_TENANT_ADMIN_DEPARTMENT_CODE_PREFERENCE = ['GEN', 'OPD', 'ADMIN'] as const;
+
+/** Pure ordering rule, exported so it is testable without a database. */
+export function chooseBootstrapTenantAdminDepartment<T extends { id: string; code: string | null }>(departments: readonly T[]): T | null {
+  for (const code of BOOTSTRAP_TENANT_ADMIN_DEPARTMENT_CODE_PREFERENCE) {
+    const preferred = departments.find((department) => department.code === code);
+    if (preferred) return preferred;
+  }
+  // Codeless departments sort last; `\uffff` is above every code character.
+  const byCode = [...departments].sort((a, b) => (a.code ?? '\uffff').localeCompare(b.code ?? '\uffff'));
+  return byCode[0] ?? null;
+}
+
+/**
+ * Give the bootstrap administrator the department half of tenant membership.
+ *
+ * CREATE-ONLY, like every other write in this phase: if the user already has a
+ * `UserDepartment` in this tenant — in ANY status — the question has been
+ * answered by a human and the seed leaves it alone. Re-adding a membership an
+ * operator disabled would be fighting them, and a second row on the same
+ * `(tenantId, userId, departmentId)` would violate the unique index and take
+ * the whole sync down with it.
+ */
+const ensureBootstrapTenantAdminMembership = async (client: CorePrismaClient, userId: string, tenantId: string, tenantKey: string) => {
+  const existing = await client.userDepartment.findFirst({ where: { userId, tenantId } });
+  if (existing) {
+    console.log('  Department membership already present — leaving it untouched.');
+    return;
+  }
+
+  const departments = await client.department.findMany({
+    where: { tenantId, resourceStatus: 'ENABLED' },
+    select: { id: true, code: true },
+  });
+
+  const department = chooseBootstrapTenantAdminDepartment(departments);
+  if (!department) {
+    // Same posture as `91-user.ts`: a non-exempt user without a
+    // `UserDepartment` fails login with "User does not have access to the
+    // specified tenant" even though its role assignment is perfect. Fail loudly
+    // at seed time rather than shipping an account nobody can use.
+    throw new Error(
+      `Cannot seed the bootstrap tenant admin: tenant "${tenantKey}" (${tenantId}) has no ENABLED department, ` +
+        'and tenant membership requires one — the account would be created unable to log in. ' +
+        'Run seedDepartment (04-department) first, or create a department in that tenant.',
+    );
+  }
+
+  await client.userDepartment.create({
+    data: {
+      userId,
+      departmentId: department.id,
+      tenantId,
+      isPrimary: true,
+    },
+  });
+
+  console.log(`  Joined department "${department.code ?? department.id}" — the second half of tenant membership, without which login is refused.`);
+};
+
 export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
   const config = resolveBootstrapTenantAdminConfig();
 
@@ -176,7 +259,23 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
 
   const existingById = await client.user.findFirst({ where: { id: BOOTSTRAP_TENANT_ADMIN_USER_ID } });
   if (existingById) {
-    console.log(`  Bootstrap tenant admin already exists (username "${existingById.username}") — leaving it untouched.`);
+    console.log(`  Bootstrap tenant admin already exists (username "${existingById.username}") — leaving the credential untouched.`);
+
+    // TASK-857: this phase is create-only, so an account provisioned before the
+    // membership fix would keep its unloggable state forever. Repair the
+    // MEMBERSHIP (never the password) for the tenant it actually administers —
+    // read off its own role assignment, not off the current env, so a changed
+    // `…TENANT_KEY` cannot bind it into a second tenant.
+    const assignment = await client.userRoleAssignment.findFirst({
+      where: { userId: existingById.id, resourceStatus: 'ENABLED' },
+      select: { tenantId: true },
+    });
+    if (assignment?.tenantId) {
+      await ensureBootstrapTenantAdminMembership(client, existingById.id, assignment.tenantId, config.tenantKey);
+    } else {
+      console.warn('  ⚠️  It holds no active role assignment; not inventing one. Grant its TENANT_ADMIN role, then re-run.');
+    }
+
     return { success: true, created: false as const };
   }
 
@@ -231,6 +330,10 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
       tenantId: tenant.id,
     },
   });
+
+  // The OTHER half of tenant membership. A role assignment alone authenticates
+  // to a 401 (TASK-857).
+  await ensureBootstrapTenantAdminMembership(client, user.id, tenant.id, tenant.key);
 
   console.log(`  Created TENANT_ADMIN "${config.username}" <${config.email}> on tenant "${tenant.key}" (${tenant.id}).`);
   console.log('  Change this password after first login; a re-seed will NOT reset it.');
