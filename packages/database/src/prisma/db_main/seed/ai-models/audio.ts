@@ -345,6 +345,43 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp'],
   },
   {
+    // TASK-858 D1 — the q8_0 build of the SAME repo as the f16 row above, and
+    // the model the realtime transcription agent actually binds.
+    //
+    // It is a SEPARATE catalog row rather than a `computeType` edit, for the
+    // reason the ml-en pair already established: `computeType` is what
+    // `whisper_cpp_loader._select_gguf_file` matches the GGUF filename on, so
+    // one row cannot stand for two quantizations of one repo — a graph that
+    // selects "the medical model" would get whichever file the loader happened
+    // to pick first.
+    //
+    // `memorySizeMb` stays at the f16 row's ~1700: the published GGUF set for
+    // this repo is dominated by the large-v3 tensor footprint rather than by
+    // the quantization, and the SIBLING q8_0 row's smaller figure
+    // (`arcaai-whisper-large-ml-en-gguf-q8_0`, 900) is a turbo checkpoint,
+    // which this one is not. Stated as the owner specified it rather than
+    // derived from a file listing nobody has run against this private repo.
+    id: '80000000-0000-0000-0001-000000000024',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large EN-Medical (2607.26 merge, whisper.cpp GGUF q8_0)',
+    slug: 'whisper-large-en-medical-260726-merged-gguf-q8_0',
+    description:
+      'ArcaAI in-house English medical fine-tune (2607.26 merge), GGUF-quantized (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding. The engine the realtime transcription agent binds.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    // Same repo as the f16 row; the quant is chosen by `computeType`.
+    sourceUri: 'taphuynh/whisper-large-en-medical-2607.26-merged-gguf',
+    sourceRevision: 'main',
+    format: AiModelFormat.WHISPER_CPP,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 1700,
+    computeType: 'q8_0',
+    tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp', 'q8_0'],
+  },
+  {
     // Backfilled from a live model created ad hoc in the admin console
     // (2026-08-06) — CTranslate2 build of the same medical fine-tune as the
     // row above. Source repo/merge lineage were not recorded at creation

@@ -17,7 +17,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * - guardrail.pii → gliner2-privacy-filter-pii-multi (PII spans; English only)
  * - guardrail.pii.spans → gliner2-guardrails-pii-multi (joint PII spans + safety; TASK-776)
  * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
- * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row; owner directive 2026-08-16)
+ * - text.live / text.finalize / text.test / harness.judge → lms-gemma-4-e4b-it-qat
+ *   (TEXT_GENERATION rows; owner directive 2026-09-03, TASK-858 D4)
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback.
@@ -229,24 +230,36 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     taskKey: 'nlp.diagnosis',
     modelSlug: 'symps-disease-bert-v3-c41',
   },
-  // TEXT generation routing, mapped to the CURRENT TEXT
-  // default (HarnessPolicy SYSTEM textProvider/textModel = lm-studio /
-  // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
-  // finalize point at the same platform default today; a super admin OR a
-  // tenant admin may split or override them later.
+  // TEXT generation routing. Both live and finalize point at the same platform
+  // default; a super admin OR a tenant admin may split or override them later.
   // `resolveTextSelection` consults these keys FIRST. NOTE: the per-tenant
   // `text.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
+  //
+  // OWNER DIRECTIVE 2026-09-03 (TASK-858 D4): every text-generation task routes
+  // to LM Studio `gemma-4-e4b-it-qat` — registry slug `lms-gemma-4-e4b-it-qat`,
+  // the QAT build of `google/gemma-4-E4B-it-qat-q4_0-gguf`. These rows used to
+  // name the E2B sibling, which was chosen when the platform default mirrored
+  // `HarnessPolicy` SYSTEM `textProvider/textModel` (lm-studio /
+  // gemma-4-e2b-it-qat); the directive supersedes that mirroring for the
+  // `text.*` plane. `HarnessPolicy`'s own SYSTEM row is a DIFFERENT tier and is
+  // left alone here — `resolveTextSelection` reads AiTaskDefault first, so
+  // these rows are what actually decide the model.
+  //
+  // ⚠ `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed. An
+  // already-seeded database keeps its E2B rows until the TASK-858 data
+  // migration (`…_task_858_text_defaults_gemma_e4b`) repoints exactly the rows
+  // that still carry the OLD seeded values.
   {
     id: '86000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.live',
-    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    modelSlug: 'lms-gemma-4-e4b-it-qat',
   },
   {
     id: '86000000-0000-0000-0000-000000000005',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.finalize',
-    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    modelSlug: 'lms-gemma-4-e4b-it-qat',
   },
   // BUG-018 — the prompt-template Test button's own routing key. It exists so
   // the Test path resolves through AiTaskDefault ALONE: before this row the
@@ -255,13 +268,16 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // that had selected Azure OpenAI still ran every template test on the
   // platform's LM Studio gemma. Testing a prompt is prompt-authoring, not
   // clinical documentation; it must not read harness policy to pick a model.
-  // Seeded at the same platform default so behaviour is unchanged for tenants
-  // that never override it; a tenant admin may repoint `text.test` freely.
+  // Seeded at the same platform default so a template test resolves the same
+  // model the live/finalize paths do; a tenant admin may repoint `text.test`
+  // freely. Moved to `lms-gemma-4-e4b-it-qat` with its siblings above (owner
+  // directive 2026-09-03) — testing a prompt against a model no clinical path
+  // uses would make the Test button answer a question nobody asked.
   {
     id: '86000000-0000-0000-0000-000000000010',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'text.test',
-    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    modelSlug: 'lms-gemma-4-e4b-it-qat',
   },
   // Guardrail selection moved out of env into the DB control plane
   // (Phase B). Both keys are SUPER_ADMIN-only.
@@ -315,14 +331,24 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     // `lms-gemma-4-e4b`'s sourceUri then read `google/gemma-4-e4b-qat` — an id
     // LM Studio has never served, so every judge call 404d. That sourceUri has
     // since been corrected to `google/gemma-4-e4b`, which the live instance DOES
-    // serve (verified 2026-08-16, ai-models/llm.ts), so the reason for the
-    // repoint no longer holds and it is reverted here.
+    // serve (verified 2026-08-16, ai-models/llm.ts).
+    //
+    // OWNER DIRECTIVE 2026-09-03 (TASK-858 D4) moves it once more, to
+    // `lms-gemma-4-e4b-it-qat`. That is a NARROWING of the 2026-08-16 directive,
+    // not a reversal of it: both rows are E4B, and the QAT row names the wire id
+    // the deployed LM Studio actually serves (`gemma-4-e4b-it-qat` =
+    // `google/gemma-4-E4B-it-qat-q4_0-gguf`), while `lms-gemma-4-e4b` points at
+    // the un-quantized `google/gemma-4-e4b`. The 2026-09-03 directive names the
+    // QAT build explicitly for ALL text generation, and judgement is text
+    // generation, so the judge follows the same row rather than keeping a
+    // second E4B identity alive beside it.
     //
     // Latency note: e4b is the larger model (~90s/call observed vs e2b's
     // faster turn). That is the owner's accepted trade for judgement quality;
     // it is why the eval gate's CI-provisioning path is still an open choice.
-    // `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed.
-    modelSlug: 'lms-gemma-4-e4b',
+    // `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed —
+    // existing databases move via the TASK-858 data migration.
+    modelSlug: 'lms-gemma-4-e4b-it-qat',
   },
 ];
 
