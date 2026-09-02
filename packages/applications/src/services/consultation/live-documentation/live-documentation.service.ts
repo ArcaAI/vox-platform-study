@@ -384,11 +384,24 @@ interface LiveSession {
    * check, so the hardcoded loop ran for every recording session regardless of
    * what the tenant had authored (TASK-806 §2.1 — the root cause). Resolved once
    * at `start()` with the same discipline as the agent and the template above;
-   * `false` means a tenant-authored graph GOVERNS this consultation and this
-   * engine must stand down entirely.
+   * `false` means this engine must stand down entirely.
+   *
+   * TASK-858 A2 — `false` no longer follows from the governing marker alone. See
+   * {@link LiveDocumentationService.ensureSubstrateResolved} for the three-way contract.
    */
   substratePromise?: Promise<boolean>;
   substrateAllowed?: boolean;
+  /**
+   * TASK-858 A2 — does a TENANT-AUTHORED workflow govern this consultation?
+   *
+   * Frozen beside `substrateAllowed`, and deliberately NOT the same question. A governed
+   * session in GRAPH mode keeps running (`substrateAllowed === true`) because it walks the
+   * governing definition's realtime lane, which the durable interpreter skips. What it must
+   * never do is fall back to the LEGACY flush, which would write a second, hardcoded document
+   * beside the one the durable run owns — so `flush()` reads this flag to refuse that
+   * fall-through.
+   */
+  governedByTenantWorkflow?: boolean;
   /**
    * TASK-811 — the session's FROZEN realtime lane, and whether the graph
    * executor is enabled for this tenant. Frozen for the same reason the agent and
@@ -826,13 +839,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // shape at session start so a mid-consultation publish cannot change the
     // note being produced. `flush()` awaits the memoized promise.
     session.templatePromise = this.ensureTemplateResolved(session);
-    // TASK-811 task 13 — the SUBSTRATE GATE, and the lane the flush will walk.
+    // TASK-811 task 13 — the lane the flush will walk, and the SUBSTRATE GATE.
     // Same fire-and-forget shape as the two above so `start()` stays synchronous
     // for the recording controller; `flush()` awaits the memoized promises, and
     // the gate additionally tears this session down when it resolves to "stand
     // down", so a governed consultation leaves no timers or locks behind.
-    session.substratePromise = this.ensureSubstrateResolved(session);
+    //
+    // TASK-858 A2 — the ORDER is now load-bearing. The gate's answer depends on the MODE, and
+    // the mode IS the frozen lane (`null` ⇒ legacy flush, a lane ⇒ graph executor), so the lane
+    // promise must exist before the gate can await it. Kicking both off here rather than
+    // chaining them keeps the lane resolving concurrently with the gate's own consultation read.
     session.lanePromise = this.ensureLaneResolved(session);
+    session.substratePromise = this.ensureSubstrateResolved(session);
 
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
   }
@@ -990,18 +1008,43 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------
 
   /**
-   * Task 13 — MAY this engine document this consultation?
+   * Task 13 — MAY this engine document this consultation, and in WHICH mode?
    *
    * `startRecording` called `start()` after only an ownership and status check
    * (`consultation.controller.ts`), so the hardcoded flush ran for every
    * recording session no matter what the tenant had authored. That is the root
    * cause TASK-806 §2.1 names, and this is the gate that closes it.
    *
-   * The answer is the SAME durable marker the loop plane already consults
-   * (`governing-engine.ts`): a well-formed `governingEngine` on
-   * `Consultation.metadata` means a tenant-authored graph took ownership at
-   * consultation open, and both write the same document — so exactly one of them
-   * may run.
+   * Whether a tenant-authored graph took ownership at consultation open is the SAME durable
+   * marker the loop plane already consults (`governing-engine.ts`): a well-formed
+   * `governingEngine` on `Consultation.metadata`.
+   *
+   * ── THE CONTRACT (TASK-858 A2) ──────────────────────────────────────────────
+   *
+   * | Governed? | Frozen lane | Outcome |
+   * |---|---|---|
+   * | no | either | `true` — this engine documents the consultation |
+   * | yes | `null` (LEGACY mode) | `false` — stand down, and tear the session down |
+   * | yes | a lane (GRAPH mode) | `true` — run the GOVERNING definition's realtime lane |
+   *
+   * The middle row is TASK-811 task 13 unchanged, and for its original reason: the legacy flush
+   * is a hardcoded script that writes a whole document, so running it beside a tenant-authored
+   * graph is two engines writing one document.
+   *
+   * The bottom row is new, and it exists because the premise of a blanket stand-down stopped
+   * being true. Since TASK-852 a session with `consultation.realtime.graphExecutor.enabled`
+   * walks the REALTIME LANE of a published graph, and the durable interpreter deliberately SKIPS
+   * every `lane: 'realtime'` node (`apps/harness/.../interpreter/workflow.py` `_dispatch_node`,
+   * `reason="realtime_lane"`). Standing this engine down therefore left the realtime nodes —
+   * live NER, the partial summary, the grammar pass — running in NEITHER engine. The realtime
+   * lane only ever ran at all because the durable dispatch was failing and no marker was written.
+   *
+   * Exclusivity still holds in that row, and holds BY CONSTRUCTION rather than by this gate:
+   * `buildRealtimeLane` admits only `REALTIME_NODE_TYPES`, so `consultation.persistDraft` and
+   * every other durable writer is filtered out of the lane (TASK-852 §5). The one path that
+   * could still put a legacy document on a governed consultation is `flush()`'s fall-back when
+   * the lane cannot be WIRED, and {@link LiveDocumentationService.flush} refuses it for a
+   * governed session — which is what `session.governedByTenantWorkflow` is frozen for.
    *
    * ── WHY THIS FAILS OPEN ─────────────────────────────────────────────────────
    * Identical reasoning to `LoopContextSignalService.standDownForTenantWorkflow`,
@@ -1009,39 +1052,64 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * "stand down" direction leaves the encounter with NO documentation at all,
    * which is clinically worse than one documented by the default engine. So an
    * absent marker, a missing row, an unwired repository and a THROWING read are
-   * all "this engine governs". Only a positively-read marker stands it down.
+   * all "this engine governs". Only a positively-read marker reaches the mode
+   * question at all.
    */
   private async ensureSubstrateResolved(session: LiveSession): Promise<boolean> {
     if (!this.consultationRepository) {
+      session.governedByTenantWorkflow = false;
       session.substrateAllowed = true;
       return true;
     }
 
-    let allowed = true;
+    let governed = false;
     try {
       const consultation = await this.consultationRepository.findById(session.consultationId);
-      allowed = !tenantWorkflowGoverns(consultation?.metadata);
+      governed = tenantWorkflowGoverns(consultation?.metadata);
     } catch (error) {
       this.logger.warn({
         message: 'Governing-engine marker could not be read — this engine keeps the consultation so it is still documented',
         consultationId: session.consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
+      session.governedByTenantWorkflow = false;
       session.substrateAllowed = true;
       return true;
     }
 
-    session.substrateAllowed = allowed;
-    if (!allowed) {
-      this.logger.log({
-        message: 'Live documentation stood down — a tenant-authored workflow governs this consultation (substrate exclusivity)',
-        consultationId: session.consultationId,
-      });
-      // Release the timers, the STT subscription and the owner lock. Leaving them
-      // would keep a session alive that must never publish again.
-      void this.stop(session.consultationId, { persistSnapshot: false }).catch(() => undefined);
+    session.governedByTenantWorkflow = governed;
+    if (!governed) {
+      session.substrateAllowed = true;
+      return true;
     }
-    return allowed;
+
+    // GOVERNED — so the MODE decides, and the mode IS the session's frozen lane. Read through
+    // the memoized promise `start()` created immediately before this one, so the flag and the
+    // graph resolve exactly once between them and the gate can never disagree with what runs.
+    const lane = session.laneSnapshot !== undefined ? session.laneSnapshot : await (session.lanePromise ?? this.ensureLaneResolved(session));
+
+    if (lane) {
+      session.substrateAllowed = true;
+      this.logger.log({
+        message: 'Governed by a tenant workflow — running its REALTIME lane; the durable engine owns the document',
+        consultationId: session.consultationId,
+        laneSource: lane.source,
+        definitionSlug: lane.definitionSlug,
+        stageCount: lane.stages.length,
+      });
+      return true;
+    }
+
+    session.substrateAllowed = false;
+    this.logger.log({
+      message:
+        'Live documentation stood down — a tenant-authored workflow governs this consultation and the legacy flush would write its document (substrate exclusivity)',
+      consultationId: session.consultationId,
+    });
+    // Release the timers, the STT subscription and the owner lock. Leaving them
+    // would keep a session alive that must never publish again.
+    void this.stop(session.consultationId, { persistSnapshot: false }).catch(() => undefined);
+    return false;
   }
 
   /**
@@ -1173,13 +1241,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * | `metadata.governingEngine` (TASK-795) | the durable interpreter run OWNS this consultation | after a run actually started |
    * | `metadata.workflowSelection` (TASK-858) | the clinician ASKED for this workflow | at consultation create |
    *
-   * `governingEngine` first, because what actually governs beats what was asked for. It is also
-   * the weaker of the two here in practice, and deliberately so: a well-formed `governingEngine`
-   * marker ALSO makes {@link ensureSubstrateResolved} stand this engine down, so on a live
-   * session the lane it selects is never walked. It is read anyway because the capabilities
-   * read-out must report the same resolution the runtime would perform, and because the day that
-   * gate is relaxed this is the answer that must already be right. `workflowSelection` is what
-   * steers a session that actually runs — it survives the failed dispatch that leaves no marker.
+   * `governingEngine` first, because what actually governs beats what was asked for.
+   *
+   * AMENDED by TASK-858 A2. This used to add that the marker was "the weaker of the two here in
+   * practice", because it ALSO made {@link ensureSubstrateResolved} stand the whole engine down,
+   * so on a live session the lane it selected was never walked. That gate is now MODE-AWARE: in
+   * GRAPH mode a governed session stays up and walks exactly the lane this function resolves
+   * from the marker, so the marker is now the STRONGER of the two — it is both what governs and
+   * what runs. `workflowSelection` remains what steers a session whose durable dispatch never
+   * started (no run, so no marker), and both still feed the capabilities read-out.
    *
    * ## Re-authorized on every read, not trusted
    *
@@ -1443,6 +1513,22 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * the control channel, releases the single-owner lock, and publishes the terminal
    * `closed` marker — so a `stop` routed to a non-owner instance still ends the
    * stream and frees the lock.
+   *
+   * ## What this does NOT do, in any mode (TASK-858 A2)
+   *
+   * It runs no note or summary FINALIZATION. Finalization of a governed consultation belongs to
+   * the durable run's endpoint stage (TASK-812: `livedoc.stop` → `session.timeout` →
+   * `harness.finalize` → `summary.finalize`), and `livedoc.stop` is that stage's FIRST action —
+   * it calls this method. So there is no legacy finalization branch here to gate on the mode;
+   * there never was one.
+   *
+   * What it does do, in every mode, is drain the backlog and persist the `LIVE_SOAP_SNAPSHOT`
+   * (`persistDurableSnapshot`). That row is the durable engine's INPUT, not a competing draft:
+   * `harness.finalize` reads it as `preSummaryText` (`harness-internal.service.ts`
+   * `loadLiveSoapSnapshot`), while the durable draft is a `RAW_SUMMARY` marked `HARNESS_DRAFT`.
+   * Suppressing it for a governed consultation would delete the warm start the finalizer is
+   * asking for, so `persistSnapshot` is honoured exactly as before. The drain loop is a
+   * `flush(force)` loop, which is where the governed legacy fall-through guard does its work.
    */
   async stop(consultationId: string, opts?: { persistSnapshot?: boolean }): Promise<LiveSummaryEventDto | null> {
     const session = this.sessions.get(consultationId);
@@ -1663,9 +1749,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     // TASK-811 task 13 — the SUBSTRATE GATE. Awaited here rather than checked at
     // `start()` because `start()` is synchronous for the recording controller;
-    // resolving it is a row read. `false` means a tenant-authored graph governs
-    // this consultation, so this engine publishes NOTHING for it — the fix for
-    // "the hardcoded loop runs regardless of what the tenant authored".
+    // resolving it is a row read. `false` means this engine publishes NOTHING for this
+    // consultation — the fix for "the hardcoded loop runs regardless of what the tenant
+    // authored".
+    //
+    // TASK-858 A2 — `false` now means "governed AND in legacy mode". A governed session in
+    // GRAPH mode resolves `true` and walks the governing definition's realtime lane below;
+    // `session.governedByTenantWorkflow` is what keeps it off the legacy branch.
     const substrateAllowed =
       session.substrateAllowed ?? (session.substrateAllowed = await (session.substratePromise ?? this.ensureSubstrateResolved(session)));
     if (!substrateAllowed) return null;
@@ -1823,6 +1913,24 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         })
       : null;
     if (graph === 'stale') return this.dropStale(session);
+
+    // TASK-858 A2 — a GOVERNED consultation NEVER falls through to the legacy engine.
+    //
+    // `runGraphLane` returns null when the tenant's lane could not be WIRED (a
+    // `RealtimeBindingError`), and for an ungoverned session that legitimately means "publish
+    // something rather than nothing". For a governed one it would mean a hardcoded document
+    // written beside the one the durable run owns — the exact hazard the substrate gate exists
+    // to prevent, arriving through the one door the gate no longer closes. So: publish nothing,
+    // persist nothing, advance no cursor. The next flush walks the lane again, and the binding
+    // error is already logged at ERROR by `runGraphLane`.
+    if (!graph && session.governedByTenantWorkflow) {
+      this.logger.warn({
+        message: 'Governing workflow’s realtime lane could not be walked — publishing nothing rather than falling back to the legacy engine',
+        consultationId,
+        definitionSlug: lane?.definitionSlug ?? null,
+      });
+      return null;
+    }
 
     if (graph) {
       if (graph.sections.length > 0) {

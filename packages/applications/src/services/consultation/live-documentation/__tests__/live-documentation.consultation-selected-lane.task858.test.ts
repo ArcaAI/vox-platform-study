@@ -19,10 +19,14 @@
  * before and regardless of dispatch. They are read in that order.
  *
  * The interaction below is asserted rather than assumed, because it decides which of the two is
- * load-bearing in practice: a well-formed `governingEngine` marker ALSO makes the substrate gate
- * (`ensureSubstrateResolved`) stand this whole engine down, so on a live session it is
- * `workflowSelection` that actually steers the lane. The marker path still resolves — it is what
- * the capabilities read-out reports, and what a future relaxation of the gate would use.
+ * load-bearing in practice.
+ *
+ * AMENDED by TASK-858 lane A2: this used to read "a well-formed `governingEngine` marker ALSO
+ * makes the substrate gate stand this whole engine down, so on a live session it is
+ * `workflowSelection` that actually steers the lane". That relaxation of the gate has now
+ * HAPPENED — it is mode-aware, so in GRAPH mode a governed session stays up and walks the
+ * governing definition's realtime lane, and BOTH markers steer a live session. Only in LEGACY
+ * mode (no lane) does a governing marker still stand the engine down.
  *
  * ## Fail-safe direction
  *
@@ -215,9 +219,9 @@ describe('TASK-858 G1 — the consultation’s own selection resolves the realti
 
     const caps = await service.getRealtimeCapabilities(ARCAAI, null, CID);
 
-    // This is the case that MATTERS on a live session: the substrate gate stands this engine down
-    // whenever a `governingEngine` marker is present, so a lane steered by that marker never
-    // actually flushes. `workflowSelection` survives a failed dispatch and this engine keeps running.
+    // `workflowSelection` survives a failed dispatch (no run, so no `governingEngine` marker) and
+    // this engine keeps running. Since TASK-858 A2 the marker path steers a live session too, in
+    // graph mode — but this is the path that works when the durable dispatch never started.
     expect(caps.assignmentSource).toBe('consultation');
     expect(caps.definitionSlug).toBe(SELECTED_SLUG);
     expect(assignments.resolve).not.toHaveBeenCalled();
@@ -400,16 +404,38 @@ describe('TASK-858 G1 — a live session freezes the SELECTED lane', () => {
     await service.stop(CID, { persistSnapshot: false });
   });
 
-  it('DOCUMENTED INTERACTION: a governing-engine marker still stands the whole engine down', async () => {
-    const { service } = buildService({ consultationMetadata: governedBy(SELECTED_SLUG) });
+  /**
+   * AMENDED by TASK-858 lane A2. This test previously asserted that a `governingEngine` marker
+   * stands the WHOLE engine down on a live session, which made the marker path above serve only
+   * the capabilities read-out. That premise was wrong once the graph executor was on: the
+   * durable interpreter SKIPS every `lane: 'realtime'` node, so the stand-down left realtime NER
+   * / partial summary / grammar running in neither engine. The gate is now MODE-AWARE — the two
+   * tests below replace the one, and the full contract lives in
+   * `live-documentation.governed-graph-mode.task858.test.ts`.
+   */
+  it('AMENDED (TASK-858 A2): in GRAPH mode a governing marker keeps the session and steers its lane', async () => {
+    const { service, definitions, assignments } = buildService({ consultationMetadata: governedBy(SELECTED_SLUG) });
 
     service.start({ consultationId: CID, tenantId: ARCAAI });
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
 
-    // The durable interpreter owns this consultation, so the realtime engine publishes nothing —
-    // TASK-811 task 13, unchanged by this lane. The marker path above therefore serves the
-    // capabilities read-out; `workflowSelection` is what steers a session that actually runs.
+    expect(service.isActive(CID)).toBe(true);
+    expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, SELECTED_SLUG);
+    expect(assignments.resolve).not.toHaveBeenCalled();
+    await service.stop(CID, { persistSnapshot: false });
+  });
+
+  it('AMENDED (TASK-858 A2): with the graph executor OFF the marker still stands the whole engine down', async () => {
+    const { service } = buildService({ graphEnabled: false, consultationMetadata: governedBy(SELECTED_SLUG) });
+
+    service.start({ consultationId: CID, tenantId: ARCAAI });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // There is no lane in legacy mode, so the only thing this engine could run is the hardcoded
+    // flush — which would write a second document beside the durable run's. TASK-811 task 13,
+    // unchanged.
     expect(service.isActive(CID)).toBe(false);
   });
 });
