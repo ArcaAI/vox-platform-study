@@ -10,6 +10,7 @@ import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';
 import type { AddContextRequest, ConsultationGetResponse, ContextItemResponse } from '../types/consultation';
 import { ConsultationSummariesResource } from './consultation-summaries';
+import { ConsultationWorkflowsResource } from './workflows';
 
 /** Per-call options for {@link ConsultationsResource.get}. */
 export interface ConsultationRequestOptions {
@@ -42,9 +43,23 @@ export interface AddContextOptions extends ConsultationRequestOptions {
 export class ConsultationsResource {
   /** Consultation-bound summarization — `hope.consultations.summaries.*`. */
   readonly summaries: ConsultationSummariesResource;
+  /**
+   * Consultation-bound WORKFLOW invocation — `hope.consultations.workflows.*`
+   * (TASK-850).
+   *
+   * The clinical plane: a run started here may read and write THIS
+   * consultation, and nothing else. The id travels in the URL and is
+   * re-resolved server-side against your tenant; it is never accepted in the
+   * request body.
+   */
+  readonly workflows: ConsultationWorkflowsResource;
 
-  constructor(private readonly transport: Transport) {
+  constructor(
+    private readonly transport: Transport,
+    isServiceAccount = false,
+  ) {
     this.summaries = new ConsultationSummariesResource(transport);
+    this.workflows = new ConsultationWorkflowsResource(transport, isServiceAccount);
   }
 
   /**

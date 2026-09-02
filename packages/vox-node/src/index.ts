@@ -19,10 +19,13 @@ export type { HopeClientOptions, HopeLogger } from './client';
 export {
   ConsultationSummariesResource,
   ConsultationsResource,
+  ConsultationWorkflowsResource,
   isTerminalJobStatus,
   JobsResource,
   SummarizationResource,
   TenantsResource,
+  WORKFLOW_PLANE_ROUTES,
+  WorkflowsResource,
 } from './resources';
 export type {
   AddContextOptions,
@@ -31,11 +34,21 @@ export type {
   ConsultationSummaryRequestOptions,
   GenerateSummaryOptions,
   JobRequestOptions,
+  StartRunOptions,
+  StreamRunOptions,
   SummarizationRequestOptions,
   SummarizationStream,
   UpdateSummaryOptions,
   WaitForOptions,
 } from './resources';
+
+/**
+ * The reserved run-identity keys a workflow `input` may never carry
+ * (TASK-850). Exported so an integrator can validate a payload BEFORE it
+ * reaches the SDK — e.g. while building it from user-supplied fields — rather
+ * than catching {@link ReservedRunIdentityError} after the fact.
+ */
+export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
 
 /**
  * The service-account credential shape (TASK-773 Phase C). Exported HERE, not
@@ -63,6 +76,9 @@ export {
   APIConnectionError,
   APITimeoutError,
   AuthenticationError,
+  BadRequestError,
+  CredentialClassError,
+  GatewayTimeoutError,
   HopeAPIError,
   HopeStreamError,
   NotFoundError,
@@ -70,11 +86,12 @@ export {
   PreconditionRequiredError,
   QuotaExceededError,
   RateLimitError,
+  ReservedRunIdentityError,
   VersionConflictError,
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
 
-export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES } from './types';
+export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
 export type {
   AddContextRequest,
@@ -113,4 +130,13 @@ export type {
   TestResult,
   TokenUsage,
   UpdateSummaryRequest,
+  StartWorkflowRunRequest,
+  WorkflowClaimCheckRef,
+  WorkflowRunCancelResult,
+  WorkflowRunEvent,
+  WorkflowRunEventPayload,
+  WorkflowRunEventType,
+  WorkflowRunHandle,
+  WorkflowRunStatus,
+  WorkflowSummary,
 } from './types';

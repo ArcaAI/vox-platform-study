@@ -26,3 +26,6 @@ export { ConsultationsResource } from './consultations';
 
 export type { ContextSchemaDiscoveryOptions } from './tenants';
 export { TenantsResource } from './tenants';
+
+export type { StartRunOptions, StreamRunOptions } from './workflows';
+export { ConsultationWorkflowsResource, WORKFLOW_PLANE_ROUTES, WorkflowsResource } from './workflows';

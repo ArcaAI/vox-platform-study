@@ -51,3 +51,18 @@ export type {
   ContextOutputDeclaration,
   ContextPrimitive,
 } from './consultation-context-schema';
+
+/** Workflow invocation plane (TASK-850) — `hope.workflows.*` and `hope.consultations.workflows.*`. */
+export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './workflow';
+
+export type {
+  StartWorkflowRunRequest,
+  WorkflowClaimCheckRef,
+  WorkflowRunCancelResult,
+  WorkflowRunEvent,
+  WorkflowRunEventPayload,
+  WorkflowRunEventType,
+  WorkflowRunHandle,
+  WorkflowRunStatus,
+  WorkflowSummary,
+} from './workflow';

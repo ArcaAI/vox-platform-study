@@ -67,6 +67,8 @@ export function parseRetryAfterMs(headerValue: string | null | undefined): numbe
 
 function defaultMessageForStatus(status: number): string {
   switch (status) {
+    case 400:
+      return 'The request was rejected as malformed.';
     case 401:
       return 'Authentication failed.';
     case 403:
@@ -81,6 +83,8 @@ function defaultMessageForStatus(status: number): string {
       return 'Precondition required — missing If-Match header.';
     case 429:
       return 'Rate limited.';
+    case 504:
+      return 'The gateway stopped waiting — the work continues.';
     default:
       return `Request failed with status ${status}.`;
   }
@@ -157,6 +161,29 @@ export class HopeStreamError extends Error {
     this.name = 'HopeStreamError';
     // Same prototype fix-up rationale as HopeAPIError above.
     Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * HTTP 400 — the gateway rejected the request shape.
+ *
+ * On the workflow invocation plane this is, in practice, one thing: a
+ * RESERVED RUN-IDENTITY FIELD in `input` (`consultationId`,
+ * `externalPatientId`, `userId`, `jobId`, `sessionId`). The gateway refuses
+ * rather than silently dropping them, because a silent drop would hand you a
+ * 202 for a run that addressed something other than what you named.
+ *
+ * This SDK refuses those keys BEFORE the request is issued
+ * ({@link ReservedRunIdentityError}), so reaching this class from a run call
+ * generally means the gateway's list has grown past the SDK's copy — worth
+ * reporting rather than working around.
+ *
+ * The global `ValidationPipe` also runs `forbidNonWhitelisted`, so an
+ * undeclared body field is a 400 too, never a silently-ignored extra.
+ */
+export class BadRequestError extends HopeAPIError {
+  constructor(init: Omit<HopeAPIErrorInit, 'status'>) {
+    super({ ...init, status: 400 });
   }
 }
 
@@ -250,6 +277,95 @@ export class RateLimitError extends HopeAPIError {
   }
 }
 
+/**
+ * HTTP 504 — `mode=blocking` hit the gateway's ~60s ceiling.
+ *
+ * **This is NOT a failed run, and treating it as one is the mistake this class
+ * exists to prevent.** The ceiling is on how long the gateway will hold an
+ * HTTP connection open, not on the work: the run is a durable Temporal
+ * execution and is still going. Retrying the POST would start (and bill) a
+ * SECOND run unless you sent an `Idempotency-Key`.
+ *
+ * The recovery is to stop blocking and start watching. The gateway's own 504
+ * body names the `statusUrl` and `streamUrl` to use, and this SDK gives you
+ * both directly:
+ *
+ * ```ts
+ * try {
+ *   return await hope.workflows.runAndWait('visit-summary', { input });
+ * } catch (err) {
+ *   if (err instanceof GatewayTimeoutError) {
+ *     // Long run — watch it instead of waiting on a socket.
+ *     for await (const event of hope.workflows.runAndStream('visit-summary', { input }, { idempotencyKey: key })) { … }
+ *   }
+ *   throw err;
+ * }
+ * ```
+ *
+ * (Reusing the same `Idempotency-Key` is what makes that second call JOIN the
+ * run you already started rather than begin a new one.)
+ */
+export class GatewayTimeoutError extends HopeAPIError {
+  constructor(init: Omit<HopeAPIErrorInit, 'status'>) {
+    const serverMessage = init.message?.trim() || defaultMessageForStatus(504);
+    super({
+      ...init,
+      status: 504,
+      message: `${serverMessage} (The run is still executing — this is a ceiling on the HTTP wait, not a failure. Stream or poll it; do not retry without the same Idempotency-Key.)`,
+    });
+  }
+}
+
+/**
+ * Thrown by the SDK — never by the gateway — when a workflow `input` carries a
+ * key the server stamps itself.
+ *
+ * A client-side error class rather than a `BadRequestError` because nothing was
+ * sent: there is no status, no request id, and no server message to carry. See
+ * `core/run-identity.ts` for why the SDK refuses instead of leaving it to the
+ * 400.
+ */
+export class ReservedRunIdentityError extends Error {
+  /** Every offending key, in the order the reserved list declares them. */
+  readonly keys: readonly string[];
+
+  constructor(keys: readonly string[]) {
+    super(
+      `Workflow input may not contain the reserved run-identity ${keys.length === 1 ? 'key' : 'keys'} ${keys.map((k) => `\`${k}\``).join(', ')}. ` +
+        'The server stamps run identity itself — a consultation is named by the URL ' +
+        '(`hope.consultations.workflows.run(consultationId, slug, …)`), never by the body. ' +
+        'Remove ' +
+        (keys.length === 1 ? 'it' : 'them') +
+        ' from `input`; the gateway would otherwise answer 400.',
+    );
+    this.name = 'ReservedRunIdentityError';
+    this.keys = keys;
+    // Same prototype fix-up rationale as HopeAPIError above.
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * Thrown by the SDK when a client authenticated as a SERVICE ACCOUNT reaches
+ * for a surface only an API key can use.
+ *
+ * The workflow invocation plane is one of those: `route-manifest.json` records
+ * `svcScopes: []` on every one of its routes, and no scope declaration means
+ * deny-by-default. A service-account client would therefore get a 403 that
+ * reads like a permissions misconfiguration — an integrator would go looking
+ * for a scope to grant, and there is none to grant.
+ *
+ * Refusing at the call site says the true thing: this is the wrong credential
+ * CLASS for this plane, and the fix is a different client, not a wider role.
+ */
+export class CredentialClassError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CredentialClassError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 /** Constructor options for {@link APIConnectionError}. */
 export interface APIConnectionErrorInit {
   message?: string;
@@ -310,6 +426,8 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
   };
 
   switch (status) {
+    case 400:
+      return new BadRequestError(common);
     case 401:
       return new AuthenticationError(common);
     case 403:
@@ -327,6 +445,8 @@ export function fromResponse(response: Response, body: unknown, extra: FromRespo
         ...common,
         retryAfterMs: parseRetryAfterMs(response.headers.get('retry-after')),
       });
+    case 504:
+      return new GatewayTimeoutError(common);
     default:
       return new HopeAPIError(common);
   }
