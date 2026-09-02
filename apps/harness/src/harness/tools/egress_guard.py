@@ -74,19 +74,47 @@ _BLOCKED_IPV4 = tuple(
 )
 
 #: IPv6 ranges blocked outright (embedded-IPv4 forms are unwrapped separately).
+#:
+#: TWO of these are TRANSITION prefixes blocked WHOLE rather than unwrapped, which is a
+#: deliberate departure from the unwrap-and-recheck treatment given to the forms in
+#: :func:`_embedded_ipv4`:
+#:
+#: * ``2001::/32`` (Teredo). Unwrapping does not work here. The canonical Teredo test
+#:   address ``2001:0:4136:e378:8000:63bf:3fff:fdd2`` embeds server 65.54.227.120 and
+#:   client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
+#:   would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
+#:   its far end reaches, so the prefix itself is what must be refused.
+#: * ``64:ff9b:1::/48`` (RFC 8215 local-use NAT64). RFC 6052 permits /32../96 embeddings
+#:   underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
+#:   translation prefix is never a legitimate destination for a tenant connector.
+#:   (The well-known ``64:ff9b::/96`` is /96-only and IS unwrapped, so a NAT64 route to a
+#:   public IPv4 still works.)
 _BLOCKED_IPV6 = tuple(
     ipaddress.ip_network(cidr)
     for cidr in (
         "::/128",  # unspecified
         "::1/128",  # loopback
+        "64:ff9b:1::/48",  # RFC 8215 local-use NAT64 — see the note above
         "100::/64",  # RFC 6666 discard-only
+        "2001::/32",  # Teredo tunnelling — see the note above
         "fc00::/7",  # RFC 4193 unique-local
         "fe80::/10",  # link-local
+        "fec0::/10",  # RFC 3879 site-local — deprecated is not the same as unroutable
         "ff00::/8",  # multicast
     )
 )
 
 _NAT64_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
+#: RFC 2765 IPv4-TRANSLATED. NOT the same prefix as IPv4-MAPPED (``::ffff:0:0/96``): the
+#: 0xffff sits in bytes 8-9 instead of 10-11, so ``IPv6Address.ipv4_mapped`` is ``None``
+#: for it and it needs its own branch.
+_IPV4_TRANSLATED_PREFIX = ipaddress.ip_network("::ffff:0:0:0/96")
+
+#: ISATAP interface identifiers (RFC 5214 §6.1) — ``00-00-5E-FE`` and its
+#: globally-unique twin ``02-00-5E-FE``, followed by the embedded IPv4. The /64 prefix is
+#: arbitrary (it can be public), so this is a pattern on bytes 8-11, not a network.
+_ISATAP_INTERFACE_IDS = (b"\x00\x00\x5e\xfe", b"\x02\x00\x5e\xfe")
 
 ALLOWED_SCHEMES = frozenset({"http", "https"})
 
@@ -128,15 +156,24 @@ class EgressBlocked(Exception):
 def _embedded_ipv4(address: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
     """The IPv4 address embedded in an IPv6 one, or ``None``.
 
-    Every one of these is a real bypass if left unwrapped: ``::ffff:169.254.169.254``
-    and ``64:ff9b::a9fe:a9fe`` both reach the metadata endpoint on a dual-stack host.
+    Every one of these is a real bypass if left unwrapped: ``::ffff:169.254.169.254``,
+    ``::ffff:0:169.254.169.254`` and ``64:ff9b::a9fe:a9fe`` all reach the metadata
+    endpoint on a host whose netns routes the corresponding prefix.
+
+    Transition prefixes whose IPv4 is NOT recoverable this way (Teredo) or not reliably
+    in the last 32 bits (the RFC 8215 local-use NAT64 prefix) are blocked whole in
+    :data:`_BLOCKED_IPV6` instead — see the note there.
     """
     if address.ipv4_mapped is not None:  # ::ffff:0:0/96
         return address.ipv4_mapped
+    if address in _IPV4_TRANSLATED_PREFIX:  # ::ffff:0:0:0/96
+        return ipaddress.IPv4Address(address.packed[12:16])
     if address in _NAT64_PREFIX:  # RFC 6052 well-known prefix
         return ipaddress.IPv4Address(address.packed[12:16])
     if address.sixtofour is not None:  # 2002::/16
         return address.sixtofour
+    if address.packed[8:12] in _ISATAP_INTERFACE_IDS:  # <any /64>:0:5efe:a.b.c.d
+        return ipaddress.IPv4Address(address.packed[12:16])
     # ::/96 — deprecated IPv4-compatible. `::` and `::1` are caught by _BLOCKED_IPV6 first.
     if address.packed[:12] == b"\x00" * 12:
         return ipaddress.IPv4Address(address.packed[12:16])
