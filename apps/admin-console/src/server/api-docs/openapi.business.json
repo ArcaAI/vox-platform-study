@@ -2752,6 +2752,27 @@
         ],
         "type": "object"
       },
+      "CloneWorkflowDefinitionRequest": {
+        "properties": {
+          "description": {
+            "description": "Free-text description. Defaults to the source definition’s description.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable name for the clone. Defaults to \"<source name> (copy)\".",
+            "type": "string"
+          },
+          "targetSlug": {
+            "description": "Slug for the NEW lineage. Must be unused by this tenant — a slug already in use is rejected 409, never silently versioned.",
+            "example": "discharge_summary_copy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetSlug"
+        ],
+        "type": "object"
+      },
       "CompletePasswordResetRequest": {
         "properties": {
           "newPassword": {

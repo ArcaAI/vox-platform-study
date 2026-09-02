@@ -2752,6 +2752,27 @@
         ],
         "type": "object"
       },
+      "CloneWorkflowDefinitionRequest": {
+        "properties": {
+          "description": {
+            "description": "Free-text description. Defaults to the source definition’s description.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable name for the clone. Defaults to \"<source name> (copy)\".",
+            "type": "string"
+          },
+          "targetSlug": {
+            "description": "Slug for the NEW lineage. Must be unused by this tenant — a slug already in use is rejected 409, never silently versioned.",
+            "example": "discharge_summary_copy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetSlug"
+        ],
+        "type": "object"
+      },
       "CompletePasswordResetRequest": {
         "properties": {
           "newPassword": {
@@ -52593,6 +52614,54 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/templates": {
+      "get": {
+        "description": "The SYSTEM tenant’s live published definitions — one row per slug. Read-only and cross-tenant BY DESIGN, bounded to exactly the SYSTEM tenant: another customer tenant’s definitions can never appear here. This is the discovery half of `POST :id/clone`; the two share one predicate, so everything listed here is clonable.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_fetchTemplates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the platform workflow template library a tenant can clone from",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs": {
       "post": {
         "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -53039,6 +53108,80 @@
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "admin",
         "x-hope-requires-if-match": true,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/{id}/clone": {
+      "post": {
+        "description": "Seeds a NEW `(tenantId, slug)` lineage — `versionNumber` 1, DRAFT, inactive — from the source definition’s graph. This is NOT `POST /` with a `parentVersionId`: that branches a new version INSIDE the source’s slug. A `targetSlug` this tenant already uses is rejected 409 rather than silently becoming version N+1 of that lineage.\n\nClonable sources are the caller tenant’s own definitions (any status) and the SYSTEM tenant’s live published templates (`GET /templates`). Any other tenant’s id is a 404, indistinguishable from a miss.\n\nThe graph is copied verbatim; `compiledConfig` and its checksums, `publishedAt`, `isActive` and `tags` are NOT carried over, and the validation report is recomputed for this tenant against the current node registry. Consumes the `maxWorkflowDefinitions` quota exactly as create does.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_clone",
+        "parameters": [
+          {
+            "description": "Source WorkflowDefinition id — the caller’s own row, or a SYSTEM template.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneWorkflowDefinitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The source graph fails shape/engine validation, or a SYSTEM template pins prompt/document catalog rows this tenant cannot resolve."
+          },
+          "404": {
+            "description": "Source not found (or another tenant’s)."
+          },
+          "409": {
+            "description": "targetSlug is already in use by this tenant, or the maxWorkflowDefinitions quota is exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Clone an existing workflow (or a platform template) into a NEW draft workflow",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:admin:workflow-definition:manage"
         ]

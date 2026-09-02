@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 376 component schemas the generated surface transitively
+ * Only the 377 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -602,6 +602,15 @@ export interface ClonePipelineRequest {
 export interface CloneRoleDto {
   /** Name for the cloned CUSTOM role */
   name: string;
+}
+
+export interface CloneWorkflowDefinitionRequest {
+  /** Free-text description. Defaults to the source definition’s description. */
+  description?: string;
+  /** Human-readable name for the clone. Defaults to "<source name> (copy)". */
+  name?: string;
+  /** Slug for the NEW lineage. Must be unused by this tenant — a slug already in use is rejected 409, never silently versioned. */
+  targetSlug: string;
 }
 
 export interface ComputeDraftRequest {
