@@ -34,18 +34,43 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * Phases excluded from `safe`, each because it writes something that must never
  * appear in a real environment:
  *
- * | Phase                 | Why |
- * |-----------------------|-----|
- * | `02-apikey`           | Demo API keys embedding raw secrets, ACTIVE and broadly scoped |
- * | `08-dna-writing-style`| Synthetic clinician writing samples |
- * | `09-consultation`     | Synthetic, Vault-encrypted PHI |
- * | `10-audit-log`        | Fabricated rows in the HIPAA audit trail |
- * | `91-user`             | Demo accounts (`*@example.com`) with a documented default password |
+ * | Phase                                  | Why |
+ * |----------------------------------------|-----|
+ * | `02-apikey`                            | Demo API keys embedding raw secrets, ACTIVE and broadly scoped |
+ * | `07f-arcaai-department-context-schemas`| One CUSTOMER tenant's department context schemas, `createdBy` a named tenant admin |
+ * | `08-dna-writing-style`                 | Synthetic clinician writing samples |
+ * | `09-consultation`                      | Synthetic, Vault-encrypted PHI |
+ * | `10-audit-log`                         | Fabricated rows in the HIPAA audit trail |
+ * | `23-arcaai-workflow-authoring`         | FABRICATED GOVERNANCE — see below |
+ * | `91-user`                              | Demo accounts (`*@example.com`) with a documented default password |
+ *
+ * ## Why `23-arcaai-workflow-authoring` stays excluded (TASK-852 item 2, re-decided 2026-09-02)
+ *
+ * Its `WorkflowAssignment` rows are the switch that makes a tenant-authored graph govern a
+ * consultation, so it is tempting to read "the substrate-exclusivity gate now passes, land the
+ * rows" as "and therefore ship them everywhere". It is not. The rows carry
+ * `createdBy: <the ArcaAI tenant admin>` and publish a CLINICAL workflow under that attribution.
+ * In a demo database that is the point; in a real one it is a published clinical workflow
+ * attributed to a named human who never authored it — a fabricated governance act, and the same
+ * objection that keeps `AgentPromotion` out of this dataset entirely. A real tenant authors its
+ * own.
+ *
+ * Two further reasons, each sufficient on its own:
+ *
+ *  - Every row is scoped to the ArcaAI **customer** tenant (`50000000-…`). `safe` is platform
+ *    configuration only, and one customer's graphs are not platform configuration.
+ *  - `createdBy` and the department override reference `91-user` / department rows that a `safe`
+ *    run does not create, so the rows would land with dangling authorship.
+ *
+ * The SYSTEM-owned platform default (`21-workflow-definition`, `createdBy: SYSTEM_USER_ID`) is
+ * deliberately NOT excluded — that IS platform configuration, and it is what a `safe` bootstrap
+ * needs so a tenant with no graph of its own still resolves a lane.
  *
  * Kept as an explicit deny-list rather than an allow-list so that adding a new
  * platform-config phase does not silently require a second edit here — but
  * adding a new DEMO phase is a deliberate act with a test that fails until it
- * is listed (see `seed-mode.test.ts`).
+ * is listed (see `seed-mode.test.ts`, which also pins the set EXACTLY, so a
+ * platform-config phase cannot be excluded by accident either).
  */
 export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '02-apikey',
