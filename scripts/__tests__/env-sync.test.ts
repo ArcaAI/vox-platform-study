@@ -310,8 +310,32 @@ describe('env:sync — the declared surface stays small', () => {
     // 2026-08-17: THE one shared internal service-to-service token, which
     // RETIRES the per-service `*_SERVICE_TOKEN` family rather than adding to
     // it — verified via `pnpm env:sync --check`, no drift): INTERNAL_ACCESS_TOKEN.
+    // Bumped 149 -> 155. NET +6, but the churn is +20/-14 and both halves are
+    // deliberate, so the net alone would be misleading:
+    //   +20 OBSERVABILITY transport (the Loki/Tempo/OTel stack is deployed now):
+    //     AGENTIC_HIGHLIGHT_PROJECT_ID, HIGHLIGHT_BACKEND_URL,
+    //     HIGHLIGHT_OTLP_ENDPOINT, HIGHLIGHT_PROJECT_ID, LOG_CONSOLE_COLORIZE,
+    //     LOG_CONSOLE_ENABLED, LOG_CONSOLE_JSON, LOG_CONSOLE_PRETTY,
+    //     LOKI_BASIC_AUTH, LOKI_BATCH_INTERVAL, LOKI_BATCH_SIZE, LOKI_TIMEOUT,
+    //     MINIO_CERT_CHECK, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+    //     OTEL_EXPORTER_OTLP_PROTOCOL, OTEL_INJECT_TRACE_CONTEXT,
+    //     OTEL_LOGS_ENABLED, OTEL_LOG_BRIDGE, OTEL_RESOURCE_ATTRIBUTES,
+    //     SERVICE_VERSION. `OTEL_*` is named as env-tier by
+    //     09-infrastructure-devops.md; SERVICE_VERSION is a LOG LABEL only —
+    //     its descriptor says build identity comes from the image's
+    //     build-info.json, never from env, so it does not reopen TASK-648.
+    //   -14 vendor credentials/endpoints that moved OFF env to the BYOK
+    //     db-config/vault tier, which is the direction the config rules want:
+    //     AZURE_FOUNDRY_API_KEY, GUARDRAIL_VLLM_API_KEY,
+    //     HARNESS_JUDGE_OPENAI_COMPAT_API_KEY, OIDC_CLIENT_SECRET,
+    //     TEXT_ANTHROPIC_BASE_URL, TEXT_ANTHROPIC_DEFAULT_MODEL,
+    //     TEXT_EXTERNAL_GUARDRAIL_ENABLED, TEXT_OPENAI_BASE_URL,
+    //     TEXT_OPENAI_DEFAULT_MODEL, TEXT_OPENAI_ORGANIZATION,
+    //     TEXT_VERTEX_DEFAULT_MODEL, TEXT_VERTEX_LOCATION, TEXT_VERTEX_PROJECT,
+    //     WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS.
+    // Verified via `pnpm env:sync --check`: OK, 155 TS keys, no drift.
     const declared = declaredTsSurfaceKeys();
-    expect(declared.size).toBeLessThanOrEqual(149);
+    expect(declared.size).toBeLessThanOrEqual(155);
   });
 });
 
