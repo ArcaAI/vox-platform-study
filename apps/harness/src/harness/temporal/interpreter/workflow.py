@@ -23,7 +23,7 @@ from temporalio.exceptions import ActivityError, ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
-    from harness.temporal.interpreter.activities import load_config
+    from harness.temporal.interpreter.activities import emit_run_events, load_config
     from harness.temporal.interpreter.compiled_config import (
         CompiledGate,
         CompiledNode,
@@ -52,10 +52,18 @@ with workflow.unsafe.imports_passed_through():
         NodeActivityResult,
         NodeResult,
         NodeStatus,
+        RunEventBatch,
+        RunEventSpec,
         RunStatus,
         StageResult,
     )
     from harness.temporal.interpreter.registry import NODE_REGISTRY
+    from harness.temporal.interpreter.run_events import (
+        EVENT_NODE_COMPLETED,
+        EVENT_NODE_FAILED,
+        EVENT_NODE_STARTED,
+        EVENT_RUN_COMPLETED,
+    )
     from harness.temporal.models import TrajectoryContext
 
 _CONFIG_LOAD_TIMEOUT = timedelta(seconds=30)
@@ -91,6 +99,24 @@ _GATE_PATCH = "task-731-hitl-gate"
 # That is exactly the case `workflow.patched` exists for, and it is why this is a real gate rather
 # than a formality.
 _LOOP_PATCH = "task-848-agentic-loop-child"
+
+# The patch marker for the run-event MIRROR (TASK-849 lane A). Third gate, same rule as the two
+# above: `interpreter.emit_run_events` is a NEW `execute_activity` call in the shared per-stage
+# path, so every history recorded before this change must keep replaying without it.
+#
+# Unlike the gate's, this one's cheap operand cannot be proven False from the config — the emit
+# happens on EVERY stage boundary of EVERY graph. `workflow.patched` is therefore the only thing
+# standing between this change and a non-determinism error on every in-flight clinical run, which
+# is exactly the situation the idiom exists for. Recapture the replay fixture alongside it
+# (`_capture_interpreter_replay_fixture.py`), per contracts/versioning.md rule 3.
+_STREAM_PATCH = "task-849-run-event-stream"
+
+# The emit is a MIRROR of state Temporal already holds, so it gets the cheapest possible
+# envelope: one attempt, a short deadline, and a caller that swallows the failure. Retrying an
+# observability write would spend a clinical run's latency budget re-sending a token nobody is
+# waiting on any more.
+_EMIT_TIMEOUT = timedelta(seconds=10)
+_EMIT_RETRY = RetryPolicy(maximum_attempts=1)
 
 # The loop's own node type. Named once: `_index_loop_body` and `_dispatch_node` must agree about
 # it, and a second spelling is how the two drift.
@@ -205,8 +231,10 @@ class WorkflowInterpreter:
         for stage in config.stages:
             if self._cancelled:
                 break
+            await self._emit_stage_started(stage, inp)
             node_results = await self._run_stage(stage, inp)
             self._stages.append(StageResult(stage_index=stage.stage_index, nodes=node_results))
+            await self._emit_stage_settled(stage, node_results, inp)
             for node_result in node_results:
                 if node_result.status == "FAILED":
                     run_failed = True
@@ -241,7 +269,87 @@ class WorkflowInterpreter:
             status = "SUCCEEDED"
         self._status = status
 
+        await self._emit_run_completed(inp, status)
+
         return InterpreterResult(run_id=inp.run_id, status=status, stages=self._stages)
+
+    # -- Run-event mirror (TASK-849 lane A) ---------------------------------------------
+    #
+    # The CONTROL lane. Node/stage/run outcomes are already durable in Temporal history and
+    # readable through the `state` query; these three helpers MIRROR them onto the run's Redis
+    # Stream so the gateway can PUSH instead of poll. Token deltas never come through here —
+    # they go straight from the producing activity to Redis, which is the whole two-lane split
+    # (program §3.4 rule 17: signals land in history, ceiling 51,200 events / 50 MB per run).
+
+    async def _emit_run_events(self, inp: InterpreterInput, events: list[RunEventSpec]) -> None:
+        """Fire one emit activity, or do nothing. Never fails the run.
+
+        `workflow.patched` is consulted only when there is something to emit, so an empty
+        stage cannot record a marker a replaying history would not have.
+        """
+        if not events or not workflow.patched(_STREAM_PATCH):
+            return
+        try:
+            await workflow.execute_activity(
+                emit_run_events,
+                RunEventBatch(run_id=inp.run_id, tenant_id=inp.tenant_id, events=events),
+                start_to_close_timeout=_EMIT_TIMEOUT,
+                retry_policy=_EMIT_RETRY,
+            )
+        except ActivityError:
+            # The mirror is unreachable. The run's record is Temporal's and is unaffected; a
+            # connected client falls back to its snapshot. Failing a clinical run because an
+            # observability write timed out would invert which lane matters.
+            return
+
+    async def _emit_stage_started(self, stage: CompiledStage, inp: InterpreterInput) -> None:
+        """`workflow.node.started`, for the nodes this walk will ACTUALLY dispatch.
+
+        `_preflight_skip` is the same predicate `_dispatch_node` uses — one spelling, so a node
+        can never be announced as started and then reported SKIPPED for a reason the walk
+        already knew before it began.
+        """
+        await self._emit_run_events(
+            inp,
+            [
+                RunEventSpec(
+                    event_type=EVENT_NODE_STARTED,
+                    node_id=node.node_id,
+                    node_type=node.type,
+                    stage_index=stage.stage_index,
+                )
+                for node in stage.nodes
+                if self._preflight_skip(node, inp) is None
+            ],
+        )
+
+    async def _emit_stage_settled(
+        self, stage: CompiledStage, node_results: list[NodeResult], inp: InterpreterInput
+    ) -> None:
+        """One settle event per node, carrying the status the all-settled join produced."""
+        await self._emit_run_events(
+            inp,
+            [
+                RunEventSpec(
+                    event_type=(
+                        EVENT_NODE_FAILED if result.status == "FAILED" else EVENT_NODE_COMPLETED
+                    ),
+                    node_id=result.node_id,
+                    node_type=result.node_type,
+                    stage_index=stage.stage_index,
+                    status=result.status,
+                    reason=result.reason,
+                )
+                for result in node_results
+            ],
+        )
+
+    async def _emit_run_completed(self, inp: InterpreterInput, status: str) -> None:
+        """The terminal event. This is what lets a connected client close its stream on a
+        PUSH rather than by noticing, one poll later, that the status stopped changing."""
+        await self._emit_run_events(
+            inp, [RunEventSpec(event_type=EVENT_RUN_COMPLETED, status=status)]
+        )
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:
         """All-settled join: every node's own coroutine catches its own ACTIVITY exceptions
@@ -311,9 +419,17 @@ class WorkflowInterpreter:
             bound[binding.to_port] = upstream_output[output_key]
         return bound
 
-    async def _dispatch_node(
-        self, node: CompiledNode, inp: InterpreterInput, stage_index: int
-    ) -> NodeResult:
+    def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
+        """Every reason this walk declines a node BEFORE dispatching anything (pure).
+
+        Extracted from `_dispatch_node` by TASK-849 so the run-event producer can ask "will
+        this node actually run?" without a second spelling of the answer — the exact drift the
+        `_LOOP_NODE_TYPE` comment below warns about. `None` means "dispatch it"; the returned
+        `NodeResult` IS the outcome, so `_dispatch_node` returns it unchanged.
+
+        The ORDER of these six is load-bearing and unchanged; each comment explains its own
+        position.
+        """
         spec = NODE_REGISTRY.get(node.type)
         if spec is None or not spec.implemented:
             return NodeResult(
@@ -396,6 +512,19 @@ class WorkflowInterpreter:
                 node_id=node.node_id, node_type=node.type, status="SKIPPED", reason="sandbox"
             )
 
+        return None
+
+    async def _dispatch_node(
+        self, node: CompiledNode, inp: InterpreterInput, stage_index: int
+    ) -> NodeResult:
+        skipped = self._preflight_skip(node, inp)
+        if skipped is not None:
+            return skipped
+
+        # Present after `_preflight_skip` by construction — an unregistered/unimplemented type
+        # is its first refusal, so reaching here means the registry has a real spec.
+        spec = NODE_REGISTRY[node.type]
+
         # TASK-848 — the loop runs as a CHILD WORKFLOW, not as an activity.
         #
         # Cheap operand first, exactly as the gate does: `workflow.patched` is only consulted for
@@ -423,6 +552,7 @@ class WorkflowInterpreter:
             trajectory=trajectory,
             bound_inputs=self._resolve_bound_inputs(node),
             run_payload=inp.payload,
+            run_id=inp.run_id,
         )
 
         try:
@@ -535,9 +665,7 @@ class WorkflowInterpreter:
         sub_agents = [
             resolved
             for resolved in (
-                self._loop_node_spec(sub_id)
-                for sub_id in raw_sub_agents
-                if isinstance(sub_id, str)
+                self._loop_node_spec(sub_id) for sub_id in raw_sub_agents if isinstance(sub_id, str)
             )
             if resolved is not None
         ]

@@ -14,6 +14,7 @@ from typing import Any
 from temporalio import activity
 
 from harness.core.config import get_settings
+from harness.core.redis_client import build_run_event_redis
 from harness.temporal.activities import (
     STATUS_ERROR,
     STATUS_OK,
@@ -25,7 +26,12 @@ from harness.temporal.activities import (
 )
 from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
-from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
+from harness.temporal.interpreter.models import (
+    NodeActivityInput,
+    NodeActivityResult,
+    RunEventBatch,
+    RunEventSpec,
+)
 from harness.temporal.interpreter.nodes.agent_catalogue import AGENT_CATALOGUE_ACTIVITIES
 from harness.temporal.interpreter.nodes.agentic import AGENTIC_ACTIVITIES
 from harness.temporal.interpreter.nodes.consultation import (
@@ -79,6 +85,18 @@ from harness.temporal.interpreter.nodes.stt_placeholder import (
 )
 from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
 from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
+from harness.temporal.interpreter.run_events import (
+    EVENT_LOOP_ITERATION,
+    EVENT_NODE_COMPLETED,
+    EVENT_NODE_FAILED,
+    EVENT_NODE_STARTED,
+    RunEventProducer,
+    build_run_event,
+    loop_iteration_key,
+    node_settled_key,
+    node_started_key,
+    run_completed_key,
+)
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; TASK-720 adds
@@ -264,9 +282,108 @@ async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
     return parse_and_verify(raw)
 
 
+# ---------------------------------------------------------------------------
+# Run-event mirror (TASK-849 lane A, step 2) — the CONTROL lane's one activity.
+# ---------------------------------------------------------------------------
+
+#: The attempt generation stamped into a node's idempotency key. The stage walk dispatches a
+#: node exactly ONCE per run; Temporal's own activity retries happen inside that single
+#: dispatch and are not a new generation, so a per-run constant is the truthful value here
+#: rather than a counter nobody increments. (Loop-body nodes DO re-run per iteration, but the
+#: stage walk never dispatches them — they carry `SKIPPED loop_body` and the loop owns them.)
+NODE_ATTEMPT_GENERATION = 1
+
+_RUN_EVENT_REDIS: Any | None = None
+_RUN_EVENT_REDIS_BUILT = False
+
+
+def run_event_producer() -> RunEventProducer:
+    """One producer per worker process. Built lazily; a failure yields a no-op producer.
+
+    Lazy because a worker must boot with Redis down (`redis_client.py`'s whole posture), and
+    because `Redis.from_url` binds to the running event loop.
+
+    PUBLIC on purpose: this is the DELTA lane's entry point for any node activity that
+    streams — a token stream, and (lane B) STT/TTS audio. Call
+    ``run_event_producer().emit_token_delta(...)`` from inside the activity, never from the
+    workflow body, and never route a delta through a signal or an activity-per-chunk. Signals
+    land in Temporal history, whose ceiling is 51,200 events / 50 MB per run, so a long
+    deliberation streamed through Temporal dies mid-flight. ``test_task849_two_lane_split.py``
+    MEASURES that this stays true.
+    """
+    global _RUN_EVENT_REDIS, _RUN_EVENT_REDIS_BUILT  # noqa: PLW0603 — process-wide singleton
+    if not _RUN_EVENT_REDIS_BUILT:
+        _RUN_EVENT_REDIS = build_run_event_redis(get_settings().redis_url)
+        _RUN_EVENT_REDIS_BUILT = True
+    return RunEventProducer(_RUN_EVENT_REDIS)
+
+
+def _envelope_for(batch: RunEventBatch, spec: RunEventSpec) -> Any:
+    """Turn one workflow-described fact into a conforming envelope (TASK-717 §3.5 recipes)."""
+    node_id = spec.node_id or ""
+    if spec.event_type == EVENT_NODE_STARTED:
+        key = node_started_key(batch.run_id, node_id, NODE_ATTEMPT_GENERATION)
+    elif spec.event_type in (EVENT_NODE_COMPLETED, EVENT_NODE_FAILED):
+        key = node_settled_key(batch.run_id, node_id, NODE_ATTEMPT_GENERATION)
+    elif spec.event_type == EVENT_LOOP_ITERATION:
+        key = loop_iteration_key(batch.run_id, node_id, spec.iteration or 0)
+    else:
+        key = run_completed_key(batch.run_id)
+
+    payload: dict[str, Any] = {}
+    if spec.node_id is not None:
+        payload["nodeId"] = spec.node_id
+    if spec.node_type is not None:
+        payload["nodeType"] = spec.node_type
+    if spec.stage_index is not None:
+        payload["stageIndex"] = spec.stage_index
+    if spec.status is not None:
+        payload["status"] = spec.status
+    if spec.reason is not None:
+        payload["reason"] = spec.reason
+    if spec.iteration is not None:
+        payload["iteration"] = spec.iteration
+
+    return build_run_event(
+        tenant_id=batch.tenant_id,
+        run_id=batch.run_id,
+        event_type=spec.event_type,
+        idempotency_key=key,
+        payload=payload,
+    )
+
+
+@activity.defn(name="interpreter.emit_run_events")
+async def emit_run_events(batch: RunEventBatch) -> int:
+    """Mirror one stage boundary's control events onto the run's Redis Stream.
+
+    Returns the number actually written — 0 is a normal outcome, not a failure. This
+    activity NEVER raises: the run's durable record is Temporal history, and a mirror that
+    could fail a clinical run would have inverted which of the two lanes matters. The
+    workflow additionally catches `ActivityError` around every call, so even a scheduling
+    or timeout failure cannot reach the walk.
+
+    Envelope construction is inside the guard on purpose. `AsyncEnvelope` validates on
+    construction — a run started with a non-UUID `tenantId` (the fixture-capture scripts and
+    several older test harnesses do exactly that) raises there, and ONE malformed spec must
+    not take the rest of the batch down with it.
+    """
+    envelopes = []
+    for spec in batch.events:
+        try:
+            envelopes.append(_envelope_for(batch, spec))
+        except Exception as exc:  # noqa: BLE001 — see the docstring: this never raises
+            activity.logger.warning(
+                "harness.run_events.envelope_rejected "
+                f"run_id={batch.run_id} event_type={spec.event_type} error={exc}"
+            )
+    return len(await run_event_producer().emit_many(envelopes))
+
+
 # Registered on the worker (Task 8) alongside DOCUMENT_ACTIVITIES/LOOP_ACTIVITIES/
 # REASONING_ACTIVITIES — the interpreter's own activity list.
 INTERPRETER_ACTIVITIES: list[Callable[..., Any]] = [
     *NODE_ACTIVITIES,
     load_config,
+    emit_run_events,
 ]

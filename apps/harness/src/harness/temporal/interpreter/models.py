@@ -73,6 +73,13 @@ class NodeActivityInput(BaseModel):
     trajectory: TrajectoryContext | None = None
     bound_inputs: dict[str, Any] = Field(default_factory=dict)
     run_payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-849 lane A, additive-optional. The DELTA lane's stream key is per-RUN
+    # (`wf:run:<runId>:events`), so an activity that streams tokens has to know which run it
+    # belongs to — `trajectory` carries a workflow VERSION id and a stage/node id, never a run
+    # id. Empty default keeps every pre-existing fixture byte-identical; an activity that
+    # cannot resolve a run id simply does not stream, which costs observability and nothing
+    # else. Lanes B (binary audio) and C (debug canvas) both consume this.
+    run_id: str = ""
 
 
 class NodeActivityResult(BaseModel):
@@ -419,3 +426,39 @@ class LoopStateCheckpoint(BaseModel):
     tokens: int = 0
     #: Truthy iff the loop's ``terminationKey`` resolved truthy on this output.
     terminated: bool = False
+
+
+class RunEventSpec(BaseModel):
+    """One control event the workflow asks ``interpreter.emit_run_events`` to mirror.
+
+    Deliberately a DESCRIPTION of what happened, never a built envelope: `uuid4` and
+    `datetime.now` are both forbidden inside `@workflow.defn`, so the workflow can name the
+    fact but cannot stamp it. The activity stamps identity and time — which is also why two
+    replays of the same history produce two envelope ids and one `idempotencyKey` (the key is
+    derived from intent, the id is not).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str
+    node_id: str | None = None
+    node_type: str | None = None
+    stage_index: int | None = None
+    status: str | None = None
+    reason: str | None = None
+    iteration: int | None = None
+
+
+class RunEventBatch(BaseModel):
+    """A whole stage boundary's worth of control events, mirrored in ONE activity call.
+
+    Batched on purpose. Every `execute_activity` is three history events, so a per-NODE emit
+    would make the control lane grow with node count for no gain — the events are already
+    ordered within a stage boundary and a consumer reads them as one burst.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    events: list[RunEventSpec] = Field(default_factory=list)
