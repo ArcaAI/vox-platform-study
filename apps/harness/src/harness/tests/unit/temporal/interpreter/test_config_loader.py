@@ -15,6 +15,7 @@ import pytest
 
 from harness.core.config import ClaimCheckConfig, Settings
 from harness.temporal.claim_check import (
+    ClaimCheckRef,
     InMemoryBlobStore,
     resolve_claim_check_location,
     store_blob,
@@ -35,7 +36,9 @@ def _settings() -> Settings:
 def _fake_open_store(store: InMemoryBlobStore):
     """Stand in for `open_store` — the fake store at the bootstrap location."""
 
-    async def _open(cc: ClaimCheckConfig):
+    async def _open(cc: ClaimCheckConfig, ref: ClaimCheckRef | None = None):
+        # `ref` mirrors the real signature (the backend follows the ref it is
+        # about to read); this fake serves the one in-memory store either way.
         return store, resolve_claim_check_location(None, cc)
 
     return _open

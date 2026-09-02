@@ -58,6 +58,10 @@ class ClaimCheckNotFound(ClaimCheckError):
     """The referenced blob is absent from the store (dangling ref / lost blob)."""
 
 
+class UnknownBlobStore(ClaimCheckError):
+    """A ref (or config) names a backend this build does not implement."""
+
+
 class ClaimCheckIntegrityError(ClaimCheckError):
     """The retrieved blob does not match the ref's size/sha256 (corruption/tamper)."""
 
@@ -272,9 +276,12 @@ def resolve_claim_check_location(
 
 
 def build_blob_store(
-    config: ClaimCheckConfig, location: ClaimCheckLocation | None = None
+    config: ClaimCheckConfig,
+    location: ClaimCheckLocation | None = None,
+    *,
+    store_name: str | None = None,
 ) -> BlobStore:
-    """Construct the configured backend: ``s3`` (MinIO) or the in-memory fake.
+    """Construct a backend: ``s3`` (MinIO) or the in-memory fake.
 
     ``s3`` builds a fresh :class:`S3BlobStore` (stateless durable backend);
     ``memory`` returns the process-shared singleton so blobs survive across the
@@ -283,28 +290,51 @@ def build_blob_store(
     ``location`` is the control-plane-resolved storage location
     (:func:`resolve_claim_check_location`). Omitted ⇒ the bootstrap values on
     ``config``, which is what every caller saw before A.2 and what a degraded
-    control plane still produces. ``store`` itself stays on ``config``: it
-    selects the dev fake vs the real backend — a deployment axis, not a location
-    — and the ``memory``-outside-development guard in ``core/config.py`` and
-    ``temporal/worker.py`` is unchanged.
+    control plane still produces.
+
+    ``store_name`` names the backend to build. A DEREFERENCE passes the one
+    recorded on the ref (see :func:`open_store`); a WRITE has no ref yet and
+    omits it, selecting the configured backend as before. This is the same rule
+    the bucket already follows in ``_resolve_ref``: the ref records WHERE a blob
+    lives, and config supplies only how to reach it. ``store`` was the last
+    locator still taken from config, which is why a harness on the default
+    ``memory`` looked in a dict for a blob the gateway had put in MinIO — the
+    gateway hardcodes ``store: 's3'`` and has no in-memory mode at all.
+
+    Selecting the backend per-ref does NOT relax the deployment guards: the
+    ``memory``-outside-development checks in ``core/config.py`` and
+    ``temporal/worker.py`` still govern what this process WRITES.
     """
-    if config.store == "s3":
-        resolved = location or resolve_claim_check_location(None, config)
-        return S3BlobStore(
-            endpoint_url=resolved.endpoint_url,
-            access_key=config.access_key.get_secret_value(),
-            secret_key=config.secret_key.get_secret_value(),
-            region=resolved.region,
-            secure=resolved.secure,
-            # Stays on `config`, not on the resolved LOCATION: certificate trust
-            # is a platform-wide deployment fact (`MINIO_CERT_CHECK`), not part
-            # of "which bucket, on which endpoint" that the control plane serves.
-            cert_check=config.cert_check,
+    selected = store_name or config.store
+    if selected == "memory":
+        return _MEMORY_STORE
+    if selected != "s3":
+        # Never fall through to the in-memory fake. `ClaimCheckConfig.store` is
+        # enum-validated at construction, but `ClaimCheckRef.store` is a plain
+        # `str` off the wire — so this is the ref path's only check, and a
+        # silent slide into the dict would be an unreadable blob reported as a
+        # missing one.
+        raise UnknownBlobStore(
+            f"unknown claim-check store {selected!r}: expected 'memory' or 's3'"
         )
-    return _MEMORY_STORE
+
+    resolved = location or resolve_claim_check_location(None, config)
+    return S3BlobStore(
+        endpoint_url=resolved.endpoint_url,
+        access_key=config.access_key.get_secret_value(),
+        secret_key=config.secret_key.get_secret_value(),
+        region=resolved.region,
+        secure=resolved.secure,
+        # Stays on `config`, not on the resolved LOCATION: certificate trust
+        # is a platform-wide deployment fact (`MINIO_CERT_CHECK`), not part
+        # of "which bucket, on which endpoint" that the control plane serves.
+        cert_check=config.cert_check,
+    )
 
 
-async def open_store(config: ClaimCheckConfig) -> tuple[BlobStore, ClaimCheckLocation]:
+async def open_store(
+    config: ClaimCheckConfig, ref: ClaimCheckRef | None = None
+) -> tuple[BlobStore, ClaimCheckLocation]:
     """The location-resolved store, for a caller that holds no snapshot already.
 
     One helper rather than a resolve/build pair repeated at each edge, so the
@@ -313,9 +343,17 @@ async def open_store(config: ClaimCheckConfig) -> tuple[BlobStore, ClaimCheckLoc
     ``min_bytes`` too) should use :func:`resolve_claim_check_location` +
     :func:`build_blob_store` directly rather than fetching twice.
 
+    Pass ``ref`` when opening the store in order to READ that ref: the backend
+    then follows the ref rather than this process's configured default, which is
+    what lets a harness on the dev default (``memory``) dereference the blob the
+    gateway wrote to MinIO. Omit it for writes — there is no ref yet, so the
+    configured backend is the only answer.
+
     NEVER raises on the config read: the client is TTL-cached and fail-safe, and
     a control-plane hiccup must not fail an activity that would otherwise have
-    succeeded — it degrades to the bootstrap location.
+    succeeded — it degrades to the bootstrap location. An unimplemented backend
+    name DOES raise (:class:`UnknownBlobStore`) — that is not a degraded read,
+    it is a request we cannot honour.
     """
     snapshot: Any | None = None
     try:
@@ -326,7 +364,7 @@ async def open_store(config: ClaimCheckConfig) -> tuple[BlobStore, ClaimCheckLoc
         snapshot = None
 
     location = resolve_claim_check_location(snapshot, config)
-    return build_blob_store(config, location), location
+    return build_blob_store(config, location, store_name=ref.store if ref else None), location
 
 
 def _sha256_hex(data: bytes) -> str:
