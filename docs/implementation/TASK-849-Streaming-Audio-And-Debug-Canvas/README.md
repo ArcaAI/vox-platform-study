@@ -251,6 +251,114 @@ Two assertions were verified to FAIL when the property they guard is broken, the
   against a real in-memory stream and a real Temporal server; an end-to-end run needs `pnpm setup:dev`
   infra, which is the orchestrator's surface, not a lane's.
 
+### Lane 849c — debug canvas + a11y outline (steps 6–8). **Complete against what lane A shipped; the loop drill-down carries lane A's own recorded gap forward, honestly.**
+
+Continuation of a prior attempt that stalled mid-file (banked two commits: the SSE client contract, and
+a WIP drawer rewrite). This lane reconciled that contract against lane A's actual `run_events.py`
+(written before lane A had merged) and finished steps 6–8.
+
+#### Contract reconciliation
+
+The inherited `api/types.ts` handled `workflow.node.started`, `workflow.run.progress`/`.completed`, and
+documented (but did not TYPE) `.node.completed`/`.node.failed`/`.loop.iteration`/`.guardrail.verdict` as
+sharing `WorkflowNodeEventPayload`. The one real gap was `workflow.token.delta` — the DELTA lane, entirely
+absent from both the type contract and `api/live-events.ts`'s subscription list. Added
+`WorkflowTokenDeltaPayload` (`{ nodeId, sequence, text }`, matching `emit_token_delta`'s payload exactly),
+a `WorkflowRunEventType` union documenting all seven wire event types plus the gateway's own
+`workflow.run.progress` snapshot frame, and a doc note on `workflow.run.completed`'s DUAL payload shape
+(the gateway's snapshot builder vs. the harness's raw-forwarded control-lane mirror — two different
+shapes under one type name, confirmed by reading both `workflow-run-event.ts` and
+`workflow-stream.service.ts`).
+
+#### What was built
+
+* **Canvas problem borders (step 6).** `lib/node-problem.ts` (inherited, kept) maps a rollup or a live
+  `workflow.node.*` payload onto the canvas's existing ERROR/WARNING border mechanism. Wired into
+  `run-trace-screen.tsx`'s `nodeProblemById`: the durable rollup first, then the LIVE frame for that
+  EXACT `nodeId` overrides it — a red border can appear the instant a `workflow.node.failed` frame
+  arrives, before the next REST re-snapshot resolves, and a fresh retry clears a stale border. There is
+  no "green" border: the canvas's border mechanism (`packages/ui`) only ships ERROR/WARNING severities
+  (built for validation findings) — extending it was out of this lane's `apps/admin-console`-only
+  boundary, so a successful/running node is conveyed by `NodeRunBadge`'s icon+text overlay instead. State
+  never reads by colour alone either way.
+* **Input/Output/Error tabs + live output preview.** `RunNodeDetailDrawer` (inherited rewrite, finished
+  here) opens on Output by default; a `liveOutputPreview` prop now surfaces the `workflow.token.delta`
+  accumulator (capped 4 000 chars, reset on a fresh `workflow.node.started` for that node) — the first
+  real consumer of the delta lane, and what makes the debug surface feel live rather than a status
+  poller.
+* **Live activity feed.** `RunLiveActivity` (inherited) rendered in the status banner; prints
+  node started/completed/failed frames in arrival order, never a fabricated tool-call argument (none is
+  on the wire).
+* **Loop drill-down (step 6, honest gap carried forward).** `LoopIterationDrilldown` (inherited) renders
+  the full `◀ 3/12 ▶` affordance always, in a disabled state with the reason stated — `iterations` is
+  `null` for every run today because nothing emits `workflow.loop.iteration` yet (lane A's own recorded
+  gap, re-verified against `activities.py`/`run_events.py`, not rediscovered). Needs: the
+  `interpreter.loop_state_checkpoint` hook lane A already named as the place to add it.
+* **Replay/scrub (step 7).** New `RunReplayScrubber` — play/pause/step/jump controls plus a Radix
+  `Slider`, reading ONLY the durable REST trace already on screen (no new endpoint, no live connection —
+  "free" as the plan called it). A toolbar toggle on a terminal run slices `trace.nodes` to a revealed
+  step count and feeds the SAME correlation → problem → overlay pipeline the live view uses, so
+  scrubbing back genuinely HIDES not-yet-revealed nodes (canvas border and list badge both), not just
+  dims them. Fixed-interval auto-play, honestly documented as an ordered walk-through rather than a
+  timestamp-accurate reproduction.
+* **Outline view (step 8).** The pre-existing `?view=list` / `RunTraceListView` peer IS the
+  keyboard-navigable outline: real focusable `<button>`s in an ordered `<ol>`, each carrying the same
+  `NodeRunBadge` (icon+text, never colour-alone). Confirmed it also respects replay scrubbing (same
+  `effectiveRollups` slice as the canvas).
+
+#### Files changed
+
+| File | Change |
+|---|---|
+| `apps/admin-console/src/features/workflow-runs/api/types.ts` | `WorkflowTokenDeltaPayload`; `WorkflowRunEventType` union; `workflow.run.completed` dual-shape doc note |
+| `apps/admin-console/src/features/workflow-runs/api/live-events.ts` | `WORKFLOW_TOKEN_DELTA` subscribed; `liveOutputByNodeId` accumulator (capped, reset-on-start); reset-on-`runId` rewritten as a render-time adjustment (lint) |
+| `apps/admin-console/src/features/workflow-runs/components/run-node-detail-drawer.tsx` | `liveOutputPreview` prop rendered in the Output tab |
+| `apps/admin-console/src/features/workflow-runs/components/run-replay-scrubber.tsx` | **NEW** — play/pause/step/jump + Slider replay control |
+| `apps/admin-console/src/features/workflow-runs/components/run-trace-screen.tsx` | live-events wiring, `nodeProblemById`/`canvasNodes`, `RunLiveActivity` in the status banner, replay toolbar, drawer `liveOutputPreview` |
+| `apps/admin-console/src/features/workflow-runs/components/__tests__/run-trace-screen.test.tsx` | fixed a pre-existing assertion the inherited drawer rewrite broke ("Payload" → "Output not available"); added a live-stream test (FakeEventSource + ticket stub), dark-theme axe passes (list + canvas), a replay-scrub test |
+
+#### Evidence
+
+```
+$ pnpm --filter @arcaai/admin-console exec eslint src/features/workflow-runs --max-warnings=0
+(clean — no output)
+
+$ pnpm --filter @arcaai/admin-console exec vitest run src/features/workflow-runs --reporter=default
+ ✓ |server| lib/__tests__/rollup-correlation.test.ts (5 tests)
+ ✓ |server| lib/__tests__/graph-layout.test.ts (12 tests)
+ ✓ |client| components/__tests__/failure-panel.test.tsx (5 tests)
+ ✓ |client| components/__tests__/gate-approval-panel.test.tsx (10 tests)
+ ✓ |client| components/__tests__/workflow-runs-screen.test.tsx (6 tests)
+ ✓ |client| components/__tests__/run-trace-screen.test.tsx (10 tests)
+ Test Files  6 passed (6)
+      Tests  48 passed (48)
+
+$ pnpm --filter @arcaai/admin-console typecheck
+5 pre-existing errors, all in playground-consultation/playground-live-transcription (missing
+@arcaai/vox / @arcaai/stt dist/ in this worktree) — zero in workflow-runs/workflow-studio.
+
+$ cd apps/admin-console && npx playwright test --list tests/e2e/workflow-runs.spec.ts
+Total: 12 tests in 2 files   # collects cleanly; not run — no infra authorised
+```
+
+`pnpm --filter @arcaai/admin-console build` is BLOCKED in this worktree by the same pre-existing gap
+(`packages/agentic-sdk-v2` and `packages/stt` have no `dist/` at all here — never built, not stale), on
+two files this lane never touches. Reported, not silently worked around; not a shared-tree bootstrap this
+lane's boundary licenses fixing.
+
+#### Not done in this lane (declared, not hidden)
+
+* **The loop drill-down has no live data source** — see above; this is lane A's gap, re-confirmed, not
+  fixed here (the fix belongs in `apps/harness`, outside this lane's boundary).
+* **No "green" canvas border** — a deliberate scope decision to avoid a `packages/ui` change; state is
+  conveyed without colour via `NodeRunBadge` instead. See "What was built" above.
+* **No new Playwright e2e spec.** The existing `workflow-runs.spec.ts` (12 tests) already covers the
+  trace screen's outline view and both-theme axe; the vitest suite above adds the live-stream/replay
+  coverage a live backend would otherwise be needed for. Confirmed the existing spec still collects
+  cleanly against these changes.
+* **`pnpm --filter @arcaai/admin-console build` unverified** — blocked by the pre-existing missing
+  `@arcaai/vox`/`@arcaai/stt` builds noted above.
+
 ## 7. Change History
 
 | Date | Change |
@@ -258,3 +366,4 @@ Two assertions were verified to FAIL when the property they guard is broken, the
 | 2026-09-01 | Ticket created, aligned to TASK-837 §4. |
 | 2026-09-01 | Plan expanded against the shipped poll bridge, the TASK-717 Phase-C gap, and the TASK-847 handoff markers. Blocked on TASK-848. |
 | 2026-09-02 | **Lane 849a complete (steps 1–4).** TASK-717 Phase C producer built; control events mirrored out of Temporal behind `_STREAM_PATCH`; delta lane straight to Redis Streams; gateway poll DELETED in favour of a blocking `XREAD` with `Last-Event-ID` resume and trimmed-gap re-snapshot. Split measured at 37 Temporal history events for both 10 and 10 000 deltas. Steps 5–8 remain open for lanes 849b/849c. |
+| 2026-09-02 | **Lane 849c complete (steps 6–8).** Contract reconciled against lane A's merged `run_events.py` (added the missing `workflow.token.delta` type). Canvas problem borders wired to both the durable rollup and live frames; live output preview from the token-delta lane; replay/scrub built reading only the durable trace; the pre-existing `?view=list` confirmed as the keyboard outline view. Loop drill-down's empty state carries lane A's recorded no-emitter gap forward rather than papering over it. `pnpm --filter @arcaai/admin-console build` left unverified — blocked by pre-existing unbuilt `@arcaai/vox`/`@arcaai/stt` in this worktree, on files this lane never touches. |
