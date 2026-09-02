@@ -278,13 +278,7 @@ export class HarnessTtsInternalController {
    * (`classifyTtsProvider`), never stamped by this call site — a call site that stamps it
    * mis-bills silently.
    */
-  private emitUsage(args: {
-    tenantId: string;
-    provider?: string;
-    characters: number;
-    audioSeconds: number | null;
-    overrides?: unknown;
-  }): void {
+  private emitUsage(args: { tenantId: string; provider?: string; characters: number; audioSeconds: number | null; overrides?: unknown }): void {
     if (!this.usageLedger) return;
     const { deployment, costBasis } = args.provider
       ? classifyTtsProvider(args.provider, args.overrides as Parameters<typeof classifyTtsProvider>[1])
