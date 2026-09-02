@@ -479,5 +479,11 @@ export function canonicalRealtimeNodeType(type: string): string {
  * which is exactly the drift the derivation in `REALTIME_NODE_TYPES` above exists to avoid.
  */
 export function realtimeNodeIsTogglable(type: string): boolean {
-  return NODE_CONFIG_SCHEMAS[type]?.properties?.enabled !== undefined;
+  // `NodeConfigSchema` is `Readonly<Record<string, unknown>>` — a JSON Schema document, not a
+  // typed shape — so the walk down to `properties.enabled` is narrowed rather than asserted. An
+  // unregistered type answers `false`, which is the safe direction: it withholds a switch rather
+  // than advertising one that does not exist.
+  const properties = (NODE_CONFIG_SCHEMAS[type] as Record<string, unknown> | undefined)?.properties;
+  if (typeof properties !== 'object' || properties === null) return false;
+  return (properties as Record<string, unknown>).enabled !== undefined;
 }
