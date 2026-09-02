@@ -22,7 +22,13 @@
  * cannot widen `consultation.extractEntities.in` from `transcript` to `text`,
  * because it does not own the declaration.
  */
-import { NODE_CONFIG_SCHEMAS, NODE_PORTS, WORKFLOW_NODE_REGISTRY, type WorkflowNodePorts, type WorkflowPortDescriptor } from '@arcaai/workflow-contract';
+import {
+  NODE_CONFIG_SCHEMAS,
+  NODE_PORTS,
+  WORKFLOW_NODE_REGISTRY,
+  type WorkflowNodePorts,
+  type WorkflowPortDescriptor,
+} from '@arcaai/workflow-contract';
 import type { HarnessLiveAssistProposalDto } from '../../harness/dto';
 import type { LiveSummaryEntityDto, LiveSummarySectionDto, LiveSummaryStatsDto, LiveSummaryVitalsDto } from '../dto';
 
