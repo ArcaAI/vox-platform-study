@@ -56,7 +56,7 @@ describe('evaluateEgress — the shared vector contract', () => {
   }
 
   it('covers every vector in the fixture (no silent skips)', () => {
-    expect(FIXTURE.vectors.length).toBeGreaterThanOrEqual(38);
+    expect(FIXTURE.vectors.length).toBeGreaterThanOrEqual(46);
   });
 });
 
@@ -123,6 +123,11 @@ describe('isBlockedAddress — the explicit range table', () => {
     ['::ffff:169.254.169.254', 'IPv4-mapped metadata'],
     ['64:ff9b::a9fe:a9fe', 'NAT64-embedded metadata'],
     ['2002:0a00:0001::1', '6to4-embedded RFC1918'],
+    ['::ffff:0:169.254.169.254', 'RFC 2765 IPv4-TRANSLATED (::ffff:0:0:0/96)'],
+    ['64:ff9b:1::a9fe:a9fe', 'RFC 8215 local-use NAT64 prefix'],
+    ['2001:0:4136:e378:8000:63bf:3fff:fdd2', 'Teredo tunnel (2001::/32)'],
+    ['fec0::1', 'deprecated site-local'],
+    ['2606:4700::5efe:169.254.169.254', 'ISATAP interface id under a public prefix'],
   ])('blocks %s (%s)', (ip) => {
     expect(isBlockedAddress(ip)).toBe(true);
   });
@@ -138,6 +143,9 @@ describe('isBlockedAddress — the explicit range table', () => {
     ['169.253.255.255', 'just below link-local'],
     ['169.255.0.0', 'just above link-local'],
     ['2606:4700::1111', 'public IPv6'],
+    // 2001:db8::/32 is the DOCUMENTATION prefix, not Teredo (2001:0000::/32) — pins
+    // that the Teredo block did not swallow the wider 2001::/16.
+    ['2001:db8::1', 'IPv6 documentation prefix, adjacent to but outside Teredo'],
   ])('allows %s (%s)', (ip) => {
     expect(isBlockedAddress(ip)).toBe(false);
   });

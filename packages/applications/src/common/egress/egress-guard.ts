@@ -85,13 +85,33 @@ const BLOCKED_IPV4: ReadonlyArray<readonly [string, number]> = [
   ['240.0.0.0', 4], // reserved, incl. 255.255.255.255 broadcast
 ];
 
-/** IPv6 ranges blocked outright (embedded-IPv4 forms are unwrapped separately). */
+/**
+ * IPv6 ranges blocked outright (embedded-IPv4 forms are unwrapped separately).
+ *
+ * TWO of these are TRANSITION prefixes blocked WHOLE rather than unwrapped, which is a
+ * deliberate departure from the unwrap-and-recheck treatment `embeddedIPv4` gives the
+ * other transition forms:
+ *
+ *  • `2001::/32` (Teredo). Unwrapping does not work here. The canonical Teredo test
+ *    address `2001:0:4136:e378:8000:63bf:3fff:fdd2` embeds server 65.54.227.120 and
+ *    client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
+ *    would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
+ *    its far end reaches, so the prefix itself is what must be refused.
+ *  • `64:ff9b:1::/48` (RFC 8215 local-use NAT64). RFC 6052 permits /32../96 embeddings
+ *    underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
+ *    translation prefix is never a legitimate destination for a tenant connector. (The
+ *    well-known `64:ff9b::/96` is /96-only and IS unwrapped, so a NAT64 route to a
+ *    public IPv4 still works.)
+ */
 const BLOCKED_IPV6: ReadonlyArray<readonly [string, number]> = [
   ['::', 128], // unspecified
   ['::1', 128], // loopback
+  ['64:ff9b:1::', 48], // RFC 8215 local-use NAT64 — see the note above
   ['100::', 64], // RFC 6666 discard-only
+  ['2001::', 32], // Teredo tunnelling — see the note above
   ['fc00::', 7], // RFC 4193 unique-local
   ['fe80::', 10], // link-local
+  ['fec0::', 10], // RFC 3879 site-local — deprecated is not the same as unroutable
   ['ff00::', 8], // multicast
 ];
 
@@ -180,18 +200,30 @@ function isBlockedIPv4(bytes: Uint8Array): boolean {
 /**
  * The IPv4 address embedded in an IPv6 one, or `null`.
  *
- * Every one of these is a real bypass if left unwrapped: `::ffff:169.254.169.254` and
- * `64:ff9b::a9fe:a9fe` both reach the metadata endpoint on a dual-stack host.
+ * Every one of these is a real bypass if left unwrapped: `::ffff:169.254.169.254`,
+ * `::ffff:0:169.254.169.254` and `64:ff9b::a9fe:a9fe` all reach the metadata endpoint on
+ * a host whose netns routes the corresponding prefix.
+ *
+ * Transition prefixes whose IPv4 is NOT recoverable this way (Teredo) or not reliably in
+ * the last 32 bits (the RFC 8215 local-use NAT64 prefix) are blocked whole in
+ * `BLOCKED_IPV6` instead — see the note there.
  */
 function embeddedIPv4(bytes: Uint8Array): Uint8Array | null {
   const zeros = (from: number, to: number): boolean => bytes.slice(from, to).every((b) => b === 0);
 
   // ::ffff:0:0/96 — IPv4-mapped
   if (zeros(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) return bytes.slice(12, 16);
+  // ::ffff:0:0:0/96 — RFC 2765 IPv4-translated. NOT the mapped prefix: its 0xffff sits in
+  // bytes 8-9, so the branch above cannot catch it.
+  if (zeros(0, 8) && bytes[8] === 0xff && bytes[9] === 0xff && zeros(10, 12)) return bytes.slice(12, 16);
   // 64:ff9b::/96 — RFC 6052 NAT64 well-known prefix
   if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b && zeros(4, 12)) return bytes.slice(12, 16);
   // 2002::/16 — 6to4, the embedded v4 is bytes 2..5
   if (bytes[0] === 0x20 && bytes[1] === 0x02) return bytes.slice(2, 6);
+  // <any /64>:0:5efe:v4 — ISATAP (RFC 5214 §6.1) interface id 00-00-5E-FE, or its
+  // globally-unique twin 02-00-5E-FE. The /64 prefix is arbitrary and may be public, so
+  // this is a pattern on bytes 8-11, not a network.
+  if ((bytes[8] === 0x00 || bytes[8] === 0x02) && bytes[9] === 0x00 && bytes[10] === 0x5e && bytes[11] === 0xfe) return bytes.slice(12, 16);
   // ::/96 — deprecated IPv4-compatible (`::` and `::1` are caught by BLOCKED_IPV6 first)
   if (zeros(0, 12)) return bytes.slice(12, 16);
   return null;
