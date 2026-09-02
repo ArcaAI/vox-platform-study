@@ -177,5 +177,26 @@ describe('resolveCredential — input validation', () => {
     it('is absent from the tenant-writable map, so a tenant row is a 403 at the write guard', () => {
       expect(CLOUD_BYO_PROVIDERS['model-registry']).toEqual([]);
     });
+
+    // TASK-855 L8 — the AiModel platform catalogue is SYSTEM-owned
+    // (`06-stt.ts`'s `DEFAULT_TENANT_ID === SYSTEM_TENANT_ID`), so a
+    // gateway-internal resolve for one of those rows' HuggingFace token
+    // passes SYSTEM_TENANT_ID itself as the resolving tenant — there is no
+    // "asking tenant" once the resource being resolved for is SYSTEM's own.
+    // Regression coverage for the cascadeRows fix: SYSTEM's own row for a
+    // non-cloud, platform-managed service used to be mislabelled as the
+    // 'tenant' tier and silently dropped by the `isCloudByoProvider` filter
+    // meant to enforce "a tenant may only own a cloud row" — a rule that
+    // cannot even apply to SYSTEM resolving itself.
+    it('resolves SYSTEM´s own row when the resolving tenantId IS SYSTEM_TENANT_ID', async () => {
+      const systemRow = row({ provider: 'huggingface' });
+      const { svc } = makeService({ systemRows: [systemRow] });
+
+      const res = await svc.resolveCredential('model-registry', 'huggingface', SYSTEM_TENANT_ID);
+
+      expect(res.outcome).toBe('resolved');
+      expect(res.funding).toBe('platform');
+      expect(res.apiKey).toBe('the-token');
+    });
   });
 });

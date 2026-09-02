@@ -482,8 +482,20 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // The caller IS the platform tier; there is nothing above it to cascade to
     // (and no gate — the SYSTEM tenant does not need permission to spend the
     // platform's own money).
+    //
+    // These rows are returned as `systemRows`, NOT `tenantRows` — TASK-855 L8.
+    // The fold in `resolveTenantCloudOverrides` filters its 'tenant' tier to
+    // `isCloudByoProvider` rows only (R4/C5: a tenant may only OWN a cloud
+    // row); mislabelling SYSTEM's own rows as that tier silently dropped every
+    // non-cloud, platform-managed row (`model-registry:huggingface`,
+    // `model-registry:s3`, `rerank:*`, a self-host `llm`/`tts` row, ...)
+    // whenever SYSTEM resolved its OWN credential — exactly the case a
+    // gateway-internal caller hits when the resource it is resolving for
+    // (e.g. an `AiModel` in the platform catalogue) is itself SYSTEM-owned.
+    // Cloud providers were never affected: `isCloud` made the old 'tenant'-tier
+    // check a no-op for them.
     if (tenantId === SYSTEM_TENANT_ID) {
-      return { tenantRows, systemRows: [], vetoed, systemEntitled: true };
+      return { tenantRows: [], systemRows: tenantRows, vetoed, systemEntitled: true };
     }
 
     // A single vetoed provider makes the SYSTEM read pointless for the
