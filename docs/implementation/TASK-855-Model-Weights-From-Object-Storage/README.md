@@ -281,234 +281,119 @@ catch**: a registry row is only as good as the artifact behind it.
 
 ### Lanes
 
-| Lane | Branch | Merged | Gates | Worktree |
-|---|---|---|---|---|
-| L0 | run in-session on OrbStack | n/a | P0-1a/b, P0-2, P0-3, P0-4, **P0-5 pass**; only P0-1c outstanding (lab egress) | n/a |
-| **L1** mount | `task-855-l1-mount` @ `fbdb1f5` (deployment repo) | **blocked on publish** | 7 of 8 repo CI gates PASS; `patch-hygiene` red **but already red on `main`** | branch in the existing clone |
-| **L2** registry | `task-855-l2-registry` | **ready — awaiting owner go-ahead** | typecheck clean; `migrate diff` empty; 1709 tests pass (2 files fail at import on unbuilt workspace deps — the known fresh-worktree condition, rule 14 §4) | `../hope-v2-task-855-l2` |
-| **L3** download API | `task-855-l3-download` | **ready + follow-on in flight** | applications build clean · **10 937 tests** · `api:build` clean · all 5 artifacts regenerated · all 3 `:check` gates green | `../hope-v2-task-855-l3-download` |
-| **L4** catalog UI | `task-855-l4-catalog` | **ready** | build OK · lint 0 warnings · **2305/2305 tests** · axe 0 violations. Themes not eye-verified (no live gateway/DB) | `../hope-v2-task-855-l4-catalog` |
-| **L6** s3:// parity | `task-855-l6-s3uri` | **code done, NOT yet functional** | nlp 553 pass / lint / typecheck clean; tts 444 pass / lint / typecheck clean; `uv lock` re-run by the orchestrator | `../hope-v2-task-855-l6-s3uri` |
-
-⚠️ **`dev-2.2` advanced 5 commits** while L1/L2 ran (another session is active). L2's branch is based
-on `f92313d1f`; L3/L4/L6 are based on `d78cb0446`. L2 needs its base refreshed before it merges —
-rule 14 §4, a stale base is the commonest source of a surprise conflict.
-
-### Dev bucket inventory (read live from `hope-minio-0`, 2026-09-02)
-
-`s3://hope-models` holds **four prefixes, 15 GB, all GGUF LLM builds** — and nothing else:
-
-```
-gemma-4-e2b-it-qat-gguf/q4-0-451faffb5a16
-gemma-4-e4b-it-qat-gguf/q4-0-7a0c80ad163b
-granite-guardian-4.1-8b-gguf/q4-k-m-1af04917c451
-text-embedding-embeddinggemma-300m-qat-gguf/q4-0-f2af2a2fb7c0
-```
-
-Three consequences, all of which changed the plan:
-
-1. **No ASR, NER or TTS weights are in the bucket at all.** Every model `stt`, `stt-worker`, `nlp`
-   and `tts` load today comes from huggingface.co. The publish step is not a top-up; it is the whole
-   catalogue for those three services. L2's candidate table (§ below) counts **~35 self-hosted rows**
-   — audio 16, llm 10, nlp 6, tts 3.
-2. **The version segment is content-derived — `<quant>-<first 12 of sha256(SHA256SUMS)>` — not `v1`.**
-   So `AiModel.localPath` **cannot be written before a model is published**; the hash does not exist
-   yet. The orchestrator's original instruction to L2 (`/mnt/models-bucket/<slug>/v1/`) was wrong and
-   was retracted mid-flight. `localPath` is now written **at publish time**, which is exactly what the
-   Phase 2 download action is specified to do automatically (§5 frozen contract). Hand-writing one
-   fabricates a path that falls through silently today and fails hard once the egress policy lands.
-3. **`hope-vllm` points at a prefix that does not exist.** `base/config/vllm.env:79` sets
-   `VLLM_MODEL_URI=s3://hope-models/medgemma-1.5-27b-it/v1/`; there is no `medgemma-*` prefix in the
-   bucket, and `/v1/` is not the convention either. Latent only because `hope-vllm` runs at
-   `replicas: 0` — scale it up in any environment and it fails to find its weights. Not this ticket's
-   to fix, but it must not be discovered during an incident.
-
-### L2 delivered (verified by the orchestrator, not just reported)
-
-Final diff: 3 files, 28 insertions. Two `sourceUri` corrections with the HF-API verification recorded
-in-line; the `localPath` field added to `AiModelSeed` with a comment that explicitly forbids
-hand-authoring a value; the `06-stt.ts` re-seed mapping so the field actually syncs. Migration
-`20260902090000_task_855_ai_model_source_uri_fix` contains **only** the two guarded `UPDATE`s — each
-fires solely where the column still holds the exact known-wrong value, so it is idempotent and cannot
-clobber an operator's edit.
-
-**L2 is now independent of the publish gate.** Removing the fabricated `localPath` values had a
-useful side effect: what remains is pure correction, valid whether or not anything is ever published,
-so it can merge on its own schedule rather than waiting behind step 1.
-
-Two findings it surfaced and correctly did NOT act on:
-- `arcaai-whisper-large-ml-en-ct2` (`audio.ts:312`) — repo does not exist under any spelling tried.
-  Its own row comment says an ASR pipeline references it, and `retireLegacyAiModels` guards against
-  retiring a slug a live pipeline uses, so retirement needs the pipeline migrated first. Owner call:
-  locate/republish the CT2 build, retire the row, or mark it `DISABLED`.
-- **6 rows declare `source: LOCAL` while carrying an HF-style `org/repo` `sourceUri`** — systematic,
-  not the two rows first spotted. Enum semantics are an owner decision.
-
-### L1 delivered — `fbdb1f5`, 17 files, +918/−330 (orchestrator-verified)
-
-s3fs sidecars on `hope-stt`, `hope-stt-worker`, `hope-nlp`, `hope-tts` at **uid/gid 1001** (each
-verified against its own Dockerfile — `apps/stt/docker/Dockerfile:343-345` defines its own `hope`
-user rather than inheriting from python-base, so the check mattered); HF env + token projections
-removed; four per-workload egress NetworkPolicies; `base/models-cache.yaml` and
-`components/node-local-model-cache` **deleted**; `hope-vllm`'s dead `/models` mount removed.
-
-**Gates:** 7 of 8 repo CI jobs pass. `patch-hygiene` fails — and the orchestrator verified it is
-**already red on `main`**: the three MLflow `args/8` index patches came in with TASK-854
-(`8c0e878`). Either this repo's CI has not run since TASK-854 landed, or it is red and unnoticed.
-L1's branch removes one index patch (the vLLM `volumes/4`) and adds none. **Not a TASK-855 regression
-— but somebody owns fixing it.**
-
-### Provider rows read live from the dev DB (resolves L1's open BYOK question)
-
-All **18** `core."AiProviderConnection"` rows are SYSTEM-tenant; **no customer tenant has a row at
-all**. Every cloud STT provider is disabled and unkeyed:
-
-| service | provider | enabled | keyed |
+| Lane | Branch | Merged into `dev-2.2` | Gates |
 |---|---|---|---|
-| stt | azure-speech / openai / sarvam | **f** | **f** |
-| tts | azure / sarvam | **f** | **f** |
-| llm | lm-studio / ollama / vllm / llama-cpp / built-in | t | t (except built-in) |
-| model-registry | **s3** | **f** | **f** |
-| model-registry | huggingface | f | f |
+| L0 lab | n/a (OrbStack) | n/a | P0-1a/b, P0-2, P0-3, P0-4, P0-5 **pass**; P0-1c blocked by lab egress |
+| **L2** registry | `task-855-l2-registry` | ✅ `0334a5408` | typecheck clean · `migrate diff` empty · 1709 tests |
+| **L6** s3:// parity | `task-855-l6-s3uri` | ✅ `1fe661cb4` | nlp 553 · tts 444 · lint + typecheck clean |
+| **L4** catalog UI | `task-855-l4-catalog` | ✅ `72239b601` | build · lint 0 warnings · 2305 tests · axe 0 violations |
+| **L3** download API | `task-855-l3-download` | ✅ `5b476bc43` | applications 10 937 tests · api 4161 tests · 5 artifacts · 3 `:check` green |
+| **L1** mount | `task-855-l1-mount` @ `fbdb1f5` | ❌ **deliberately NOT merged** | 7/8 repo CI gates; `patch-hygiene` red on `main` already |
+| **L7** fetch fix | merged `9bd68b614` | ✅ | 7 files / 57 tests, against real HF repo listings |
 
-Three consequences:
+**Merged by a different session, not this one**, while lanes were still running. Verified afterwards:
+L1 — the only branch whose merge is an outage — correctly stayed unmerged, and **both credential
+follow-ons landed** (`model-registry-internal.controller.ts`, `nlp/core/model_credentials.py`,
+`tts/core/model_credentials.py`).
 
-1. **L1's closed egress policy for `hope-stt` / `hope-stt-worker` is safe today.** Its stated worry —
-   "if any tenant has keyed a cloud ASR provider, this breaks it" — is answered: none has.
-2. **`hope-tts`'s public-443 allowance is not currently needed.** L1 opened it for Azure Speech
-   (`TTS_AZURE_ENABLED: "true"` in the Deployment), but the `tts/azure` row is disabled and unkeyed,
-   and a disabled row is a veto in both tiers. Closing 443 would make the egress deny absolute for
-   TTS too — at the cost that a future admin enabling Azure TTS in the console would then fail with a
-   confusing network error rather than working. **Owner decision.**
-3. **Mode U is not configured** — `model-registry/s3` is disabled and unkeyed, so an `s3://`
-   `sourceUri` would fail closed today. This does **not** affect Phase 1: the s3fs sidecar
-   authenticates with the `hope-models-reader` Kubernetes Secret, not that DB row. Worth knowing that
-   Mode M works with zero provider configuration, which is one more reason it is the fast win.
+**Post-merge gates re-run by the orchestrator on the merged HEAD** (rule 14 §5 — a clean merge is not
+a passing build). L3 and L4 both touched generated API-docs files, so drift was the live risk:
 
-### The one thing no manifest can fix
+```
+[openapi-coverage]     OK — every served route documented or deliberately excluded
+[gen-api-portal]       no drift (admin 633 ops, business 188 ops)
+[vox-node-codegen]     no drift (52 areas, 411 routes, 376 schemas)
+```
 
-L1 found that **the HF token still reaches those pods after its change**: all four workloads carry
-`envFrom: secretRef: hope-secrets`, and `hope-secrets` itself holds `HUGGINGFACE_TOKEN` / `HF_TOKEN`.
-Deleting the explicit `secretKeyRef` projections is necessary but not sufficient. Argo cannot manage
-Secrets, so this needs a **hand edit on the live Secret plus a rollout restart** — the procedure is
-now written into `secrets.dev.yaml.example`. Baseline showed exactly 5 `HUGGINGFACE_TOKEN`
-`secretKeyRef`s, all on stt/stt-worker, so removing the keys breaks no other workload's explicit
-reference.
+**L6 reconciled — nothing stranded.** It was still running when its branch was merged, but the
+coordinator's tooling had squashed both its rounds into `9fa4274c9`; that commit is contained in
+`dev-2.2`, its worktree is clean, and the follow-on's own regression test is present in HEAD. The
+race resolved without loss.
 
-### L6 delivered — and correctly reported that it is not enough on its own
+### The security deviation, verified and accepted
 
-Mirrored `source_resolver.py` into `apps/nlp` and `apps/tts` (scheme dispatch, `local_path`
-precedence, single-flight, SHA256, atomic replace, lazy `minio` import) and — the part that matters —
-**wired it into real call sites**, not left as dead code: `nlp/dependencies.py::_weights_source()`
-now dispatches `s3://` and `file://` before handing the value to `from_pretrained`, and the TTS
-providers resolve an `s3://` override in the coroutine *before* the blocking load thread starts.
-Gates green on both services. `uv lock` re-run by the orchestrator (489 packages).
+L3 was instructed to make the new internal route come out `isPublic: false` like the stt one. **It
+refused, and it was right.** Both reasons verified in source by the orchestrator:
 
-**But Mode U still cannot resolve in production, and L6 said so rather than hiding it.**
+- `RESERVED_INTERNAL_SCOPE_CONTROLLERS` is frozen at `{'SttInternalController'}`
+  (`api-key-scope-audit.ts:181`), with a doc comment saying widening it must *"force the discussion
+  into review rather than letting it happen by accident."*
+- `InternalServiceTokenGuard.SERVICE_SECRETS` (`internal-service-token.guard.ts:34-41`) already
+  carries `text`, `nlp`, `guardrail`, `harness`, `tts` and `stt` — every caller already holds a
+  working credential for the `@Public()` + `InternalServiceTokenGuard` pattern it used instead
+  (`EffectiveConfigController`'s existing pattern).
 
-`apps/stt` gets its S3 credentials from `GET /internal/stt/model-registry-credential?provider=&tenantId=`
-(`apps/api/src/modules/internal/stt-internal.controller.ts:329`), guarded by the internal gateway
-secret and resolving tenant → SYSTEM through `IProviderConnectionService`. **There is no nlp or tts
-equivalent**, so `config_from_settings()` in the new modules supplies cache-dir and TLS only, and an
-`s3://` resolve raises `_make_s3_client`'s "not configured" `ModelSourceError`. L6 refused to invent
-env-var credentials for it — correct, since TASK-799 explicitly closed that door and the brief bans
-new `*_API_KEY` vars.
+`isPublic: true` in that manifest means "carries `@Public()`" — off the JWT/API-key path — **not**
+"unauthenticated". The route is still gated. Extending the frozen exemption would have been a
+deliberate security-posture change, and doing it silently inside a background lane was correctly
+refused.
 
-**The fix is one route, not three.** That endpoint is generic in everything but its path: it takes
-`provider` and `tenantId` and delegates to the provider-connection service. A shared
-`GET /internal/model-registry-credential` serves all three services. Assigned as a follow-on to **L3**,
-which already owns `apps/api` this round — a second writer there would collide on the five generated
-artifacts (`route-manifest.json`, `openapi.json`, the portal, the vox-node admin SDK), which must be
-regenerated exactly once.
+### L6 follow-on — the credential path, and a bug it found on the way
 
-Two further findings from L6, neither actioned:
-- **`apps/harness` has the same defect today** — its resolver's real caller builds a
-  `ModelSourceConfig` with no credentials either. Same shared route would fix it.
-- **`nlp/core/guard_model_reference.py`** (GLiNER2 guard, MiniCheck entailment) keeps its own
-  deliberately fail-closed, synchronous local-path resolution and still cannot load `s3://`. It is a
-  clinical safety gate with 12 existing sync assertions; L6 judged an async signature change
-  out of scope. Owner call whether it needs Mode U at all.
-- Historical note L6 dug up: `nlp` **used to have** this exact resolver (`core/model_source.py`),
-  deleted in TASK-799 as dead code because its only caller was its own test. This lane is that work
-  redone *and connected*.
+Credential clients for `nlp` and `tts` mirroring `stt.core.model_credentials` (per-tenant-and-provider
+cache that never caches a fault, single-flight per key), calling the **generic**
+`GET /internal/model-registry-credential` — not the STT-worker-reserved path. Auth uses
+`API_GATEWAY_KEY`, which is **not a new secret**: already in `turbo.json#globalEnv` and the root
+`.env.sample`, and `apps/stt` reads it the same bare-name way. `X-Tenant-Id` is sent on every request
+— which `stt`'s own client does not do today (query param only), so this is stricter than the
+incumbent, per the mandatory-header rule.
 
-### L4 delivered — and corrected the brief
+**A real bug caught in passing.** `nlp`'s `_weights_source` dispatches `s3://` and `file://` through
+the same branch. Routing `file://` through the credentialed builder would have made a purely local,
+gateway-independent resolve — an on-prem pre-staged path — start requiring a live gateway call, and
+fail when it is down. Fixed so only `s3://` takes the credential path, pinned by
+`apps/nlp/tests/test_task855_weights_source.py` so it cannot regress silently.
 
-**The brief was stale: `sourceUri` was already in the model form.** The real gaps were `localPath`,
-the download affordance, and any catalog-level view of weight source and download state. L4 also
-found that `/ai-platform` (TASK-845, shipped by another lane) already has a read-only "Catalogue" tab
-linking to `/ai-models`, and followed that established pattern in reverse rather than inventing one.
+**Limitation stated, not hidden:** `nlp` receives only `model_name`/`model_path` per request, never the
+model row's `tenant_id`, so it resolves credentials against SYSTEM always. That is *safe* — it can
+never spend one tenant's credential on a model it did not select — but it means **a tenant's own BYO
+`s3://` bucket will not authenticate**. Closing that needs a gateway-side DTO addition to thread true
+ownership through. `tts` has no tenant dimension for its operator-set local-engine overrides, so
+SYSTEM there is exactly right rather than an approximation.
 
-Shipped: `localPath` in the form (disabled with a stated reason in register mode, since the create DTO
-does not accept it; `toUpdateRequest()` always sends it — including `""` — so clearing actually
-clears rather than being silently dropped); help text distinguishing Mode U from Mode M and warning
-that `<version>` is content-derived; two read-only grid columns (`WeightSourceBadge`: Mounted / S3
-URI / Hub ID / No source, with `localPath` winning — and `DownloadStatusBadge`), both using the
-codebase's `StatusBadge` + `StatusDot` + distinct-label pattern so state is never colour alone; the
-download panel in the `DetailDrawer` with 2s polling, one toast per transition, 409 → "already in
-progress", and a disabled button with a visible adjacent reason when a model has no source.
+**Harness answered: not a one-line fix.** It needs a new `model_credentials.py` (~300 lines), a new
+`api_gateway_key` settings field (it has no `X-Internal-Service-Key` equivalent at all today), and a
+change to `resolve_atomic_fact_model_path` (`temporal/activities.py:2131`), which builds a
+`ModelSourceConfig` inline with no credential half. Its `_make_s3_client` boto3 adapter transfers
+unchanged. Same shape, genuine multi-file lift — deliberately not attempted.
 
-The `model-registry`/`s3` connection is surfaced read-only with a plain link to
-`/ai-platform?tab=providers&psvc=model-registry` — no cross-feature import, per rule 13. Orchestrator
-verified the endpoint it reads is real: `GET admin/providers/:service/:provider`
-(`ai-provider-connection.controller.ts:80`).
+Gates after the follow-on: **nlp 582 passed, tts 466 passed**, lint and typecheck clean on both.
 
-**A real bug caught in passing:** L4's first draft used `text-primary` for the link, which a repo-wide
-emphasis-canon guard bans because `--primary` ≈ `--foreground`. It found this via the failing test and
-fixed it to the established `text-foreground … hover:underline` convention.
+### L7 — the fetch allowlist could not reach two of the three test models
 
-**Stated limitation, not glossed:** both themes were verified by grep (no hardcoded colours; every new
-element uses already dual-theme-verified semantic tokens) but **not confirmed by eye** — `/ai-models`
-is SUPER_ADMIN-only behind BFF session auth and no gateway/DB was running. Worth one manual pass
-before release.
+Found while scoping L3's flagged limitation, and **worse than L3 reported.**
+`isRelevantModelSourceFile` accepted only `*.gguf` plus seven companion basenames. Measured against
+the three models nominated for validation:
 
-Open questions from L4: download lives in the drawer rather than the grid row (a 48px fixed-height row
-cannot carry an accessible disabled-reason without breaking the no-wrap grid contract); "Hub ID" is a
-catch-all for any non-`s3://` source; and the grid does not poll while a download runs elsewhere.
+| Repo | Weight file | Fetched before |
+|---|---|---|
+| `unsloth/Qwen3-0.6B-GGUF` | `Qwen3-0.6B-Q4_K_S.gguf` | ✅ |
+| `blaze999/Medical-NER` | `model.safetensors` | ❌ config only, **no weights** |
+| `taphuynh/whisper-…-gguf` | `ggml-…-q5_0.bin` | ❌ **nothing at all** |
 
-### L3 delivered — the download action exists
+L3 flagged safetensors but missed the whisper case, which is the instructive one: the repo is *named*
+`-gguf` but ships whisper.cpp `ggml-*.bin`, so an extension check on `.gguf` found nothing. And the
+failure was **silent** — a repo with no match returned companions and the publish "succeeded".
 
-Both routes ship on the existing `AiModelAdminController`, inheriting its `@ForbidApiKey()` /
-`@RequiredSvcScopes('svc:admin:ai-model:manage')` / `@Authorize(['manage','all'])`, verified in the
-regenerated manifest. 404-over-403 falls out of the repository + tenant-scope extension. 409 covers
-both the already-`DOWNLOADING` case **and** the CAS race — an `OptimisticConcurrencyException` on the
-`updateWithVersion` write is remapped to `Conflict`, deliberately not left as a 412, since 412 is
-reserved for a client-supplied stale `If-Match` and this action never uses one. No enum members added.
+Fixed by widening to the weight formats the platform actually serves
+(`gguf/safetensors/bin/onnx/nemo/pt/pth/.model`) behind a denylist for trainer bookkeeping, which
+shares `.bin`/`.pt` with real weights (`training_args.bin` et al).
 
-**Version derivation is real, not stubbed:** the processor computes SHA256 per file, builds a
-`SHA256SUMS` body matching `shasum -a 256` output, hashes that, and takes 12 hex chars — validated end
-to end against both live bucket examples (`q4-0-…`, `q4-k-m-…`). Quant token comes from `computeType`
-when present, else regex from the source, else the bare hash.
+**A second bug the widening would have created:** `matchesQuantOrIsCompanion` exempted everything not
+`.gguf` — correct while GGUF was the only quantised format, but with `.bin` accepted a `Q5_0` request
+against the whisper repo would have published f16, q5_0 **and** q8_0: 3× the bytes and an ambiguous
+prefix with no way for a consumer to know which file to serve. `.safetensors` stays exempt
+deliberately — a repo ships one unquantised set, so filtering it would exclude the only weights.
 
-Credentials route entirely through the existing `IS3Service` (`S3_ENDPOINT` from `AppSettingsService`
-db-config, keys from `SecretsService` vault-kv). **No new env var anywhere** — the constraint held.
+Tests use the **real repo listings** read from the HuggingFace API, not invented fixtures.
+Merged as `9bd68b614`. Suite: **7 files, 57 tests, all passing** (after generating the Prisma client
+and building `@arcaai/domains`/`@arcaai/exceptions` — the fresh-worktree condition of rule 14 §4,
+diagnosed from the actual resolver error rather than assumed).
 
-`startedAt`/`finishedAt`/`error` have no `AiModel` columns and no migration was available to this lane,
-so they ride in the existing `_metadata` JSONB under `metaData.download`, following the entity's own
-documented precedent (TTS `metaData.voices`).
-
-**Boundary excursion, reviewed and accepted:** L3 touched `JobQueue.enum.ts` and `worker-session.ts`
-outside its stated ownership. A background job needs a queue, no other lane touches either file, and
-the orchestrator confirmed no collision.
-
-**Owner questions raised and deliberately NOT resolved by the lane:**
-1. `computeType` (documented as float32/float16/int8) is **reused as the GGUF quant selector** and
-   version label. Works for both examples, but it repurposes a field's stated meaning.
-2. `HOPE_MODELS_BUCKET = 'hope-models'` is a literal. Defensible — `apps/stt`'s `path_resolver.py`
-   defaults the same literal, and only endpoint/credentials vary per environment — but it sits against
-   the letter of "never hardcode configuration".
-3. **The HF fetch allowlist is GGUF-focused.** A plain safetensors repo would fetch nothing. That
-   directly affects `blaze999/Medical-NER` and the TTS models, which are **not** GGUF — so the download
-   action cannot yet publish them. Real limitation, must be closed before the publish step runs.
-4. `attempts: 1` on the queue (no silent retry after a row is already `DOWNLOAD_FAILED`) — accepted.
-
-### Follow-on now in flight: making Mode U actually work
-
-Both halves of the credential path, dispatched in parallel to the lanes that own each side:
-- **L3** — one shared `GET /internal/model-registry-credential`, mirroring the stt route's guard and
-  tenant → SYSTEM resolution, with the stt-specific path left working and marked superseded.
-- **L6** — the Python client in `nlp`/`tts` that calls it, mirroring `stt/core/model_credentials.py`,
-  failing closed on absence, with `X-Tenant-Id` mandatory.
+⚠️ **All TASK-855 worktrees were removed by another session**, including this one while its fix was
+still uncommitted. It survived only because that session committed before removing. Rule 14 §5 exists
+for exactly this: *never destroy a worktree with unmerged commits, and never prune worktrees to tidy
+up.* No loss this time; it was luck, not process.
 
 ### Phase 1 merge gate (orchestrator-owned)
 
