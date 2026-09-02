@@ -64,6 +64,43 @@ export interface SSEConnectOptions {
   maxReconnectAttempts?: number;
   /** Maximum delay cap in milliseconds for exponential backoff (default: 30000) */
   maxDelayMs?: number;
+  /**
+   * Replay the last seen event id on every RECONNECT, as `?lastEventId=`
+   * (default: `false`) — TASK-850.
+   *
+   * ## Why this is not automatic
+   *
+   * `EventSource` tracks `lastEventId` and replays it on its OWN internal
+   * reconnect. This client never uses that reconnect: every reconnect here
+   * closes the `EventSource` and constructs a new one, because each connect
+   * must mint a FRESH single-use stream ticket. A new `EventSource` starts with
+   * an empty `lastEventId`, so the browser's resume is discarded on exactly the
+   * path this client takes — and the frames in the gap are simply lost.
+   *
+   * For a status-only stream that is survivable: the next status frame carries
+   * the whole truth. For a workflow-run stream it is not — the missed frames
+   * ARE the run's node and token events, and nothing re-sends them.
+   *
+   * ## Why the query parameter and not the header
+   *
+   * `EventSource` cannot set request headers, which is the same constraint that
+   * put the ticket in the URL. The gateway exposes `?lastEventId=` for this
+   * client specifically (`workflows.controller.ts`: "the manual escape hatch
+   * for a client that cannot set headers"; the header wins when both arrive).
+   *
+   * ## Why opt-in
+   *
+   * Appending an unrecognized query parameter to every existing SSE consumer's
+   * URL changes routes that have not asked for it. A stream that wants resume
+   * says so.
+   */
+  resume?: boolean;
+  /**
+   * Seed the resume cursor — the opaque token a previous page/process last saw.
+   * Only meaningful with {@link resume}. Sent on the FIRST connect too, which
+   * is what makes resuming across a page reload possible.
+   */
+  lastEventId?: string;
 }
 
 /**
@@ -85,6 +122,17 @@ export class SSEClient {
   private disposed = false;
   private reconnectCount = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * The most recent non-empty `id:` seen on a dispatched frame — the opaque
+   * resume cursor. `null` until a frame carries one.
+   *
+   * Advanced ONLY by a frame that actually carried an id. The gateway's
+   * snapshot frame deliberately emits none (a snapshot is not a stream
+   * position), and letting that blank the cursor would re-deliver the entire
+   * retained window on the next reconnect.
+   */
+  private lastEventId: string | null = null;
 
   private onMessageCb?: (data: string) => void;
   private onErrorCb?: (event: Event) => void;
@@ -121,8 +169,21 @@ export class SSEClient {
     this.url = url;
     this.options = options;
     this.disposed = false;
+    if (options.lastEventId !== undefined && options.lastEventId !== '') {
+      this.lastEventId = options.lastEventId;
+    }
 
     void this.openWithTicket(url);
+  }
+
+  /**
+   * The opaque resume cursor last seen on this stream, or `null` if no frame
+   * has carried one. Persist it (and pass it back as
+   * {@link SSEConnectOptions.lastEventId}) to resume across a page reload.
+   * Never parse it — it is transport-assigned.
+   */
+  getLastEventId(): string | null {
+    return this.lastEventId;
   }
 
   onMessage(cb: (data: string) => void): void {
@@ -207,13 +268,19 @@ export class SSEClient {
 
     if (this.disposed) return;
 
-    const fullUrl = SSEClient.appendTicket(callerUrl, ticket);
+    // Resume cursor BEFORE the ticket, so the (single-use, per-connect) ticket
+    // stays the last parameter — the shape every existing consumer's logs and
+    // fixtures already show.
+    const resumeUrl = this.options.resume === true ? SSEClient.appendParam(callerUrl, 'lastEventId', this.lastEventId) : callerUrl;
+    const fullUrl = SSEClient.appendParam(resumeUrl, 'ticket', ticket);
     this.createEventSource(fullUrl);
   }
 
-  private static appendTicket(url: string, ticket: string): string {
+  /** Append `key=value`, choosing `?`/`&`. A `null`/empty value appends nothing. */
+  private static appendParam(url: string, key: string, value: string | null | undefined): string {
+    if (value === null || value === undefined || value === '') return url;
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}ticket=${encodeURIComponent(ticket)}`;
+    return `${url}${separator}${key}=${encodeURIComponent(value)}`;
   }
 
   // =========================================================================
@@ -244,6 +311,7 @@ export class SSEClient {
     };
 
     es.onmessage = (event: MessageEvent) => {
+      this.rememberEventId(event);
       this.onMessageCb?.(event.data);
     };
 
@@ -267,11 +335,29 @@ export class SSEClient {
   }
 
   /**
+   * Record a dispatched frame's `id:` as the resume cursor.
+   *
+   * Recorded unconditionally, not only when `resume` is on — `getLastEventId()`
+   * is useful to a caller persisting a cursor even if this particular
+   * connection never reconnects, and an unread cursor costs nothing.
+   *
+   * An EMPTY id is ignored rather than stored: per the SSE spec a frame without
+   * an `id:` field leaves the last event id unchanged, and the gateway's
+   * snapshot frame deliberately has none. Storing `''` would blank the cursor
+   * and make the next reconnect replay the whole retained window.
+   */
+  private rememberEventId(event: MessageEvent): void {
+    const id = event.lastEventId;
+    if (typeof id === 'string' && id !== '') this.lastEventId = id;
+  }
+
+  /**
    * Attach a named-event listener and remember its reference so we can
    * `removeEventListener` it before closing the `EventSource`.
    */
   private attachNamedListener(es: EventSource, eventName: string): void {
     const listener: EventListener = (event) => {
+      this.rememberEventId(event as MessageEvent);
       const cb = this.namedListeners.get(eventName);
       cb?.((event as MessageEvent).data);
     };

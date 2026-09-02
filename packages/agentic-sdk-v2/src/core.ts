@@ -57,6 +57,9 @@ export {
   useConsultationSchema,
   useConsultationWorkflow,
   useSelectableConsultationWorkflows,
+  // TASK-850 — workflow invocation (run / watch / cancel). No audio or ML, so
+  // it belongs in /core: an admin or dashboard surface runs workflows too.
+  useWorkflowRun,
   useConsultationEvents,
   useDepartments,
   useDnaDashboard,
@@ -154,6 +157,10 @@ export type {
   UseConsultationSchemaReturn,
   UseConsultationWorkflowReturn,
   UseSelectableConsultationWorkflowsReturn,
+  // TASK-850 — workflow invocation.
+  StartWorkflowRunOptions,
+  UseWorkflowRunOptions,
+  UseWorkflowRunReturn,
   UseConsultationEventsReturn,
   ConsultationEventsStreamStatus,
   UseDepartmentsReturn,
@@ -321,6 +328,29 @@ export type {
 } from './types';
 
 export { CONTEXT_PRIMITIVES, findConsultationContextKind, isConsultationContextKindDeprecated } from './types';
+
+// =============================================================================
+// Types + guards — workflow invocation (TASK-850)
+// =============================================================================
+
+export type {
+  TerminalRunStatus,
+  WorkflowRunEvent,
+  WorkflowRunEventPayload,
+  WorkflowRunEventType,
+  WorkflowRunHandle,
+  WorkflowRunStatus,
+  WorkflowSummary,
+} from './types';
+
+export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
+
+/**
+ * The reserved run-identity keys and their detector — exported so a caller can
+ * validate an `input` object BEFORE handing it to `start()` (e.g. while
+ * building it from form fields), rather than catching the throw.
+ */
+export { RESERVED_RUN_IDENTITY_KEYS, ReservedRunIdentityError, reservedRunIdentityKeysIn } from './hooks';
 
 // =============================================================================
 // Types - Audio
