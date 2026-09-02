@@ -44,6 +44,12 @@ def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, boo
     When ``model_path`` is set (an internal ungated mirror) load from it with
     ``local_files_only=True`` so transformers never touches the gated hub;
     otherwise fall back to the gated ``hf_model`` id (dev only).
+
+    Synchronous and unaware of ``s3://`` on purpose: any ``s3://`` value in
+    ``model_path`` has already been materialised into a real local directory by
+    ``_resolve_s3_overrides`` (TASK-855 L6) before ``config`` reaches here, so
+    from this function's point of view it is indistinguishable from an
+    already-staged local mirror.
     """
     if config.model_path:
         return config.model_path, {"local_files_only": True}
@@ -57,10 +63,38 @@ def _resolve_desc_source(config: IndicParlerConfig, baked_id: str) -> tuple[str,
     fetched at load even when the model is local. When ``desc_encoder_path`` is
     set load the mirrored tokenizer from it (``local_files_only``); otherwise use
     the baked id from ``model.config.text_encoder._name_or_path``.
+
+    Same ``s3://``-unaware note as ``_resolve_model_source`` above.
     """
     if config.desc_encoder_path:
         return config.desc_encoder_path, {"local_files_only": True}
     return baked_id, {}
+
+
+async def _resolve_s3_overrides(config: IndicParlerConfig) -> IndicParlerConfig:
+    """Materialise an ``s3://`` local-mirror override into a real directory.
+
+    ``model_path`` / ``desc_encoder_path`` are plain local-mirror paths
+    (Mode M — an operator/admin-staged directory); this resolves the ONE new
+    case, an ``s3://bucket/prefix`` value, via the mirrored resolver
+    (``tts.models.source_resolver``) BEFORE ``_resolve_model_source`` /
+    ``_resolve_desc_source`` (unchanged, still synchronous) ever see it. A
+    config with no ``s3://`` override is returned UNCHANGED (same object),
+    so the existing local-path / gated-hub behaviour is byte-for-byte
+    preserved.
+    """
+    from tts.models.source_resolver import resolve_local_override
+
+    updates: dict[str, str] = {}
+    if config.model_path.startswith("s3://"):
+        updates["model_path"] = await resolve_local_override(
+            config.model_path, slug="indic_parler-model"
+        )
+    if config.desc_encoder_path.startswith("s3://"):
+        updates["desc_encoder_path"] = await resolve_local_override(
+            config.desc_encoder_path, slug="indic_parler-desc"
+        )
+    return config.model_copy(update=updates) if updates else config
 
 
 class IndicParlerProvider:
@@ -120,7 +154,11 @@ class IndicParlerProvider:
 
     async def _load_generate(self, _key: str) -> Callable[[str, str], np.ndarray]:
         """Build the generate callable. Runs in a thread — a heavy, blocking load."""
-        builder = self._generate_factory or self._load_model
+        # Resolve any `s3://` local-mirror override HERE, in the coroutine —
+        # never inside the thread the blocking torch/transformers load runs on
+        # (no event loop to `await` an async download against there).
+        effective_config = await _resolve_s3_overrides(self._config)
+        builder = self._generate_factory or (lambda: self._load_model(effective_config))
         generate = await asyncio.to_thread(builder)
 
         TTS_MODEL_LOADED.labels(model="indic_parler").set(1)
@@ -148,19 +186,25 @@ class IndicParlerProvider:
         """Release the model if it has been idle past its TTL."""
         return await self._cache.sweep()
 
-    def _load_model(self) -> Callable[[str, str], np.ndarray]:
+    def _load_model(
+        self, config: IndicParlerConfig | None = None
+    ) -> Callable[[str, str], np.ndarray]:
         import torch
         from parler_tts import ParlerTTSForConditionalGeneration
         from transformers import AutoTokenizer
 
-        device = self._config.device
-        model_source, model_kwargs = _resolve_model_source(self._config)
+        # `config` is the s3-override-resolved config `_load_generate` builds;
+        # defaults to `self._config` so a direct call (existing tests that
+        # inject `generate_factory` never reach this method at all) is unchanged.
+        cfg = config if config is not None else self._config
+        device = cfg.device
+        model_source, model_kwargs = _resolve_model_source(cfg)
         model = ParlerTTSForConditionalGeneration.from_pretrained(model_source, **model_kwargs).to(
             device
         )
         tokenizer = AutoTokenizer.from_pretrained(model_source, **model_kwargs)
         desc_source, desc_kwargs = _resolve_desc_source(
-            self._config, model.config.text_encoder._name_or_path
+            cfg, model.config.text_encoder._name_or_path
         )
         desc_tokenizer = AutoTokenizer.from_pretrained(desc_source, **desc_kwargs)
 

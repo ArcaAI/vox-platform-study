@@ -13,7 +13,7 @@ import pytest
 from tts.catalog.voices import VoiceCatalog
 from tts.core.config import IndicF5Config, Settings
 from tts.providers.base import AudioFormat, SynthesisRequest, TTSEngine
-from tts.providers.indic_f5 import IndicF5Provider
+from tts.providers.indic_f5 import IndicF5Provider, _resolve_s3_override
 
 
 class FakeGenerate:
@@ -82,3 +82,59 @@ def test_catalog_binding_present_but_not_in_default_routing():
     assert VoiceCatalog().get("ml-female-1").bindings["indic_f5"] == "ml-ref-1"
     # Config carries no vendor routing default at all (fail-closed).
     assert not hasattr(Settings(), "routing_ml")
+
+
+# --- `s3://` local-mirror override resolution (TASK-855 L6) ---
+
+
+@pytest.mark.asyncio
+async def test_resolve_s3_override_passes_through_a_config_with_no_s3_value():
+    """No `s3://` value → the SAME config object, unchanged."""
+    cfg = IndicF5Config().model_copy(update={"model_path": "/models/indic-f5"})
+    resolved_cfg = await _resolve_s3_override(cfg)
+    assert resolved_cfg is cfg
+
+
+@pytest.mark.asyncio
+async def test_resolve_s3_override_resolves_model_path(monkeypatch):
+    seen: dict = {}
+
+    async def _fake_resolve(value: str, *, slug: str) -> str:
+        seen["value"], seen["slug"] = value, slug
+        return "/cache/s3/resolved-f5"
+
+    monkeypatch.setattr("tts.models.source_resolver.resolve_local_override", _fake_resolve)
+
+    cfg = IndicF5Config().model_copy(update={"model_path": "s3://models/indic-f5"})
+    resolved_cfg = await _resolve_s3_override(cfg)
+
+    assert seen == {"value": "s3://models/indic-f5", "slug": "indic_f5-model"}
+    assert resolved_cfg.model_path == "/cache/s3/resolved-f5"
+
+
+@pytest.mark.asyncio
+async def test_load_generate_resolves_s3_before_building(monkeypatch):
+    """The provider's real load path calls the resolver before `_load_model`."""
+    calls: list[str] = []
+
+    async def _fake_resolve(value: str, *, slug: str) -> str:
+        calls.append(value)
+        return "/cache/s3/resolved-f5"
+
+    monkeypatch.setattr("tts.models.source_resolver.resolve_local_override", _fake_resolve)
+
+    seen_config: list[IndicF5Config] = []
+
+    cfg = IndicF5Config().model_copy(update={"model_path": "s3://models/indic-f5"})
+    provider = IndicF5Provider(cfg)
+
+    def _fake_load_model(config: IndicF5Config) -> object:
+        seen_config.append(config)
+        return lambda text: None
+
+    provider._load_model = _fake_load_model  # type: ignore[method-assign]
+
+    await provider._load_generate("indic_f5")
+
+    assert calls == ["s3://models/indic-f5"]
+    assert seen_config[0].model_path == "/cache/s3/resolved-f5"

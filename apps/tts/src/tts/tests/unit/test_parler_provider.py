@@ -11,6 +11,7 @@ from tts.providers.indic_parler import (
     IndicParlerProvider,
     _resolve_desc_source,
     _resolve_model_source,
+    _resolve_s3_overrides,
 )
 
 
@@ -114,3 +115,78 @@ def test_desc_source_uses_mirror_offline_when_path_set():
     source, kwargs = _resolve_desc_source(cfg, "google/flan-t5-large")
     assert source == "/models/flan-t5-large"
     assert kwargs == {"local_files_only": True}
+
+
+# --- `s3://` local-mirror override resolution (TASK-855 L6) ---
+
+
+@pytest.mark.asyncio
+async def test_resolve_s3_overrides_passes_through_a_config_with_no_s3_value():
+    """No `s3://` value anywhere → the SAME config object, unchanged."""
+    cfg = IndicParlerConfig().model_copy(update={"model_path": "/models/indic-parler-tts/abc123"})
+    resolved_cfg = await _resolve_s3_overrides(cfg)
+    assert resolved_cfg is cfg
+
+
+@pytest.mark.asyncio
+async def test_resolve_s3_overrides_resolves_model_path(monkeypatch):
+    seen: dict = {}
+
+    async def _fake_resolve(value: str, *, slug: str) -> str:
+        seen["value"], seen["slug"] = value, slug
+        return "/cache/s3/resolved-model"
+
+    monkeypatch.setattr("tts.models.source_resolver.resolve_local_override", _fake_resolve)
+
+    cfg = IndicParlerConfig().model_copy(update={"model_path": "s3://models/indic-parler"})
+    resolved_cfg = await _resolve_s3_overrides(cfg)
+
+    assert seen == {"value": "s3://models/indic-parler", "slug": "indic_parler-model"}
+    assert resolved_cfg.model_path == "/cache/s3/resolved-model"
+    # `_resolve_model_source` then treats it exactly like any staged mirror.
+    source, kwargs = _resolve_model_source(resolved_cfg)
+    assert source == "/cache/s3/resolved-model"
+    assert kwargs == {"local_files_only": True}
+
+
+@pytest.mark.asyncio
+async def test_resolve_s3_overrides_resolves_desc_encoder_path(monkeypatch):
+    async def _fake_resolve(value: str, *, slug: str) -> str:
+        return f"/cache/s3/{slug}"
+
+    monkeypatch.setattr("tts.models.source_resolver.resolve_local_override", _fake_resolve)
+
+    cfg = IndicParlerConfig().model_copy(update={"desc_encoder_path": "s3://models/flan-t5-large"})
+    resolved_cfg = await _resolve_s3_overrides(cfg)
+
+    assert resolved_cfg.desc_encoder_path == "/cache/s3/indic_parler-desc"
+    # `model_path` had no `s3://` value, so it is untouched.
+    assert resolved_cfg.model_path == cfg.model_path
+
+
+@pytest.mark.asyncio
+async def test_load_generate_resolves_s3_before_building(monkeypatch):
+    """The provider's real load path calls the resolver before `_load_model`."""
+    calls: list[str] = []
+
+    async def _fake_resolve(value: str, *, slug: str) -> str:
+        calls.append(value)
+        return "/cache/s3/resolved-model"
+
+    monkeypatch.setattr("tts.models.source_resolver.resolve_local_override", _fake_resolve)
+
+    seen_config: list[IndicParlerConfig] = []
+
+    cfg = IndicParlerConfig().model_copy(update={"model_path": "s3://models/indic-parler"})
+    provider = IndicParlerProvider(cfg)
+
+    def _fake_load_model(config: IndicParlerConfig) -> object:
+        seen_config.append(config)
+        return lambda text, description: None
+
+    provider._load_model = _fake_load_model  # type: ignore[method-assign]
+
+    await provider._load_generate("indic_parler")
+
+    assert calls == ["s3://models/indic-parler"]
+    assert seen_config[0].model_path == "/cache/s3/resolved-model"

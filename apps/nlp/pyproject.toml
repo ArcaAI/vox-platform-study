@@ -65,9 +65,12 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     # --- Text processing ---
     "symspellpy>=6.10.0",
-    # `minio` is GONE with `core/model_source.py` (TASK-799 lane D): its only
-    # importer was that module's `_make_s3_client`, and that module's only
-    # importer was its own test.
+    # `minio` backs the `s3://` model-source scheme (TASK-855 L6). Removed by
+    # TASK-799 lane D.1e when it had no real caller; re-added now that
+    # `nlp/models/source_resolver.py` is wired into `dependencies._weights_source`.
+    # Imported LAZILY inside `_make_s3_client`, so a deployment that never
+    # resolves an `s3://` source_uri never imports it.
+    "minio>=7.2.20",
     # --- Logging ---
     "structlog>=25.5.0",
     "python-dotenv>=1.2.0",
@@ -188,6 +191,11 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["fitz", "fitz.*", "rapidocr_onnxruntime", "rapidocr_onnxruntime.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `minio` (TASK-855 L6, `nlp/models/source_resolver.py`) ships no inline types.
+module = ["minio", "minio.*"]
 ignore_missing_imports = true
 
 # pytest configuration

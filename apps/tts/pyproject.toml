@@ -42,6 +42,11 @@ dependencies = [
     "redis>=8.1.0,<9.0",
     "pysbd>=0.3.4",
     "azure-cognitiveservices-speech>=1.51.1",
+    # `minio` backs the `s3://` model-source scheme (TASK-855 L6,
+    # `tts/models/source_resolver.py`), used by the Indic Parler / IndicF5
+    # local-mirror overrides. Imported LAZILY inside `_make_s3_client`, so a
+    # deployment that never resolves an `s3://` source never imports it.
+    "minio>=7.2.20",
     # --- Shared runtime contracts ---
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
@@ -172,6 +177,11 @@ module = [
     "azure.cognitiveservices.speech",
     "parler_tts",
 ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `minio` (TASK-855 L6, `tts/models/source_resolver.py`) ships no inline types.
+module = ["minio", "minio.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
