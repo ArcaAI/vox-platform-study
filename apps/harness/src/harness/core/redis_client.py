@@ -8,9 +8,14 @@ by the 60s TTL poll. Rule 09 §"Config caches" rule 2 is explicit that this is b
 service that converges only on a TTL has given up the property that justifies moving a
 value out of env in the first place. The owner approved adding the client (D-5).
 
-**Scope is deliberately one connection for one job.** harness stores nothing in Redis,
-queues nothing through it and reads no keys: this is a pub/sub subscriber and nothing
-else. Do not grow it into a cache or a queue — harness's durable state is Temporal's.
+**Scope is deliberately one named job per builder.** This module had exactly one when it
+was written — the invalidation subscriber — with the instruction *"do not grow it into a
+cache or a queue"*. TASK-849 adds a SECOND, and adds it as its own named builder rather
+than by widening the first, so the instruction still holds as written: harness caches
+nothing in Redis and queues nothing through it. The new job is a WRITE-ONLY append onto a
+per-run event stream (``interpreter/run_events.py``) — the TASK-717 Phase C producer, and
+the reason the gateway can stop polling. Harness's durable state is still Temporal's; that
+stream is a mirror of it, never the record.
 
 **The URL is env-tier and stays that way.** It is how the process REACHES Redis, so it
 is exactly the bootstrap floor rule 09 reserves for env; a value delivered over the
@@ -54,3 +59,18 @@ def build_invalidation_redis(url: str) -> Any | None:
             error_type=type(exc).__name__,
         )
         return None
+
+
+def build_run_event_redis(url: str) -> Any | None:
+    """An async Redis client for the run-event stream producer, or ``None`` (TASK-849).
+
+    Same construction, same `None`-is-supported posture, DIFFERENT job — and a separate
+    connection on purpose: the invalidation client spends its life parked in `subscribe`,
+    and a connection in subscriber mode cannot serve `XADD`. Sharing one would either
+    break invalidation or block every emit behind it.
+
+    ``None`` means "no push mirror": the run still executes, still records everything in
+    Temporal history, and a connected client still gets its snapshot from the ``state``
+    query. It loses live deltas, nothing else.
+    """
+    return build_invalidation_redis(url)

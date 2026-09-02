@@ -6,9 +6,9 @@ import {
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from '@arcaai/applications';
-import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Body, Req, Res } from '@nestjs/common';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Body, Query, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
@@ -116,11 +116,32 @@ export class WorkflowsController {
   @ApiOperation({
     summary: 'SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).',
     description:
-      'Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet — see the class doc on WorkflowStreamService) — every reconnect resyncs from the CURRENT live status rather than resuming a gap (no synthetic resume token is minted for a non-resumable transport, per the async-contract §3.6 rule).',
+      "Snapshot-then-delta. The first frame is a `workflow.run.progress`/`workflow.run.completed` snapshot of current status; every frame after it is an event PUSHED by the interpreter as it happens (node started/completed/failed, run completed), carried on the run event stream. Each pushed frame's `id` is an opaque resume token — echo it back as `Last-Event-ID` to resume exactly where you left off. The snapshot frame carries no `id` (there is no stream position to name). If your position has aged out of the retained window, the stream re-sends a snapshot rather than silently skipping the gap.",
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
-  async streamRunStatus(@Param('slug') slug: string, @Param('runId') runId: string, @Res() res: Response): Promise<void> {
-    await this.workflowStreamService.stream(slug, runId, res);
+  // Declared explicitly rather than left to the Swagger plugin's inference, which emits every
+  // header/query parameter as `required: true` (see the `Idempotency-Key` header on `invoke`).
+  // Both of these are OPTIONAL by construction — a first connect sends neither — and documenting
+  // a resume cursor as mandatory would tell a client to invent one, which is the exact thing
+  // async-contract §3.6 forbids.
+  @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'Opaque resume token from a previous frame’s `id`. Omit on a first connect.' })
+  @ApiQuery({
+    name: 'lastEventId',
+    required: false,
+    description: 'Fallback for a client that cannot set headers. The header wins when both are present.',
+  })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  async streamRunStatus(
+    @Param('slug') slug: string,
+    @Param('runId') runId: string,
+    @Res() res: Response,
+    // The SSE spec sends this header on reconnect by itself; the query parameter is the manual
+    // escape hatch for a client that cannot set headers (the same fallback `apps/text`'s stream
+    // endpoint offers). NEVER a JWT — this is a stream cursor, not a credential.
+    @Headers('Last-Event-ID') lastEventIdHeader?: string,
+    @Query('lastEventId') lastEventIdQuery?: string,
+  ): Promise<void> {
+    await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader ?? lastEventIdQuery);
   }
 }

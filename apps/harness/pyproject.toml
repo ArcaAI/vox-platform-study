@@ -63,11 +63,17 @@ dependencies = [
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
+    # --- The async task/event envelope + idempotency/resume conventions (TASK-717).
+    # TASK-849 makes harness a PRODUCER of it (Phase C): the interpreter mirrors run
+    # control events, and streams token deltas, as conforming envelopes onto a Redis
+    # Stream. Same workspace dependency apps/text already carries for the same contract.
+    "hope-async-contract",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
+hope-async-contract = { workspace = true }
 
 [project.optional-dependencies]
 dev = [
@@ -286,6 +292,7 @@ pythonpath = [
     "../../packages/py-env/src",
     "../../packages/py-runtime-models/src",
     "../../packages/py-workflow-contract/src",
+    "../../packages/py-async-contract/src",
     "../../scripts/pytest-support",
 ]
 addopts = [
