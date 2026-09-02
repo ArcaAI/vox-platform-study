@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — repo changes complete and render-verified; two live steps await owner go-ahead |
+| **Status** | Completed — committed in both repos, deployment repo pushed, StatefulSet cutover applied and verified |
 | **Type** | infrastructure |
 | **Branch** | `dev-2.2` (monorepo) · `main` (`arca/hope-v2-deployment`) |
 | **Date** | 2026-09-02 |
@@ -139,24 +139,62 @@ render assertions: dev .invalid=0 · standalone .invalid=6
 Live: `/dev/vdb` 492 G (257 G free), `DiskPressure: False`, all quotas readable
 back via `mc quota info`, ILM rule present on `hope-models`.
 
+## The StatefulSet cutover (executed 2026-09-02)
+
+`volumeClaimTemplates` is immutable, so the MinIO 300Gi claim and the new Redis
+claim could not be applied by a sync — Argo would have failed, and a failed sync
+blocks every later change to the app. Sequence used, deliberately ordered so the
+window in which the manifests and the cluster disagree is as short as possible:
+
+1. Commit both repos.
+2. `kubectl -n hope-v2-dev delete sts hope-minio --cascade=orphan` and the same
+   for `hope-redis`. `--cascade=orphan` leaves the **pods running** — MinIO
+   never stopped serving.
+3. `git push origin main` → Argo hard-refresh → new StatefulSets created.
+4. Both adopted their orphaned pods. **MinIO reconciled with zero downtime**:
+   its pod template was unchanged, so the adopted pod's revision hash already
+   matched and `updatedReplicas` went straight to 1. Redis could not — its
+   template gained a volume and new args — so the adopted pod kept the OLD
+   revision hash and the controller sat at `updatedReplicas: 0` with
+   `data-hope-redis-0` Pending (`local-path` is `WaitForFirstConsumer`, and the
+   adopted pod did not reference the claim). Deleting the pod let the
+   StatefulSet recreate it on the new template; the PVC bound immediately.
+
+### Verification after the cutover
+
+| Check | Result |
+|---|---|
+| MinIO PVC identity | `uid=2b6dd3f5-…` and `pv=pvc-2b6dd3f5-…` — **unchanged**, still bound, still 200Gi |
+| MinIO data | 16 GB, all 8 buckets present |
+| Redis persistence | `appendonly yes`, `dir /data`, `/data/appendonlydir` created, PVC Bound |
+| Redis keyspace | 48 keys → 31 after the restart, as warned — the last data it loses before it stops losing data |
+| PVC retention | all four StatefulSets report `Retain/Retain` |
+| Retention windows | live ConfigMap shows `retention_period: 720h`, `block_retention: 720h` |
+| Ingress | six hostnames unchanged; `grafana` 302, `admin` 307, `minio` 200, `mlflow` 200, `api` 404 (root, as before) |
+| Argo | `Succeeded`, health **Healthy** — it had been permanently `Missing` |
+| Namespace | all pods Running/Completed |
+
+Argo still reports `OutOfSync` on four resources, all benign: two self-deleting
+Jobs, and two superseded `configMapGenerator` generations awaiting a prune that
+`prune: false` never performs (`requiresPruning: true`, and verified referenced
+by no pod). Deleting those two ConfigMaps by hand would take the app to fully
+Synced; not done here because it was outside the authorised scope.
+
 ## Open items (owner decision required)
 
-1. **Two StatefulSet recreates.** `volumeClaimTemplates` is immutable, so the
-   MinIO 300Gi and the Redis PVC will **fail the Argo sync** — and a failed sync
-   blocks every later change to the app — until each is preceded by
-   `kubectl -n hope-v2-dev delete sts <name> --cascade=orphan` (PVC, PV and data
-   survive). The Redis cutover restarts Redis, dropping whatever is queued at
-   that instant: the last data it loses before it stops losing data.
-2. **Dev hostname migration.** Move dev to `*-dev.taphuynh.dev` — 5 Cloudflare
+1. **Dev hostname migration.** Move dev to `*-dev.taphuynh.dev` — 5 Cloudflare
    CNAMEs plus a one-word overlay edit — before `overlays/prod` is stood up.
-3. **`fstrim -av`** across the guests: the thin pool is over-provisioned
+   Until then dev and prod both declare the apex names.
+2. **`fstrim -av`** across the guests: the thin pool is over-provisioned
    (1.83 TiB of volumes against a 1.67 TiB pool, ~16 GB unallocated in the VG, so
-   it cannot be extended) and ~265 GB sits in never-trimmed blocks.
-4. **Nothing is committed or pushed.** Argo auto-syncs `main`, so pushing the
-   deployment repo is a live deploy — sequenced behind (1).
+   it cannot be extended) and ~265 GB sits in never-trimmed blocks. If that pool
+   ever fills, every VM on the hypervisor freezes.
+3. **Monorepo not pushed.** Its changes are docs + rules only; pushing runs a
+   full 16-image pipeline for no artifact change. Commits carry `[skip ci]`.
 
 ## Change History
 
 | Date | Change |
 |---|---|
-| 2026-09-02 | Ticket created. Disk grown, quotas + ILM applied, manifests made portable, docs written. Status: Review |
+| 2026-09-02 | Ticket created. Disk grown 300→500 GB, MinIO quotas + ILM applied, manifests made portable, docs written. Status: Review |
+| 2026-09-02 | Both repos committed; deployment repo pushed (`8c0e878`). StatefulSet orphan-delete cutover executed for `hope-minio` (zero downtime) and `hope-redis` (one restart). Argo sync Succeeded, health Healthy. Status: Completed |
