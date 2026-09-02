@@ -297,6 +297,107 @@ byte-identical to what you already call — swapping a raw `fetch` call for
 `hope.summarization.summary(...)` is the entire migration; there is no
 request/response reshaping to do.
 
+## Running workflows
+
+A published workflow is a product your backend can invoke. Two families, split
+by what they are allowed to write:
+
+| | `hope.workflows.*` | `hope.consultations.workflows.*` |
+|---|---|---|
+| Runs | A tenant's published workflows, standalone | The same, bound to one consultation |
+| Writes into a clinical record | No | Yes |
+| Ability | `create`/`read`/`update:WorkflowRun`, `list:WorkflowDefinition` | `execute:ConsultationWorkflow` |
+| API-key scopes | `workflow:definition:read`, `workflow:run:read`, `workflow:run:write` | `workflows:execute` |
+
+"May run a workflow" and "may run one that writes into a clinical record" are
+deliberately different powers, so they are different routes, abilities and
+scopes — granting the first never implies the second.
+
+### This plane is API-key only
+
+Every workflow route declares `svcScopes: []` in `route-manifest.json` —
+deny-by-default for a service account, and no role grant changes that. The SDK
+refuses at the call site rather than letting you discover it as a 403:
+
+```ts
+hope.workflows.list();
+// CredentialClassError: … reachable with an API key only.
+```
+
+`hope.admin.*` is the exact mirror image (service account only), so an
+integration that needs both constructs **two clients** — one per credential
+class. A single client cannot span the planes; passing both credentials throws
+at construction.
+
+### Starting a run
+
+```ts
+const hope = new HopeClient({ baseUrl, apiKey });
+
+// Fire and collect a handle.
+const handle = await hope.workflows.run('discharge_summary', { input: { … } });
+
+// Or block until it finishes (the gateway caps this; a 504 is a ceiling, not
+// a transient failure, and is never retried).
+const status = await hope.workflows.runAndWait('discharge_summary', { input: { … } });
+
+// Or consume events as they happen.
+for await (const event of hope.workflows.runAndStream('discharge_summary', { input: { … } })) {
+  if (event.type === 'workflow.node.completed') { … }
+}
+```
+
+Consultation-bound runs take the consultation id first, and are otherwise
+identical:
+
+```ts
+await hope.consultations.workflows.list(consultationId);
+await hope.consultations.workflows.run(consultationId, slug, { input: { … } });
+await hope.consultations.workflows.runAndWait(consultationId, slug, { input: { … } });
+for await (const e of hope.consultations.workflows.runAndStream(consultationId, slug, { input: { … } })) { … }
+```
+
+### Following a run
+
+| Method | Use it when |
+|---|---|
+| `getRun(slug, runId)` | One-shot status check. |
+| `streamRun(slug, runId, opts)` | Attach to a run you started earlier — resumable (below). |
+| `waitForRun(slug, runId, opts)` | Same, but you only care about the terminal status. |
+| `cancelRun(slug, runId)` | Signal cancellation. |
+
+`streamRun` and `runAndStream` **resume**: each frame's opaque `id` is tracked
+and a dropped connection reconnects with `Last-Event-ID`, so a disconnect costs
+latency, not events. Hand-rolling this means knowing that the snapshot frame
+deliberately carries no token.
+
+Use the exported `isTerminalRunStatus(status)` rather than comparing strings —
+the terminal set includes `TIMED_OUT` and spells cancellation `CANCELED`
+(one L), which is easy to get wrong.
+
+### Idempotency is a JOIN, not a de-duplicate
+
+`options.idempotencyKey` derives the run id from `(tenant, slug, key)`. A retry
+with the same key **joins the run already in flight** rather than starting — and
+billing — a second one. That is the behaviour you want on a retry, and a
+surprise if you reuse a key across genuinely different payloads.
+
+The run identity is stamped server-side, so `input` may not carry the reserved
+keys — `consultationId`, `externalPatientId`, `userId`, `jobId`, `sessionId`.
+The gateway REFUSES rather than silently dropping them, because the failure it
+is preventing is not a 400: it is a caller sending `{ consultationId }`,
+getting a 202, and believing it addressed that consultation while the run acted
+on something else. The SDK throws
+`ReservedRunIdentityError` before the request leaves; `RESERVED_RUN_IDENTITY_KEYS`
+and `reservedRunIdentityKeysIn(input)` are exported so you can check a payload
+while you build it.
+
+### Runs do not notify you
+
+There is no "run completed" webhook — see
+[Known gateway quirks](#known-gateway-quirks-the-sdk-deliberately-does-not-hide).
+Hold the stream or poll `getRun`; do not fire and forget.
+
 ## Streaming
 
 Both stateless summarization methods have a streaming variant that yields
@@ -368,7 +469,7 @@ const { webhook, rawSecret } = await hope.admin.webhookEvent.create({
 | `fetchAll(opts)` / `fetchAllIterate(opts)` | List subscriptions (paginated; the `Iterate` form is an async iterator). |
 | `fetchById(id)` | One subscription. |
 | `update(id, body, { ifMatch })` | Change url/name/resource type. Versioned — see [Optimistic concurrency](#optimistic-concurrency). |
-| `rotateSecret(id, body)` | Issue a new signing secret; returns it once, like `create`. |
+| `rotateSecret(id, body, { ifMatch })` | Issue a new signing secret; returns it once, like `create`. **No overlap window** — the previous secret dies immediately, so deploy the new one before rotating. Versioned. |
 | `fetchDeliveries(id)` / `fetchDeliveriesIterate(id)` | Delivery history — status, response code, attempts. Start debugging here. |
 | `delete(id)` | Unsubscribe. |
 
