@@ -135,8 +135,39 @@ log "daemon up: $(lms daemon status 2>/dev/null | head -1)"
 # the ONLY place in the platform where a silent CPU-only deployment is caught.
 if [ "${EXPECT_ACCEL}" != "none" ]; then
 
-  engines="$(lms runtime ls 2>/dev/null || true)"
-  [ -n "${engines}" ] || die "\`lms runtime ls\` returned nothing — cannot verify the accelerator."
+  # MEASURED 2026-09-02, and the reason this is a loop rather than one call:
+  # A-1's readiness signal is the daemon printing "is running", but the RUNTIME
+  # REGISTRY is not queryable at that moment. `lms runtime ls` answers
+  # "No runtimes found." for a few seconds and only then lists the engines that
+  # were in the image all along. The previous one-shot call therefore died on a
+  # warm-up race and reported it as a missing bundle — a wrong diagnosis that
+  # sent debugging at the image build instead of the wait.
+  #
+  # Proven in-cluster: immediately after daemon start `lms runtime ls` printed
+  # "No runtimes found."; moments later the SAME container printed all three
+  # engines with cuda12 already carrying the selected mark.
+  engines=""
+  for _ in $(seq 1 "${HOPE_RUNTIME_WAIT_SECONDS:-60}"); do
+    engines="$(lms runtime ls 2>/dev/null | grep -v 'No runtimes found' || true)"
+    printf '%s' "${engines}" | grep -q '@' && break
+    engines=""
+    sleep 1
+  done
+
+  # Only if the registry is genuinely empty is this a missing runtime. Fetch one
+  # rather than failing: `lms runtime get` downloads the extension pack, and the
+  # image ships the packs already, so this is the recovery path for an image
+  # that was built without them (or a channel change), not the normal path.
+  if [ -z "${engines}" ]; then
+    log "no engines after ${HOPE_RUNTIME_WAIT_SECONDS:-60}s — attempting to install one"
+    lms runtime get "${HOPE_RUNTIME_PACK:-llama.cpp:cuda}" -y >/dev/null 2>&1 \
+      || lms runtime get "${HOPE_RUNTIME_PACK:-llama.cpp:cuda}" -y --allow-incompatible >/dev/null 2>&1 \
+      || true
+    engines="$(lms runtime ls 2>/dev/null | grep -v 'No runtimes found' || true)"
+  fi
+
+  [ -n "${engines}" ] || die "\`lms runtime ls\` returned nothing after a \
+${HOPE_RUNTIME_WAIT_SECONDS:-60}s wait AND an install attempt — cannot verify the accelerator."
   log "installed engines:"; printf '%s\n' "${engines}" | sed 's/^/    /' >&2
 
   # 1. Is an accelerated engine even present? If not, this is the wrong bundle.
