@@ -128,6 +128,19 @@ export {
 // TASK-813 — consultation workflow DISCOVERY (which engine governs a consultation).
 export type { ConsultationWorkflow, SelectableConsultationWorkflow } from './consultationWorkflow';
 
+// TASK-850 — workflow INVOCATION (running one), as distinct from the discovery
+// types above (which one governs a consultation).
+export type {
+  TerminalRunStatus,
+  WorkflowRunEvent,
+  WorkflowRunEventPayload,
+  WorkflowRunEventType,
+  WorkflowRunHandle,
+  WorkflowRunStatus,
+  WorkflowSummary,
+} from './workflowRun';
+export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './workflowRun';
+
 // Consultation-loop workflow event types
 export type { LoopEvent } from './loopEvent';
 

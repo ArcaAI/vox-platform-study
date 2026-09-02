@@ -100,6 +100,18 @@ export { useConsultationSchema, type UseConsultationSchemaReturn } from './useCo
 export { useConsultationWorkflow, type UseConsultationWorkflowReturn } from './useConsultationWorkflow';
 export { useSelectableConsultationWorkflows, type UseSelectableConsultationWorkflowsReturn } from './useSelectableConsultationWorkflows';
 
+// TASK-850 — workflow INVOCATION: run a published workflow (optionally against a
+// consultation), watch it live with a resumable stream, cancel it.
+export {
+  RESERVED_RUN_IDENTITY_KEYS,
+  ReservedRunIdentityError,
+  reservedRunIdentityKeysIn,
+  useWorkflowRun,
+  type StartWorkflowRunOptions,
+  type UseWorkflowRunOptions,
+  type UseWorkflowRunReturn,
+} from './useWorkflowRun';
+
 // Consultation-loop workflow event SSE stream
 export { useConsultationEvents, type UseConsultationEventsReturn, type ConsultationEventsStreamStatus } from './useConsultationEvents';
 
