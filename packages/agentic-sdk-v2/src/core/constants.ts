@@ -72,9 +72,14 @@ export const CONSULTATION_ENDPOINTS = {
   LIST: '/consultations',
   /** Update consultation (PATCH) */
   UPDATE: (id: string) => `/consultations/${encodeURIComponent(id)}`,
-  /** Close consultation */
+  /**
+   * Prime the consultation — the session state machine's first checkpoint
+   * (also the AI_DOCUMENTATION consent checkpoint). `@RequiresIfMatch()`.
+   */
+  PRIME: (id: string) => `/consultations/${encodeURIComponent(id)}/prime`,
+  /** Close consultation. `@RequiresIfMatch()`. */
   CLOSE: (id: string) => `/consultations/${encodeURIComponent(id)}/close`,
-  /** Reopen consultation */
+  /** Reopen consultation. `@RequiresIfMatch()`. */
   REOPEN: (id: string) => `/consultations/${encodeURIComponent(id)}/reopen`,
   /** Live running-SOAP SSE stream (full-state snapshots) while recording. */
   LIVE_SUMMARY_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
@@ -86,6 +91,15 @@ export const CONSULTATION_ENDPOINTS = {
    * `useConsultationEvents`'s doc comment for the `Last-Event-Id` caveat).
    */
   LOOP_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/loop/stream`,
+  /**
+   * Live clinician-assist SSE stream — the `agent.grammar` node's correction
+   * proposals and interpreter suggestions, relayed off
+   * `consultation:live-assist:{id}`. Full-state snapshots carrying BOTH
+   * branches; unlike the live-summary feed it has NO terminal event, so the
+   * client decides when to close it. CARRIES PHI (a proposal quotes the
+   * original span verbatim) and nothing on it has been applied to the note.
+   */
+  LIVE_ASSIST_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-assist/stream`,
 } as const;
 
 /** SSE ticket scope for the live running-SOAP stream (must match the gateway's per-resource scope). */
@@ -93,6 +107,9 @@ export const liveSummaryScopeFor = (consultationId: string): string => `consulta
 
 /** SSE ticket scope for the consultation-loop event stream (must match `@StreamScope({ namespace: 'consultation_loop' })`). */
 export const loopEventsScopeFor = (consultationId: string): string => `consultation_loop:${consultationId}`;
+
+/** SSE ticket scope for the live clinician-assist stream (must match `@StreamScope({ namespace: 'consultation_live_assist' })`). */
+export const liveAssistScopeFor = (consultationId: string): string => `consultation_live_assist:${consultationId}`;
 
 /**
  * Audio recording endpoints (dual-capture X8).

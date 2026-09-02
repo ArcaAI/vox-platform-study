@@ -41,6 +41,9 @@ export {
   // Surface the focused domain hooks (siblings of
   // useArcaSession/useArcaSummary) so consumers can use them without the useArca() aggregate.
   useArcaLiveSummary,
+  // TASK-858 G2 — the live clinician-assist feed (grammar corrections +
+  // interpreter suggestions). SSE only, no audio/ML, so it belongs in core.
+  useArcaLiveAssist,
   useArcaAudio,
   useArcaConfig,
   useArcaDevices,
@@ -285,6 +288,8 @@ export type {
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './types';
 
 export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './types';
+export type { LiveAssistEvent, LiveAssistSuggestion, LiveAssistProposal, LiveAssistCorrections } from './types';
+export type { UseArcaLiveAssistReturn, LiveAssistStreamStatus } from './hooks';
 
 // =============================================================================
 // Types - Context
@@ -370,6 +375,14 @@ export type {
   TranscriptWord,
   VADEvent,
   VADEventType,
+  // TASK-858 G3 — argument/return shapes of already-public audio surfaces
+  // (`audio.start(options)`, dual capture, the store's pipeline/connection
+  // state). Types only: erased at build, so `/core` stays audio-code-free.
+  ActivePipelineInfo,
+  AudioProcessingConstraints,
+  AudioStartOptions,
+  DualCaptureResult,
+  SttConnectionState,
 } from './types';
 
 // =============================================================================
