@@ -303,6 +303,27 @@ class NLPServiceConfig(BaseSettings):
     # effective-config route this URL points at.
     gateway_url: str = Field(default="http://localhost:8868/api/v1")
 
+    # ── Gateway internal-route credential (TASK-855 L6 follow-on) ──────────
+    # NOT the same credential as `internal_access_token` above. That one is
+    # the shared `X-Service-Token` this process ACCEPTS inbound and PRESENTS
+    # on PEER (service-to-service) calls — e.g. `EffectiveConfigClient`'s pull
+    # from the control plane. `api_gateway_key` is presented as
+    # `X-Internal-Service-Key` on calls to the gateway's `/internal/*`
+    # surface specifically (here: `GET /internal/model-registry-credential`,
+    # the generic model-registry credential route) — the SAME header + field
+    # shape `apps/stt` already uses for the identical purpose
+    # (`stt.core.model_credentials`, `stt.core.config.settings.Settings.
+    # api_gateway_key`). Unprefixed on purpose: this class carries `env_prefix
+    # = "NLP_"`, but `API_GATEWAY_KEY` is a single platform-wide credential
+    # (a registered `ApiKey` row) already declared in `turbo.json#globalEnv`
+    # and read the identical bare-name way by `apps/stt` and `apps/api`'s own
+    # `admin-console` instrumentation — not a new secret this field invents.
+    api_gateway_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("API_GATEWAY_KEY"),
+        description="Internal service authentication key presented as X-Internal-Service-Key on gateway /internal/* calls.",
+    )
+
     # ── How this process REACHES Redis (owner decision D-5, 2026-08-23) ────
     #
     # BOOTSTRAP TRANSPORT, and env-tier for the same reason `gateway_url` is:

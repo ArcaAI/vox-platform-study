@@ -49,6 +49,17 @@ _ALLOWED_SECRETS: dict[str, str] = {
         "The ONE shared internal credential (owner decision D-D, 2026-08-17), presented "
         "on peer calls to apps/text and the gateway. Platform identity, not vendor."
     ),
+    "service.api_gateway_key": (
+        "TASK-855 L6 follow-on. A DIFFERENT internal credential class than D-D's shared "
+        "peer token above — the gateway's `/internal/*` surface (here: "
+        "`GET /internal/model-registry-credential`) is guarded by API-key auth, not the "
+        "`X-Service-Token` middleware `internal_access_token` satisfies, so reaching it "
+        "needs a registered `ApiKey` row's raw value instead. Presented as "
+        "`X-Internal-Service-Key`, exactly the mechanism `apps/stt` already uses for the "
+        "identical purpose (`stt.core.config.settings.Settings.api_gateway_key`, "
+        "`stt.core.model_credentials`) — platform identity, not vendor, and not a second "
+        "peer-to-peer credential."
+    ),
 }
 
 #: Vendor SDKs whose presence would mean this service had grown its own inference stack
