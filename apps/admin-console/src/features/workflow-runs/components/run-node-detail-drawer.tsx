@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { IconBolt } from '@tabler/icons-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime, formatNumber } from '@/shared/format';
@@ -46,6 +47,7 @@ export function RunNodeDetailDrawer({
   degraded,
   loopIterations,
   onLoopStep,
+  liveOutputPreview,
   onOpenChange,
 }: {
   open: boolean;
@@ -56,6 +58,10 @@ export function RunNodeDetailDrawer({
   /** Only meaningful when `nodeType === 'agentic.loop'` — see `LoopIterationDrilldown`'s own honesty note. */
   loopIterations?: LoopIterationState | null;
   onLoopStep?: (direction: -1 | 1) => void;
+  /** Live-accumulated `workflow.token.delta` text for this exact node (TASK-849 lane C step 6/8;
+   *  see `liveOutputByNodeId`'s own doc comment in `api/live-events.ts`). A PREVIEW only — never
+   *  the durable output, and absent once the node settles and the connection's map is cleared. */
+  liveOutputPreview?: string;
   onOpenChange: (open: boolean) => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>('output');
@@ -98,7 +104,20 @@ export function RunNodeDetailDrawer({
             </TabsContent>
             <TabsContent value="output" className="mt-0 flex flex-col gap-4">
               {isLoop ? <LoopIterationDrilldown iterations={loopIterations ?? null} onStep={onLoopStep} /> : null}
-              <PayloadUnavailableNotice label="Output" />
+              {liveOutputPreview ? (
+                <div className="flex flex-col gap-1.5 rounded-md border p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <IconBolt aria-hidden className="size-4" />
+                    Live output
+                    <span className="text-muted-foreground text-xs font-normal">(streaming preview, not the durable record)</span>
+                  </div>
+                  <pre aria-live="polite" className="max-h-64 overflow-y-auto text-wrap whitespace-pre-wrap font-mono text-xs">
+                    {liveOutputPreview}
+                  </pre>
+                </div>
+              ) : (
+                <PayloadUnavailableNotice label="Output" />
+              )}
             </TabsContent>
             <TabsContent value="error" className="mt-0">
               {rollup.errorCode || rollup.status.toUpperCase() === 'ERROR' || rollup.status.toUpperCase() === 'TIMEOUT' ? (
