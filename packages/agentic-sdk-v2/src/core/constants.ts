@@ -72,9 +72,14 @@ export const CONSULTATION_ENDPOINTS = {
   LIST: '/consultations',
   /** Update consultation (PATCH) */
   UPDATE: (id: string) => `/consultations/${encodeURIComponent(id)}`,
-  /** Close consultation */
+  /**
+   * Prime the consultation — the session state machine's first checkpoint
+   * (also the AI_DOCUMENTATION consent checkpoint). `@RequiresIfMatch()`.
+   */
+  PRIME: (id: string) => `/consultations/${encodeURIComponent(id)}/prime`,
+  /** Close consultation. `@RequiresIfMatch()`. */
   CLOSE: (id: string) => `/consultations/${encodeURIComponent(id)}/close`,
-  /** Reopen consultation */
+  /** Reopen consultation. `@RequiresIfMatch()`. */
   REOPEN: (id: string) => `/consultations/${encodeURIComponent(id)}/reopen`,
   /** Live running-SOAP SSE stream (full-state snapshots) while recording. */
   LIVE_SUMMARY_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
