@@ -2336,8 +2336,10 @@ export interface LiveDocEngineConfigResponse {
 }
 
 export interface LiveDocRealtimeCapabilitiesResponse {
-  /** Which tier of the assignment cascade supplied the definition. `platform-default` means no tier had an opinion, or the assigned definition could not be resolved. */
-  assignmentSource: 'department' | 'tenant' | 'platform-default';
+  /** Which tier supplied the definition. `consultation` means THIS consultation selected the workflow at open and it beat the cascade; `department`/`tenant` are the assignment cascade; `platform-default` means no tier had an opinion, or the resolved definition could not be used. */
+  assignmentSource: 'consultation' | 'department' | 'tenant' | 'platform-default';
+  /** Consultation the read-out was resolved FOR, when one was requested. With it, the answer is the lane a live session for that consultation would actually walk — including the workflow the clinician selected at open, which no tenant-level read can show. */
+  consultationId?: string | null;
   /** Slug of the governing workflow definition; null on the platform-default lane */
   definitionSlug: string | null;
   /** Published version of that definition; null on the platform-default lane */

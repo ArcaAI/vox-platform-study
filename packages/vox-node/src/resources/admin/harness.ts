@@ -339,12 +339,12 @@ export class AdminHarnessResource extends AdminResource {
   /**
    * Read which realtime consultation capabilities are live for a tenant (lane source, definition, per-node state)
    *
-   * Resolves the realtime lane the way a recording session does — graph-executor flag, then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Three answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.
+   * Resolves the realtime lane the way a recording session does — graph-executor flag, then the workflow THIS consultation selected at open (when `consultationId` is given), then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version; ON with a consultation that selected a workflow returns that workflow and `assignmentSource: consultation`. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.
    *
    * `GET /api/v1/admin/harness/live/capabilities` — `HarnessAdminController.getRealtimeCapabilities`.
    */
   getRealtimeCapabilities(
-    options: AdminRequestOptions & { query?: { departmentId?: QueryValue; tenantId?: QueryValue } } = {},
+    options: AdminRequestOptions & { query?: { consultationId?: QueryValue; departmentId?: QueryValue; tenantId?: QueryValue } } = {},
   ): Promise<LiveDocRealtimeCapabilitiesResponse> {
     return this.request<LiveDocRealtimeCapabilitiesResponse>({
       method: 'GET',

@@ -9367,12 +9367,18 @@
       "LiveDocRealtimeCapabilitiesResponse": {
         "properties": {
           "assignmentSource": {
-            "description": "Which tier of the assignment cascade supplied the definition. `platform-default` means no tier had an opinion, or the assigned definition could not be resolved.",
+            "description": "Which tier supplied the definition. `consultation` means THIS consultation selected the workflow at open and it beat the cascade; `department`/`tenant` are the assignment cascade; `platform-default` means no tier had an opinion, or the resolved definition could not be used.",
             "enum": [
+              "consultation",
               "department",
               "tenant",
               "platform-default"
             ],
+            "type": "string"
+          },
+          "consultationId": {
+            "description": "Consultation the read-out was resolved FOR, when one was requested. With it, the answer is the lane a live session for that consultation would actually walk — including the workflow the clinician selected at open, which no tenant-level read can show.",
+            "nullable": true,
             "type": "string"
           },
           "definitionSlug": {
@@ -34456,9 +34462,16 @@
     },
     "/api/v1/admin/harness/live/capabilities": {
       "get": {
-        "description": "Resolves the realtime lane the way a recording session does — graph-executor flag, then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Three answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:harness:manage`).\n\n**Abilities** — `read:HarnessWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Resolves the realtime lane the way a recording session does — graph-executor flag, then the workflow THIS consultation selected at open (when `consultationId` is given), then the WorkflowAssignment cascade, then the published definition — and reports what would actually execute. Answers: the executor being OFF returns `laneSource: null` with no nodes (the legacy flush runs and there is no lane); ON with no resolvable assignment returns `platform-default` and the platform lane’s own nodes, because those genuinely run; ON with an assignment returns `tenant-graph` with the governing slug and version; ON with a consultation that selected a workflow returns that workflow and `assignmentSource: consultation`. Per node it reports the authored `enabled` state and whether that node type offers the switch at all — registry-class `mandatory` nodes (consent gate, capture binding, PHI hop, persist, finalize) never do.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:harness:manage`).\n\n**Abilities** — `read:HarnessWorkflow`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "HarnessAdminController_getRealtimeCapabilities",
         "parameters": [
+          {
+            "description": "Report the lane a live session for THIS consultation would walk, including the workflow its clinician selected at open (TASK-813). Unknown or belonging to another tenant → 404, never a silent fall-through to the tenant cascade.",
+            "in": "query",
+            "name": "consultationId",
+            "required": false,
+            "schema": {}
+          },
           {
             "description": "Resolve the assignment cascade against a department override. Omitted resolves the tenant default.",
             "in": "query",
@@ -34487,6 +34500,9 @@
           },
           "403": {
             "description": "Forbidden — a tenant admin may not read another tenant’s capabilities."
+          },
+          "404": {
+            "description": "Not found — no such consultation for this tenant (cross-tenant ids are indistinguishable from unknown ones)."
           }
         },
         "security": [
