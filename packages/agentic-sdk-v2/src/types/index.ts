@@ -431,3 +431,4 @@ export type {
 } from './ops-admin';
 
 export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './liveSummary';
+export type { LiveAssistEvent, LiveAssistSuggestion, LiveAssistProposal, LiveAssistCorrections } from './liveAssist';

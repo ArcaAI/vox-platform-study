@@ -425,7 +425,7 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 | Group            | Hooks                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useConsultationSchema`, `useConsultationWorkflow`, `useSelectableConsultationWorkflows`, `useAudioRecordings`                                |
-| Live streams²    | `useArcaLiveSummary`, `useConsultationEvents`, `useWorkflowRun`                                                                                                                                                                                          |
+| Live streams²    | `useArcaLiveSummary`, `useArcaLiveAssist`, `useConsultationEvents`, `useWorkflowRun`                                                                                                                                                                                          |
 | Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
 | Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
 | Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
@@ -443,7 +443,7 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 > with no MFA, no session expiry, no revocation-on-logout and no impersonation audit trail.
 > Headless administration is unsupported until the platform's service-account credential ships.
 
-> **² Live streams are SSE, and each opens with a single-use ticket.** All three follow the same
+> **² Live streams are SSE, and each opens with a single-use ticket.** All four follow the same
 > shape — `start(id)` / `stop()` plus `status` (`idle | connecting | open | error | closed`) — and
 > connect against `apiClient.getStreamBaseUrl()`, so long-lived connections bypass a BFF and go to
 > the gateway directly. `POST /auth/stream-ticket` is **JWT-only**: an API key cannot mint a ticket,
@@ -452,18 +452,24 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 > | Hook | Stream | Carries |
 > | --- | --- | --- |
 > | `useArcaLiveSummary` | `GET /consultations/:id/live-summary/stream` | **Full-state** snapshots: `runningSummary`, `sections`, `entities`, `vitals`. Keep only the latest — it is not a log. |
-> | `useConsultationEvents` | `GET /consultations/:id/loop/stream` | **Append-only** `LoopEvent`s (`kind` is an open string namespace, e.g. `action.started`). Capped at the last 500. **No resume** — frames published while disconnected are gone, and there is no server-side buffer. |
+> | `useArcaLiveAssist` | `GET /consultations/:id/live-assist/stream` | **Full-state** snapshots carrying BOTH branches: `suggestions` and `corrections` (span-anchored proposals). Keep only the latest — an omitted branch means "there are none". **No terminal event** — you close it. **PHI**: a proposal quotes the original span verbatim. |
+| `useConsultationEvents` | `GET /consultations/:id/loop/stream` | **Append-only** `LoopEvent`s (`kind` is an open string namespace, e.g. `action.started`). Capped at the last 500. **No resume** — frames published while disconnected are gone, and there is no server-side buffer. |
 > | `useWorkflowRun` | `GET /workflows/:slug/runs/:runId/stream` | Workflow run frames, **with** resume (`Last-Event-ID`). Also does the listing, starting and cancelling — see [Running workflows](#running-workflows). |
 >
 > `useArcaLiveSummary`'s `snapshot.entities[]` gives you `{ text, type, confidence?, icd10?, start?, end? }`.
 > **`start`/`end` are character offsets into `snapshot.runningSummary`, not into the transcript** —
 > use them to highlight the summary, and match on `text` if you need to mark up the transcript.
 >
-> **Not covered by any hook: grammar corrections and suggestions.** The `agent.grammar` node
-> publishes to a fourth stream, `GET /consultations/:id/live-assist/stream` (ticket scope
-> `consultation_live_assist:<id>`), and this SDK has no hook, endpoint constant or scope helper for
-> it. Rendering corrections today means hand-rolling an `EventSource` against that route. Do not go
-> looking for them on `useConsultationEvents` — the loop stream carries ids and labels only.
+> **Grammar corrections and suggestions ride the fourth stream, `useArcaLiveAssist`.** It takes an
+> optional consultation id (`useArcaLiveAssist(id)` auto-connects and follows an id change; call it
+> with no argument to drive `start`/`stop` yourself) and returns
+> `{ suggestions, corrections, lastEvent, status, connected, error, start, stop }`. Do not go
+> looking for these on `useConsultationEvents` — the loop stream carries ids and labels only.
+>
+> **Nothing on that feed has been applied to the note.** `corrections.applied` is `false` under
+> proposal-first: the clinician decides. Each proposal's `start`/`end` are character offsets into
+> the text named by `corrections.textSha256` — check that hash against the text you are about to
+> patch, or the offsets may land on drifted content.
 
 ### Which credential to use — this SDK is JWT-first
 
