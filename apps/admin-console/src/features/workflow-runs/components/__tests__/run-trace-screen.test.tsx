@@ -11,7 +11,7 @@
  * getBoundingClientRect polyfill that suite uses, since happy-dom has no
  * layout engine) proves the overlay wiring end-to-end in the real composite.
  */
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
@@ -128,7 +128,9 @@ describe('RunTraceScreen — list view (?view=list)', () => {
     const passthroughButton = await screen.findByRole('button', { name: /Passthrough/ });
     passthroughButton.click();
     expect(await screen.findByText('2 attempts')).toBeDefined();
-    expect(screen.getByText(/Payload not available/)).toBeDefined();
+    // The drawer opens on the Output tab by default (TASK-849 lane C step 6's Input/Output/Error
+    // rewrite); the generic "Payload not available" notice is now per-tab ("Output not available").
+    expect(screen.getByText(/Output not available/)).toBeDefined();
   });
 
   it('renders the trace-pruned state instead of the timeline when tracePruned is true', async () => {
@@ -183,5 +185,88 @@ describe('RunTraceScreen — canvas view (default)', () => {
     // list-view peer.
     await waitFor(() => expect(screen.getAllByText('OK').length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.getAllByText('Error').length).toBeGreaterThan(0));
+  });
+});
+
+/** Instrumented EventSource double (pattern from `transcription-jobs-screen.test.tsx` /
+ *  `use-event-stream.test.tsx`) — proves the TASK-849 lane C push wiring end to end: a
+ *  RUNNING run mints a ticket, opens a stream, and a `workflow.node.failed` frame reaches
+ *  both the live activity feed and the per-node problem map without waiting on a REST poll. */
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  readonly url: string;
+  readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: (() => void) | null = null;
+  closed = false;
+
+  constructor(url: string) {
+    this.url = url;
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(name: string, listener: (event: MessageEvent) => void): void {
+    const existing = this.listeners.get(name) ?? [];
+    this.listeners.set(name, [...existing, listener]);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  open(): void {
+    this.onopen?.();
+  }
+
+  emit(type: string, data: string): void {
+    const event = { data } as MessageEvent;
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
+const RUNNING_TRACE: RunTrace = { ...TRACE, run: { ...TRACE.run, status: 'RUNNING', endedAt: null, durationMs: null } };
+
+describe('RunTraceScreen — live stream (RUNNING run)', () => {
+  afterEach(() => {
+    FakeEventSource.instances = [];
+  });
+
+  it('mints a ticket, opens a direct-gateway EventSource, and surfaces a live node.failed frame', async () => {
+    installFetchStub(({ url, method }: RecordedCall) => {
+      if (url === '/api/auth/session') return sessionPayload({});
+      if (url.includes('/users/me/settings')) return method === 'GET' ? [] : { ok: true };
+      if (url.startsWith(`/api/hope/admin/workflow-runs/${RUN_ID}/trace`)) return RUNNING_TRACE;
+      if (url.startsWith('/api/hope/admin/workflow-definitions/wfv-1')) return DEFINITION;
+      if (url === '/api/auth/stream-ticket') return { ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: 'workflow_run:run-1' };
+      return { success: true };
+    });
+    vi.stubGlobal('EventSource', FakeEventSource);
+
+    renderWithProviders(<RunTraceScreen runId={RUN_ID} />, { searchParams: '?view=list' });
+    await screen.findByText('Triage Workflow');
+
+    await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
+    const source = FakeEventSource.instances[0];
+    expect(source.url).toContain(`workflows/triage/runs/${RUN_ID}/stream`);
+    expect(source.url).toContain('ticket=tkt-1');
+
+    act(() => source.open());
+    await waitFor(() => expect(screen.getByText('Live')).toBeDefined());
+
+    const envelope = {
+      schemaVersion: 1,
+      id: 'evt-1',
+      tenantId: 'tnt-1',
+      type: 'workflow.node.failed',
+      occurredAt: '2026-08-16T10:00:02.000Z',
+      correlationId: RUN_ID,
+      causationId: null,
+      idempotencyKey: 'wf:run:run-1:node:n2:1',
+      payload: { nodeId: 'n2', nodeType: 'interpreter.passthrough', status: 'ERROR', reason: 'boom-live' },
+    };
+    act(() => source.emit('workflow.node.failed', JSON.stringify(envelope)));
+
+    expect(await screen.findByText(/Passthrough failed — boom-live/)).toBeDefined();
   });
 });
