@@ -369,6 +369,27 @@ The last three are unchanged BY CONSTRUCTION: the new route is `@ApiExcludeContr
 like every other `internal/harness/*` route, so it appears in `route-manifest.json` (identical
 shape to its `stt/batch-jobs` sibling) and in none of the published documents.
 
+#### Negative probe — proof these tests are not test-shaped no-ops
+
+The audio was folded back into the node's activity `output` as base64, then restored. Three
+findings, one of which changed the test:
+
+1. **The measurement caught it.** `test_a_thousandfold_larger_artifact_adds_no_proportional_history`
+   failed: `Temporal history grew with audio size: 55 events for 1 frame(s) vs 54 for 1000`.
+2. **The node-level guard caught it directly.**
+   `test_the_activity_RESULT_carries_no_audio_bytes` failed on the base64 form.
+3. **The history CONTENT check did NOT catch it, and now does.** With 32 MB folded in, the LARGE
+   run exceeds Temporal's **2 MB per-payload ceiling** — the activity errors, the node degrades,
+   and no output reaches history at all, so the large history comes back *cleaner* than the honest
+   one. Only the small run, under the ceiling, still carried the smuggled bytes. The assertion now
+   scans **both** histories and both encodings (raw and base64). Without that, a check reading the
+   large history alone would have passed on a node actively routing audio through Temporal.
+
+Worth recording alongside the numbers: under the probe the same three tests took **602 seconds**
+instead of **1.9**. Pushing 32 MB of base64 through Temporal history is not merely over a limit —
+it is three orders of magnitude slower, which is the practical shape of the failure §3.4 rule 17
+exists to prevent.
+
 #### The narrowed test — deliberate, not deleted
 
 `test_neither_ever_claims_to_have_produced_anything` asserted that `agentic.loop` AND `agentic.tts`

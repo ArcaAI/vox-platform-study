@@ -287,12 +287,23 @@ class TestAudioNeverEntersTemporalHistory:
         large_redis = FakeRedisStream()
         _large_run, large = await _run_with(LARGE_FRAMES, large_redis, monkeypatch)
 
-        decoded = _decoded_history_payloads(large["history_json"])
-        assert b"AUDIOFRAME000999" not in decoded
-        assert b"AUDIOFRAME000500" not in decoded
-        assert b"AUDIOFRAME000000" not in decoded
-        # And not smuggled in re-encoded either.
-        assert base64.b64encode(_frame(500)) not in decoded
+        # BOTH histories, not just the large one. The negative probe that verified this test
+        # showed why: folding the artifact into the node's `output` makes the LARGE run exceed
+        # Temporal's 2 MB per-payload ceiling, so the activity errors, the node degrades, and no
+        # output reaches history at all — the large history comes back CLEANER than the honest
+        # one. Only the small run, which stays under the ceiling, still carries the smuggled
+        # bytes. A check that looked at the large history alone would have passed on a node
+        # actively routing audio through Temporal.
+        for label, observed in (("small", small), ("large", large)):
+            decoded = _decoded_history_payloads(observed["history_json"])
+            for frame_index in (0, SMALL_FRAMES - 1):
+                marker = f"AUDIOFRAME{frame_index:06d}".encode("ascii")
+                assert marker not in decoded, f"{label} history carries raw audio"
+                # And not smuggled in re-encoded either — base64 is the obvious way audio ends
+                # up in a JSON-shaped activity result.
+                assert (
+                    base64.b64encode(_frame(frame_index)) not in decoded
+                ), f"{label} history carries base64 audio"
 
         print(
             f"\n[TASK-849 lane B audio split, measured bytes] "
