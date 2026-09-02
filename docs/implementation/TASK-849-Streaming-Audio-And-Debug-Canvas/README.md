@@ -251,6 +251,149 @@ Two assertions were verified to FAIL when the property they guard is broken, the
   against a real in-memory stream and a real Temporal server; an end-to-end run needs `pnpm setup:dev`
   infra, which is the orchestrator's surface, not a lane's.
 
+### Lane 849b — binary audio / TTS (step 5). **Complete.**
+
+Steps 6–8 (lane 849c) are untouched and still open.
+
+#### What was built
+
+`agentic.tts` is REAL. It dispatches synthesis, streams audio frames on lane A's delta lane, and
+writes the artifact to the claim-check store. **Three existing mechanisms, no fourth** — which is
+what §5's *"refuse a second bespoke audio path"* asks for, and what makes OD-4 affordable:
+
+| Concern | Mechanism reused |
+|---|---|
+| Synthesis dispatch | ONE activity, `dispatch_speech_synthesis` — the exact counterpart of TASK-724's `dispatch_batch_transcription` that `agentic.stt` already calls |
+| Streaming | `run_event_producer().emit_token_delta(...)` — lane A's single delta entry point, same envelope, same per-run Redis Stream, same resume-token contract |
+| Artifact write | `claim_check.store_bytes` — the binary sibling of the `store_blob` call `output.deliver` already makes; same store, same content-addressed key, same ref shape |
+
+**Audio never enters Temporal history.** The activity RESULT is a `ClaimCheckRef` (~200 bytes:
+bucket, key, size, sha256, content type). The bytes live and die as a local variable inside one
+activity body, because `dispatch_speech_synthesis` is awaited as a plain coroutine from inside
+`interpreter.agentic_tts`, exactly as `agentic.stt` awaits its own dispatch.
+
+**Why a gateway route was unavoidable.** `apps/tts` is the reference STATELESS,
+gateway-injected-config service (rule 06): it opens no DB connection and holds no credential, so
+every caller must arrive with the tenant's configuration already folded into the body. A Temporal
+worker has no DB handle and no Vault client *by design*, so it can fold nothing — a harness→tts
+direct call could only run on `apps/tts`'s own static settings. That is a platform default
+silently beating a tenant's own configuration (the §3.4 rule 16 cascade bypass) *and* BYOK-vs-CLOUD
+funding derived from the wrong row. So `POST /internal/harness/tts/synthesize` was added, mirroring
+`stt/batch-jobs`: harness names the text and the voice, the gateway resolves routing chains,
+allowed providers, BYO credentials, voice bindings, the character quota and the usage row.
+
+`resolveTtsTenantConfig` is EXTRACTED from `SpeechProxyController.applyTenantConfig`, not copied:
+two spellings of *"which provider serves this tenant's speech, on whose key"* drift invisibly,
+because both would still synthesize. The per-caller MAPPING stays separate (the proxy honours a
+caller-supplied format/speed; this route takes the node's config).
+
+**Contract observation, declared not hidden.** `agentic.tts`'s config carries `providerConfigRef`
+(it shares the agent node's binding shape) and this activity resolves nothing from it. TTS provider
+selection lives on the tenant's `TenantTtsConfig` routing chains — the same tenant → SYSTEM
+cascade, read on the gateway side where the DB handle is. The node still stores a reference and
+resolves nothing itself; the reference it resolves *by* is simply the tenant, not a policy row.
+
+#### Files changed
+
+| File | Change |
+|---|---|
+| `apps/harness/.../interpreter/nodes/agentic.py` | `interpreter_agentic_tts` promoted from DEGRADED to real; `_TTS_NOT_YET_EXECUTABLE` deleted; module docstring corrected |
+| `apps/harness/.../temporal/activities.py` | **NEW** `dispatch_speech_synthesis` (+ `_AUDIO_DELTA_FRAME_BYTES` delta framing); registered in the worker's activity list |
+| `apps/harness/.../temporal/models.py` | `SpeechSynthesisInput`, `SpeechSynthesisResult` (with an `audio` property) |
+| `apps/harness/.../temporal/claim_check.py` | **NEW** `store_bytes`; `store_blob` now delegates to it, so there is one spelling |
+| `apps/harness/.../services/api_client.py` | `synthesize_speech()` + `SpeechSynthesisResponse` |
+| `apps/harness/.../interpreter/registry.py` | corrected the comment that still said `agentic.tts` does not run |
+| `apps/api/src/modules/speech/harness-tts-internal.controller.ts` | **NEW** — `POST /internal/harness/tts/synthesize` |
+| `apps/api/src/modules/speech/tts-tenant-config.ts` | **NEW** — the extracted `resolveTtsTenantConfig` |
+| `apps/api/src/modules/speech/speech-proxy.controller.ts` | uses the extraction; orphaned `ProviderOverrides` import removed |
+| `apps/api/src/modules/speech/speech.module.ts` | registers the new controller |
+| `apps/api/route-manifest.json` | regenerated — 705 routes |
+| Tests | `test_task849_agentic_tts.py`, `test_task849_audio_two_lane_split.py`, `harness-tts-internal.controller.test.ts`; `test_agentic_nodes_task847.py` narrowed |
+
+#### Evidence
+
+**§4 criterion — an audio round-trip through an `agentic.tts` node.** A real two-node graph
+(`agentic.input` → `agentic.tts`, both SHIPPED node specs wired by a real edge) walked by the real
+`WorkflowInterpreter` against an ephemeral Temporal server. The run SUCCEEDS, the artifact is
+written, and the delta frames concatenate back to exactly what was synthesised:
+
+```
+✓ TestAudioNeverEntersTemporalHistory::test_the_run_still_succeeds_and_the_deltas_rebuild_the_artifact
+✓ TestTheArtifactWrite::test_it_succeeds_and_publishes_a_claim_check_ref_for_the_audio
+✓ TestTheArtifactWrite::test_the_node_asks_the_gateway_for_the_bound_text_and_voice
+✓ TestTheDeltaLane::test_the_deltas_decode_back_to_exactly_the_stored_artifact
+10 passed in 0.15s   # test_task849_agentic_tts.py
+```
+
+`agentic.stt` is untouched and still green (`TestSttNodeResolvesNothingItself`, in the 1942).
+
+**The split, MEASURED for audio — decoded, not a substring search.** Same graph, 32 KiB of audio
+and 32 MB of audio:
+
+```
+[TASK-849 lane B audio split, measured] audio_bytes=32768 -> temporal_history_events=55 | audio_bytes=32768000 -> temporal_history_events=55 | history_bytes=34704
+[TASK-849 lane B audio split, measured bytes] audio_bytes=32768 -> history_bytes=34688 | audio_bytes=32768000 -> history_bytes=34704
+3 passed in 1.86s
+```
+
+A **1000× larger artifact grew Temporal history by 16 bytes** — the ref's own sha256/size, which is
+all that reaches it. Content assertions DECODE every payload body before searching, because
+Temporal base64-encodes them and a raw-JSON search is vacuous (lane A found that the hard way); the
+delta assertions also prove the frames genuinely landed, so the equality cannot pass by emitting
+nothing.
+
+**Replay.** The command sequence did **not** change. `interpreter/workflow.py` and
+`interpreter/activities.py` are byte-identical to lane A's — the node activity simply does more
+work internally, which replay never re-executes. No new patch gate was needed, and the existing
+guards still pass unchanged:
+
+```
+23 passed, 3 warnings in 0.67s   # test_replay_compat.py — same 23 as lane A
+```
+
+**Green gates.**
+
+```
+$ pnpm harness:test        -> 1942 passed, 1 warning in 105.27s   (1939 → +3 audio split; 1930 at lane A)
+$ pnpm harness:lint        -> All checks passed!
+$ pnpm harness:typecheck   -> Success: no issues found in 144 source files
+$ pnpm api:build           -> Tasks: 12 successful, 12 total
+$ vitest run apps/api/src  -> Test Files 265 passed | Tests 4118 passed (4118)
+$ pnpm --filter @arcaai/api lint -> 65 problems (0 errors, 65 warnings)  [lane A's exact baseline]
+$ pnpm api:openapi:check   -> OK — every served route is documented or deliberately excluded
+$ pnpm api:portal:check    -> no drift (admin 627 ops, business 185 ops)
+$ pnpm --filter @arcaai/vox-node gen:admin:check -> no drift (52 areas, 408 routes, 372 schemas)
+```
+
+The last three are unchanged BY CONSTRUCTION: the new route is `@ApiExcludeController()`, exactly
+like every other `internal/harness/*` route, so it appears in `route-manifest.json` (identical
+shape to its `stt/batch-jobs` sibling) and in none of the published documents.
+
+#### The narrowed test — deliberate, not deleted
+
+`test_neither_ever_claims_to_have_produced_anything` asserted that `agentic.loop` AND `agentic.tts`
+never report SUCCEEDED. It is now `test_the_loop_never_claims_to_have_produced_anything`.
+
+Deleting it wholesale was the trap: it would have failed for the RIGHT reason on `agentic.tts` and
+the cheap fix — removing the whole test — would silently drop the guard on `agentic.loop`, whose
+pin is still load-bearing. TASK-848 made the loop real via a CHILD WORKFLOW, so this activity is now
+the **replay-only** path a pre-gate history walks through; it must never start claiming iterations
+it did not run. `agentic.tts`'s own honesty moved to where its behaviour lives
+(`TestItStillResolvesNothingItself`): a missing `voiceRef`, a missing tenant, no bound text and any
+dispatch failure each still DEGRADE with no output.
+
+#### Not done in this lane (declared, not hidden)
+
+* **No live round-trip against a running `apps/tts` or a live Redis.** Both halves are hermetic —
+  a real Temporal server, a real in-memory claim-check store, a real interpreter walk, with the
+  Redis socket and the upstream synthesis faked. An end-to-end run needs `pnpm setup:dev` infra,
+  which is the orchestrator's surface, not a lane's (the same boundary lane A declared).
+* **`ogg` is in the node's config schema and not in this route's `format` enum**, because
+  `apps/tts` does not serve it. Refused at the gateway rather than forwarded to a 4xx.
+* **The delta frame size (32 KiB) is a wire constant, not a setting** — the same category as lane
+  A's `RUN_EVENT_STREAM_MAX_LEN`. Nothing about a tenant, a provider or a deployment changes what
+  a sensible audio frame is.
+
 ## 7. Change History
 
 | Date | Change |
@@ -258,3 +401,4 @@ Two assertions were verified to FAIL when the property they guard is broken, the
 | 2026-09-01 | Ticket created, aligned to TASK-837 §4. |
 | 2026-09-01 | Plan expanded against the shipped poll bridge, the TASK-717 Phase-C gap, and the TASK-847 handoff markers. Blocked on TASK-848. |
 | 2026-09-02 | **Lane 849a complete (steps 1–4).** TASK-717 Phase C producer built; control events mirrored out of Temporal behind `_STREAM_PATCH`; delta lane straight to Redis Streams; gateway poll DELETED in favour of a blocking `XREAD` with `Last-Event-ID` resume and trimmed-gap re-snapshot. Split measured at 37 Temporal history events for both 10 and 10 000 deltas. Steps 5–8 remain open for lanes 849b/849c. |
+| 2026-09-02 | **Lane 849b complete (step 5).** `agentic.tts` promoted from observable `DEGRADED` to REAL: `dispatch_speech_synthesis` (the TTS counterpart of TASK-724's batch dispatch) through a new `POST /internal/harness/tts/synthesize`, audio frames on lane A's delta lane, and the artifact written via `claim_check.store_bytes`. Three existing mechanisms, no fourth. Split measured at 55 Temporal history events for BOTH 32 KiB and 32 MB of audio (history grew 16 bytes at 1000× the payload), asserted on DECODED payload bodies. Command sequence unchanged — `workflow.py` untouched, `test_replay_compat.py` still 23 passed. `test_neither_ever_claims_to_have_produced_anything` NARROWED to `agentic.loop`, whose pin stays load-bearing as TASK-848's replay-only path. Steps 6–8 remain open for lane 849c. |
