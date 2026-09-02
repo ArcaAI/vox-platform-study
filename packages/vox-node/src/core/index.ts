@@ -41,3 +41,5 @@ export { parseSseStream } from './sse';
 
 export type { GenerateUuidV7Options } from './idempotency';
 export { generateUuidV7 } from './idempotency';
+
+export { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from './webhook-signature';
