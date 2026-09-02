@@ -72,7 +72,35 @@ Sequencing: A–E in parallel from `dev-2.2@38f97cb43`; F in parallel on the dep
 5. The private whisper repo needs the owner's HF token to publish q8_0; until supplied, the OrbStack bucket carries the Q5_0 file from the TASK-855 lab as a stand-in and the q8_0 row fails closed (Lane C) rather than silently serving another quant.
 
 ## 4. Implementation Summary
-_(filled per lane as they merge)_
+
+### 4.1 What merged into dev-2.2 (pushed as `de7e0d5c9`, pipeline #1103)
+
+| Lane | Merge | Delivered |
+|---|---|---|
+| C | `f55ec3068` | whisper.cpp loader fails closed on a quant mismatch (`_select_gguf_file` raises `ModelLoadError`) |
+| B | `6c48e6e8d` | q8_0 medical whisper `AiModel`; the transcription agent as an `stt`-palette definition (SYSTEM template + ArcaAI) compiled into the ArcaAI default pipeline `wf-stt-arcaai-realtime-transcription-medical-en`; three example consultation workflows as SYSTEM templates + ArcaAI definitions, engine-validated (0 findings), seed tests |
+| A | `ac23d4f54` | the realtime lane resolves the consultation's own selection first (`governingEngine` marker → `metadata.workflowSelection` → cascade); `GET admin/harness/live/capabilities?consultationId=` |
+| A2 | `762322822` | the exclusivity gate is mode-aware: governed + graph executor ON keeps the session and runs the governing graph's realtime lane; governed + OFF still stands down; no legacy fallback for a governed session |
+| D | `bbdfea74a` | Scribe Workflow picker ("Use assigned workflow" default sends no slug; explicit pick overrides), governing-workflow badge, "Transcription agent (STT pipeline)" label, LLM Playground rename, template palette badges |
+| E+G | `5b7eeb25b` | `verifyWebhookSignature()` (vox-node), clinician integration guide, README drift closed; session `close/reopen/prime` send `If-Match` (`prime()` added), `useArcaLiveAssist()`, audio type exports |
+| — | `a00a3bdf6`, `484accd29` | repo defects found by the bring-up: harness image missing `packages/py-async-contract`; qdrant-init spoke TLS to plain-HTTP Qdrant when the API key was empty |
+| — | `de7e0d5c9` | owner correction: LM Studio model is `google/gemma-4-E2B-it-qat-q4_0-gguf` only (E4B repoint + its migration reverted) |
+
+Deployment repo (`hope-v2-deployment@task-858-orbstack-overlay`): `overlays/orbstack`, `scripts/orbstack-up.sh`, `docs/orbstack-local.md`, `hope-db-seed` passes the Vault root token the seed reads, `hope-api` gets `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` in base, the medical q8_0 row elected in `hope-models-publish`.
+
+### 4.2 Verified on the local dev stack (compose infra + host services, 2026-09-03)
+
+| Check | Evidence |
+|---|---|
+| Seed lands the new rows | 3 SYSTEM consultation templates + `platform-realtime-transcription-medical-en`, 3 ArcaAI consultation workflows + `arcaai-realtime-transcription-medical-en`, ArcaAI default pipeline `wf-stt-arcaai-realtime-transcription-medical-en` (asr = the q8_0 slug), 1864 + 80 seed tests |
+| Clinician discovery | `GET /consultations/workflows` as `arcaai_doctor` lists the three examples with their descriptions |
+| Realtime capabilities | `GET /admin/harness/live/capabilities` → `graphExecutorEnabled: true`, `laneSource: tenant-graph`, `assignmentSource: tenant` |
+| Template library | `GET /admin/workflow-definitions/templates` → the three consultation templates, the STT transcription-agent template, the summarization default |
+| Text generation via LM Studio (Metal llama.cpp) | `POST /text-generations/generate` → 200 in 3.6 s, provider `lm-studio`, model `gemma-4-e2b-it-qat`, a grammar-corrected sentence |
+| Medical NER | `POST /text-analyses/entities` → `blaze999/Medical-NER` entities with UMLS/SNOMED/ICD codes (loaded from `AiModel.localPath`, Mode M) |
+| Platform-admin catalog flows | `POST /admin/ai-models` (super admin, `X-Tenant-Id`), `POST /admin/audio/pipelines`, `PUT /admin/providers/llm/lm-studio` (If-Match) all 200/201 |
+
+Two local-only facts worth knowing: the platform provider key had to be re-saved through the admin API because the laptop's in-memory dev Vault (and its Transit key) had been re-initialised by an OrbStack restart; and the private q8_0 whisper weights are not on this machine (HF token needed), so a `q5_0` stand-in row + pipeline were registered through the admin API for the live-transcription proof — the seeded q8_0 default fails closed until the weights are published.
 
 ## 5. Change History
 
