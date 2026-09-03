@@ -1,6 +1,11 @@
 import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
+ * @deprecated TASK-862 — removed in R3. This is a FACADE over
+ * `IAiRoutingPolicyService.resolveDefault` (reads) and the elected
+ * `AiRoutingPolicy` row (writes); the `AiTaskDefault` table is no longer read
+ * or written. New code injects `IAiRoutingPolicyService`.
+ *
  * Per-tenant AI task-model default service.
  *
  * `tenantId` is optional on every method: when omitted the CLS request tenant
