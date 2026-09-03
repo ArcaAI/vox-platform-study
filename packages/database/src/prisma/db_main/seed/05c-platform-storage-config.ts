@@ -39,18 +39,29 @@ export const PLATFORM_STORAGE_CONFIG_ID = '00000000-0000-0000-0005-000000000001'
  */
 export const PLATFORM_STORAGE_CREDENTIALS_REF = 'platform/storage/minio';
 
+/**
+ * The platform storage endpoint as the running environment declares it:
+ * `MINIO_ENDPOINT` (+ `MINIO_USE_SSL` for the scheme when the value carries none),
+ * falling back to the local-dev `http://localhost:9000`. Shared with the
+ * `S3_ENDPOINT` GlobalSetting seed (`06-stt.ts`) so the two rows the gateway reads
+ * can never disagree (TASK-858 — in-cluster they did: the setting was hardcoded to
+ * `http://localhost:<port>`, so the S3 client dialled nothing and every governed
+ * consultation fell back to the default loop).
+ */
+export function platformStorageEndpoint(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.MINIO_ENDPOINT?.trim() || 'localhost:9000';
+  const useSsl = (env.MINIO_USE_SSL ?? 'false').trim().toLowerCase() === 'true';
+  return /^https?:\/\//i.test(raw) ? raw : `${useSsl ? 'https' : 'http'}://${raw}`;
+}
+
 /** Today's `MINIO_*` dev defaults, expressed as the row's values. */
 function platformDefaults(): {
   endpoint: string;
   region: string;
   forcePathStyle: boolean;
 } {
-  const raw = process.env.MINIO_ENDPOINT?.trim() || 'localhost:9000';
-  const useSsl = (process.env.MINIO_USE_SSL ?? 'false').trim().toLowerCase() === 'true';
-  const endpoint = /^https?:\/\//i.test(raw) ? raw : `${useSsl ? 'https' : 'http'}://${raw}`;
-
   return {
-    endpoint,
+    endpoint: platformStorageEndpoint(),
     region: (process.env.MINIO_REGION ?? 'us-east-1').trim(),
     forcePathStyle: true,
   };

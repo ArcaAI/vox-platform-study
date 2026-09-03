@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { platformStorageEndpoint } from './05c-platform-storage-config';
 import { ResourceStatusType, ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID, SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
 import { TEMPLATE_IDS } from './07-prompt-template';
@@ -1654,7 +1655,9 @@ export const DEFAULT_STT_SETTINGS = [
     namespace: 'platform',
     name: 's3',
     key: 'S3_ENDPOINT',
-    value: `http://localhost:${process.env.MINIO_ENDPOINT?.split(':')[1] || '9000'}`,
+    // TASK-858 — derived exactly like the SYSTEM `TenantStorageConfig` row (scheme + host from
+    // `MINIO_ENDPOINT`/`MINIO_USE_SSL`); the old `http://localhost:<port>` literal dialled nothing in-cluster.
+    value: platformStorageEndpoint(),
     defaultValue: 'http://localhost:9000',
     dataType: ValueType.String,
     description: 'S3-compatible storage endpoint (MinIO)',
