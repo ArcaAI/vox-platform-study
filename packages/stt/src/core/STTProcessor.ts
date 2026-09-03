@@ -54,8 +54,14 @@ import { createAudioCapture, type AudioCaptureHandle } from './audioCapture.js';
 export interface STTStreamingTransport {
   sessionManager: StreamingSessionLike;
   wsClient: StreamingWsClientLike;
-  /** Backend ASR pipeline UUID or slug. Required. */
-  pipelineId: string;
+  /**
+   * Backend ASR pipeline UUID or slug.
+   * @deprecated TASK-865 — removed in R4. Name the ASR Agent with `agentSlug`,
+   * or set neither and let the gateway resolve the tenant default.
+   */
+  pipelineId?: string;
+  /** Slug of the published ASR Agent (task `SPEECH_TO_TEXT`) to transcribe with (TASK-865). */
+  agentSlug?: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
   /**
@@ -788,6 +794,7 @@ export class STTProcessor extends BaseProcessor {
       diarization: features.diarization ?? false,
       numSpeakers: features.numSpeakers ?? 2,
       pipelineId: transport.pipelineId,
+      agentSlug: transport.agentSlug,
       consultationId: transport.consultationId,
       drainTimeoutMs: transport.drainTimeoutMs,
       // Per-session stop-drain ceiling. The provider

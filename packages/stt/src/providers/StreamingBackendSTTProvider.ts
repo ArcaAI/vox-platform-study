@@ -33,8 +33,13 @@ import { float32ToInt16, prepareFloat32ForWhisper } from '../utils/audioResample
  * that drives backend ASR pipeline orchestration.
  */
 export interface StreamingRemoteProviderConfig extends ProviderConfig {
-  /** ASR pipeline UUID or slug from the user's tenant. Required. */
-  pipelineId: string;
+  /**
+   * ASR pipeline UUID or slug from the user's tenant.
+   * @deprecated TASK-865 — removed in R4. Use `agentSlug`, or neither.
+   */
+  pipelineId?: string;
+  /** Slug of the published ASR Agent to transcribe with (TASK-865). Optional: neither ⇒ tenant default. */
+  agentSlug?: string;
   /** Optional consultation id to link the streaming session to. */
   consultationId?: string;
   /** Optional initial prompt for biasing the transcription. */
@@ -150,7 +155,10 @@ export interface StreamingWsClientLike {
  */
 export interface StreamingSessionLike {
   createSession(req: {
-    pipelineId: string;
+    /** @deprecated TASK-865 — removed in R4. */
+    pipelineId?: string;
+    /** ASR Agent slug (TASK-865). */
+    agentSlug?: string;
     consultationId?: string;
     sampleRate?: number;
     language?: string;
@@ -194,6 +202,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   private session: StreamingSessionLike;
   private wsClient: StreamingWsClientLike;
   private pipelineId: string | null = null;
+  private agentSlug: string | null = null;
   /**
    * Per-session stop-drain ceiling from {@link StreamingRemoteProviderConfig.drainTimeoutMs}.
    * `null` leaves the decision to the ws client's own default.
@@ -243,16 +252,16 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
 
   async init(config: StreamingRemoteProviderConfig | ProviderConfig): Promise<void> {
     const streamingConfig = config as StreamingRemoteProviderConfig;
-    if (!streamingConfig.pipelineId) {
-      throw new Error('pipelineId is required for StreamingBackendSTTProvider');
-    }
 
     if (this.initialized) {
       await this.destroy();
     }
 
     this.config = streamingConfig;
-    this.pipelineId = streamingConfig.pipelineId;
+    // TASK-865: neither selector is required — the gateway resolves the
+    // tenant's default ASR Agent when the session names nothing.
+    this.pipelineId = streamingConfig.pipelineId ?? null;
+    this.agentSlug = streamingConfig.agentSlug ?? null;
     this.drainTimeoutMs =
       typeof streamingConfig.drainTimeoutMs === 'number' && streamingConfig.drainTimeoutMs > 0 ? streamingConfig.drainTimeoutMs : null;
     // `>= 0`, NOT `> 0`: `0` is the documented "disable the quiet-window early
@@ -264,7 +273,10 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.bytesSent = 0;
 
     await this.session.createSession({
-      pipelineId: streamingConfig.pipelineId,
+      // Spread only the selector(s) actually set, so the body carries no
+      // `pipelineId`/`agentSlug` KEY when nothing was named.
+      ...(streamingConfig.agentSlug ? { agentSlug: streamingConfig.agentSlug } : {}),
+      ...(streamingConfig.pipelineId ? { pipelineId: streamingConfig.pipelineId } : {}),
       consultationId: streamingConfig.consultationId,
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
@@ -383,6 +395,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     }
     this.initialized = false;
     this.pipelineId = null;
+    this.agentSlug = null;
     this.drainTimeoutMs = null;
     this.quietWindowMs = null;
   }
@@ -397,9 +410,17 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     };
   }
 
-  /** Visible for diagnostics — which pipeline id we're streaming against. */
+  /**
+   * Visible for diagnostics — which pipeline id we're streaming against.
+   * @deprecated TASK-865 — removed in R4. See {@link getAgentSlug}.
+   */
   getPipelineId(): string | null {
     return this.pipelineId;
+  }
+
+  /** Visible for diagnostics — which ASR Agent this session asked for (TASK-865). `null` when none was named. */
+  getAgentSlug(): string | null {
+    return this.agentSlug;
   }
 
   /**

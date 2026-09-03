@@ -18,6 +18,10 @@
  * with a real logger double (that harness uses `logger: null`, relying on
  * optional chaining) so `logger.warn` is observable here.
  *
+ * TASK-865: streaming sessions are started with `agentSlug` (the supported
+ * selector); `pipelineId` now also emits a deprecation warning, which would
+ * otherwise be counted here.
+ *
  * @vitest-environment jsdom
  */
 
@@ -250,7 +254,7 @@ describe('useArcaAudio — silent-uplink watchdog', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'asr-1' });
     });
 
     audioCtx.analyser.currentSample = 0;
@@ -268,7 +272,7 @@ describe('useArcaAudio — silent-uplink watchdog', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'asr-1' });
     });
 
     audioCtx.analyser.currentSample = 0;
@@ -290,7 +294,7 @@ describe('useArcaAudio — silent-uplink watchdog', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'asr-1' });
     });
 
     audioCtx.analyser.currentSample = 0;
@@ -336,7 +340,7 @@ describe('useArcaAudio — silent-uplink watchdog', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'asr-1' });
     });
 
     audioCtx.analyser.currentSample = 0;
@@ -353,7 +357,7 @@ describe('useArcaAudio — silent-uplink watchdog', () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
-      await result.current.start({ pipelineId: 'pipe-1' });
+      await result.current.start({ agentSlug: 'asr-1' });
     });
 
     audioCtx.analyser.currentSample = 0;

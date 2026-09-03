@@ -99,11 +99,14 @@ export class StreamingSessionManager {
 
     this.status = 'creating';
 
+    const body = this.normalizeSelection(request);
+
     this.logger?.debug('Creating streaming session', {
       operation: 'createSession',
       component: 'StreamingSessionManager',
       attributes: {
-        pipelineId: request.pipelineId,
+        agentSlug: body.agentSlug,
+        pipelineId: body.pipelineId,
         consultationId: request.consultationId,
         sampleRate: request.sampleRate,
         language: request.language,
@@ -111,7 +114,7 @@ export class StreamingSessionManager {
     });
 
     try {
-      const response = await this.apiClient.post<StreamingSessionResponse>(STT_ENDPOINTS.CREATE_SESSION, request);
+      const response = await this.apiClient.post<StreamingSessionResponse>(STT_ENDPOINTS.CREATE_SESSION, body);
 
       this.sessionId = response.sessionId;
       this.sessionResponse = response;
@@ -144,6 +147,39 @@ export class StreamingSessionManager {
       this.errorListeners.forEach((cb) => cb(error as Error));
       throw error;
     }
+  }
+
+  /**
+   * Single chokepoint for WHAT the session asks to be transcribed by (TASK-865).
+   *
+   * `agentSlug` names the tenant's ASR Agent; `pipelineId` is the deprecated
+   * pre-agent selector. The body carries AT MOST ONE of them:
+   *   - both      → `agentSlug` only, and a warning naming the conflict;
+   *   - pipeline  → sent as-is, with a deprecation warning;
+   *   - neither   → nothing; the gateway resolves the tenant default agent.
+   * Never both silently.
+   */
+  private normalizeSelection(request: CreateStreamingSessionRequest): CreateStreamingSessionRequest {
+    const { pipelineId, agentSlug, ...rest } = request;
+    if (agentSlug) {
+      if (pipelineId) {
+        this.logger?.warn('createSession received both agentSlug and pipelineId — agentSlug wins, pipelineId dropped', {
+          operation: 'createSession',
+          component: 'StreamingSessionManager',
+          attributes: { agentSlug, droppedPipelineId: pipelineId, deprecation: 'TASK-865' },
+        });
+      }
+      return { ...rest, agentSlug };
+    }
+    if (pipelineId) {
+      this.logger?.warn('pipelineId is deprecated (TASK-865, removed in R4) — name the ASR Agent with agentSlug, or send neither', {
+        operation: 'createSession',
+        component: 'StreamingSessionManager',
+        attributes: { pipelineId, deprecation: 'TASK-865' },
+      });
+      return { ...rest, pipelineId };
+    }
+    return { ...rest };
   }
 
   /**
