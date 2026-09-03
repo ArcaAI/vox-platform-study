@@ -11,7 +11,7 @@
 // Before this guard there was NO seeded row in ANY environment (verified:
 // `git grep consultation.realtime.graphExecutor -- packages/database` was
 // empty), so every deployment came up running the legacy engine and ignoring
-// every realtime node a tenant admin had authored. TASK-852 item 1 framed the
+// every realtime node a tenant admin had authored. item 1 framed the
 // remedy as a one-off runtime write against a live tenant; that cannot satisfy
 // "everything ready once deployment finishes", because a fresh cluster would
 // still come up with the switch off.
@@ -21,7 +21,7 @@ import { GATES } from '../11c-consultation-gate-settings';
 
 // Literals on purpose: `packages/database` must not import `@arcaai/applications`.
 // Sources of truth, kept in lockstep by this test's own assertions:
-//   key   -> applications .../consultation/consultation-gates.constants.ts
+//   key -> applications .../consultation/consultation-gates.constants.ts
 //   label -> applications .../settings-registry/descriptors/consultation-gates.descriptors.ts
 const KEY = 'consultation.realtime.graphExecutor.enabled';
 const LABEL = 'Realtime graph executor';

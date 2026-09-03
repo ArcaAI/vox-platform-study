@@ -86,7 +86,7 @@ class TestIncumbentCannotSeparateTheArms:
 
     def test_report(self) -> None:
         print("\n" + "=" * 88)
-        print("TASK-671 P1 — two-arm corpus, scored by the INCUMBENT lexical sensors")
+        print("P1 — two-arm corpus, scored by the INCUMBENT lexical sensors")
         print("=" * 88)
         print(f"{'case':<28}{'abstracted':>12}{'fabricated':>12}   separable?")
         print("-" * 88)

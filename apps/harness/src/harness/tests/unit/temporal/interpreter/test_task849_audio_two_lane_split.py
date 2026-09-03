@@ -1,4 +1,4 @@
-"""TASK-849 lane B — binary audio obeys the two-lane split, MEASURED.
+"""lane B — binary audio obeys the two-lane split, MEASURED.
 
 Lane A proved the split for TEXT deltas. This proves it for the case OD-4 actually put at risk:
 **audio**, where one node's payload is measured in megabytes rather than characters, and where a
@@ -258,7 +258,7 @@ class TestAudioNeverEntersTemporalHistory:
         assert len(large_deltas) == LARGE_FRAMES
 
         print(
-            f"\n[TASK-849 lane B audio split, measured] "
+            f"\n[ lane B audio split, measured] "
             f"audio_bytes={SMALL_FRAMES * FRAME_BYTES} -> temporal_history_events={small['events']}"
             f" | audio_bytes={LARGE_FRAMES * FRAME_BYTES} -> "
             f"temporal_history_events={large['events']} | "
@@ -306,7 +306,7 @@ class TestAudioNeverEntersTemporalHistory:
                 ), f"{label} history carries base64 audio"
 
         print(
-            f"\n[TASK-849 lane B audio split, measured bytes] "
+            f"\n[ lane B audio split, measured bytes] "
             f"audio_bytes={SMALL_FRAMES * FRAME_BYTES} -> history_bytes={len(small['history_json'])}"
             f" | audio_bytes={LARGE_FRAMES * FRAME_BYTES} -> "
             f"history_bytes={len(large['history_json'])}"

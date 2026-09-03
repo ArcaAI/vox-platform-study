@@ -44,7 +44,7 @@ export class AuditLogFactory {
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy || null,
 
-      // TASK-762 — the machine path leaves the human column NULL rather than
+      // the machine path leaves the human column NULL rather than
       // stamping the empty-string placeholder every other row uses, so a
       // service-account row is distinguishable from "a human whose id we
       // failed to resolve". The `?? ''` default is preserved verbatim for

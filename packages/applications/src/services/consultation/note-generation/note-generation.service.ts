@@ -12,16 +12,16 @@ import { INoteGenerationService } from './INoteGenerationService';
 import { GenerateParams, GenerationDecision, GenerationTrigger, HARNESS_SUPPORTED_TRIGGERS } from './types';
 
 /**
- * TASK-704 — Generator Entry-Point Seam.
+ * Generator Entry-Point Seam.
  *
  * The single seam every consultation note-generation entry point routes
- * through (see the ticket README §2.1 for the full seven-entry-point map).
+ * through (for the full seven-entry-point map).
  * `harnessEnabled` is resolved and read in exactly one runtime location:
  * `generate()` below (enforced by the grep-gate test in
  * `__tests__/harness-enabled-single-reader.grep-gate.test.ts`).
  *
  * `NoteGenerationService` is deliberately named to become the interpreter
- * dispatcher once the workflow substrate exists (Wave 2+, D4/§Plane 1 in
+ * dispatcher once the workflow substrate exists (Wave 2+, D4/ 1 in
  * design.md). Nothing about that future is built here — this is entry-point
  * consolidation only.
  */
@@ -31,7 +31,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
 
   constructor(
     private readonly consultationRepository: ConsultationRepository,
-    // REQUIRED, NOT @Optional() — this is the throw-loud fix for the §2.3
+    // REQUIRED, NOT @Optional() — this is the throw-loud fix for the
     // silent-drop defect. Nest DI fails fast at boot if
     // HarnessGatewayServiceModule isn't imported into whatever module
     // provides NoteGenerationService, which is the desired failure mode
@@ -42,12 +42,12 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // (Pillar B cascade) — optional + trailing so legacy positional
     // fixtures keep compiling; when absent, resolveConfig falls back to
-    // DEFAULT_PIPELINE_CONFIG (same degrade as the pre-TASK-704 handler).
+    // DEFAULT_PIPELINE_CONFIG (same degrade as the earlier handler).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
   ) {
     // NoteGenerationService wraps existing generation calls and never
     // broadcasts its own sys-events (the wrapped services already do — see
-    // ticket §2.5), so `resourceType` here is never actually used to emit an
+    // so `resourceType` here is never actually used to emit an
     // event; ResourceType.Consultation is the closest fit for the
     // BaseService contract.
     super(eventEmitter, clsService, ResourceType.Consultation);
@@ -77,7 +77,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
 
     const harnessJobId = `harness-doc-${randomUUID()}`;
 
-    // TASK-712 (consent-abac Phase 4): thread the consultation's external
+    // (consent-abac Phase 4): thread the consultation's external
     // patient id so the harness's call_mcp_tool/retrieve_context activities
     // can key a consent-gate lookup. Best-effort, non-fatal — a lookup
     // failure here must never block note generation itself; it only means
@@ -123,7 +123,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
   /**
    * Resolve pipeline configuration for a consultation.
    *
-   * Moved verbatim (TASK-704) from
+   * Moved verbatim from
    * `ConsultationEventHandler.resolvePipelineConfig` — same cascade-merge
    * behavior, same fail-closed-to-defaults `catch`. See that method's
    * original docstring (git history) for the full resolution-order writeup;

@@ -1,5 +1,5 @@
 /**
- * TASK-719 Task 21 — Workflow Studio v1 (tier 30-49) against a RUNNING stack: create-draft →
+ * Workflow Studio v1 (tier 30-49) against a RUNNING stack: create-draft →
  * keyboard-only palette add → configure → Validate → publish gated until the server report is clean;
  * a mandatory node's no-delete posture in both view modes; click-error → focus-node in both
  * view modes; a cross-tenant definition id renders not-found (404, never 403); axe scans in
@@ -9,7 +9,7 @@
  * `expectNoA11yViolations`, `appAvailable`/`apiAvailable` skips).
  *
  * EXECUTED 2026-08-19 against the isolated test stack (gateway :8968, console :5276) — see the
- * ticket README §7. Three assertions were corrected in that run because they contradicted the
+ * Three assertions were corrected in that run because they contradicted the
  * running system rather than the system being wrong; each is documented at its call site.
  *
  * The live `WORKFLOW_NODE_REGISTRY` now serves real palettes (consultation / summarization / stt
@@ -151,13 +151,13 @@ test.describe('workflow studio editor', () => {
   });
 
   /**
-   * TASK-797 W1 (R2) — "the tenant admin MUST be able to manage, control, TEST using
-   * playground". The sandbox plane itself already existed in the Workbench (TASK-721); what the
+   * (R2) — "the tenant admin MUST be able to manage, control, TEST using
+   * playground". The sandbox plane itself already existed in the Workbench; what the
    * Studio lacked was a way to reach it for the definition on screen. Rule 13's "one
    * authoritative editor per backend resource" makes that a plain-href deep link rather than a
    * second sandbox client, so this asserts the link AND that following it lands on a Workbench
    * with that definition already selected.
-   */
+ */
   test('offers a Workbench sandbox link for the definition being edited, and it preselects that definition', async ({ page }) => {
     const definitionId = await createDraft(page, `e2e_sandbox_${Date.now()}`);
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
@@ -176,7 +176,7 @@ test.describe('workflow studio editor', () => {
 
   test('a mandatory node exposes no Delete affordance in EITHER view mode', async ({ page }) => {
     // The live registry DOES class nodes `mandatory` now (`input.context_binding` and friends),
-    // so this no longer skips as it did when TASK-720 had not landed.
+    // so this no longer skips as it did when had not landed.
     const definitionId = await createDraft(page, `e2e_mandatory_${Date.now()}`);
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
@@ -254,7 +254,7 @@ test.describe('workflow studio editor', () => {
     const definitionId = await createDraft(page, `e2e_axe_list_${Date.now()}`);
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
     await page.emulateMedia({ colorScheme: 'light' });
-    // README §7 honesty note: `viewMode` lives in the Zustand store only in this pass, NOT
+    //  honesty note: `viewMode` lives in the Zustand store only in this pass, NOT
     // synced to `?view=` via nuqs as the plan specified — so there is no URL assertion here.
     await page.getByRole('radio', { name: 'List view' }).click();
     await expectNoA11yViolations(page);

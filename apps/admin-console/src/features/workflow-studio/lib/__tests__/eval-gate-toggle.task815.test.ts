@@ -1,5 +1,5 @@
 /**
- * TASK-815 / OD-11 — "Tenant admin will enable or disable if needed."
+ * / OD-11 — "Tenant admin will enable or disable if needed."
  *
  * The eval gate's binding moved off `DepartmentAgent.goldenSetId` onto the
  * workflow node that references the prompt template, and OD-11 requires the

@@ -1,6 +1,6 @@
 """Tests for core/dependencies.py — DI functions that read from app.state.
 
-Every provider is `async def` (TASK-818 Lane C): a sync `Depends()` callable is
+Every provider is `async def` : a sync `Depends` callable is
 dispatched to anyio's worker threadpool by `solve_dependencies`, one handoff per
 request per dependency. These tests therefore await — the asserted VALUE is
 unchanged, only the call protocol is.

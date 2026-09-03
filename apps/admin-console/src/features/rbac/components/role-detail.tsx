@@ -390,7 +390,7 @@ function PoliciesTabPanel({ role }: { role: Role }) {
  * update/patch). Delete stays hidden for EVERY system role, EVERY caller —
  * `softDelete()` is hard-blocked platform-wide, deleting a seed-managed role
  * shared across every tenant is irreversible and out of scope even for a
- * super admin (confirmed decision, see the ticket README).
+ * super admin (confirmed decision, ).
  */
 function RoleDetailActions({
   role,

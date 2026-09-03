@@ -1,6 +1,6 @@
 {
-  "readme": [
-    "TASK-693 \u00a74.1 \u2014 the SINGLE source of truth for the buildable service inventory.",
+    "readme": [
+    "The SINGLE source of truth for the buildable service inventory.",
     "",
     "Before this file, the same list was hand-maintained in five places: the build-*",
     "job set in .gitlab/ci/build.yml, the SERVICES= line in .gitlab/ci/promote.sh,",
@@ -31,16 +31,16 @@
     "  promotable    true => appears in promote.sh SERVICES and is pinned into the",
     "                deployment overlay. hope-python-base is false: it is a",
     "                build-time base image and is never deployed.",
-    "  platforms     What CI builds TODAY, deliberately not what TASK-690 P4 intends.",
+    "  platforms     What CI builds TODAY, deliberately not what a later platform pass intends.",
     "                A manifest that lies about the present is worse than one silent",
     "                about the future. P4 edits this field; nothing else reads intent.",
     "  paths         Change-filter globs. Ported from the .rules-* anchors in",
     "                .gitlab/ci/rules.yml, plus two corrections noted per entry.",
     "",
-    "lmstudio (TASK-824) is deliberately tagPrefixes: [] and promotable: false.",
+    "lmstudio is deliberately tagPrefixes: [] and promotable: false.",
     "Its build job reacts only to ALL-, which this contract treats as implicit and",
     "forbids listing explicitly. A dedicated LMS prefix is an OPEN OWNER DECISION",
-    "(TASK-824 R-6) and would also require editing SERVICE_TAG_PREFIXES, so it is",
+    "(R-6) and would also require editing SERVICE_TAG_PREFIXES, so it is",
     "deferred rather than guessed. Promotion is by digest against a tag prefix this",
     "service does not yet have, and its deployment is parked at replicas: 0 with the",
     "Service held back behind a cutover. Flip promotable together with R-6 \u2014 not",

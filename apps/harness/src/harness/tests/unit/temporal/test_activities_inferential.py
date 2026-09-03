@@ -136,7 +136,7 @@ def _cited_claim_input(**kw: Any) -> RunInferentialSensorsInput:
     judge degrades both judge sensors."""
     base: dict[str, Any] = {
         # The safety screen is a tenant-scoped call into apps/guardrail
-        # (TASK-737: `X-Tenant-Id` mandatory), so both workflow call sites now thread
+        # (`X-Tenant-Id` mandatory), so both workflow call sites now thread
         # the tenant onto this input; without it the safety sensor degrades by design.
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "note_text": "Patient has hypertension; continue current plan.",

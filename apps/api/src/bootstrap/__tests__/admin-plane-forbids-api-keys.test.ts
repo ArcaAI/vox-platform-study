@@ -1,5 +1,5 @@
 /**
- * Policy **A2** (TASK-757) proved against the REAL `UnifiedAuthGuard` and the
+ * Policy **A2** proved against the REAL `UnifiedAuthGuard` and the
  * REAL admin controller classes — not against a synthetic stand-in.
  *
  * The boot audits (`admin-scope-audit.test.ts`) prove the METADATA is right.
@@ -8,7 +8,7 @@
  *
  * `'*'` is the interesting case because it is the ONLY thing `@RequiredScopes`
  * could never deny — `ApiKeyService.hasScope` grants it every scope, so under
- * TASK-708's scope-narrowing a `'*'` key reached every admin controller with
+ * scope-narrowing a `'*'` key reached every admin controller with
  * full reach. A2 closes that, and it closes it for a structural reason worth
  * pinning: `enforceApiKeyNotForbidden` runs BEFORE `enforceApiKeyScopes` in
  * `UnifiedAuthGuard.handleApiKeyAuth`, so a forbidden route has no scope — not
@@ -50,7 +50,7 @@ const ADMIN_CONTROLLERS = [
   UserController,
   PrismaStudioController,
   HarnessAdminController,
-  // Absent from `ADMIN_SCOPED_CONTROLLERS` before TASK-757 — genuinely
+  // Absent from `ADMIN_SCOPED_CONTROLLERS` before — genuinely
   // API-key-reachable, simply never transcribed into the list.
   KnowledgeController,
   WorkflowSandboxRunController,

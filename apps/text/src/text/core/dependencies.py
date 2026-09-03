@@ -12,7 +12,7 @@ These providers do nothing but read an attribute off `app.state`. There is no
 I/O here to move off the loop, so the handoff buys nothing and all of it is
 overhead. `/generate` alone declares 13 of them.
 
-Measured (TASK-818 Lane C, real service against the `tests/bench` mock upstream,
+Measured (real service against the `tests/bench` mock upstream,
 zero-latency mode, streaming, concurrency 10): **13 handoffs per request**, worth
 **-0.39 ms of process CPU per request (-4.5%)** when removed.
 
@@ -192,7 +192,7 @@ async def get_guardrail_client(request: Request) -> ExternalGuardrailClient | No
 
 
 async def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
-    """Retrieve the degrade-routing health cache from app.state (TASK-725 Task 2).
+    """Retrieve the degrade-routing health cache from app.state.
 
     Always present (constructed eagerly in ``create_app()``, not lazily in
     ``lifespan``) so tests that build the app without running lifespan still
@@ -203,5 +203,5 @@ async def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
 
 
 async def get_embedding_registry(request: Request) -> EmbeddingProviderRegistry:
-    """Retrieve the embedding-provider registry from app.state (TASK-725 Task 4)."""
+    """Retrieve the embedding-provider registry from app.state."""
     return cast("EmbeddingProviderRegistry", request.app.state.embedding_registry)

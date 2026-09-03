@@ -90,7 +90,7 @@ function DetailSkeleton() {
  * Console-wide record detail for Agents & Prompt Templates — a right slide-over
  * (full-screen sheet on mobile). Overview (edit form, OCC) · Versions (activate /
  * diff) · Test run (OCC dry-run) tabs; create mode reuses the same surface with a
- * single create form. Retires the former create/edit modals (build spec §7).
+ * single create form. Retires the former create/edit modals (build spec
  */
 export function AgentDetailDrawer({
   templateId,

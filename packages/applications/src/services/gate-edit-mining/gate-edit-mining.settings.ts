@@ -1,10 +1,10 @@
-// Gate-edit quality-signal thresholds (TASK-792 W5 / TASK-789 M-9).
+// Gate-edit quality-signal thresholds.
 //
 // These two ratios decide the TRAINING-LABEL TAXONOMY: which signed encounters
 // become `APPROVED_CLEAN` ("imitate this" few-shot exemplars) and which become
 // `HEAVILY_EDITED`. They shipped as bare TS literals in `gate-edit-mining.service.ts`,
 // which rule 00 §Configuration Principles forbids — a threshold is config, not a
-// constant. That was moot only while the pipeline had no live writer; TASK-792 W1
+// constant. That was moot only while the pipeline had no live writer;
 // gave it one, so it is a live violation now.
 //
 // `editDistanceRatio` is the fraction of the delivered note's words the clinician
@@ -14,9 +14,9 @@
 // ─── Why the descriptors live HERE and not in `settings-registry/descriptors/` ───
 //
 // `packages/applications/src/services/settings-registry/**` belongs to no ticket
-// in the TASK-789 remediation ownership map, so TASK-792 may not edit it. The
+// in the remediation ownership map, so may not edit it. The
 // KEYS, DEFAULTS and descriptor definitions therefore live in this file (which
-// TASK-792 owns) and are exported ready to register.
+// owns) and are exported ready to register.
 //
 // Registering `GATE_EDIT_QUALITY_THRESHOLD_SETTINGS` into
 // `settings-registry/registry.ts` is a REQUESTED CONTRACT — see the ticket

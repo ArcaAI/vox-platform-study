@@ -1,5 +1,5 @@
 /**
- * TASK-858 — the gateway reads the platform storage endpoint from TWO seeded rows
+ * the gateway reads the platform storage endpoint from TWO seeded rows
  * (`TenantStorageConfig` SYSTEM row and the `S3_ENDPOINT` GlobalSetting) and they must
  * agree with the environment the seed ran in. In-cluster the setting was a hardcoded
  * `http://localhost:<port>`, so `S3Service` dialled nothing and every governed

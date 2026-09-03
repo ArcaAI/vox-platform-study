@@ -1,4 +1,4 @@
-"""TASK-816 Phase 2 — the graph lane must gate on the TENANT's configured sensor thresholds.
+"""the graph lane must gate on the TENANT's configured sensor thresholds.
 
 ## The defect these tests pin
 
@@ -20,7 +20,7 @@ it LOOSENED back to the platform default, on the substrate every graph-mode cons
 The threshold already has two governed homes — the platform default in the settings registry
 (`harness.sensor.*`, resolved by `resolve_sensor_thresholds`) and the tenant value in
 `HarnessPolicy` (`db-config` tier). A third, node-authored source would be two rows that can
-disagree, which is what TASK-816 Phase 1 rejected five of six proposed `llmBinding` fields for.
+disagree, which is what rejected five of six proposed `llmBinding` fields for.
 So the graph lane is made to read the tier that already exists, exactly as the legacy lane does.
 """
 

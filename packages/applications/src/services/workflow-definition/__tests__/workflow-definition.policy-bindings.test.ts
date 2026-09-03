@@ -1,5 +1,5 @@
 /**
- * TASK-810 D-7 — `compiledConfig.policyBindings` must describe THIS graph, for THIS tenant.
+ * `compiledConfig.policyBindings` must describe THIS graph, for THIS tenant.
  *
  * `DEFAULT_POLICY_BINDINGS` hardcoded `contextSchemaVersionId: null`, `promptTemplateRefs: []`
  * and `entitlementKeys: []`, and every compile passed that same frozen object. So a published
@@ -29,9 +29,11 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
-/** TASK-810 DD-2 — the two document templates the graph below binds. `DOC_LIVE` sorts BEFORE
+/**
+* the two document templates the graph below binds. `DOC_LIVE` sorts BEFORE
  *  `DOC_SYNTH` by node id (`n_live` < `n_synth`) while being authored AFTER it, so a derivation
- *  that followed authoring order is distinguishable from one that sorts. */
+ *  that followed authoring order is distinguishable from one that sorts. 
+ */
 const DOC_SYNTH = 'b2c9a1d4-7e36-4f80-8a15-3c6d9e2f0b47';
 const DOC_LIVE = 'a41b6d0c-2f38-4c77-9a51-6d2e7b0c4f93';
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# Temporal volume hop — PRINT ONLY (TASK-702)
+# Temporal volume hop — PRINT ONLY
 # ============================================================================
 # Prints the 1.29.x → 1.30.4 → 1.31.2 hop commands for a leftover
 # auto-setup Temporal DB after compose moved to server/admin-tools 1.31.2.
@@ -13,7 +13,6 @@
 # -v to compose. It never runs DELETE / DROP / TRUNCATE.
 #
 # Canonical runbook:
-#   docs/implementation/TASK-702-Dependency-Blocker-Resolutions/README.md
 # ============================================================================
 
 set -euo pipefail
@@ -25,8 +24,8 @@ HOP_ADMINTOOLS="1.30.4"
 FALLBACK_AUTOSETUP="1.29.7"
 CONTAINER="hope-temporal"
 
-echo "TASK-702 Temporal volume hop — print only (does not apply anything)"
-echo "Runbook: docs/implementation/TASK-702-Dependency-Blocker-Resolutions/README.md"
+echo " Temporal volume hop — print only (does not apply anything)"
+echo "Runbook: "
 echo ""
 echo "FORBIDDEN:"
 echo "  - docker compose down -v   (wipes hope-postgres: app DB + Temporal DBs)"

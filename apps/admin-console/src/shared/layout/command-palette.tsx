@@ -19,7 +19,7 @@ export function CommandPalette() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const { data: rules } = usePermissions();
-  // TASK-788 Phase A: /developer and /account left NAV_ENTRIES for the user menu,
+  // /developer and /account left NAV_ENTRIES for the user menu,
   // but they are still screens a user jumps to — keep them searchable here, or the
   // nav reorganisation silently removes two routes from ⌘K.
   const entries = [...visibleNavEntries(rules), ...visibleUserMenuEntries(rules)];

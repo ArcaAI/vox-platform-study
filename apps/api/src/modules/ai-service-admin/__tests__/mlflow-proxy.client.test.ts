@@ -1,7 +1,7 @@
 /**
  * MlflowProxyClient unit tests.
  *
- * MLflow ships NO authentication of its own (TASK-822 §9.4 — `--app-name
+ * MLflow ships NO authentication of its own — `--app-name
  * basic-auth` deliberately off) and sets `X-Frame-Options: SAMEORIGIN` on every
  * response by default from 3.5.0 onward, so the console can neither frame it
  * nor call it from the browser. The gateway is therefore the ONLY path: it
@@ -106,7 +106,7 @@ describe('MlflowProxyClient — status probe', () => {
     expect(status.reachable).toBe(false);
     expect(status.probeStatus).toBe('error');
     expect(status.error).toBeTruthy();
-    // The operator-facing cause must not leak an internal host:port (TASK-768).
+    // The operator-facing cause must not leak an internal host:port.
     expect(status.error).not.toMatch(/127\.0\.0\.1:5000/);
   });
 

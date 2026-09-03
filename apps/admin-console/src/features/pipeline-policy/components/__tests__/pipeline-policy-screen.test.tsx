@@ -151,7 +151,7 @@ describe('PipelinePolicyScreen', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Pipeline Policy (Post-Consultation)' })).toBeDefined();
     const table = await waitFor(() => matrix());
-    // F-23 / TASK-852 item 7: the screen must not read as a live-lane control.
+    // F-23 / item 7: the screen must not read as a live-lane control.
     expect(screen.getByText('Post-consultation only')).toBeDefined();
     expect(screen.getByText(/do not affect live transcription/)).toBeDefined();
     const tenantRow = within(table).getByText('tenant').closest('tr') as HTMLElement;

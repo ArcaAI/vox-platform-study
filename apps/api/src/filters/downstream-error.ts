@@ -1,5 +1,5 @@
 /**
- * TASK-768 — the ONE place a failed downstream call becomes a client-facing body.
+ * the ONE place a failed downstream call becomes a client-facing body.
  *
  * Background. A request to a route that forwards to `apps/text` (:8862) while
  * that service was down surfaced as:
@@ -33,7 +33,7 @@ export const DOWNSTREAM_ERROR_CODE = 'GATEWAY.DOWNSTREAM_UNAVAILABLE';
  * Why the downstream call failed — classified by CAUSE, never by what the
  * client sent.
  *
- *  - `transport`            — the gateway never reached the peer.
+ *  - `transport` — the gateway never reached the peer.
  *  - `upstream_server_error`— the peer answered 5xx.
  *  - `upstream_client_error`— the peer answered 4xx (a genuine bad request).
  */
@@ -104,7 +104,7 @@ function upstreamStatusOf(err: unknown): number | undefined {
  * The `AggregateError` walk is not hypothetical: Node's happy-eyeballs dialer
  * produces exactly that when a service is down on both `::1` and `127.0.0.1`,
  * and the AggregateError itself carries NO `code` — the errnos live only on its
- * members. That is the shape the TASK-764 evidence captured.
+ * members. That is the shape the evidence captured.
  */
 function hasTransportCause(err: unknown, depth = 0): boolean {
   if (depth > 5) return false;

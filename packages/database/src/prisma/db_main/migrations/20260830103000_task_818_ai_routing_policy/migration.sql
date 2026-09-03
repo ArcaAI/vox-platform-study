@@ -1,5 +1,5 @@
 -- ============================================================================
--- TASK-818 §3A.3 — AiRoutingPolicy
+-- AiRoutingPolicy
 --
 -- Applied 2026-08-30. Verified against a throwaway shadow DB: full ledger replayed
 -- from empty, then `prisma migrate diff --from-config-datasource --to-schema`
@@ -15,7 +15,7 @@
 --
 --   npx prisma migrate diff \
 --     --from-schema <db_main as of the parent commit> \
---     --to-schema   src/prisma/db_main \
+--     --to-schema src/prisma/db_main \
 --     --script
 --
 -- To turn this into a real, timestamped migration, follow

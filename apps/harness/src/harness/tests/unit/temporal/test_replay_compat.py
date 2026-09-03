@@ -467,7 +467,7 @@ class TestConsultationLoopReplayCompatibility:
 
 
 class TestWorkflowInterpreterReplayCompatibility:
-    """Replay guard for WorkflowInterpreter (TASK-718) — the interpreter's OWN new workflow
+    """Replay guard for WorkflowInterpreter — the interpreter's OWN new workflow
     type, following the exact same "new type needs no era until its first fixture is frozen"
     precedent `ConsultationLoopWorkflow` set (`workflows.py:1611-1614`).
 
@@ -483,7 +483,6 @@ class TestWorkflowInterpreterReplayCompatibility:
     ``execute_activity`` call in the shared per-stage/per-node path) fails this replay with a
     non-determinism error. Recapture alongside every new patch gate
     (``_capture_interpreter_replay_fixture.py``), per
-    ``docs/implementation/TASK-718-Workflow-Interpreter/contracts/versioning.md``.
     """
 
     @pytest.mark.asyncio
@@ -498,7 +497,7 @@ class TestWorkflowInterpreterReplayCompatibility:
 
 
 class TestRunEventStreamReplayCompatibility:
-    """TASK-849 lane A step 2 — the run-event mirror's replay guards, in both directions.
+    """lane A step 2 — the run-event mirror's replay guards, in both directions.
 
     The mirror added THREE `execute_activity` calls (`interpreter.emit_run_events`) to the
     shared per-stage path, gated behind `workflow.patched(_STREAM_PATCH)`. Unlike the gate's,
@@ -540,11 +539,11 @@ class TestRunEventStreamReplayCompatibility:
 
 
 class TestAgenticLoopReplayCompatibility:
-    """TASK-848b step 9 — the loop's own replay guards, in both directions.
+    """b step 9 — the loop's own replay guards, in both directions.
 
     The loop introduced ONE new command: the interpreter starting `AgenticLoopWorkflow` as a
     child, gated behind `workflow.patched(_LOOP_PATCH)`. That gate is load-bearing rather than
-    ceremonial — TASK-847 shipped `agentic.loop` as a dispatchable ACTIVITY, so histories recorded
+    ceremonial — shipped `agentic.loop` as a dispatchable ACTIVITY, so histories recorded
     before this change genuinely carry an `ActivityTaskScheduled` for `interpreter.agentic_loop`
     and must keep replaying that way.
     """

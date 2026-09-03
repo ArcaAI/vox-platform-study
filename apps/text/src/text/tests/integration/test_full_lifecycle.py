@@ -93,7 +93,7 @@ class TestGenerateLifecycle:
 class TestStreamingLifecycle:
     """POST /generate with stream=true lifecycle."""
 
-    # TASK-818 §3C.3(1): `POST /generate` with `stream=true` now answers 200 +
+    # `POST /generate` with `stream=true` now answers 200 +
     # SSE directly. The 202-and-poll envelope (`task_id` + `stream_url`) is
     # gone, and the generation id arrives in the first event instead — early
     # enough for a client to persist it before any token exists.
@@ -175,7 +175,7 @@ class TestStreamingLifecycle:
         assert replay.status_code == 200
         assert "event: done" in replay.text
 
-        # TASK-818: an entry is a coalesced BATCH of deltas plus the terminal
+        # an entry is a coalesced BATCH of deltas plus the terminal
         # frame's own entry, so the per-entry `type` is the envelope's, not a
         # chunk's. What the buffer must still contain is every delta and a
         # terminal — asserted through the reader that replays them.

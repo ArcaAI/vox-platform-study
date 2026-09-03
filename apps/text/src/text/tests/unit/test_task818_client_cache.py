@@ -1,4 +1,4 @@
-"""TASK-818 Lane A — the egress client layer stops rebuilding itself per request.
+"""the egress client layer stops rebuilding itself per request.
 
 Bottleneck B-2: every adapter built a fresh SDK client (and therefore a fresh TLS
 connection pool) on EVERY request — `openai.py`, `azure_openai.py`, `anthropic.py`,

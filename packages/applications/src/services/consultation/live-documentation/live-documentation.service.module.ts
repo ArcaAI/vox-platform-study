@@ -25,11 +25,11 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
  *
  * Wires the per-consultation realtime watcher:
- * - HttpModule         → TEXT (`/api/v1/generate`) + NLP (`/api/v1/classify/tokens`) calls
- * - ConfigModule       → service URLs + debounce tuning (NLP_URL, TEXT_URL, LIVE_DOC_*)
+ * - HttpModule → TEXT (`/api/v1/generate`) + NLP (`/api/v1/classify/tokens`) calls
+ * - ConfigModule → service URLs + debounce tuning (NLP_URL, TEXT_URL, LIVE_DOC_*)
  * - CoreDatabaseModule → ContextItemRepository for the optional PRE_SUMMARY snapshot on stop
  * - EventEmitterModule → @OnEvent(ConsultationPipelineEvent.ContextAdded) reaction
- * - RedisCacheModule   → publish/setex the running summary to `consultation:live-summary:{id}`
+ * - RedisCacheModule → publish/setex the running summary to `consultation:live-summary:{id}`
  * - RedisSubscriberService → dedicated subscriber connection for the SSE relay
  * - StreamingSessionServiceModule → StreamingAudioBridgeService for `stt:result:{sessionId}`
  *
@@ -61,7 +61,7 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
     RedisCacheModule.register(),
     StreamingSessionServiceModule,
     HarnessPolicyServiceModule,
-    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
@@ -78,18 +78,18 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
     LiveAgentResolutionServiceModule,
     // Outbound apps/api -> apps/harness adapter LoopContextSignalService signals through.
     HarnessGatewayServiceModule,
-    // TASK-705 — resolves the @Optional IEntitlementsService that decides loop
+    // resolves the @Optional IEntitlementsService that decides loop
     // ELIGIBILITY. The harness agentic loop is packaged as a subscription
     // feature (`agenticLoop`), so `LoopContextSignalService` asks the tenant's
     // plan before every signal. Absent ⇒ the gate fails CLOSED, which is why
     // this import is not optional in practice even though the dep is.
     EntitlementsServiceModule,
-    // TASK-810 — resolves the @Optional IDocumentTemplateService so a session
+    // resolves the @Optional IDocumentTemplateService so a session
     // FREEZES the tenant's pinned document shape at start(). Absent ⇒ every
     // session serves the compiled platform shape, which is behaviour equivalent
     // to the hardcoded four-section format this ticket replaced.
     DocumentTemplateServiceModule,
-    // TASK-811 — resolves the @Optional IWorkflowAssignmentService the realtime
+    // resolves the @Optional IWorkflowAssignmentService the realtime
     // LANE resolution needs (assignment cascade -> definition slug). The
     // definition repository, the consultation row the SUBSTRATE GATE reads and
     // the DocumentSectionRepository all come from CoreDatabaseModule above.

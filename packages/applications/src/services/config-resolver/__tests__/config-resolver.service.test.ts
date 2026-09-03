@@ -63,7 +63,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
 
     expect(r.autoSummaryEnabled).toBe(true);
     expect(r.autoNerEnabled).toBe(true);
-    // TASK-732 — harnessEnabled code-defaults to true (the legacy signable
+    // harnessEnabled code-defaults to true (the legacy signable
     // generator this toggle used to fall back to no longer exists).
     expect(r.harnessEnabled).toBe(true);
     expect(r.dnaStyleEnabled).toBe(false);
@@ -149,7 +149,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
 
     expect(r.autoSummaryEnabled).toBe(true);
-    // TASK-732 — code-default harnessEnabled is now true.
+    // code-default harnessEnabled is now true.
     expect(r.harnessEnabled).toBe(true);
   });
 });
@@ -308,7 +308,7 @@ describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (double-gate)', () 
     expect(r.effective).toBe(false);
   });
 
-  // TASK-815 removed a THIRD gate that used to sit alongside these two:
+  // removed a THIRD gate that used to sit alongside these two:
   // `DepartmentAgent.dnaStylePolicy = DISABLED` forced the result OFF for the
   // department's default agent regardless of what the tenant and the doctor
   // said. It retired with `DepartmentAgent` and has no successor. The direction

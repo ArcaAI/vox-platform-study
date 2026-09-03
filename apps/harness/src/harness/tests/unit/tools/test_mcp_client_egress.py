@@ -1,4 +1,4 @@
-"""TASK-846 D-3 — the CALL-time SSRF guard on the MCP tool client.
+"""the CALL-time SSRF guard on the MCP tool client.
 
 Two layers are pinned here.
 

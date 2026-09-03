@@ -5,7 +5,7 @@ import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
 
-/** TASK-768 — opaque stand-ins. The cause goes to the log; the client gets these. */
+/** opaque stand-ins. The cause goes to the log; the client gets these. */
 const UPSTREAM_ERROR_MESSAGE = 'The AI service returned an error.';
 const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Please retry.';
 
@@ -35,10 +35,10 @@ export interface GuardrailConfigResult {
  * service exposes internal config mutation, so none is invented here.
  *
  * Upstream endpoints (source of truth: apps/guardrail, apps/nlp):
- *  - Guardrail `GET /api/health`          — engine/GLiNER/Redis component checks
- *  - Guardrail `GET /api/medical/config`  — guardian engine configuration
+ *  - Guardrail `GET /api/health` — engine/GLiNER/Redis component checks
+ *  - Guardrail `GET /api/medical/config` — guardian engine configuration
  *  - Guardrail `GET /api/guardrail/types` — supported analysis types
- *  - NLP       `GET /api/v1/health`       — per-model component checks
+ *  - NLP `GET /api/v1/health` — per-model component checks
  *
  * Base URLs resolve from `IConfigService` (`GUARDRAIL_URL` / `NLP_URL`), falling
  * back to the local-dev ports.
@@ -126,13 +126,13 @@ export class AiServiceProxyClient {
   private toHttpError(error: unknown, action: string): HttpException {
     if (isAxiosError(error) && error.response) {
       this.logger.warn({ message: 'AI service upstream error', action, status: error.response.status });
-      // TASK-768 — see `harness-ops.client.ts`: an empty upstream body must not
+      // see `harness-ops.client.ts`: an empty upstream body must not
       // fall back to the axios message (it carries the internal host:port).
       const body = error.response.data ?? { message: UPSTREAM_ERROR_MESSAGE };
       return new HttpException(body as string | Record<string, unknown>, error.response.status);
     }
     this.logger.error({ message: 'AI service transport error', action, ...describeCauseForOperator(error) });
-    // TASK-768 — cause to the log, capability to the client.
+    // cause to the log, capability to the client.
     return new ServiceUnavailableException(TRANSPORT_ERROR_MESSAGE);
   }
 }

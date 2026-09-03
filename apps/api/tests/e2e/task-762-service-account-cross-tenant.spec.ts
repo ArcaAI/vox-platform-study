@@ -1,5 +1,5 @@
 /**
- * TASK-762 — `/api/v1/admin/service-accounts` + `POST /api/v1/auth/service-token`.
+ * `/api/v1/admin/service-accounts` + `POST /api/v1/auth/service-token`.
  *
  * Two distinct postures are asserted here and they must not be conflated:
  *
@@ -54,7 +54,7 @@ test.describe('Service accounts — issuance privilege boundary', () => {
   });
 
   test('a tenant admin CANNOT issue a service account — 403, not 404', async ({ request }) => {
-    // This is the TASK-756 defect made impossible for this class: `@CanManage`
+    // This is the defect made impossible for this class: `@CanManage`
     // is tenant-admin-reachable, so the gate is imperative and stricter.
     const resp = await createAccount(request, tenantAdminToken, {
       displayName: 'tenant-admin attempt',
@@ -123,7 +123,7 @@ test.describe('Service accounts — cross-tenant posture (404-over-403)', () => 
     await request.delete(`${BASE}/${foreignAccountId}`, { headers: { Authorization: `Bearer ${superAdminToken}` } });
   });
 
-  // TASK-762 owner decision (2026-08-18): a tenant admin holds
+  // owner decision (2026-08-18): a tenant admin holds
   // `read:ServiceAccount` scoped to their own tenant (seeded in
   // `01-policy.ts`), so CASL now admits them and the service's own
   // `loadOwned` decides — which throws NotFound for a missing row AND for a

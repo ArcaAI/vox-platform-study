@@ -181,7 +181,7 @@ async def refresh_runtime_limits(state: Any) -> None:
         apply_lane_budgets(snapshot, state)
         apply_platform_posture(snapshot, state)
         # Egress transport shape: per-upstream httpx pool limits, the HTTP/2
-        # posture, and the size of the Bedrock stream thread pool (TASK-818
+        # posture, and the size of the Bedrock stream thread pool
         # Lane A, B-2/B-3/B-8). Same channel, same fail-safe posture, same
         # floor-is-the-fallback rule as everything above; the pool objects live
         # in `providers/pool.py` rather than on `app.state` because an adapter

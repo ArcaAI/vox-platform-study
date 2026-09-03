@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 1 (DD-10) — a node's `llmBinding` SELECTS the model; absence changes nothing.
+ *  — a node's `llmBinding` SELECTS the model; absence changes nothing.
  *
  * ## The hazard this suite exists to hold
  *
@@ -58,7 +58,7 @@ beforeEach(() => {
   service = makeService();
 });
 
-describe('TASK-816 — NO binding: every existing resolution path is unchanged', () => {
+describe('NO binding: every existing resolution path is unchanged', () => {
   it('resolveTextSelection(tenant, "live") still reads the text.live AiTaskDefault', async () => {
     aiTaskDefaultService.getEffective.mockResolvedValue({ model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b' } });
 
@@ -111,7 +111,7 @@ describe('TASK-816 — NO binding: every existing resolution path is unchanged',
   });
 });
 
-describe('TASK-816 — WITH a binding: the node selects, tenant -> SYSTEM', () => {
+describe('WITH a binding: the node selects, tenant -> SYSTEM', () => {
   it('resolves the bound slug and never consults the taskKey default', async () => {
     aiTaskDefaultService.resolveModelBySlug.mockResolvedValue({ provider: 'vllm', sourceUri: 'medgemma-27b' });
 

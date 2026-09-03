@@ -1,4 +1,4 @@
-"""Route-level tests for `/classify/topic` and `/classify/intent` (TASK-729).
+"""Route-level tests for `/classify/topic` and `/classify/intent`.
 
 Hermetic: the FastAPI app is a minimal shell mounting only the REST v1
 routers (no lifespan → no real ExternalTextClient); `get_external_text_client`
@@ -81,7 +81,7 @@ class TestClassifyTopic:
         assert fake.calls[0]["tenant_id"] == "t1"
 
     def test_missing_tenant_is_refused_with_428(self, app_and_client):
-        """TASK-737 — tenant-scoped work with no tenant is a CALLER defect.
+        """tenant-scoped work with no tenant is a CALLER defect.
 
         The gateway injects `tenant_id` into the body on this surface (apps/nlp reads
         no inbound tenant header anywhere). Delegating to `text` without one would
@@ -144,7 +144,7 @@ class _TrackingSemaphore(ResizableSemaphore):
 
 
 class TestPeerCallBoundIndependence:
-    """Owner decision (2026-08-20, TASK-729 §6): `/topic`/`/intent` bound their
+    """Owner decision (2026-08-20,: `/topic`/`/intent` bound their
     outbound call to `text` with a DEDICATED peer-call semaphore, never the
     local-inference bound. Each semaphore records how many times it was
     actually entered, distinguishing "used" from "merely resolved as a

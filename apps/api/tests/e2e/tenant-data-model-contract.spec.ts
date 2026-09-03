@@ -8,13 +8,13 @@
  * `tenant_admin`/`doctor` pinned to `__GLOBAL__`).
  *
  * Coverage:
- *   #3 plan   · create surfaces `plan`; fetch reflects it; PATCH updates it (OCC).
- *   #2 tags   · PUT /admin/tenants/:id/tags replaces the set; GET reads it back.
- *   #1 F6     · POST suspend/archive/restore transitions `resourceStatus`.
+ *   #3 plan · create surfaces `plan`; fetch reflects it; PATCH updates it (OCC).
+ *   #2 tags · PUT /admin/tenants/:id/tags replaces the set; GET reads it back.
+ *   #1 F6 · POST suspend/archive/restore transitions `resourceStatus`.
  *   #1 ADM-002· suspend/archive/DELETE on the `__GLOBAL__` system tenant → 403.
- *   #1 RBAC   · lifecycle transitions are super-admin-only (tenant_admin/doctor 403).
- *   #6 D2     · GET /admin/departments/:id/users → paginated; 404 unknown; doctor 403.
- *   #7 D3     · PATCH prompt-config `dnaWritingStylePromptId` (OCC) round-trips.
+ *   #1 RBAC · lifecycle transitions are super-admin-only (tenant_admin/doctor 403).
+ *   #6 D2 · GET /admin/departments/:id/users → paginated; 404 unknown; doctor 403.
+ *   #7 D3 · PATCH prompt-config `dnaWritingStylePromptId` (OCC) round-trips.
  *
  * All mutations target throwaway rows (a fresh tenant + a fresh department) and are
  * cleaned up in afterAll — no seed rows are mutated destructively.
@@ -104,7 +104,7 @@ test.describe.serial('tenant plan / tags / lifecycle (#1/#2/#3)', () => {
     // #3 + #2 — create carrying plan + tags, and assert they surface on the create response.
     const res = await request.post('/api/v1/admin/tenants', {
       headers: bearer(superToken),
-      data: { name: `TASK-387 E2E Tenant ${UNIQUE}`, key: `TASK387E2E${UNIQUE}`, plan: 'TRIAL', tags: ['pilot'] },
+      data: { name: ` E2E Tenant ${UNIQUE}`, key: `TASK387E2E${UNIQUE}`, plan: 'TRIAL', tags: ['pilot'] },
     });
     expect(res.status(), 'super_admin creates the throwaway tenant').toBeLessThan(300);
     const body = (await res.json()) as TenantDto;
@@ -138,7 +138,7 @@ test.describe.serial('tenant plan / tags / lifecycle (#1/#2/#3)', () => {
   });
 
   test('#2 tags: PUT replaces the set; GET reads it back; [] clears it', async ({ request }) => {
-    // TASK-776 H-1 phase 2: `PUT :id/tags` now carries `@RequiresIfMatch()`.
+    // phase 2: `PUT :id/tags` now carries `@RequiresIfMatch()`.
     // The tag route writes the TENANT row, so the validator is the tenant
     // detail ETag — the `/tags` read carries no version of its own — and each
     // successful write bumps it, so the second PUT re-reads.
@@ -206,7 +206,7 @@ test.describe.serial('department users + DNA writing-style slot (#6/#7)', () => 
   test.beforeAll(async ({ request }) => {
     const res = await request.post('/api/v1/admin/departments', {
       headers: bearer(superInTenantToken),
-      data: { name: `TASK-387 E2E Dept ${UNIQUE}`, code: `T387D${String(UNIQUE).slice(-8)}`, description: 'task-387 — safe to delete' },
+      data: { name: ` E2E Dept ${UNIQUE}`, code: `T387D${String(UNIQUE).slice(-8)}`, description: 'task-387 — safe to delete' },
     });
     expect(res.status(), 'creates the throwaway department').toBeLessThan(300);
     deptId = ((await res.json()) as DepartmentDto).id;

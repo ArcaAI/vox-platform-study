@@ -1,4 +1,4 @@
-"""TASK-799 — the model-registry credential client.
+"""the model-registry credential client.
 
 `HUGGINGFACE_TOKEN` and the `STT_MODEL_S3_*` pair were the last two credentials
 this service read from the environment. They now live on `AiProviderConnection`

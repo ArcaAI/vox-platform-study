@@ -64,7 +64,7 @@ describe('ConsultationController.stopRecording — loop-ending signal', () => {
     );
   });
 
-  it('TASK-814 §2b: threads acceptedProposals from the request into the ending signal', async () => {
+  it(': threads acceptedProposals from the request into the ending signal', async () => {
     const { controller, loopContextSignalService } = buildController();
     const proposal = {
       proposalId: 'p-1',
@@ -86,7 +86,7 @@ describe('ConsultationController.stopRecording — loop-ending signal', () => {
     });
   });
 
-  it('TASK-814 §2b: omits acceptedProposals from the signal when the request carries none', async () => {
+  it(': omits acceptedProposals from the signal when the request carries none', async () => {
     const { controller, loopContextSignalService } = buildController();
 
     await controller.stopRecording('consult-1', { persistSnapshot: true });

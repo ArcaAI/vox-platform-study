@@ -474,7 +474,7 @@ export class ContextService extends BaseService implements IContextService {
       validatedContent = validated?.content;
     }
 
-    // TASK-825 — an EMPTY body is not an edit, it is a deletion, and a
+    // an EMPTY body is not an edit, it is a deletion, and a
     // `ContextItem` has a first-class one (`deleteContext` → soft delete). The
     // CREATE path already refuses an empty body for a non-media type (see
     // `addContext`: *"Content is required for non-media types"*), and
@@ -538,7 +538,7 @@ export class ContextService extends BaseService implements IContextService {
       await this.encryptContent(contextItem);
     }
 
-    // TASK-709: Compare-And-Set against `_version` — the CAS predicate is
+    // Compare-And-Set against `_version` — the CAS predicate is
     // the `@RequiresIfMatch()`-gated `expectedVersion` folded onto the DTO by
     // the controller. Drift throws `OptimisticConcurrencyException` -> 412.
     const updated = await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, request.expectedVersion);
@@ -1249,7 +1249,7 @@ export class ContextService extends BaseService implements IContextService {
           });
         } catch (error) {
           this.logger.warn(
-            `TASK-375 — failed to presign media ${media.id} for context timeline: ${error instanceof Error ? error.message : String(error)}`,
+            `failed to presign media ${media.id} for context timeline: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }),
@@ -1547,8 +1547,8 @@ export class ContextService extends BaseService implements IContextService {
    * Three public methods consume the consultation-ID array returned by this
    * helper and pass it as `ids: string[]` to ContextItemRepository methods:
    *
-   *   - `getSharedContext(consultationId)`        → findSharedContext(allIds)
-   *   - `getSharedCaseNotes(consultationId)`      → findCaseNotesFromChain(allIds)
+   *   - `getSharedContext(consultationId)` → findSharedContext(allIds)
+   *   - `getSharedCaseNotes(consultationId)` → findCaseNotesFromChain(allIds)
    *   - `getAggregateNamedEntities(consultationId, scope)`
    *       (scope=chain branch via consultationIds[]; scope=single uses [consultationId])
    *

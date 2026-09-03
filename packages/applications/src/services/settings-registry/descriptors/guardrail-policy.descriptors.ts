@@ -1,4 +1,4 @@
-// Guardrail policy descriptors (TASK-735 Phase 4).
+// Guardrail policy descriptors.
 //
 // Turns the values `apps/guardrail/src/guardrail/core/config.py` and
 // `providers/gliner.py` currently hardcode into governed `SettingDescriptor`s —
@@ -11,16 +11,16 @@
 // (versioned, approval-gated) rather than here — see "Out of scope" below.
 //
 // Source values (verified 2026-08-16 against the files above):
-//   GlinerConfig.classification_threshold      0.4    core/config.py:168
-//   GlinerConfig.pii_threshold                 0.5    core/config.py:169
+//   GlinerConfig.classification_threshold 0.4 core/config.py:168
+//   GlinerConfig.pii_threshold 0.5 core/config.py:169
 //   OllamaConfig/OpenAICompatConfig
-//     .guardian_min_confidence                 0.75   core/config.py:50,94
-//     .temperature                             0.1    core/config.py:44,88
-//     .max_tokens                              500    core/config.py:45,89
-//     .timeout_s                               60     core/config.py:39,83
-//   GroundednessConfig.entailment_threshold    0.5    core/config.py:224
-//   GroundednessConfig.batch_size              16     core/config.py:227
-//   GroundednessConfig.max_segments            200    core/config.py:231
+// .guardian_min_confidence 0.75 core/config.py:50,94
+// .temperature 0.1 core/config.py:44,88
+// .max_tokens 500 core/config.py:45,89
+// .timeout_s 60 core/config.py:39,83
+//   GroundednessConfig.entailment_threshold 0.5 core/config.py:224
+//   GroundednessConfig.batch_size 16 core/config.py:227
+//   GroundednessConfig.max_segments 200 core/config.py:231
 //   SAFETY_LABELS / PII_LABELS / ADVERSARIAL_LABELS / HARMFUL_LABELS
 //                                                      providers/gliner.py:21-71
 //
@@ -43,7 +43,7 @@
 //     later interprets it — the verdict-deciding fields above still gate the
 //     outcome regardless of what the judge said.
 //   - timeout_s: exhausting the budget already fails CLOSED to
-//     `allowed: False` (Phase 2 §2 of the ticket) — a SHORTER timeout makes
+// `allowed: False` — a SHORTER timeout makes
 //     the safe path MORE likely to trigger, not less, so it is not something
 //     a tenant could "loosen" by raising it. Latency/availability tuning only.
 //   - batch_size is a pure throughput lever over the same per-segment
@@ -108,7 +108,7 @@
 // `models.guardrail.validate` / `.safety` / `.groundedness`
 // (`model-defaults.descriptors.ts`, owned by another lane this session) stay
 // separate: those select WHICH model runs, gated by the
-// `featureGuardrailModelSelection` entitlement (Phase 0, also owned
+// `featureGuardrailModelSelection` entitlement (also owned
 // elsewhere). This file's keys are independent of that entitlement — a
 // tenant tightening `piiThreshold` needs no model-selection grant, and
 // nothing here reads or requires `featureGuardrailModelSelection`.
@@ -340,7 +340,7 @@ export const GUARDRAIL_POLICY_SETTINGS: SettingDescriptor[] = (
     tier: 'global-kv',
     dataType: dataTypeFor(short),
     sensitivity: 'internal',
-    // Tenant-editable per Phase 0's governance flip (D2 presupposes a tenant
+    // Tenant-editable per the governance flip (D2 presupposes a tenant
     // write path): the tenant row may TIGHTEN, enforced by the declared
     // `floorDirection` below, not by capping maxScope at 'system'.
     maxScope: 'tenant',

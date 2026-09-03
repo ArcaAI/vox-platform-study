@@ -6,7 +6,7 @@ import { toUnifiedErrorBody } from './error-envelope';
 
 /**
  * Maps `ConsentDeniedException` → 403 and `ConsentUnavailableException` →
- * 503 (TASK-712, consent-abac).
+ * 503 (consent-abac).
  *
  * Why a FILTER, not (only) `ExceptionInterceptor`'s branches: `assertConsent`
  * is called from `PatientConsentGuard.canActivate()` — a `CanActivate`

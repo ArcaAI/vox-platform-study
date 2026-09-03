@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane B — `SSEClient` must be able to RESUME.
+ * lane B — `SSEClient` must be able to RESUME.
  *
  * ## The gap this closes
  *

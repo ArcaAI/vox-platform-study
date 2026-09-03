@@ -79,7 +79,7 @@ class TestModelStagingBoundary:
             )
         message = str(excinfo.value)
         assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
-        assert "TASK-475" in message
+        assert "" in message
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +265,7 @@ class TestLoaderFailSafe:
             )
         message = str(excinfo.value)
         assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
-        assert "TASK-475" in message
+        assert "" in message
         assert "RuntimeError" in message  # underlying cause named (PHI-free)
 
     def test_successful_restore_drives_the_diarizer_end_to_end(

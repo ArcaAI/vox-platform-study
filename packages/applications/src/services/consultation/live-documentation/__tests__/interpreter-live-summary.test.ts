@@ -1,5 +1,5 @@
 /**
- * TASK-795 RC-1 — interpreter summary text on the EXISTING live-summary plane.
+ * interpreter summary text on the EXISTING live-summary plane.
  *
  * The whole point of reusing `consultation:live-summary:{id}` is that there is no
  * new consumer surface: the SSE route, `useArcaLiveSummary` and the console panel

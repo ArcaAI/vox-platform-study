@@ -570,6 +570,6 @@ async def test_streaming_start_does_not_log_a_zero_token_placeholder(
             headers={"X-Tenant-Id": "tenant-stream"},
         )
 
-    # TASK-818: the stream is the response now (200 + SSE), not a 202 envelope.
+    # the stream is the response now (200 + SSE), not a 202 envelope.
     assert resp.status_code == 200
     assert [e for e in audit.events if e.status == "streaming"] == []

@@ -50,7 +50,7 @@ const PRESIGNED_GET_EXPIRY_SECONDS = 3600;
 @ApiBearerAuth()
 @ApiTags('storage')
 @Controller('storage')
-// TASK-742: wires the `media:file:*` scopes, declared in the registry since
+// wires the `media:file:*` scopes, declared in the registry since
 // its inception but never referenced by any route. Stronger of the pair at
 // class level (see TranscriptionJobController for the reasoning).
 @RequiredScopes('media:file:write')
@@ -215,7 +215,7 @@ export class StorageController {
         });
       } catch (error) {
         this.logger.warn(
-          `TASK-375 — failed to generate/store thumbnail for ${bucketName}/${fileKey}: ${error instanceof Error ? error.message : String(error)}`,
+          `failed to generate/store thumbnail for ${bucketName}/${fileKey}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }

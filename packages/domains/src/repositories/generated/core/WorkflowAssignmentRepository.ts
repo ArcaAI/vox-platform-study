@@ -10,7 +10,7 @@ import { WorkflowAssignment } from '../../../models';
 
 /**
  * `WorkflowAssignment` — WHICH workflow definition governs a scope for a
- * palette (TASK-733). Ordinary tenant-scoped, soft-deletable model (in
+ * palette. Ordinary tenant-scoped, soft-deletable model (in
  * `TENANT_SCOPED_MODELS`, not in `MODELS_WITHOUT_SOFT_DELETE`).
  */
 @Injectable()

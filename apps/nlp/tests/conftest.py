@@ -30,7 +30,7 @@ class FakeService:
 # router Depends defaults bound at import, monitoring's check table — also
 # resolves to the fake, independent of module import order.
 #
-# The classifier singletons are GONE (TASK-799 C.2): every model is resolved per
+# The classifier singletons are GONE: every model is resolved per
 # request from a caller-supplied selection through the model cache, so there is
 # no process-wide instance left to preset. Only the two weightless singletons
 # remain.
@@ -74,7 +74,7 @@ def client(mock_services, monkeypatch):
 
     These suites call protected routes WITHOUT an `X-Service-Token` header — they are about
     handler behaviour, not auth. `Settings.accepted_service_tokens` admits the ONE shared
-    `internal_access_token` (the legacy per-service token was removed in TASK-799 lane D), read from the
+    `internal_access_token` (the legacy per-service token was removed in lane D), read from the
     environment, so any token present in the loaded `.env.test` turned every such call into a
     401 before the handler ran. Clearing BOTH restores the documented "empty everywhere = auth
     disabled" dev path. `test_auth_middleware.py` re-pins them per-test, so its cases are

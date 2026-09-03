@@ -5,13 +5,13 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { ConsentGrantMethod, ConsentPurpose } from '../../../enums';
 
-// HAND-AUTHORED — TASK-712 (consent-abac). `gen:entity` reconciles this file
+// HAND-AUTHORED — (consent-abac). `gen:entity` reconciles this file
 // against the committed source of truth and checks schema coverage; it does
 // NOT scaffold it (see .claude/rules/03-domain-layer.md §Generated Code
 // Discipline). Follows AiProviderConnectionEntity verbatim.
 //
 // One row per (tenant, externalPatientId, purpose) — see consent.prisma and
-// docs/implementation/TASK-712-Consent-Abac/consent-design.md. This entity
+// This entity
 // carries only structural invariants; the ABAC evaluation itself
 // (`assertConsent`/`checkConsent`) lives in
 // packages/applications/src/services/consent/.
@@ -134,14 +134,14 @@ export class ConsentGrantEntity extends BaseTenantEntity {
   }
 
   /**
-   * Minimal structural containment check — see consent-design.md §3 for the
+   * Minimal structural containment check — see consent- for the
    * exact semantics this implements (and does not implement). Every key
    * present in `requested` must be present in this grant's `scope`; a
    * `dateRangeDays` key additionally requires the grant's value to be >= the
    * requested value (a wider window covers a narrower request). Any other
    * key compares by strict equality. A grant with no `scope` at all covers
    * only an empty (or absent) request.
-   */
+ */
   coversScope(requested?: Record<string, unknown> | null): boolean {
     if (requested == null || Object.keys(requested).length === 0) return true;
     const granted = this._scope ?? {};

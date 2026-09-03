@@ -11,7 +11,7 @@ import { TenantNlpTaskInstructionsDtoMapper } from './tenant-nlp-task-instructio
 import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsRequest } from './dto';
 
 /**
- * Tenant-writable topic/intent instruction content service (TASK-729).
+ * Tenant-writable topic/intent instruction content service.
  *
  * Deliberately separate from `AiTaskDefaultService`: this table carries
  * tenant-authored CONTENT for `nlp.topic`/`nlp.intent` only, never a

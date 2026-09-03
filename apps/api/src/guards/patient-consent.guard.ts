@@ -1,6 +1,6 @@
 /**
  * `PatientConsentGuard` — the HTTP front door of the consent-abac choke
- * point (TASK-712). Registered as a global `APP_GUARD` in `app.module.ts`,
+ * point. Registered as a global `APP_GUARD` in `app.module.ts`,
  * strictly AFTER `UnifiedAuthGuard` (needs the resolved CLS tenant/user) and
  * BEFORE `RequiresIfMatchGuard` (a consent denial should never let a
  * revoke-with-If-Match request get as far as the OCC check).
@@ -19,7 +19,7 @@
  * posture as `RequiresIfMatchGuard` for its own metadata) — the boot audit,
  * not this guard, is what refuses to start over a missing decorator.
  *
- * Pitfall 3 (ticket README §3.3): NEVER read `request.ability` here. The
+ * Pitfall 3: NEVER read `request.ability` here. The
  * API-key auth path builds no CASL ability at all (F-08); a guard that
  * consulted it would be a silent no-op on every API-key call, which is
  * exactly the failure class this ticket exists to remove. Tenant and user
@@ -100,7 +100,7 @@ export class PatientConsentGuard implements CanActivate {
   }
 
   /**
-   * Resolution order (ticket README Task 9): explicit
+   * Resolution order ( Task 9): explicit
    * `opts.patientIdParam` -> the `:patientId` route param -> the loaded
    * consultation's `patientId` (via `:id`). Never guesses silently — a
    * route with none of these throws, which is a decorator-wiring bug the

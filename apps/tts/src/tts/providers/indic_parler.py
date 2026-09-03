@@ -47,7 +47,7 @@ def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, boo
 
     Synchronous and unaware of ``s3://`` on purpose: any ``s3://`` value in
     ``model_path`` has already been materialised into a real local directory by
-    ``_resolve_s3_overrides`` (TASK-855 L6) before ``config`` reaches here, so
+    _resolve_s3_overrides before config reaches here, so
     from this function's point of view it is indistinguishable from an
     already-staged local mirror.
     """
@@ -141,7 +141,7 @@ class IndicParlerProvider:
     def _describe(self, speaker: str) -> str:
         """The description prompt Parler conditions on, for one speaker.
 
-        Takes the SPEAKER, not the locale (TASK-799 lane C). It used to pick
+        Takes the SPEAKER, not the locale ( lane C). It used to pick
         between its own `speaker_ml` / `speaker_en` settings fields — which meant
         this provider ignored `req.provider_voice` entirely and silently
         discarded the catalog binding the router had already resolved for it.

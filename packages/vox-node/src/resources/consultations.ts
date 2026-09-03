@@ -1,7 +1,7 @@
 /**
  * Minimal consultation read (id validation for the P0.5 summarization flow
  * NOT consultation CRUD; out of day-1 scope) plus the
- * `.summaries` sub-resource and the context-item WRITE (`addContext`, TASK-800).
+ * `.summaries` sub-resource and the context-item WRITE (`addContext`).
  *
  * Backed by `apps/api/src/modules/consultation/consultation.controller.ts`.
  */
@@ -45,7 +45,6 @@ export class ConsultationsResource {
   readonly summaries: ConsultationSummariesResource;
   /**
    * Consultation-bound WORKFLOW invocation — `hope.consultations.workflows.*`
-   * (TASK-850).
    *
    * The clinical plane: a run started here may read and write THIS
    * consultation, and nothing else. The id travels in the URL and is

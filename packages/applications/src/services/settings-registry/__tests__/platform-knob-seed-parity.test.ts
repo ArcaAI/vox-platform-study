@@ -46,7 +46,7 @@ describe('platform-knob seed ↔ registry parity', () => {
   });
 
   it('seeds onto the SYSTEM tenant — the sole platform-configuration tier — never GLOBAL or a customer tenant', () => {
-    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // Owner ruling 2026-08-20: the runtime cascade is request
     // tenant → SYSTEM, full stop. GLOBAL/`SEED_TENANT_ID` (`50000000-…`) is a
     // CUSTOMER tenant and must never be the platform-knob write target.
     const source = readFileSync(SEED_FILE, 'utf8');

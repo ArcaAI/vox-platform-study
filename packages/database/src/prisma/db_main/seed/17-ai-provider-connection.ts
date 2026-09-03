@@ -10,7 +10,7 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  * the platform-default catalog entry recording WHERE a provider lives and (once
  * an admin sets one) HOW to authenticate to it.
  *
- * SEED-AUTHORITATIVE Day-1 posture (OD-1). The SYSTEM rows — not env
+ * SEED-AUTHORITATIVE Day-1 posture. The SYSTEM rows — not env
  * are the authoritative default source. Two classes of row:
  *
  *   - BUILT-IN-LOCAL llm engines (`ollama`, `lm-studio`, `built-in`, `vllm`,
@@ -24,11 +24,11 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  *     provider needs a tenant-supplied key, so an enabled-but-keyless cloud row
  *     must never serve. A tenant enables one by bringing its own credential.
  *
- * KEY MATERIAL — narrowed by TASK-799 Round 4 lane B. No VENDOR credential is
+ * KEY MATERIAL — narrowed by Round 4 lane B. No VENDOR credential is
  * ever seeded, and no ciphertext is ever committed to source. But a self-hosted
  * engine row now seeds the non-secret placeholder `not-needed`
  * (`SELF_HOST_PLACEHOLDER_API_KEY`), encrypted at seed time through the same
- * Vault-Transit key the runtime writes with. See §"Why a keyless row is not
+ * Vault-Transit key the runtime writes with. See "Why a keyless row is not
  * enough" below — without it the row is resolvable but never DELIVERED, and
  * `apps/text` answers 503 for every self-hosted engine.
  *
@@ -43,7 +43,7 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  */
 
 /**
- * ## Why a keyless row is not enough (TASK-799 Round 4, lane B)
+ * ## Why a keyless row is not enough ( Round 4, lane B)
  *
  * There are TWO ways a connection row reaches a consumer, and they have
  * different requirements. Seeding a row for the wrong one produces a seed that
@@ -69,7 +69,7 @@ import { encryptSeedSecret, isSeedSecretEncryptionAvailable } from './phi-encryp
  * unreachable), it runs inside a Temporal activity (so there is no gateway
  * request to inject into), and `EffectiveConfigResponse` carries no
  * `connections` block. That assessment is recorded at
- * `apps/harness/src/harness/core/config.py` §"Why the endpoints below are still
+ * `apps/harness/src/harness/core/config.py` "Why the endpoints below are still
  * env, and stay env", which keeps them env-tier transport addresses. Seeding
  * them here would be the exact silent no-op this section exists to prevent.
  * `embeddings:tei-embed` is the same story on the other side: `apps/text`'s TEI
@@ -89,7 +89,7 @@ export const SELF_HOST_PLACEHOLDER_API_KEY = 'not-needed';
 /**
  * Connections to endpoints the PLATFORM runs itself, as `service:provider` pairs.
  *
- * TASK-799 lane B.2 widened this concept out of the old
+ * lane B.2 widened this concept out of the old
  * `service === 'llm' && provider in [...]` form, which conflated "built-in local
  * LLM engine" with "platform-run self-host integration" and so would have
  * misclassified the first `rerank:tei` / `vector:qdrant` row as a cloud row.
@@ -122,7 +122,7 @@ export const isPlatformSelfHostConnection = (c: { service: string; provider: str
   (PLATFORM_SELF_HOST_CONNECTIONS as readonly string[]).includes(`${c.service}:${c.provider}`);
 
 /**
- * TASK-799 lane F — the ONE write this create-only phase makes to an existing row.
+ * lane F — the ONE write this create-only phase makes to an existing row.
  *
  * True only when the seed carries the non-secret self-host placeholder AND the
  * stored row has no key material whatsoever. Rows created before the placeholder
@@ -162,7 +162,7 @@ export const needsSelfHostKeyBackfill = (
  * embeddings credential has somewhere to live other than an environment
  * variable.
  *
- * `model-registry` (TASK-799) is the seventh and serves none of those: it is
+ * `model-registry` is the seventh and serves none of those: it is
  * the plane that authenticates the fetch of MODEL WEIGHTS, and it is where the
  * last two env-resident credentials moved — `HUGGINGFACE_TOKEN` and the
  * `STT_MODEL_S3_*` pair.
@@ -215,7 +215,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // Local/self-host Ollama engine.
     //
     // The provider is selectable but the platform seeds NO Ollama model
-    // (owner decision 2026-08-17, TASK-736): this row is the endpoint a
+    // (owner decision 2026-08-17): this row is the endpoint a
     // tenant inherits or overrides, not a model choice. The tenant supplies
     // the model.
     id: '87000000-0000-0000-0000-000000000001',
@@ -234,7 +234,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   },
   {
     // LM Studio — the platform's default local OpenAI-compatible engine, and
-    // since TASK-824 a CONTAINERISED service rather than a developer's desktop
+    // since a CONTAINERISED service rather than a developer's desktop
     // app. The address is therefore the k3s Service name, matching every other
     // platform-run self-host engine below (`hope-vllm`, `hope-llama-cpp`) —
     // `http://localhost:1234/v1` described one workstation and could never be
@@ -242,7 +242,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     //
     // LM Studio has NO headless authentication of any kind: its `/v1` surface
     // accepts any bearer token, including none. `apiKeyPlaintext` is therefore
-    // the non-secret `not-needed` PLACEHOLDER (see §"Why a keyless row is not
+    // the non-secret `not-needed` PLACEHOLDER (see "Why a keyless row is not
     // enough"), never a credential — the engine's protection is network
     // reachability, not authentication.
     //
@@ -503,7 +503,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
 
-  // ── model-registry: the weight-fetch plane (TASK-799) ─────────────────────
+  // ── model-registry: the weight-fetch plane ─────────────────────
   //
   // Both rows are seeded BLANK and DISABLED, and that is the whole point. They
   // are the platform's placeholders, in exactly the shape the Azure/Bedrock
@@ -569,7 +569,7 @@ const _llmProviderCoverage: Record<(typeof AI_MODEL_PROVIDERS)[number], true> = 
 void _llmProviderCoverage;
 
 export const seedAiProviderConnection = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
-  console.log('Seeding SYSTEM AiProviderConnection rows (TASK-524)...');
+  console.log('Seeding SYSTEM AiProviderConnection rows ...');
 
   // A row that declares key material and cannot get it seeds keyless — and a
   // keyless row is DROPPED by the override fold, so `apps/text` will answer 503

@@ -1,9 +1,9 @@
 /**
- * TASK-773 — proves the evidence fixture (`../task-773-admin-scope-map.ts`)
+ * proves the evidence fixture (`../task-773-admin-scope-map.ts`)
  * is internally consistent and still matches the real controllers on disk.
  *
  * This does NOT assert that any controller actually carries
- * `@RequiredSvcScopes` yet — that decorator is TASK-773's implementation
+ * `@RequiredSvcScopes` yet — that decorator is implementation
  * step, not this fixture's job. This test only proves the MAP itself is
  * trustworthy: every `adminScope` is a real, still-registered `admin:*`
  * scope; every `(file, controllerClass)` row points at a real class; there
@@ -24,15 +24,15 @@ const cwd = process.cwd();
 const repoRoot = cwd.endsWith(join('apps', 'api')) ? join(cwd, '..', '..') : cwd;
 
 /**
- * Determined in TASK-773 by cross-checking 276f96a32 against the live tree — see the fixture's
+ * Determined in by cross-checking 276f96a32 against the live tree — see the fixture's
  * header comment.
  *
- * 64 -> 65: TASK-810 adds `DocumentTemplateAdminController`
+ * 64 -> 65: adds `DocumentTemplateAdminController`
  * (`admin:document-template:manage`), the clinical-document SHAPE catalog. This count is a
  * DELIBERATE-CHANGE guard, not a ceiling — a new admin controller is expected to move it, in
  * the same commit that adds the controller.
  */
-// 65 -> 63: TASK-815 deleted `DepartmentAgentController` and
+// 65 -> 63: deleted `DepartmentAgentController` and
 // `DepartmentAgentResyncController`, whose rows both carried
 // `admin:department-agent:manage` — a scope that went with them.
 const EXPECTED_ROW_COUNT = 63;

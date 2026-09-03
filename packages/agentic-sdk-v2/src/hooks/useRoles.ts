@@ -207,7 +207,7 @@ export function useRoles(): UseRolesReturn {
     (userId: string) => {
       if (!getUserRolesWarnedRef.current) {
         getUserRolesWarnedRef.current = true;
-        console.warn('[useRoles] `getUserRoles` is deprecated; use `listUserRoleAssignments`. (TASK-279)');
+        console.warn('[useRoles] `getUserRoles` is deprecated; use `listUserRoleAssignments`. ');
       }
       return listUserRoleAssignments(userId);
     },
@@ -218,7 +218,7 @@ export function useRoles(): UseRolesReturn {
     (userId: string, roleId: string, tenantId?: string) => {
       if (!assignRoleWarnedRef.current) {
         assignRoleWarnedRef.current = true;
-        console.warn('[useRoles] `assignRole` is deprecated; use `assignRoleToUser`. (TASK-279)');
+        console.warn('[useRoles] `assignRole` is deprecated; use `assignRoleToUser`. ');
       }
       return assignRoleToUser(userId, roleId, tenantId);
     },
@@ -231,7 +231,7 @@ export function useRoles(): UseRolesReturn {
         removeRoleWarnedRef.current = true;
         console.warn(
           '[useRoles] `removeRole` is deprecated; use `removeUserRoleAssignment`. ' +
-            'Note: the second argument is `assignmentId`, not `roleId`. (TASK-279)',
+            'Note: the second argument is `assignmentId`, not `roleId`. ',
         );
       }
       return removeUserRoleAssignment(userId, assignmentId);

@@ -86,7 +86,7 @@ model Role {
   // `UserRoleAssignmentService.assertAssignableRoleTier`'s `SUPER_ADMIN` check.
   //
   // The cost is real and is recorded as an open follow-up in
-  // docs/implementation/TASK-766-Day-One-Seed-Completeness §OD-1: one tenant
+  // one tenant
   // taking the name "REVIEWER" refuses it to every other tenant. Relaxing this
   // to `@@unique([tenantId, name], map: "Role_tenantId_name_unique")` is the
   // fix, and it needs a service-layer guard that refuses a tenant-created name
@@ -129,9 +129,9 @@ model Policy {
   //   "action": "read" | "create" | "update" | "delete" | "manage" | "list" | "archive" | "export",
   //   "subject": "User" | "Consultation" | "Media" | "all" | etc.,
   //   "conditions": { "tenantId": "${context.tenantId}", "createdBy": "${user.id}" },
-  //   "fields": ["id", "name", "email"],  // Optional: restrict to specific fields
-  //   "inverted": false,                   // Optional: true = "cannot" rule
-  //   "reason": "You can only access your own data"  // Optional: shown on denial
+  //   "fields": ["id", "name", "email"], // Optional: restrict to specific fields
+  //   "inverted": false, // Optional: true = "cannot" rule
+  //   "reason": "You can only access your own data" // Optional: shown on denial
   // }
   //
   // Template variables:

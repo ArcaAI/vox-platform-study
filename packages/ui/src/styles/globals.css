@@ -10,8 +10,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ============================================================================
- * HOPE Design System — Sarvam "Tatva" achromatic identity (TASK-787, OD-1).
+/*
+ ============================================================================
+ * HOPE Design System — Sarvam "Tatva" achromatic identity (OD-1).
  * Single token source for @arcaai/ui. CSS variable NAMES are kept stable so
  * existing consumers do not churn; the VALUES are re-derived from Tatva's
  * primitives. "Calm Clinical Teal" is retired — the --teal-* ramp is deleted
@@ -21,7 +22,8 @@
  * in light and near-white in dark; hue is reserved for STATE (destructive /
  * success / warning / info) and for DATA (charts). The rainbow --color-1..5
  * tokens (magicui) and the fixed --code-editor-* surface are preserved verbatim.
- * ==========================================================================*/
+ * ==========================================================================
+*/
 :root {
   /* --- calc() base architecture (Tatva BP-04) -----------------------------
      Three authored bases that every derived step multiplies. They MUST live
@@ -45,8 +47,8 @@
      Two steps ARE authored with no Tatva source, each for exactly one job the
      published ramp cannot do (J-13 numbers them by luminance, so the ramp
      reads monotonically 400 -> 500 -> 520 -> 560 -> 600):
-       --neutral-520  the form-field boundary (--input), >=3:1 on white
-       --neutral-560  tertiary text (--muted-foreground-subtle), >=4.5:1 on
+       --neutral-520 the form-field boundary (--input), >=3:1 on white
+       --neutral-560 tertiary text (--muted-foreground-subtle), >=4.5:1 on
                       EVERY light surface — see the EX-04 correction below */
   --neutral-0: #ffffff;
   --neutral-50: #fafafa;
@@ -152,7 +154,8 @@
      --hope-radius-base (it has to be, to generate `rounded-*` utilities).
      `--radius: 0.625rem` is DELETED — there is no single seed value any more. */
 
-  /* --- Elevation (TASK-765 roles, TASK-787 values) ------------------------
+  /*
+ Elevation ( roles, values)
      The three declared roles keep their NAMES and their `@theme inline` wiring
      so no call site churns, and both are re-valued to `none`: the system goes
      flat (J-12). Depth is expressed as border + surface in light, and as tonal
@@ -166,7 +169,8 @@
      from what they cover. --elevation-raised stays `none` — cards and panels
      remain flat, so J-12 is honoured for everything that sits IN the page.
      Tatva never measured a menu; this is the gap its investigation declared,
-     not a departure from it. */
+     not a departure from it. 
+*/
   --elevation-raised: none;
   --elevation-overlay:
     0 4px 12px -2px rgb(20 20 20 / 0.10),
@@ -187,13 +191,15 @@
   --focus-ring-offset: 2px;
   --scale-pressed: 0.97;
 
-  /* --- Motion (TASK-765 tokens, TASK-787 values) --------------------------
+  /*
+ Motion ( tokens, values)
      Six durations. These are the ONLY sanctioned transition timings; a literal
      `duration-300` at a call site is drift. The reduced-motion block at the end
      of this file rewrites every one of them to 0s at the root, which
      neutralises every consumer at once — including components written after
-     this comment. Only `normal` moves under TASK-787 (200ms -> 160ms, J-10);
-     the other five already matched Tatva exactly. */
+     this comment. Only `normal` moves under (200ms -> 160ms, J-10);
+     the other five already matched Tatva exactly. 
+*/
   --motion-duration-instant: 80ms;
   --motion-duration-fast: 120ms;
   --motion-duration-normal: 160ms;
@@ -201,15 +207,17 @@
   --motion-duration-reveal: 320ms;
   --motion-duration-slower: 400ms;
 
-  /* --- Sidebar ------------------------------------------------------------
+  /*
+ --- Sidebar ------------------------------------------------------------
      The sidebar sits on the raised surface, not the canvas: #ffffff in light,
      #1e1e1e in dark. --sidebar-accent is the active-item FILL and is
      deliberately below 3:1 against --sidebar (1.14:1 light / 1.34:1 dark).
      That is J-11, not an oversight: an achromatic palette cannot reach a 3:1
      fill on a white sidebar, so the fill is never the sole signal. The second
      and third signals — font-weight 500 plus a 2px --foreground left rule —
-     are implemented in TASK-788 AC-5. Do not "fix" this by darkening the fill
-     in isolation; that changes the surface without adding a signal. */
+     are implemented in. Do not "fix" this by darkening the fill
+     in isolation; that changes the surface without adding a signal. 
+*/
   --sidebar: var(--neutral-0);
   --sidebar-foreground: var(--neutral-900);
   --sidebar-primary: var(--neutral-900);
@@ -411,7 +419,7 @@
   --radius-2xl: calc(var(--hope-radius-base) * 9);
   --radius-3xl: calc(var(--hope-radius-base) * 12);
   --radius-full: calc(var(--hope-radius-base) * 999);
-  /* Role aliases from the Geometry Contract. They repeat the calc rather than
+  /* Role aliases from the Geometry Contract. They repeat the calc() rather than
      saying var(--radius-md): `@theme inline` does not emit its own keys as
      custom properties, so a var() pointing at a sibling theme key resolves to
      nothing at paint time. --hope-radius-base is a real :root property. */
@@ -690,8 +698,10 @@
     }
   }
 
-  /* ==== Motion, elevation and type, as TOKENS rather than call-site literals
-     (roles from TASK-765, values from TASK-787). ========================== */
+  /*
+ ==== Motion, elevation and type, as TOKENS rather than call-site literals
+     (roles from, values from ). ==========================
+*/
 
   /* Motion easings. `emphasized` and `spring` are HOPE additions; `ease-out`
      and `ease-in-out` OVERRIDE Tailwind's stock curves, and `ease-in` is left
@@ -753,14 +763,17 @@
   --spacing: calc(var(--hope-spacing-base) * 2);
 }
 
-/* ============================================================================
- * TASK-765 · Stacking order
+/*
+ ============================================================================
+ * · Stacking order
  * A named scale, so "what sits above what" is a decision recorded once rather
  * than re-litigated with an arbitrary `z-[55]` the first time two layers meet.
  * Radix portals (dialog, sheet, popover, tooltip) render at `overlay`.
- * ==========================================================================*/
-/* ============================================================================
- * TASK-765 · Named transition durations
+ * ==========================================================================
+*/
+/*
+ ============================================================================
+ * · Named transition durations
  * `duration-fast` etc. rather than `duration-120`, so the reduced-motion block
  * below can zero all of them from one place. Tailwind's numeric
  * `duration-<n>` utilities still exist; using one is drift.
@@ -772,7 +785,8 @@
  * NUMERIC duration utilities set but a bare `transition-duration` rule does
  * not. Without it, putting a named duration on an animated element silently
  * collapses it to the library's 0.15s fallback.
- * ==========================================================================*/
+ * ==========================================================================
+*/
 @utility duration-instant {
   transition-duration: var(--motion-duration-instant);
   --tw-duration: var(--motion-duration-instant);
@@ -805,14 +819,16 @@
 @utility z-overlay { z-index: 50; }
 @utility z-toast { z-index: 60; }
 
-/* ============================================================================
- * TASK-765 · Reduced motion, at the token layer
+/*
+ ============================================================================
+ * · Reduced motion, at the token layer
  * Rewriting the duration TOKENS to 0s neutralises every consumer at once —
  * including components written after this block — instead of relying on each
  * author remembering a `motion-safe:` prefix. Animations that carry meaning
  * rather than decoration (a spinner showing work is in flight) are slowed and
  * kept, not removed: an indicator that stops reads as "hung".
- * ==========================================================================*/
+ * ==========================================================================
+*/
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-duration-instant: 0s;

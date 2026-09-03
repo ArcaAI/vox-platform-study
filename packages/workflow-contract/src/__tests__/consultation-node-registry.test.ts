@@ -1,8 +1,8 @@
 /**
- * Registry-level assertions for the consultation palette (TASK-731 Phase C, extended when the
+ * Registry-level assertions for the consultation palette (extended when the
  * palette's remaining ten node types were wired). Mirrors the properties `node-types.md`'s
  * "Registry-level assertions" section names, now over the FULL thirteen-node table rather than
- * the three TASK-731 shipped.
+ * the three shipped.
  *
  * The last test in this file is the one that would have caught the gap in the first place: a
  * rule may only name a node type the registry actually serves.
@@ -26,8 +26,8 @@ const CONSULTATION_KEYS = [
   'consultation.persistDraft',
   'consultation.finalizeAssurance',
   'consultation.hitlGate',
-  // R3's three missing capabilities (TASK-791 W1-W3) — added to the palette after the
-  // node-types.md table was written. TASK-789 verified none of them existed anywhere, which is
+  // R3's three missing capabilities (-W3) — added to the palette after the
+  // node-types.md table was written. verified none of them existed anywhere, which is
   // why the owner's R3 pipeline (… -> realtime short summaries -> autofill SOAP -> intelligent
   // suggestions -> spelling/medical-term/drug-name correction) could not be expressed at all.
   'consultation.realtimeSummary',
@@ -50,7 +50,7 @@ const EXTERNAL_WRITE_KEYS = new Set<string>([
 ]);
 
 describe('consultation palette node registry', () => {
-  it('carries all thirteen node types of the node-types.md table, plus TASK-791\'s three R3 capabilities', () => {
+  it('carries all thirteen node types of the node-types.md table, plus \'s three R3 capabilities', () => {
     for (const key of CONSULTATION_KEYS) {
       expect(WORKFLOW_NODE_REGISTRY[key], `${key} is missing from the registry`).toBeDefined();
     }
@@ -92,17 +92,17 @@ describe('consultation palette node registry', () => {
     expect(gateClassed).toEqual(['consultation.hitlGate']);
   });
 
-  it('every entry is ungated (entitlementKey: null) — R-6, deferred to TASK-722', () => {
+  it('every entry is ungated (entitlementKey: null) — R-6, deferred to ', () => {
     for (const key of CONSULTATION_KEYS) {
       expect(WORKFLOW_NODE_REGISTRY[key].entitlementKey).toBeNull();
     }
   });
 
-  it('no consultation.vision* key exists (README §1.3 — permanently deferred)', () => {
+  it('no consultation.vision* key exists ( — permanently deferred)', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).some((k) => k.startsWith('consultation.vision'))).toBe(false);
   });
 
-  it('no consultation.priming key exists (README §2.3/R-4 — deferred, no compile target)', () => {
+  it('no consultation.priming key exists ( — deferred, no compile target)', () => {
     expect(WORKFLOW_NODE_REGISTRY['consultation.priming']).toBeUndefined();
   });
 
@@ -122,7 +122,7 @@ describe('consultation palette node registry', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  // The regression guard. TASK-731 shipped sixteen rules naming nine node types against a
+  // The regression guard. shipped sixteen rules naming nine node types against a
   // registry that served three of them, so no consultation graph could be authored at all — the
   // Studio's palette rail correctly offered three nodes for a rule set demanding nine. A rule may
   // only ever name a node type the registry serves.

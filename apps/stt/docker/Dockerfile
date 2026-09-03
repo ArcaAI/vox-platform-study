@@ -4,14 +4,14 @@
 #
 # Built from the REPO ROOT context so the CPU stages can consume the single uv
 # workspace lock (/uv.lock):
-#   docker build -f apps/stt/docker/Dockerfile --target runtime    -t stt:api .
-#   docker build -f apps/stt/docker/Dockerfile --target ml-runtime -t stt:ml .
-#   docker build -f apps/stt/docker/Dockerfile --target worker     -t stt:worker .
+#   docker build -f apps/stt/docker/Dockerfile --target runtime -t stt:api.
+#   docker build -f apps/stt/docker/Dockerfile --target ml-runtime -t stt:ml.
+#   docker build -f apps/stt/docker/Dockerfile --target worker -t stt:worker.
 #
 # Build targets:
-#   - runtime:    Lightweight API server (no ML dependencies, CPU only)  → workspace lock
-#   - ml-runtime: Full ML inference stack (CUDA GPU with CPU fallback)    → GPU override install
-#   - worker:     Dramatiq worker extending ml-runtime
+#   - runtime: Lightweight API server (no ML dependencies, CPU only) → workspace lock
+#   - ml-runtime: Full ML inference stack (CUDA GPU with CPU fallback) → GPU override install
+#   - worker: Dramatiq worker extending ml-runtime
 #
 # Requires hope-python-base first (for CPU stages):
 #   docker build -t hope-python-base infrastructure/docker/python-base/
@@ -216,13 +216,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # setup.py accepts CMAKE_ARGS as explicit CMake definitions; pass the complete set
 # below through that channel so the static-link options are not implicit.
 #
-#   GGML_CUDA=1              enable ggml's CUDA backend.
+#   GGML_CUDA=1 enable ggml's CUDA backend.
 #   CMAKE_CUDA_ARCHITECTURES pinned deliberately: ggml defaults to `native`, which
 #                            probes the BUILDER's GPU — on a GPU-less CI runner that
 #                            yields a wrong-arch or CPU-only build, failing silently
 #                            exactly like the wheel did. 89 = Ada Lovelace
 #                            (RTX A2000 Ada / L4 / 4090). Update with the deploy GPU.
-#   BUILD_SHARED_LIBS=OFF    REQUIRED, not an optimization. Upstream's CMakeLists is
+#   BUILD_SHARED_LIBS=OFF REQUIRED, not an optimization. Upstream's CMakeLists is
 #                            `add_subdirectory(whisper.cpp)` + link `whisper`, with no
 #                            install rule and no RPATH, so a shared whisper.cpp build
 #                            leaves `_pywhispercpp.so` linked against a libwhisper.so.1
@@ -235,7 +235,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 #                            entirely and keeps everything inside /opt/venv, which is
 #                            all the ml-runtime stage copies. CUDA itself stays
 #                            dynamic (libcudart/libcublas from the -runtime base).
-#   CMAKE_POSITION_INDEPENDENT_CODE  static archives must be -fPIC to link into a
+#   CMAKE_POSITION_INDEPENDENT_CODE static archives must be -fPIC to link into a
 #                            shared Python extension; not guaranteed by default and
 #                            the failure is a link-time relocation error.
 #
@@ -354,7 +354,6 @@ COPY --chown=hope:hope apps/stt/src ./src
 # ── Bake build identity, LAST layer ─────────────────────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 # NOTE: this stage is shared by BOTH build-stt (SERVICE_NAME=stt-ml-runtime,
 # --target ml-runtime) and build-stt-worker (SERVICE_NAME=stt-worker,
 # --target worker, which FROMs this stage). Each is a separate CI build
@@ -384,7 +383,7 @@ RUN set -eu; \
 USER hope
 
 # HF_HOME below is the STANDALONE default and is DELIBERATELY OVERRIDDEN in the
-# cluster (TASK-817 F-3). `/models` is created and chowned to `hope` above, so a
+# cluster. `/models` is created and chowned to `hope` above, so a
 # plain `docker run` of this image has a writable cache. But the deployed
 # Deployment (arca/hope-v2-deployment, deployment/k8s/base/stt.yaml) sets
 # HOME=/home/hope, HF_HOME=/home/hope/.cache/huggingface and

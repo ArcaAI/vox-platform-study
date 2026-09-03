@@ -1,11 +1,11 @@
 """N-6 ``consultation.retrieveEvidence``, N-7 ``consultation.assemblePrompt`` and
 N-8 ``consultation.synthesize``.
 
-Compile targets per ``contracts/palette-contract.md`` §1 rows 7a/7b/7c: ``retrieve_context``
+Compile targets per contracts/palette-contract.md rows 7a/7b/7c: retrieve_context
 (institutional knowledge-base RAG — explicitly NOT prior-history priming, which stays deferred,
-§4c), ``assemble_prompt``, and the text generation path.
+assemble_prompt, and the text generation path.
 
-**N-6 is knowledge-base retrieval, not patient history.** §4c is emphatic that binding a node
+**N-6 is knowledge-base retrieval, not patient history.** is emphatic that binding a node
 type to an activity that performs a *different* data-access pattern "would misrepresent what
 runs". ``retrieve_context`` retrieves tenant-scoped APPROVED institutional chunks; it does not
 load prior notes under minimum-necessary scope, and this node does not claim to.
@@ -69,7 +69,7 @@ async def interpreter_consultation_retrieve_evidence(
         )
         return NodeActivityResult(status="DEGRADED", reason=f"evidence retrieval failed: {exc}")
 
-    # TASK-809 OD-15 — published UNDER `context`, the key this node's `context<schemaRef>` output
+    # published UNDER `context`, the key this node's `context<schemaRef>` output
     # socket declares (`node-ports.ts`). Same reasoning as `nodes/context_binding.py`: a data
     # socket names one output key, and a flat `{text, chunkIds, chunkCount}` offered none that is
     # a context object. A consumer bound to the socket still sees `text` — one level in.
@@ -105,7 +105,7 @@ async def interpreter_consultation_assemble_prompt(
     DNA style and segment citations), so this node's authored config carries only the SELECTION
     knobs — never prompt text.
 
-    ## The bound-evidence fold (TASK-806 lane A, item 18)
+    ## The bound-evidence fold (lane A, item 18)
 
     This activity used to read NO ``bound_inputs`` at all, while ``node-types.md`` documented the
     node as consuming evidence and ``node-ports.ts`` declared an ``in`` socket for it. That was not
@@ -188,7 +188,7 @@ async def interpreter_consultation_synthesize(payload: NodeActivityInput) -> Nod
 
     Delegates verbatim to ``interpreter_text_generate`` (N-3 of the summarization palette) rather
     than carrying a second copy of the same flow. That activity already implements exactly what
-    §1 row 7b asks for — ``config.taskKey`` → ``get_policy`` → tenant→SYSTEM ``AiTaskDefault``
+    row 7b asks for — config.taskKey → get_policy → tenant→SYSTEM AiTaskDefault
     provider/model selection → fail-closed PHI egress screen → direct ``TextClient`` call — and
     it is generic over ``bound_inputs``, so it composes with this palette's upstream nodes
     unchanged. Passing ``payload`` straight through keeps the trajectory step, the node id and

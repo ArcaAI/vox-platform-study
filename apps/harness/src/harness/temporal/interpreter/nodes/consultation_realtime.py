@@ -1,8 +1,8 @@
-"""The three R3 capabilities that had no node, activity or sensor anywhere (TASK-791 W1-W3).
+"""The three R3 capabilities that had no node, activity or sensor anywhere (-W3).
 
 R3 asks ONE workflow to coordinate: record -> transcribe -> realtime entity extraction ->
 **realtime short summaries** -> autofill SOAP -> **intelligent suggestions** ->
-**spelling / medical-term / drug-name correction**. TASK-789 verified the last three did not
+**spelling / medical-term / drug-name correction**. verified the last three did not
 exist: the nearest neighbours only VERIFY (``consultation.bindTerminology`` validates codes
 read-only; ``sensors/computational/numeric_dose.py`` flags a dose mismatch and never corrects
 it). These are those three nodes.
@@ -21,7 +21,7 @@ already-shipped ``generate`` activity uses; NER goes to ``apps/nlp`` through the
 ``extract_entities`` activity. Provider/model SELECTION resolves tenant -> SYSTEM through
 ``get_policy(task_key=...)`` — the ``AiTaskDefault`` overlay ``nodes/text_generate.py``
 established — and **fails CLOSED**: an unresolved selection DEGRADES the node rather than
-substituting an env default (``00-project-context.md`` §Configuration Principles).
+substituting an env default (00-project-context.md Principles).
 
 ## W1's incremental path, and the constraint it respects
 
@@ -37,7 +37,7 @@ streaming out of a single activity.
 plane is "a live UI feed, not a PHI transport" — ids, keys and labels only. So each event
 carries an ordinal, a total and a character count; the summary text itself travels as node
 OUTPUT, to downstream nodes and the run result. Rendering it live needs a read-back surface the
-console owns — recorded as a requested contract in the TASK-791 README rather than invented here.
+console owns — recorded as a requested contract in the README rather than invented here.
 
 ## W3 is a PROPOSAL surface. This is a patient-safety property, not a preference.
 
@@ -52,7 +52,7 @@ defect. ``interpreter_consultation_propose_corrections`` therefore:
   it in a one-click UI would splice the replacement over the wrong characters.
 
 The accept/reject decision belongs to the clinician, and the surface that offers it belongs to
-the console (TASK-793).
+the console.
 """
 
 from __future__ import annotations
@@ -157,7 +157,7 @@ async def _resolve_selection(
     service's own fail-closed 422.
     """
     try:
-        # TASK-816 (DD-10) — the node's own `llmBinding.modelSlug` outranks its `taskKey`. Read
+        #  — the node's own `llmBinding.modelSlug` outranks its `taskKey`. Read
         # off the same `payload.config`; unbound ⇒ `None` ⇒ unchanged behaviour.
         raw_policy = await _api_client(get_settings()).get_policy(
             payload.tenant_id, task_key=task_key, model_slug=read_model_slug(payload.config)
@@ -339,7 +339,7 @@ async def interpreter_consultation_realtime_summary(
         summaries.append(result.content)
         sections, running_summary = sections_for("\n\n".join(summaries))
 
-        # DELIVERY (TASK-796). The summary TEXT travels on the live-summary plane — the same
+        # DELIVERY. The summary TEXT travels on the live-summary plane — the same
         # ``consultation:live-summary:{id}`` channel the default engine flushes onto, so the
         # already-shipped SSE route, SDK hook and console panel render it with no new consumer.
         # Best-effort in exactly the sense the announcement below is: a plane that is down costs
@@ -366,7 +366,7 @@ async def interpreter_consultation_realtime_summary(
                 pass
 
         # Announce, best-effort. IDS AND COUNTS ONLY — never the summary or the transcript.
-        # UNCHANGED by TASK-796: ``EmitLoopEventInput`` stays ``extra="forbid"`` and this
+        # UNCHANGED by: EmitLoopEventInput stays extra="forbid" and this
         # detail stays ``{ordinal, total, chars}``. The loop plane is not a PHI transport.
         if identity.consultation_id:
             try:
@@ -408,11 +408,11 @@ async def interpreter_consultation_realtime_summary(
 # ---------------------------------------------------------------------------
 
 
-# TASK-827 — the system prompt used to live HERE, as a module-level Python constant, exactly as
-# W3's did before TASK-826. It is now the node's own bound ``promptTemplateId``, resolved APPROVED
+# the system prompt used to live HERE, as a module-level Python constant, exactly as
+# W3's did before. It is now the node's own bound promptTemplateId, resolved APPROVED
 # through the gateway with NO fallback.
 #
-# ``00-project-context.md`` §Configuration Principles — "an engine name, model id, endpoint,
+# 00-project-context.md Principles — "an engine name, model id, endpoint,
 # credential, threshold, PROMPT, taxonomy or label set is NOT a literal in code". This node puts
 # clinical questions and checks in front of a clinician mid-consultation, so a literal here meant
 # the platform deciding what every tenant's clinicians are prompted to ask, with no tenant able to
@@ -451,7 +451,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
             status="DEGRADED", reason="no text bound from an upstream node to suggest from"
         )
 
-    # BEFORE the policy call, deliberately — the same ordering TASK-826 established for W3.
+    # BEFORE the policy call, deliberately — the same ordering established for W3.
     # Configuration validity is not conditional on a peer service being reachable: resolving
     # after `_resolve_selection` would let an unbound node report `policy_fetch_unreachable`
     # whenever the policy plane was also down, masking a permanent configuration gap behind a
@@ -534,7 +534,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
     if isinstance(max_suggestions, int) and max_suggestions >= 0:
         suggestions = suggestions[:max_suggestions]
 
-    # TASK-796 — a suggestion the clinician can ACT on needs an identity and a resolvable
+    # a suggestion the clinician can ACT on needs an identity and a resolvable
     # state, not just prose: an id stable across activity retries (so a dismissed suggestion
     # stays dismissed), the model that proposed it, and a status only the clinician advances.
     suggestions = [
@@ -586,11 +586,11 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
 # ---------------------------------------------------------------------------
 
 
-# TASK-826 — the system prompt used to live HERE, as a module-level Python constant. It is now
+# the system prompt used to live HERE, as a module-level Python constant. It is now
 # the node's own bound ``promptTemplateId``, resolved APPROVED through the gateway, with NO
 # fallback. Two reasons, and the second is the one that makes it worth a ticket:
 #
-#  1. ``00-project-context.md`` §Configuration Principles — "an engine name, model id, endpoint,
+# 1. 00-project-context.md Principles — "an engine name, model id, endpoint,
 #     credential, threshold, PROMPT, taxonomy or label set is NOT a literal in code". A tenant
 #     could not read, change or version-pin how its own clinical text was corrected.
 #  2. The realtime caller of THIS SAME ENGINE already resolved a governed template and threw when
@@ -638,7 +638,7 @@ async def interpreter_consultation_propose_corrections(
     # BEFORE detection, deliberately. Configuration validity is not conditional on what the
     # detector happened to find: resolving after the "no entities" early return would let a node
     # with no bound instruction report SUCCEEDED with zero proposals on every quiet run, which is
-    # indistinguishable from a working one — the "runs for nobody" failure TASK-815 §14a names.
+    # indistinguishable from a working one — the "runs for nobody" failure names.
     try:
         instruction = await resolve_instruction(
             config.get("promptTemplateId"),
@@ -759,7 +759,7 @@ async def interpreter_consultation_propose_corrections(
         raw, text, provider=provider, model=model, node_id=payload.node_id
     )
 
-    # TASK-796 — deliver the PROPOSALS, and only the proposals. The envelope is explicitly
+    # deliver the PROPOSALS, and only the proposals. The envelope is explicitly
     # proposal-first on the wire as well as in the output: nothing is applied, every item is
     # ``PROPOSED``, and ``textSha256`` pins the exact bytes the spans were measured against so
     # a console cannot accept one into text that has since drifted.

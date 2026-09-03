@@ -209,7 +209,7 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     origin: 'https://*.taphuynh.dev:*',
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     label: 'taphuynh.dev — any subdomain (https, any port)',
-    description: 'Developer preview/compatibility hosts. Replaces the hardcoded compat-playground literal TASK-610 D-2 removed from the gateway source.',
+    description: 'Developer preview/compatibility hosts. Replaces the hardcoded compat-playground literal  D-2 removed from the gateway source.',
   },
   {
     origin: 'https://*.4bits.vn:*',

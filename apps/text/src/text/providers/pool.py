@@ -1,7 +1,7 @@
 """Outbound resource pools: one HTTP connection pool per upstream, and the one
 bounded thread pool the Bedrock SDK bridge is allowed to use.
 
-Two bottlenecks from the TASK-818 audit meet here, and they are the same bug
+Two bottlenecks from the audit meet here, and they are the same bug
 wearing different clothes: **a shared resource sized for nobody**.
 
 * **B-8** — every adapter either built its own transport per request or shared

@@ -29,11 +29,11 @@ const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
  * The highest-trust instruction layer: IMMUTABLE by tenants and NEVER assembled
  * from tenant/doctor/transcript content, so instructions embedded in a
  * transcript, note, attachment, or template can never rewrite the platform's
- * safety rules (chain-of-command as a security control; SOTA §1.1/§5.5).
+ * safety rules (chain-of-command as a security control; SOTA
  *
  * Deliberately a STABLE, DETERMINISTIC constant — no timestamps, ids, or
  * per-call variable content — so the inference engine's prefix KV-cache stays
- * warm across calls (SOTA §2.6). The per-encounter, tenant-authored material all
+ * warm across calls (SOTA The per-encounter, tenant-authored material all
  * lives in the USER prompt, wrapped in the spotlighting delimiters this text
  * references.
  */
@@ -50,7 +50,7 @@ const PLATFORM_SYSTEM_PROMPT = [
 
 /**
  * Wrap an injected data section in unambiguous data-boundary delimiters
- * (spotlighting; SOTA §5.1). The existing `--- HEADER ---` line is kept INSIDE
+ * (spotlighting; SOTA The existing `--- HEADER ---` line is kept INSIDE
  * the delimiters for continuity. The platform system prompt tells the model that
  * content between these markers is data, never a command (F-03).
  */
@@ -74,7 +74,7 @@ const FEW_SHOT_EXEMPLAR_LIMIT = 3;
  * delimiters — the prior note itself goes inside them. The wording is the whole
  * safety mechanism of the feature: carry-forward reproduces the copy-paste /
  * cloned-note failure mode (stale or unverified content propagating into a new
- * encounter, SOTA §4.5), so the block must read as a REFERENCE the model has to
+ * encounter, SOTA, so the block must read as a REFERENCE the model has to
  * re-confirm, never as this visit's findings. The exam/medication clause is
  * explicit because those are precisely the fields a carried note most plausibly —
  * and most dangerously — fills in without current evidence.
@@ -227,8 +227,8 @@ export interface PromptAssemblyParams {
    * Supplied by the caller because assembly cannot see the consultation. Native
    * callers now pass the LABEL of the visit type resolved from the tenant's
    * `consultation.visitTypes` catalogue (`VisitTypeService.forConsultation`),
-   * which is where the vocabulary lives since TASK-815 §11 row 3 — it used to be
-   * a `parentConsultationId ? 'revisit' : 'new-visit'` literal at each call
+   * which is where the vocabulary lives since row 3 — it used to be
+   * a `parentConsultationId ? 'revisit': 'new-visit'` literal at each call
    * site. Absent ⇒ v1's own default, `'Medical examination'`.
    */
   visitType?: string;

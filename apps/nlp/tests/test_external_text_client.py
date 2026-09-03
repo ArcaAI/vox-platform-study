@@ -1,7 +1,7 @@
-"""Unit tests for apps/nlp's peer-service client to `text` (TASK-729).
+"""Unit tests for apps/nlp's peer-service client to `text`.
 
 httpx is fully mocked — this is apps/nlp's FIRST outbound call to a peer AI
-service (every existing httpx call site targets the gateway; see §2.3 of the
+service (every existing httpx call site targets the gateway; see of the
 ticket). Covers: the `/generate` request shape, service-token + tenant-header
 propagation, label extraction from the response `content`, and the bounded
 retry → raise (never a silently-guessed label) posture on a sustained outage —
@@ -69,7 +69,7 @@ def _client(
     config: ExternalTextConfig, http_client: Any, service_token: str | None = None
 ) -> ExternalTextClient:
     # The token is resolved by the CALLER (lifespan) and passed in — the
-    # client has no config-level fallback since TASK-799 lane D removed the
+    # client has no config-level fallback since lane D removed the
     # legacy per-pair `NLP_EXTERNAL_TEXT_SERVICE_TOKEN`.
     return ExternalTextClient(settings=config, http_client=http_client, service_token=service_token)
 
@@ -121,11 +121,11 @@ async def test_tenant_id_forwarded_as_header() -> None:
 
 @pytest.mark.asyncio
 async def test_blank_tenant_raises_instead_of_omitting_the_header() -> None:
-    """TASK-737 — this test formerly asserted the exact defect it now guards against.
+    """this test formerly asserted the exact defect it now guards against.
 
     The old contract omitted `X-Tenant-Id` when the gateway injected no tenant, which
     made `apps/text` resolve the PLATFORM DEFAULT provider/credential instead of the
-    tenant's own BYOK one — and (TASK-735 derives funding/cost_basis from whichever
+    tenant's own BYOK one — and ( derives funding/cost_basis from whichever
     tier supplied that credential) mis-attribute the spend, with nothing thrown or
     logged. An absent tenant is a CALLER defect, so it must fail here, loudly, before
     the request leaves apps/nlp.

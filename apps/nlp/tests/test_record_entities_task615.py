@@ -1,6 +1,6 @@
 """TDD tests for wiring the dead ``record_entities()`` metric.
 
-current-state-review.md §2.4: ``record_entities()`` had ZERO call-sites outside
+current-state-review.md : record_entities had ZERO call-sites outside
 its own definition/docstring — the advertised entities/documents-processed
 count was computed nowhere, and the only place an entity count was observed
 was a prose log line (``classify.py:87``). This wires it at the real
@@ -91,7 +91,7 @@ class TestTokenClassifierWiresRecordEntities:
         ]
         classifier.is_initialized = True
         # Ontology linking + assertion classification are unrelated to this
-        # metric; an ABSENT clinical taxonomy disables both (TASK-799 lane G),
+        # metric; an ABSENT clinical taxonomy disables both ,
         # which is exactly what this request carries.
 
         labels_med = {"model": m.MODEL_MEDICAL_NER, "entity_type": "MEDICATION"}

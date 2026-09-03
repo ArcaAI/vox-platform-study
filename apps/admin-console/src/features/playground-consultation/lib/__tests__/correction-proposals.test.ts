@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — correction proposals are PROPOSALS. The hard product constraint:
+ * correction proposals are PROPOSALS. The hard product constraint:
  * the source text comes back byte-identical with `applied: false`, and nothing reaches
  * the note without an explicit clinician action.
  *

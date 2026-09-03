@@ -696,7 +696,7 @@ async def test_streaming_loss_latency_harness() -> None:
         round((frames[-1].send_ms - frames[0].send_ms) / 1000.0, 2) if len(frames) > 1 else 0.0
     )
     report = {
-        "harness": "TASK-455 S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
+        "harness": " S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
         "generated_at": datetime.now(UTC).isoformat(),
         "target": {
             "api_url": api_url,
@@ -733,7 +733,7 @@ async def test_streaming_loss_latency_harness() -> None:
             "loss.seq": "gaps in the gateway monotonic transcript seq = dropped captions",
         },
         "baseline_contract_for_TASK_457": (
-            "This is the BASELINE only (no thresholds asserted). TASK-457 (Redis consumer-groups "
+            "This is the BASELINE only (no thresholds asserted).  (Redis consumer-groups "
             "migration) must show NO REGRESSION vs these numbers: commit_latency_ms P50/P99 not "
             "materially higher, partial_revision.rate not higher, loss.seq.gap_count and "
             "audio_coverage_ratio not worse, on the same fixture + pipeline + frame_ms."

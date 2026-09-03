@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane B — `useWorkflowRun`, the browser SDK's workflow invocation
+ * lane B — `useWorkflowRun`, the browser SDK's workflow invocation
  * surface.
  *
  * Paths and semantics are pinned to the routes lane A shipped

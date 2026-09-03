@@ -1,10 +1,10 @@
 /**
  * The pure validation orchestrator: shape check → every applicable rule → one report. Total —
  * a malformed rule row (bad `predicateConfig`) or a throwing evaluator both resolve to a
- * synthetic `WF-INTERNAL` ERROR finding, never to `ok: true` (§3.5).
+ * synthetic `WF-INTERNAL` ERROR finding, never to `ok: true`.
  *
  * NOT wired to anything in the application layer in this session — see `rule-catalogue.ts`'s
- * module docstring for why, and the ticket README §7 for what remains for Task 8.
+ * module docstring for why, and for what remains for Task 8.
  */
 import { canonicalJson } from './canonical-json';
 import type { WorkflowGraph } from './graph-model';
@@ -17,7 +17,7 @@ import { DRAFT_CONSULTATION_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RU
 import type { DraftWorkflowRule } from './rule-catalogue';
 
 /**
- * The union of every palette's DRAFT rule set (TASK-724 Task 3, additive). `validate()`'s
+ * The union of every palette's DRAFT rule set (additive). `validate()`'s
  * per-rule loop already filters each rule by `rule.paletteKey !== null && rule.paletteKey !==
  * ctx.paletteKey` (below), so merging every palette's rules into one default list changes NOTHING
  * about which rules evaluate against any one graph — a summarization graph still only ever sees

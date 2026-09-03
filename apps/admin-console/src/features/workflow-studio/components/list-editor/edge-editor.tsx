@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * "Connect to…" (TASK-719 Task 13) — a picker of valid targets rather than a drag. The README
+ * "Connect to…" — a picker of valid targets rather than a drag. The README
  * approach text describes a "`Command`-style picker"; this implementation deliberately uses the
  * plain `Select` primitive instead of the `cmdk`-backed `Command` component — both are fully
  * keyboard-operable single-pointer controls (WCAG 2.5.7 is satisfied either way), and `Select`
  * carries far less a11y surface to get wrong under time pressure. Recorded here as a deliberate,
  * documented substitution (Karpathy guideline: surface tradeoffs), not a silent downgrade — swap
- * for `Command` later if a searchable palette becomes necessary once real palettes (TASK-720)
+ * for `Command` later if a searchable palette becomes necessary once real palettes
  * make the target list long.
  *
  * Also renders the node's existing outgoing edges with a per-edge Disconnect button (never a

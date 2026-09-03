@@ -1,7 +1,7 @@
 /**
- * TASK-781 — boot-time reachability audit for `CASL_ENFORCED_PAIRS`.
+ * boot-time reachability audit for `CASL_ENFORCED_PAIRS`.
  *
- * TASK-712 listed three `ApiKey` pairs as ENFORCED; TASK-779 proved none of
+ * listed three `ApiKey` pairs as ENFORCED; proved none of
  * them could ever fire, because the declaring route's subject-instance
  * resolver loads its row through a 404-throwing accessor and therefore fails
  * open on exactly the request the pair exists to deny. Nothing in the tree
@@ -68,8 +68,8 @@ export function collectEnforceRouteDescriptors(app: INestApplicationContext): En
 
         const mode = reflector.getAllAndOverride<'AND' | 'OR' | undefined>(PERMISSION_MODE_KEY, [methodRef, ControllerClass]) === 'OR' ? 'OR' : 'AND';
 
-        // The metadata is a descriptor since TASK-781; a bare function is the
-        // pre-TASK-781 shape and is, by definition, not enforce-grade — it
+        // The metadata is a descriptor since; a bare function is the
+        // earlier shape and is, by definition, not enforce-grade — it
         // carries no attestation at all. That is precisely the F-1 shape.
         const declared = reflector.getAllAndOverride<unknown>(SUBJECT_INSTANCE_RESOLVER_KEY, [methodRef, ControllerClass]);
         const resolver = readResolver(declared);

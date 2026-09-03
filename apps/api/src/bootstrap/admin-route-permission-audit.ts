@@ -117,7 +117,7 @@ export function auditAdminRoutePermissions(app: INestApplicationContext): void {
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
     throw new Error(
-      `TASK-307 W4a.1: refused to start — ${offenders.length} HTTP route(s) ` + `lack both @Public() and a permission decorator:\n${list}`,
+      ` W4a.1: refused to start — ${offenders.length} HTTP route(s) ` + `lack both @Public() and a permission decorator:\n${list}`,
     );
   }
 }

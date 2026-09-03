@@ -1,13 +1,13 @@
 // tts provider config and synthesis limits — the keys that used to be env vars.
 //
-// TASK-799 lane C. Companion to `tts.descriptors.ts`, and the split between them
+// lane C. Companion to `tts.descriptors.ts`, and the split between them
 // is the tenant/platform boundary, not a filing convenience:
 //
-//   • `tts.descriptors.ts`  — PER-TENANT. BYO provider credentials
+//   • `tts.descriptors.ts` — PER-TENANT. BYO provider credentials
 //     (`db-secret`) and a tenant's default voice (`db-config`). Tenant-varying,
 //     so it declares no `consumedBy` and travels the PUSH channel: the gateway
 //     resolves it and injects it into each request body.
-//   • THIS FILE            — PLATFORM. The platform's own provider tuning,
+//   • THIS FILE — PLATFORM. The platform's own provider tuning,
 //     endpoints, local-engine model ids and service-wide synthesis limits. One
 //     value for the whole deployment, so it rides the PULL route (D-1).
 //
@@ -44,7 +44,7 @@ import { SettingDescriptor } from '../registry.types';
 
 /**
  * The five provider/engine `*_ENABLED` flags — HALF-MIGRATED, and the halves
- * are the point (TASK-799 lane H).
+ * are the point.
  *
  * They now ride the pull route like every other key in this file
  * (`tier: 'global-kv'`, `consumedBy: ['tts']`) AND `TTS_*_ENABLED` remains a
@@ -59,9 +59,9 @@ import { SettingDescriptor } from '../registry.types';
  * --------------------------------
  * Closing it is a THREE-step change and only two steps live in this repository:
  *
- *   1. seed the rows                → `seed/11d-tts-engine-flags.ts` (done)
- *   2. update the k8s ConfigMaps    → `arca/hope-v2-deployment` — NOT this repo
- *   3. close the env read           → here, but ONLY after (2)
+ *   1. seed the rows → `seed/11d-tts-engine-flags.ts` (done)
+ *   2. update the k8s ConfigMaps → `arca/hope-v2-deployment` — NOT this repo
+ *   3. close the env read → here, but ONLY after (2)
  *
  * The binding constraint is concrete. `TTS_KOKORO_ENABLED=true` in the k8s
  * ConfigMap is what makes a KEYLESS deployment reach `/health/ready` at all —

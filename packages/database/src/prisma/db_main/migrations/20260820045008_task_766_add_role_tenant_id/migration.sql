@@ -1,4 +1,4 @@
--- TASK-766 OD-1 (owner decision, 2026-08-20): make `Role` genuinely
+-- (owner decision, 2026-08-20): make `Role` genuinely
 -- tenant-scoped so a tenant admin can manage its OWN tenant's custom roles.
 --
 -- `Role` was a GLOBAL table. CASL `conditions` are shadow-mode, so the seeded

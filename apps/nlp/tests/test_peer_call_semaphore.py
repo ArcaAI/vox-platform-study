@@ -1,4 +1,4 @@
-"""The outbound peer-call bound (TASK-729 §6, owner decision 2026-08-20).
+"""The outbound peer-call bound (owner decision 2026-08-20).
 
 Before this decision, `/classify/topic`/`/classify/intent` reused
 `inference_bound` — the SAME semaphore that guards local GPU/CPU inference —

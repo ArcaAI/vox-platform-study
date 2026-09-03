@@ -19,7 +19,7 @@ import { HarnessGatewayService, type HarnessConsultationEndingSignal, type Harne
  * Registered alongside `LiveDocumentationService` in
  * `LiveDocumentationServiceModule` — no controller or route change.
  *
- * ─── THE GATE (TASK-705) ────────────────────────────────────────────────────
+ * ─── THE GATE ────────────────────────────────────────────────────
  *
  * The harness agentic loop is CORE BUSINESS and is packaged as a SUBSCRIPTION
  * FEATURE (owner decision, `owner-decisions-2026-08-17.md` §2 row 705). Two
@@ -56,7 +56,7 @@ import { HarnessGatewayService, type HarnessConsultationEndingSignal, type Harne
  * rather than the eligibility source — an unwired resolver must not
  * impersonate an operator pulling the emergency handle.
  *
- * ─── SUBSTRATE EXCLUSIVITY (TASK-795) ───────────────────────────────────────
+ * ─── SUBSTRATE EXCLUSIVITY ───────────────────────────────────────
  *
  * A THIRD, orthogonal question joins the two above: is this consultation already
  * governed by a tenant-authored `consultation`-palette graph running on the
@@ -92,7 +92,7 @@ export class LoopContextSignalService {
 
   /**
    * Bounded, per-consultation cache of the DETERMINATE governing-engine answer
-   * (TASK-795 W1). `TRANSCRIPT` is on the `ContextAdded` bus, so `handleContextAdded`
+   * `TRANSCRIPT` is on the `ContextAdded` bus, so `handleContextAdded`
    * runs roughly per utterance; without this the gate would add a row read to every
    * one of them. Caching is sound because the decision is written ONCE, at open,
    * before the consultation id has even been returned to the client — so no signal
@@ -108,7 +108,7 @@ export class LoopContextSignalService {
     @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
     @Optional() @Inject(ClsService) private readonly clsService?: ClsService<IActiveUserContext>,
-    // TASK-795 W1 — reads the durable governing-engine marker written at consultation
+    // reads the durable governing-engine marker written at consultation
     // open. `@Optional()` matches this file's existing convention; absent ⇒ the gate is
     // inert and Substrate A runs, which is this gate's declared FAIL-SAFE direction (see
     // `standDownForTenantWorkflow`). `LiveDocumentationServiceModule` — the one module
@@ -137,7 +137,7 @@ export class LoopContextSignalService {
   }
 
   /**
-   * SUBSTRATE EXCLUSIVITY (TASK-795 W1) — `true` when a tenant-authored
+   * SUBSTRATE EXCLUSIVITY — `true` when a tenant-authored
    * `consultation`-palette graph already governs this consultation, in which case
    * Substrate A must stand down.
    *

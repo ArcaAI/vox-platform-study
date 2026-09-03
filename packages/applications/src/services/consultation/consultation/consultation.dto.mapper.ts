@@ -12,8 +12,8 @@ export class ConsultationDtoMapper {
    * Convert entity to response
    */
   static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
-    // TASK-711 — `Consultation.status` is now the SOLE lifecycle tracker.
-    // The legacy `metadata.status` JSON key is deleted (Task 10); the
+    // `Consultation.status` is now the SOLE lifecycle tracker.
+    // The legacy `metadata.status` JSON key is deleted ; the
     // precedence dance this mapper used to do between the typed column and
     // that key is gone with it — the column is simply canonical.
     return {
@@ -27,7 +27,7 @@ export class ConsultationDtoMapper {
       parentConsultationId: entity.parentConsultationId ?? undefined,
       status: entity.status,
       metadata: entity.metadata as Record<string, unknown> | undefined,
-      // TASK-711 — the OCC row version, so a client can build the `If-Match`
+      // the OCC row version, so a client can build the `If-Match`
       // header the state-machine transition routes require. Also feeds
       // `ETagInterceptor` (reads `body.version`), which mirrors it onto the
       // `ETag` response header.

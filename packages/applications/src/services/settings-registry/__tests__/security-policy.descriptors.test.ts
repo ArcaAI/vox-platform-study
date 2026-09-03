@@ -1,5 +1,5 @@
 /**
- * TASK-786 — the credential-policy catalog.
+ * the credential-policy catalog.
  *
  * Registering a descriptor is the ONLY step that makes a key governed and
  * writable, so these assertions are the difference between "a super admin can

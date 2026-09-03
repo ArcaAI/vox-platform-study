@@ -1,5 +1,5 @@
 /**
- * TASK-767 — standalone-feature access for API keys AND service accounts.
+ * standalone-feature access for API keys AND service accounts.
  *
  * Owner requirement (2026-08-18): *"end-user can use service-account/api-key for
  * standalone features: speech-to-text, summarization, via SDK compat and API
@@ -7,12 +7,12 @@
  *
  * The matrix this file proves is 2 credential classes × 4 surfaces:
  *
- * |                        | API key (`X-API-Key`) | Service account (`X-Service-Account-Token`) |
+ * | | API key (`X-API-Key`) | Service account (`X-Service-Account-Token`) |
  * |---|---|---|
- * | `audio/transcription-jobs`  (native STT)     | ✓ | ✓ |
- * | `api/stt/*`                 (compat STT)     | ✓ | ✓ |
- * | `text-generations/*`        (native summary) | ✓ | ✓ |
- * | `api/smr/api/v1/*`          (compat summary) | ✓ | ✓ |
+ * | `audio/transcription-jobs` (native STT) | ✓ | ✓ |
+ * | `api/stt/*` (compat STT) | ✓ | ✓ |
+ * | `text-generations/*` (native summary) | ✓ | ✓ |
+ * | `api/smr/api/v1/*` (compat summary) | ✓ | ✓ |
  *
  * ─── What "proven" means here, and what it deliberately does NOT mean ───────
  *
@@ -33,10 +33,10 @@
  *
  * ─── Credentials ───────────────────────────────────────────────────────────
  *
- * The seeded `ArcaAI Tenant Automation` account (TASK-766) carries 37 derived
+ * The seeded `ArcaAI Tenant Automation` account carries 37 derived
  * `svc:admin:*` scopes and NONE of the three business-plane scopes this ticket
- * adds — its seed file is owned by TASK-766 and is not edited here (see the
- * README §Owner decisions). So the service-account cases mint their own account
+ * adds — its seed file is owned by and is not edited here (see the
+ * decisions). So the service-account cases mint their own account
  * through `POST /admin/service-accounts` as SUPER_ADMIN, which is also the
  * honest end-to-end path: create → exchange → present the opaque token.
  *
@@ -130,7 +130,7 @@ const compatSummaryBody = () => ({
   max_tokens: 256,
 });
 
-test.describe('TASK-767 — standalone features reachable by both machine credential classes', () => {
+test.describe('standalone features reachable by both machine credential classes', () => {
   let adminToken: string;
   let superAdminToken: string;
   const createdApiKeyIds: string[] = [];
@@ -414,7 +414,7 @@ test.describe('TASK-767 — standalone features reachable by both machine creden
 
       if (response.status() !== 200) {
         skipReason = `POST ${COMPAT_SUMMARY} returned ${response.status()} — is apps/text (TEXT_URL) running? body: ${(await response.text()).slice(0, 300)}`;
-        console.warn(`[TASK-767] ${skipReason}`);
+        console.warn(`[] ${skipReason}`);
       }
       test.skip(response.status() !== 200, skipReason);
 

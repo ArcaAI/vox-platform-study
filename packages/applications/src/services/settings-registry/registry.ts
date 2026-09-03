@@ -47,7 +47,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...TTS_SETTINGS,
   // tts PLATFORM provider config — endpoints, local-engine model ids, timeouts,
   // concurrency and synthesis limits, all of which were environment variables
-  // until TASK-799 lane C. The tenant-varying half stays in TTS_SETTINGS above
+  // until lane C. The tenant-varying half stays in TTS_SETTINGS above
   // and travels the push channel; these ride the pull route (D-1). The two cloud
   // credentials appear in NEITHER: they have no env path at all by construction.
   ...TTS_RUNTIME_SETTINGS,
@@ -57,7 +57,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // per recording, size, in-flight jobs per user.
   ...BATCH_TRANSCRIPTION_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
-  // Outbox-drain schedule (ws-b-contract.md handoff) + the
+  // Outbox-drain schedule (handoff) + the
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
   ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/TEXT).
@@ -67,7 +67,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // verdict-deciding keys. Companion to MODEL_DEFAULT_SETTINGS' `models.guardrail.*`
   // (which selects WHICH model runs; this selects HOW STRICT it is).
   ...GUARDRAIL_POLICY_SETTINGS,
-  // The tenant's VISIT-TYPE catalogue (TASK-815 §11 row 3) — the label set that
+  // The tenant's VISIT-TYPE catalogue — the label set that
   // used to be a derived literal in nine places. `maxScope: 'tenant'`, so a
   // tenant defines its own and one with no opinion inherits the two shipped
   // defaults through the SYSTEM lane.
@@ -91,7 +91,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // The rest of stt's runtime tuning — VAD, streaming geometry and timeouts,
   // transcription chunking, punctuation, semantic endpointing, worker/threading
   // and the non-secret halves of the cloud engine connections. All were
-  // environment variables until TASK-799 lane C; every `default` is transcribed
+  // environment variables until lane C; every `default` is transcribed
   // verbatim from the Python field it replaces, so registering them changes no
   // behaviour and needs no seeded rows.
   ...STT_RUNTIME_SETTINGS,
@@ -131,7 +131,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // no admin could reach them) and the issued-secret strength policy behind
   // service-account client secrets and API keys.
   ...SECURITY_POLICY_SETTINGS,
-  // SSRF egress allow-list for tenant-authored `McpServer.baseUrl` (TASK-846 D-3).
+  // SSRF egress allow-list for tenant-authored `McpServer.baseUrl`.
   // Sits beside the credential policy for the same reason: it is a floor the
   // PLATFORM owes every tenant, against a party that is now the tenant itself.
   ...MCP_EGRESS_SETTINGS,
@@ -143,7 +143,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
-  // TASK-812 — the ordered endpoint stage that runs before a consultation closes.
+  // the ordered endpoint stage that runs before a consultation closes.
   ...CONSULTATION_ENDPOINT_SETTINGS,
 
   // ── Consultation-loop lifecycle bounds ───────────────────────────────────
@@ -151,7 +151,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // at workflow start rather than re-read per signal — see the descriptor.
   ...HARNESS_LOOP_SETTINGS,
 
-  // ── Clinical-assurance gate thresholds (TASK-799 A.2) ────────────────────
+  // ── Clinical-assurance gate thresholds ────────────────────
   // The PLATFORM defaults for the harness sensor gates, served on the pull route.
   // The per-tenant lane is `HarnessPolicy` (PUSH), not an override here — see the
   // descriptor file for why the split falls that way (D-1).
@@ -159,23 +159,23 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   HARNESS_CLAIM_CHECK_MIN_BYTES,
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║ REGISTRATION POINT — storage config → DB + Vault                         ║
-  // ║                                                                          ║
-  // ║ Storage descriptors live in `descriptors/storage.descriptors.ts`.        ║
-  // ║ To wire them in, add the import above and ONE line here:                 ║
-  // ║                                                                          ║
-  // ║     ...STORAGE_SETTINGS,                                                 ║
-  // ║                                                                          ║
-  // ║ CONTRACT ITS DESCRIPTORS MUST MEET:                                      ║
-  // ║  • `failMode` is REQUIRED on every descriptor — the build fails without   ║
-  // ║    it. Storage ENDPOINT/REGION/PATH-STYLE/PREFIX are tuning →             ║
-  // ║    'open-to-default'; anything `sensitivity: 'secret'` (a credentialsRef  ║
-  // ║    target, a BYO tenant key) MUST be 'closed' — `register()` throws       ║
-  // ║    otherwise, at module load.                                            ║
-  // ║  • If a value is still read from `MINIO_*` env, declare                   ║
-  // ║    `tier: 'env'` + `targetTier: 'db-config'` rather than claiming the DB  ║
-  // ║    tier early; flip `tier` and drop `targetTier` when the READER moves.   ║
-  // ║  • env-tier descriptors use `editableBy: EDITABLE_BY_NONE`; a governance  ║
-  // ║    test binds that both ways.                                            ║
+  // ║ REGISTRATION POINT — storage config → DB + Vault ║
+  // ║ ║
+  // ║ Storage descriptors live in `descriptors/storage.descriptors.ts`. ║
+  // ║ To wire them in, add the import above and ONE line here: ║
+  // ║ ║
+  // ║ ...STORAGE_SETTINGS, ║
+  // ║ ║
+  // ║ CONTRACT ITS DESCRIPTORS MUST MEET: ║
+  // ║ • `failMode` is REQUIRED on every descriptor — the build fails without ║
+  // ║ it. Storage ENDPOINT/REGION/PATH-STYLE/PREFIX are tuning → ║
+  // ║ 'open-to-default'; anything `sensitivity: 'secret'` (a credentialsRef ║
+  // ║ target, a BYO tenant key) MUST be 'closed' — `register()` throws ║
+  // ║ otherwise, at module load. ║
+  // ║ • If a value is still read from `MINIO_*` env, declare ║
+  // ║ `tier: 'env'` + `targetTier: 'db-config'` rather than claiming the DB ║
+  // ║ tier early; flip `tier` and drop `targetTier` when the READER moves. ║
+  // ║ • env-tier descriptors use `editableBy: EDITABLE_BY_NONE`; a governance ║
+  // ║ test binds that both ways. ║
   // ╚══════════════════════════════════════════════════════════════════════════╝
 ]);

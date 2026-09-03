@@ -1,4 +1,4 @@
-"""Embedding request/response models (TASK-725 Task 4)."""
+"""Embedding request/response models."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class EmbeddingResponse(BaseModel):
 
 class EmbeddingBatchRequest(BaseModel):
     """Async embedding submission — enqueued onto `WorkerPoolQueue` and
-    processed out-of-process (TASK-725 Task 7's worker entry point), for
+    processed out-of-process ('s worker entry point), for
     batches too large for the synchronous `/embeddings` round trip."""
 
     texts: list[str] = Field(..., min_length=1)

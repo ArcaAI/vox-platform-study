@@ -14,7 +14,7 @@ if (process.env.NODE_ENV === 'development' && !process.env.CI) {
 }
 
 const nextConfig: NextConfig = {
-  // TASK-838: baseline security headers on every response (pages, route
+  // baseline security headers on every response (pages, route
   // handlers, and the BFF proxy at /api/hope/[...path] alike — Next applies
   // config-level `headers()` at the routing layer ahead of rendering, so it
   // covers the App Router and Route Handlers the same way).
@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
   //
   // No script-src/style-src here on purpose — a real CSP needs nonce
   // plumbing through the App Router render path, which is out of scope for
-  // this fix (see the ticket README for the follow-up recommendation).
+  // this fix ( for the follow-up recommendation).
   async headers() {
     return [
       {

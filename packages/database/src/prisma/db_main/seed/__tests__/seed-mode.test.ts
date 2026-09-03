@@ -74,11 +74,11 @@ describe('resolveSeedMode — "all" is refused outside development/test', () => 
 });
 
 describe('isPhaseEnabled — which phases each mode runs', () => {
-  // TASK-798 added the last two. They are neither credentials nor PHI: both carry
+  // added the last two. They are neither credentials nor PHI: both carry
   // `createdBy: <the ArcaAI tenant admin>`, so running them in `safe` would attribute tenant
   // configuration — and a PUBLISHED clinical workflow — to a named human who never authored it.
   // See `seed-mode.ts`'s table for the full reasoning.
-  // TASK-858 adds the two `-arcaai` halves for the same reason: their rows carry
+  // adds the two `-arcaai` halves for the same reason: their rows carry
   // `createdBy: <the ArcaAI tenant admin>` on PUBLISHED clinical workflows. Their
   // SYSTEM halves (`23a-realtime-transcription-agent`,
   // `24-example-consultation-workflows`) stay IN every mode — see the "still runs
@@ -111,7 +111,7 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
     expect(isPhaseEnabled(phase, 'safe')).toBe(false);
   });
 
-  // TASK-852 item 2. The assertions above are all `toContain`/one-way, so they catch a demo phase
+  // item 2. The assertions above are all `toContain`/one-way, so they catch a demo phase
   // that ESCAPED the deny-list and nothing else. The opposite mistake is just as bad and much
   // quieter: a PLATFORM-CONFIG phase added here by reflex leaves a production `safe` bootstrap
   // silently missing configuration, and no test above would notice. Pinning the set exactly makes
@@ -126,7 +126,7 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
       '03-role',
       '15-entitlements',
       '20-ai-price-book',
-      // TASK-858 — the SYSTEM template halves. A `safe` bootstrap that skipped
+      // the SYSTEM template halves. A `safe` bootstrap that skipped
       // them would ship a Workflow Studio with an empty template library, which
       // is precisely the platform configuration `safe` exists to install.
       '21-workflow-definition',

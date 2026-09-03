@@ -90,7 +90,7 @@ TTS_SYNTHESIZED_SECONDS_TOTAL = Counter(
 # service (STT, TEXT, NLP, Guardrail) so the platform-metrics backend can read
 # per-model "running" + "avg latency" with ONE PromQL pattern. The name and
 # label keys must stay byte-identical across services. TTS was the one
-# service missing this pair (current-state-review §2.0/§2.5); "model" here is
+# service missing this pair (current-state-review; "model" here is
 # the provider/engine name — TTS has no separate per-request model concept.
 
 SERVICE_NAME = "tts"

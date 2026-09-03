@@ -103,7 +103,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: null, // self-hosted whisper.cpp / faster-whisper pipelines
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 20n,
-    note: 'Self-hosted ASR compute — ~$0.072/audio-hour at ~90% GPU utilization (TASK-638 §4). SCALES INVERSELY with utilization: ~30µ at 60%, ~60µ at 30%.',
+    note: 'Self-hosted ASR compute — ~$0.072/audio-hour at ~90% GPU utilization (§4). SCALES INVERSELY with utilization: ~30µ at 60%, ~60µ at 30%.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000002',
@@ -125,7 +125,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: 'azure-speech',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 278n,
-    note: 'Azure Speech real-time/batch list, ~$1.00/audio-hour (TASK-638 §1).',
+    note: 'Azure Speech real-time/batch list, ~$1.00/audio-hour (§1).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000004',
@@ -134,7 +134,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: 'openai',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 100n,
-    note: 'OpenAI whisper-1 list, $0.006/audio-minute (TASK-638 §1).',
+    note: 'OpenAI whisper-1 list, $0.006/audio-minute (§1).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000005',
@@ -156,7 +156,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: null,
     unit: AiUsageUnit.INPUT_TOKEN,
     unitPriceMicros: 0n,
-    note: 'Self-hosted LLM — ~0.17µ/token at high utilization, BELOW the integer-micro floor, so 0 is the honest rounding (TASK-638 §2). Consequence: self-hosted LLM shows no COGS; SELL is the revenue lever.',
+    note: 'Self-hosted LLM — ~0.17µ/token at high utilization, BELOW the integer-micro floor, so 0 is the honest rounding (§2). Consequence: self-hosted LLM shows no COGS; SELL is the revenue lever.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000011',
@@ -303,7 +303,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: null, // self-hosted kokoro / indic_parler
     unit: AiUsageUnit.CHARACTER,
     unitPriceMicros: 2n,
-    note: 'Self-hosted TTS (kokoro / indic_parler) — GPU economics, ~$2.00 per 1M characters (TASK-638 §4).',
+    note: 'Self-hosted TTS (kokoro / indic_parler) — GPU economics, ~$2.00 per 1M characters (§4).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000031',
@@ -395,7 +395,7 @@ const PLAN_FEE_ROWS: PriceBookSeed[] = [
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.STARTER,
     unitPriceMicros: 50_000_000n,
-    note: 'RATIFIED 2026-08-08 (TASK-638) — $50.00 / month, bundling 50 consultations.',
+    note: 'RATIFIED 2026-08-08  — $50.00 / month, bundling 50 consultations.',
   },
   {
     id: 'B1000000-0000-0000-0001-000000000003',
@@ -403,7 +403,7 @@ const PLAN_FEE_ROWS: PriceBookSeed[] = [
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.PRO,
     unitPriceMicros: 100_000_000n,
-    note: 'RATIFIED 2026-08-08 (TASK-638) — $100.00 / month, bundling 250 consultations.',
+    note: 'RATIFIED 2026-08-08  — $100.00 / month, bundling 250 consultations.',
   },
   {
     id: 'B1000000-0000-0000-0001-000000000004',
@@ -438,7 +438,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.STT,
     unit: AiUsageUnit.SESSION_SECOND,
     unitPriceMicros: 500n,
-    note: 'Streaming STT overage — 5x the ~100µ managed reference (~$0.03/session-minute), TASK-638 §5.',
+    note: 'Streaming STT overage — 5x the ~100µ managed reference (~$0.03/session-minute),  §5.',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000002',
@@ -467,7 +467,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     provider: 'azure-speech',
     unit: AiUsageUnit.SESSION_SECOND,
     unitPriceMicros: 1_390n,
-    note: 'Managed-ASR add-on — azure-speech streaming, 5× the 278µ managed COST row (TASK-638).',
+    note: 'Managed-ASR add-on — azure-speech streaming, 5× the 278µ managed COST row .',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000012',
@@ -476,7 +476,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     provider: 'azure-speech',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 1_390n,
-    note: 'Managed-ASR add-on — azure-speech batch, parity with the streaming session rate (TASK-638).',
+    note: 'Managed-ASR add-on — azure-speech batch, parity with the streaming session rate .',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000003',
@@ -484,7 +484,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     unit: AiUsageUnit.INPUT_TOKEN,
     unitPriceMicros: 5n,
-    note: 'LLM input overage — 5x the gpt-4.1-mini-class managed reference, ~$5.00 per 1M input tokens (TASK-638 §5).',
+    note: 'LLM input overage — 5x the gpt-4.1-mini-class managed reference, ~$5.00 per 1M input tokens (§5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000004',
@@ -492,7 +492,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     unit: AiUsageUnit.OUTPUT_TOKEN,
     unitPriceMicros: 10n,
-    note: 'LLM output overage — 5x the managed reference, ~$10.00 per 1M output tokens (TASK-638 §5).',
+    note: 'LLM output overage — 5x the managed reference, ~$10.00 per 1M output tokens (§5).',
   },
   // The remaining LLM token kinds. The invoice engine FAILS CLOSED on a
   // missing SELL rate (an invoice line cannot be "unrated"), and the pooled
@@ -531,7 +531,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.TTS,
     unit: AiUsageUnit.CHARACTER,
     unitPriceMicros: 80n,
-    note: 'TTS overage — 5x the 16µ Azure neural reference, ~$80.00 per 1M characters (TASK-638 §5).',
+    note: 'TTS overage — 5x the 16µ Azure neural reference, ~$80.00 per 1M characters (§5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000006',
@@ -539,7 +539,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.NLP,
     unit: AiUsageUnit.TEXT_UNIT,
     unitPriceMicros: 50n,
-    note: 'NLP overage per 100-character text unit — self-hosted GLiNER, no managed market; nominal (TASK-638 §5).',
+    note: 'NLP overage per 100-character text unit — self-hosted GLiNER, no managed market; nominal (§5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000007',
@@ -582,7 +582,7 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
         bookVersion: BOOK_VERSION,
         // Provenance travels with the row so an admin screen can show WHY a
         // rate is what it is without consulting this file.
-        metaData: { ratifiedBy: 'TASK-638', ratifiedOn: '2026-08-08', note: row.note },
+        metaData: { ratifiedBy: '', ratifiedOn: '2026-08-08', note: row.note },
         createdBy: CREATED_BY,
       },
     });
@@ -592,5 +592,5 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
 
   console.log(`  cost/${COST_ROWS.length} · plan-fee/${PLAN_FEE_ROWS.length} · overage/${OVERAGE_ROWS.length}`);
   console.log(`Seeded AI price book: ${created} new row(s), ${PRICE_BOOK_SEED_ROWS.length - created} already present (create-only).`);
-  console.log('  Self-hosted COST rows assume ~90% GPU utilization — they understate COGS at a realistic clinical duty cycle (TASK-638 §4).');
+  console.log('  Self-hosted COST rows assume ~90% GPU utilization — they understate COGS at a realistic clinical duty cycle (§4).');
 };

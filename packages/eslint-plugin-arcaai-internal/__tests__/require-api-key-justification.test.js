@@ -1,5 +1,5 @@
 /**
- * RuleTester pins for `require-api-key-justification` (TASK-761 gate G3,
+ * RuleTester pins for `require-api-key-justification` ( gate G3,
  * justification half).
  *
  * ─── Why this is a LINT rule and not a boot audit ──────────────────────────
@@ -7,10 +7,10 @@
  * G3's *presence* half — "every API-key-reachable route declares either
  * `@RequiredScopes(...)` or `@ForbidApiKey()`" — is resolved Nest metadata, so
  * it is a boot audit and already exists
- * (`apps/api/src/bootstrap/api-key-surface-audit.ts`, TASK-742). Its *value*
+ * (`apps/api/src/bootstrap/api-key-surface-audit.ts`). Its *value*
  * half on the business plane — "a `@ForbidApiKey()` there must be a named,
  * reasoned exemption" — is also metadata, and also already exists
- * (`business-plane-apikey-exemptions-audit.ts`, TASK-758).
+ * (`business-plane-apikey-exemptions-audit.ts`).
  *
  * What neither can see is the REASON. A justification is a comment; comments
  * are erased by the TypeScript compiler long before any decorator metadata
@@ -74,7 +74,7 @@ ruleTester.run('require-api-key-justification', rule, {
       name: 'the TASK-prefixed marker form is accepted',
       code: `
         @Controller('health')
-        // TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER
+        //  API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER
         // CLASSIFICATION. Every route here is @Public().
         @ForbidApiKey()
         export class HealthController {}
@@ -275,4 +275,4 @@ for (const relative of BUSINESS_PLANE_FORBID_FILES) {
   }
 }
 
-console.log(`require-api-key-justification: RuleTester passes; ${BUSINESS_PLANE_FORBID_FILES.length} real business-plane controllers lint clean (TASK-761 G3)`);
+console.log(`require-api-key-justification: RuleTester passes; ${BUSINESS_PLANE_FORBID_FILES.length} real business-plane controllers lint clean (G3)`);

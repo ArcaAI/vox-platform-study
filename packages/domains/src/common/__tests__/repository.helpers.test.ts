@@ -425,7 +425,7 @@ describe('formatCountProps', () => {
 });
 
 /**
- * TASK-805 regression — `formatFindAllProps` used to branch on which side
+ * regression — `formatFindAllProps` used to branch on which side
  * carried an `AND` and keep ONLY that array, discarding every sibling scalar
  * key. A `where` carrying BOTH `tenantId` and an `AND` therefore lost its
  * tenant scope and read across tenants, while `formatCountProps` counted the

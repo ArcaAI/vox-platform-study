@@ -1,7 +1,7 @@
 """Guardrail's AD-1 per-call stats mirror.
 
 Survivor of `test_openai_compat_stats.py`, which went with the engine adapters in
-TASK-735 Phase 2b. The stats SHAPE outlives them: `apps/text` returns its own
+The stats SHAPE outlives them: `apps/text` returns its own
 `GenerationStats` on a judgement and guardrail maps it onto this mirror so its
 token spend still rides back to the billing plane.
 """

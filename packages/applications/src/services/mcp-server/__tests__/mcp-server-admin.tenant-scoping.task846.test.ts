@@ -1,5 +1,5 @@
 /**
- * TASK-846 — MCP connector tenant scoping (OD-7, 2026-09-01).
+ * MCP connector tenant scoping (OD-7, 2026-09-01).
  *
  * OWNER DECISION OD-7 reverses the previous "MCP writes are super-admin only"
  * rule: **tenant admins may configure MCP connectors.** The declarative grant
@@ -9,12 +9,12 @@
  * The posture this file pins is the SYSTEM-vs-tenant-owned SPLIT GATE — the
  * `assertCanApprove` precedent already documented in `05-nestjs-api.md`:
  *
- *   | Row the write targets            | Tenant admin | Why                                   |
+ *   | Row the write targets | Tenant admin | Why |
  *   |----------------------------------|--------------|---------------------------------------|
- *   | SYSTEM (`00000000-…`) registry   | **403**      | privilege; the row is readable, so    |
- *   |                                  |              | hiding its existence would be a lie   |
- *   | Another customer tenant's row    | **404**      | 404-over-403 — never leak existence   |
- *   | Its OWN tenant's row             | allowed      | OD-7                                  |
+ *   | SYSTEM (`00000000-…`) registry | **403** | privilege; the row is readable, so |
+ *   | | | hiding its existence would be a lie |
+ *   | Another customer tenant's row | **404** | 404-over-403 — never leak existence |
+ *   | Its OWN tenant's row | allowed | OD-7 |
  *
  * Ordering is load-bearing: existence is resolved BEFORE privilege, so an
  * unknown id is 404 for everyone — a tenant admin must not be able to probe the
@@ -56,7 +56,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', tenantId: clsTenantId, roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  // TASK-846 D-3 — the SSRF egress guard is a REQUIRED constructor dependency.
+  // the SSRF egress guard is a REQUIRED constructor dependency.
   // Stubbed permissive here on purpose: this file is about the tenancy/privilege
   // posture, and the guard's own behaviour (range table, allow-list matching,
   // fail-closed) is pinned by `egress-guard.test.ts` +
@@ -72,7 +72,7 @@ const asSuperAdmin = () => makeService({ roles: ['SUPER_ADMIN'], clsTenantId: nu
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('TASK-846 / OD-7 — a tenant admin may CRUD OWN-TENANT connectors', () => {
+describe(' / OD-7 — a tenant admin may CRUD OWN-TENANT connectors', () => {
   it('create writes a row owned by the CALLER tenant, not the SYSTEM registry', async () => {
     const { svc, repo, emitter } = asTenantAdmin();
 
@@ -107,7 +107,7 @@ describe('TASK-846 / OD-7 — a tenant admin may CRUD OWN-TENANT connectors', ()
   });
 });
 
-describe('TASK-846 — the SYSTEM registry stays super-admin-only (403, existence NOT hidden)', () => {
+describe('the SYSTEM registry stays super-admin-only (403, existence NOT hidden)', () => {
   it('a tenant admin updating a SYSTEM-owned row gets 403, not 404', async () => {
     const { svc, repo } = asTenantAdmin();
     // McpServer is a SYSTEM_SHARED_READ model, so the scoped client legitimately
@@ -143,7 +143,7 @@ describe('TASK-846 — the SYSTEM registry stays super-admin-only (403, existenc
   });
 });
 
-describe('TASK-846 — cross-tenant stays 404 (404-over-403 posture preserved)', () => {
+describe('cross-tenant stays 404 (404-over-403 posture preserved)', () => {
   it('an id belonging to another tenant is 404 — the scoped read simply misses', async () => {
     const { svc, repo } = asTenantAdmin();
     repo.findEnabledById.mockResolvedValue(null); // scoped client: [caller, SYSTEM] ⇒ a foreign row is invisible
@@ -172,7 +172,7 @@ describe('TASK-846 — cross-tenant stays 404 (404-over-403 posture preserved)',
   });
 });
 
-describe('TASK-846 — secret hygiene survives tenant-scoped writes', () => {
+describe('secret hygiene survives tenant-scoped writes', () => {
   it('a tenant-admin create stores and echoes a Vault PATH only — never credential material', async () => {
     const { svc, repo } = asTenantAdmin();
 

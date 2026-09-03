@@ -427,7 +427,7 @@ export function buildRunExport(reference: string, hypothesis: string, run: Score
   return {
     schema: 'arcaai.compat-playground.scorecard/v1',
     generatedAt: generatedAt.toISOString(),
-    scoringReference: 'apps/stt/scripts/mlen_scorecard.py (_norm + cer) — TASK-594 quality-gate reference',
+    scoringReference: 'apps/stt/scripts/mlen_scorecard.py (_norm + cer) —  quality-gate reference',
     run,
     reference,
     hypothesis,

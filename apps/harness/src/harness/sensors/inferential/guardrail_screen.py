@@ -1,4 +1,4 @@
-"""Content-safety screen DELEGATED to ``apps/guardrail`` (TASK-799 A.1, F-02).
+"""Content-safety screen DELEGATED to apps/guardrail ( A.1, F-02).
 
 `06-python-services.md`: *"Do not grow a second inference stack."* This module is what
 makes that true of harness. It replaces ``granite_client.GraniteGuardianClient``, which
@@ -74,7 +74,7 @@ class GuardrailSafetyScreen:
 
     def __init__(self, client: GuardrailClient, *, tenant_id: str) -> None:
         if not (tenant_id or "").strip():
-            # TASK-737 / rule 00: an absent tenant on an internal tenant-scoped call is a
+            # / rule 00: an absent tenant on an internal tenant-scoped call is a
             # bug in the CALLER. Refusing at construction turns it into a loud local
             # error instead of a 428 from guardrail that reads like an outage.
             raise SafetyScreenTenantMissing(

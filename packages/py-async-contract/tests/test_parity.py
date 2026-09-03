@@ -1,4 +1,4 @@
-"""Python <-> TypeScript parity — the whole reason this package pair exists (§3.1).
+"""Python <-> TypeScript parity — the whole reason this package pair exists.
 
 Round-trips the SAME example corpus (`packages/async-contract/src/__tests__/
 examples/*.json`) that the TypeScript package's own test uses
@@ -10,7 +10,7 @@ the SAME ground truth the TypeScript parity test asserts against.
 
 If this test is ever skipped or marked flaky, `hope_async_contract` joins the
 list of hand-maintained twins (`trace_propagation`, `redis_streams`, the
-harness signal bodies) TASK-717 was written to stop growing. See the design
+harness signal bodies) was written to stop growing. See the design
 doc, Risk 2.
 
 Also proves the resume-token wire format is cross-language compatible: a

@@ -1,5 +1,5 @@
 /**
- * require-internal-tenant-header  (TASK-737 §4.4)
+ * require-internal-tenant-header
  *
  * `X-Tenant-Id` is MANDATORY on every internal service-to-service request that
  * carries tenant-scoped work (owner directive 2026-08-16). An ABSENT header is a
@@ -31,7 +31,7 @@
  *     path that omits the header.
  *   - an explicit `'X-Tenant-Id'` / `[TENANT_ID_HEADER]` key, or a
  *     `tenantHeaderValue(...)` call, for sites that must merge into an existing map.
- *   - `'X-Internal-Tenant-Id'` — the deliberate STT↔gateway channel (audit §3.0
+ * `'X-Internal-Tenant-Id'` — the deliberate STT↔gateway channel (audit
  *     channel 2), which exists because a literal `X-Tenant-Id` from the
  *     single-credential STT worker would trip `ContextInterceptor`'s divergence 400.
  *
@@ -46,7 +46,7 @@
 /** Marks an options object as an INTERNAL service hop rather than a third-party call. */
 const SERVICE_TOKEN_KEYS = new Set(['X-Service-Token', 'x-service-token']);
 
-/** Any of these keys satisfies the rule (audit §3.0 declares two header channels). */
+/** Any of these keys satisfies the rule (audit declares two header channels). */
 const TENANT_HEADER_KEYS = new Set([
   'X-Tenant-Id',
   'x-tenant-id',
@@ -130,13 +130,13 @@ module.exports = {
     type: 'problem',
     docs: {
       description:
-        'Require a tenant channel (`X-Tenant-Id` / `X-Internal-Tenant-Id`, or the `internalServiceHeaders()` builder) on every outbound internal service call that sends `X-Service-Token` (TASK-737).',
+        'Require a tenant channel (`X-Tenant-Id` / `X-Internal-Tenant-Id`, or the `internalServiceHeaders()` builder) on every outbound internal service call that sends `X-Service-Token` .',
       recommended: true,
     },
     schema: [],
     messages: {
       missingTenantHeader:
-        "This internal service call sends `X-Service-Token` but no tenant. `X-Tenant-Id` is MANDATORY on internal requests carrying tenant-scoped work (TASK-737): an absent header silently resolves the platform default provider and mis-attributes the spend. Build the headers with `internalServiceHeaders({ serviceToken, tenantId, tenantlessReason })` from `@arcaai/applications`, or set `X-Tenant-Id` explicitly. Genuinely tenant-less work must DECLARE itself with `tenantless:<reason>` rather than omit the header.",
+        "This internal service call sends `X-Service-Token` but no tenant. `X-Tenant-Id` is MANDATORY on internal requests carrying tenant-scoped work : an absent header silently resolves the platform default provider and mis-attributes the spend. Build the headers with `internalServiceHeaders({ serviceToken, tenantId, tenantlessReason })` from `@arcaai/applications`, or set `X-Tenant-Id` explicitly. Genuinely tenant-less work must DECLARE itself with `tenantless:<reason>` rather than omit the header.",
     },
   },
 

@@ -61,7 +61,7 @@ export class TextRequestEnrichmentService {
    *     not take generation down. This deliberately differs from the
    *     fail-closed model-IDENTITY path.
    *
-   * TASK-799 R2-C.1 — this method used to short-circuit on
+   * C.1 — this method used to short-circuit on
    * `isCloudByoProvider('llm', provider)` and return BEFORE the resolver was
    * called, which made P1-C's resolver fix undeliverable on the TEXT path. That
    * predicate answers "may a TENANT OWN a row for this provider?", and it was

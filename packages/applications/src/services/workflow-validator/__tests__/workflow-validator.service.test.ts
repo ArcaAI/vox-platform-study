@@ -1,12 +1,12 @@
 /**
- * WorkflowValidatorService — the IMPURE half of TASK-716's validator (Task 8).
+ * WorkflowValidatorService — the IMPURE half of validator.
  *
  * The pure engine (`@arcaai/workflow-contract`'s `validate()`) evaluates a rule
  * set against a graph. It cannot KNOW what the rule set is: that is rows in
  * `WorkflowInvariantRule`, SYSTEM register ∪ tenant additions, which is I/O.
  * This service is exactly that seam and nothing else — it deliberately does not
  * persist the report or broadcast a sys-event, because `WorkflowDefinitionService`
- * (TASK-734) already owns the definition lifecycle and does both; a second writer
+ * already owns the definition lifecycle and does both; a second writer
  * would double-broadcast `ResourceUpdated` on every validate.
  *
  * Properties pinned here:
@@ -16,7 +16,7 @@
  *  - an EMPTY rule table falls back to the code catalogue, so a day-one
  *    unseeded database still validates instead of silently passing everything;
  *  - a repository that throws becomes a synthetic `WF-INTERNAL` ERROR finding
- *    and `ok: false` — NEVER `ok: true` (§3.5: "a validator that is not total is
+ * and `ok: false` — NEVER `ok: true` ("a validator that is not total is
  *    a validator that can be bypassed").
  */
 import { describe, expect, it, vi } from 'vitest';

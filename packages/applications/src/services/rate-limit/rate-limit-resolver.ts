@@ -1,18 +1,18 @@
 /**
- * Pure rate-limit resolution (TASK-785).
+ * Pure rate-limit resolution.
  *
  * The five-level cascade, with NO Nest, NO DB and NO Redis, so the precedence
  * contract is exhaustively unit-testable (`__tests__/rate-limit-resolver.test.ts`)
  * independently of the guard that consumes it. `TieredThrottlerGuard` supplies
  * the cached rule sets; this module decides which one wins.
  *
- * Declared order (OD-1) — FIRST level with an opinion wins:
+ * Declared order — FIRST level with an opinion wins:
  *
- *   1. tenant × route    a rule owned by the request's tenant naming this route
- *   2. tenant            a rule owned by the request's tenant matching every route (`*`)
- *   3. plan              the tenant's subscription plan
- *   4. platform route    a SYSTEM-owned rule naming this route
- *   5. platform base     the named tier baseline — always an opinion, so resolution terminates
+ *   1. tenant × route a rule owned by the request's tenant naming this route
+ *   2. tenant a rule owned by the request's tenant matching every route (`*`)
+ *   3. plan the tenant's subscription plan
+ *   4. platform route a SYSTEM-owned rule naming this route
+ *   5. platform base the named tier baseline — always an opinion, so resolution terminates
  *
  * Ranks 1 and 2 are the SAME rule set: `*` is simply the least specific pattern
  * a tenant can write, so "most specific match wins" inside the tenant scope
@@ -21,7 +21,7 @@
  *
  * TENANT SPECIFICITY OUTRANKS ROUTE SPECIFICITY. A tenant's broad `*:/api/*`
  * rule beats a SYSTEM rule naming the exact route. Pattern precision only
- * breaks ties WITHIN one level. That is deliberate (OD-1) and counterintuitive
+ * breaks ties WITHIN one level. That is deliberate and counterintuitive
  * enough to be pinned by its own test.
  */
 
@@ -95,7 +95,7 @@ export interface RateLimitResolveInput {
 /**
  * Does `rule` apply to `routeKey`?
  *
- * EXACT  — the whole route key must be equal.
+ * EXACT — the whole route key must be equal.
  * PREFIX — `*` matches everything. Otherwise the pattern is `METHOD:path`,
  *          where METHOD may be `*`, and `path` may end in `*` to match a
  *          subtree. A trailing `/*` is compared INCLUDING the slash, so

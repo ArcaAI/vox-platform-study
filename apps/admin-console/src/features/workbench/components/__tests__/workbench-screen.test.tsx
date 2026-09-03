@@ -1,5 +1,5 @@
 /**
- * WorkbenchScreen tests (TASK-721 Phase C, Task 7).
+ * WorkbenchScreen tests.
  *
  * Covers: the screen renders ONE h1, the sandbox watermark (banner) is always present, the
  * definition picker populates from the stubbed `admin/workflow-definitions` list, the fixture

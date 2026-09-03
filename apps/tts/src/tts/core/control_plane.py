@@ -1,6 +1,6 @@
 """The tts knobs the CONTROL PLANE owns, and how a served value lands.
 
-TASK-799 lane C, the tts half. Structurally the same contract as
+lane C, the tts half. Structurally the same contract as
 ``apps/stt/src/stt/core/control_plane.py`` — registry keys delivered over the
 effective-config pull route, an env path closed by a dead ``validation_alias``,
 defaults transcribed verbatim so an empty control plane changes nothing — with
@@ -62,7 +62,7 @@ logger = structlog.get_logger(__name__)
 #: Suffix that closes a field's env path. Verbose and ticket-named on purpose:
 #: an operator grepping for `TTS_SARVAM_MODEL` must land on something that
 #: explains where the value went, not on a field that merely looks settable.
-MOVED_SUFFIX = "__MOVED_TO_CONTROL_PLANE_TASK_799"
+MOVED_SUFFIX = "__MOVED_TO_CONTROL_PLANE"
 
 
 def moved_alias(env_var: str) -> str:
@@ -76,7 +76,7 @@ def moved_alias(env_var: str) -> str:
     return f"{env_var}{MOVED_SUFFIX}"
 
 
-#: Dotted ``Settings`` attribute path  →  settings-registry key.
+#Dotted ``Settings`` attribute path → settings-registry key.
 #:
 #: The path is dotted because tts nests its provider config; ``azure.region``
 #: means ``settings.azure.region``. Asserted against the real model by
@@ -111,7 +111,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "default_format": "tts.limits.defaultFormat",
     "sample_rate": "tts.limits.sampleRate",
     "warmup_enabled": "tts.warmupEnabled",
-    # ── provider/engine enable flags (TASK-799 lane H) ───────────────────────
+    # ── provider/engine enable flags ───────────────────────
     # HALF-MIGRATED ON PURPOSE, and the halves are named in `ENV_BOOTSTRAP_KEYS`
     # below: the control plane now SERVES these, but `TTS_*_ENABLED` is still a
     # live bootstrap fallback because the k8s manifests that set them live in a
@@ -140,7 +140,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
 _PATH_BY_KEY: dict[str, str] = {key: path for path, key in CONTROL_PLANE_KEYS.items()}
 
 #: Keys whose ENVIRONMENT path is still open, so an unresolved control-plane
-#: value must not overwrite what the environment supplied (TASK-799 lane H).
+# value must not overwrite what the environment supplied.
 #:
 #: The gateway answers every declared key, even when no ``GlobalSetting`` row
 #: exists — in that case it resolves ``descriptor.default`` and labels the entry

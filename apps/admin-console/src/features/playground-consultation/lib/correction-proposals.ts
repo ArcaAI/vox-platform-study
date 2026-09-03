@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — verifying and applying correction proposals safely.
+ * verifying and applying correction proposals safely.
  *
  * A correction is a PROPOSAL. Nothing here applies anything on its own; `applyProposal` is
  * called only from an explicit clinician action, and it returns new text rather than mutating

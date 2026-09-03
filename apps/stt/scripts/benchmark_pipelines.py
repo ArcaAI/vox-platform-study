@@ -15,7 +15,7 @@ CI suite. Run it manually inside the arcaenv conda env:
 
 Optional: STT_BENCH_REFERENCE_DIR with <name>.txt per <name>.wav enables WER
 (via jiwer when installed). Results print as a markdown table for pasting
-into the ticket README.
+.
 """
 
 import asyncio
@@ -63,7 +63,7 @@ async def _run() -> None:
     reader = get_pipeline_reader()
     service = get_batch_service()
 
-    print(f"\n## TASK-505 benchmark — platform={platform}, corpus={corpus_dir.name} ({len(wavs)} files)\n")
+    print(f"\n##  benchmark — platform={platform}, corpus={corpus_dir.name} ({len(wavs)} files)\n")
     print("| pipeline | file | audio_s | wall_s | RTF | WER |")
     print("|---|---|---|---|---|---|")
 
@@ -96,7 +96,7 @@ async def _run() -> None:
                 f"| {wall_s / max(audio_s, 0.001):.2f} | {wer_cell} |"
             )
 
-    print("\nPaste this table into docs/implementation/TASK-505-.../README.md (Phase 6 evidence).")
+    print("\nPaste this table into  (Phase 6 evidence).")
 
 
 if __name__ == "__main__":

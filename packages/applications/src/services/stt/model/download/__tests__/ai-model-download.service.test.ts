@@ -1,5 +1,5 @@
 /**
- * AiModelDownloadService — the trigger + status-poll half of TASK-855 lane
+ * AiModelDownloadService — the trigger + status-poll half of lane
  * L3. Mirrors `AiModelService`'s test conventions: behavioral mock entity,
  * mocked repository/queue/event-emitter/cls boundaries only.
  */

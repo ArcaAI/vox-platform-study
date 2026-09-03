@@ -53,7 +53,7 @@ import { StreamTicketModule } from './stream-ticket.module';
     FederatedAuthServiceModule,
     // RegistrationService (verified self-signup) for RegisterController.
     RegistrationServiceModule,
-    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7) —
+    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets
     // `IWorkflowRunService.getRun` already 404s a foreign-tenant runId; reused here rather than
     // adding a second lookup path.
     WorkflowRunServiceModule,

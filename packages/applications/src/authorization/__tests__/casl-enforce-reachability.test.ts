@@ -1,8 +1,8 @@
 /**
- * TASK-781 — a listed enforce pair must be able to FIRE.
+ * a listed enforce pair must be able to FIRE.
  *
- * TASK-712 listed `read/update/delete:ApiKey` in `CASL_ENFORCED_PAIRS`, and
- * TASK-779 proved by e2e that none of them could ever produce the 403 the list
+ * listed `read/update/delete:ApiKey` in `CASL_ENFORCED_PAIRS`, and
+ * proved by e2e that none of them could ever produce the 403 the list
  * describes: the route's resolver loads its row through a 404-throwing
  * accessor, so on exactly the request the pair exists to deny the resolver
  * throws and the guard fails open. `casl_enforce_denial_total` therefore could
@@ -36,7 +36,7 @@ describe('assertCaslEnforcePairReachability', () => {
   });
 
   it('THE F-1 SHAPE: a pair whose only resolver is NOT enforce-grade is rejected', () => {
-    // This is exactly TASK-779 F-1: the route exists, the resolver exists, and
+    // This is exactly: the route exists, the resolver exists, and
     // the resolver delegates to an accessor that throws for a non-owned row,
     // so it can never return an instance on the deny case.
     const routes = [route({ resolver: { subject: 'ApiKey', enforceGrade: false } })];

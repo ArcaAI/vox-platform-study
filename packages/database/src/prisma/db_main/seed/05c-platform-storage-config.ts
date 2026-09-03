@@ -44,7 +44,7 @@ export const PLATFORM_STORAGE_CREDENTIALS_REF = 'platform/storage/minio';
  * `MINIO_ENDPOINT` (+ `MINIO_USE_SSL` for the scheme when the value carries none),
  * falling back to the local-dev `http://localhost:9000`. Shared with the
  * `S3_ENDPOINT` GlobalSetting seed (`06-stt.ts`) so the two rows the gateway reads
- * can never disagree (TASK-858 — in-cluster they did: the setting was hardcoded to
+ * can never disagree — in-cluster they did: the setting was hardcoded to
  * `http://localhost:<port>`, so the S3 client dialled nothing and every governed
  * consultation fell back to the default loop).
  */

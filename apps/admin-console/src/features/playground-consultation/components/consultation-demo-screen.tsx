@@ -232,12 +232,12 @@ function ScribeWorkspace() {
   // end-user STT language mode. Empty ⇒ pipeline default. The
   // backend guarantees the chosen mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
-  // W2 — the two scoping inputs TASK-789 H-4 found were never supplied.
+  // W2 — the two scoping inputs found were never supplied.
   // `departmentId` is bound at OPEN (it is a property of the consultation and
   // feeds the workflow-assignment cascade); `dnaStyleId` is bound at GENERATE.
   const [departmentId, setDepartmentId] = useState('');
   const [dnaStyleId, setDnaStyleId] = useState('');
-  // TASK-858 Lane D — which PUBLISHED consultation workflow governs the session being opened.
+  // which PUBLISHED consultation workflow governs the session being opened.
   // Bound at OPEN like `departmentId` (it is a property of the consultation, not of the
   // capture). EMPTY IS THE DEFAULT and means "send no slug": the department → tenant
   // WorkflowAssignment cascade decides, which is what the tenant configured. Preselecting the
@@ -253,14 +253,14 @@ function ScribeWorkspace() {
   const pipelines = useAudioPipelines();
   const departments = useScopingDepartments();
   /**
-   * TASK-858 Lane D — the selectable workflow set and the governing read-back, both from
-   * TASK-813 and both previously uncalled anywhere in the console.
+   * the selectable workflow set and the governing read-back, both from
+   * and both previously uncalled anywhere in the console.
    *
    * `workflows.workflows` is deliberately tri-state (`null` could-not-ask vs `[]` none
    * published) and both hooks fail OPEN — a discovery read must never stop a consultation.
    * Nothing is preselected: the default is to send no slug and let the assignment cascade
    * decide. `tenantDefault` is surfaced in the picker as a HINT about the tenant tier.
-   */
+ */
   const selectableWorkflows = useSelectableConsultationWorkflows();
   const dnaStyles = useDnaStyleOptions();
   const defaultPipelineId = pipelines.data ? ((pipelines.data.find((pipeline) => pipeline.isDefault) ?? pipelines.data[0])?.id ?? '') : '';
@@ -293,15 +293,15 @@ function ScribeWorkspace() {
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
   // W4 — the agentic loop's live activity feed (realtime summaries etc).
   const loop = useConsultationLoopStream(consultationId, !!consultationId);
-  // TASK-795 RC-2 / TASK-814 §2b — interpreter suggestions + PROPOSED corrections, live
-  // while recording. The gateway route was TASK-795's; nothing in the console consumed it
+  // / — interpreter suggestions + PROPOSED corrections, live
+  // while recording. The gateway route was; nothing in the console consumed it
   // until this hook.
   const liveAssist = useLiveAssistStream(consultationId, isRecording);
-  // TASK-811 DD-3 / TASK-814 DD-3 — N documents from the section.patch plane. A SEPARATE
+  // / — N documents from the section.patch plane. A SEPARATE
   // connection from `live` (useArcaLiveSummary) — that SDK hook only ever parses the legacy
   // undiscriminated payload on the same channel.
   const documentSections = useDocumentSectionsStream(consultationId, isRecording);
-  // §2b — corrections the clinician ACCEPTED, accumulated for `feedback.capture` (DD-8) to
+  // corrections the clinician ACCEPTED, accumulated for `feedback.capture` to
   // promote over the raw transcript when the endpoint sequence runs at recording-stop.
   // Reset per consultation, same as every other derived-state reset on this screen.
   const [acceptedProposals, setAcceptedProposals] = useState<CorrectionProposal[]>([]);
@@ -347,7 +347,7 @@ function ScribeWorkspace() {
     // that leaves the retry in TanStack's `paused` fetchStatus, where the query
     // is neither loading (`isFetching` false) nor errored — so the column
     // renders "No consultations yet" permanently and the clinician can never
-    // re-open a prior consultation. Observed at runtime, TASK-814 §9.
+    // re-open a prior consultation. Observed at runtime,
     enabled: sdkReady,
     queryKey: [...playgroundConsultationKeys.root, 'scribe-list'],
     queryFn: async (): Promise<ConsultationListRow[]> => {
@@ -359,7 +359,7 @@ function ScribeWorkspace() {
   const rows = listQuery.data ?? [];
   const listError = listQuery.error ? errorMessage(listQuery.error, 'Could not load consultations') : null;
 
-  // ─── Consent gate (TASK-805) ───
+  // ─── Consent gate ───
   //
   // `recording/start` and `prime` both carry
   // `@RequiresConsent(AI_DOCUMENTATION)`, so without an active grant for this
@@ -480,7 +480,7 @@ function ScribeWorkspace() {
     setCaptureBusy(true);
     try {
       await audio.stop();
-      // §2b — every correction the clinician accepted this session rides the stop call, so
+      // every correction the clinician accepted this session rides the stop call, so
       // `feedback.capture` has something to promote over the raw transcript.
       const state = await recordingStop.mutateAsync({ consultationId: consultation.id, acceptedProposals });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
@@ -510,8 +510,8 @@ function ScribeWorkspace() {
     await context.addCaseNote(content);
   }
 
-  // §2b — records a clinician's acceptance for promotion over the raw transcript. Keyed by
-  // proposalId (TASK-796 rule 3) — the same envelope re-delivered after a retry must not
+  // records a clinician's acceptance for promotion over the raw transcript. Keyed by
+  // proposalId ( rule 3) — the same envelope re-delivered after a retry must not
   // double the accumulator.
   function handleProposalAccepted(proposal: CorrectionProposal) {
     setAcceptedProposals((current) => (current.some((p) => p.proposalId === proposal.proposalId) ? current : [...current, proposal]));
@@ -625,7 +625,7 @@ function ScribeWorkspace() {
           meta={
             <>
               <span>Live capture → transcription → personalized note → sign-off, on @arcaai/vox.</span>
-              {/* Which engine is actually writing this note (TASK-858 Lane D). */}
+              {/* Which engine is actually writing this note. */}
               <GoverningWorkflowMeta workflow={governingWorkflow.workflow} isLoading={governingWorkflow.isLoading} hasConsultation={!!consultationId} />
             </>
           }
@@ -683,7 +683,7 @@ function ScribeWorkspace() {
               selectedDepartmentId={departmentId}
               onDepartmentChange={setDepartmentId}
               // The workflow the clinician picks at open. Tri-state by design: `null` reaches
-              // the column as "could not read", `[]` as "none published" (rule 11 §5).
+              // the column as "could not read", as "none published" (rule 11 §5).
               workflows={selectableWorkflows.workflows}
               workflowsLoading={selectableWorkflows.isLoading}
               selectedWorkflowSlug={workflowChoice}
@@ -754,9 +754,11 @@ function ScribeWorkspace() {
         </div>
       )}
 
-      {/* Point-of-care consent capture (TASK-805). The patient is fixed to the
+      {/*
+ Point-of-care consent capture. The patient is fixed to the
           open consultation and the purpose to the one recording needs, so the
-          clinician confirms an attestation rather than filling a form. */}
+          clinician confirms an attestation rather than filling a form. 
+*/}
       <RecordConsentDialog
         open={consentDialogOpen}
         onOpenChange={setConsentDialogOpen}

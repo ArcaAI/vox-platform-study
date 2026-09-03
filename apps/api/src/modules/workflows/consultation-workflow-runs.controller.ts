@@ -16,7 +16,7 @@ import { deliverRun } from './deliver-run';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
- * `ConsultationWorkflowRunsController` — the CONSULTATION-BOUND invocation plane (TASK-850 lane A).
+ * `ConsultationWorkflowRunsController` — the CONSULTATION-BOUND invocation plane.
  *
  * ## Why this is a second route family and not a body field
  *
@@ -29,7 +29,7 @@ import { WorkflowStreamService } from './workflow-stream.service';
  * key-holder write into any live consultation. That is why `EXPOSURE_ALLOWED_PALETTES` refuses
  * the palette outright, and why simply widening it was not an option.
  *
- * TASK-852 §5 states the invariant that resolves it, and this controller is that invariant
+ * states the invariant that resolves it, and this controller is that invariant
  * expressed as a URL:
  *
  *   > consultation identity comes from the URL and is re-resolved against the caller's tenant —

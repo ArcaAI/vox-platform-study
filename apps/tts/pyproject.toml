@@ -42,7 +42,7 @@ dependencies = [
     "redis>=8.1.0,<9.0",
     "pysbd>=0.3.4",
     "azure-cognitiveservices-speech>=1.51.1",
-    # `minio` backs the `s3://` model-source scheme (TASK-855 L6,
+    # `minio` backs the `s3://` model-source scheme
     # `tts/models/source_resolver.py`), used by the Indic Parler / IndicF5
     # local-mirror overrides. Imported LAZILY inside `_make_s3_client`, so a
     # deployment that never resolves an `s3://` source never imports it.
@@ -70,11 +70,11 @@ hope-env = { workspace = true }
 # `kokoro` is BUILT INTO the default image (see apps/tts/Dockerfile): it is
 # Apache-2.0, needs no credential, and the SYSTEM TenantTtsConfig row already
 # routes English to it. Everything Kokoro needs at import/synth time lives here:
-#   - kokoro          -> the engine (transitively pulls torch, transformers,
+#   - kokoro -> the engine (transitively pulls torch, transformers,
 #                        numpy, huggingface-hub, misaki[en]/spacy — `transformers`
 #                        is a HARD dependency of kokoro 0.9.x, not separable)
-#   - numpy / soxr    -> tts.core.audio (imported at module scope by the provider)
-#   - lameenc         -> tts.core.audio MP3 encoding
+#   - numpy / soxr -> tts.core.audio (imported at module scope by the provider)
+#   - lameenc -> tts.core.audio MP3 encoding
 # torch is listed explicitly so the CPU-only wheel index in the Dockerfile has a
 # direct requirement to pin against.
 kokoro = [
@@ -180,7 +180,7 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# `minio` (TASK-855 L6, `tts/models/source_resolver.py`) ships no inline types.
+# `minio` (`tts/models/source_resolver.py`) ships no inline types.
 module = ["minio", "minio.*"]
 ignore_missing_imports = true
 

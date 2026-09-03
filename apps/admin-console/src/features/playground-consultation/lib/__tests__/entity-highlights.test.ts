@@ -1,5 +1,5 @@
 /**
- * TASK-797 W3 — "highlight detected details/entities/important information".
+ * "highlight detected details/entities/important information".
  *
  * `LiveSummaryEntityDto` has carried `start`/`end` character offsets into
  * `runningSummary` since it was written; the console's local mirror dropped them,

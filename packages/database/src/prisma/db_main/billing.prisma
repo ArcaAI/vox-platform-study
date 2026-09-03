@@ -21,7 +21,7 @@
 // PHI (D17): nothing in this plane is PHI. Lines carry capability/unit
 // aggregates and a bounded `description` label — never a patient, a
 // consultation, or free clinical text. That is what keeps a future AR export
-// (finalized, PHI-free lines only) outside §164.312(b), and it is why no
+// (finalized, PHI-free lines only) outside, and it is why no
 // billing vendor ever needs to sit in the raw-event path — none signs a BAA.
 // =============================================================================
 

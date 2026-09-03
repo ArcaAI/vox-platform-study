@@ -1,5 +1,5 @@
 /**
- * TASK-702 — Data migration for deployed rows: overwrite the free-text
+ * Data migration for deployed rows: overwrite the free-text
  * ICD-10 code-emission instruction that Tasks 2-3 removed from the SEED, on
  * any DEPLOYED `PromptTemplate` row whose content is still byte-identical to
  * what the OLD (pre-fix) seed wrote.
@@ -22,7 +22,7 @@
  * the 11 department templates) and the 22 ArcaAI clinical-library
  * `PromptTemplate` rows (`ARCAAI_CLINICAL_TEMPLATE_IDS`, excluding
  * PRE_SUMMARY, which never carried an ICD-10 instruction) named in the
- * ticket README §2.1/§2.2. For each row whose CURRENT `content` fingerprints
+ * For each row whose CURRENT `content` fingerprints
  * (sha256) to the known-bad pre-fix value:
  *   - `content` (+ `metaData` for SOAP_SUMMARY, whose structured-output
  *     schema description also changed) is overwritten with the value the
@@ -76,7 +76,7 @@
  *
  * Against a remote database, set DATABASE_URL explicitly. HUMAN-GATED:
  * `--apply` against any real deployed database requires the user's explicit
- * go-ahead — see the ticket README §6.
+ * go-ahead
  *
  * Exit codes: 0 success (or nothing to do) · 1 runtime error · 2 bad invocation.
  */
@@ -96,12 +96,12 @@ export function sha256(value: string): string {
 /**
  * Known-bad sha256 fingerprints of the EXACT pre-fix `content` string each
  * row carried before this ticket's Tasks 2-3, computed once (before editing)
- * against the live tree on 2026-08-16 — see the ticket README §2.1/§2.2 for
+ * against the live tree on 2026-08-16 — for
  * the source excerpts each hash corresponds to. A deployed row's fingerprint
  * matching one of these means "unmodified since the old (bad) seed wrote
  * it" — the only condition under which this script will overwrite it.
  */
-// NOTE (TASK-763 OD-8): the eleven Global-tenant specialty entries this map used
+// NOTE: the eleven Global-tenant specialty entries this map used
 // to carry were dropped when their templates left the Global catalog. Those
 // bodies were BCMCH's and now exist only on the ArcaAI tenant, whose
 // ARCAAI_CLINICAL_TEMPLATE_IDS fingerprints below are unchanged and still
@@ -306,7 +306,7 @@ async function main() {
   const prisma = getPlatformAdminPrismaClient_Unscoped() as unknown as MigrationClient;
 
   const mode = opts.apply ? 'APPLY' : 'DRY RUN (default — no writes)';
-  console.log('===== TASK-702 — ICD-10 prompt-instruction migration =====');
+  console.log('===== ICD-10 prompt-instruction migration =====');
   console.log(`mode   : ${mode}`);
   console.log(`tenant : ${opts.tenantId ?? 'ALL'}`);
   console.log(`targets: ${MIGRATION_TARGETS.length}`);

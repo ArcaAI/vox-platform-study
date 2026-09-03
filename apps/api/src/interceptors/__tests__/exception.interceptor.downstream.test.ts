@@ -1,5 +1,5 @@
 /**
- * TASK-768 — Downstream-unreachable error contract, at the boundary.
+ * Downstream-unreachable error contract, at the boundary.
  *
  * `ExceptionInterceptor` is the single place that turns a failed downstream
  * call into a client-facing body. These tests drive REAL error shapes through
@@ -97,7 +97,7 @@ describe('ExceptionInterceptor — downstream failure mapping', () => {
 
   // ---------------------------------------------------------------- AC-1
 
-  it('maps the exact TASK-764 evidence (400 + host:port) to a clean 503', async () => {
+  it('maps the exact  evidence (400 + host:port) to a clean 503', async () => {
     // The observed production error on POST /admin/prompt-templates/:id/test.
     const agg = new AggregateError(
       [Object.assign(new Error('connect ECONNREFUSED ::1:8862'), { code: 'ECONNREFUSED' }), axiosTransportError('ECONNREFUSED')],

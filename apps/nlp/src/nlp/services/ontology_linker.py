@@ -93,12 +93,12 @@ def _normalize(text: str) -> str:
     return cleaned
 
 
-# The VOCABULARY IS CONFIGURATION, NOT CODE (TASK-799 lane G).
+# The VOCABULARY IS CONFIGURATION, NOT CODE.
 #
 # It used to be `_VOCABULARY_ENTRIES`, ~40 UMLS/SNOMED/RxNorm/ICD-10/LOINC rows
 # as a Python tuple literal, with this module's own docstring instructing the
 # reader to "add an entry" to widen clinical coverage — i.e. a redeploy to teach
-# the platform a new drug. Rule 00 §Configuration Principles names a taxonomy as
+# the platform a new drug. Rule 00 Principles names a taxonomy as
 # something that is never a literal in code, so the table now lives on
 # `AiModel._metadata.clinicalTaxonomy.linker.vocabulary` of the row `nlp.ner`
 # selects, arrives per request, and can be retuned by a platform admin without a

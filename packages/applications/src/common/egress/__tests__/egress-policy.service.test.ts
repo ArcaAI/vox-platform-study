@@ -1,4 +1,4 @@
-// TASK-846 D-3 — the injectable that binds the pure guard to the governed config tier.
+// the injectable that binds the pure guard to the governed config tier.
 //
 // `EgressPolicyService` is deliberately thin: read `mcp.egress.allowedHosts` from the
 // `global-kv` registry tier, resolve the host, delegate the VERDICT to `evaluateEgress`,
@@ -32,7 +32,7 @@ describe('EgressPolicyService — reads the allow-list from the governed tier', 
 
   it('allows a host on the list that resolves to a public address', async () => {
     const { svc } = makeService({ allowList: ['mcp.partner.example.com'] });
-    await expect(svc.assertUrlAllowed('https://mcp.partner.example.com/mcp', { tenantId: TENANT })).resolves.toBeUndefined();
+    await expect(svc.assertUrlAllowed('https://mcp.partner.example.com/mcp', { tenantId: TENANT })).resolves.toBeUndefined;
   });
 
   it('refuses a host that is NOT on the list', async () => {

@@ -1,5 +1,5 @@
 /**
- * TASK-798 — the tenant-authored consultation workflow (R1), and the fixtures that let it be
+ * the tenant-authored consultation workflow (R1), and the fixtures that let it be
  * tested (R2).
  *
  * ## What was missing
@@ -33,7 +33,7 @@
  *
  * `registryChecksum` is the CURRENT value. It used to be the ONLY current one — the SYSTEM
  * platform-default row (`21-workflow-definition.ts`) carried a checksum computed over a
- * SEVEN-entry registry long after the registry had outgrown it. TASK-809 OD-15 regenerated that
+ * SEVEN-entry registry long after the registry had outgrown it. regenerated that
  * row too (its edges had to migrate to named sockets), so both are now current and both are
  * reproducible by re-running their scripts. Neither may be hand-typed.
  *
@@ -91,7 +91,7 @@ const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
  */
 const dnaReportIdForDepartment = (departmentId: string): string => {
   const clinician = CUSTOMER_DNA_CLINICIANS.find((entry) => entry.departmentId === departmentId);
-  if (!clinician) throw new Error(`TASK-798: no seeded DNA writing-style report for department ${departmentId}`);
+  if (!clinician) throw new Error(`no seeded DNA writing-style report for department ${departmentId}`);
   return clinician.reportId;
 };
 
@@ -109,7 +109,7 @@ export const ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG = 'arcaai-rheum-consultation-so
 // =============================================================================
 
 /**
- * TASK-809 OD-15 — the edge builder, replacing the old `chain()` helper.
+ * the edge builder, replacing the old `chain()` helper.
  *
  * `chain()` wired every consecutive pair as `fromPort: 'out'` -> `toPort: 'in'`, which is the
  * untyped convention the node contract abolished: one port cannot simultaneously mean "the
@@ -134,7 +134,7 @@ export const ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG = 'arcaai-rheum-consultation-so
  * route from `captureBinding` to `synthesize` to pass through `extractEntities`. So a data edge
  * that skips a mandatory node does not merely look untidy — it makes the graph fail validation.
  *
- * ## CORRECTION (TASK-821 §17e): `captureBinding -> realtimeSummary` is NOT refused
+ * ## CORRECTION: `captureBinding -> realtimeSummary` is NOT refused
  *
  * This docstring used to name that edge as "the clearest casualty" of WF-CONS-012 and leave
  * `realtimeSummary.in` unwired on the strength of it. That was wrong, and it cost the platform a
@@ -168,7 +168,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // Identity is read from `run_payload`, never from config — a consent decision configured into
   // a graph would be a consent decision made at authoring time for every future patient.
   { id: 'n_consent', type: 'consultation.consentGate', config: {} },
-  // Lane R (R2) — PRE-SUMMARIZATION, seeded BY DEFAULT (owner ruling, TASK-815 §11).
+  // Lane R (R2) — PRE-SUMMARIZATION, seeded BY DEFAULT (owner ruling,
   //
   // The ruling has two halves and this node is the first: pre-summary resolution is TENANT tier,
   // and a tenant must have an ACTIVE `agent.presummarization` node carrying the prompt that
@@ -179,7 +179,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   //
   // The binding is the tenant's OWN tenant-wide pre-summary template (07b), never the SYSTEM
   // default: a tenant tier that resolved to a platform row would be exactly the silent fallback
-  // §11 refuses.
+  // refuses.
   //
   // ⚠ Its `in: context<schemaRef>` is deliberately UNWIRED, and that is the same declared state
   // `n_entities` has lived in since OD-15. The consultation palette has no `on-start` producer of
@@ -205,8 +205,8 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // the guard is the reason the requirement exists, not paperwork to satisfy it.
   { id: 'n_ground_presum', type: 'guard.groundedness', config: { onError: 'degrade' } },
   { id: 'n_capture', type: 'consultation.captureBinding', config: { action: 'start', persistSnapshot: true, onError: 'degrade' } },
-  // Lane N (TASK-815 §14a) — IMPORTANT FINDINGS, the third item of the owner's live-loop
-  // acceptance bar and the one §14a found missing outright.
+  // Lane N — IMPORTANT FINDINGS, the third item of the owner's live-loop
+  // acceptance bar and the one found missing outright.
   //
   // It reads the TRANSCRIPT the capture node published, and nothing else on the data side. That
   // is the anti-laundering rule applied where it matters most: a "finding" the note generator
@@ -239,9 +239,9 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
       onError: 'degrade',
     },
   },
-  // TASK-821 §17e — the LIVE GRAMMAR pass, which Lane R registered and seeded nowhere.
+  // the LIVE GRAMMAR pass, which Lane R registered and seeded nowhere.
   //
-  // §14a recorded "partial transcript plus advisory corrections" as *"Made to work"*. It was made
+  // recorded "partial transcript plus advisory corrections" as *"Made to work"*. It was made
   // POSSIBLE — node type, realtime handler, Python activity — and then contained in neither
   // ArcaAI graph, so the pass ran for no tenant at all. This row is what makes it run.
   //
@@ -282,12 +282,12 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   },
   // The realtime short-summary pass the requirement names. `externalWrite`, because it publishes
   // each interim summary to the live consultation feed.
-  // `publishTo` was DROPPED here (TASK-809 OD-15): nothing reads it, and the strict
+  // `publishTo` was DROPPED here: nothing reads it, and the strict
   // `consultation.realtimeSummary` config schema does not declare it — the node publishes to the
   // live consultation feed unconditionally (`nodes/consultation_realtime.py`), so the key was a
   // configuration promise the platform never kept.
   //
-  // ⚠ TASK-821 §17e — its `in: transcript` is now WIRED, and its `entities` port is not. That is
+  // ⚠ — its `in: transcript` is now WIRED, and its `entities` port is not. That is
   // the reverse of what this seed carried since OD-15, and the reversal is the fix: the realtime
   // handler reads `in` and nothing else, so the note was being generated from an empty string
   // while the port it ignores carried the only binding. Moving it onto the capture branch is what
@@ -301,7 +301,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // outbound tool call); `unmappedOutputKey` is WF-CONS-019's sibling CR-19 — unmapped terms are
   // SURFACED, never silently dropped.
   //
-  // TASK-806 lane A item 19 closed the taxonomy: `purposeScope` now draws from
+  // lane A item 19 closed the taxonomy: `purposeScope` now draws from
   // `TERMINOLOGY_PURPOSE_SCOPES`, the `ConsentPurpose` vocabulary restricted to the members that
   // can justify an outbound call. This row said `'terminology.validate'` — a free string written
   // before any taxonomy existed. `EXTERNAL_TOOL_LOOKUP` is what this node's own egress already
@@ -327,7 +327,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // `producesCode: false` is WF-CONS-015: only `bindTerminology` may produce a clinical code.
   // The negative must be STATED, not merely absent.
   { id: 'n_synth', type: 'consultation.synthesize', config: { taskKey: 'text.finalize', producesCode: false, onError: 'degrade' } },
-  // Lane N (TASK-815 §14b) — THE FINALIZATION CHAIN, which §14b recorded as unseeded:
+  // Lane N — THE FINALIZATION CHAIN, which recorded as unseeded:
   // "`agent.dna_redaction` is absent from both seeded graphs".
   //
   // ## Redaction runs BEFORE grounding, and that ordering is the owner's
@@ -339,8 +339,8 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // order structural: the redactor emits a `document` the guard consumes, while the guard emits a
   // `verdict` the redactor cannot.)
   //
-  // `requireDoctorOptIn: true` reproduces the surviving two-gate behaviour verbatim (TASK-815
-  // §11): the TENANT gate is the presence of this node in the published graph, and the DOCTOR's
+  // `requireDoctorOptIn: true` reproduces the surviving two-gate behaviour verbatim
+  // the TENANT gate is the presence of this node in the published graph, and the DOCTOR's
   // own DNA opt-in still applies. The retired `DepartmentAgent` veto stays retired.
   { id: 'n_dna', type: 'agent.dna_redaction', config: { requireDoctorOptIn: true, onError: 'degrade' } },
   // The POLICY-DRIVEN grounding pass over the redacted note.
@@ -370,7 +370,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
       onError: 'degrade',
     },
   },
-  // ⚠ TASK-827 — `promptTemplateId` is NOT optional decoration, for the same reason it is not on
+  // ⚠ — `promptTemplateId` is NOT optional decoration, for the same reason it is not on
   // `n_correct` below. The activity resolves its system prompt from this binding and DEGRADES when
   // it is absent; it used to run on a Python constant (`_SUGGESTION_SYSTEM_PROMPT`), which is the
   // hardcoded configuration `00-project-context.md` §Configuration Principles forbids and which no
@@ -387,7 +387,7 @@ const consultationNodes = (options: { dnaStyleId: string | null; inferentialSens
   // Proposes spelling / medical-term / drug-name corrections and applies none of them — the
   // clinician accepts. `externalWrite: false` on this node is a safety property, not a perf one.
   //
-  // ⚠ TASK-826 — `promptTemplateId` is NOT optional decoration. The activity resolves its system
+  // ⚠ — `promptTemplateId` is NOT optional decoration. The activity resolves its system
   // prompt from this binding and DEGRADES when it is absent; it used to run on a Python constant
   // (`_CORRECTION_SYSTEM_PROMPT`), which is the hardcoded configuration
   // `00-project-context.md` §Configuration Principles forbids and which no tenant could read,
@@ -456,13 +456,13 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       // node comment for why this is the only placement the rule set admits.
       ['n_capture', 'out', 'n_findings', 'in'],
       ['n_findings', 'next', 'n_entities', 'after'],
-      // TASK-821 §17e — the LIVE GRAMMAR pass, on the same branch and for the same reasons. Its
+      // the LIVE GRAMMAR pass, on the same branch and for the same reasons. Its
       // `out: edits` is deliberately consumed by NOTHING: corrections are advisory alongside the
       // raw transcript, and an edge out of `out` would be a second promotion channel beside the
       // accepted-proposal path the clinician actually approves through.
       ['n_capture', 'out', 'n_grammar', 'in'],
       ['n_grammar', 'next', 'n_entities', 'after'],
-      // TASK-821 §17e — the running note reads the CAPTURED TRANSCRIPT. This edge is what the
+      // the running note reads the CAPTURED TRANSCRIPT. This edge is what the
       // module docstring wrongly recorded as refused by WF-CONS-012; rejoining at extraction (the
       // line below) is what keeps every capture->synthesize route crossing `extractEntities`.
       // `n_entities -> n_realtime.entities` is GONE with it: it would now be a cycle, the handler
@@ -470,7 +470,7 @@ const buildGraph = (options: { dnaStyleId: string | null; inferentialSensors: bo
       ['n_capture', 'out', 'n_realtime', 'in'],
       ['n_realtime', 'next', 'n_entities', 'after'],
       ['n_entities', 'out', 'n_terms', 'in'],
-      // TASK-806 lane A item 18 — ORDERING, not data. `consultation.assemblePrompt` no longer
+      // lane A item 18 — ORDERING, not data. `consultation.assemblePrompt` no longer
       // declares a `transcript` input: the gateway assembles the prompt from the consultation's
       // own persisted transcript, so a second one over a port could only duplicate it inside the
       // prompt. The PHI hop must still precede the prompt (WF-CONS-009 is an allPathsPassThrough
@@ -649,7 +649,7 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     assignmentVersion: 1,
     beforeSlug: null as string | null,
     afterSlug: ARCAAI_CONSULTATION_SOAP_SLUG,
-    reason: 'Seeded day-1 tenant-authored consultation workflow assignment (TASK-798).',
+    reason: 'Seeded day-1 tenant-authored consultation workflow assignment .',
   },
   {
     id: '9a000000-0000-0001-0001-000000000002',
@@ -661,7 +661,7 @@ export const ARCAAI_WORKFLOW_ASSIGNMENT_CHANGES = [
     assignmentVersion: 1,
     beforeSlug: null as string | null,
     afterSlug: ARCAAI_RHEUM_CONSULTATION_SOAP_SLUG,
-    reason: 'Seeded day-1 Rheumatology department override (TASK-798).',
+    reason: 'Seeded day-1 Rheumatology department override .',
   },
 ];
 
@@ -736,7 +736,7 @@ export interface SeedArcaaiWorkflowAuthoringOptions {
 export const seedArcaaiWorkflowAuthoring = async (client: CorePrismaClient, options: SeedArcaaiWorkflowAuthoringOptions = {}) => {
   const assignmentsEnabled = options.assignmentsEnabled ?? CONSULTATION_ASSIGNMENT_ENABLED;
 
-  console.log('Seeding ArcaAI tenant-authored consultation workflows (TASK-798)...');
+  console.log('Seeding ArcaAI tenant-authored consultation workflows ...');
 
   let definitionsCreated = 0;
   let definitionsSkipped = 0;
@@ -789,11 +789,11 @@ export const seedArcaaiWorkflowAuthoring = async (client: CorePrismaClient, opti
     console.warn(
       [
         '',
-        '  ┌─ TASK-798 — WorkflowAssignment rows NOT seeded ────────────────────────────',
+        '  ┌─ WorkflowAssignment rows NOT seeded ────────────────────────────',
         '  │ The ArcaAI consultation workflows are published and visible in Workflow',
         '  │ Studio, but nothing is ASSIGNED, so they govern no consultation yet.',
         '  │',
-        '  │ Why: binding them requires the Substrate-A exclusivity gate (TASK-795).',
+        '  │ Why: binding them requires the Substrate-A exclusivity gate.',
         '  │ Substrate B’s consultation.persistDraft calls the SAME persist_draft',
         '  │ activity Substrate A uses. With an assignment and no gate, BOTH engines',
         '  │ write one clinical ContextItem — two writers, one document.',

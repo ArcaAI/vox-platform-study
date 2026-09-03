@@ -1,7 +1,7 @@
 /**
  * The ONE bucket every compiled-config claim check is minted into. Exported so the two
  * dispatchers (the public exposure plane and consultation-open) cannot drift: they did.
- * TASK-789 C-1 hard-coded a second literal (`hope-workflow-config`) while its own comment
+ * hard-coded a second literal (`hope-workflow-config`) while its own comment
  * claimed it mirrored this value, so every consultation-open dispatch failed at runtime with
  * "The specified bucket does not exist" — silently, because dispatch is best-effort.
  */
@@ -16,7 +16,7 @@ const CLAIM_CHECK_CONTENT_TYPE = 'text/plain; charset=utf-8';
 
 /**
  * Mint a content-addressed `ClaimCheckRef` for a definition's `compiledConfig`
- * (TASK-722 Task 5, closing the gap `POST /workflow-runs:start` requires — it
+ * (closing the gap `POST /workflow-runs:start` requires — it
  * never accepts a raw compiled config, only a pre-minted ref;
  * `interpreter.py:StartWorkflowRunRequest`'s docstring).
  *

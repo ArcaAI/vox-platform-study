@@ -1,5 +1,5 @@
 /**
- * TASK-773 Phase B1 — emit the gateway's OpenAPI document to disk, offline.
+ * emit the gateway's OpenAPI document to disk, offline.
  *
  * `SwaggerModule.createDocument(app, config)` only needs an application
  * CONTEXT (the DI container + route metadata `nest-cli.json`'s
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   // `abortOnError: false` is load-bearing: NestFactory.create()'s DEFAULT
   // behaviour on a bootstrap error is to log it (via the internal logger —
   // silenced by `logger: false` above) and call `process.exit(1)` itself,
-  // bypassing this function's `try`/`catch` entirely and the `main().catch()`
+  // bypassing this function's `try`/`catch()` entirely and the `main().catch`
   // below. Without this flag every failure looks like a silent, unexplained
   // exit code 1. Setting it false makes `create()` reject the promise
   // instead, so the real error reaches `main().catch()` and gets printed.

@@ -18,7 +18,7 @@ import { deliverRun } from './deliver-run';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
- * `WorkflowsController` — the exposure plane (TASK-722): a tenant's
+ * `WorkflowsController` — the exposure plane: a tenant's
  * PUBLISHED workflow versions become products, invokable over REST with
  * scoped API keys.
  *
@@ -97,7 +97,7 @@ export class WorkflowsController {
   @HttpCode(HttpStatus.ACCEPTED)
   @CanCreate('WorkflowRun')
   @RequiredScopes('workflow:run:write')
-  // First `heavy`-tier consumer in the codebase (README §2 §Rate limiting) — the pre-registered
+  // First `heavy`-tier consumer in the codebase ( limiting) — the pre-registered
   // `heavy` tier (20 req/60s, `rate-limit-config.service.ts`) is a deliberate, reviewed choice
   // for a surface that starts a durable Temporal workflow per call. Per-key `ApiKey.rateLimit`
   // is the control that reaches API-key traffic specifically (R-3) — set a conservative default
@@ -106,12 +106,12 @@ export class WorkflowsController {
   @ApiOperation({
     summary: "DEPRECATED alias of POST :slug/runs. Start a run of the tenant's active published version of :slug.",
     description:
-      'Superseded by `POST :slug/runs` (TASK-850), which is the same handler plus response modes. Retained because the ' +
+      'Superseded by `POST :slug/runs` , which is the same handler plus response modes. Retained because the ' +
       'shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always ' +
       'answers `mode=async`. New integrations should use `:slug/runs`. ' +
       "If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default " +
       "configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure " +
-      'does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed ' +
+      'does NOT restrict provider choice:  R-4 (owner ruling, 2026-08-20) allows a publicly-exposed ' +
       'workflow to select a cloud provider — the tenant carries that egress risk, consistent with the ' +
       "platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task " +
       'Defaults), not only here.',
@@ -170,7 +170,7 @@ export class WorkflowsController {
   // header/query parameter as `required: true` (see the `Idempotency-Key` header on `invoke`).
   // Both of these are OPTIONAL by construction — a first connect sends neither — and documenting
   // a resume cursor as mandatory would tell a client to invent one, which is the exact thing
-  // async-contract §3.6 forbids.
+  // async-contract forbids.
   @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'Opaque resume token from a previous frame’s `id`. Omit on a first connect.' })
   @ApiQuery({
     name: 'lastEventId',

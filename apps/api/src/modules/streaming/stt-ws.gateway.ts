@@ -400,7 +400,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
 
     if (!this.originRegistry) {
       this.logger.warn({
-        message: 'WS handshake — origin registry unavailable, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
+        message: 'WS handshake — origin registry unavailable, denying (§4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
         origin,
         reason: 'origin_registry_unavailable',
       });
@@ -409,7 +409,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     try {
       if (this.originRegistry.size() === 0) {
         this.logger.warn({
-          message: 'WS handshake — origin registry empty, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
+          message: 'WS handshake — origin registry empty, denying (§4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
           origin,
           reason: 'origin_registry_unavailable',
         });
@@ -426,7 +426,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return registered;
     } catch (err) {
       this.logger.warn({
-        message: 'WS handshake — origin registry lookup failed, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
+        message: 'WS handshake — origin registry lookup failed, denying (§4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
         origin,
         reason: 'origin_registry_unavailable',
         error: err instanceof Error ? err.message : String(err),
@@ -452,7 +452,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     const origin = req.headers?.origin;
     if (typeof origin === 'string' && origin.length > 0 && !this.isOriginAllowed(origin)) {
       this.logger.warn({
-        message: 'WS handshake rejected — unregistered origin (TASK-610 D-6, cross-site WebSocket hijacking guard)',
+        message: 'WS handshake rejected — unregistered origin (D-6, cross-site WebSocket hijacking guard)',
         origin,
       });
       client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
@@ -806,7 +806,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.subscribeSessionResults(session);
 
     this.logger.log({
-      message: 'WebSocket client reconnected within grace window (TASK-457 C3-01)',
+      message: 'WebSocket client reconnected within grace window (C3-01)',
       sessionId: session.sessionId,
       resultSeq: session.resultSeq,
       bufferedForReplay: session.resumeBuffer.length,
@@ -838,7 +838,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     if (isTranscript && backpressured && msg.isFinal !== true) {
       session.droppedPartialResults++;
       this.logger.debug({
-        message: 'Dropped partial transcript — WS egress backpressure (TASK-351 P1-4)',
+        message: 'Dropped partial transcript — WS egress backpressure (P1-4)',
         sessionId: session.sessionId,
         droppedPartialResults: session.droppedPartialResults,
         bufferedAmount: this.getBufferedAmount(client),
@@ -887,7 +887,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       session.droppedFinalResults++;
       const droppedSeq = (dropped as { seq?: number } | undefined)?.seq;
       this.logger.error({
-        message: 'Final transcript dropped — bounded WS egress queue overflow (TASK-457 C3-03 / TASK-351 P1-4)',
+        message: 'Final transcript dropped — bounded WS egress queue overflow (C3-03 / P1-4)',
         sessionId: session.sessionId,
         droppedFinalResults: session.droppedFinalResults,
         queueLimit: WS_EGRESS_FINAL_QUEUE_LIMIT,
@@ -957,7 +957,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
     if (session.pendingFinalResults.length > 0) {
       this.logger.warn({
-        message: 'Discarding queued finals — WS egress teardown (TASK-351 P1-4)',
+        message: 'Discarding queued finals — WS egress teardown (P1-4)',
         sessionId: session.sessionId,
         reason,
         discarded: session.pendingFinalResults.length,

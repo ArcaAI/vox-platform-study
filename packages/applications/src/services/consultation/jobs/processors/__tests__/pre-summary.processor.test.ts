@@ -106,13 +106,13 @@ describe('PreSummaryProcessor', () => {
   });
 
   /*
-   * TASK-815 §11 row 3. These three cases used to assert the LITERALS
+   * row 3. These three cases used to assert the LITERALS
    * `'revisit'` / `'new-visit'` — one of the two disagreeing vocabularies the
    * ruling retired (the summary path spelled the same concept
    * `'new-patient'`). What is asserted now is the SOURCE: `{visit_type}` is
    * filled from the visit type the tenant's `consultation.visitTypes`
    * catalogue supplies, and `parentConsultationId` still chooses between them.
-   */
+*/
   it("passes the tenant and the consultation's visit type to prompt assembly", async () => {
     const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION, parentConsultationId: 'consult-0' });
     await processor.process(job());

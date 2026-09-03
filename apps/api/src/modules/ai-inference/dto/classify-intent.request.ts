@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * Proxied to the NLP service `POST /api/v1/classify/intent` (TASK-729). The
+ * Proxied to the NLP service `POST /api/v1/classify/intent`. The
  * tenant's intent list is NEVER caller-supplied — the controller resolves it
  * server-side from `TenantNlpTaskInstructions` and injects it as
  * `instructions`, the same gateway-injection posture `model_name` has on

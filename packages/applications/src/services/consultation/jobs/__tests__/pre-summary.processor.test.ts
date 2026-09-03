@@ -426,7 +426,7 @@ describe('PreSummaryProcessor', () => {
           headers: {
             'Content-Type': 'application/json',
             'X-Service-Token': '',
-            // TASK-737 — the job's own fail-closed-validated tenant. It was in
+            // the job's own fail-closed-validated tenant. It was in
             // scope (and used for `resolveTextSelection` one line above the HTTP
             // call) but never reached the wire, so Text resolved the platform
             // default provider for a job that HAS a tenant.
@@ -710,9 +710,9 @@ describe('PreSummaryProcessor', () => {
     });
   });
 
-  // ── TASK-704 — pre-summary has no harness equivalent; the seam call is
+  // ── — pre-summary has no harness equivalent; the seam call is
   // logging-only and never blocks/short-circuits generation ──
-  describe('TASK-704 NoteGenerationService seam', () => {
+  describe(' NoteGenerationService seam', () => {
     const createMockNoteGenerationService = () => ({ generate: vi.fn(), resolveConfig: vi.fn() });
 
     const primeLegacyGeneration = () => {
@@ -753,7 +753,7 @@ describe('PreSummaryProcessor', () => {
       expect(result.contextItemId).toBe('pre-sum-seam-id');
     });
 
-    it('falls back to legacy generation when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+    it('falls back to legacy generation when noteGenerationService is not wired (pre-fixtures)', async () => {
       primeLegacyGeneration();
 
       // `processor` (top-level beforeEach) has no noteGenerationService.

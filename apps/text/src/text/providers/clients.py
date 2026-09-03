@@ -5,7 +5,7 @@ them carried a comment explaining why: *"there is no shared client, so two
 tenants can never race on one."* That reasoning is correct and it is not
 negotiable. A client carries a credential; a client two tenants share is a
 credential two tenants share, and on the cloud adapters that is un-invoiced spend
-plus a silent cross-tier substitution — the exact failure TASK-799 lane B closed.
+plus a silent cross-tier substitution — the exact failure lane B closed.
 
 But "a new client per request" is a much stronger statement than the isolation
 property needs, and at the concurrency this service is being built for it is

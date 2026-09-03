@@ -1,6 +1,6 @@
 """Percentile / summary helpers for the Lane H benchmark harness.
 
-README §4.8 / §5 (AC-1..AC-4, AC-7): report **p50/p95/p99, never averages**.
+/ (AC-1..AC-4, AC-7): report **p50/p95/p99, never averages**.
 This module is the one place that computes a percentile, so every consumer
 (harness.py's live sweep report, any future CI gate) reads the same
 definition.
@@ -43,7 +43,7 @@ class Sample:
     """A summarized latency/throughput series.
 
     ``p50``/``p95``/``p99`` are the fields every report in this harness
-    leads with (README §4.8: "report p50/p95/p99 TTFT ... never averages").
+    leads with ("report p50/p95/p99 TTFT ... never averages").
     ``mean`` is retained as secondary context only.
     """
 

@@ -1,5 +1,5 @@
 /**
- * TASK-795 RC-2 — `consultation:live-assist:{id}`.
+ * `consultation:live-assist:{id}`.
  *
  * A NEW channel, not a reuse, and not the loop plane. Correction proposals quote
  * the clinician's own text verbatim, so this plane is DECLARED PHI-carrying and

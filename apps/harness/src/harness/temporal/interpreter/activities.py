@@ -99,7 +99,7 @@ from harness.temporal.interpreter.run_events import (
 )
 
 # ---------------------------------------------------------------------------
-# Seed node activities (Task 4/6's tests dispatch against these; TASK-720 adds
+# Seed node activities (Task 4/6's tests dispatch against these; adds
 # the real summarization-palette activities alongside these, never in place of
 # them — noop/passthrough stay as harness-owned smoke-test node types).
 # ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ async def interpreter_noop(payload: NodeActivityInput) -> NodeActivityResult:
     Accepts an optional ``config["raise_error"]`` flag so hermetic tests can exercise the
     DEGRADED path without a real multi-second Temporal timeout (an ActivityError from an
     application-raised exception is handled identically to one from a timeout by the
-    workflow's per-node wrapper — see contracts/execution-semantics.md §Worked example). An
+    workflow's per-node wrapper — see contracts/ example). An
     optional ``config["sleep_seconds"]`` (small, real wall-clock — activities are NOT
     time-skipped) lets a test hold this node in flight long enough to land a signal before the
     next stage starts, without inventing a second test-only activity.
@@ -194,14 +194,14 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     # Graph boundary markers (palette-agnostic) — see above.
     interpreter_core_start,
     interpreter_core_end,
-    # Summarization palette (TASK-720 Task 4/5) — see nodes/{context_binding,template_ref,
+    # Summarization palette (/5) — see nodes/{context_binding,template_ref,
     # text_generate,guardrail_check,deliver}.py.
     interpreter_context_binding,
     interpreter_template_ref,
     interpreter_text_generate,
     interpreter_guardrail_check,
     interpreter_deliver,
-    # STT palette (TASK-724 Task 3) — placeholders, see nodes/stt_placeholder.py.
+    # STT palette — placeholders, see nodes/stt_placeholder.py.
     interpreter_stt_audio_input,
     interpreter_stt_vad,
     interpreter_stt_noise_filter,
@@ -210,7 +210,7 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_stt_asr_engine,
     interpreter_stt_transcript_output,
     interpreter_stt_phi_hop,
-    # Consultation palette — all 13 node types. consentGate/phiHop/hitlGate came from TASK-731
+    # Consultation palette — all 13 node types. consentGate/phiHop/hitlGate came from
     # (nodes/consultation.py); the other ten are the wrappers that complete the palette, grouped
     # by pipeline stage in nodes/consultation_{capture,nlp,compose,verify,persist}.py.
     interpreter_consultation_consent_gate,
@@ -226,7 +226,7 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_consultation_persist_draft,
     interpreter_consultation_finalize_assurance,
     interpreter_consultation_hitl_gate,
-    # R3's three missing capabilities (TASK-791 W1-W3) — nodes/consultation_realtime.py.
+    # R3's three missing capabilities (-W3) — nodes/consultation_realtime.py.
     # This list and `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists: the
     # registry decides what the interpreter DISPATCHES, this decides what the worker SERVES. A
     # node in the first but not the second compiles, validates and passes the cross-language
@@ -236,14 +236,14 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_consultation_realtime_summary,
     interpreter_consultation_suggestions,
     interpreter_consultation_propose_corrections,
-    # The endpoint stage (TASK-812) — nodes/consultation_endpoint.py. Same two-list discipline
+    # The endpoint stage — nodes/consultation_endpoint.py. Same two-list discipline
     # as the three above: `registry.py` decides what the interpreter DISPATCHES, this decides
     # what the worker SERVES, and a node in the first but not the second passes every static
     # check and then fails at runtime with an unregistered-activity error.
     interpreter_session_timeout,
     interpreter_summary_finalize,
     interpreter_feedback_capture,
-    # The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+    # The TARGET CATALOGUE (/DD-9) and the guards — lane A.
     # Spread from the module's own list rather than re-typed here, because this list and
     # `registry.py`'s NODE_REGISTRY are two SEPARATE hand-maintained lists (see the note above)
     # and a catalogue this size is exactly where a re-typed name goes missing. Every one of these
@@ -252,7 +252,7 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     # type needs an activity NAME of its own even when the body is shared.
     *AGENT_CATALOGUE_ACTIVITIES,
     *GUARD_ACTIVITIES,
-    # TASK-847 - the GENERIC (`agentic`) catalogue. Spread from the module's own list for the
+    # the GENERIC (`agentic`) catalogue. Spread from the module's own list for the
     # same reason the two above are: this list and `registry.py`'s NODE_REGISTRY are two SEPARATE
     # hand-maintained lists, and a node in the registry but not here passes every static check --
     # including the cross-language parity guard -- then fails at runtime with an
@@ -270,7 +270,7 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
 async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
     """Dereference + admit a compiledConfig blob. Fails LOUD on any admission violation.
 
-    See contracts/execution-semantics.md §2 for the six-step admission sequence this performs
+    See contracts/ for the six-step admission sequence this performs
     (dereference, parse, formatVersion check, checksum verify, gates-empty check, structural
     bounds). A corrupt/invalid config must fail the run — never execute a partial graph.
     """
@@ -283,7 +283,7 @@ async def load_config(ref: ClaimCheckRef) -> CompiledWorkflowConfig:
 
 
 # ---------------------------------------------------------------------------
-# Run-event mirror (TASK-849 lane A, step 2) — the CONTROL lane's one activity.
+# Run-event mirror — the CONTROL lane's one activity.
 # ---------------------------------------------------------------------------
 
 #: The attempt generation stamped into a node's idempotency key. The stage walk dispatches a
@@ -319,7 +319,7 @@ def run_event_producer() -> RunEventProducer:
 
 
 def _envelope_for(batch: RunEventBatch, spec: RunEventSpec) -> Any:
-    """Turn one workflow-described fact into a conforming envelope (TASK-717 §3.5 recipes)."""
+    """Turn one workflow-described fact into a conforming envelope ( recipes)."""
     node_id = spec.node_id or ""
     if spec.event_type == EVENT_NODE_STARTED:
         key = node_started_key(batch.run_id, node_id, NODE_ATTEMPT_GENERATION)
@@ -380,7 +380,7 @@ async def emit_run_events(batch: RunEventBatch) -> int:
     return len(await run_event_producer().emit_many(envelopes))
 
 
-# Registered on the worker (Task 8) alongside DOCUMENT_ACTIVITIES/LOOP_ACTIVITIES/
+# Registered on the worker alongside DOCUMENT_ACTIVITIES/LOOP_ACTIVITIES/
 # REASONING_ACTIVITIES — the interpreter's own activity list.
 INTERPRETER_ACTIVITIES: list[Callable[..., Any]] = [
     *NODE_ACTIVITIES,

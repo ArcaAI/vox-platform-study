@@ -83,19 +83,19 @@ export class ChainSummaryService extends BaseService {
     // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
-    // TASK-704 — comprehensive-summary has no harness equivalent today;
+    // comprehensive-summary has no harness equivalent today;
     // this call exists purely to make the harnessEnabled read happen through
     // the single seam and get the decision logged. Optional + trailing so
     // existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
-    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // the SHARED TEXT enrichment path. Since lane B
     // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
     // body with no `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -128,7 +128,7 @@ export class ChainSummaryService extends BaseService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-704 — no harness equivalent for comprehensive-summary; logs the
+    // no harness equivalent for comprehensive-summary; logs the
     // decision through the single seam without affecting generation below.
     if (this.noteGenerationService) {
       try {
@@ -582,7 +582,7 @@ export class ChainSummaryService extends BaseService {
     const transcript = fullText + nerContext;
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
-      // Tenant-configured visit type (TASK-815 §11 row 3); `parentConsultationId`
+      // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript,
@@ -654,21 +654,21 @@ export class ChainSummaryService extends BaseService {
         options = { textProvider: provider, textModel: model, ...payload.options };
       }
       const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-      // TASK-808 — inject the tenant's resolved provider credential through the
+      // inject the tenant's resolved provider credential through the
       // ONE shared implementation (tenant → SYSTEM cascade, `funding` label
       // carried so metering is derived from the supplying row rather than
       // stamped here). Without it TEXT fails closed with 503
-      // PROVIDER_CREDENTIALS_MISSING — TASK-799 lane B removed its env plane.
-      // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+      // PROVIDER_CREDENTIALS_MISSING — lane B removed its env plane.
+      // layer the platform admin's runtime profile (hyperparameters + engine
       // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only
-      // the migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — the tenant
+      // the migration fallback).: `X-Tenant-Id` is MANDATORY — the tenant
       // was null-checked at the top of this method and then DROPPED, so Text
       // resolved the platform-default provider instead of this tenant's BYOK
-      // credential and TASK-735's derived `funding`/`cost_basis` ran against the
+      // credential and derived `funding`/`cost_basis` ran against the
       // wrong tier. `this.tenantId` is non-null here whenever the policy service
       // is wired; the declared marker covers the no-policy-service fixture path so
       // the header is never simply absent.
@@ -705,7 +705,7 @@ export class ChainSummaryService extends BaseService {
    * `parentConsultationId` is still the consultation's own follow-up signal —
    * that rule has not changed. What changed is that WHICH visit type the signal
    * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * than a literal repeated at each call site. An unwired
    * resolver serves the two shipped types, so the answer is byte-identical to
    * the ternary this replaces.
    */

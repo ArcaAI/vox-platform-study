@@ -1,8 +1,8 @@
 /**
- * The CLS principal for a service-account-authenticated request (TASK-762).
+ * The CLS principal for a service-account-authenticated request.
  *
  * A FIRST-CLASS principal, deliberately not a `UserSession` in disguise. Two
- * consequences the ticket's §2.7 makes explicit and this shape encodes:
+ * consequences the makes explicit and this shape encodes:
  *
  *  - `roles` is EXPLICIT and always present. `isSuperAdmin` (tenant-guards.ts)
  *    reads `user.roles`; the API-key path leaves it undefined, so every
@@ -13,7 +13,7 @@
  *    guard derives it from the persisted `superAdmin` column and nothing else.
  *  - It lives under its OWN CLS key (`serviceAccount`), never under `user`.
  *    Overloading `user` would make every existing `requestUser?.id` read
- *    attribute a machine action to a person — the §2.8 defect this ticket
+ * attribute a machine action to a person — the defect
  *    exists to fix.
  */
 export interface IServiceAccountPrincipal {

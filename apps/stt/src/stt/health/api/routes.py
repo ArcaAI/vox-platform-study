@@ -110,11 +110,10 @@ async def liveness_check() -> dict[str, str]:
 async def readiness_check() -> JSONResponse | dict[str, str]:
     """Kubernetes readiness probe — verifies critical dependencies are available.
 
-    Also fails once this instance has been marked draining (TASK-726): this
+    Also fails once this instance has been marked draining : this
     is the ACTUAL mechanism by which a draining pod stops receiving new
     streaming sessions — k8s removes it from the Service Endpoints on the
     next probe failure, no gateway-side routing change needed. See
-    docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
     """
     for check_fn in [_check_database, _check_minio, _check_redis]:
         result = await check_fn()

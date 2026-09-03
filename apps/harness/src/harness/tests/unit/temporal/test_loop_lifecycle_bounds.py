@@ -7,11 +7,11 @@ already refuses to do that, in as many words: *"an idle workflow parked forever
 would be a resource leak that changes nothing about the consultation"*
 (``workflows.py``, the ``config is None or not config.enabled`` branch).
 
-What is asserted here is the BOUND, and the pre-TASK-812 semantics of what
+What is asserted here is the BOUND, and the earlier semantics of what
 happens when it fires: the run terminates in its own queryable phase and runs no
 ``ending_actions``.
 
-⚠ That second half is now the LEGACY shape, not the current one. TASK-812 (D-12)
+⚠ That second half is now the LEGACY shape, not the current one. (D-12)
 found the abandonment reasoning backwards — a timed-out consultation that never
 finalizes loses real recorded clinical work, while the note a truncated
 transcript produces goes to the same clinician gate every other note does — so
@@ -20,7 +20,7 @@ expiry now RUNS the endpoint sequence. The current behaviour is asserted in
 
 These tests still hold, and still matter, because the configs they build leave
 ``endpoint_on_timeout`` at its default False: that is exactly the shape every
-config recorded before TASK-812 deserialises to, so what they pin is the
+config recorded before deserialises to, so what they pin is the
 replay-compatible legacy path.
 
 Every test runs the REAL workflow definition against stub activities in
@@ -249,7 +249,7 @@ class TestAbandonmentNotDegradedEnding:
         """The LEGACY expiry path, pinned — the replay-compatibility guarantee.
 
         ``_bounded_config`` leaves ``endpoint_on_timeout`` at its default False, which is the
-        shape every loop config recorded before TASK-812 deserialises to. On that shape the era
+        shape every loop config recorded before deserialises to. On that shape the era
         gate short-circuits before ``workflow.patched`` is called and expiry must issue exactly
         the commands it always did: publish ``loop.timed_out`` and nothing else.
 

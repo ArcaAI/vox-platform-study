@@ -169,7 +169,7 @@
             "type": "string"
           },
           "kindKey": {
-            "description": "The tenant-declared context kind this item is an instance of (`kinds[].key` of the tenant's pinned ConsultationContextSchema version). Omit it for the pre-TASK-658 behaviour: no schema is consulted and the write proceeds exactly as before.",
+            "description": "The tenant-declared context kind this item is an instance of (`kinds[].key` of the tenant's pinned ConsultationContextSchema version). Omit it for the pre-existing behaviour: no schema is consulted and the write proceeds exactly as before.",
             "example": "referral_letter",
             "type": "string"
           },
@@ -769,7 +769,7 @@
             "type": "boolean"
           },
           "explicitProviderMode": {
-            "description": "STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE. STRICT is the platform default (§3A.4).",
+            "description": "STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE. STRICT is the platform default.",
             "type": "string"
           },
           "fallback": {
@@ -778,7 +778,7 @@
             "type": "object"
           },
           "health": {
-            "description": "Circuit/health thresholds (§3A.5)",
+            "description": "Circuit/health thresholds",
             "nullable": true,
             "type": "object"
           },
@@ -834,7 +834,7 @@
             "type": "number"
           },
           "residency": {
-            "description": "Opaque residency-class label; compared for EQUALITY only by the §3A.4 fallback gates.",
+            "description": "Opaque residency-class label; compared for EQUALITY only by the fallback gates.",
             "nullable": true,
             "type": "string"
           },
@@ -861,7 +861,7 @@
             "type": "string"
           },
           "taskKind": {
-            "description": "Canonical task taxonomy this `taskKey` belongs to (TASK-843). NULL means a row an un-migrated writer left unclassified.",
+            "description": "Canonical task taxonomy this `taskKey` belongs to . NULL means a row an un-migrated writer left unclassified.",
             "nullable": true,
             "type": "string"
           },
@@ -1876,7 +1876,7 @@
             "type": "string"
           },
           "planFeeBasis": {
-            "description": "How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY (TASK-615 #6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated.",
+            "description": "How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY (#6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated.",
             "enum": [
               "PERIOD_END_PLAN",
               "TENANT_PLAN_HISTORY"
@@ -3340,7 +3340,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Clinical lifecycle status — the single-sourced ConsultationStatus column (TASK-711 session state machine; docs/implementation/TASK-711-Session-State-Machine/state-machine.md).",
+            "description": "Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).",
             "enum": [
               "OPEN",
               "RECORDING",
@@ -3363,7 +3363,7 @@
             "type": "string"
           },
           "version": {
-            "description": "Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`\"<version>\"`) required by the state-machine transition routes (POST :id/prime|close|reopen — TASK-711). `ETagInterceptor` also mirrors this value onto the response `ETag` header.",
+            "description": "Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`\"<version>\"`) required by the state-machine transition routes (POST :id/prime|close|reopen). `ETagInterceptor` also mirrors this value onto the response `ETag` header.",
             "type": "number"
           }
         },
@@ -3864,12 +3864,12 @@
             "type": "object"
           },
           "baaCovered": {
-            "description": "Whether a BAA covers this vendor AND this model. Read by the §3A.4 BAA gate; never defaulted on your behalf.",
+            "description": "Whether a BAA covers this vendor AND this model. Read by the BAA gate; never defaulted on your behalf.",
             "type": "boolean"
           },
           "candidates": {
             "deprecated": true,
-            "description": "DEPRECATED by TASK-844 — the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.",
+            "description": "DEPRECATED by the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.",
             "items": {
               "type": "object"
             },
@@ -3889,7 +3889,7 @@
             "type": "boolean"
           },
           "explicitProviderMode": {
-            "description": "Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting (§3A.4).",
+            "description": "Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting.",
             "enum": [
               "STRICT",
               "STRICT_UNLESS_OPTED_IN",
@@ -3902,7 +3902,7 @@
             "type": "object"
           },
           "health": {
-            "description": "Circuit/health thresholds (§3A.5)",
+            "description": "Circuit/health thresholds",
             "type": "object"
           },
           "killSwitch": {
@@ -3945,7 +3945,7 @@
             "type": "number"
           },
           "residency": {
-            "description": "Opaque residency-class label. Compared for EQUALITY only by the §3A.4 fallback gate — there is no enumerated list of clouds in code to drift from reality.",
+            "description": "Opaque residency-class label. Compared for EQUALITY only by the fallback gate — there is no enumerated list of clouds in code to drift from reality.",
             "example": "AZURE_EU",
             "type": "string"
           },
@@ -5293,7 +5293,7 @@
         "properties": {
           "channelCount": {
             "default": 1,
-            "description": "Number of distinct microphone SOURCES mixed into the session (TASK-615 #12): 1 for a single mic, 2+ for dual-/multi-mic. A usage-repricing metadata signal (bills 1×, OQ2), NOT a PCM channel count — the uplink is always mono. Forwarded to STT and echoed on teardown. Default 1.",
+            "description": "Number of distinct microphone SOURCES mixed into the session (#12): 1 for a single mic, 2+ for dual-/multi-mic. A usage-repricing metadata signal (bills 1×, OQ2), NOT a PCM channel count — the uplink is always mono. Forwarded to STT and echoed on teardown. Default 1.",
             "maximum": 8,
             "minimum": 1,
             "type": "number"
@@ -5307,7 +5307,7 @@
             "type": "string"
           },
           "languageMode": {
-            "description": "End-user language mode id (TASK-587), e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.",
+            "description": "End-user language mode id , e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.",
             "type": "string"
           },
           "pipelineId": {
@@ -5320,7 +5320,7 @@
             "type": "number"
           },
           "startOn": {
-            "description": "Pre-start default-provider selection (TASK-586 C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; 'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
+            "description": "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; 'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
             "enum": [
               "primary",
               "fallback"
@@ -5792,7 +5792,7 @@
             "type": "string"
           },
           "input": {
-            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (README §6/R4, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted.",
+            "description": "Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted.",
             "type": "object"
           },
           "name": {
@@ -6303,7 +6303,7 @@
             "type": "number"
           },
           "deletedVersions": {
-            "description": "Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (TASK-733 Task 10).",
+            "description": "Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (Task 10).",
             "type": "number"
           },
           "doctorId": {
@@ -6926,7 +6926,7 @@
             "type": "array"
           },
           "health": {
-            "description": "Circuit/health thresholds the router should apply (§3A.5)",
+            "description": "Circuit/health thresholds the router should apply",
             "nullable": true,
             "type": "object"
           },
@@ -6973,7 +6973,7 @@
             "type": "object"
           },
           "relaxedGates": {
-            "description": "Which of the three §3A.4 hard gates the winning policy explicitly relaxed. Empty in the default posture; every entry is a deliberate, audited super-admin act.",
+            "description": "Which of the three hard gates the winning policy explicitly relaxed. Empty in the default posture; every entry is a deliberate, audited super-admin act.",
             "items": {
               "type": "string"
             },
@@ -9971,7 +9971,7 @@
             "type": "boolean"
           },
           "error": {
-            "description": "Operator-facing failure summary. Never carries the internal host:port (TASK-768).",
+            "description": "Operator-facing failure summary. Never carries the internal host:port .",
             "type": "string"
           },
           "frameOptions": {
@@ -12157,7 +12157,7 @@
             "type": "number"
           },
           "maxWorkflowDefinitions": {
-            "description": "Max PUBLISHED workflow definitions (TASK-722); null = unlimited",
+            "description": "Max PUBLISHED workflow definitions ; null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -12171,22 +12171,22 @@
             "type": "number"
           },
           "monthlyEmbeddingTokens": {
-            "description": "Monthly embedding tokens allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly embedding tokens allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyLlmTokens": {
-            "description": "Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited",
+            "description": "Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyNlpTextUnits": {
-            "description": "Monthly NLP text-units allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly NLP text-units allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlySttSessionSeconds": {
-            "description": "Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly STT session-seconds allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -12201,12 +12201,12 @@
             "type": "number"
           },
           "monthlyTtsCharacters": {
-            "description": "Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited",
+            "description": "Monthly TTS characters allowance, Unicode code points (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyWorkflowInvocations": {
-            "description": "Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited",
+            "description": "Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -12221,7 +12221,7 @@
             "type": "string"
           },
           "rateLimitPerMinute": {
-            "description": "TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.",
+            "description": "ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.",
             "nullable": true,
             "type": "number"
           },
@@ -12558,7 +12558,7 @@
             "type": "string"
           },
           "doctor_id": {
-            "description": "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
+            "description": "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
             "type": "string"
           },
           "formatted_previous_visits": {
@@ -14700,7 +14700,7 @@
       "RoutingRejectionResponse": {
         "properties": {
           "code": {
-            "description": "provider_unavailable | provider_not_in_policy | no_policy | kill_switch_engaged | no_eligible_candidate — machine-readable, per §3A.4.",
+            "description": "provider_unavailable | provider_not_in_policy | no_policy | kill_switch_engaged | no_eligible_candidate — machine-readable, per",
             "type": "string"
           },
           "message": {
@@ -16354,7 +16354,7 @@
             "type": "string"
           },
           "startOn": {
-            "description": "Pre-start default-provider selection (TASK-586 C7b). 'pipeline' (≡primary, default) opens the session on the configured pipeline; 'default' (≡fallback) opens directly on the tenant-admin default provider. Fail-closed: 'default' with no configured fallback pipeline → 409.",
+            "description": "Pre-start default-provider selection (C7b). 'pipeline' (≡primary, default) opens the session on the configured pipeline; 'default' (≡fallback) opens directly on the tenant-admin default provider. Fail-closed: 'default' with no configured fallback pipeline → 409.",
             "enum": [
               "pipeline",
               "default"
@@ -16705,7 +16705,7 @@
             "type": "object"
           },
           "citedSegments": {
-            "description": "Cited transcript segments (TASK-552 Lane C), resolved from citationsMap against the persisted TranscriptSegment rows. Empty (not missing) when the consultation has no single resolvable transcript, no segments are persisted, or nothing was cited — best-effort, never blocks the read.",
+            "description": "Cited transcript segments (Lane C), resolved from citationsMap against the persisted TranscriptSegment rows. Empty (not missing) when the consultation has no single resolvable transcript, no segments are persisted, or nothing was cited — best-effort, never blocks the read.",
             "items": {
               "$ref": "#/components/schemas/CitedSegmentResponse"
             },
@@ -16869,7 +16869,7 @@
             "type": "string"
           },
           "doctor_id": {
-            "description": "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
+            "description": "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
             "type": "string"
           },
           "encounter_type": {
@@ -16921,7 +16921,7 @@
           },
           "translate_to_english": {
             "default": false,
-            "description": "true → translate the transcript to English via Sarvam BEFORE summarizing (TASK-600). Fail-open: on a translation error the original transcript is summarized. Default false.",
+            "description": "true → translate the transcript to English via Sarvam BEFORE summarizing . Fail-open: on a translation error the original transcript is summarized. Default false.",
             "type": "boolean"
           },
           "use_enhanced_format": {
@@ -17279,7 +17279,7 @@
             "type": "number"
           },
           "maxWorkflowDefinitions": {
-            "description": "Override max PUBLISHED workflow definitions (TASK-722); null = inherit",
+            "description": "Override max PUBLISHED workflow definitions ; null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -17294,22 +17294,22 @@
             "type": "number"
           },
           "monthlyEmbeddingTokens": {
-            "description": "Override monthly embedding tokens allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly embedding tokens allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyLlmTokens": {
-            "description": "Override monthly LLM tokens allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly LLM tokens allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyNlpTextUnits": {
-            "description": "Override monthly NLP text-units allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly NLP text-units allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlySttSessionSeconds": {
-            "description": "Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly STT session-seconds allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -17324,12 +17324,12 @@
             "type": "number"
           },
           "monthlyTtsCharacters": {
-            "description": "Override monthly TTS characters allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly TTS characters allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyWorkflowInvocations": {
-            "description": "Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit",
+            "description": "Override monthly PUBLISHED-workflow invocations ; null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -18618,7 +18618,7 @@
             "type": "number"
           },
           "residency": {
-            "description": "Opaque residency-class label; compared for EQUALITY only by the §3A.4 gate.",
+            "description": "Opaque residency-class label; compared for EQUALITY only by the gate.",
             "type": "string"
           },
           "strategy": {
@@ -18953,7 +18953,7 @@
             "type": "number"
           },
           "redactionRules": {
-            "description": "TASK-551 — the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear.",
+            "description": "the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear.",
             "type": "object"
           },
           "reportData": {
@@ -19656,7 +19656,7 @@
             "type": "number"
           },
           "featureAgenticLoop": {
-            "description": "Does this plan include the harness AGENTIC LOOP (TASK-705)? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.",
+            "description": "Does this plan include the harness AGENTIC LOOP ? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.",
             "type": "boolean"
           },
           "featureDnaReports": {
@@ -19706,7 +19706,7 @@
             "type": "number"
           },
           "maxWorkflowDefinitions": {
-            "description": "Max PUBLISHED workflow definitions (TASK-722); null = unlimited",
+            "description": "Max PUBLISHED workflow definitions ; null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -19720,22 +19720,22 @@
             "type": "number"
           },
           "monthlyEmbeddingTokens": {
-            "description": "Monthly embedding tokens allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly embedding tokens allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyLlmTokens": {
-            "description": "Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited",
+            "description": "Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyNlpTextUnits": {
-            "description": "Monthly NLP text-units allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly NLP text-units allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlySttSessionSeconds": {
-            "description": "Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited",
+            "description": "Monthly STT session-seconds allowance (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
@@ -19750,17 +19750,17 @@
             "type": "number"
           },
           "monthlyTtsCharacters": {
-            "description": "Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited",
+            "description": "Monthly TTS characters allowance, Unicode code points (D11); null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "monthlyWorkflowInvocations": {
-            "description": "Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited",
+            "description": "Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited",
             "nullable": true,
             "type": "number"
           },
           "rateLimitPerMinute": {
-            "description": "TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.",
+            "description": "ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.",
             "minimum": 1,
             "nullable": true,
             "type": "number"
@@ -20849,7 +20849,7 @@
             "type": "number"
           },
           "featureAgenticLoop": {
-            "description": "Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant (TASK-705). Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide.",
+            "description": "Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant . Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide.",
             "nullable": true,
             "type": "boolean"
           },
@@ -20904,7 +20904,7 @@
             "type": "number"
           },
           "maxWorkflowDefinitions": {
-            "description": "Override max PUBLISHED workflow definitions (TASK-722); null = inherit",
+            "description": "Override max PUBLISHED workflow definitions ; null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -20919,22 +20919,22 @@
             "type": "number"
           },
           "monthlyEmbeddingTokens": {
-            "description": "Override monthly embedding tokens allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly embedding tokens allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyLlmTokens": {
-            "description": "Override monthly LLM tokens allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly LLM tokens allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyNlpTextUnits": {
-            "description": "Override monthly NLP text-units allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly NLP text-units allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlySttSessionSeconds": {
-            "description": "Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly STT session-seconds allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -20949,12 +20949,12 @@
             "type": "number"
           },
           "monthlyTtsCharacters": {
-            "description": "Override monthly TTS characters allowance (TASK-615 D11); null = inherit",
+            "description": "Override monthly TTS characters allowance (D11); null = inherit",
             "nullable": true,
             "type": "number"
           },
           "monthlyWorkflowInvocations": {
-            "description": "Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit",
+            "description": "Override monthly PUBLISHED-workflow invocations ; null = inherit",
             "nullable": true,
             "type": "number"
           },
@@ -22381,7 +22381,7 @@
             "type": "string"
           },
           "outputKey": {
-            "description": "The key of the producing activity’s output object that this socket carries (TASK-809 OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort.",
+            "description": "The key of the producing activity’s output object that this socket carries (OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort.",
             "type": "string"
           },
           "primitive": {
@@ -22687,7 +22687,7 @@
           },
           "resultRef": {
             "additionalProperties": true,
-            "description": "What the run DELIVERED (TASK-790, closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.",
+            "description": "What the run DELIVERED (closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.",
             "nullable": true,
             "type": "object"
           },
@@ -23637,7 +23637,7 @@
             "bearer": []
           }
         ],
-        "summary": "List selectable STT language modes + per-mode supported engines (TASK-587)",
+        "summary": "List selectable STT language modes + per-mode supported engines ",
         "tags": [
           "transcription-jobs"
         ],
@@ -26460,7 +26460,7 @@
             }
           },
           {
-            "description": "TASK-661 — the tenant-declared context-schema version the CALLER built against (a `ConsultationContextSchemaVersion` id, e.g. from the discovery bundle `contextSchemaVersionId` read at session open). When `request.kindKey` is present, the payload validates against THIS version rather than the tenant's current pin — a client on an older schema version is never silently upgraded (or broken) by a publish that lands mid-consultation. Ignored when `kindKey` is absent.",
+            "description": "the tenant-declared context-schema version the CALLER built against (a `ConsultationContextSchemaVersion` id, e.g. from the discovery bundle `contextSchemaVersionId` read at session open). When `request.kindKey` is present, the payload validates against THIS version rather than the tenant's current pin — a client on an older schema version is never silently upgraded (or broken) by a publish that lands mid-consultation. Ignored when `kindKey` is absent.",
             "in": "header",
             "name": "X-Context-Schema-Version",
             "required": false,
@@ -33516,7 +33516,7 @@
     },
     "/api/v1/workflows/{slug}/invoke": {
       "post": {
-        "description": "Superseded by `POST :slug/runs` (TASK-850), which is the same handler plus response modes. Retained because the shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always answers `mode=async`. New integrations should use `:slug/runs`. If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice: TASK-720 R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Superseded by `POST :slug/runs` , which is the same handler plus response modes. Retained because the shipped `@arcaai/vox-node` contract and the seeded examples call this path; it delegates verbatim and always answers `mode=async`. New integrations should use `:slug/runs`. If the published definition selects a cloud AI provider (via the tenant's own `smr.*` task-default configuration — see AI Task Defaults), this run sends the tenant's data to that vendor. Public exposure does NOT restrict provider choice:  R-4 (owner ruling, 2026-08-20) allows a publicly-exposed workflow to select a cloud provider — the tenant carries that egress risk, consistent with the platform's BYO-first posture. Configure/disclose provider choice where the tenant sets it (AI Task Defaults), not only here.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `workflow:run:write`.\n\n**Abilities** — `create:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "WorkflowsController_invoke",
         "parameters": [
           {

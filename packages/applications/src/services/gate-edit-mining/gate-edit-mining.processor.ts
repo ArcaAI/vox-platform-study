@@ -28,7 +28,7 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       // The miner is idempotent anyway (unique on tenant+consultation), so this
       // is a cost optimisation, not a correctness requirement.
       //
-      // TASK-789 day-1: the separator MUST NOT be ':' — BullMQ rejects a custom id
+      // day-1: the separator MUST NOT be ':' — BullMQ rejects a custom id
       // containing one ("Custom Id cannot contain :", because ':' delimits its own
       // Redis key namespace). Every sign-off therefore threw here, and since the
       // enqueue is best-effort the throw was caught and the exemplar simply never
@@ -64,8 +64,8 @@ export class GateEditMiningProcessor extends WorkerHost {
     private readonly contextItemVersionRepository: ContextItemVersionRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly cls: ClsService<IActiveUserContext>,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -102,7 +102,7 @@ export class GateEditMiningProcessor extends WorkerHost {
         consultationId,
         departmentId: consultation?.departmentId ?? null,
         // The mined retrieval facet carries the TENANT's visit-type key
-        // (TASK-815 §11 row 3), so a tenant that defines its own vocabulary
+        // , so a tenant that defines its own vocabulary
         // mines and retrieves exemplars under it rather than under a platform
         // literal. `parentConsultationId` remains the follow-up signal.
         visitType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {

@@ -33,9 +33,9 @@ const SESSION_TENANTLESS_REASON = TENANTLESS.JOB_QUEUE;
  *
  * Manages streaming session lifecycle by communicating with the STT
  * internal API endpoints:
- * - GET  /internal/streaming/availability
+ * - GET /internal/streaming/availability
  * - POST /internal/streaming/sessions
- * - GET  /internal/streaming/sessions/{sessionId}
+ * - GET /internal/streaming/sessions/{sessionId}
  * - DELETE /internal/streaming/sessions/{sessionId}
  *
  * This is a brand-new service for STT WebSocket streaming.
@@ -325,7 +325,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    * record). `interrupted` is entirely a GATEWAY-side decision (STT has no
    * concept of it): pass `true` from an abort path (resume-grace expiry,
    * shutdown) and leave it `false` (the default) for an explicit close —
-   * ws-b-contract.md §4's "THE ABORT RULE": both use the SAME idempotency
+   * ws-b-contract.md 's "THE ABORT RULE": both use the SAME idempotency
    * key, so a duplicate teardown is a no-op at the ledger, never a double
    * charge.
    */

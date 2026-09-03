@@ -1,5 +1,5 @@
 /**
- * TASK-711 — session state machine, single-source-of-truth gates.
+ * session state machine, single-source-of-truth gates.
  *
  * `Consultation.status` is now written EXCLUSIVELY through
  * `ConsultationEntity.transitionTo`. This grep-gate (modelled on
@@ -10,7 +10,7 @@
  *   1. Zero writes to the legacy `metadata.status` tracker (deleted — Task 10).
  *   2. Zero direct `consultation.status = <value>` assignments bypassing the
  *      legality matrix, except the ONE documented, kill-switch-gated
- *      exception in `ConsultationService.startRecording` (README §4 Task 9
+ * exception in `ConsultationService.startRecording` ( Task 9
  *      step 4 — the `requirePrimedBeforeRecording` flag's OFF branch, which
  *      deliberately reproduces pre-711 behaviour for legacy callers).
  *
@@ -18,7 +18,7 @@
  * `consultationStatus.wired.test.ts` — that one proves the matrix is
  * COMPLETE; this one proves the matrix is the ONLY path, which is the
  * property that would have caught `updateConsultation`'s pre-711
- * `nextMeta.status = request.status` forgery vector (TASK-701) before it
+ * `nextMeta.status = request.status` forgery vector before it
  * shipped.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -28,11 +28,11 @@ import { describe, expect, it } from 'vitest';
 
 const APPLICATIONS_SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
-/** The one documented, kill-switch-gated exception (README §4 Task 9 step 4). */
+/** The one documented, kill-switch-gated exception ( Task 9 step 4). */
 const ALLOWED_DIRECT_ASSIGNMENT = {
   relativePath: 'services/consultation/consultation/consultation.service.ts',
   line: 'consultation.status = ConsultationStatus.RECORDING;',
-  markerComment: 'TASK-711 grep-gate NOTE',
+  markerComment: ' grep-gate NOTE',
 };
 
 const METADATA_STATUS_RE = /\bmetadata(?:\?\.|\.)status\b/;
@@ -57,7 +57,7 @@ function listTsFiles(dir: string, exclude: Set<string>): string[] {
   return out;
 }
 
-describe('Consultation.status single-source-of-truth gate (TASK-711)', () => {
+describe('Consultation.status single-source-of-truth gate ', () => {
   const files = listTsFiles(APPLICATIONS_SRC_ROOT, new Set(['__tests__', 'node_modules', 'dist']));
 
   it('sanity: the applications src tree is not empty', () => {
@@ -84,7 +84,7 @@ describe('Consultation.status single-source-of-truth gate (TASK-711)', () => {
 
     expect(
       violations,
-      `metadata.status is deleted (TASK-711 Task 10) — every hit below must be removed, ` +
+      `metadata.status is deleted (Task 10) — every hit below must be removed, ` +
         `or this test's regex updated if it is a false positive (e.g. an unrelated entity's ` +
         `own 'metadata.status' shape):\n${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);

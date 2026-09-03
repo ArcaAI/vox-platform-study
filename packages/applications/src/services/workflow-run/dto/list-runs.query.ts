@@ -1,5 +1,5 @@
 /**
- * Filters + keyset options for `WorkflowRunService.listRuns` (TASK-723).
+ * Filters + keyset options for `WorkflowRunService.listRuns`.
  * Plain internal contracts — the class-validator DTO lives at the apps/api
  * controller boundary (rule 04).
  */
@@ -13,8 +13,8 @@ export interface ListWorkflowRunsFilters {
   /** Inclusive upper bound on `startedAt` (ISO-8601 instant). */
   to?: string;
   /**
-   * Sandbox runs (TASK-721's Workbench) are excluded by default — the single
-   * query-level filter point (Task 1 contract §4). Explicitly `true` to
+   * Sandbox runs ( Workbench) are excluded by default — the single
+   * query-level filter point (Task 1 contract). Explicitly `true` to
    * include them.
    */
   includeSandbox?: boolean;

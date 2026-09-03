@@ -1,13 +1,13 @@
 /**
- * TASK-773 — controller -> admin-scope evidence fixture.
+ * controller -> admin-scope evidence fixture.
  *
  * This is EVIDENCE, not configuration. It is a mechanical transcription of
  * every class-level `@RequiredScopes('admin:<area>')` decorator that commit
- * `276f96a32` ("feat(TASK-757): the admin plane is JWT-only (policy A2)")
+ * `276f96a32` ("feat: the admin plane is JWT-only (policy A2)")
  * removed in favor of `@ForbidApiKey()`, extracted by parsing that commit's
  * diff of `apps/api/src/modules` (see `git show 276f96a32 -- apps/api/src/modules`).
  *
- * TASK-773 puts a service-account scope back on each of these controllers —
+ * puts a service-account scope back on each of these controllers
  * `@RequiredSvcScopes(toServiceAccountScope(adminScope))`, i.e.
  * `svc:admin:<area>` — and a boot audit reads this fixture to prove every row
  * actually landed with the right scope. A wrong or missing row here silently
@@ -57,7 +57,7 @@ export interface AdminScopeMapRow {
   file: string;
   /** Exported controller class name. */
   controllerClass: string;
-  /** The exact `admin:*` scope removed by TASK-757 (276f96a32). */
+  /** The exact `admin:*` scope removed by (276f96a32). */
   adminScope: string;
   /**
    * Set when the controller's MODULE registers it conditionally, so its absence

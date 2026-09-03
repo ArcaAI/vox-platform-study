@@ -33,7 +33,7 @@ import { TracePrunedState } from './trace-pruned-state';
 const VIEW_VALUES = ['canvas', 'list'] as const;
 type View = (typeof VIEW_VALUES)[number];
 
-/** Stable selection key for a rollup — its correlation to a graph node id is best-effort (§lib/rollup-correlation), so selection is keyed off the rollup itself, not off a graph node id that might not exist. */
+/** Stable selection key for a rollup — its correlation to a graph node id is best-effort (lib/rollup-correlation), so selection is keyed off the rollup itself, not off a graph node id that might not exist. */
 function rollupKey(rollup: Pick<RunNodeRollup, 'nodeType' | 'order'>): string {
   return `${rollup.nodeType}#${rollup.order}`;
 }
@@ -59,7 +59,7 @@ function TraceBody({ runId }: { runId: string }) {
   const view: View = (VIEW_VALUES as readonly string[]).includes(viewParam) ? (viewParam as View) : 'canvas';
   const [selectedKey, setSelectedKey] = useQueryState('node', parseAsString);
 
-  // Replay/scrub (TASK-849 lane C, step 7) — reads only the durable REST trace already
+  // Replay/scrub — reads only the durable REST trace already
   // fetched above; `replayStep` is the count of `orderedNodes` REVEALED so far. Only offered
   // for a terminal run (a live run already has its own live front — scrubbing a run that is
   // still moving underneath you is a different feature this ticket doesn't ask for).
@@ -93,7 +93,7 @@ function TraceBody({ runId }: { runId: string }) {
     () => (graph ? correlateRollupsToGraphNodes(graph.nodes, effectiveRollups) : new Map<string, RunNodeRollup>()),
     [graph, effectiveRollups],
   );
-  // Per-graph-node canvas border (TASK-849 lane C step 6): the durable rollup first, then the
+  // Per-graph-node canvas border (lane C step 6): the durable rollup first, then the
   // LIVE control frame for that exact `nodeId` overrides it — the live frame can arrive before
   // the next REST re-snapshot resolves, and a retry that just started must clear a stale ERROR
   // border from the previous attempt. Replay never consults live state (a completed run's live

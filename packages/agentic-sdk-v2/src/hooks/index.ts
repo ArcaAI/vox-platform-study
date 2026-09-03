@@ -97,11 +97,11 @@ export { useConsultationChain, type UseConsultationChainReturn } from './useCons
 
 // Consultation context schema discovery
 export { useConsultationSchema, type UseConsultationSchemaReturn } from './useConsultationSchema';
-// TASK-813 — which engine governs a consultation (the read side of OpenSessionInput.workflowDefinitionSlug).
+// which engine governs a consultation (the read side of OpenSessionInput.workflowDefinitionSlug).
 export { useConsultationWorkflow, type UseConsultationWorkflowReturn } from './useConsultationWorkflow';
 export { useSelectableConsultationWorkflows, type UseSelectableConsultationWorkflowsReturn } from './useSelectableConsultationWorkflows';
 
-// TASK-850 — workflow INVOCATION: run a published workflow (optionally against a
+// workflow INVOCATION: run a published workflow (optionally against a
 // consultation), watch it live with a resumable stream, cancel it.
 export {
   RESERVED_RUN_IDENTITY_KEYS,

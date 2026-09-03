@@ -1,10 +1,10 @@
 """Embeddings endpoint — sync `/embeddings`.
 
-TASK-818 B-10 removed `/embeddings/batch` with the worker-pool plane it dispatched
+removed `/embeddings/batch` with the worker-pool plane it dispatched
 onto; the sync route is what remains.
 
 ORIGINAL: sync `/embeddings` and async `/embeddings/batch`
-(TASK-725 Task 4). Hermetic: registry/queue/task-manager are stubs, no live
+Hermetic: registry/queue/task-manager are stubs, no live
 engines. RED: written before `api/endpoints/embeddings.py` existed.
 """
 

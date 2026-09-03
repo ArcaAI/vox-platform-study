@@ -1,5 +1,5 @@
 /**
- * TASK-799 Round 4 lane B — the seed must actually PERSIST key material.
+ * Round 4 lane B — the seed must actually PERSIST key material.
  *
  * `config-plane-seed.test.ts` asserts the exported seed DATA: which rows exist,
  * which are enabled, which declare `apiKeyPlaintext`. That is necessary and not
@@ -12,9 +12,9 @@
  * Vault, and asserts on the `create()` payload.
  *
  * Environment split, both directions covered:
- *   - `SECRETS_PROVIDER=vault`  ⇒ the four self-host llm rows are created WITH
+ *   - `SECRETS_PROVIDER=vault` ⇒ the four self-host llm rows are created WITH
  *     ciphertext + keyVersion, under the SECRETS transit key (never `hope-phi`).
- *   - anything else            ⇒ no Vault contact, rows created keyless. That is
+ *   - anything else ⇒ no Vault contact, rows created keyless. That is
  *     the correct degraded outcome (without a `SecretsService` the runtime
  *     resolver returns no overrides at all), and it must not abort the seed —
  *     the same soft-mode contract `phi-encryption.test.ts` pins for PHI.

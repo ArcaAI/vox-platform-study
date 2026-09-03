@@ -300,13 +300,13 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-703: `textFailed` computed internally on a failed TEXT call but never
+  // `textFailed` computed internally on a failed TEXT call but never
   // attached to the published `LiveSummaryEventDto` — a first-flush failure
   // published an empty note indistinguishable from "nothing said yet", and a
   // later-flush failure froze stale content under a fresh `updatedAt` with no
   // marker. The published payload must carry `textFailed: true` in both cases.
   // ------------------------------------------------------------------
-  describe('textFailed degradation marker (TASK-703)', () => {
+  describe('textFailed degradation marker ', () => {
     it('marks a first-flush TEXT failure with textFailed: true (no prior content to freeze)', async () => {
       const httpMock = {
         axiosRef: {
@@ -859,7 +859,7 @@ describe('LiveDocumentationService', () => {
       // Provider+model come from the policy cascade (keyed by the session tenant),
       // not LIVE_DOC_TEXT_PROVIDER/MODEL env. The live flush must ask
       // for the LIVE tier ('text.live'), not the default finalize tier.
-      // TASK-816: `undefined` is the third arg because no graph NODE made this call (legacy
+      // `undefined` is the third arg because no graph NODE made this call (legacy
       // flush), so no `llmBinding` applies and the tenant `text.live` AiTaskDefault resolves
       // exactly as it always did.
       expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live', undefined);

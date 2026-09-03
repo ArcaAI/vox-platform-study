@@ -1,7 +1,7 @@
 /**
  * `manifest.json` builder — the Merkle-root record published alongside a
  * model's weights in `hope-models` (`infrastructure/docker/minio/README.md`
- * §5.3). Pure function over already-fetched files; no I/O.
+ * Pure function over already-fetched files; no I/O.
  *
  * Deliberately populates only what this lane's inputs can derive:
  * `schemaVersion`, `slug`, `version`, `quantization`, `format`,

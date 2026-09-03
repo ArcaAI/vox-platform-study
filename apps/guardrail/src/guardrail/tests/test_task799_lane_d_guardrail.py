@@ -1,4 +1,4 @@
-"""TASK-799 lane D — guardrail's last env-owned policy plane, and the knob duplicates.
+"""lane D — guardrail's last env-owned policy plane, and the knob duplicates.
 
 Four defects, all of the same family: a configuration value that a platform admin
 cannot change without a restart, or the SAME value declared in two places so the

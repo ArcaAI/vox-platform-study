@@ -1,5 +1,5 @@
 /**
- * TASK-761 T-8 — every boot audit is actually CALLED from `bootstrap()`.
+ * every boot audit is actually CALLED from `bootstrap()`.
  *
  * This is the one failure mode none of the per-audit suites can catch. Each of
  * those builds a synthetic app and calls its audit directly, so an audit that
@@ -47,7 +47,7 @@ const WIRED_AUDITS = [
   'auditCaslEnforcePairReachability',
 ] as const;
 
-describe('bootstrap audit wiring (TASK-761 T-8)', () => {
+describe('bootstrap audit wiring (T-8)', () => {
   // An import with no call site is a gate that never runs, so the CALL is what
   // is asserted here; the import is asserted separately below.
   it.each(WIRED_AUDITS)('%s is called in main.ts', (auditName) => {

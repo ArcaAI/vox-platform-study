@@ -9,7 +9,7 @@ import { RateLimitRuleEntityMapper } from '../../../mappers';
 import { RateLimitRule } from '../../../models';
 
 /**
- * Rate-limit rule repository (TASK-785).
+ * Rate-limit rule repository.
  *
  * One rule per `(tenantId, routeMatch, matchKind)` — enforced by the
  * `RateLimitRule_scope_unique` index. A SYSTEM-tenant row is a platform-wide
@@ -34,8 +34,8 @@ export class RateLimitRuleRepository extends Repository<RateLimitRuleEntity, Rat
    * `clsService.exit(...)`). Called under a tenant context the tenant-scope
    * extension would inject that tenant's id and the cache would be rebuilt
    * holding one tenant's view of the world — the cache-poisoning failure mode
-   * TASK-771 fixed for `AppSettingsService`.
-   */
+   * fixed for `AppSettingsService`.
+ */
   async findAllForCache(): Promise<RateLimitRuleEntity[]> {
     return this.findAll({ filters: { resourceStatus: ResourceStatusType.ENABLED } });
   }

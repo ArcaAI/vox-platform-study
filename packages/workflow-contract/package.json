@@ -1,7 +1,7 @@
 {
   "name": "@arcaai/workflow-contract",
   "version": "0.1.0",
-  "description": "The pure workflow-graph validator + deterministic compiler engine for the agentic-workflow-platform substrate (TASK-716). Zero runtime dependencies.",
+  "description": "The pure workflow-graph validator + deterministic compiler engine for the agentic-workflow-platform substrate . Zero runtime dependencies.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

@@ -1,10 +1,10 @@
 /**
- * NoteGenerationService — TASK-704 (Generator Entry-Point Seam) unit tests.
+ * NoteGenerationService — (Generator Entry-Point Seam) unit tests.
  *
  * Covers the seam's dispatch contract:
  *   (a) TRANSCRIPTION_CREATED + harnessEnabled=true + gateway present → gateway.start() called, decision 'harness'.
  *   (b) TRANSCRIPTION_CREATED + harnessEnabled=false → legacy decision, gateway never called.
- *   (c) TRANSCRIPTION_CREATED + harnessEnabled=true + gateway UNDEFINED → throws (§2.3 regression test).
+ * (c) TRANSCRIPTION_CREATED + harnessEnabled=true + gateway UNDEFINED → throws ( regression test).
  *   (d) SUMMARY_REGENERATE mirrors (a)/(b)/(c).
  *   (e) PRE_SUMMARY / COMPREHENSIVE_SUMMARY + harnessEnabled=true → always legacy, 'harness-not-supported-for-trigger', no throw.
  */
@@ -123,7 +123,7 @@ describe('NoteGenerationService', () => {
       await expect(service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams)).rejects.toThrow();
     });
 
-    it('(f) threads the consultation patientId as externalPatientId (TASK-712, consent-abac Phase 4)', async () => {
+    it('(f) threads the consultation patientId as externalPatientId (consent-abac Phase 4)', async () => {
       mockConsultationRepository.findById.mockResolvedValue({
         id: 'consultation-001',
         tenantId: 'tenant-abc',

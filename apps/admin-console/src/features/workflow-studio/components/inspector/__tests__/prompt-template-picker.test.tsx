@@ -1,5 +1,5 @@
 /**
- * `PromptTemplatePicker` (TASK-719 Task 19) — the Studio's node inspector gets a *picker* over
+ * `PromptTemplatePicker` — the Studio's node inspector gets a *picker* over
  * the tenant's prompt templates (never a second editor — design.md: "prompt templates keep
  * their own authoritative editor (picker + deep link)"), plus a plain `href` deep link to
  * `/prompt-templates`. Reads `admin/prompt-templates` directly — no cross-feature import

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "harness"
 version = "0.1.0"
-description = "Clinical Documentation Harness orchestrator (TASK-330) — bounded guides→generate→sensors→gate loop on Temporal"
+description = "Clinical Documentation Harness orchestrator  — bounded guides→generate→sensors→gate loop on Temporal"
 authors = [
     {name = "ARCA AI Team", email = "team@arcaai.com"}
 ]
@@ -54,7 +54,7 @@ dependencies = [
     # `memory`), but promoted to a base dep so the production S3 path is always
     # installable without an extra — matching the text base-dep precedent.
     "boto3>=1.43.72",
-    # Config-invalidation subscriber ONLY (TASK-799 A.3 / owner decision D-5):
+    # Config-invalidation subscriber ONLY ( A.3 / owner decision D-5):
     # `arca:config:invalidate` pub/sub so a control-plane write reaches this process
     # without waiting out the 60s TTL. harness stores nothing in Redis and queues
     # nothing through it — its durable state is Temporal's.
@@ -63,8 +63,8 @@ dependencies = [
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
-    # --- The async task/event envelope + idempotency/resume conventions (TASK-717).
-    # TASK-849 makes harness a PRODUCER of it (Phase C): the interpreter mirrors run
+    # The async task/event envelope + idempotency/resume conventions.
+    # makes harness a PRODUCER of it: the interpreter mirrors run
     # control events, and streams token deltas, as conforming envelopes onto a Redis
     # Stream. Same workspace dependency apps/text already carries for the same contract.
     "hope-async-contract",

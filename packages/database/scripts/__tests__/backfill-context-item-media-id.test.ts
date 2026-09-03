@@ -1,5 +1,5 @@
 // Unit tests for the backfill script (scripts/backfill-context-item-media-id.ts).
-// The live Postgres round-trip is exercised manually/in the ticket README; here
+// The live Postgres round-trip is exercised manually/; here
 // we lock down the pure helpers (isValidMediaId, deriveMediaFields, parseArgs)
 // and the plan/apply logic against an in-memory fake client — NO live DB.
 import { describe, it, expect, beforeEach } from 'vitest';

@@ -3,7 +3,7 @@
 Deterministic, platform-owned. Walks a published WorkflowDefinition version's compiledConfig
 (dereferenced via claim-check, S-2) stage by stage, dispatching each node to a code-owned,
 registry-sanctioned activity (S-4). See
-docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md for the full
+for the full
 contract this file implements.
 
 Determinism checklist (enforced by review, not by a linter): no ``datetime.now``, no ``random``,
@@ -70,7 +70,7 @@ _CONFIG_LOAD_TIMEOUT = timedelta(seconds=30)
 _CONFIG_LOAD_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=1))
 
 # Stride between per-node trajectory-seq bases — same idiom as `workflows.py`'s
-# `_SEQ_STRIDE` (Task 7): a workflow-owned monotonic counter stands in for a clock/UUID
+# `_SEQ_STRIDE`: a workflow-owned monotonic counter stands in for a clock/UUID
 # (determinism). No interpreter node activity emits more than one trajectory step today, so a
 # small stride is enough headroom without claiming a wall-clock-derived value.
 _SEQ_STRIDE = 4
@@ -79,7 +79,7 @@ _SEQ_STRIDE = 4
 # `consultation_loop_workflow_id` (workflows.py:1623-1625).
 INTERPRETER_WORKFLOW_ID_PREFIX = "workflow-interpreter-"
 
-# The patch marker for the HITL-gate command (TASK-731 Phase B). Required by
+# The patch marker for the HITL-gate command. Required by
 # contracts/versioning.md rule 3: executing a gate adds a NEW command to the workflow body, which
 # would change the command sequence for every replaying history if shipped ungated. The gate is
 # guarded cheap-operand-first (`config.gates and workflow.patched(...)`), and the cheap operand is
@@ -89,18 +89,18 @@ INTERPRETER_WORKFLOW_ID_PREFIX = "workflow-interpreter-"
 # exactly what the idiom is for.
 _GATE_PATCH = "task-731-hitl-gate"
 
-# The patch marker for the agentic LOOP (TASK-848). Same rule as the gate above: dispatching an
+# The patch marker for the agentic LOOP. Same rule as the gate above: dispatching an
 # `agentic.loop` node as a CHILD WORKFLOW instead of as an activity changes the command sequence,
 # so every recorded history that ran one as an activity must keep replaying it that way.
 #
 # Unlike the gate's, this one's cheap operand is NOT provably False on every pre-existing history:
-# TASK-847 shipped `agentic.loop` as a registered, dispatchable activity, so a run that walked a
+# shipped `agentic.loop` as a registered, dispatchable activity, so a run that walked a
 # graph containing one really did record an ActivityTaskScheduled for `interpreter.agentic_loop`.
 # That is exactly the case `workflow.patched` exists for, and it is why this is a real gate rather
 # than a formality.
 _LOOP_PATCH = "task-848-agentic-loop-child"
 
-# The patch marker for the run-event MIRROR (TASK-849 lane A). Third gate, same rule as the two
+# The patch marker for the run-event MIRROR. Third gate, same rule as the two
 # above: `interpreter.emit_run_events` is a NEW `execute_activity` call in the shared per-stage
 # path, so every history recorded before this change must keep replaying without it.
 #
@@ -164,17 +164,17 @@ class WorkflowInterpreter:
         self._cancel_reason: str | None = None
         self._seq = 0
         # Workflow-owned cache of completed nodes' own `NodeActivityResult.output`, keyed by
-        # `node_id` (TASK-720 Task 5 — see `NodeActivityInput.bound_inputs`'s docstring for the
+        # `node_id` — see `NodeActivityInput.bound_inputs`'s docstring for the
         # full rationale). Pure Python dict state built from already-deterministic activity
         # results — no wall-clock/random/I/O — so it is replay-safe exactly like `self._stages`.
         # A node in stage N can only bind from a node in stage < N (the compiler's topological
         # stage partitioning already guarantees this), so same-stage fan-out nodes never race
         # each other reading/writing this cache.
         self._node_outputs: dict[str, dict[str, Any]] = {}
-        # TASK-848: `agentic.loop` names its orchestrator and sub-agents by NODE REFERENCE, so the
+        # `agentic.loop` names its orchestrator and sub-agents by NODE REFERENCE, so the
         # loop body has to be resolvable from an id. Indexed once in `run`, alongside `_node_types`.
         self._nodes_by_id: dict[str, CompiledNode] = {}
-        # TASK-848 — node ids a loop claims as its BODY (orchestrator + sub-agents). The compiler
+        # node ids a loop claims as its BODY (orchestrator + sub-agents). The compiler
         # lifts only `gate`-class nodes out of `stages` (`compiler.ts`: "a node bearing the `gate`
         # class is lifted out of `stages`") and emits no `loops` collection, so a loop's body nodes
         # remain in the stage walk. Without this set the orchestrator would run ONCE as an ordinary
@@ -183,7 +183,7 @@ class WorkflowInterpreter:
         self._loop_body_node_ids: set[str] = set()
         # `node_id -> node type`, built from the compiled config before the walk starts.
         # `_resolve_bound_inputs` needs the PRODUCER's type to look its declared output sockets up
-        # in `NODE_REGISTRY` (TASK-809 OD-15); `_node_outputs` alone is keyed by id and says
+        # in `NODE_REGISTRY`; `_node_outputs` alone is keyed by id and says
         # nothing about which node type produced the dict. Pure derived state, so it is replay-safe
         # for the same reason `_stages` is.
         self._node_types: dict[str, str] = {}
@@ -211,7 +211,7 @@ class WorkflowInterpreter:
         for indexed_stage in config.stages:
             for indexed_node in indexed_stage.nodes:
                 self._node_types[indexed_node.node_id] = indexed_node.type
-                # TASK-848 — `_index_loop_body`'s half of the same walk. A loop's orchestrator and
+                # `_index_loop_body`'s half of the same walk. A loop's orchestrator and
                 # sub-agents are ordinary nodes of this graph named by id, so the index IS the
                 # resolution: no second traversal, and no chance of the two disagreeing.
                 self._nodes_by_id[indexed_node.node_id] = indexed_node
@@ -241,11 +241,11 @@ class WorkflowInterpreter:
                 elif node_result.status in ("DEGRADED", "SKIPPED"):
                     run_degraded = True
             if run_failed:
-                # The current stage is already fully settled (all-settled join, §5); no
+                # The current stage is already fully settled (all-settled join,; no
                 # further stage is started once a critical node has failed.
                 break
 
-        # 2) The HITL gate (TASK-731 Phase B). The compiler LIFTS every `gate`-classed node out
+        # 2) The HITL gate. The compiler LIFTS every `gate`-classed node out
         # of `stages` into `gates` (compiler.ts:204-210), so a gate never reaches `_run_stage` —
         # it runs here, after the walk, which is also what the graph means: `WF-CONS-004` makes
         # the gate terminal for everything except the palette-agnostic `core.end` marker.
@@ -273,13 +273,13 @@ class WorkflowInterpreter:
 
         return InterpreterResult(run_id=inp.run_id, status=status, stages=self._stages)
 
-    # -- Run-event mirror (TASK-849 lane A) ---------------------------------------------
+    # Run-event mirror 
     #
     # The CONTROL lane. Node/stage/run outcomes are already durable in Temporal history and
     # readable through the `state` query; these three helpers MIRROR them onto the run's Redis
     # Stream so the gateway can PUSH instead of poll. Token deltas never come through here —
     # they go straight from the producing activity to Redis, which is the whole two-lane split
-    # (program §3.4 rule 17: signals land in history, ceiling 51,200 events / 50 MB per run).
+    # (program rule 17: signals land in history, ceiling 51,200 events / 50 MB per run).
 
     async def _emit_run_events(self, inp: InterpreterInput, events: list[RunEventSpec]) -> None:
         """Fire one emit activity, or do nothing. Never fails the run.
@@ -353,10 +353,10 @@ class WorkflowInterpreter:
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:
         """All-settled join: every node's own coroutine catches its own ACTIVITY exceptions
-        (§4/§5), so plain ``asyncio.gather`` (no ``return_exceptions``) is sufficient for the
-        outcomes §4 defines.
+        (so plain asyncio.gather (no return_exceptions) is sufficient for the
+        outcomes defines.
 
-        ONE thing does deliberately escape (TASK-809 OD-15): ``_resolve_bound_inputs`` raises a
+        ONE thing does deliberately escape : _resolve_bound_inputs raises a
         non-retryable ``ApplicationError`` when a graph binds a socket the producing node type does
         not declare. That is a CONTRACT violation rather than a node outcome — there is no honest
         value to thread and no retry that would change it — so it fails the run loudly instead of
@@ -374,7 +374,7 @@ class WorkflowInterpreter:
         overwrites an earlier one (last-write-wins — v1 does not detect/reject the collision, the
         same "no dynamic sub-graph, wire it and see" posture as everything else here).
 
-        ## The socket -> output-key resolution (TASK-809 OD-15, option A)
+        ## The socket -> output-key resolution (option A)
 
         An edge's ``fromPort`` is an AUTHORING handle — ``out``, ``entities``, ``contextItemId`` —
         and NOT a key in the producing activity's output dict. No activity in this platform emits
@@ -422,7 +422,7 @@ class WorkflowInterpreter:
     def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
         """Every reason this walk declines a node BEFORE dispatching anything (pure).
 
-        Extracted from `_dispatch_node` by TASK-849 so the run-event producer can ask "will
+        Extracted from `_dispatch_node` by so the run-event producer can ask "will
         this node actually run?" without a second spelling of the answer — the exact drift the
         `_LOOP_NODE_TYPE` comment below warns about. `None` means "dispatch it"; the returned
         `NodeResult` IS the outcome, so `_dispatch_node` returns it unchanged.
@@ -439,7 +439,7 @@ class WorkflowInterpreter:
                 reason="unsupported_node_type",
             )
 
-        # TASK-806 lane A (item 7) — LANE OWNERSHIP. A `realtime` node belongs to TASK-811's
+        # lane A — LANE OWNERSHIP. A `realtime` node belongs to
         # live executor, not to this durable interpreter, and exactly one runtime must execute
         # any given node: `consultation.realtimeSummary` is `external_write`, so both running it
         # means two engines writing one consultation's document.
@@ -457,9 +457,9 @@ class WorkflowInterpreter:
                 reason="realtime_lane",
             )
 
-        # TASK-852 item 4 — the per-node KILL SWITCH, honoured by BOTH runtimes.
+        # item 4 — the per-node KILL SWITCH, honoured by BOTH runtimes.
         #
-        # TASK-811's realtime executor has read this key since it shipped (`realtime-lane.ts`:
+        # realtime executor has read this key since it shipped (`realtime-lane.ts`:
         # `enabled: node.config?.enabled !== false`); this interpreter never did. A toggle one
         # runtime honours and the other ignores is worse than no toggle: an admin switches a node
         # off, watches the live lane stop running it, and the durable lane keeps executing it on
@@ -477,7 +477,7 @@ class WorkflowInterpreter:
         #
         # A pure read of an already-deserialised `CompiledNode`: no I/O, no clock, no env, no
         # `workflow.*` call — replay-safe exactly like the two skips around it.
-        # TASK-848 — a node the loop owns is not walked by the stage that contains it. Placed
+        # a node the loop owns is not walked by the stage that contains it. Placed
         # BEFORE the `enabled` check on purpose: whether a loop body node is individually enabled
         # is the loop's question to ask, not the stage walk's, and answering it here would report
         # a reason for a node this walk is not executing either way.
@@ -525,7 +525,7 @@ class WorkflowInterpreter:
         # is its first refusal, so reaching here means the registry has a real spec.
         spec = NODE_REGISTRY[node.type]
 
-        # TASK-848 — the loop runs as a CHILD WORKFLOW, not as an activity.
+        # the loop runs as a CHILD WORKFLOW, not as an activity.
         #
         # Cheap operand first, exactly as the gate does: `workflow.patched` is only consulted for
         # a node that is actually a loop, so a graph containing none never records the marker.
@@ -564,7 +564,7 @@ class WorkflowInterpreter:
             )
         except ActivityError:
             # Timeout OR an application-raised exception both surface here identically
-            # (contracts/execution-semantics.md §Worked example).
+            # (contracts/ example).
             degraded_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
             return NodeResult(
                 node_id=node.node_id,
@@ -724,9 +724,9 @@ class WorkflowInterpreter:
         """Execute the one blocking HITL gate as a CHILD workflow.
 
         A child rather than an in-line `wait_condition` is what keeps the interpreter's own
-        signal surface `cancel`-only for every palette (TASK-718 R-2) — see
+        signal surface `cancel`-only for every palette — see
         `gate_workflow.py`'s module docstring for why this is a new workflow type rather than the
-        `HarnessDocWorkflow` delegation `palette-contract.md` §2 originally chose.
+        `HarnessDocWorkflow` delegation `palette-contract.md` originally chose.
 
         Three refusals, all of them loud and none of them a wait:
 

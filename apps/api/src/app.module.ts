@@ -1,6 +1,6 @@
 import {
   AgentTrajectoryRetentionServiceModule,
-  // TASK-785 O-4 — exports IApiKeyService so `TieredThrottlerGuard` (APP_GUARD
+  // exports IApiKeyService so `TieredThrottlerGuard` (APP_GUARD
   // below) can resolve an API key's tenant from this module's injector.
   ApiKeyServiceModule,
   AuditLogServiceModule,
@@ -10,14 +10,14 @@ import {
   BlobStorageModule,
   CommonServiceModule,
   ConfigModule,
-  // Consent & ABAC (TASK-712). Exports IConsultationConsentService — the
+  // Consent & ABAC. Exports IConsultationConsentService — the
   // `assertConsent` choke point `PatientConsentGuard` (APP_GUARD below)
   // resolves from THIS module's injector, same reason
   // OriginRegistryServiceModule is imported at root instead of only inside
   // a feature module.
   ConsentServiceModule,
   ConsultationTimeoutSweepServiceModule,
-  // TASK-733 Task 10 — scheduled hard-delete of soft-deleted DNA
+  // scheduled hard-delete of soft-deleted DNA
   // writing-style profiles past their retention window ("purge later").
   DnaProfileRetentionServiceModule,
   EntitlementsServiceModule,
@@ -148,7 +148,7 @@ const interceptors = [
     useClass: MetricsInterceptor,
   },
   {
-    // Advertises the applied rate-limit policy (TASK-785 AC-9). Reads only what
+    // Advertises the applied rate-limit policy. Reads only what
     // `TieredThrottlerGuard` stashed on the request, so it costs nothing on a
     // route the guard skipped.
     provide: APP_INTERCEPTOR,
@@ -204,7 +204,7 @@ const guards = [
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
   },
-  // Consent & ABAC (TASK-712). MUST run AFTER UnifiedAuthGuard (needs the
+  // Consent & ABAC. MUST run AFTER UnifiedAuthGuard (needs the
   // resolved CLS tenant/user) and BEFORE RequiresIfMatchGuard (a consent
   // denial must never let a request reach the OCC check). Enforcement is ON
   // BY DEFAULT and unconditional — see PatientConsentGuard's own doc
@@ -275,7 +275,7 @@ const filters = [
     provide: APP_FILTER,
     useClass: DataNotFoundExceptionFilter,
   },
-  // Consent & ABAC (TASK-712). `assertConsent` is called from
+  // Consent & ABAC. `assertConsent` is called from
   // `PatientConsentGuard` — a guard, not a handler — so `ExceptionInterceptor`
   // never sees the throw (guards run before interceptors). This filter is
   // what actually turns `ConsentDeniedException`/`ConsentUnavailableException`
@@ -308,7 +308,7 @@ class JwtAuthGuardModule {}
 
 /**
  * ServiceAccountAuthenticatorModule — registers SERVICE_ACCOUNT_AUTHENTICATOR
- * globally so `UnifiedAuthGuard`'s third branch (TASK-762) can resolve it.
+ * globally so `UnifiedAuthGuard`'s third branch can resolve it.
  *
  * Same shape and same reason as `JwtAuthGuardModule` directly above: the guard
  * is constructed once as an `APP_GUARD` and must be able to resolve the
@@ -347,7 +347,7 @@ const common = [
   // `OriginTenantBindingGuard` is an APP_GUARD and resolves from this module's
   // injector; `PlatformKnobsModule` imports it separately for the CORS resolver.
   OriginRegistryServiceModule,
-  // Consent & ABAC (TASK-712). Root-level for the same reason as
+  // Consent & ABAC. Root-level for the same reason as
   // OriginRegistryServiceModule above: `PatientConsentGuard` (APP_GUARD)
   // resolves `ConsultationRepository` from this module's injector to load a
   // consultation's `patientId` when a route only carries `:id`.
@@ -364,7 +364,7 @@ const common = [
   // (APP_GUARD above) can resolve per-tenant plan rate-limit tiers on the hot
   // path. Placed alongside RateLimitServiceModule (its sibling guard dep).
   EntitlementsServiceModule,
-  // TASK-785 O-4 — the machine-credential tenant lanes. `TieredThrottlerGuard`
+  // the machine-credential tenant lanes. `TieredThrottlerGuard`
   // is constructed in THIS module's injector, so a module imported only by a
   // feature module is invisible to it: the `@Optional()` injections would
   // resolve to `undefined` and both lanes would be a silent no-op that still
@@ -386,12 +386,12 @@ const common = [
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   AuditRetentionServiceModule, // scheduled AuditLog retention purge (bounds growth)
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
-  // TASK-711 (state-machine.md §1a) — scheduled session-timeout sweep:
+  //  — scheduled session-timeout sweep:
   // transitions stale PRIMED/DRAINING/DRAFT_PENDING_SENSORS/TIMED_OUT/REOPENED
   // consultations to CLOSED_INCOMPLETE. On by default (no `enabled` gate —
   // see the service's own doc comment for why).
   ConsultationTimeoutSweepServiceModule,
-  // TASK-733 Task 10 (owner ruling, 2026-08-20) — scheduled hard-delete of
+  // (owner ruling, 2026-08-20) — scheduled hard-delete of
   // DnaWritingStyleReport/…Version rows already soft-deleted by
   // resetMyDnaProfile/deleteReport, past their retention window. Opt-in
   // (defaults OFF — see the service's own doc comment for why).
@@ -436,7 +436,7 @@ const featureModules: any[] = [
   AiInferenceModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
   AiTaskDefaultModule,
-  // /admin/nlp-task-instructions (TASK-729: tenant-writable nlp.topic/nlp.intent
+  // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiTaskDefault).
   NlpTaskInstructionsModule,
   // The config-plane core surfaces: /admin/ai-providers
@@ -444,18 +444,18 @@ const featureModules: any[] = [
   // (hyperparameter/context/concurrency profiles, super-admin only).
   AiProviderConnectionModule,
   AiRuntimeProfileModule,
-  // /admin/routing-policies (TASK-818 §3A) — the ordered N-way candidate chain
+  // /admin/routing-policies — the ordered N-way candidate chain
   // over those two: which providers serve a task, in what order, and what may
   // happen on failure. Super-admin-authored, enforced imperatively.
   AiRoutingPolicyModule,
   ApiKeyModule,
-  // /admin/service-accounts + POST /auth/service-token (TASK-762) — the third
+  // /admin/service-accounts + POST /auth/service-token — the third
   // credential class: platform-issued machine identity for administration.
   ServiceAccountModule,
   AuthModule,
   AuditLogModule,
   ConsultationModule,
-  // /admin/consent-grants — admin CRUD over ConsentGrant (TASK-712).
+  // /admin/consent-grants — admin CRUD over ConsentGrant.
   ConsentModule,
   // Curated release notes: reader surface + super-admin authoring.
   ChangelogModule,
@@ -466,11 +466,11 @@ const featureModules: any[] = [
   // publish/pin at /admin/consultation-context-schemas, and the client
   // discovery bundle at /tenant/me/context-schema.
   ConsultationContextSchemaModule,
-  // TASK-810 — the clinical-document SHAPE catalog: which sections a generated
+  // the clinical-document SHAPE catalog: which sections a generated
   // document has, and the strict schema compiled from that shape.
   DocumentTemplateModule,
   // Admin/agent-promotions: promote an immutable WorkflowDefinition version
-  // from one tenant to another (TASK-815 moved the promotable off
+  // from one tenant to another ( moved the promotable off
   // DepartmentAgent). Its own module because AgentPromotion is its own
   // immutable resource, not another verb on a workflow definition.
   AgentPromotionModule,
@@ -495,7 +495,7 @@ const featureModules: any[] = [
   // /admin/settings (global-settings CRUD; wires the existing service).
   GlobalSettingModule,
   // Institutional-RAG knowledge (BullMQ ingestion worker +
-  // admin/knowledge/documents REST surface — TASK-728).
+  // admin/knowledge/documents REST surface —).
   KnowledgeModule,
   HealthModule,
   InternalModule,
@@ -545,25 +545,25 @@ const featureModules: any[] = [
   VoiceProfileModule,
   // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
-  // /admin/workflow-definitions (TASK-734) — WorkflowDefinition CRUD + compile/validate/publish.
+  // /admin/workflow-definitions — WorkflowDefinition CRUD + compile/validate/publish.
   WorkflowDefinitionModule,
   WorkflowInvariantRuleModule,
-  // /admin/workflow-assignments (TASK-733) — WHICH definition governs a
+  // /admin/workflow-assignments — WHICH definition governs a
   // tenant/department for a palette (department -> tenant -> platform default).
   WorkflowAssignmentModule,
-  // /admin/workflow-nodes (TASK-734) — read-only WORKFLOW_NODE_REGISTRY projection.
+  // /admin/workflow-nodes — read-only WORKFLOW_NODE_REGISTRY projection.
   WorkflowNodeModule,
-  // /admin/workflow-runs (TASK-723) — tenant-scoped runs/observability read plane.
+  // /admin/workflow-runs — tenant-scoped runs/observability read plane.
   WorkflowRunModule,
-  // /admin/workflow-definitions/:definitionId/sandbox-runs (TASK-721 Phase C) — the Workbench's
+  // /admin/workflow-definitions/:definitionId/sandbox-runs — the Workbench's
   // run surface: start/status/stream/cancel a sandbox run of ANY (DRAFT or published) version.
   WorkflowSandboxRunModule,
-  // /admin/workflow-test-fixtures (TASK-721) — per-tenant saved synthetic
+  // /admin/workflow-test-fixtures — per-tenant saved synthetic
   // Workbench test inputs.
   WorkflowTestFixtureModule,
-  // /workflows/:slug/… (TASK-722) — the public exposure plane: invoke / status / stream /
+  // /workflows/:slug/… — the public exposure plane: invoke / status / stream /
   // cancel / list over a tenant's PUBLISHED workflow versions. Gated OFF by default
-  // (WORKFLOW_EXPOSURE_ENABLED, R-1) until TASK-708's API-key-scope precondition is recorded
+  // (WORKFLOW_EXPOSURE_ENABLED, R-1) until API-key-scope precondition is recorded
   // satisfied and the kill-switch is explicitly flipped.
   WorkflowsModule,
 ];

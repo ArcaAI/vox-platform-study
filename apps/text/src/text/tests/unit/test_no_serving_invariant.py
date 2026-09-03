@@ -1,6 +1,6 @@
 """`apps/text` routes to models. It must never be able to SERVE one.
 
-TASK-818 AC-9. The 2026-08-29 audit established that this service cannot host a
+The 2026-08-29 audit established that this service cannot host a
 model today — no inference runtime in its dependency closure, no weight handling,
 no process spawning. That is a property worth keeping, and the only way to keep it
 is to fail the build the moment it stops being true.
@@ -141,7 +141,7 @@ class TestNoInferenceRuntimeIsReachable:
             f"{runtime!r} is importable from apps/text. An inference runtime in the "
             "closure means this service can load weights in-process. Route to "
             "apps/text's configured backends instead (vLLM, LM Studio, or a cloud "
-            "provider) — see TASK-818."
+            "provider) — see ."
         )
 
     @pytest.mark.parametrize("runtime", _INFERENCE_RUNTIMES)
@@ -186,7 +186,7 @@ class TestNoWeightHandling:
         ]
         assert not offenders, (
             f"{token!r} appears in apps/text: {offenders}. Weights belong in MinIO and "
-            "are loaded by the inference services (TASK-823 / TASK-824), never here."
+            "are loaded by the inference services , never here."
         )
 
 

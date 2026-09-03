@@ -73,7 +73,7 @@ describe('SessionRemovalRetryService', () => {
     // Attempt 2 after the doubled delay — succeeds and clears the entry.
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
     expect(mockSessionService.removeSession).toHaveBeenCalledTimes(2);
-    // TASK-737: a retry is the SAME internal DELETE, so it stays as
+    // a retry is the SAME internal DELETE, so it stays as
     // attributable as the first attempt — the tenant rides along unchanged.
     expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry', false, 'tenant-retry');
     expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');

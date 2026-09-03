@@ -1,9 +1,8 @@
-"""Unit tests for SessionManager draining (TASK-726 Task 3).
+"""Unit tests for SessionManager draining.
 
 Distinct from the existing startup-recovery/replay path (module docstring,
 `SessionManager.start()`): draining is a PLANNED scale-down signal checked
 at `create_session()` time, never touched by crash recovery. See
-docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
 """
 
 from __future__ import annotations

@@ -259,7 +259,7 @@ describe('ConsultationDtoMapper', () => {
       expect(result.appointmentDate).toBe('2026-12-25');
     });
 
-    // TASK-711 — `Consultation.status` is now the SOLE lifecycle tracker
+    // `Consultation.status` is now the SOLE lifecycle tracker
     // (`metadata.status` deleted; the mapper's former column-vs-metadata
     // precedence dance is gone with it). The mapper does a bare pass-through
     // of `entity.status` — every legality/idempotency/forgery-containment

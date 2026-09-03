@@ -46,7 +46,7 @@ function columnClass(col: MetricColumn): string {
 }
 
 /**
- * Compact metrics table (PHASE-2-PLAN §3.7). A thin, semantic wrapper over the
+ * Compact metrics table (PHASE-2-PLAN A thin, semantic wrapper over the
  * shadcn `Table` primitives (NOT `VirtualizedDataGrid` — these are small, fixed
  * metric rows). Real `<th scope="col">` headers + `<caption>`, numeric columns get
  * `tabular-nums` + right alignment, and it honors the `AsyncStateProps`

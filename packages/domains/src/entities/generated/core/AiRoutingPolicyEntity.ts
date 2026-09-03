@@ -6,11 +6,11 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy, AiTaskKind } from '../../../enums';
 
-// ONE PROVIDER CONFIGURATION for one (tenant, taskKey) — TASK-844, OD-3.
+// ONE PROVIDER CONFIGURATION for one (tenant, taskKey) —, OD-3.
 //
-// ⚠ THE GRAIN CHANGED. TASK-818 shipped this entity as one row per authored
+// ⚠ THE GRAIN CHANGED. shipped this entity as one row per authored
 // POLICY REVISION carrying the whole ordered chain inside `candidatesJson`.
-// TASK-844 re-grained it: one row is now ONE CANDIDATE, the chain is the SET of
+// re-grained it: one row is now ONE CANDIDATE, the chain is the SET of
 // rows sharing (tenantId, taskKey) ordered by `priority`, and exactly one of
 // them carries `isDefault`. That election is enforced by a PARTIAL UNIQUE INDEX
 // in the database (`AiRoutingPolicy_tenant_task_default_unique`), keyed on
@@ -18,7 +18,7 @@ import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy, AiTas
 //
 // The re-grain absorbed `AiTaskDefault`, which OD-3 retires. Resolution
 // (request tenant → SYSTEM, two tiers, widening only on ABSENCE), the
-// most-specific-match rules, the §3A.4 explicit-provider gates and the §3A.5
+// most-specific-match rules, the explicit-provider gates and the
 // health semantics all live in the application service; this entity carries
 // only structural invariants.
 //
@@ -28,14 +28,14 @@ import { AiExplicitProviderMode, AiRoutingPolicyStatus, AiRoutingStrategy, AiTas
 // reviewer can roll back to. It is no longer part of a natural key.
 export interface IAiRoutingPolicyEntity extends IBaseTenantEntity {
   taskKey: string;
-  // TASK-843 — the canonical task taxonomy `taskKey` belongs to, DERIVED from
+  // the canonical task taxonomy `taskKey` belongs to, DERIVED from
   // it via `AI_TASK_KIND_BY_TASK_KEY` in the applications layer. Still nullable
   // at the column level so a row written by an un-migrated writer lands
-  // "unclassified" rather than plausible-but-wrong; TASK-844 teaches every
+  // "unclassified" rather than plausible-but-wrong; teaches every
   // writer to set it and backfills the rows earlier writers left NULL.
   taskKind?: AiTaskKind | null;
 
-  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  // ─────────── — the provider-configuration binding ───────────
   /** Human label for this configuration. Not a key. */
   displayName?: string | null;
   /** FK → AiProviderConnection.id. Replaces the `connectionRef` string. */
@@ -48,7 +48,7 @@ export interface IAiRoutingPolicyEntity extends IBaseTenantEntity {
   isDefault: boolean;
   /** Candidate on/off without deleting the row. */
   enabled: boolean;
-  /** Opaque residency-class label; compared for EQUALITY only by the §3A.4 gates. */
+  /** Opaque residency-class label; compared for EQUALITY only by the gates. */
   residency?: string | null;
   /** Whether a BAA covers this vendor AND this model. */
   baaCovered?: boolean | null;
@@ -63,10 +63,10 @@ export interface IAiRoutingPolicyEntity extends IBaseTenantEntity {
   killSwitch: boolean;
   matchJson?: JsonValue | null;
   /**
-   * ⚠ DEPRECATED by TASK-844 and no longer read by the resolver. The ordered
+   * ⚠ DEPRECATED by and no longer read by the resolver. The ordered
    * chain is now the SET of rows sharing (tenantId, taskKey). Nullable so a
-   * pre-TASK-844 revision stays readable; never write it.
-   */
+   * earlier revision stays readable; never write it.
+ */
   candidatesJson?: JsonValue | null;
   fallbackJson?: JsonValue | null;
   healthJson?: JsonValue | null;
@@ -365,18 +365,18 @@ export class AiRoutingPolicyEntity extends BaseTenantEntity {
       throw new BusinessException('Policy version must be a positive integer');
     }
     // A configuration that names nothing to route TO cannot route, so it is not
-    // a configuration. This replaces TASK-818's "at least one candidate in
+    // a configuration. This replaces "at least one candidate in
     // `candidatesJson`" invariant, which belonged to the old one-row-per-policy
     // grain: at THIS grain the row IS the candidate, so the binding lives in
     // `modelId` / `modelRef`.
     //
-    // The third arm keeps a pre-TASK-844 revision loadable — those rows carry a
+    // The third arm keeps a earlier revision loadable — those rows carry a
     // populated `candidatesJson` and no binding columns, and refusing them would
     // make historical revisions unreadable rather than merely deprecated.
     //
     // Structural only. WHICH model, WHICH connection, and whether the credential
     // resolves are the application service's business — that is where the
-    // tenant → SYSTEM cascade and the §3A.4 gates live.
+    // tenant → SYSTEM cascade and the gates live.
     const hasBinding = Boolean(this._modelId) || Boolean(this._modelRef);
     const hasLegacyChain = Array.isArray(this._candidatesJson) && this._candidatesJson.length > 0;
     if (!hasBinding && !hasLegacyChain) {

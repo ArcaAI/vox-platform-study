@@ -98,7 +98,7 @@ export class HopeClient {
    */
   readonly tenants: TenantsResource;
   /**
-   * The WORKFLOW INVOCATION plane (TASK-850) — run a tenant's published
+   * The WORKFLOW INVOCATION plane — run a tenant's published
    * workflows as products, async / blocking / streaming.
    *
    * API-key credential ONLY: `route-manifest.json` records `svcScopes: []` on
@@ -113,7 +113,7 @@ export class HopeClient {
   readonly workflows: WorkflowsResource;
   /**
    * The `/api/v1/admin/**` administration plane — 52 areas, one property per
-   * `svc:admin:*` scope (TASK-773).
+   * `svc:admin:*` scope.
    *
    * Requires a {@link HopeClientOptions.serviceAccount} credential. The plane
    * refuses a tenant API key by POLICY, not by omission (`@ForbidApiKey()` on

@@ -1,4 +1,4 @@
-"""TASK-799 lane C — the shared `hope_env` precedence chain, CORS, and dead config.
+"""lane C — the shared `hope_env` precedence chain, CORS, and dead config.
 
 Three separate defects, one file because they all pin the SHAPE of
 `nlp/core/config.py` rather than any runtime behaviour:
@@ -7,7 +7,7 @@ Three separate defects, one file because they all pin the SHAPE of
   bare `os.getenv` for 11 fields. `init_settings` is the HIGHEST-precedence
   source in `build_hope_sources`, so those values outranked host env, the Vault
   `secrets_dir` tier AND the env file — the module-scope env-read pattern
-  TASK-558 removed, reintroduced through a different door.
+  removed, reintroduced through a different door.
 * C.5 (F-12) — wildcard origins with `allow_credentials=True` is a cross-origin
   credential-leak posture, and the declared `cors_allow_credentials` knob that
   would have disabled it was never read.

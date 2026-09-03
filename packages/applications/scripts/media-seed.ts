@@ -239,10 +239,10 @@ async function main(): Promise<void> {
     }
 
     // 2) Build the sample files.
-    const imageBuf = await buildSamplePng('HOPE TASK-376 — sample image');
-    const mixedImageBuf = await buildSamplePng('HOPE TASK-376 — mixed photo');
+    const imageBuf = await buildSamplePng('HOPE sample image');
+    const mixedImageBuf = await buildSamplePng('HOPE mixed photo');
     const pdfBuf = buildSamplePdf([
-      'HOPE TASK-376 — sample clinical document',
+      'HOPE sample clinical document',
       'This is a real, minimal PDF used to verify presigned',
       'attachment download + admin PDF rendering end-to-end.',
     ]);
@@ -251,7 +251,7 @@ async function main(): Promise<void> {
     // playable file than the plain audio attachment.
     const recordingWavBuf = buildSampleWav(2, RECORDING_META.sampleRate, 330);
     const noteBuf = Buffer.from(
-      'HOPE TASK-376 — mixed attachment note.\nAttached alongside a clinical photo to exercise the image+file+text shape.\n',
+      'HOPE mixed attachment note.\nAttached alongside a clinical photo to exercise the image+file+text shape.\n',
       'utf-8',
     );
 
@@ -320,7 +320,7 @@ async function main(): Promise<void> {
     doctorId: DOCTOR_ID,
     departmentId: DEPARTMENT_ID,
     status: 'CLOSED' as const,
-    metadata: { visitType: 'NEW_PATIENT', chiefComplaint: 'TASK-376 media verification fixture', language: 'en' },
+    metadata: { visitType: 'NEW_PATIENT', chiefComplaint: ' media verification fixture', language: 'en' },
     createdBy: DOCTOR_ID,
   };
   await prisma.consultation.upsert({ where: { id: CONSULTATION_ID }, create: consultation, update: consultation });
@@ -387,24 +387,24 @@ async function main(): Promise<void> {
     {
       id: CTX_IDS.image,
       mediaId: MEDIA_IDS.image,
-      metaData: { subType: 'image', fileName: 'sample-image.png', caption: 'Sample clinical image (TASK-376).' },
+      metaData: { subType: 'image', fileName: 'sample-image.png', caption: 'Sample clinical image .' },
     },
     {
       id: CTX_IDS.pdf,
       mediaId: MEDIA_IDS.pdf,
-      metaData: { subType: 'pdf', fileName: 'sample-document.pdf', caption: 'Sample clinical PDF (TASK-376).' },
+      metaData: { subType: 'pdf', fileName: 'sample-document.pdf', caption: 'Sample clinical PDF .' },
     },
     {
       id: CTX_IDS.audio,
       mediaId: MEDIA_IDS.audio,
-      metaData: { subType: 'audio', fileName: 'sample-audio.wav', caption: 'Sample audio clip (TASK-376).' },
+      metaData: { subType: 'audio', fileName: 'sample-audio.wav', caption: 'Sample audio clip .' },
     },
     {
       id: CTX_IDS.mixed,
       mediaId: MEDIA_IDS.mixedImage,
       metaData: {
         subType: 'mixed',
-        text: 'Mixed attachment: a clinical photo with an attached note (TASK-376 sample).',
+        text: 'Mixed attachment: a clinical photo with an attached note (sample).',
         attachments: [
           { mediaId: MEDIA_IDS.mixedFile, name: 'mixed-note.txt', mimeType: 'text/plain', uri: `s3://${ATTACH_BUCKET}/${KEYS.mixedFile}` },
         ],
@@ -441,7 +441,7 @@ async function main(): Promise<void> {
     source: 'SYSTEM' as const,
     currentVersionNumber: 1,
     mediaId: null,
-    metaData: { subType: 'recording', caption: 'Recording-shaped audio fixture (TASK-406 / TASK-376 residual).' },
+    metaData: { subType: 'recording', caption: 'Recording-shaped audio fixture (residual).' },
     createdBy: DOCTOR_ID,
   };
   await prisma.contextItem.upsert({

@@ -4,7 +4,7 @@ import * as Models from '../../../models';
 
 // `_version` is owned by the database and the only legitimate writer is
 // `Repository.updateWithVersion`. `WorkflowInvariantRule` IS OCC-written (the
-// rule-set admin PATCH route carries If-Match — TASK-716 Task 9), so the strip
+// rule-set admin PATCH route carries If-Match —), so the strip
 // is load-bearing: without it the auto-mappers leak `version` into a Prisma
 // update and every compare-and-set silently stops meaning anything. Mirrors
 // `WorkflowDefinitionEntityMapper` / `AiTaskDefaultEntityMapper`.

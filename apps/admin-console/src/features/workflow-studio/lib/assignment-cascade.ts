@@ -1,5 +1,5 @@
 /**
- * Client-side "which tier wins" derivation for the assignment matrix (TASK-733 half (a) Task 6).
+ * Client-side "which tier wins" derivation for the assignment matrix ( half (a) Task 6).
  *
  * There is no admin-facing `resolve` endpoint — `IWorkflowAssignmentService.resolve()` is an
  * internal dispatcher seam, not exposed on `WorkflowAssignmentController`. The admin screen

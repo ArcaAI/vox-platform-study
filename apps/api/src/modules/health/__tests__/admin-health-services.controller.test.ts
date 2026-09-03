@@ -1,5 +1,5 @@
 /**
- * AdminHealthServicesController Unit Tests — TASK-759 (P2).
+ * AdminHealthServicesController Unit Tests — (P2).
  *
  * The two CASL-gated downstream probes used to ride the PUBLIC `health`
  * prefix (`GET /api/v1/health/services{,/:serviceKey}`). They are ops
@@ -58,7 +58,7 @@ describe('AdminHealthServicesController', () => {
   // ─────────────────────────────────────────────────────────────────
   // Route taxonomy (the reason this controller exists)
   // ─────────────────────────────────────────────────────────────────
-  describe('route taxonomy (TASK-759)', () => {
+  describe('route taxonomy ', () => {
     it('is mounted on the admin plane at `admin/health/services`', () => {
       expect(Reflect.getMetadata(PATH_METADATA, AdminHealthServicesController)).toBe('admin/health/services');
     });

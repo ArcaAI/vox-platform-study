@@ -1,5 +1,5 @@
 // ============================================================================
-// Consent & ABAC (TASK-712)
+// Consent & ABAC
 //
 // HOPE stores no `Patient` model — `Consultation.patientId` is a bare,
 // caller-supplied external identifier with no FK (see consultation.prisma).
@@ -12,12 +12,12 @@
 // point in `packages/applications/src/services/consent/`. It does NOT by
 // itself enforce anything — no HTTP guard, no route decorator, and no
 // Temporal/harness call site references it in this phase. See
-// docs/implementation/TASK-712-Consent-Abac/consent-design.md for the full
+// for the full
 // design record, including the explicitly deferred decisions (WORM ledger
 // writer, legacy-consent posture, CASL blast radius).
 //
 // `scope` is a nullable minimum-necessary-scope bag (see consent-design.md
-// §3) — e.g. `{ "dateRangeDays": 365, "sourceSystems": [...] }` for
+// e.g. `{ "dateRangeDays": 365, "sourceSystems": [...] }` for
 // HISTORY_RETRIEVAL. Widening scope is a NEW `ConsentGrant` row (a fresh
 // `create`, not a mutation of `scope` on an existing row) so the widening
 // itself is an auditable event (INV-016/197) — `revoke()` is the only
@@ -36,7 +36,7 @@ model ConsentGrant {
   // core (business) fields
   externalPatientId String // Consultation.patientId's identifier space — no FK (see consultation.prisma)
   purpose           ConsentPurpose
-  scope             Json?              @db.JsonB // minimum-necessary scope bag; see consent-design.md §3
+  scope             Json?              @db.JsonB // minimum-necessary scope bag; see consent-
   grantedAt         DateTime
   grantedBy         String // recording user id (clinician/admin) — the patient-facing surface is out of scope (A-45)
   grantMethod       ConsentGrantMethod

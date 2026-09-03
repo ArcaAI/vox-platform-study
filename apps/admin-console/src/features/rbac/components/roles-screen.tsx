@@ -285,7 +285,7 @@ function RoleListPanel({
 
 /**
  * Frame 21 — RBAC Roles (/rbac/roles, shared tier 20-29). Two-pane redesign
- * (build spec §4): a grouped role list (System · locked / Custom) on the left,
+ * (build spec: a grouped role list (System · locked / Custom) on the left,
  * a role detail with a derived permission matrix on the right. On tablet/mobile
  * the detail moves into the console-wide `DetailDrawer`. Selection lives in the
  * URL (`?role=`). Delete routes through the screen-level break-glass step-up

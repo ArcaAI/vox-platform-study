@@ -1,5 +1,5 @@
 /**
- * ConsultationStatus wiring gate (TASK-711, session state machine).
+ * ConsultationStatus wiring gate (session state machine).
  *
  * This is the gate that makes another dead enum member (A-46: `CLOSED`/
  * `REOPENED` existed for years with zero live writers) STRUCTURALLY
@@ -8,10 +8,9 @@
  * map), that every `ConsultationStatus` member is reachable as a `to` from
  * SOME other member, with exactly two documented exceptions:
  *
- *   - `OPEN`   — a consultation is CREATED in `OPEN`, never transitioned into
- *                it (state-machine.md §2).
+ *   - `OPEN` — a consultation is CREATED in `OPEN`, never transitioned into
  *   - `CLOSED` — SUPERSEDED before ever going live (split into
- *                `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE`, state-machine.md §1a).
+ * `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE`,
  *                Retained in the enum only because Postgres cannot drop a
  *                value; deliberately and permanently never a `transitionTo`
  *                target again.

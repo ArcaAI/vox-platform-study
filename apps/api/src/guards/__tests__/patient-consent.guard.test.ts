@@ -1,5 +1,5 @@
 /**
- * `PatientConsentGuard` unit tests (TASK-712, consent-abac — README §4 Task 8).
+ * `PatientConsentGuard` unit tests (consent-abac — Task 8).
  *
  * Pins: tenant/user resolution comes from CLS ONLY, never `request.ability`
  * (Pitfall 3 — the API-key auth path builds no CASL ability at all); the

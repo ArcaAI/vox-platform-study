@@ -1,5 +1,5 @@
 /**
- * The store's node/edge model <-> `WorkflowGraph` (the server DTO shape) round trip (TASK-719
+ * The store's node/edge model <-> `WorkflowGraph` (the server DTO shape) round trip
  * Task 11). `WorkflowGraphNode.position` is now a first-class, optional sibling of `config`
  * (definition-api.contract.md's "no `position` field" gap, closed — `@arcaai/workflow-contract`
  * `graph-model.ts`), so `toGraphNode` writes it there directly. `fromGraphNode` still reads the

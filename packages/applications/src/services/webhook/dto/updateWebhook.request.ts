@@ -3,7 +3,7 @@ import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { BaseRequest } from '../../../common';
 import { JsonValue } from '@arcaai/domains';
 
-// TASK-727: `hashedSecret` is deliberately NOT a field here — a signing
+// `hashedSecret` is deliberately NOT a field here — a signing
 // secret is rotated through the dedicated `POST :id/rotate-secret` route
 // (`WebhookService.rotateSecret`), never folded into a general PATCH. The
 // global `ValidationPipe`'s `forbidNonWhitelisted` rejects an attempt to

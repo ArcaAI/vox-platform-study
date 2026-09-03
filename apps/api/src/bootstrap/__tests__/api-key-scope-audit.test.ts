@@ -61,7 +61,7 @@ describe('boot-time API-key scope audit', () => {
         'ConsultationJobController.cancelJob',
         'ConsultationJobController.getJob',
         'ConsultationJobController.streamJob',
-        // Exposure plane (TASK-722) — /api/v1/workflows/:slug/…
+        // Exposure plane — /api/v1/workflows/:slug/…
         'WorkflowsController.list',
         'WorkflowsController.invoke',
         'WorkflowsController.getRunStatus',
@@ -114,7 +114,7 @@ describe('boot-time API-key scope audit', () => {
 });
 
 /**
- * TASK-708 — `/internal/*` off the API-key surface.
+ * `/internal/*` off the API-key surface.
  *
  * `auditInternalRoutesOffApiKeySurface` walks `ModulesContainer` like
  * `admin-route-permission-audit.ts` does, so these tests build a synthetic
@@ -167,7 +167,7 @@ function buildFakeAppFromRealControllers(
   } as unknown as Parameters<typeof auditInternalRoutesOffApiKeySurface>[0];
 }
 
-describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
+describe('boot-time /internal/* off-API-key-surface audit ', () => {
   it('passes against every REAL /internal/* controller currently in the tree', () => {
     const app = buildFakeAppFromRealControllers([
       SttInternalController,
@@ -233,7 +233,7 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
     expect(() => auditInternalRoutesOffApiKeySurface(app)).toThrow(/internal\/stt\/jobs\/:id\/status[\s\S]*carries no[\s\S]*service-token guard/);
   });
 
-  it('throws when @RequiredScopes is used instead of a service-token guard (the reverted TASK-708 approach)', async () => {
+  it('throws when @RequiredScopes is used instead of a service-token guard (the reverted approach)', async () => {
     @Public()
     @RequiredScopes('admin:*')
     @Controller('internal/stt')
@@ -272,7 +272,7 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
   });
 
   /**
-   * TASK-759 Step 5 — prove the carve-out is POLICED before writing it down as
+   * Step 5 — prove the carve-out is POLICED before writing it down as
    * settled in `api-controller-inventory.md`.
    *
    * `RESERVED_INTERNAL_SCOPE_CONTROLLERS` exempts exactly `SttInternalController`
@@ -281,17 +281,17 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
    * on the CLASS NAME, so the two tests below stand a stand-in class of that
    * exact name next to the real one and check both halves of the claim:
    *
-   *   1. exempted + reserved `internal:` scope  → passes (what the tree does);
-   *   2. exempted + NO reserved scope           → still an offender.
+   *   1. exempted + reserved `internal:` scope → passes (what the tree does);
+   *   2. exempted + NO reserved scope → still an offender.
    *
    * (2) is the load-bearing one: without it, "exempt" would mean "unchecked",
    * and stripping `@RequiredScopes('internal:stt:worker')` would silently put
    * every `/internal/stt/*` route back on the open API-key surface.
-   */
+ */
   /**
-   * TASK-761 gate G2 (decision D-3) — FREEZE the carve-out at one member.
+   * gate G2 (decision D-3) — FREEZE the carve-out at one member.
    *
-   * The audit itself has existed since TASK-708 and already fails boot on an
+   * The audit itself has existed since and already fails boot on an
    * unguarded `/internal/*` route, so G2 needed no new gate. What it had no
    * defence against was GROWTH: `RESERVED_INTERNAL_SCOPE_CONTROLLERS` is an
    * ordinary `Set`, and adding a second name to it silently re-opens the
@@ -306,7 +306,7 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
    * but "why can this new controller not present a service token?" — the
    * BUG-013 answer (the STT worker's `X-Internal-Service-Key` carries a raw
    * SERVICE_ACCOUNT ApiKey value) is specific to one caller, not a pattern.
-   */
+ */
   it('freezes the reserved-scope carve-out at exactly one member (D-3)', () => {
     expect([...RESERVED_INTERNAL_SCOPE_CONTROLLERS]).toEqual(['SttInternalController']);
     expect(RESERVED_INTERNAL_SCOPE_CONTROLLERS.size).toBe(1);

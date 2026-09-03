@@ -132,7 +132,7 @@ export function streamDnaJobStatus(dnaQueue: Queue, jobId: string, access: DnaJo
         if (status.status === 'failed') {
           subscriber.next({
             type: 'error',
-            // TASK-768: `status.error` is the BullMQ `failedReason`. The DNA
+            // `status.error` is the BullMQ `failedReason`. The DNA
             // processor calls apps/text, so an unwrapped axios rejection lands
             // here verbatim — host:port included — and is relayed to the
             // browser. Redacted on the way out; the processor's own log keeps

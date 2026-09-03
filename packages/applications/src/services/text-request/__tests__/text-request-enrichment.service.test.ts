@@ -1,5 +1,5 @@
 /**
- * TASK-799 R2-C.1 — the DELIVERY half of the P1-C fix, on the TEXT path.
+ * C.1 — the DELIVERY half of the P1-C fix, on the TEXT path.
  *
  * Phase 1 (P1-C) fixed the RESOLVER so a keyed SYSTEM row for a SELF-HOSTED
  * provider is delivered: "a TENANT may not own this" is not "the PLATFORM may

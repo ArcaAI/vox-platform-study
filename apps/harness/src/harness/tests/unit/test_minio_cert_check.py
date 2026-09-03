@@ -66,7 +66,7 @@ class TestS3BlobStoreCertCheck:
         assert boto3.client.call_args.kwargs.get("verify") is not False
 
     def test_https_endpoint_is_secure_even_when_the_flag_says_otherwise(self):
-        """TASK-858 — boto3 takes the scheme from ``endpoint_url``, so an https URL with
+        """boto3 takes the scheme from endpoint_url, so an https URL with
         ``secure=False`` was never plaintext: it verified MinIO's internal-CA leaf against
         the system store and every claim-check read failed (`interpreter.load_config`,
         the whole governed run FAILED) on any deployment that set the URL but not

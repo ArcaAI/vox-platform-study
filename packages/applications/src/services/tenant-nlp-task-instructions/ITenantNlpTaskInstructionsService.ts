@@ -1,7 +1,7 @@
 import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsRequest } from './dto';
 
 /**
- * Tenant-writable topic/intent instruction content service (TASK-729).
+ * Tenant-writable topic/intent instruction content service.
  *
  * `tenantId` is optional on every method: when omitted the CLS request
  * tenant is used; a super admin may target another tenant explicitly (the

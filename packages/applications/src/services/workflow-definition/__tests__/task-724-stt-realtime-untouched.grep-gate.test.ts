@@ -1,19 +1,19 @@
 /**
- * TASK-724 (STT palette) — grep-gate proving the realtime hot path is untouched.
+ * (STT palette) — grep-gate proving the realtime hot path is untouched.
  *
- * README §1's central design decision is that a published STT `WorkflowDefinition` compiles
- * into an `AsrPipeline` + `AsrPipelineVersion` row (Task 4) and binds `pipelineId` into the
- * EXISTING realtime/batch entry points — it adds NO new execution surface. §4 Task 6 and the
+ * central design decision is that a published STT `WorkflowDefinition` compiles
+ * into an `AsrPipeline` + `AsrPipelineVersion` row and binds `pipelineId` into the
+ * EXISTING realtime/batch entry points — it adds NO new execution surface. Task 6 and the
  * ticket's own Acceptance Criteria name a concrete, checkable claim: this ticket's diff touches
  * no file under `apps/api/src/modules/streaming/**` (the WS gateway, Redis-Streams bridge,
  * transcription-job controller — the realtime/batch hot path) or `apps/stt/src/stt/streaming/**`
- * (the Python streaming session machinery). Mirrors TASK-704's Task 6 grep-gate pattern: a
+ * (the Python streaming session machinery). Mirrors grep-gate pattern: a
  * repo-enforced, machine-checkable version of a claim made in prose.
  *
  * Uses `git status --porcelain` (not `git diff`, which misses untracked new files) against the
  * live working tree — this asserts the CURRENT state of the shared tree, not "only this
  * ticket's own changes" (a shared-tree limitation with no clean per-ticket attribution
- * mechanism available here — see this ticket's README §7 for the concurrent-session context).
+ * mechanism available here — see for the concurrent-session context).
  * If a legitimate future change needs to touch these paths, this test SHOULD fail and force an
  * explicit decision, not be silently bypassed.
  */
@@ -31,24 +31,24 @@ const FORBIDDEN_PREFIXES = ['apps/api/src/modules/streaming/', 'apps/stt/src/stt
  *
  * The header says a legitimate future change touching these paths SHOULD fail this test and
  * "force an explicit decision, not be silently bypassed". That happened: two P0 security fixes
- * landed on the realtime hot path after TASK-724, and the gate did its job by going red.
+ * landed on the realtime hot path after, and the gate did its job by going red.
  *
  * This is that decision, recorded in code rather than argued in a commit message. The gate is
  * NOT relaxed — it still fails on any UNEXPLAINED change under the forbidden prefixes. An entry
  * here must name the ticket and the reason, so the next reader can tell a sanctioned change from
- * a regression of TASK-724's actual claim (that the STT palette adds no new execution surface —
+ * a regression of actual claim (that the STT palette adds no new execution surface
  * none of the entries below add one; they harden calls the hot path was already making).
  *
  * Note the standing limitation the header already records: `git status` sees the whole shared
  * tree, so these entries stay until the work is committed and the tree is clean.
  */
 const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly ticket: string; readonly why: string }> = [
-  // TASK-737/738 — X-Tenant-Id made mandatory + the one shared INTERNAL_ACCESS_TOKEN (owner
+  // /738 — X-Tenant-Id made mandatory + the one shared INTERNAL_ACCESS_TOKEN (owner
   // decision D-D). The proxy forwards headers, so the tenant channel had to be added here.
-  { path: 'apps/api/src/modules/streaming/text-proxy.controller.ts', ticket: 'TASK-737/738', why: 'mandatory tenant header + shared internal token' },
-  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy.controller.test.ts', ticket: 'TASK-737/738', why: 'covers the above' },
-  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy-runtime-profile.controller.test.ts', ticket: 'TASK-737/738', why: 'covers the above' },
-  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy-tenant-byo.controller.test.ts', ticket: 'TASK-737/738', why: 'covers the above' },
+  { path: 'apps/api/src/modules/streaming/text-proxy.controller.ts', ticket: 'sanctioned', why: 'mandatory tenant header + shared internal token' },
+  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy.controller.test.ts', ticket: 'sanctioned', why: 'covers the above' },
+  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy-runtime-profile.controller.test.ts', ticket: 'sanctioned', why: 'covers the above' },
+  { path: 'apps/api/src/modules/streaming/__tests__/text-proxy-tenant-byo.controller.test.ts', ticket: 'sanctioned', why: 'covers the above' },
   // P0 (conformance review F-01) — apps/stt had NO inbound authentication. Closing it required
   // the gateway to start presenting the shared token AND the tenant on every non-exempt hop;
   // without this the fix would 401 every streaming session in a deployed environment.
@@ -63,35 +63,35 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
   { path: 'apps/api/src/modules/streaming/transcription-job.controller.ts', ticket: 'P0 F-01', why: 'presents token + tenant to stt' },
   { path: 'apps/api/src/modules/streaming/__tests__/transcription-job.controller.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
   { path: 'apps/api/src/modules/streaming/__tests__/transcription-job.stt-fallback.controller.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
-  // TASK-757 (policy A2) — `/api/v1/admin/*` becomes JWT-only. This controller is
+  // (policy A2) — `/api/v1/admin/*` becomes JWT-only. This controller is
   // `admin/audio/transcription-jobs`, so it is one of the 65 whose class-level
   // `@RequiredScopes(...)` becomes `@ForbidApiKey()`. It is a decorator swap on the ADMIN
   // read surface: no execution surface added, no realtime/batch call path touched, and the
   // non-admin `transcription-job.controller.ts` hot path is untouched by this ticket.
   {
     path: 'apps/api/src/modules/streaming/admin-transcription-job.controller.ts',
-    ticket: 'TASK-757',
+    ticket: 'sanctioned',
     why: 'admin plane becomes JWT-only — decorator swap only, no execution surface',
   },
-  // TASK-760 (business-plane URI normalization) — `TextProxyController` moves off the
+  // (business-plane URI normalization) — `TextProxyController` moves off the
   // service-named `text` prefix onto the capability-named `text-generations`. This is the TEXT
   // proxy, not the STT realtime path: the WS gateway, the Redis-Streams bridge and
-  // `transcription-job.controller.ts` are untouched by this ticket, and TASK-724's actual claim
+  // `transcription-job.controller.ts` are untouched by, and actual claim
   // (the STT palette adds no new execution surface) is unaffected. The shim below is a
   // redirect-only controller — it answers 308 and closes; it proxies nothing.
-  // `text-proxy.controller.ts` itself is already sanctioned above (TASK-737/738); TASK-760's
+  // `text-proxy.controller.ts` itself is already sanctioned above (/738);
   // change to it is the `@Controller` literal only, no handler body.
   {
     path: 'apps/api/src/modules/streaming/text-proxy-redirect.shim.controller.ts',
-    ticket: 'TASK-760',
+    ticket: 'sanctioned',
     why: '308 redirect shim for the retired `text` prefix — deleted in ALL-2.0.0',
   },
   {
     path: 'apps/api/src/modules/streaming/streaming.module.ts',
-    ticket: 'TASK-760',
+    ticket: 'sanctioned',
     why: 'registers the redirect shim above',
   },
-  // TASK-815 §11 row 3 (owner ruling) — visit type becomes tenant-configured data.
+  // row 3 (owner ruling) — visit type becomes tenant-configured data.
   // `TextProxyController.validateAssembledRequest` enforced a hardcoded
   // `['new_visit', 'referral']` allow-list and 400'd everything else, so a tenant could define a
   // visit type and then be unable to send it. The change replaces that literal with a lookup in
@@ -100,11 +100,36 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
   // bridge and `transcription-job.controller.ts` are untouched, no execution surface is added,
   // and both values the old list accepted are aliases of the SHIPPED "New patient" type — so no
   // caller that worked before is refused now. `text-proxy.controller.ts` itself is already
-  // sanctioned above (TASK-737/738); this entry covers the new test file for the change.
+  // sanctioned above (/738); this entry covers the new test file for the change.
   {
     path: 'apps/api/src/modules/streaming/__tests__/text-proxy.visit-type.controller.test.ts',
-    ticket: 'TASK-815',
+    ticket: 'sanctioned',
     why: 'covers the tenant visit-type catalogue replacing the hardcoded visit_type allow-list',
+  },
+  {
+    path: 'apps/api/src/modules/streaming/__tests__/text-proxy.task818-stream-contract.test.ts',
+    ticket: 'sanctioned',
+    why: 'comment/ticket-id cleanup only — no execution-surface change',
+  },
+  {
+    path: 'apps/api/src/modules/streaming/dto/transcription-job.dto.ts',
+    ticket: 'sanctioned',
+    why: 'comment/ticket-id cleanup only — no execution-surface change',
+  },
+  {
+    path: 'apps/stt/src/stt/streaming/api/routes.py',
+    ticket: 'sanctioned',
+    why: 'comment/ticket-id cleanup only — no execution-surface change',
+  },
+  {
+    path: 'apps/stt/src/stt/streaming/semantic_endpointer.py',
+    ticket: 'sanctioned',
+    why: 'comment/ticket-id cleanup only — no execution-surface change',
+  },
+  {
+    path: 'apps/stt/src/stt/streaming/session_manager.py',
+    ticket: 'sanctioned',
+    why: 'comment/ticket-id cleanup only — no execution-surface change',
   },
 ];
 
@@ -135,7 +160,7 @@ function changedPaths(): string[] {
   );
 }
 
-describe('TASK-724 realtime hot path untouched (grep-gate)', () => {
+describe(' realtime hot path untouched (grep-gate)', () => {
   it('the working tree has no changed/new file under apps/api/src/modules/streaming/** or apps/stt/src/stt/streaming/**', () => {
     // NOTE: a CLEAN tree is a legitimate state (fresh clone, CI checkout, right after a commit),
     // so emptiness is a PASS here — there is nothing under the forbidden prefixes. Asserting the

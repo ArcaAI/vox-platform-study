@@ -1,5 +1,5 @@
 /**
- * TASK-773 — guard-level reachability evidence for verification criteria 2 and 3.
+ * guard-level reachability evidence for verification criteria 2 and 3.
  *
  * `apps/api/src/bootstrap/__tests__/task-773-admin-plane-svc-declarations.test.ts`
  * proves the DECLARATIONS are right (every swept controller carries the correct
@@ -17,14 +17,14 @@
  *  - `context.getClass()` returns REAL, SHIPPED controller classes
  *    (`DepartmentController`, `TenantController`, `WebhookController`,
  *    `ServiceAccountController`, `ConsultationController`) instead of a bare
- *    `{}`, and metadata is read with a REAL `Reflector` (`new Reflector()`,
+ *    `{}`, and metadata is read with a REAL `Reflector()` (`new Reflector`,
  *    `@nestjs/core` — no DI container needed, it is just `Reflect.getMetadata`
  *    under the hood). So every `@RequiredSvcScopes(...)` / `@ForbidServiceAccount()`
  *    assertion below is evidence about the actual decorator on the actual class,
  *    not a metadata dict a test typed by hand.
  *  - `IServiceAccountAuthenticator.hasScope` is wired to the REAL
  *    `hasServiceAccountScope` (from the registry, `@arcaai/applications`) instead
- *    of a bespoke matcher, so the wildcard-boundary assertion (§3) is evidence
+ * of a bespoke matcher, so the wildcard-boundary assertion is evidence
  *    about the registry's actual prefix semantics, not a re-implementation of
  *    them that could silently diverge.
  *
@@ -80,7 +80,7 @@ function principal(overrides: Partial<ServiceAccountPrincipalLike> = {}): Servic
   };
 }
 
-describe('TASK-773 — admin-plane guard-level reachability (real controllers, real Reflector)', () => {
+describe('admin-plane guard-level reachability (real controllers, real Reflector)', () => {
   let guard: UnifiedAuthGuard;
   let reflector: Reflector;
   let apiKeyService: { extractApiKeyFromRequest: ReturnType<typeof vi.fn>; authenticateByRawKey: ReturnType<typeof vi.fn>; hasScope: ReturnType<typeof vi.fn> };
@@ -224,7 +224,7 @@ describe('TASK-773 — admin-plane guard-level reachability (real controllers, r
         message: expect.stringContaining('svc:webhook:event:write'),
       });
       // A scope denial, not the machine-closed denial — WebhookController is a
-      // wired svc: surface (§O-1), just not one `svc:admin:*` happens to cover.
+      // wired svc: surface, just not one `svc:admin:*` happens to cover.
       await expect(outcome.catch((e) => e)).resolves.not.toMatchObject({ message: MACHINE_CLOSED_MESSAGE });
     });
 
@@ -282,13 +282,13 @@ describe('TASK-773 — admin-plane guard-level reachability (real controllers, r
       await expect(outcome).rejects.toBeInstanceOf(ForbiddenException);
       await expect(outcome.catch((e) => e)).resolves.toMatchObject({ message: MACHINE_CLOSED_MESSAGE });
 
-      // Distinguishable from the §4 carve-out by the SERVER-SIDE log reason,
+      // Distinguishable from the carve-out by the SERVER-SIDE log reason,
       // even though the client-facing message is deliberately identical (see
       // `SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE`'s doc comment: a caller must not
       // be able to probe "deliberately closed" vs "simply undeclared").
       const call = warnSpy.mock.calls.find((c) => (c[0] as Record<string, unknown>)?.reason === 'no_svc_scopes_declared');
       expect(call).toBeDefined();
-      // And UNLIKE §4, the token WAS authenticated first — the route is simply
+      // Unlike a scope carve-out, the token WAS authenticated first — the route is simply
       // not a service-account surface at all, not a deliberate carve-out.
       expect(serviceAccounts.authenticateByToken).toHaveBeenCalled();
     });

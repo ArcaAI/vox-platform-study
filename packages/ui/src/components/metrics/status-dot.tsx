@@ -35,7 +35,7 @@ export interface StatusDotProps {
 }
 
 /**
- * Semantic status atom (PHASE-2-PLAN §3.2). A colored dot mapped to a
+ * Semantic status atom (PHASE-2-PLAN A colored dot mapped to a
  * `StatusColorRole` token. It is **never the only status signal** — pass `label`
  * (renders adjacent text, dot decorative) or `aria-label` (standalone, `role="img"`);
  * with neither it is purely decorative (`aria-hidden`). The `pulse` ring respects

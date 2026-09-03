@@ -9,7 +9,7 @@ export interface WorkflowTestFixtureProjectionOptions {
 
 export class WorkflowTestFixtureDtoMapper {
   /**
-   * PHI-safe by DEFAULT: `input` is Vault-Transit encrypted at rest (TASK-721
+   * PHI-safe by DEFAULT: `input` is Vault-Transit encrypted at rest
    * R4) and is projected ONLY when the call site opts in with
    * `{ includeInput: true }` — the id-scoped, tenant-asserted, audited reads.
    * List pages and delete acknowledgements leave it out entirely, mirroring

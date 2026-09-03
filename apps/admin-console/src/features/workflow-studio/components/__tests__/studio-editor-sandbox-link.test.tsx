@@ -1,5 +1,5 @@
 /**
- * TASK-797 W1 (R2) — the editor must hand `StudioToolbar` the id of the row it is
+ * (R2) — the editor must hand `StudioToolbar` the id of the row it is
  * editing, so the Workbench deep link lands on THAT definition. Without this the
  * toolbar affordance exists but always renders create-mode (no link), which is the
  * failure the ticket is closing.
@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 /**
- * The editor's right rail reads `:id/prompt-bindings` (DD-11, TASK-810) — the
+ * The editor's right rail reads `:id/prompt-bindings` (DD-11) — the
  * first query this component owns rather than receiving as a prop. Left
  * unstubbed it reaches the real network and is aborted at window teardown,
  * which passes but floods the run with `AbortError`s.
@@ -64,7 +64,7 @@ function stubPromptBindings(): void {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json([])));
 }
 
-describe('WorkflowStudioEditor — Workbench deep link (TASK-797 W1)', () => {
+describe('WorkflowStudioEditor — Workbench deep link (W1)', () => {
   it('offers a sandbox test link for the definition being edited', () => {
     stubPromptBindings();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />);

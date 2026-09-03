@@ -37,12 +37,14 @@ function registeredPalettes(): ReadonlySet<string> {
   );
 }
 
-/** The tiers this ticket exposes. DOCTOR is structurally supported by the cascade
- *  but is a product decision nobody has made (TASK-733 §1.4), so it is rejected. */
+/**
+ * The tiers this ticket exposes. DOCTOR is structurally supported by the cascade
+ * but is a product decision nobody has made (so it is rejected.
+ */
 const WRITABLE_SCOPES: ReadonlySet<PipelinePolicyScope> = new Set([PipelinePolicyScope.TENANT, PipelinePolicyScope.DEPARTMENT]);
 
 /**
- * WHICH workflow definition governs a scope for a palette (TASK-733 half (a)).
+ * WHICH workflow definition governs a scope for a palette.
  *
  * Two responsibilities: OCC-guarded CRUD with referential validation at WRITE
  * time, and `resolve()` — the `department → tenant → platform default` walk,

@@ -1,12 +1,12 @@
-"""TASK-737 — ``X-Tenant-Id`` is MANDATORY on ``POST /api/v1/generate``.
+"""X-Tenant-Id is MANDATORY on POST /api/v1/generate.
 
 This is the busiest tenant-scoped internal surface in the platform. ``/generate``
-resolves the tenant's BYOK provider/credential from this header, and TASK-735
+resolves the tenant's BYOK provider/credential from this header, and
 derives ``funding``/``cost_basis`` from whichever tier supplied that credential —
 so a dropped header mis-CONFIGURES and mis-BILLS the call in one move, with
 nothing thrown and nothing logged.
 
-The earlier TASK-737 pass could only log an ERROR here, because roughly seven
+The earlier pass could only log an ERROR here, because roughly seven
 ``apps/api`` callers still omitted the header and refusing them would have taken
 down exactly the clinical traffic the ticket protects. Those callers are fixed
 now, so this surface enforces:

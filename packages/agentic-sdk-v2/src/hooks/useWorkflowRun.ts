@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — `useWorkflowRun` (TASK-850 lane B).
+ * @arcaai/vox — `useWorkflowRun`.
  *
  * The browser half of the workflow invocation plane: list what can run, start a
  * run, watch it live, cancel it. The server half is
@@ -10,8 +10,8 @@
  * ```tsx
  * const { workflows, start, events, status, isRunning } = useWorkflowRun();
  *
- * await start(workflows[0].slug, { note });                      // unbound plane
- * await start(slug, input, { consultationId });                  // clinical plane
+ * await start(workflows[0].slug, { note }); // unbound plane
+ * await start(slug, input, { consultationId }); // clinical plane
  * ```
  *
  * ## What this hook does that a `fetch` would not

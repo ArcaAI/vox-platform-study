@@ -65,7 +65,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // positional fixtures keep their arity; production DI supplies it via
     // ConfigResolverModule. When unset, gating is a no-op (pre-Phase-6 behaviour).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-700: reads the resolved DNA_ANALYSIS template's
+    // reads the resolved DNA_ANALYSIS template's
     // `metaData.promptConfig.outputSchema` (entity-level access — the
     // `PromptTemplateResponse` DTO from `promptManagementService` does not
     // surface `metaData`; mirrors the `live-agent-resolution.service.ts`
@@ -75,7 +75,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // `processWithContext`. Only the pre-schema positional test fixtures ever
     // leave it unset, and only they still reach the permissive parser.
     @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
-    // PHI redaction seam (TASK-710, hop 2: approved-notes corpus → TEXT).
+    // PHI redaction seam (hop 2: approved-notes corpus → TEXT).
     // FULL redaction — the DNA profile is a retained, cross-patient artifact
     // (see IPhiRedactor's mode doc), not pseudonymization.
     //
@@ -83,13 +83,13 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // the call site below correspondingly guarded with `if (this.phiRedactor)`
     // — meaning a module graph that lost `PhiRedactionServiceModule` would
     // have posted the raw cross-patient corpus to TEXT SILENTLY. That is
-    // precisely how hop 1 regressed when TASK-732 deleted `ner.processor.ts`,
+    // precisely how hop 1 regressed when deleted `ner.processor.ts`,
     // so the same shape is closed here: Nest now REQUIRES the provider (a
     // missing import fails at boot) and the call site throws rather than
     // skipping. The TypeScript `?` marker is retained only so the positional
     // `new DnaWritingStyleProcessor(...)` fixtures keep compiling.
     @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
-    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // the SHARED TEXT enrichment path. Since lane B
     // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
     // body with no `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
@@ -215,11 +215,11 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         samples = samples.substring(0, maxContextChars);
       }
 
-      // TASK-710 hop 2: FULL redaction before the corpus reaches TEXT — the DNA
+      // hop 2: FULL redaction before the corpus reaches TEXT — the DNA
       // profile is a retained, cross-patient artifact (see IPhiRedactor's mode
       // doc), unlike hop 1's pseudonymize-for-NER posture. Scoped to inserting
       // the call regardless of which branch (textSamples bypass vs. the
-      // automatic corpus) populated `samples` — the branch itself is TASK-700's
+      // automatic corpus) populated `samples` — the branch itself is
       // territory, not touched here. Fail-closed by propagation: a throwing
       // redactor falls into the existing outer catch below and aborts the job.
       if (!this.phiRedactor) {
@@ -314,7 +314,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       } else if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
         // Legacy path: no schema attached to the resolved template (an
         // un-migrated tenant/template, or the fallback prompt with no
-        // resolved template at all). Preserves pre-TASK-700 permissive
+        // resolved template at all). Preserves earlier permissive
         // mapping for backward compatibility.
         const obj = parsed as Record<string, unknown>;
         reportData = (obj.reportData as Record<string, unknown> | undefined) ?? obj;
@@ -453,7 +453,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     if (this.harnessPolicyService) {
       ({ provider, model } = await this.harnessPolicyService.resolveTextSelection());
     }
-    // TASK-808 — the payload is HOISTED out of the call argument (it used to be
+    // the payload is HOISTED out of the call argument (it used to be
     // an inline object literal) so the shared credential enrichment below has
     // something to fold `provider_overrides` into. The fields are unchanged.
     const textPayload = {
@@ -462,7 +462,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       stream: false,
       provider,
       model,
-      // TASK-700: constrain DNA output to the closed-vocabulary schema
+      // constrain DNA output to the closed-vocabulary schema
       // (mirrors the SOAP `response_format` binding —
       // `text-compat.controller.ts`'s `response_format: { type: 'json_schema',
       // json_schema: responseSchema, strict: true }`). Omitted entirely
@@ -471,20 +471,20 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // templates/fixtures.
       ...(outputSchema ? { response_format: { type: 'json_schema' as const, json_schema: outputSchema, strict: true } } : {}),
     };
-    // TASK-808 — inject the tenant's resolved provider credential through the
+    // inject the tenant's resolved provider credential through the
     // ONE shared implementation. Without it TEXT fails closed with 503
-    // PROVIDER_CREDENTIALS_MISSING: TASK-799 lane B (`70eec34d5`) removed its
+    // PROVIDER_CREDENTIALS_MISSING: lane B (`70eec34d5`) removed its
     // per-provider env plane, so the endpoint and key must arrive per request.
     // `processWithContext` puts the job's tenant in CLS, which is where the
     // resolver reads it from.
-    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
       timeout: 120000,
-      // TASK-737 — the tenant is MANDATORY on this hop: `apps/text /generate`
+      // the tenant is MANDATORY on this hop: `apps/text /generate`
       // answers 428 without it. `processWithContext` puts the job's tenant in
       // CLS (see `process`), so it is always present for real work; the
       // JOB_QUEUE marker is the declared fallback rather than an absent header,

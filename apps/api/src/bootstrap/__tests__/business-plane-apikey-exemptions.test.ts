@@ -1,19 +1,19 @@
 /**
- * TASK-758 — policy A1 as a boot-time contract.
+ * policy A1 as a boot-time contract.
  *
  * A1: a non-`admin` (business) route carries the auth model **JWT + API key**,
  * so an integrator holding a scoped tenant key can drive the platform's
  * business capabilities without a human session. The counterpart A2
- * (`admin/*` ⇒ JWT only) is TASK-757's and is deliberately NOT checked here.
+ * (`admin/*` ⇒ JWT only) is and is deliberately NOT checked here.
  *
  * The interesting half is the exception. Applying A1 blanket would open a
  * clinician's voice biometrics and personal writing model to a long-lived
  * static credential, so A1 ships as default-convert with a NARROW, NAMED
  * exemption list. This spec pins that list and pins that it is POLICED: a
  * business-plane controller may keep `@ForbidApiKey()` only by being named in
- * `BUSINESS_PLANE_KEY_FORBIDDEN` (or, temporarily, in the TASK-759 deferral
+ * `BUSINESS_PLANE_KEY_FORBIDDEN` (or, temporarily, in the deferral
  * set) — otherwise the boot fails, exactly as an undeclared route does under
- * TASK-742's `auditEveryApiKeyReachableRouteDeclaresScopes`.
+ * `auditEveryApiKeyReachableRouteDeclaresScopes`.
  *
  * Same shape as `RESERVED_INTERNAL_SCOPE_CONTROLLERS`
  * (`api-key-scope-audit.ts`): an exemption that must justify itself in code,
@@ -68,10 +68,10 @@ function buildFakeAppFromRealControllers(
   } as unknown as Parameters<typeof auditBusinessPlaneApiKeyExemptions>[0];
 }
 
-describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
+describe('business-plane API-key exemption audit (policy A1)', () => {
   /**
    * This pin exists so that widening the exemption set is a REVIEWED act, not a
-   * silent one — it caught TASK-760's shim addition and forced the reason to be
+   * silent one — it caught shim addition and forced the reason to be
    * written down. Three reasoned exemptions plus one inherited:
    * `VoiceProfileRedirectShimController` is the 308 shim for the retired
    * `voice-profile` prefix. A shim copies its target's auth posture verbatim, so
@@ -79,7 +79,7 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
    * reads a faithful shim as an unexplained hole and refuses the boot, which is
    * exactly what it did. It dies with the shim in `ALL-2.0.0`, taking this entry
    * with it.
-   */
+ */
   it('names exactly the reasoned exemptions and their inherited shim', () => {
     expect(BUSINESS_PLANE_KEY_FORBIDDEN).toEqual(
       new Set(['AuthController', 'VoiceProfileController', 'DnaWritingStyleController', 'VoiceProfileRedirectShimController']),
@@ -87,16 +87,16 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
   });
 
   /**
-   * The TASK-759 deferral set (`BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED`) is
-   * DELETED as of TASK-757's close-out. TASK-759 landed and both controllers it
+   * The deferral set (`BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED`) is
+   * DELETED as of close-out. landed and both controllers it
    * named are now handled structurally: `MonitoringController` moved to
    * `admin/monitoring` (A2's plane, skipped by the admin-path rule) and
    * `ApiHealthController` kept only `@Public()` probes (skipped by the public
    * rule). The audit must still pass over both WITHOUT any name-based
    * exemption — that is what proves the deletion was safe rather than merely
    * quiet.
-   */
-  it('passes over the two former TASK-759 deferrals with no name-based exemption left', () => {
+ */
+  it('passes over the two former deferrals with no name-based exemption left', () => {
     expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('MonitoringController')).toBe(false);
     expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('ApiHealthController')).toBe(false);
 
@@ -135,7 +135,7 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
     ).not.toThrow();
   });
 
-  it('ignores the admin plane — A2 (TASK-757) owns @ForbidApiKey() under admin/', () => {
+  it('ignores the admin plane — A2  owns @ForbidApiKey() under admin/', () => {
     expect(() =>
       auditBusinessPlaneApiKeyExemptions(buildFakeAppFromRealControllers([ConsentGrantController, AdminImpersonationController])),
     ).not.toThrow();
@@ -228,7 +228,7 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
  *
  * Same posture as `ADMIN_SCOPED_CONTROLLERS` (`admin-scope-audit.ts`) for the
  * admin plane, and read the same way: CLASS-level metadata, because A1 follows
- * TASK-708 Task 4's coarse-grained "one scope per controller" convention. The
+ * Coarse-grained "one scope per controller" convention. The
  * two exceptions are the mutating handlers, which narrow to a `:write` scope
  * at the METHOD level — `getAllAndOverride([handler, class])` means the method
  * declaration wins, so a read-only key cannot reach them.
@@ -281,7 +281,7 @@ describe('the converted business controllers declare the scope A1 assigned them'
 
 /**
  * Step 6 of the plan: the exemptions keep their gate, and each states a
- * DECISION rather than TASK-742's deferral boilerplate.
+ * DECISION rather than deferral boilerplate.
  *
  * Marker convention (owner decision, 2026-08-18): `API-KEY-NOTE` and
  * `AUTH-NOTE` stay DISTINCT and nothing migrates between them.
@@ -290,7 +290,7 @@ describe('the converted business controllers declare the scope A1 assigned them'
  * that the boilerplate is GONE and a real `API-KEY-NOTE` reason is present —
  * not that the marker changed.
  */
-describe('the three exemptions carry a decision, not the TASK-742 deferral', () => {
+describe('the three exemptions carry a decision, not the  deferral', () => {
   const files: Array<[string, string]> = [
     ['AuthController', 'src/modules/auth/auth.controller.ts'],
     ['VoiceProfileController', 'src/modules/voice-profile/voice-profile.controller.ts'],

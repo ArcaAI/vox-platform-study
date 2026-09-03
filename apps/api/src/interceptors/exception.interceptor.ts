@@ -80,7 +80,7 @@ export class ExceptionInterceptor implements NestInterceptor {
 
           // Map Prisma codes to RFC-correct HTTP statuses at the interceptor
           // — the single registered handler for Prisma errors (there is no
-          // separate Prisma exception filter; TASK-776 F-03 removed the
+          // separate Prisma exception filter; removed the
           // unwired, dead `PrismaClientExceptionFilter` in favor of this
           // one mechanism) — so clients can distinguish a duplicate (409)
           // from a missing row (404) from a generic validation failure
@@ -155,7 +155,7 @@ export class ExceptionInterceptor implements NestInterceptor {
                 correlationId: err.correlationId || requestId,
               }),
               // H-2: the envelope's machine-readable `code`. `subErrors` is
-              // KEPT under its own name (the TASK-776 validation spec asserts
+              // KEPT under its own name (the validation spec asserts
               // it) and additionally surfaced as `details`, the envelope's
               // generic slot for per-field information.
               code: VALIDATION_ERROR_CODE,
@@ -263,7 +263,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.CONFLICT, requestId), HttpStatus.CONFLICT));
         }
 
-        // Consent & ABAC (TASK-712). `assertConsent` denied the call — no
+        // Consent & ABAC. `assertConsent` denied the call — no
         // active grant, expired, revoked, or scope-insufficient. 403: a
         // privilege boundary, deliberately distinct from the 404-over-403
         // cross-tenant posture (a cross-tenant externalPatientId is a 404
@@ -283,7 +283,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(unifiedDomainBody(err, HttpStatus.FORBIDDEN, requestId), HttpStatus.FORBIDDEN));
         }
 
-        // Consent & ABAC (TASK-712), R4. `assertConsent` could NOT determine
+        // Consent & ABAC, R4. `assertConsent` could NOT determine
         // a verdict — the grant-store lookup itself failed — as opposed to
         // resolving to a genuine denial. Mapped to 503, deliberately
         // DIFFERENT from `ConsentDeniedException`'s 403: a real denial is an
@@ -352,7 +352,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           );
         }
 
-        // TASK-768 — a failed call to a downstream Python service (text, stt,
+        // a failed call to a downstream Python service (text, stt,
         // guardrail, nlp, tts, harness).
         //
         // This branch is the SINGLE place a downstream failure becomes a
@@ -450,17 +450,17 @@ export class ExceptionInterceptor implements NestInterceptor {
 
 // Prisma error code → HTTP status mapping.
 //
-// This is the single Prisma-mapping mechanism (TASK-776 F-03 deleted the
+// This is the single Prisma-mapping mechanism ( deleted the
 // unwired `PrismaClientExceptionFilter`). Any code outside the table below
 // falls back to 400 / 'Bad Request' to preserve the legacy generic-default
 // behaviour.
 // Entitlements capability → HTTP status.
 //
-//   - rolling-monthly METER caps (Q5)         → 429 Too Many Requests
+//   - rolling-monthly METER caps (Q5) → 429 Too Many Requests
 //   - concurrency cap (simultaneous sessions) → 429 Too Many Requests
-//   - the tenant storage quota (Q6)           → 413 Payload Too Large
-//   - a feature-gate denial (F-series)        → 403 Forbidden
-//   - every quantity cap (users/depts/…)      → 409 Conflict (default)
+//   - the tenant storage quota (Q6) → 413 Payload Too Large
+//   - a feature-gate denial (F-series) → 403 Forbidden
+//   - every quantity cap (users/depts/…) → 409 Conflict (default)
 //
 // Keyed off the `capability` in the exception metadata so meter over-limit and
 // concurrency over-capacity (both retry-later semantics) are distinguishable
@@ -509,7 +509,7 @@ function mapPrismaCodeToHttp(code: string): { status: HttpStatus; label: string;
   switch (code) {
     case 'P2002':
       return { status: HttpStatus.CONFLICT, label: 'Unique constraint violation', code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION' };
-    // TASK-776 F-06: NOT structurally dead. `Repository.updateWithVersion`
+    // NOT structurally dead. `Repository.updateWithVersion`
     // (the OCC path most PATCH routes use) issues `updateMany`, which never
     // throws P2025 on zero matched rows — and most services `findById` first,
     // surfacing a `DataNotFoundException` (→404) before Prisma is ever

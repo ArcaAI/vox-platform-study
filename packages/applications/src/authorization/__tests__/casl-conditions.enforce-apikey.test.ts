@@ -1,5 +1,5 @@
 /**
- * TASK-712 Phase 5 Task 15c — the EVIDENCE for enforcing `ApiKey`.
+ * c — the EVIDENCE for enforcing `ApiKey`.
  *
  * R1's contract is shadow → MEASURE → enforce. Pass 5 could not measure
  * anything because shadow was wired to zero routes; Pass 6 wires it and, for
@@ -66,7 +66,7 @@ describe('ApiKey enforce — evidence', () => {
     const ability = abilityFromPolicies([OWN_KEYS]);
     const foreignKey = { tenantId: TENANT, userId: 'someone-else' };
 
-    // Today (type-only) — the in-tenant privilege gap casl-blast-radius.md §4 names.
+    // Today (type-only) — the in-tenant privilege gap casl-blast-radius.md names.
     expect(ability.can('read', 'ApiKey')).toBe(true);
     // After the flip.
     expect(engine.can(ability, 'read', 'ApiKey', foreignKey)).toBe(false);
@@ -95,7 +95,7 @@ describe('ApiKey enforce — evidence', () => {
     expect(engine.can(abilityFromPolicies([OWN_KEYS]), 'read', 'ApiKey', orphan)).toBe(false);
   });
 
-  it('TASK-781: the ApiKey pairs are NOT enforced at the guard — the CASL table above is redundant with the service', () => {
+  it('the ApiKey pairs are NOT enforced at the guard — the CASL table above is redundant with the service', () => {
     // The verdict table above is still true, and that is precisely the point:
     // `ApiKeyService.assertKeyAccess` already enforces the SAME
     // `{tenantId, userId}` boundary the seeded rule expresses, and answers
@@ -120,13 +120,13 @@ describe('ApiKey enforce — evidence', () => {
 });
 
 /**
- * TASK-781 — THE REMOVAL CHANGED NO BEHAVIOUR, proven rather than asserted.
+ * THE REMOVAL CHANGED NO BEHAVIOUR, proven rather than asserted.
  *
  * Owner decision 2026-08-20 removed `read`/`update`/`delete:ApiKey` from
  * `CASL_ENFORCED_PAIRS` on the finding that they were enforced in NAME ONLY.
  * "In name only" is a testable claim, so this suite tests it: it drives the
  * REAL `UnifiedAuthGuard` over the REAL seeded `api-key-own-manage` ability
- * twice — once with the three pairs listed exactly as TASK-712 had them, once
+ * twice — once with the three pairs listed exactly as had them, once
  * with the shipped (empty) list — and asserts the outcome is IDENTICAL.
  *
  * The two runs can only differ on a request where the guard sees an instance
@@ -137,14 +137,14 @@ describe('ApiKey enforce — evidence', () => {
  *
  *   1. non-owned key → the resolver THROWS → `runCaslInstanceChecks` swallows
  *      it → no denial, either way, and the service's 404 answers downstream;
- *   2. owned key     → the instance verdict is `true` → nothing to enforce.
+ *   2. owned key → the instance verdict is `true` → nothing to enforce.
  *
  * The counter-case is included too, as the honesty check: fed the instance the
  * resolver can never return, the two runs DO diverge — which is what makes the
  * two invariance assertions above meaningful rather than vacuous.
  */
-describe('ApiKey enforce removal — behavioural invariance (TASK-781)', () => {
-  /** Exactly what TASK-712 listed, restored here to compare against. */
+describe('ApiKey enforce removal — behavioural invariance ', () => {
+  /** Exactly what listed, restored here to compare against. */
   const TASK_712_APIKEY_PAIRS: ReadonlySet<string> = new Set(['read:ApiKey', 'update:ApiKey', 'delete:ApiKey']);
 
   type Outcome = { allowed: boolean; error?: string; denialsRecorded: number };

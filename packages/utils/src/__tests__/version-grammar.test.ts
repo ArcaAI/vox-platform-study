@@ -76,7 +76,7 @@ describe('formatUntaggedVersion', () => {
   });
 
   it('sanitises branch characters that SemVer forbids', () => {
-    expect(formatUntaggedVersion('feat/TASK_648+x', 'ABCDEF1234')).toBe('0.0.0-feat-TASK-648-x.abcdef12');
+    expect(formatUntaggedVersion('feat/FOO_BAR+x', 'ABCDEF1234')).toBe('0.0.0-feat-FOO-BAR-x.abcdef12');
   });
 
   it('truncates the sha to 8 characters and lower-cases it', () => {

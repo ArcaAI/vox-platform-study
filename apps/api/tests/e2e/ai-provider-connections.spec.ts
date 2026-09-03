@@ -13,7 +13,7 @@
  * anthropic, vertex) seed DISABLED until a tenant brings a key.
  *
  * No VENDOR credential is ever seeded, but "keyless" is not the same as "no key
- * material": TASK-799 lane B gives the four self-hosted ENGINE rows the
+ * material": lane B gives the four self-hosted ENGINE rows the
  * non-secret placeholder `not-needed`, because the `provider_overrides` fold
  * that DELIVERS a connection to `apps/text` drops any row without key material,
  * so a keyless self-host row resolves and then serves nothing (503). `built-in`
@@ -51,7 +51,7 @@ test.describe('AI provider connections', () => {
 
     // Seed-authoritative: the built-in-local engines are the enabled
     // Day-1 default; cloud/BYO providers stay disabled until a tenant keys them.
-    // TASK-736 REVISED (owner decision 2026-08-17): Ollama's provider logic is
+    // REVISED (owner decision 2026-08-17): Ollama's provider logic is
     // retained, so its SYSTEM connection row is back and the llm connection
     // count returns to eleven. Only its MODEL CATALOG rows stay purged.
     const BUILTIN_LOCAL = new Set(['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp']);

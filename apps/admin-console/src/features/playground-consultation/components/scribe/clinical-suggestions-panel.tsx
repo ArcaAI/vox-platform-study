@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * TASK-797 W2 — intelligent suggestions.
+ * intelligent suggestions.
  *
  * The harness node's system prompt scopes these deliberately: "the most useful next questions,
  * checks or omissions to consider", grounded in the supplied text, "never state a diagnosis as
  * fact and never invent clinical findings", empty list when there is nothing useful. This
  * surface honours that framing rather than dressing the output up:
  *
- *  - labelled as prompts to CONSIDER, not findings, and marked AI (rule 11 §7);
+ * labelled as prompts to CONSIDER, not findings, and marked AI (rule 11 §7);
  *  - the ONLY action is Dismiss — there is no affordance that writes a suggestion into the
  *    note, because a suggestion is a question to the clinician, not content for the record;
  *  - dismissals are keyed by `suggestionId` (796 rule 3), which is content-derived and stable

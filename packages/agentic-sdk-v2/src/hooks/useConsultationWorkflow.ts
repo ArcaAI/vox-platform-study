@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useConsultationWorkflow Hook (TASK-813)
+ * @arcaai/vox - useConsultationWorkflow Hook
  *
  * Answers "which engine is writing this consultation's document?" — the read
  * side of `OpenSessionInput.workflowDefinitionSlug`.

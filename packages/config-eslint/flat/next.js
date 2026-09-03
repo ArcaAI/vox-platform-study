@@ -44,20 +44,20 @@ const UNSCOPED_PRISMA_PATH = {
   name: '@arcaai/database',
   importNames: ['getPlatformAdminPrismaClient_Unscoped'],
   message:
-    'TASK-305 §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` (or `CoreDatabaseService.client`) unless this file is on the §B.4 allow-list (seed scripts, migrations, back-fill scripts, test fixtures, CoreDatabaseService).',
+    ' §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` (or `CoreDatabaseService.client`) unless this file is on the §B.4 allow-list (seed scripts, migrations, back-fill scripts, test fixtures, CoreDatabaseService).',
 };
 
 const UNSCOPED_PRISMA_PATTERN = {
   group: ['**/database/src/client', '**/database/src/client.js', '**/database/src/client.ts'],
   importNames: ['getPlatformAdminPrismaClient_Unscoped'],
   message:
-    'TASK-305 §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` unless this file is on the §B.4 allow-list.',
+    ' §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` unless this file is on the §B.4 allow-list.',
 };
 
 /**
- * TASK-769: record detail/edit lives in ONE console-wide surface
+ * record detail/edit lives in ONE console-wide surface
  * (`src/shared/detail/detail-drawer.tsx`), per `11-ux-ui-principles.md`
- * §1 Detail Surface. A feature module that reaches for `SheetContent` is
+ * Detail Surface. A feature module that reaches for `SheetContent` is
  * hand-rolling a second detail surface, which is exactly what that rule
  * retires. `Sheet` itself is useless without `SheetContent`, so banning the
  * one import closes the hole. The drawer itself lives OUTSIDE `src/features/**`

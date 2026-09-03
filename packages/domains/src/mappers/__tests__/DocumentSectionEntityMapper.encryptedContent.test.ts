@@ -1,5 +1,5 @@
 /**
- * TASK-820 — the mapper must be able to CLEAR `encryptedContent`.
+ * the mapper must be able to CLEAR `encryptedContent`.
  *
  * `DocumentSection.content` is transient: `encryptedContent` is the only
  * persisted form of the body, so "the clinician emptied this section" can only
@@ -12,7 +12,7 @@
  * survives only because the GENERIC pass above it already copied the change —
  * so the two passes have to keep agreeing. If a later change makes the generic
  * pass skip nullish values, the clearing write silently reverts to a no-op and
- * TASK-820 returns under a green applications suite. Hence a test here, at the
+ * returns under a green applications suite. Hence a test here, at the
  * layer where the property actually lives.
  */
 import { describe, expect, it } from 'vitest';

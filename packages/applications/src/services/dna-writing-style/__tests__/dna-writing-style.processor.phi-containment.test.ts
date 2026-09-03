@@ -1,5 +1,5 @@
 /**
- * TASK-700 — DNA Writing-Style PHI Containment.
+ * DNA Writing-Style PHI Containment.
  *
  * Proves the closed loop end-to-end once a DNA_ANALYSIS template carries a
  * closed-vocabulary `metaData.promptConfig.outputSchema`:
@@ -148,7 +148,7 @@ const createAxiosTextResponse = (content: string) => ({
   },
 });
 
-describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
+describe('DnaWritingStyleProcessor — PHI containment ', () => {
   let mockJobService: ReturnType<typeof createMockJobService>;
   let mockAppSettings: ReturnType<typeof createMockAppSettingsService>;
   let mockContextItemRepo: ReturnType<typeof createMockContextItemRepository>;
@@ -185,10 +185,10 @@ describe('DnaWritingStyleProcessor — PHI containment (TASK-700)', () => {
       mockHarnessPolicyService as never,
       mockConfigResolver as never,
       mockPromptTemplateRepo as never,
-      // TASK-710 (re-opened): `IPhiRedactor` is a REQUIRED dependency now — an
+      // (re-opened): `IPhiRedactor` is a REQUIRED dependency now — an
       // absent redactor aborts the job rather than posting the raw
       // cross-patient corpus to TEXT. Pass-through double keeps this file's
-      // TASK-700 assertions byte-identical.
+      // assertions byte-identical.
       { redact: vi.fn(async (text: string) => text) } as never,
     );
 

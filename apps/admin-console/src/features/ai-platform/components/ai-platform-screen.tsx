@@ -23,7 +23,7 @@ const DEFAULT_TAB = 'providers';
 
 /**
  * AI Platform (`/ai-platform`) — the one screen for managing AI inference
- * providers and configuration (TASK-845).
+ * providers and configuration.
  *
  * ## What it replaced, and why the merge is not just a tab bar
  *
@@ -43,14 +43,14 @@ const DEFAULT_TAB = 'providers';
  *   * **Model store** — "which weights do we hold, and how do we get more?"
  *   * **Engines** — "are the serving engines up?"
  *
- * The merge only works because TASK-844 unified the model underneath: before
+ * The merge only works because unified the model underneath: before
  * it, the fallback chain was a string join with nothing to render (program
  * finding F-6), and a "configuration" was not a row you could point at.
  *
  * ## Tier, and why this is a `(shared)` screen
  *
  * Tier 20–29: it renders cross-tenant for a super admin and tenant-scoped for a
- * tenant admin. Tenancy is a CONTROL here, not a route (step 2) — the SYSTEM
+ * tenant admin. Tenancy is a CONTROL here, not a route — the SYSTEM
  * tier and the working tenant are the two tiers of one cascade, and comparing a
  * value with the value it overrides should not require navigating.
  *

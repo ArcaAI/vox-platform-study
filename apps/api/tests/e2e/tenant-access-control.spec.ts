@@ -79,7 +79,7 @@ test.describe('Tenant Access Control', () => {
         data: {
           name: uniqueKey,
           key: uniqueKey,
-          description: 'TASK-258 E2E temp tenant — auto-cleaned',
+          description: ' E2E temp tenant — auto-cleaned',
         },
       });
 

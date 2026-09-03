@@ -24,7 +24,7 @@ export interface HuggingFaceFileEntry {
  * .get(...))`) — the same convention `KnowledgeIngestClient` uses elsewhere
  * in this package.
  *
- * TASK-855 L8 — authenticates against HuggingFace with the platform's
+ * authenticates against HuggingFace with the platform's
  * `HUGGINGFACE_TOKEN`, resolved from the SYSTEM-tenant
  * `model-registry`/`huggingface` `AiProviderConnection` row (owner ruling
  * 2026-08-24: this plane is platform-managed — only a super admin sets this
@@ -37,9 +37,9 @@ export interface HuggingFaceFileEntry {
  *
  * Three outcomes, and only one of them attaches a header — the other two are
  * NOT failures:
- *   - a token resolves            -> `Authorization: Bearer <token>` is sent.
- *   - no row, a disabled row, or  -> no header. A public repo (the common
- *     the resolve itself faults      case — `blaze999/Medical-NER`,
+ *   - a token resolves -> `Authorization: Bearer <token>` is sent.
+ *   - no row, a disabled row, or -> no header. A public repo (the common
+ *     the resolve itself faults case — `blaze999/Medical-NER`,
  *                                     `unsloth/Qwen3-0.6B-GGUF`) must keep
  *                                     working with nobody having configured
  *                                     a token at all.

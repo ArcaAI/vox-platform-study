@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * TASK-811 (OD-7) — one section of one clinical document being generated for a
+ *  — one section of one clinical document being generated for a
  * consultation. `(consultationId, documentKey, sectionKey)` is its identity.
  *
  * INTENTIONAL posture (mirrors TranscriptSegment, differs from the standard
@@ -99,10 +99,10 @@ export class DocumentSectionEntity extends BaseTenantEntity {
 
   /**
    * Row history rather than row shape — e.g. the transcript contradiction that
-   * justified a deletion (§2d). `BaseEntity` declares the field on `IBaseEntity`
+   * justified a deletion ( `BaseEntity` declares the field on `IBaseEntity`
    * but surfaces no accessor, so each entity that persists `_metadata` declares
    * its own (the `ContextItemEntity` pattern).
-   */
+ */
   get metaData(): IDocumentSectionEntity['metaData'] {
     return this._metaData;
   }
@@ -257,7 +257,7 @@ export class DocumentSectionEntity extends BaseTenantEntity {
   }
 
   // ---------------------------------------------------------------------------
-  // The section state machine (§2d)
+  // The section state machine
   // ---------------------------------------------------------------------------
 
   /**

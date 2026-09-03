@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane B — CONTRACT CONFORMANCE.
+ * lane B — CONTRACT CONFORMANCE.
  *
  * The other suite asserts the SDK calls the paths it means to. This one asserts
  * those paths are the ones the GATEWAY actually ships, by reading

@@ -1,5 +1,5 @@
 /**
- * `GraphListEditor` (TASK-719 Task 13) — the WCAG 2.5.7 peer editor. Every assertion here
+ * `GraphListEditor` — the WCAG 2.5.7 peer editor. Every assertion here
  * exercises the graph purely through `<button>` `click()` (no `MouseEvent`/drag dispatch, no
  * `dragstart`/`dragover`/`drop`) — the same activation path a keyboard Enter/Space triggers on
  * a real `<button>`, proving the mutation set never depends on a pointer drag.

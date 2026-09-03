@@ -1,5 +1,5 @@
 /**
- * `useUnsavedChangesGuard` (TASK-719 Task 15 remainder — README §7 "Still genuinely NOT done"
+ * `useUnsavedChangesGuard` — "Still genuinely NOT done"
  * #3). Two layers, verified independently:
  *  1. `beforeunload` — standard tab-close/reload/external-nav guard.
  *  2. A capture-phase document click listener on same-origin anchor clicks — the Next.js App

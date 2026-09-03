@@ -7,13 +7,13 @@ import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
 // An IMMUTABLE published snapshot of one clinical-document `shape` and the
-// artifacts `compiled` from it (TASK-810). Written once by
+// artifacts `compiled` from it. Written once by
 // `DocumentTemplateService.publish` and never updated: a correction is a new
 // version, exactly like `PromptVersion` / `ConsultationContextSchemaVersion`.
 // That immutability is what lets a consultation pin a version at open and keep
 // generating against it no matter what the tenant publishes afterwards — and
 // unlike those precedents it is ALSO enforced one layer down, by the
-// `document_template_version_immutability_guard` trigger (OD-13).
+// `document_template_version_immutability_guard` trigger.
 //
 // The row carries no `resourceStatus` (see MODELS_WITHOUT_SOFT_DELETE) and no
 // `updatedAt`/`updatedBy` — the mapper strips those, mirroring

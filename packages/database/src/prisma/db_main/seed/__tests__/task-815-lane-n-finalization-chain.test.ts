@@ -1,9 +1,9 @@
 /**
- * Lane N (TASK-815 §14a/§14b) — the two capabilities, as they are actually SEEDED.
+ * Lane N — the two capabilities, as they are actually SEEDED.
  *
- * §14b's finding was that the finalization chain does not exist in the seed: *"`agent.dna_redaction`
+ * The finding was that the finalization chain does not exist in the seed: *"`agent.dna_redaction`
  * is absent from both seeded graphs"*, so nothing redacted the note before the verifier scored it.
- * §14a's was that important findings did not exist at all. This suite holds the seeded graphs to
+ * The other finding was that important findings did not exist at all. This suite holds the seeded graphs to
  * the owner's two sentences rather than to a shape:
  *
  *  - **ordering** — grounding evaluates the REDACTED summary, so redaction precedes it. Earlier
@@ -42,7 +42,7 @@ const edge = (graph: any, from: string, to: string) => graph.edges.find((e: any)
 describe('§14b — the finalization chain is SEEDED, and redaction runs BEFORE grounding', () => {
   it.each(GRAPHS)('%s: `agent.dna_redaction` is present — the §14b gap, closed', (_label, graph) => {
     expect(nodeOf(graph, 'n_dna')?.type).toBe('agent.dna_redaction');
-    // TASK-815 §11's rider: the tenant gate is the node's PRESENCE, the doctor's own opt-in still
+    // Rider: the tenant gate is the node's PRESENCE, the doctor's own opt-in still
     // applies, and the retired `DepartmentAgent` veto stays retired.
     expect(nodeOf(graph, 'n_dna').config.requireDoctorOptIn).toBe(true);
   });

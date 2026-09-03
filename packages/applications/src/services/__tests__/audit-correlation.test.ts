@@ -12,7 +12,7 @@
  *   WHERE event_type = 'SysEvent.ResourceUpdated'
  *     AND metadata->>'newVersion' = ?;
  *
- * This closes the "audit-log gaslighting" risk from Research §1 scenario 3:
+ * This closes the "audit-log gaslighting" risk from Research scenario 3:
  * without the version transition, an investigator cannot distinguish "this
  * row was edited at t=100 (v5 → v6)" from "this row was edited at t=100
  * and then again at t=101 (v6 → v7) that we missed because the second write

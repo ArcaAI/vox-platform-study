@@ -1,5 +1,5 @@
 /**
- * TASK-811 tasks 7 and 14 — the realtime NODE REGISTRY.
+ * tasks 7 and 14 — the realtime NODE REGISTRY.
  *
  * Task 7: `LIVE_TOOL_KEYS` was a three-boolean allow-list (D-13). Three booleans
  * cannot express "run this node, bound to that port, with this budget, degrading
@@ -8,7 +8,7 @@
  *
  * Task 14: `consultation.captureBinding` becomes a REAL producer of `transcript`,
  * which is what makes `consultation.extractEntities`' required input satisfiable
- * — the open item TASK-809 §2y1 records.
+ * the open item records.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { NODE_PORTS, portPrimitiveSatisfies, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
@@ -73,7 +73,7 @@ describe('task 7 — LIVE_TOOL_KEYS is no longer the dispatch mechanism', () => 
   });
 });
 
-describe('task 14 — captureBinding is a REAL producer of `transcript` (TASK-809 §2y1)', () => {
+describe('task 14 — captureBinding is a REAL producer of `transcript`', () => {
   it('publishes the transcript under the `outputKey` its declared port names', async () => {
     const port = NODE_PORTS['consultation.captureBinding'].outputs.find((p) => p.name === 'out');
     expect(port).toMatchObject({ primitive: 'transcript', outputKey: 'transcript' });

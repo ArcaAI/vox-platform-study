@@ -1,5 +1,5 @@
 /**
- * TASK-792 W3 (C-5) — an automated producer for `GoldenCase`.
+ * (C-5) — an automated producer for `GoldenCase`.
  *
  * Before this ticket the ONLY write path was a manual admin POST. Nothing
  * connected a signed, clinician-edited consultation — or a curated

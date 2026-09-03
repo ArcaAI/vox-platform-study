@@ -1,7 +1,7 @@
 /**
  * `WorkflowStreamService` unit tests.
  *
- * **These tests changed shape with the transport (TASK-849 lane A).** They used to drive a poll
+ * **These tests changed shape with the transport .** They used to drive a poll
  * timer with fake timers and assert a fresh snapshot per tick. There is no poll timer any more:
  * the harness produces run events onto a Redis Stream and this service consumes them with a
  * blocking `XREAD`. What is asserted now is the client contract the ticket names —
@@ -132,7 +132,7 @@ describe('WorkflowStreamService', () => {
   });
 
   it('sets SSE headers, flushes, and writes the connect snapshot with NO id line', async () => {
-    // No `id:` on the snapshot is the async-contract §3.6 rule, not an omission: a snapshot is
+    // No `id:` on the snapshot is the async-contract rule, not an omission: a snapshot is
     // not a stream position, and a token that cannot resume must never be minted.
     const redis = new FakeStreamRedis();
     redis.append('workflow.run.completed', { status: 'SUCCEEDED' });

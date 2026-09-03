@@ -79,7 +79,7 @@ export class AgenticInstructionsService extends BaseService {
 
   async getEffectiveInstructions(tenantId: string, options: AgenticInstructionsResolveOptions = {}): Promise<AgenticInstructionsResponse> {
     // An omitted prompt type means "the ordinary case", and WHICH visit type
-    // that is belongs to the tenant now (TASK-815 §11 row 3) — it used to be a
+    // that is belongs to the tenant now — it used to be a
     // hardcoded `'new-patient'`. A tenant with no catalogue of its own inherits
     // the two shipped types, so this resolves `'new-visit'` — the same entry the
     // retired `'new-patient'` spelling still reaches as an alias.
@@ -117,7 +117,7 @@ export class AgenticInstructionsService extends BaseService {
         key: 'safety',
         label: 'Content-safety guardrail',
         enabled: policy.safetyEnabled,
-        // TASK-816 Phase 4 — no engine detail from here. This used to report
+        // no engine detail from here. This used to report
         // `${policy.safetyProvider}/${policy.safetyModel}`, two HarnessPolicy columns that
         // selected nothing and have now been dropped: `apps/guardrail` resolves the guardrail
         // engine and model itself from the `guardrail.safety` AiTaskDefault (tenant -> SYSTEM,

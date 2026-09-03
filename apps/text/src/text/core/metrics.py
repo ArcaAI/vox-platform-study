@@ -115,11 +115,11 @@ CONCURRENT_REQUESTS = Gauge(
 )
 
 # ---------------------------------------------------------------------------
-# Worker pool (TASK-725) — async out-of-process task dispatch, separate from
+# Worker pool — async out-of-process task dispatch, separate from
 # the sync-path metrics above. `task_type` ("embedding" | "batch_generation")
 # is the label KEDA's Prometheus scaler (arca/hope-v2-deployment, not this
 # repo) would key a per-pool `ScaledObject` trigger on. `text_`-prefixed like
-# every OTHER metric in this file (post-TASK-707/740) — a lone differently
+# every OTHER metric in this file (post-/740) — a lone differently
 # prefixed metric next to them would be its own drift.
 # ---------------------------------------------------------------------------
 

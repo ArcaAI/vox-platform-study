@@ -186,7 +186,7 @@ STEP_SENSOR = "SENSOR"
 STEP_GUARDRAIL = "GUARDRAIL"
 STEP_THINKING = "THINKING"
 STEP_GATE = "GATE"
-# One interpreter (TASK-718) node dispatch — describes a WorkflowInterpreter node, not a
+# One interpreter node dispatch — describes a WorkflowInterpreter node, not a
 # HarnessDocWorkflow phase; kept in this shared vocabulary (rather than a second enum) so both
 # workflow types feed the same trajectory read model.
 STEP_NODE = "NODE"
@@ -196,7 +196,7 @@ STATUS_OK = "OK"
 STATUS_ERROR = "ERROR"
 STATUS_SKIPPED = "SKIPPED"
 # "Completed, but not fully." The interpreter's per-node DEGRADED outcome — persisted as itself
-# rather than collapsed into ERROR (TASK-789 C-10), so a partially-degraded graph is
+# rather than collapsed into ERROR, so a partially-degraded graph is
 # distinguishable in the trace from one that failed outright.
 STATUS_DEGRADED = "DEGRADED"
 
@@ -238,7 +238,7 @@ async def ping_activity(payload: PingInput) -> PingResult:
 # `HARNESS_TEXT_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`) remain only as the fallback
 # for an environment that has not been migrated yet — `peer_service_token` encodes
 # "shared first, legacy second" in one place so no factory can drift from it.
-# TASK-737 — every peer call out of an activity must carry the tenant its work
+# every peer call out of an activity must carry the tenant its work
 # belongs to. The workflow input models all carry it (required on the newer ones,
 # additive-optional with "" on `GenerateInput`/`ApplyRedactionInput` so an OLD
 # Temporal history still deserializes and replays). This is the one place that
@@ -251,7 +251,7 @@ def _required_tenant(tenant_id: str | None, activity_name: str) -> str:
     resolved = (tenant_id or "").strip()
     if not resolved:
         raise ValueError(
-            f"harness activity {activity_name!r} has no tenant_id (TASK-737). A peer "
+            f"harness activity {activity_name!r} has no tenant_id . A peer "
             "call carrying tenant-scoped work must identify its tenant; an absent one "
             "is a defect in the workflow that scheduled this activity, not something "
             "the callee should resolve to a platform default."
@@ -268,7 +268,7 @@ def _nlp_client(settings: Settings) -> NlpClient:
 
 
 def _text_client(settings: Settings) -> TextClient:
-    # TASK-858 — every harness generate folds the gateway-resolved
+    # every harness generate folds the gateway-resolved
     # ``AiProviderConnection`` (tenant → SYSTEM) into the request as
     # ``provider_overrides``; Text refuses a connection-less request for every
     # provider, the self-hosted ones included. Resolved INSIDE the call that uses
@@ -684,7 +684,7 @@ def _mcp_client(settings: Settings, allowed_hosts: list[str] | None = None) -> M
     per invocation and the tests can monkeypatch it with a stub (the hermetic suite
     never touches the real ``mcp`` SDK / network).
 
-    ``allowed_hosts`` is the platform SSRF egress allow-list (TASK-846 D-3). It is
+    allowed_hosts is the platform SSRF egress allow-list. It is
     passed down rather than re-read here because the CLIENT's copy is what arms the
     per-request pinning inside ``PinnedEgressTransport`` — the activity's own check
     below stops the call, but only the transport can stop a DNS rebind mid-session.
@@ -722,7 +722,7 @@ async def _mcp_egress_allowed_hosts() -> list[str] | None:
     return value
 
 
-# TASK-712 (consent-abac Phase 4) — process-lifetime singleton, UNLIKE the
+# (consent-abac Phase 4) — process-lifetime singleton, UNLIKE the
 # other client factories above. ConsentClient carries an in-process TTL cache
 # whose whole purpose is to survive ACROSS activity invocations (a Temporal
 # worker handles many activity calls over its life on the same event loop);
@@ -910,7 +910,7 @@ async def _offload_text(settings: Settings, text: str) -> tuple[str, ClaimCheckR
         store=build_blob_store(cc, location),
         bucket=location.bucket,
         # PLATFORM default from the control plane, env as the bootstrap floor beneath it
-        # (TASK-799 A.2). A failed read keeps `cc.min_bytes`, so a degraded control plane
+        # . A failed read keeps `cc.min_bytes`, so a degraded control plane
         # leaves the offload behaviour byte-identical.
         min_bytes=resolve_min_bytes(snapshot, cc.min_bytes),
     )
@@ -997,7 +997,7 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
             ) from exc
         raise
     policy = HarnessPolicy.from_api(data)
-    # TASK-815 / OD-12 retired the per-agent `harnessOverrides` overlay, so the
+    # / OD-12 retired the per-agent `harnessOverrides` overlay, so the
     # gateway no longer returns an `overridesSource` provenance block and the
     # consultation id no longer selects anything on this route. What is left is
     # the policy's own version, which is what a trajectory step needs to answer
@@ -1104,7 +1104,7 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
     Enforcement order (security-critical — everything before the network call is
     fail-closed and BLOCKS without any egress):
 
-    0.5. **Consent** (TASK-712, consent-abac Phase 4) — the caller's
+    0.5. **Consent** (consent-abac Phase 4) — the caller's
        ``(tenant_id, external_patient_id)`` must hold an active
        ``EXTERNAL_TOOL_LOOKUP`` grant. Checked BEFORE the allowlist (a consent
        failure is not a configuration problem). Raises a non-retryable
@@ -1147,9 +1147,9 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
             ok=False, server=server.name, tool=tool, degraded=True, error_code="server_disabled"
         )
 
-    # (0.5) Consent (TASK-712, consent-abac Phase 4) — BEFORE the allowlist, so a
+    # (0.5) Consent (consent-abac Phase 4) — BEFORE the allowlist, so a
     # consent denial is distinguishable from a configuration/policy denial in the
-    # trajectory (README §2.3: "consent becomes step (0.5), before the allowlist,
+    # trajectory ("consent becomes step (0.5), before the allowlist,
     # because a consent failure is not a configuration problem"). Both a genuine
     # denial and an UNAVAILABLE lookup (R4) block the call — the trajectory
     # error_code and the raised ApplicationError.type are what stay distinguishable.
@@ -1222,7 +1222,7 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         await batch.flush()
         raise
 
-    # (2.5) SSRF EGRESS GUARD — `server.base_url` is TENANT-AUTHORED (OD-7), so it is
+    # (2.5) SSRF EGRESS GUARD — `server.base_url` is TENANT-AUTHORED , so it is
     # checked against the platform allow-list AND its resolved address before anything
     # is dialled. Deliberately placed BEFORE the credential resolution below: there is
     # no reason to pull a secret out of Vault for a call that will not be made.
@@ -1646,7 +1646,7 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     outage degrades to an empty context (``degraded=True``); it never raises into the
     durable loop. Returns the reranked chunks + the ready-to-append StrictCitations block.
 
-    CONSENT (TASK-712, consent-abac Phase 4): a ``HISTORY_RETRIEVAL`` grant is
+    CONSENT (consent-abac Phase 4): a HISTORY_RETRIEVAL grant is
     required before the retriever runs. Unlike ``call_mcp_tool``, a denial here
     does NOT raise — it follows this activity's existing degrade-to-empty
     contract (a missing/denied grant behaves like a retrieval backend outage:
@@ -1762,7 +1762,7 @@ def _stt_batch_job_output(
 # Non-terminal `TranscriptionJobStatus` values (mirrors
 # `packages/domains/src/enums/generated/TranscriptionJobStatus.ts`; QUEUED/PROCESSING
 # keep polling, COMPLETED/FAILED/CANCELLED/DEAD are terminal). Duplicated here rather
-# than shared cross-language — see the ticket README's own "cross-language enum drift"
+# than shared cross-language — see "cross-language enum drift"
 # risk note, same posture already accepted for `ModelTaskType`/`LanguageModeKind`.
 _STT_JOB_NON_TERMINAL_STATUSES = frozenset({"QUEUED", "PROCESSING"})
 
@@ -1771,9 +1771,9 @@ _STT_JOB_NON_TERMINAL_STATUSES = frozenset({"QUEUED", "PROCESSING"})
 async def dispatch_batch_transcription(
     payload: DispatchBatchTranscriptionInput,
 ) -> DispatchBatchTranscriptionOutput:
-    """TASK-724 Task 5 — the STT palette's batch-trigger activity.
+    """the STT palette's batch-trigger activity.
 
-    Given a resolved `AsrPipeline` id (README §1's central design decision: a
+    Given a resolved `AsrPipeline` id ( central design decision: a
     published `stt` `WorkflowDefinition` compiles to an `AsrPipeline`, it is never
     walked node-by-node by this interpreter) and a batch job's audio reference, this
     is the ONE place harness dispatches STT batch work: it calls apps/api's
@@ -1841,7 +1841,7 @@ _AUDIO_DELTA_FRAME_BYTES = 32 * 1024
 
 @activity.defn
 async def dispatch_speech_synthesis(payload: SpeechSynthesisInput) -> SpeechSynthesisResult:
-    """TASK-849 lane B step 5 — the TTS palette's synthesis-trigger activity.
+    """lane B step 5 — the TTS palette's synthesis-trigger activity.
 
     The exact counterpart of :func:`dispatch_batch_transcription`, and built the same way for the
     same reason: apps/api owns the tenant → SYSTEM resolution (routing chains, allowed providers,
@@ -2421,7 +2421,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                     )
                 )
             else:
-                # A tenant-scoped internal call with no tenant is a CALLER bug (TASK-737),
+                # A tenant-scoped internal call with no tenant is a CALLER bug,
                 # not something to paper over with a default: guardrail would answer 428
                 # and the screen would look like an outage. Degrade explicitly and say why.
                 results_degraded = degraded_result(
@@ -3077,9 +3077,9 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     record_gate_decision,
     escalate_gate,
     report_progress,
-    # TASK-724 Task 5 — the STT palette's batch-trigger activity.
+    # the STT palette's batch-trigger activity.
     dispatch_batch_transcription,
-    # TASK-849 lane B — its TTS counterpart. Registered for the same reason: the node calls it
+    # lane B — its TTS counterpart. Registered for the same reason: the node calls it
     # as a plain coroutine today, but an unregistered activity is a runtime error waiting for
     # the first caller that schedules it properly (the trap `AGENTIC_ACTIVITIES` records).
     dispatch_speech_synthesis,
@@ -3090,10 +3090,10 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
 #
 # Four concerns, all of them activities:
 #
-#   * ``plan_reasoning``     — the LLM planner. An ACTIVITY, never a workflow-body
+#   * ``plan_reasoning`` — the LLM planner. An ACTIVITY, never a workflow-body
 #                              call, so its decision is recorded in history and a
 #                              replay reuses it instead of re-rolling the model (C1).
-#   * ``run_specialist``     — one specialist's analysis (also a model call).
+#   * ``run_specialist`` — one specialist's analysis (also a model call).
 #   * ``record_adjudication``— publishes the primary's reconciliation to the
 #                              inspection surface.
 # * the three ``*_extract_*`` derivers that back the keys declared
@@ -3468,7 +3468,7 @@ async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResu
 
 
 # ---------------------------------------------------------------------------
-# TASK-812 — the ENDPOINT STAGE activities
+# the ENDPOINT STAGE activities
 #
 # These three DO NOT follow ``livedoc_start``/``livedoc_stop``'s swallow-every-
 # exception posture, and the difference is the whole point of the ticket. Live
@@ -3556,7 +3556,7 @@ LOOP_ACTIVITIES: list[Callable[..., Any]] = [
     livedoc_start,
     livedoc_stop,
     emit_loop_event,
-    # TASK-812 — the endpoint stage.
+    # the endpoint stage.
     record_session_endpoint,
     finalize_documents,
     capture_feedback,

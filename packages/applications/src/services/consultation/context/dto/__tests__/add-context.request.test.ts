@@ -4,7 +4,7 @@
  * `content` is folded verbatim into the harness prompt as
  * `[case note]` / `[work note]` (`harness-internal.service.ts` assemble) with
  * no transformation beyond a label prefix — a `@MaxLength` cap bounds the
- * prompt-injection / unbounded-payload surface (SOTA §5.1/§5.2).
+ * prompt-injection / unbounded-payload surface (SOTA
  *
  * Testing Strategy:
  * - Use the REAL class-validator validate() function

@@ -36,7 +36,7 @@ class AzureSpeechConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
     # The value now comes from the settings registry (`tts.<engine>.enabled`,
     # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
     # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
@@ -68,8 +68,8 @@ class AzureSpeechConfig(BaseSettings):
         default=SecretStr(""),
         validation_alias="TTS_AZURE_API_KEY__ENV_REMOVED_TASK_602",
     )
-    # The REGION moved to the control plane with the rest of the connection
-    # (TASK-799). Same mechanism as the key above, different reason: the key is
+    # The REGION moved to the control plane with the rest of the connection.
+    # Same mechanism as the key above, different reason: the key is
     # closed because it is a secret, the region because it is config an admin
     # must be able to change without a redeploy.
     region: str = Field(default="eastus", validation_alias=moved_alias("TTS_AZURE_REGION"))
@@ -94,7 +94,7 @@ class KokoroConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_KOKORO_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
     # The value now comes from the settings registry (`tts.<engine>.enabled`,
     # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
     # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
@@ -126,7 +126,7 @@ class IndicParlerConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
     # The value now comes from the settings registry (`tts.<engine>.enabled`,
     # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
     # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
@@ -179,7 +179,7 @@ class IndicF5Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
     # The value now comes from the settings registry (`tts.<engine>.enabled`,
     # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
     # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
@@ -196,7 +196,7 @@ class IndicF5Config(BaseSettings):
     # value converges on the next restart and can never deregister a live
     # provider mid-process.
     #
-    # RESOLVED for this flag (lane H): the licensing gate above used to be
+    # RESOLVED for this flag: the licensing gate above used to be
     # enforced by the docstring alone. `tts.indicf5.enabled` is now a
     # `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so
     # enabling it is a SUPER_ADMIN write with an audit trail rather than an
@@ -231,7 +231,7 @@ class SarvamConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_")
 
-    # ── `enabled` — control-plane SERVED, env BOOTSTRAP (TASK-799 lane H) ────
+    # ── `enabled` — control-plane SERVED, env BOOTSTRAP ────
     # The value now comes from the settings registry (`tts.<engine>.enabled`,
     # tier `global-kv`, seeded by `seed/11d-tts-engine-flags.ts`), and this env
     # path REMAINS OPEN as the bootstrap fallback. Only a value a DATABASE ROW
@@ -312,7 +312,7 @@ class Settings(BaseSettings):
         default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
     )
 
-    # `TTS_SERVICE_TOKEN` is RETIRED (TASK-799 lane C). It was the pre-D-D
+    # `TTS_SERVICE_TOKEN` is RETIRED. It was the pre-D-D
     # per-service credential, kept as a "zero-cost backward-compatibility
     # fallback" — but the cost was not zero: a deployment configured the way
     # owner decision D-D specifies (shared token set, legacy empty) and one
@@ -350,7 +350,7 @@ class Settings(BaseSettings):
         """
         return real_secret(self.internal_access_token)
 
-    # Synthesis limits / defaults — control-plane owned (TASK-799).
+    # Synthesis limits / defaults — control-plane owned.
     max_input_chars: int = Field(default=4096, validation_alias=moved_alias("TTS_MAX_INPUT_CHARS"))
     default_format: str = Field(default="pcm", validation_alias=moved_alias("TTS_DEFAULT_FORMAT"))
     sample_rate: int = Field(default=24000, validation_alias=moved_alias("TTS_SAMPLE_RATE"))
@@ -379,7 +379,7 @@ class Settings(BaseSettings):
     # TRANSPORT (the address of the config source), NOT config authority.
     gateway_url: str = "http://localhost:8868/api/v1"
 
-    # ── Gateway internal-route credential (TASK-855 L6 follow-on) ──────────
+    # ── Gateway internal-route credential ( follow-on) ──────────
     # NOT the same credential as `internal_access_token` above. That one is
     # the shared `X-Service-Token` this process ACCEPTS inbound and PRESENTS
     # on PEER (service-to-service) calls. `api_gateway_key` is presented as

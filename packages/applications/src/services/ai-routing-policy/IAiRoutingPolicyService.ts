@@ -8,7 +8,7 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
    * A provider the CALLER named explicitly. Under the default
    * `explicitProvider.mode = STRICT` this closes the fallback chain outright:
    * if the named provider cannot serve, the answer is a `provider_unavailable`
-   * rejection, never a substitution (§3A.4).
+   * rejection, never a substitution
    */
   explicitProvider?: string | null;
   /**
@@ -17,7 +17,7 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
    */
   allowFallbacks?: boolean;
   /**
-   * The router's live circuit view — providers it has ejected (§3A.5). Health
+   * The router's live circuit view — providers it has ejected ( Health
    * is MEASURED where the calls are made, so it is supplied here rather than
    * re-derived; without it a candidate is judged available whenever its
    * credential resolves.
@@ -26,7 +26,7 @@ export interface ResolveRoutingOptions extends RoutingRequestContext {
 }
 
 /**
- * TASK-847 finding F-32 — a workflow node's `providerConfigRef`, as the routing plane sees it.
+ * finding F-32 — a workflow node's `providerConfigRef`, as the routing plane sees it.
  *
  * Exactly one field is meaningful, which is the node schema's own rule (`agenticNodeConfigProblems`
  * enforces it at authoring time). Both are optional here because this type describes what a caller
@@ -56,12 +56,12 @@ export interface ResolvedGenerationCapabilities {
 }
 
 /**
- * The provider ROUTING POLICY plane (TASK-818 §3A).
+ * The provider ROUTING POLICY plane
  *
  * WHICH candidates serve a task, in what order, which one is the elected
  * default, and what may happen when the first one fails.
  *
- * ## TASK-844 (OD-3) — this plane ABSORBED `AiTaskDefault`
+ * ## — this plane ABSORBED `AiTaskDefault`
  *
  * One row is ONE PROVIDER CONFIGURATION for one `(tenant, taskKey)`: a real FK
  * to `AiProviderConnection` (where a provider lives + how to authenticate) and
@@ -70,7 +70,7 @@ export interface ResolvedGenerationCapabilities {
  * by a partial unique index in the database, keyed on `taskKey` and NOT
  * `taskKind` (F-26). `AiRuntimeProfile` (hyperparameters) still sits alongside.
  *
- * OD-3 explicitly reverses TASK-816's ruling that `AiTaskDefault` survives.
+ * OD-3 explicitly reverses ruling that `AiTaskDefault` survives.
  *
  * ## Two audiences, two rules
  *
@@ -89,7 +89,7 @@ export interface IAiRoutingPolicyService {
   list(tenantId: string, taskKey?: string): Promise<AiRoutingPolicyResponse[]>;
 
   /**
-   * TASK-844 — ELECT this configuration as the default for its
+   * ELECT this configuration as the default for its
    * `(tenant, taskKey)`.
    *
    * ATOMIC: the incumbent is unset and the successor set inside ONE
@@ -104,7 +104,7 @@ export interface IAiRoutingPolicyService {
   setDefault(id: string, tenantId: string, expectedVersion?: number): Promise<AiRoutingPolicyResponse>;
 
   /**
-   * TASK-844 — COPY a configuration from one tenant to another the actor also
+   * COPY a configuration from one tenant to another the actor also
    * administers.
    *
    * **No credential is copied.** The copy re-points at the TARGET tenant's own
@@ -116,7 +116,7 @@ export interface IAiRoutingPolicyService {
   promote(id: string, sourceTenantId: string, targetTenantId: string): Promise<AiRoutingPolicyResponse>;
 
   /**
-   * TASK-844 — EXPORT configurations as portable JSON.
+   * EXPORT configurations as portable JSON.
    *
    * The artifact carries NO credential material and no characters of any key —
    * only a `credentialRef` LOCATOR naming which secret an importing operator
@@ -126,7 +126,7 @@ export interface IAiRoutingPolicyService {
   exportConfigurations(tenantId: string, taskKeys?: string[]): Promise<ProviderConfigurationExport>;
 
   /**
-   * TASK-844 — IMPORT an artifact into a tenant.
+   * IMPORT an artifact into a tenant.
    *
    * Rows land DRAFT and NOT default. Models are matched by SLUG on the two-tier
    * cascade (a slug that resolves to nothing is SKIPPED, never guessed);
@@ -146,13 +146,13 @@ export interface IAiRoutingPolicyService {
   /**
    * Resolve what actually serves `(tenantId, taskKey)` right now: the winning
    * policy, its primary candidate, the ALREADY-GATED fallback chain, every
-   * candidate the §3A.4 gates refused with its reason, and a machine-readable
+   * candidate the gates refused with its reason, and a machine-readable
    * rejection when nothing may serve.
    */
   getEffective(tenantId: string, taskKey: string, options?: ResolveRoutingOptions): Promise<EffectiveRoutingPolicyResponse>;
 
   /**
-   * TASK-847 finding F-32 — which generation hyper-parameters the configuration a node binds to
+   * finding F-32 — which generation hyper-parameters the configuration a node binds to
    * accepts, for the workflow publish gate.
    *
    * Resolves through the SAME two-tier cascade as everything else on this plane, and never
@@ -167,7 +167,7 @@ export interface IAiRoutingPolicyService {
   /**
    * Compare-and-set an existing revision. SUPER_ADMIN only. A DRAFT is fully
    * editable; an ACTIVE or ARCHIVED revision accepts `killSwitch` alone, so a
-   * rollback target can never be rewritten under the auditor's feet (§3A.8).
+   * rollback target can never be rewritten under the auditor's feet
    */
   update(id: string, tenantId: string, dto: UpdateAiRoutingPolicyRequest): Promise<AiRoutingPolicyResponse>;
 

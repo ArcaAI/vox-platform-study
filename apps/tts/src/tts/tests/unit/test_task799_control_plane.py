@@ -1,4 +1,4 @@
-"""TASK-799 lane C — tts's provider config moves to the control plane.
+"""lane C — tts's provider config moves to the control plane.
 
 Four properties, in descending order of how badly their absence would hurt:
 

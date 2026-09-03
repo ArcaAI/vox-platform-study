@@ -32,7 +32,7 @@ class RateLimitError(TextError):
     """Rate limit exceeded.
 
     ``remaining`` is the RFC 9239-style budget left in the current window, surfaced
-    as ``RateLimit-Remaining`` (TASK-818 §4.4). It is ``None`` when the limiter
+    as RateLimit-Remaining ( It is None when the limiter
     cannot say — and ``None`` must NOT be reported as ``0``: a confident zero tells
     a client to stop sending, which is a different instruction from "unknown".
     """
@@ -124,7 +124,7 @@ class ProviderConnectionMissingError(ProviderCredentialsError):
     both must map to the same 503 ``PROVIDER_CREDENTIALS_MISSING`` contract that
     `apps/api` and the SDK already handle.
 
-    Raised by `core/connection.py`. Since TASK-799 lane B this is also the posture
+    Raised by `core/connection.py`. Since lane B this is also the posture
     for SELF-HOSTED engines: `apps/text` no longer carries a
     ``TEXT_<PROVIDER>_BASE_URL`` to fall back to, because a process-wide endpoint
     is one no tenant can override.
@@ -198,7 +198,7 @@ class ProviderNotFoundError(TextError):
 class PoolUnhealthyError(TextError):
     """Requested provider pool is known-unhealthy and no usable fallback was supplied.
 
-    Raised by ``services/pool_router.resolve_pool_route`` (TASK-725 Task 2) when the
+    Raised by services/pool_router.resolve_pool_route when the
     last recorded ``health_check()`` result (``services/pool_health.PoolHealthTracker``)
     for the requested provider is ``False`` and the caller declared no fallback (or the
     declared fallback is not actually registered). Distinct from

@@ -33,7 +33,7 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 
 /**
  * The reserved SYSTEM tenant — the SOLE platform-configuration tier (owner
- * ruling 2026-08-20, TASK-763 OD-1). The AppSettings key-only cache the
+ * ruling 2026-08-20). The AppSettings key-only cache the
  * password policy reads admits THIS tenant and no other.
  */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -410,7 +410,7 @@ test.describe.serial('D — rotation warning at login', () => {
     // Opt rotation in by writing the PLATFORM row directly.
     //
     // `resolvePasswordPolicy` reads this key from the AppSettings key-only
-    // cache, which since TASK-763 OD-1 admits the reserved SYSTEM tenant
+    // cache, which since admits the reserved SYSTEM tenant
     // EXCLUSIVELY. This setup used to POST/PATCH `/admin/settings` as a super
     // admin acting on GLOBAL — but the tenant-scope extension pins every
     // `GlobalSetting` write to the CLS tenant, so the row landed on GLOBAL

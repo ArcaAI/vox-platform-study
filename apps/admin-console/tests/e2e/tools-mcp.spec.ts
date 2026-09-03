@@ -1,13 +1,13 @@
 /**
- * TASK-846 — Tools & MCP (`/tools-mcp`) against a RUNNING stack.
+ * Tools & MCP (`/tools-mcp`) against a RUNNING stack.
  *
- * WHY THIS FILE EXISTS. TASK-846 moved this screen from tier 10-19 (super-admin
+ * WHY THIS FILE EXISTS. moved this screen from tier 10-19 (super-admin
  * only) to tier 20-29 (shared) and replaced the screen-wide `assertSuperAdmin()`
  * gate with a SYSTEM-vs-tenant-owned split gate enforced per ROW. All of that
  * shipped behind jsdom + vitest-axe unit tests only — there was no browser-level
  * proof for either role, and no proof at all for a tenant admin in a real
- * session (see `docs/implementation/TASK-846-Mcp-Connector-Tenant-Scoping/README.md`
- * §7 "Runtime verification NOT performed"). This spec is that proof.
+ * session (see
+ * "Runtime verification NOT performed"). This spec is that proof.
  *
  * Skips with actionable messages when the app or gateway is down.
  */
@@ -111,8 +111,8 @@ async function readHarnessPolicy(page: Page): Promise<HarnessPolicySnapshot> {
 }
 
 /**
- * OCC PATCH of just `mcpToolsEnabled` (OD-11). There is deliberately no UI
- * editor for this knob yet (ticket §8 D-1 tracks adding one to
+ * OCC PATCH of just `mcpToolsEnabled`. There is deliberately no UI
+ * editor for this knob yet ( D-1 tracks adding one to
  * `/agentic-policy`), so this replicates the same If-Match mechanics
  * `tools-mcp/api/client.ts#updateMcpServer` uses for the sibling resource.
  */
@@ -251,13 +251,13 @@ test.describe('tools & mcp — tenant admin (tier 20-29, OD-7)', () => {
 
       // UPDATE — flip Enabled and change the description; both must land.
       const editDrawer = await openEditDrawer(page, name);
-      await editDrawer.getByLabel('Description').fill('Updated by the TASK-846 e2e CRUD spec');
+      await editDrawer.getByLabel('Description').fill('Updated by the e2e CRUD spec');
       await editDrawer.getByLabel(/^enabled/i).click();
       await editDrawer.getByRole('button', { name: 'Save changes' }).click();
       await expect(page.getByText('Server updated').first()).toBeVisible();
       await expect(editDrawer).toBeHidden();
       await expect(row.getByText('Enabled', { exact: true })).toBeVisible();
-      await expect(row.getByText('Updated by the TASK-846 e2e CRUD spec')).toBeVisible();
+      await expect(row.getByText('Updated by the e2e CRUD spec')).toBeVisible();
 
       // DELETE
       await deleteServer(page, name);

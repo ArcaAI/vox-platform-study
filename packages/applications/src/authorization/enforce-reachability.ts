@@ -1,7 +1,7 @@
 /**
- * TASK-781 — structural reachability of `CASL_ENFORCED_PAIRS`.
+ * structural reachability of `CASL_ENFORCED_PAIRS`.
  *
- * TASK-712 listed three `ApiKey` pairs as ENFORCED. TASK-779's e2e then proved
+ * listed three `ApiKey` pairs as ENFORCED. e2e then proved
  * none of them could ever produce the 403 the list describes: the declaring
  * route's `@ResolveSubjectInstance` resolver loads its row through
  * `IApiKeyService.fetchById`, which asserts access and throws 404 for a
@@ -111,7 +111,7 @@ export function assertCaslEnforcePairReachability(enforcedPairs: ReadonlySet<str
         `${pair}: none of the ${declaring.length} declaring route(s) can hand the guard an instance for a row the ` +
           `caller does not own — no enforce-grade @ResolveSubjectInstance resolver for this subject ` +
           `(${declaring.map((r) => `${r.id}${describeResolver(r)}`).join('; ')}). ` +
-          `The pair would be listed as enforced while casl_enforce_denial_total could never increment (TASK-779 F-1). ` +
+          `The pair would be listed as enforced while casl_enforce_denial_total could never increment (F-1). ` +
           `Either give the route a resolver declared { subject: '${subject}', enforceGrade: true } that loads the row ` +
           `WITHOUT an ownership assertion, or remove the pair.`,
       );
@@ -120,7 +120,7 @@ export function assertCaslEnforcePairReachability(enforcedPairs: ReadonlySet<str
 
   if (problems.length > 0) {
     throw new Error(
-      `TASK-781: refused to start — ${problems.length} unreachable CASL enforce pair(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`,
+      `refused to start — ${problems.length} unreachable CASL enforce pair(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`,
     );
   }
 }

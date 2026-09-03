@@ -434,7 +434,7 @@ describe('useArca API — context', () => {
 
   // ---- context.updateItem -------------------------------------------------
   describe('context.updateItem()', () => {
-    // TASK-709: the route is `@RequiresIfMatch()`, so the write carries the
+    // the route is `@RequiresIfMatch()`, so the write carries the
     // strong validator plus the body-field `expectedVersion` fallback.
     it('should PATCH the context item and update store', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(undefined, { status: 204, ok: true } as any));

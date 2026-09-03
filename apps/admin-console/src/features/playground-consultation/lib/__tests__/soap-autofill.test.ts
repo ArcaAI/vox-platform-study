@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — "autofill summaries and gist into customized SOAP forms".
+ * "autofill summaries and gist into customized SOAP forms".
  *
  * There is no SOAP FORM to fill: `SummaryResult.content` is one prose string, server-side
  * (`use-note-editor.ts`'s own docstring records this: "the server stores whole-document

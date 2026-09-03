@@ -1,17 +1,17 @@
--- TASK-732 Phase 2 exit criterion — flip the SYSTEM-tenant PipelinePolicy
+-- exit criterion — flip the SYSTEM-tenant PipelinePolicy
 -- default's `harnessEnabled` column from false to true.
 --
 -- Why a data migration, not just a seed-source edit: deployed rows do not
 -- re-seed (`seed/14-pipeline-policy.ts`'s own doc comment; the same drift
--- TASK-702's data migration addressed for a different table). A tenant/env
+-- data migration addressed for a different table). A tenant/env
 -- whose SYSTEM row was already created by an earlier seed run keeps
 -- whatever value it was created with until something writes to it.
 --
 -- The legacy signable generator this toggle used to fall back to when
 -- `false` (`summary.processor.ts` / `ner.processor.ts`) was deleted in the
--- same ticket (TASK-732 Phase 3). A `false` SYSTEM default post-deletion
+-- same ticket. A `false` SYSTEM default post-deletion
 -- would mean any tenant with no explicit override gets a VISIBLE queued
--- failure (per `design.md` §Error handling) instead of routing through the
+-- failure (per `design.md` handling) instead of routing through the
 -- harness — this migration is what prevents that for every environment
 -- that applies it.
 --

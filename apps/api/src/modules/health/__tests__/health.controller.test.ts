@@ -1,7 +1,7 @@
 /**
  * ApiHealthController Unit Tests
  *
- * Since TASK-759 this controller is the PUBLIC k8s probe surface and nothing
+ * Since this controller is the PUBLIC k8s probe surface and nothing
  * else: `/health`, `/health/live`, `/health/ready`, `/health/startup`. The two
  * CASL-gated downstream probes moved to `AdminHealthServicesController`
  * (`api/v1/admin/health/services`) — their tests moved with them, to
@@ -145,13 +145,13 @@ describe('ApiHealthController', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────
-  // TASK-759 — the split. This controller is now PUBLIC-ONLY.
+  // the split. This controller is now PUBLIC-ONLY.
   //   - the four k8s probes stay public and unauthenticated (k3s
   //     liveness/readiness depends on it — non-negotiable)
   //   - the two CASL-gated /services probes are GONE from this class
   //   - the class-level 30/60s probe throttle is unchanged
   // ─────────────────────────────────────────────────────────────────
-  describe('public probe surface (TASK-759)', () => {
+  describe('public probe surface ', () => {
     it('stays mounted on the public `health` prefix', () => {
       expect(Reflect.getMetadata(PATH_METADATA, ApiHealthController)).toBe('health');
     });

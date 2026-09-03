@@ -4,7 +4,7 @@
  * This is a SEPARATE, non-browser package from `@arcaai/vox`
  * (`packages/agentic-sdk-v2`): no React, no audio/ML stack, no browser
  * globals — `fetch`, `AbortSignal`, Web Crypto, and `ReadableStream` only
- * (see `docs/implementation/TASK-632-HOPE-Node-SDK/README.md`). It
+ * (see). It
  * shares the "vox" brand with the browser SDK, not its runtime.
  *
  * Deliberately NOT exported: `core/transport.ts#Transport`,
@@ -44,14 +44,14 @@ export type {
 
 /**
  * The reserved run-identity keys a workflow `input` may never carry
- * (TASK-850). Exported so an integrator can validate a payload BEFORE it
+ * Exported so an integrator can validate a payload BEFORE it
  * reaches the SDK — e.g. while building it from user-supplied fields — rather
  * than catching {@link ReservedRunIdentityError} after the fact.
  */
 export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
 
 /**
- * Inbound-webhook signature verification (TASK-858 E1). HOPE signs every
+ * Inbound-webhook signature verification. HOPE signs every
  * delivery `X-Hope-Webhook-Signature: sha256=<hex>` over the RAW body
  * (`services/webhook/webhook-delivery.processor.ts`); this is the receiver
  * half. Synchronous and zero-dependency, so it runs unchanged in Node, Bun,
@@ -60,7 +60,7 @@ export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/ru
 export { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from './core/webhook-signature';
 
 /**
- * The service-account credential shape (TASK-773 Phase C). Exported HERE, not
+ * The service-account credential shape. Exported HERE, not
  * only from `core/`, because `HopeClientOptions.serviceAccount` is typed with
  * it: without this line an integrator can construct the client but cannot
  * NAME the type they are constructing it from — no `const creds:
@@ -70,7 +70,7 @@ export { WEBHOOK_SIGNATURE_HEADER, verifyWebhookSignature } from './core/webhook
 export type { ServiceAccountCredentials } from './core/service-account-token';
 
 /**
- * The `/api/v1/admin/**` surface (TASK-773): the hand-authored
+ * The `/api/v1/admin/**` surface: the hand-authored
  * {@link AdminResource} base, the {@link AdminNamespace} that `hope.admin` is
  * an instance of, and the 52 generated per-area resources.
  *

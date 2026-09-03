@@ -1,6 +1,6 @@
 """TDD tests for TTS usage-metering primitives.
 
-Character counting is Unicode CODE POINTS (frozen contract §3/README §3): a
+Character counting is Unicode CODE POINTS (frozen contract : a
 CJK/Indic character counts as 1, and an astral-plane emoji (outside the BMP)
 also counts as 1 — never inflated the way UTF-16 code-unit counting would.
 

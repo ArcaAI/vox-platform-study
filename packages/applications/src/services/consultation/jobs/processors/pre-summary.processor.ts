@@ -27,7 +27,7 @@ import {
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../../visit-type/visit-type.service';
 
-// TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+// boundary (owner decision,: KEPT,
 // un-gated, as an explicitly non-signable helper generator — never had a
 // harness equivalent (`GenerationTrigger.PRE_SUMMARY` is not in
 // `HARNESS_SUPPORTED_TRIGGERS`), and its output type (`PRE_SUMMARY`) never
@@ -58,21 +58,21 @@ export class PreSummaryProcessor extends WorkerHost {
     // summary.processor). Optional + trailing so existing positional fixtures
     // keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-704 — pre-summary has no harness equivalent today (§2 of the
+    // pre-summary has no harness equivalent today (the
     // ticket); this call exists purely to make the harnessEnabled read
     // happen through the single seam and get the decision logged — the
     // decision is always 'legacy'/'harness-not-supported-for-trigger' and
     // this processor's generation body always runs regardless. Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
-    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // the SHARED TEXT enrichment path. Since lane B
     // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
     // body with no `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -115,8 +115,8 @@ export class PreSummaryProcessor extends WorkerHost {
       });
 
       try {
-        // TASK-704 — route the harnessEnabled read through the single seam.
-        // Pre-summary has no harness equivalent (§2 of the ticket) — the
+        // route the harnessEnabled read through the single seam.
+        // Pre-summary has no harness equivalent (the ticket) — the
         // decision is always 'legacy', logged, and this generation body
         // always runs. Never blocks/short-circuits generation.
         if (this.noteGenerationService) {
@@ -324,18 +324,18 @@ export class PreSummaryProcessor extends WorkerHost {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
       });
-      // TASK-808 — inject the tenant's resolved provider credential through the
+      // inject the tenant's resolved provider credential through the
       // ONE shared implementation (tenant → SYSTEM cascade, `funding` label
       // carried so metering is derived from the supplying row). `process()`
       // rebinds `tenantId` into a fresh CLS scope above, which is where the
       // resolver reads it from.
-      // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+      // layer the platform admin's runtime profile (hyperparameters + engine
       // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-      // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is the
+      // migration fallback).: `X-Tenant-Id` is MANDATORY — `tenantId` is the
       // fail-closed-validated `job.data.tenantId` already threaded in above and used
       // one line earlier for `resolveTextSelection`, then dropped before the HTTP call,
       // so Text resolved the platform default provider for a job that HAS a tenant.
@@ -373,7 +373,7 @@ export class PreSummaryProcessor extends WorkerHost {
    * `parentConsultationId` is still the consultation's own follow-up signal —
    * that rule has not changed. What changed is that WHICH visit type the signal
    * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * than a literal repeated at each call site. An unwired
    * resolver serves the two shipped types, so the answer is byte-identical to
    * the ternary this replaces.
    */

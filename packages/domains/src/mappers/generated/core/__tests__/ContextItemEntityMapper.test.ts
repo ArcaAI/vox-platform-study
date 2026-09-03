@@ -1,5 +1,5 @@
 /**
- * TASK-790 W5 — `ContextItemEntityMapper` must not write `_version` (TASK-789 finding M-4).
+ * `ContextItemEntityMapper` must not write `_version`.
  *
  * Rule 03 mandates `FIELDS_NOT_WRITABLE = ['version']` plus `stripNonWritableFields` on every
  * OCC-written mapper: `_version` is DATABASE-OWNED and its only legitimate writer is

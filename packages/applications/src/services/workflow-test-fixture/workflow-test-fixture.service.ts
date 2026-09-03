@@ -19,11 +19,11 @@ import { IActiveUserContext } from '../../interfaces';
 const WORKFLOW_TEST_FIXTURE_FILTER_MODEL = 'WorkflowTestFixture';
 
 /**
- * Per-tenant saved synthetic Workbench test input (TASK-721 §1 item 5).
+ * Per-tenant saved synthetic Workbench test input.
  *
  * Plain tenant-scoped CRUD — no cross-aggregate lookups. `input` is
  * Vault-Transit encrypted on write, exactly as `EvalService` treats
- * `GoldenCase.transcript`/`referenceNote` (README §6/R4, RESOLVED): the
+ * `GoldenCase.transcript`/`referenceNote` (RESOLVED): the
  * plaintext column was dropped, so the ciphertext is the system of record and
  * repository decrypt-on-read repopulates the transient `input` for entitled
  * readers. "Synthetic only" remains the CONTRACT expressed in DTO copy, but it

@@ -1,5 +1,5 @@
 /**
- * TASK-776 — NEGATIVE credential tests.
+ * NEGATIVE credential tests.
  *
  * Every rejected credential shape, one per credential class, asserted to be
  * **401 (authentication)** and never 403 (authorization) or 200. A credential
@@ -48,7 +48,7 @@ function forgedJwt(secret: string): string {
   return `${header}.${payload}.${sig}`;
 }
 
-test.describe('TASK-776 — negative credentials are 401, never 403', () => {
+test.describe('negative credentials are 401, never 403', () => {
   test('sanity: the probe route IS reachable with a good credential', async ({ request }) => {
     const res = await request.get(PROBE, { headers: { 'X-API-Key': SEEDED_API_KEY } });
     expect(res.status()).toBe(200);

@@ -35,7 +35,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     // S3-compatible store), which is a different axis from which cloud vendor
     // the platform's object storage is. Harness consumes the LOCATION keys
     // below and nothing else — a `consumedBy` nobody reads is the dead-knob
-    // class this ticket exists to remove.
+    // class of unused consumedBy entries to remove.
     consumedBy: ['stt'],
     dataType: 'enum',
     sensitivity: 'internal',

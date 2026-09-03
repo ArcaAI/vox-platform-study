@@ -1,4 +1,4 @@
-"""The realtime consultation guardrail plane (TASK-829).
+"""The realtime consultation guardrail plane.
 
 `services/screening.py` answers *"is this one string safe to send?"*. A live
 consultation asks a different question: a transcript ARRIVES IN PIECES, and

@@ -6,7 +6,7 @@
 // so codegen can re-run with --overwrite). The shared Buffer/ciphertext
 // primitives live in common/field-encryption.ts and default to the dedicated
 // `hope-phi` Transit key. The plaintext `input` column has been dropped
-// (TASK-721 R4); reads decrypt the ciphertext only (no plaintext fallback).
+// reads decrypt the ciphertext only (no plaintext fallback).
 
 import { WorkflowTestFixtureRepository } from './WorkflowTestFixtureRepository';
 import { WorkflowTestFixtureEntity } from '../../../entities';

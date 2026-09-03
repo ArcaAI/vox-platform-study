@@ -27,7 +27,7 @@ export interface ToggleColumn {
  * All three toggles govern the POST-consultation pipeline
  * (`consultation-event.handler.ts:124,291`) only — `LiveDocumentationService`
  * (the live transcription / live-NER / partial-summarization lane) never
- * reads any of them (F-23, TASK-852 item 7). The screen's status banner and
+ * reads any of them (F-23, item 7). The screen's status banner and
  * the editor's toggle-group note carry that scope to the admin; keep both in
  * sync with this list if a toggle is ever added or renamed here.
  */
@@ -57,9 +57,9 @@ export function toggleColumnByParam(param: string): ToggleColumn {
 }
 
 /**
- * Boolean display for the routing toggle. TASK-732 deleted the legacy
+ * Boolean display for the routing toggle. deleted the legacy
  * signable generator, so `false` no longer means "route to legacy" — per
- * `design.md` §Error handling, the remaining off-state edge is a visible
+ * `design.md` handling, the remaining off-state edge is a visible
  * queued failure (`ConsultationController.generateSummaryAsync` /
  * `ConsultationEventHandler` both now emit a loud failure rather than
  * silently falling back to a generator that no longer exists).

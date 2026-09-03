@@ -1,5 +1,5 @@
 /**
- * TASK-786 — an issued client secret follows the SUPER_ADMIN-managed
+ * an issued client secret follows the SUPER_ADMIN-managed
  * `security.secret.*` policy, not a literal in this service.
  *
  * The two things worth pinning: the STORED policy WINS over the hardcoded

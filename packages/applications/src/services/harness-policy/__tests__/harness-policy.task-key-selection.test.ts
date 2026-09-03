@@ -1,5 +1,5 @@
 /**
- * TASK-740 D-1 — `getEffectivePolicy` must honour a task key.
+ * `getEffectivePolicy` must honour a task key.
  *
  * The defect: the Python `generate.text` interpreter node validated
  * `config.taskKey`, then resolved its model from the `HarnessPolicy`
@@ -51,7 +51,7 @@ function systemRow() {
   });
 }
 
-describe('TASK-740 D-1 — task-key-driven text selection', () => {
+describe(' D-1 — task-key-driven text selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     policyRepository.findForExactTenant.mockResolvedValue(null);

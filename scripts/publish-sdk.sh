@@ -21,7 +21,7 @@
 # you typing the same version eight times. So:
 #
 #   - NORMAL RELEASE: do not use this. Run `pnpm changeset` with your change and
-#     let CI version and publish. See docs/operations/release-runbook.md §3.
+# let CI version and publish. See docs/operations/release-runbook.md
 #   - BREAK-GLASS: still useful if a changesets publish fails part-way and one
 #     package must be pushed by hand. Run with `--dry-run` first.
 #
@@ -34,15 +34,15 @@
 #   pnpm sdk:publish:dry 2.0.7
 #
 # ARGUMENTS:
-#   <version>     Semver to publish, e.g. 2.0.7. Applied to every package in
+#   <version> Semver to publish, e.g. 2.0.7. Applied to every package in
 #                 the family so they stay in lockstep.
 #
 # FLAGS:
-#   --dry-run,-n  Bump + build + `pnpm publish --dry-run`. Publishes nothing.
+#   --dry-run,-n Bump + build + `pnpm publish --dry-run`. Publishes nothing.
 #                 Version bumps ARE written to disk so the build is real —
 #                 `git checkout packages/*/package.json` to undo.
-#   --yes,-y      Skip the confirmation prompt.
-#   --skip-build  Reuse existing dist/ (fast re-publish after a partial run).
+#   --yes,-y Skip the confirmation prompt.
+#   --skip-build Reuse existing dist/ (fast re-publish after a partial run).
 #
 # ORDER MATTERS: room ships first because every other package peer-depends on
 # it; vox ships last because it depends on all of them. A consumer installing

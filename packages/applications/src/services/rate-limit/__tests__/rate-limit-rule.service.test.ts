@@ -1,5 +1,5 @@
 /**
- * `RateLimitRuleService` — the governance the SCHEMA cannot express (TASK-785).
+ * `RateLimitRuleService` — the governance the SCHEMA cannot express.
  *
  * The precedence itself is pinned in `rate-limit-resolver.test.ts`; this file
  * covers what the service adds on top: the per-scope caps, the duplicate guard,
@@ -191,7 +191,7 @@ describe('RateLimitRuleService — tenant pinning', () => {
   it('writes a platform rule under the SYSTEM tenant even when the caller has a working tenant selected', async () => {
     // A super admin's request carries `X-Tenant-Id`, so CLS holds a CUSTOMER
     // tenant. Without the pin the tenant-scope extension would stamp that tenant
-    // onto a row meant to be platform-wide — the TASK-771 failure mode.
+    // onto a row meant to be platform-wide — the failure mode.
     clsStore = { tenantId: TENANT };
 
     const view = await makeService().create({ routeMatch: 'GET:/api/v1/x', limitValue: 5, windowMs: 60_000 });

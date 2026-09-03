@@ -1,4 +1,4 @@
-"""Conformance suite for the nlp model source resolver (TASK-855 L6).
+"""Conformance suite for the nlp model source resolver.
 
 This mirrors the same named quartet of cases in
 `apps/stt/tests/unit/test_model_source_resolver.py` (mirrored-implementation
@@ -355,7 +355,7 @@ async def test_s3_without_credentials_errors_cleanly(
 
 
 # ---------------------------------------------------------------------------
-# 9. `config_for_model` — the credentialed config builder (TASK-855 L6 follow-on)
+# 9. `config_for_model` — the credentialed config builder ( follow-on)
 # ---------------------------------------------------------------------------
 
 

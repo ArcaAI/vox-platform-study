@@ -97,8 +97,8 @@ async def _probe(
     payload["probe_latency_ms"] = int((time.monotonic() - start) * 1000)
     payload["probe_error"] = probe_error
 
-    # TASK-725 Task 3 — admin introspection: the SAME degrade-routing cache
-    # `/generate` consults (Task 2), plus current in-flight sync requests.
+    # admin introspection: the SAME degrade-routing cache
+    # `/generate` consults , plus current in-flight sync requests.
     checked_at = pool_health_tracker.checked_at(name)
     payload["pool_health"] = pool_health_tracker.is_healthy(name)
     payload["pool_health_checked_at"] = checked_at.isoformat() if checked_at else None

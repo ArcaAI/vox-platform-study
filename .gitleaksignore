@@ -1,4 +1,4 @@
-# .gitleaksignore — HOPE Phase 0 Item 6 (TASK-302 Stream A)
+# .gitleaksignore — HOPE Phase 0 Item 6 (Stream A)
 #
 # Each entry is a gitleaks fingerprint in the form
 #   commit_sha:file:rule-id:line[:secret-hash]
@@ -16,7 +16,7 @@
 #
 # Categories:
 #   ROTATED        — credential rotated and revoked per
-#                    docs/implementation/TASK-302-System-Config-Implementation-Roadmap/
+#                    the system-config rotation log:
 #                    _section-a-rotation-log.md
 #   REQUIRES_ROTATION — credential is still live; the orchestrator MUST surface
 #                       to the user for an immediate out-of-band rotation. The
@@ -57,7 +57,7 @@
 275223be9ec992160662f417bb00d4d28316629e:.gitlab-ci.yml:github-pat:183
 70adcb9ccef5ad11a81fd2f5fc1ab36b618a5c6d:.gitlab-ci.yml:github-pat:185
 
-# ─── TASK-312 Stream B — dev Vault seed placeholder (NOT a real credential) ──
+# ─── Stream B — dev Vault seed placeholder (NOT a real credential) ──
 #
 # Category: PLACEHOLDER (safe). infrastructure/docker/configs/vault/dev-init.sh
 # seeds the local dev Vault with throwaway warmup values so the LRU cache lands
@@ -68,9 +68,9 @@
 # allowlist's secret-target sees the var name, not the value. Fingerprint pin:
 infrastructure/docker/configs/vault/dev-init.sh:hope-redis-password:84
 
-# ─── TASK-348 — .env.test e2e JWT placeholder (NOT a real credential) ────────
+# ─── — .env.test e2e JWT placeholder (NOT a real credential) ────────
 #
-# Category: PLACEHOLDER (safe). Reviewed by the TASK-348 security audit
+# Category: PLACEHOLDER (safe). Reviewed by the security audit
 # (Verified Safe #7): `.env.test` is the tracked test-env reference; the value
 # `test-jwt-secret-key-for-e2e-only-not-for-production-aaaa` is an explicitly
 # labeled test-only signing key required by the e2e auth sign-path

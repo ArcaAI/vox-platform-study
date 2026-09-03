@@ -26,14 +26,14 @@ import { NamedEntity } from '../models/generated/core/NamedEntityModel';
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 describe('Phase 1 — enums', () => {
-  it('ConsultationStatus has exactly the 12 lifecycle states (TASK-711)', () => {
+  it('ConsultationStatus has exactly the 12 lifecycle states ', () => {
     // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
-    // PRIMED / DRAINING / TIMED_OUT are TASK-711 additions — see
-    // docs/implementation/TASK-711-Session-State-Machine/state-machine.md §1.
-    // CLOSED_COMPLETE / CLOSED_INCOMPLETE are a TASK-711 follow-up (owner
-    // decision on §6 Q1, state-machine.md §1a) — CLOSED itself is retained
+    // PRIMED / DRAINING / TIMED_OUT are additions — see
+    
+    // CLOSED_COMPLETE / CLOSED_INCOMPLETE are a follow-up (owner
+    // decision on Q1, — CLOSED itself is retained
     // in the enum (Postgres cannot drop a value) but is SUPERSEDED and
-    // deliberately never a legal `transitionTo` target; see §1a/§2.
+    // deliberately never a legal `transitionTo` target; see
     // PAUSED is deliberately NOT a member (deferred to checkpoint-resume).
     expect(new Set(Object.values(ConsultationStatus))).toEqual(
       new Set([

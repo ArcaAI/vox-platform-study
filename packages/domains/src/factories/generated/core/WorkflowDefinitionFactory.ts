@@ -39,10 +39,10 @@ export class WorkflowDefinitionFactory {
   /**
    * Build one definition-version row. `id` is a time-sortable UUIDv7;
    * `status` defaults to DRAFT (a new row is always authored as a draft —
-   * TASK-716/719's validate/publish flows advance it). `isActive`/`needsReview`
+   * /719's validate/publish flows advance it). `isActive`/`needsReview`
    * default to `false`; every other server-owned column (`compiledConfig`,
    * `publishedAt`, ...) defaults to null/unset until the publish step sets it.
-   */
+ */
   static CreateDefinition(props: CreateWorkflowDefinitionProps): WorkflowDefinitionEntity {
     const id = generateId();
     const now = props.createdAt || new Date();

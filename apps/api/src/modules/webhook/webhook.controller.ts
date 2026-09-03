@@ -28,9 +28,9 @@ import { CreateWebhookResponse } from './dto';
 @ApiBearerAuth()
 @ApiTags('admin-webhooks')
 @ForbidApiKey()
-// SVC-NOTE (TASK-773, owner decision O-1) — OPEN to the machine class, via the
+// SVC-NOTE (owner decision O-1) — OPEN to the machine class, via the
 // PRE-CONVENTION scope family. This controller is admin-plane but was never
-// gated by an `admin:<area>` scope: the scope TASK-757 stripped from it was
+// gated by an `admin:<area>` scope: the scope stripped from it was
 // `webhook:event:write`, minted before that convention existed and reserved
 // (not deleted) precisely BECAUSE its only consumer is this route. The
 // `svc:admin:*` derivation therefore cannot see it, so the machine twin is

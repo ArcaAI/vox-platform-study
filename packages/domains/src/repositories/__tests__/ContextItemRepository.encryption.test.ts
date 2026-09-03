@@ -92,7 +92,7 @@ describe('ContextItemRepository.encryptContentIntoEntity (Phase 3B)', () => {
     expect(entity.contentKeyVersion ?? null).toBeNull();
   });
 
-  // TASK-825 — `encryptStringToCiphertext` collapses THREE different
+  // `encryptStringToCiphertext` collapses THREE different
   // meanings into one `null`, and the old guard treated all three as "nothing to
   // do". On a `ContextItem` that is wrong for exactly one of them: there is no
   // plaintext `content` column, so `encryptedContent` is the ONLY place a

@@ -1,6 +1,6 @@
-"""TASK-846 D-3 — SSRF egress guard for tenant-authored MCP connector URLs.
+"""SSRF egress guard for tenant-authored MCP connector URLs.
 
-WHY THIS EXISTS. TASK-846 (OD-7) let tenant admins author ``McpServer.baseUrl``, and this
+WHY THIS EXISTS. (OD-7) let tenant admins author McpServer.baseUrl, and this
 worker connects to whatever that field says. Inside a k3s cluster an unconstrained URL
 reaches the Kubernetes API, Vault on loopback, PgBouncer, and the cloud metadata endpoint
 at 169.254.169.254 — server-side request forgery with a paying tenant as the attacker.
@@ -80,15 +80,15 @@ _BLOCKED_IPV4 = tuple(
 #: :func:`_embedded_ipv4`:
 #:
 #: * ``2001::/32`` (Teredo). Unwrapping does not work here. The canonical Teredo test
-#:   address ``2001:0:4136:e378:8000:63bf:3fff:fdd2`` embeds server 65.54.227.120 and
-#:   client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
-#:   would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
-#:   its far end reaches, so the prefix itself is what must be refused.
+#Address ``2001:0:4136:e378:8000:63bf:3fff:fdd2`` embeds server 65.54.227.120 and
+#Client 192.0.2.45 — both OUTSIDE the blocked IPv4 table — so an unwrap-only rule
+#Would still allow it. The address is an IPv6-over-UDP tunnel that reaches whatever
+#Its far end reaches, so the prefix itself is what must be refused.
 #: * ``64:ff9b:1::/48`` (RFC 8215 local-use NAT64). RFC 6052 permits /32../96 embeddings
-#:   underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
-#:   translation prefix is never a legitimate destination for a tenant connector.
-#:   (The well-known ``64:ff9b::/96`` is /96-only and IS unwrapped, so a NAT64 route to a
-#:   public IPv4 still works.)
+#Underneath it, so the IPv4 is not reliably the last 32 bits; and a LOCAL-USE
+#Translation prefix is never a legitimate destination for a tenant connector.
+#(The well-known ``64:ff9b::/96`` is /96-only and IS unwrapped, so a NAT64 route to a
+#Public IPv4 still works.)
 _BLOCKED_IPV6 = tuple(
     ipaddress.ip_network(cidr)
     for cidr in (
@@ -111,7 +111,7 @@ _NAT64_PREFIX = ipaddress.ip_network("64:ff9b::/96")
 #: for it and it needs its own branch.
 _IPV4_TRANSLATED_PREFIX = ipaddress.ip_network("::ffff:0:0:0/96")
 
-#: ISATAP interface identifiers (RFC 5214 §6.1) — ``00-00-5E-FE`` and its
+# ISATAP interface identifiers (RFC 5214 §6.1) — 00-00-5E-FE and its
 #: globally-unique twin ``02-00-5E-FE``, followed by the embedded IPv4. The /64 prefix is
 #: arbitrary (it can be public), so this is a pattern on bytes 8-11, not a network.
 _ISATAP_INTERFACE_IDS = (b"\x00\x00\x5e\xfe", b"\x02\x00\x5e\xfe")

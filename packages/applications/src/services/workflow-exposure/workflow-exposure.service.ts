@@ -36,7 +36,7 @@ const IDEMPOTENCY_KEY_PREFIX = 'idempotency:workflow-invoke:';
 const IDEMPOTENCY_TTL_SECONDS = 86_400; // 24h — mirrors ConsultationJobService/HarnessInternalService
 
 /**
- * The exposure plane's application service (TASK-722 Task 5). See
+ * The exposure plane's application service. See
  * `IWorkflowExposureService` for the per-method contract.
  */
 @Injectable()
@@ -51,7 +51,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-850 lane A. Used for ONE thing: re-resolving the PATH `consultationId` against the
+    // lane A. Used for ONE thing: re-resolving the PATH `consultationId` against the
     // caller's tenant before it may become a run's `subject`. Optional so a minimal fixture can
     // construct the service; absent, a consultation-bound invoke fails loud rather than
     // dispatching with an unverified id.
@@ -90,7 +90,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     this.assertExposureEnabled();
     const tenantId = this.requireTenantId();
 
-    // TASK-850 step 6. With an `Idempotency-Key` the run id is DERIVED, so a retry addresses the
+    // step 6. With an `Idempotency-Key` the run id is DERIVED, so a retry addresses the
     // same durable row and the same Temporal workflow id with no coordination. Without one, a
     // fresh id per call is correct — the caller asked for a new run.
     const runId = opts.idempotencyKey ? deterministicRunId(tenantId, slug, opts.idempotencyKey) : generateId();
@@ -113,7 +113,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
-    // W1 (TASK-789 C-8): the exposure plane's palette boundary. A consultation-palette graph
+    // W1: the exposure plane's palette boundary. A consultation-palette graph
     // reached here writes real `ContextItem` rows through the same `persist_draft` activity the
     // live consultation workflow uses — the interpreter's `external_write` suppression is
     // sandbox-only and does not fire on this plane. See `exposure-palette-policy.ts` for why the
@@ -123,7 +123,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // unpublished/cross-tenant posture — a definition that is not an exposure product simply does
     // not exist on this plane, and the reason is never disclosed to the caller.
     //
-    // TASK-850 lane A: the boundary is now PLANE-AWARE. `consultationBound` is true only when
+    // lane A: the boundary is now PLANE-AWARE. `consultationBound` is true only when
     // the caller reached a consultation-scoped URL, and it widens the allow-list to
     // `CONSULTATION_BOUND_ALLOWED_PALETTES`. The unbound plane's set is untouched.
     const consultationBound = opts.consultationId !== undefined;
@@ -142,7 +142,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
-    // TASK-850 step 2 (C-8 link 1, at the composition point). A caller may not supply the keys
+    // step 2 (C-8 link 1, at the composition point). A caller may not supply the keys
     // the interpreter reads as identity — 400, never a silent drop: dropping would let a caller
     // believe it had addressed a consultation while the run acted on something else. Checked
     // AFTER the boundary gate so a non-exposable slug still answers a bare 404 and this
@@ -170,10 +170,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new BadRequestException(`Workflow '${slug}' has no compiled configuration.`);
     }
 
-    // TASK-720 R-4 (owner ruling, 2026-08-20): a publicly-exposed workflow MAY select a cloud AI
+    // (owner ruling, 2026-08-20): a publicly-exposed workflow MAY select a cloud AI
     // provider — the tenant carries the risk (BYOK), consistent with the platform's BYO-first
     // posture. This used to gate on `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` (decision #6, R-8);
-    // that restriction is deliberately removed, not merely defaulted on. See the ticket README.
+    // that restriction is deliberately removed, not merely defaulted on. .
 
     if (!this.s3Service) {
       // No storage backend wired (e.g. a minimal test fixture) — fail loud rather than starting
@@ -216,7 +216,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // was accepted and validated at the route, then never sent, so every invoked run executed
       // against an EMPTY payload and any graph with a required input binding failed with
       // "required kind '<k>' (from 'payload.<k>') missing from run payload". The field already
-      // existed on `StartWorkflowRunInput` for TASK-721's Workbench path; only this call site
+      // existed on `StartWorkflowRunInput` for Workbench path; only this call site
       // omitted it.
       //
       // "Verbatim" no longer means "including identity": `dto.input` has been proven free of
@@ -298,7 +298,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
   /**
    * The run's clinical subject, re-resolved from the PATH `consultationId` against the caller's
-   * tenant (TASK-850 lane A — the invariant TASK-852 §5 states).
+   * tenant (lane A — the invariant states).
    *
    * `IConsultationService.getById` IS the tenant boundary, and it is already two layers deep:
    * the Prisma tenant-scope extension filters a foreign row out of the read (⇒ `null`), and

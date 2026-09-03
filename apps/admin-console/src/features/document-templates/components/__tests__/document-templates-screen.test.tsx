@@ -1,5 +1,5 @@
 /**
- * Document Templates screen (TASK-810 task 14). `fetch` is stubbed at the
+ * Document Templates screen ( task 14). `fetch` is stubbed at the
  * network boundary — no MSW, matching the house idiom.
  *
  * Covers the working-tenant gate, the catalog, the EMPTY/fallback reading that

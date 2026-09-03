@@ -3,10 +3,10 @@ import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
 /**
- * TASK-856 — seed a NEW workflow from an existing one.
+ * seed a NEW workflow from an existing one.
  *
  * `targetSlug` is REQUIRED and caller-supplied rather than derived (`<slug>_copy`): the slug is
- * the workflow's PUBLIC address (`POST /api/v1/workflows/:slug/invoke`, TASK-722), so inventing
+ * the workflow's PUBLIC address (`POST /api/v1/workflows/:slug/invoke`), so inventing
  * one for a tenant is a naming decision the platform does not get to make — and `create`
  * already demands an explicit slug, so deriving here would be a second, inconsistent
  * convention. The Studio's clone dialog pre-fills a suggestion client-side.

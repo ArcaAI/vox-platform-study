@@ -11,7 +11,7 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-v
  * tenant" would then be an existence oracle over another tenant's data. Taking
  * both tenants up front lets the service authorize first and read second.
  *
- * TASK-815 renamed every field of this request: the promotable moved from a
+ * renamed every field of this request: the promotable moved from a
  * `DepartmentAgentVersion` to a `WorkflowDefinition` version, and a request
  * whose fields still said "agent" would describe something that no longer
  * exists.

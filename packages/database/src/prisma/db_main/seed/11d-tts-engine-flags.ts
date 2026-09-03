@@ -1,16 +1,16 @@
 /**
- * TTS Provider/Engine Enable-Flag Settings Seed (TASK-799 lane H)
+ * TTS Provider/Engine Enable-Flag Settings Seed 
  *
  * Gives the five `TTS_*_ENABLED` flags a home in the control plane, so which
  * engines `apps/tts` registers stops being a property of a ConfigMap in a
  * DIFFERENT GIT REPOSITORY (`arca/hope-v2-deployment`) and becomes a
  * SUPER_ADMIN write with an audit trail.
  *
- *   tts.azure.enabled     Azure AI Speech provider (cloud, BYOK)
- *   tts.sarvam.enabled    Sarvam Bulbul provider (cloud, BYOK)
- *   tts.kokoro.enabled    self-hosted Kokoro English engine  ← SEEDED ON
- *   tts.parler.enabled    self-hosted AI4Bharat Indic Parler (Malayalam)
- *   tts.indicf5.enabled   experimental IndicF5 voice clone (CC-BY-NC gated)
+ *   tts.azure.enabled Azure AI Speech provider (cloud, BYOK)
+ *   tts.sarvam.enabled Sarvam Bulbul provider (cloud, BYOK)
+ *   tts.kokoro.enabled self-hosted Kokoro English engine ← SEEDED ON
+ *   tts.parler.enabled self-hosted AI4Bharat Indic Parler (Malayalam)
+ *   tts.indicf5.enabled experimental IndicF5 voice clone (CC-BY-NC gated)
  *
  * WHY A SEEDED ROW AND NOT A DESCRIPTOR DEFAULT (for kokoro)
  * -----------------------------------------------------------
@@ -28,9 +28,9 @@
  *
  * So the split is:
  *
- *   descriptor default `false`  →  an unseeded deployment is unchanged
- *   the seeded ROW `'true'`     →  every seeded environment comes up serving
- *   `defaultValue` `'false'`    →  "reset to default" reverts to the code value
+ *   descriptor default `false` → an unseeded deployment is unchanged
+ *   the seeded ROW `'true'` → every seeded environment comes up serving
+ *   `defaultValue` `'false'` → "reset to default" reverts to the code value
  *
  * which is the sanctioned pattern `11c-consultation-gate-settings.ts` uses for
  * the OCR gate, and `11-global-setting.ts` uses twice more.
@@ -61,7 +61,7 @@
  * repo-wide by `seed/__tests__/seed-idempotency.test.ts`.
  *
  * Flipping one afterwards is one call, no redeploy:
- *   PUT /api/v1/admin/settings/registry/tts.parler.enabled  { "value": true }
+ *   PUT /api/v1/admin/settings/registry/tts.parler.enabled { "value": true }
  */
 import type { CorePrismaClient } from '../../../client';
 import { ValueType } from '../../../generated/core-prisma-client/client.js';

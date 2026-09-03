@@ -19,7 +19,7 @@ const TAB_VALUES = ['speech', 'voice'] as const;
 /**
  * Tenant speech &amp; voice configuration (`/ai-configuration`, tier 30-49).
  *
- * ## What TASK-845 took away, and what it deliberately left
+ * ## What took away, and what it deliberately left
  *
  * This screen used to carry four tabs. Two of them — "Models" (the tenant's own
  * `AiTaskDefault` selection) and "Providers" (the BYO credential editor) — were
@@ -34,7 +34,7 @@ const TAB_VALUES = ['speech', 'voice'] as const;
  * configuration: they are pipeline and voice BINDINGS — which pipeline to run,
  * when to auto-switch, which voice speaks which language. They resolve on their
  * own rows, not on the routing cascade, and folding them into a provider
- * console would recreate exactly the by-which-table grouping TASK-845 exists to
+ * console would recreate exactly the by-which-table grouping exists to
  * remove.
  *
  * The URL is unchanged, so there is no redirect: this is a narrowing, not a

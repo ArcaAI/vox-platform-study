@@ -1,5 +1,5 @@
 /**
- * WorkflowDefinitionService unit tests (TASK-734).
+ * WorkflowDefinitionService unit tests.
  *
  * Mirrors the WorkflowTestFixtureService/DepartmentService test convention: mock the
  * repository, EventEmitter2, ClsService, the database service (for the version-mint
@@ -9,12 +9,12 @@
  * genuinely wired: a broken graph is rejected, a clean one is compiled and published, and the
  * DRAFT rule catalogue's findings never block a write (decision #3).
  *
- * HONESTY NOTE (see the ticket README §7): this file was authored AFTER
+ * HONESTY NOTE: this file was authored AFTER
  * `workflow-definition.service.ts`, not strictly RED-first — designing the compile/validate
  * wiring and its tests in the same pass made a true red-first split impractical within this
  * session. The domain-layer half of Task 1 (`WorkflowDefinitionRepository.test.ts`,
  * `WorkflowDefinitionEntity.test.ts`) WAS proven RED before its implementation, in an earlier
- * pass — see the ticket README §7 for that evidence.
+ * pass — for that evidence.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -51,11 +51,11 @@ const mockEntitlements = {
   isEnforcementEnabled: vi.fn(() => false),
   assertQuantityQuota: vi.fn(),
   // Default: allowed — matches the real service's `!isEnforcementEnabled() -> true` posture
-  // (TASK-724 Task 7) so every pre-existing test above, which never mocks this, keeps passing.
+  // so every pre-existing test above, which never mocks this, keeps passing.
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
 
-// TASK-724 Task 4 — `SttPipelineCompilerService` is mocked at the seam; its OWN real behavior
+// `SttPipelineCompilerService` is mocked at the seam; its OWN real behavior
 // (YAML emission, PipelineService create/update wiring) is covered by
 // `compilers/__tests__/stt-pipeline.compiler.test.ts`. Here we only assert that `publish()`
 // calls it for the `stt` palette, threads its result into the sys-event, and propagates its
@@ -375,7 +375,7 @@ describe('WorkflowDefinitionService', () => {
       expect(mockWorkflowDefinitionRepository.findPublishedBySlug).not.toHaveBeenCalled();
     });
 
-    describe('featurePaletteStt entitlement gate (TASK-724 Task 7)', () => {
+    describe('featurePaletteStt entitlement gate (Task 7)', () => {
       it('never consults isFeatureEnabled for a non-stt palette', async () => {
         const entity = createMockEntity({ paletteKey: 'summarization' });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
@@ -410,7 +410,7 @@ describe('WorkflowDefinitionService', () => {
       });
     });
 
-    describe('STT pipeline compilation on publish (TASK-724 Task 4)', () => {
+    describe('STT pipeline compilation on publish (Task 4)', () => {
       it('compiles the graph into an AsrPipeline via SttPipelineCompilerService and threads its id/slug into the sys-event', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
@@ -460,7 +460,7 @@ describe('WorkflowDefinitionService', () => {
     });
   });
 
-  describe('getCompiledConfigForSandboxRun (TASK-721 Workbench)', () => {
+  describe('getCompiledConfigForSandboxRun (Workbench)', () => {
     it('compiles a DRAFT row (no persisted compiledConfig) fresh, and never writes it back', async () => {
       const entity = createMockEntity({ status: WorkflowDefinitionStatus.DRAFT, compiledConfig: null });
       mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);

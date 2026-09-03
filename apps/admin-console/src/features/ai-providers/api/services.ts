@@ -2,7 +2,7 @@
  * The provider-connection capability vocabulary — DERIVED, not transcribed.
  *
  * `service` is the discriminator of the unified connection plane
- * (`admin/providers/:service/:provider`). TASK-799 P1-C.1 widened it from the
+ * (`admin/providers/:service/:provider`). -C.1 widened it from the
  * closed `{llm,stt,tts}` set to six capabilities, and the console did not
  * follow: `api/types.ts` and `provider-credentials-tabs.tsx` each carried their
  * OWN hand-typed copy of the three-value list, so a tenant's Qdrant Cloud key

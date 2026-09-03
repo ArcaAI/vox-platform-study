@@ -1,5 +1,5 @@
 /**
- * TASK-776 — Credential-class DEPTH tests (semantics of `UnifiedAuthGuard`).
+ * Credential-class DEPTH tests (semantics of `UnifiedAuthGuard`).
  *
  * The e2e suite exercises the JWT path in >90% of specs, the API-key path in
  * ~13 of 106, and the service-account path in ~6. This spec closes the
@@ -12,9 +12,9 @@
  * says so.
  *
  * The four credential classes (all verified live):
- *   1. Super-admin JWT       — POST /auth/login (no tenantKey) -> Bearer
- *   2. Tenant-admin JWT      — POST /auth/login + tenantKey '__GLOBAL__'
- *   3. API key               — X-API-Key: <raw seeded key>
+ *   1. Super-admin JWT — POST /auth/login (no tenantKey) -> Bearer
+ *   2. Tenant-admin JWT — POST /auth/login + tenantKey '__GLOBAL__'
+ *   3. API key — X-API-Key: <raw seeded key>
  *   4. Service-account token — POST /auth/service-token -> X-Service-Account-Token
  *
  * Guard source of truth: packages/applications/src/authorization/unified-auth.guard.ts
@@ -36,7 +36,7 @@ const API_KEY_ARCAAI = 'hope_sk_test_e0g1i90b98g8871jfh1gi1hhi3_075682';
  * Its scopes were narrowed from `['*']` to `['internal:stt:worker']`
  * (02-apikey.ts), so NO wildcard-scoped key exists on the platform any more.
  * The brief asked for an explicit wildcard proof of `@ForbidApiKey`; the
- * closest live equivalent is asserted below (§ForbidApiKey) using this key,
+ * closest live equivalent is asserted below ( using this key,
  * with the wildcard's absence recorded here rather than fabricated.
  */
 const API_KEY_STT_WORKER = 'hope_sa_test_d9f0h89a87f7760ieg0fh0ggh2_964571';
@@ -97,7 +97,7 @@ async function serviceAccountToken(request: APIRequestContext): Promise<string> 
 
 // ─── Suite ──────────────────────────────────────────────────────────────────
 
-test.describe('TASK-776 — credential-class semantics', () => {
+test.describe('credential-class semantics', () => {
   let superAdminJwt: string;
   let tenantAdminJwt: string;
   let svcToken: string;
@@ -168,7 +168,7 @@ test.describe('TASK-776 — credential-class semantics', () => {
     });
 
     test('the broadest-scoped key on the platform is refused identically', async ({ request }) => {
-      // Was `['*']` before TASK-763; no wildcard key remains, so this is the
+      // Was `['*']` before; no wildcard key remains, so this is the
       // strongest live case. The point stands either way: the denial is a
       // metadata flag, so no scope — not even a wildcard — can rescue it.
       const res = await request.get(ADMIN_USERS, { headers: { 'X-API-Key': API_KEY_STT_WORKER } });

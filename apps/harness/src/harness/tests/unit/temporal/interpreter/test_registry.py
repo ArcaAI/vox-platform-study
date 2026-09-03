@@ -2,7 +2,7 @@
 
 Mirrors LOOP_ACTION_REGISTRY's shape/discipline (workflows.py:1665-1693): a key with no entry,
 or an entry with implemented=False, is an OBSERVABLE skip, never a silent no-op. The registry
-starts empty of palette nodes (TASK-720 populates it); this ticket ships only noop/passthrough.
+starts empty of palette nodes ( populates it); ships only noop/passthrough.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ class TestRegistryShape:
 
     def test_activity_is_a_callable_reference_not_a_string(self):
         # S-4: routing reaches sanctioned activities via a code-owned registry, never a
-        # string dispatched at runtime (see execution-semantics.md §10).
+        # string dispatched at runtime (see
         for spec in NODE_REGISTRY.values():
             assert callable(spec.activity)
             assert isinstance(spec.activity, type(interpreter_activities.interpreter_noop))

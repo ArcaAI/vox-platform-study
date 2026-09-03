@@ -1,6 +1,6 @@
 /**
  * Library surface of `@arcaai/vox-node-codegen` — the build-time generator for
- * `@arcaai/vox-node`'s `/api/v1/admin/**` resources (TASK-773 Phase D1).
+ * `@arcaai/vox-node`'s `/api/v1/admin/**` resources.
  *
  * ## Placement (following `packages/vox-codegen`)
  *

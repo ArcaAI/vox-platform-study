@@ -1,4 +1,4 @@
-"""Programmable stub activities for the ``agentic.loop`` workflow tests (TASK-848).
+"""Programmable stub activities for the agentic.loop workflow tests.
 
 Registers under the SAME activity name the real registry dispatches for an
 ``agentic.agent`` node (``interpreter.agentic_agent``), so a test worker built from these

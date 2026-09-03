@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class JudgePolicy(BaseModel):
-    """Policy + tuning for the delegated LLM judgement (TASK-735 Phase 2b).
+    """Policy + tuning for the delegated LLM judgement.
 
     Deliberately a plain ``BaseModel``, NOT ``BaseSettings``: none of these is an
     env var. Guardrail's five engine sub-configs used to live here — six
@@ -23,7 +23,7 @@ class JudgePolicy(BaseModel):
     What is left is POLICY (the confidence floor a verdict must clear) and pool
     TUNING. These become ``guardrail.policy.*`` ``SettingDescriptor``s in Phase 4;
     that half is blocked on the missing tenant-cascade read surface for
-    ``db-config`` keys (README §6b G-01), so they sit here as code defaults —
+    db-config keys ( G-01), so they sit here as code defaults
     which is strictly better than the env surface they replaced, and reachable
     from exactly one place when the descriptors land.
     """
@@ -46,7 +46,7 @@ class JudgePolicy(BaseModel):
 
 
 # There is deliberately NO `GlinerConfig`. Guardrail hosts no GLiNER runtime
-# (TASK-735 Phase 3): content-safety classification and PII span extraction are
+# content-safety classification and PII span extraction are
 # delegated to `apps/nlp`, which owns NER/classification for the platform. The
 # model ids and the four label taxonomies that used to live in `providers/gliner.py`
 # are CONFIG: they are SYSTEM-tenant `AiModel` rows (`guardrail.safety` /
@@ -59,14 +59,14 @@ class TransportPolicy(BaseModel):
 
     A plain ``BaseModel``, NOT ``BaseSettings``, for the same reason
     :class:`JudgePolicy` is: none of this is an env var. It is the shape of the
-    service's own back pressure, and TASK-735 §6b G-06 recorded the standing
+    service's own back pressure, and G-06 recorded the standing
     objection to spelling exactly these knobs as five new ``*_MAX_CONCURRENT`` /
     ``*_TIMEOUT_S`` environment variables. Code defaults with one reachable
     definition site are strictly better, and become ``guardrail.transport.*``
     ``SettingDescriptor``s when the tenant-cascade read surface for ``db-config``
     keys lands (G-01).
 
-    **Every timeout phase is explicit** (TASK-777 B-1). The previous
+    **Every timeout phase is explicit**. The previous
     ``httpx.Timeout(300.0)`` was one scalar applied to all four phases, so a peer
     that accepted a connection and then stalled held a pool slot for five minutes
     — and with no POOL timeout, the 101st concurrent request waited on pool
@@ -109,7 +109,7 @@ class GroundednessConfig(BaseModel):
     `apps/nlp`, or a scoring error all degrade to ``unverified`` — no path ever
     yields ``grounded`` without a model actually entailing the segment.
 
-    TASK-735 Phase 6 — the MiniCheck GGUF, its weight path, its cache dir and its
+    the MiniCheck GGUF, its weight path, its cache dir and its
     llama.cpp runtime knobs (``model_id``, ``model_file``, ``model_path``,
     ``model_cache_dir``, ``n_ctx``, ``n_threads``, ``n_gpu_layers``) are GONE from
     here. The weights now live in `apps/nlp`, and the model identity is the
@@ -117,7 +117,7 @@ class GroundednessConfig(BaseModel):
     tenant-first, fail-closed. What is left is the POLICY guardrail owns: whether
     the gate is on, what score counts as grounded, and how much it will score.
 
-    TASK-799 lane D — **none of that POLICY is env-reachable any more**, and this
+    lane D — **none of that POLICY is env-reachable any more**, and this
     class holds no field at all. It survives as the runtime carrier that
     `GroundednessNliVerifier` reads, populated from the two config planes:
 
@@ -154,7 +154,7 @@ class RedisConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_REDIS_")
 
     # `redis_url` is the whole surface: the job plane's TTLs and stream bound
-    # were declared here and never read by anything (TASK-799 F-13).
+    # were declared here and never read by anything.
     #
     # The alias is not decoration. `env_prefix="GUARDRAIL_REDIS_"` + a field
     # named `redis_url` resolves to `GUARDRAIL_REDIS_REDIS_URL` — a stuttering
@@ -162,7 +162,7 @@ class RedisConfig(BaseSettings):
     # (`.gitlab/ci/test.yml:695` even wires it to `$CI_REDIS_URL`), so the
     # documented name has never actually reached this service and CI has been
     # silently testing against the localhost default. Found by the Python drift
-    # gate added in TASK-799 Phase 1.5; the stuttering form stays accepted so
+    # gate; the stuttering form stays accepted so
     # nothing that DID set it breaks.
     redis_url: str = Field(
         default="redis://localhost:6379/0",
@@ -182,7 +182,7 @@ class QueueConfig(BaseSettings):
     # (`main.py`). Lived on the deleted engine sub-config
     # (`settings.engine.max_concurrent`), which made a queue bound look like an
     # engine knob; it is the job queue's own limit. The wait/retry/backoff/batch
-    # quartet that sat alongside it had no reader at all (TASK-799 F-13);
+    # quartet that sat alongside it had no reader at all.
     # admission waiting is `transport.max_queue_wait_s`, which IS read.
     max_concurrent: int = 4
 
@@ -209,10 +209,10 @@ class DatabaseConfig(BaseSettings):
 
     # Enabled by default: the resolver (get_resolved_guardian_provider in
     # core/dependencies.py) fails CLOSED (HTTP 503) when the SYSTEM
-    # `db_config_enabled` is GONE (TASK-799 lane D, §D.2d).
+    # `db_config_enabled` is GONE (lane D,
     #
     # It was the last survivor of the era when guardrail could select an engine
-    # from env. Since TASK-735/736 deleted that plane, its only non-default value
+    # from env. Since /736 deleted that plane, its only non-default value
     # bypassed DB resolution while guardrail names no engine in code — so every
     # route that needs a selection answered 503 outright. A knob whose "off"
     # position bricks the service is not configuration, it is a fault injector
@@ -291,7 +291,7 @@ class Settings(BaseSettings):
     )
 
     # Where `apps/nlp` lives — guardrail's classification/NER executor after
-    # TASK-735 Phase 3. BOOTSTRAP TRANSPORT (an address), not config authority:
+    # BOOTSTRAP TRANSPORT (an address), not config authority:
     # read from the repo-wide `NLP_URL`, so guardrail adds no env var of its own.
     nlp_url: str = Field(
         default="http://localhost:8864",
@@ -309,7 +309,7 @@ class Settings(BaseSettings):
     # pairs with `GUARDRAIL_URL`. Only `GUARDRAIL_V2_PORT` was ever readable
     # here, so every one of those declarations reached the launcher and not the
     # app — harmless while uvicorn always wins, and wrong the moment anything
-    # reads `settings.port`. Accept both; the fleet name first (TASK-799 B.3).
+    # reads `settings.port`. Accept both; the fleet name first.
     port: int = Field(
         default=8863, validation_alias=AliasChoices("GUARDRAIL_PORT", "GUARDRAIL_V2_PORT")
     )
@@ -319,7 +319,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_enabled(self) -> bool:
-        """CORS is on exactly when origins are named (TASK-799 lane D, §D.2e).
+        """CORS is on exactly when origins are named ( lane D,
 
         `GUARDRAIL_V2_CORS_ENABLED` was a second switch over the same fact, and
         two switches over one fact can disagree: `enabled=true` with an empty
@@ -384,7 +384,7 @@ class Settings(BaseSettings):
     # route this URL points at.
     gateway_url: str = "http://localhost:8868/api/v1"
 
-    # Connection pooling lives on `transport` (TASK-777 B-1) — the only thing
+    # Connection pooling lives on `transport` — the only thing
     # `build_http_client` reads. The superseded `httpx_max_*` pair is gone: a
     # settable knob nothing reads is not a "voice", it is a lie to the operator.
     # Aux-model cache policy is likewise gone from env — the runtime values come

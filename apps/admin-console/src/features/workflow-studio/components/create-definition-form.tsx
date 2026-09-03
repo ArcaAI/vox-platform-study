@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * The `/workflow-studio/new` form (TASK-719 Task 16) — mints the first DRAFT row via `POST
+ * The `/workflow-studio/new` form — mints the first DRAFT row via `POST
  * admin/workflow-definitions` (`slug`, `name`, `paletteKey` are all required — `paletteKey` is
  * NOT optional, per `contracts/definition-api.contract.md`'s re-derivation), then routes to the
- * real editor at `/workflow-studio/:id`. Controlled state, no `react-hook-form` (README §2.5).
+ * real editor at `/workflow-studio/:id`. Controlled state, no `react-hook-form`
  */
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';

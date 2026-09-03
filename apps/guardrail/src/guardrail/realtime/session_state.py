@@ -1,6 +1,6 @@
 """Per-session stateful aggregation — the actual defence against split payloads.
 
-**Why overlap is not the answer (ticket §2.2).** An earlier draft recommended a
+**Why overlap is not the answer (** An earlier draft recommended a
 trailing overlap window. Prompt Overflow tested overlapping sliding-window
 inspection directly and found only marginal improvement: overlap addresses
 *contiguous* evidence straddling a boundary, and does nothing about *dispersed*
@@ -19,19 +19,19 @@ the defence is here.
     that simply spans two utterances.
 
 ``mean_score``
-    **A deliberate addition to the ticket's §5.1 formula, and the reason the
-    dispersed-payload criterion is satisfiable at all.** §5.1 specifies only the
-    excess sum and the consecutive count, but §2.1's own measurement is that
+    **A deliberate addition to the formula, and the reason the
+    dispersed-payload criterion is satisfiable at all.** specifies only the
+    excess sum and the consecutive count, but 's own measurement is that
     detector confidence collapses 0.99 -> 0.03 as malicious density per window
     falls. When every window scores BELOW the floor, ``max(0, score - floor)`` is
     exactly zero for each of them and the excess sum is blind to the attack it
-    was introduced to catch. The evidence §5.1 cites is a length-invariant
+    was introduced to catch. The evidence cites is a length-invariant
     aggregate — "0.32 benign -> 0.628 flagged" is a mean, not a sum — so the mean
     is tracked as its own signal, gated behind a minimum window count so a single
     mildly-suspicious utterance is not an alert.
 
 All four numbers are configuration resolved tenant -> SYSTEM, never literals: a
-threshold calibrated on a general corpus is precisely what §5.1 forbids, because
+threshold calibrated on a general corpus is precisely what forbids, because
 clinical text is not general text.
 """
 
@@ -82,7 +82,7 @@ class SessionRiskState:
         self.max_consecutive = 0
         self.windows = 0
         #: How many of `windows` carried a real per-label CONFIDENCE rather than
-        #: a 1/0 flag (TASK-830). The caller reports the calibration from this;
+        # a 1/0 flag. The caller reports the calibration from this;
         #: the state only counts, because "which statistic is this" is a claim
         #: about the whole aggregate and belongs with the verdict.
         self.graded_windows = 0

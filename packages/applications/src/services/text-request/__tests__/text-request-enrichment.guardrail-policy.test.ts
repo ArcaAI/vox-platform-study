@@ -1,4 +1,4 @@
-// TASK-799 A.2 — the PRODUCING half of the `guardrail_policy` push contract.
+// A.2 — the PRODUCING half of the `guardrail_policy` push contract.
 //
 // `GenerateRequest.guardrail_policy` (`apps/text/src/text/models/requests.py`)
 // and `core/guardrail_posture.resolve_posture` have existed and been tested for

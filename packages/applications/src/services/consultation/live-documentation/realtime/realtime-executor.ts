@@ -1,8 +1,8 @@
 /**
- * TASK-811 — the REALTIME GRAPH EXECUTOR.
+ * the REALTIME GRAPH EXECUTOR.
  *
  * Walks a {@link RealtimeLane} stage by stage. Within a stage every node runs
- * CONCURRENTLY (DD-4): stage members fan out from the same upstream with no
+ * CONCURRENTLY: stage members fan out from the same upstream with no
  * mutual dependency, so wall-clock is the slowest call and not the sum, and a
  * discharge summary timing out leaves the SOAP note untouched.
  *
@@ -277,7 +277,10 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
         while (attempts < node.maxAttempts) {
           attempts += 1;
           try {
-            const output = await withTimeout(handler.run({ bound, config: node.config, tenantId, consultationId, capabilities, signal }), node.timeoutMs);
+            const output = await withTimeout(
+              handler.run({ bound, config: node.config, tenantId, consultationId, capabilities, signal }),
+              node.timeoutMs,
+            );
 
             // A result that lands after a newer flush claimed the session is
             // DISCARDED. Publishing it would overwrite fresher content with older

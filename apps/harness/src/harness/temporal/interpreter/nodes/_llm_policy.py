@@ -1,4 +1,4 @@
-"""Shared LLM-JUDGEMENT plumbing for the two Lane N capabilities (TASK-815 §14a/§14b).
+"""Shared LLM-JUDGEMENT plumbing for the two Lane N capabilities.
 
 Both capabilities the owner specified are the same shape and neither is a heuristic:
 
@@ -26,7 +26,7 @@ duplication to be tidied away.
 Nothing here hosts a model. LLM judgement goes to ``apps/text`` through the same ``TextClient``
 every other node uses, and provider/model SELECTION resolves tenant -> SYSTEM through
 ``get_policy(task_key=...)`` and **fails CLOSED** — an unresolved selection degrades the node
-rather than substituting an env default (``00-project-context.md`` §Configuration Principles).
+rather than substituting an env default (00-project-context.md Principles).
 
 ## The instruction is never a literal
 
@@ -128,7 +128,7 @@ async def resolve_text_selection(
     ``error_code`` non-``None`` means the caller must degrade. There is deliberately no env
     fallback: selection is ``failMode: closed``.
 
-    TASK-816 (DD-10): ``model_slug`` is the node's own ``llmBinding.modelSlug`` and outranks
+    (DD-10): model_slug is the node's own llmBinding.modelSlug and outranks
     ``task_key``. It is threaded to the gateway rather than resolved here — one model resolution,
     shared with every TypeScript caller. A bound slug that resolves to nothing 400s there and
     arrives as ``no_text_selection`` here, so the node DEGRADES with a named code instead of
@@ -157,7 +157,7 @@ async def resolve_instruction(
     ``missing_code`` names the caller's own "nothing was bound" error code so the degrade reads as
     the configuration gap it is.
 
-    ``api`` lets a caller in ANOTHER module pass its OWN api-client accessor (TASK-826). This
+    api lets a caller in ANOTHER module pass its OWN api-client accessor. This
     module's docstring explains why each module binds its own: the accessors are what its tests
     redirect, so a helper that closed over THIS module's ``_api_client`` would be unpatchable from
     a caller's suite, and — worse in production terms — one activity would resolve its selection

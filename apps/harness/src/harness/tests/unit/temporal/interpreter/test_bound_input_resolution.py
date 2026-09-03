@@ -1,4 +1,4 @@
-"""TASK-809 OD-15 — `WorkflowInterpreter._resolve_bound_inputs`, the function the whole lane
+"""`WorkflowInterpreter._resolve_bound_inputs`, the function the whole lane
 turns on, and which had ZERO test coverage before this file.
 
 ## What changed and why it needed testing

@@ -9,7 +9,7 @@ export class AgentPromotionDtoMapper {
    * drifted" are different statements about an audit record.
    *
    * The four id assignments below are where the WORM table's original column
-   * names meet what they now carry (TASK-815); the mapping is documented in
+   * names meet what they now carry; the mapping is documented in
    * `AgentPromotionService`'s header.
    */
   static toResponse(entity: AgentPromotionEntity, drifted?: boolean): AgentPromotionResponse {

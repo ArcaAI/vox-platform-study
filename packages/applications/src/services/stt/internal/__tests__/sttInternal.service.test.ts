@@ -280,7 +280,7 @@ const mockJobRepository = {
 
 // Usage-ledger emission collaborators. A distinguishable
 // sentinel `tx` object lets tests assert the SAME transaction client flows
-// into both the job persist and the ledger emission (ws-b-contract.md §5).
+// into both the job persist and the ledger emission (ws-b-contract.md
 const FAKE_TX = { __fakeTx: true };
 const mockUnitOfWorkService = {
   runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(FAKE_TX)),

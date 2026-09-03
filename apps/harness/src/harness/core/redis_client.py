@@ -1,19 +1,19 @@
-"""Harness's ONE Redis client — the config-invalidation delivery path (TASK-799 A.3, D-5).
+"""Harness's ONE Redis client — the config-invalidation delivery path ( A.3, D-5).
 
 Round 2 wired push invalidation for guardrail, text and stt only. harness, nlp and tts
 held no Redis client at all, so the subscriber `core/effective_config.py` already
 implements had nothing to deliver to it: a control-plane write reached this process only
-by the 60s TTL poll. Rule 09 §"Config caches" rule 2 is explicit that this is backwards —
+by the 60s TTL poll. Rule 09 rule 2 is explicit that this is backwards
 *invalidation is the propagation path; the TTL is a bounded-staleness safety net* — and a
 service that converges only on a TTL has given up the property that justifies moving a
 value out of env in the first place. The owner approved adding the client (D-5).
 
 **Scope is deliberately one named job per builder.** This module had exactly one when it
 was written — the invalidation subscriber — with the instruction *"do not grow it into a
-cache or a queue"*. TASK-849 adds a SECOND, and adds it as its own named builder rather
+cache or a queue"*. adds a SECOND, and adds it as its own named builder rather
 than by widening the first, so the instruction still holds as written: harness caches
 nothing in Redis and queues nothing through it. The new job is a WRITE-ONLY append onto a
-per-run event stream (``interpreter/run_events.py``) — the TASK-717 Phase C producer, and
+per-run event stream (interpreter/run_events.py) — the producer, and
 the reason the gateway can stop polling. Harness's durable state is still Temporal's; that
 stream is a mirror of it, never the record.
 
@@ -62,7 +62,7 @@ def build_invalidation_redis(url: str) -> Any | None:
 
 
 def build_run_event_redis(url: str) -> Any | None:
-    """An async Redis client for the run-event stream producer, or ``None`` (TASK-849).
+    """An async Redis client for the run-event stream producer, or None.
 
     Same construction, same `None`-is-supported posture, DIFFERENT job — and a separate
     connection on purpose: the invalidation client spends its life parked in `subscribe`,

@@ -161,10 +161,10 @@ describe('computeHarnessAuditHash — encrypt-before-hash', () => {
 });
 
 // =============================================================================
-// NULLABLE consultationId (TASK-712, consent-abac Phase 4) — hash compatibility
+// NULLABLE consultationId (consent-abac Phase 4) — hash compatibility
 // =============================================================================
 
-describe('computeHarnessAuditHash — nullable consultationId (TASK-712)', () => {
+describe('computeHarnessAuditHash — nullable consultationId ', () => {
   it('is a fixed golden hash for a row that HAS a consultationId — locks the pre-nullable digest', () => {
     // Computed once against `baseInput()` (a real, non-null consultationId) and
     // hardcoded here so a future change to the hash algorithm that alters this

@@ -1,15 +1,15 @@
 /**
- * Boot-time audits for the THIRD credential class (TASK-762 §5.7).
+ * Boot-time audits for the THIRD credential class
  *
- * The owner's TASK-708 §6 non-mixing ruling ("we cannot mix the `/admin/*` and
+ * The owner's non-mixing ruling ("we cannot mix the `/admin/*` and
  * `/internal/*` routes as they were designed for different purposes") is
  * currently satisfied by ACCIDENT OF IMPLEMENTATION rather than by an enforced
- * invariant — §2.1 of the ticket verified that no `/admin/*` controller uses a
+ * invariant — of the ticket verified that no `/admin/*` controller uses a
  * service-token guard, but nothing STOPS one from doing so tomorrow. These
  * audits make the ruling mechanical: the shortcut becomes a boot failure rather
  * than a code-review argument.
  *
- * Assertions implemented here (the letters are the ticket's §5.7 table):
+ * Assertions implemented here (the letters are the table):
  *
  *   B — no `admin/`-prefixed controller uses a recognised service-token guard.
  *       Today this passes vacuously. Pinning it is the entire point.
@@ -21,14 +21,14 @@
  *       issuance, and no self-replication.
  *   F — the token-exchange route is `@Public()` AND carries its own guard.
  *       Public must never mean unguarded.
- *   G — (strengthened by TASK-773) every `admin/`-prefixed route declares
+ * G — (strengthened by) every `admin/`-prefixed route declares
  *       either a `svc:*` scope or `@ForbidServiceAccount()`, and whatever it
  *       declares is self-consistent, registry-known and CASL-resolvable.
  *       Deny-by-default extended to the third class; mirrors
  *       `auditEveryApiKeyReachableRouteDeclaresScopes`. The business plane is
  *       deliberately exempt from the declaration requirement — see G's own
  *       header for where that boundary is drawn and why.
- *   H — (TASK-773) every controller TASK-757 stripped an `admin:<area>` scope
+ * H — every controller stripped an `admin:<area>` scope
  *       from declares its `svc:admin:<area>` twin — and, on a method, at most
  *       that twin paired with its own `:read` sibling (decision O-3). Nothing
  *       else. G checks
@@ -37,11 +37,11 @@
  *       exact outcome of a 64-controller sweep applied by hand. H is the
  *       acceptance test for that sweep.
  *
- * Assertion A (no `admin/` controller declares `@RequiredScopes`) is TASK-757's
+ * Assertion A (no `admin/` controller declares `@RequiredScopes`) is
  * to add, once `@ForbidApiKey()` has actually been applied across the admin
  * plane — asserting it now would fail the boot on the 67 admin controllers that
  * legitimately still carry their `admin:*` scopes. It is deliberately NOT
- * implemented here; see the ticket README.
+ * implemented here; .
  *
  * Reads metadata through the app's own `Reflector` with
  * `getAllAndOverride([methodRef, ControllerClass])`, so it sees exactly what
@@ -68,7 +68,7 @@ import {
 } from '@arcaai/applications';
 
 import './third-party-public-routes';
-// The TASK-773 evidence fixture is EVIDENCE, not configuration: a mechanical
+// The evidence fixture is EVIDENCE, not configuration: a mechanical
 // transcription of the 64 class-level `@RequiredScopes('admin:<area>')`
 // decorators commit 276f96a32 removed. Its own consistency test
 // (`__tests__/task-773-admin-scope-map.test.ts`) proves every row still names a
@@ -142,7 +142,7 @@ function walkRoutes(app: INestApplicationContext): RouteInfo[] {
  * An `/admin/*` controller that reached for a service-token guard would be
  * granting every Python peer service platform-administrator reach through ONE
  * shared devops-set secret with no per-caller identity, no per-caller scope and
- * no revocation granularity. That is the specific shortcut TASK-762 exists as
+ * no revocation granularity. That is the specific shortcut exists as
  * an alternative to, so it fails the boot rather than review.
  */
 export function auditNoAdminControllerUsesServiceTokenGuard(app: INestApplicationContext): void {
@@ -161,7 +161,7 @@ export function auditNoAdminControllerUsesServiceTokenGuard(app: INestApplicatio
       seen.add(route.ControllerClass.name);
       offenders.push(
         `${route.ControllerClass.name} (${route.controllerPath}) uses ${forbidden.join(', ')}. ` +
-          `The TASK-708 §6 owner ruling forbids mixing the /admin/* and /internal/* mechanisms: the service token is ONE shared secret with ` +
+          `The owner ruling forbids mixing the /admin/* and /internal/* mechanisms: the service token is ONE shared secret with ` +
           `no per-caller identity, scope or revocation, so granting it admin reach makes every peer service a platform administrator. ` +
           `Use a service account (/admin/service-accounts + @RequiredSvcScopes) instead.`,
       );
@@ -170,7 +170,7 @@ export function auditNoAdminControllerUsesServiceTokenGuard(app: INestApplicatio
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-762: refused to start — ${offenders.length} admin controller(s) use a peer-service token guard:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+      `refused to start — ${offenders.length} admin controller(s) use a peer-service token guard:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }
 }
@@ -198,7 +198,7 @@ export function auditNoInternalControllerDeclaresSvcScopes(app: INestApplication
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-762: refused to start — ${offenders.length} internal route(s) declare a svc:* scope:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+      `refused to start — ${offenders.length} internal route(s) declare a svc:* scope:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }
 }
@@ -207,8 +207,8 @@ export function auditNoInternalControllerDeclaresSvcScopes(app: INestApplication
  * Assertion D — no orphan scopes, no ungated admin areas, no ability-less scope.
  *
  * The registry DERIVES `svc:admin:<area>` from every concrete `admin:<area>`
- * scope, (TASK-767) `svc:<feature>` from each named standalone business scope,
- * and (TASK-773 / O-1) `svc:<area>` from each admin-plane area whose gating
+ * scope, `svc:<feature>` from each named standalone business scope,
+ * and ( / O-1) `svc:<area>` from each admin-plane area whose gating
  * scope predates the `admin:<area>` convention — today just
  * `webhook:event:write` at `admin/webhooks`. The first two checks normally hold
  * by construction. They are
@@ -222,8 +222,8 @@ export function auditNoInternalControllerDeclaresSvcScopes(app: INestApplication
  * declared in. That separation is the point: it is what stops "somewhere in a
  * sources list" becoming the justification for a machine grant.
  *
- * The LAST check is TASK-767's addition and it pins a different failure —
- * the one the TASK-766 seed note calls out. `hasServiceAccountScope` is pure
+ * The LAST check is addition and it pins a different failure
+ * the one the seed note calls out. `hasServiceAccountScope` is pure
  * string matching, so a registered scope carrying NO implied ability still
  * satisfies `enforceServiceAccountScopes`, while `serviceAccountPolicyRules`
  * contributes nothing for it and `enforceServiceAccountAbilities` then denies
@@ -265,7 +265,7 @@ export function auditSvcScopeCoverage(): void {
     );
 
   if (problems.length > 0) {
-    throw new Error(`TASK-762/767/773: refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+    throw new Error(`refused to start — svc:* scope coverage is broken:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   }
 }
 
@@ -294,7 +294,7 @@ export function auditServiceAccountControllerForbidsBothClasses(app: INestApplic
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-762: refused to start — service-account issuance must exclude both other credential classes:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+      `refused to start — service-account issuance must exclude both other credential classes:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }
 }
@@ -310,7 +310,7 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
   const matches = walkRoutes(app).filter((r) => normalizePath(r.fullPath) === '/auth/service-token');
 
   if (matches.length === 0) {
-    throw new Error('TASK-762: refused to start — the service-account token-exchange route (POST /auth/service-token) is not registered.');
+    throw new Error('refused to start — the service-account token-exchange route (POST /auth/service-token) is not registered.');
   }
 
   const offenders: string[] = [];
@@ -327,13 +327,13 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
   }
 
   if (offenders.length > 0) {
-    throw new Error(`TASK-762: refused to start — token-exchange route posture is wrong:\n${offenders.map((o) => `  - ${o}`).join('\n')}`);
+    throw new Error(`refused to start — token-exchange route posture is wrong:\n${offenders.map((o) => `  - ${o}`).join('\n')}`);
   }
 }
 
 /**
  * Assertion G — deny-by-default on the admin plane, turned into an AUTHORING
- * error (TASK-773 units A3 + A5).
+ * error.
  *
  * `UnifiedAuthGuard.enforceServiceAccountScopes` already refuses an undeclared
  * route at request time. This turns that runtime refusal into a boot failure,
@@ -354,10 +354,10 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
  * `getAllAndOverride` and so could not see where each came from. That flattening
  * made one legitimate and useful shape unexpressible:
  *
- *   @RequiredSvcScopes('svc:admin:workflow-run:read')   // on the CLASS
+ *   @RequiredSvcScopes('svc:admin:workflow-run:read') // on the CLASS
  *   class WorkflowRunController {
- *     @ForbidServiceAccount()                           // on ONE method
- *     approveRunGate() {}                               // "…except this one"
+ *     @ForbidServiceAccount() // on ONE method
+ *     approveRunGate() {} // "…except this one"
  *   }
  *
  * That is an OVERRIDE, not a conflict, and it is exactly what the runtime does:
@@ -377,11 +377,11 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
  * ─── Where the admin/business boundary is drawn, and why ────────────────────
  *
  * This function's earlier `NOTE ON SCOPE` deferred the every-route form to
- * "TASK-757's admin-plane cutover, when `svc:*` declarations actually land".
+ * " admin-plane cutover, when `svc:*` declarations actually land".
  * They have now landed (assertion H), so the note is gone — but its REASONING
  * still decides the boundary, and the boundary is CHOSEN, not overlooked:
  *
- *   - **Admin plane — declaration required.** TASK-773 deliberately changed the
+ * **Admin plane — declaration required.** deliberately changed the
  *     default here: 64 controllers went from machine-unreachable to
  *     machine-reachable in one sweep. Silence on an admin route is therefore
  *     AMBIGUOUS — it could be a controller the sweep missed (which should be
@@ -393,7 +393,7 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
  *     token already, so requiring `@ForbidServiceAccount()` on hundreds of
  *     consultation/user/streaming routes would fail the boot "for no security
  *     benefit" while adding a decorator that restates the default. The handful
- *     of business routes TASK-767 opened say so explicitly with
+ * of business routes opened say so explicitly with
  *     `@RequiredSvcScopes`, and every rule below except the missing-declaration
  *     one still applies to them.
  *
@@ -415,7 +415,7 @@ export function auditTokenExchangeRouteIsPublicAndGuarded(app: INestApplicationC
  * is a registry entry, so A5 cannot currently fail on its own. Its value is
  * that it does not DEPEND on those two holding — narrow D with an exemption
  * list, or let a route declare a scope some other way, and A5 is what still
- * stands between an integrator and the TASK-766 failure mode (a credential that
+ * stands between an integrator and the failure mode (a credential that
  * passes the string-matching scope gate and is then 403'd by CASL, which is the
  * worst possible failure to debug). It also fails with the ROUTE's name, which
  * is what the person debugging that 403 is actually holding.
@@ -482,7 +482,7 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
 
       offenders.push(
         `${route.ControllerClass.name}.${route.methodName} (${route.fullPath}) declares nothing about service-account access. ` +
-          `Since TASK-773 the admin plane is the machine class's plane, so silence here is ambiguous rather than safe: this route currently ` +
+          `Since  the admin plane is the machine class's plane, so silence here is ambiguous rather than safe: this route currently ` +
           `REFUSES every service account at runtime (enforceServiceAccountScopes denies an undeclared route), which is either a gap the sweep ` +
           `missed or a deliberate closure nobody wrote down. Add @RequiredSvcScopes(toServiceAccountScope('admin:<area>')) if a machine identity ` +
           `legitimately administers this area, or @ForbidServiceAccount() if it is a human-only surface (record the decision in the comment, ` +
@@ -512,17 +512,17 @@ export function auditServiceAccountReachableRoutesAreDeclared(app: INestApplicat
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-762/773: refused to start — ${offenders.length} service-account route declaration(s) are missing or inconsistent:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
+      `refused to start — ${offenders.length} service-account route declaration(s) are missing or inconsistent:\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }
 }
 
 /**
- * Assertion H (TASK-773) — the admin plane's machine declaration is COMPLETE
+ * Assertion H — the admin plane's machine declaration is COMPLETE
  * and CORRECT, row by row against the evidence fixture.
  *
- * TASK-757 swept one class-level `@RequiredScopes('admin:<area>')` off each of
- * 64 admin controllers, leaving them JWT-only. TASK-773 puts the machine
+ * swept one class-level `@RequiredScopes('admin:<area>')` off each of
+ * 64 admin controllers, leaving them JWT-only. puts the machine
  * declaration back as `@RequiredSvcScopes(toServiceAccountScope('admin:<area>'))`
  * — the SAME area, renamespaced. That sweep is applied controller by controller,
  * which is precisely the kind of work that mis-assigns one row.
@@ -638,7 +638,7 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
       if (row.conditionallyRegistered) continue;
 
       offenders.push(
-        `${row.controllerClass} (${row.file}) is named by the TASK-773 evidence fixture but is not registered by any module — ` +
+        `${row.controllerClass} (${row.file}) is named by the  evidence fixture but is not registered by any module — ` +
           `no route was found for it. A rename or deletion silently REMOVES an admin area from this audit's coverage, so it fails the boot: ` +
           `update the fixture (and re-verify it against commit 276f96a32) in the same change that renames the class. ` +
           `If the class is instead registered CONDITIONALLY, record that on its fixture row via \`conditionallyRegistered\` rather than deleting the row.`,
@@ -689,8 +689,8 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
 
       if (declared.length === 0) {
         offenders.push(
-          `${where} declares NO svc:* scope. TASK-757 removed this controller's @RequiredScopes('${row.adminScope}'); ` +
-            `TASK-773 requires its machine twin @RequiredSvcScopes(toServiceAccountScope('${row.adminScope}')) — expected exactly ['${expected}'], found none. ` +
+          `${where} declares NO svc:* scope.  removed this controller's @RequiredScopes('${row.adminScope}'); ` +
+            ` requires its machine twin @RequiredSvcScopes(toServiceAccountScope('${row.adminScope}')) — expected exactly ['${expected}'], found none. ` +
             `Without it the administration area is unreachable by every service account, because enforceServiceAccountScopes denies an undeclared route.`,
         );
         continue;
@@ -704,7 +704,7 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
           ? ` The pair is permitted on a METHOD only: at class level it would put '${permittedPair[0]}' on this controller's writes too, so a read-only token could mutate.`
           : '';
         offenders.push(
-          `${where} declares the WRONG svc:* scope — expected ${permitted} (the twin of '${row.adminScope}', which TASK-757 removed from this controller), found [${declared.map((s) => `'${s}'`).join(', ')}] at the ${methodLevel ? 'method' : 'class'} level. ` +
+          `${where} declares the WRONG svc:* scope — expected ${permitted} (the twin of '${row.adminScope}', which removed from this controller), found [${declared.map((s) => `'${s}'`).join(', ')}] at the ${methodLevel ? 'method' : 'class'} level. ` +
             `A registry-known but mis-assigned scope passes assertion G and every runtime check while granting machine identities the reach of a DIFFERENT admin area; ` +
             `derive it as toServiceAccountScope('${row.adminScope}') rather than typing it.${pairHint}`,
         );
@@ -722,7 +722,7 @@ export function auditAdminControllersDeclareCorrectSvcScope(app: INestApplicatio
 
   if (offenders.length > 0) {
     throw new Error(
-      `TASK-773: refused to start — ${offenders.length} admin controller(s) do not declare the service-account scope the evidence fixture requires ` +
+      `refused to start — ${offenders.length} admin controller(s) do not declare the service-account scope the evidence fixture requires ` +
         `(${TASK_773_ADMIN_SCOPE_MAP.length} rows checked):\n${offenders.map((o) => `  - ${o}`).join('\n')}`,
     );
   }

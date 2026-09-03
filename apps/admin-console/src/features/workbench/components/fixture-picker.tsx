@@ -19,7 +19,7 @@ const NONE = '__none__';
 
 /**
  * Per-tenant saved synthetic Workbench test input — picker + minimal create/delete manager
- * (TASK-721 §1 item 5). Full edit-in-place is left to a follow-up; create/delete/pick cover the
+ * . Full edit-in-place is left to a follow-up; create/delete/pick cover the
  * ticket's stated scope ("create / edit / pick / delete") for the picker's own remit — the
  * `WorkflowTestFixtureController` PATCH route already exists for a later edit-in-place pass.
  */

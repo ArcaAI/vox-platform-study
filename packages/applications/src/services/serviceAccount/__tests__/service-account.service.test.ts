@@ -1,17 +1,17 @@
 /**
- * TASK-762 §5.2 / §5.3 / §5.4 — `ServiceAccountService`.
+ * / / — `ServiceAccountService`.
  *
  * The gates that earn their own suite are the ones whose absence is the whole
  * of the defect this ticket exists to avoid:
  *
- *  - **SUPER_ADMIN-only issuance (§5.2).** `@CanManage('ApiKey')` is
- *    tenant-admin-reachable, and that is the whole of the TASK-756 defect. A
+ * **SUPER_ADMIN-only issuance .** `@CanManage('ApiKey')` is
+ * tenant-admin-reachable, and that is the whole of the defect. A
  *    tenant admin must never be able to mint a service account — not even one
  *    scoped to their own tenant — because verifying scope-against-ability at
  *    mint time is a weaker guarantee than never letting the mint happen.
  *  - **No self-replication.** A service-account principal may not mint another
  *    service account, whatever scopes it holds.
- *  - **The secret is returned exactly once and never persisted** (§5.4).
+ * **The secret is returned exactly once and never persisted**.
  *  - **Cross-tenant reads are 404, not 403** — the tenancy posture, distinct
  *    from the 403 privilege boundaries above.
  */
@@ -185,7 +185,7 @@ describe('ServiceAccountService.exchangeToken', () => {
   });
 
   it(
-    'a day-1 bootstrap secret, verified the SAME way the seed builds it (TASK-763 §OD-2), ' +
+    'a day-1 bootstrap secret, verified the SAME way the seed builds it (§OD-2), ' +
       'authenticates through the documented exchange',
     async () => {
       // `94-service-account.ts`'s `computeSecretVerifier(secret, pepper)` is

@@ -35,7 +35,7 @@ export class SummaryResponse {
   updatedAt: string;
 
   /**
-   * TASK-709: `SummaryDtoMapper.toResponse` maps this DTO from the
+   * `SummaryDtoMapper.toResponse` maps this DTO from the
    * underlying `ContextItemEntity` (the summary IS a ContextItem row), so
    * `_version` is the same OCC compare-and-set counter `ContextItemResponse`
    * exposes. Echo back via `If-Match: "<version>"` (or the body-field

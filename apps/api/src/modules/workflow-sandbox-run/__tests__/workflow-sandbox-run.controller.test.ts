@@ -1,11 +1,11 @@
 /**
- * WorkflowSandboxRunController unit tests (TASK-721 Phase C).
+ * WorkflowSandboxRunController unit tests.
  *
  * Asserts every mutating/read route carries an authorization decorator (deny-by-default boot
  * audit, rule 05), the controller carries `@ForbidApiKey()` at the CLASS level (policy A2,
- * TASK-757 — the admin plane is JWT-only, which is what this controller's own doc comment
+ * the admin plane is JWT-only, which is what this controller's own doc comment
  * always claimed while it declared a scope that said otherwise), the stream route carries
- * `@StreamScope({ namespace: 'workflow_run', param: 'runId' })` (the SAME namespace TASK-722
+ * `@StreamScope({ namespace: 'workflow_run', param: 'runId' })` (the SAME namespace
  * registered — no auth.controller.ts change needed), and that the controller is a thin
  * pass-through with zero business logic.
  */
@@ -29,7 +29,7 @@ function makeController() {
 const reflector = new Reflector();
 
 describe('WorkflowSandboxRunController', () => {
-  it('carries @ForbidApiKey() at the class level and declares NO scope (policy A2, TASK-757)', () => {
+  it('carries @ForbidApiKey() at the class level and declares NO scope (policy A2)', () => {
     expect(reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [WorkflowSandboxRunController])).toBe(true);
     expect(reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [WorkflowSandboxRunController])).toBeUndefined();
   });
@@ -74,7 +74,7 @@ describe('WorkflowSandboxRunController', () => {
     expect(workflowSandboxStreamService.stream).toHaveBeenCalledWith('def-1', 'run-1', res);
   });
 
-  it('the stream route reuses the workflow_run:<runId> ticket namespace (TASK-722, no auth.controller.ts change needed)', () => {
+  it('the stream route reuses the workflow_run:<runId> ticket namespace (no auth.controller.ts change needed)', () => {
     const meta = reflector.getAllAndOverride(STREAM_SCOPE_METADATA, [WorkflowSandboxRunController.prototype.stream, WorkflowSandboxRunController]);
     expect(meta).toEqual({ namespace: 'workflow_run', param: 'runId' });
   });

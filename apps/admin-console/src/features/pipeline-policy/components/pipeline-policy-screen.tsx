@@ -132,7 +132,7 @@ function ScreenSkeleton() {
  * the page's former "Realtime" name, these toggles are consumed ONLY by the
  * POST-consultation pipeline (`consultation-event.handler.ts`) — the live
  * transcription / live-NER / partial-summarization lane
- * (`LiveDocumentationService`) never reads them (F-23, TASK-852 item 7). The
+ * (`LiveDocumentationService`) never reads them (F-23, item 7). The
  * status banner and the toggle labels below exist so an admin does not read
  * this screen as a live-lane kill-switch.
  *

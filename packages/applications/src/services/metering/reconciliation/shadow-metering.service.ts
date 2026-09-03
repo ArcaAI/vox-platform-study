@@ -124,7 +124,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     // metered for COGS, never TEXT-attributed), so the ledger total is
     // EXPECTED to run higher than SummaryMeta's TEXT-only capture. A breach
     // here is not automatically a bug; it is a signal to inspect the
-    // decomposition (see `research-findings.md` §6 / ws-b-contract.md §11).
+    // decomposition (see `research-findings.md` / ws-b-contract.md
     const [ledgerLlmTokens, summaryMetaTokens] = await Promise.all([
       this.sumRollupQuantity(tenantId, window, AiCapability.LLM, SHADOW_TOKEN_UNITS),
       this.sumSummaryMetaTokens(tenantId, window),
@@ -427,7 +427,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
    * Platform-wide ledger quantity for one provider over the window, CLOUD only.
    *
    * No tenant filter ON PURPOSE — a vendor bills the platform, not a tenant, so
-   * the only join that can balance is platform-wide (research-findings §11.2).
+   * the only join that can balance is platform-wide (research-findings
    * `deployment: CLOUD` excludes BYOK (tenant-funded) and SELF_HOSTED (no
    * vendor bill), which is the difference between a meaningful comparison and
    * one that is guaranteed to drift.

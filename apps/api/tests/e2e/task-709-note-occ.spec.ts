@@ -1,13 +1,13 @@
 /**
- * TASK-709 — Optimistic Concurrency Control on note-content writes.
+ * Optimistic Concurrency Control on note-content writes.
  *
  * Proves the house ETag/If-Match OCC contract (`.claude/rules/05-nestjs-api.md`
- * §Optimistic Concurrency) on the three previously-unprotected consultation
+ * Concurrency) on the three previously-unprotected consultation
  * note-content write routes:
  *
- *   - `PATCH  :id/context/:contextId`             (ContextService.updateContext)
- *   - `PATCH  :id/summary/:summaryId`              (SummaryService.updateSummary)
- *   - `POST   :id/summary/:contextItemId/approve`  (SummaryService.approveSummary)
+ *   - `PATCH :id/context/:contextId` (ContextService.updateContext)
+ *   - `PATCH :id/summary/:summaryId` (SummaryService.updateSummary)
+ *   - `POST :id/summary/:contextItemId/approve` (SummaryService.approveSummary)
  *
  * Cases, mirroring `optimistic-locking.spec.ts` (the house exemplar):
  *   (a) missing `If-Match` on each route -> 428 Precondition Required
@@ -23,10 +23,10 @@
  * additionally require a reachable `apps/text` (TEXT) so `generateSummary`
  * can produce the RAW_SUMMARY row the OCC assertions run against (mirrors
  * the FULL-loop dependency documented in `harness-gate.spec.ts`); the
- * approve cases instead need `HARNESS_SERVICE_TOKEN` — see the TASK-772
+ * approve cases instead need `HARNESS_SERVICE_TOKEN` — see the
  * banner above that block for why.
  *
- * TASK-772 — this file was authored blind ("treat it as RED until a live run
+ * this file was authored blind ("treat it as RED until a live run
  * confirms it") and that live run never happened: the summary block's
  * `beforeAll` timed out on the real summarization before any of its tests
  * executed. It has since been run green end to end.
@@ -76,7 +76,7 @@ async function getConsultation(request: APIRequestContext, token: string, id: st
 // symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
 test.describe.configure({ mode: 'serial' });
 
-test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
+test.describe('OCC on PATCH :id/context/:contextId', () => {
   let token: string;
   let consultationId: string;
   let contextId: string;
@@ -95,7 +95,7 @@ test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
 
     const created = await request.post(`/api/v1/consultations/${consultationId}/context`, {
       headers: bearer(token),
-      data: { type: 'CASE_NOTE', content: 'Initial case note for TASK-709 OCC.' },
+      data: { type: 'CASE_NOTE', content: 'Initial case note for  OCC.' },
     });
     expect([200, 201], 'POST :id/context').toContain(created.status());
     contextId = ((await created.json()) as ContextItemBody).id;
@@ -155,11 +155,11 @@ test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
   });
 });
 
-test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
+test.describe('OCC on PATCH :id/summary/:summaryId', () => {
   // Requires a reachable apps/text (TEXT) to actually generate a summary —
   // see the file-level doc comment.
   //
-  // TASK-764 — that requirement was DOCUMENTED but never ENFORCED: the
+  // that requirement was DOCUMENTED but never ENFORCED: the
   // `beforeAll` hard-asserted `[200,201]` on the generate call, so on any stack
   // without apps/text (:8862) running it threw there and Playwright charged the
   // failure to the first test in the block ("GET the generated summary carries
@@ -207,7 +207,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
 
     if (![200, 201].includes(generated.status())) {
       skipReason = `POST :id/summary (generate) returned ${generated.status()} — is apps/text (TEXT_URL) running? body: ${await generated.text()}`;
-      console.warn(`[TASK-764] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
 
@@ -258,7 +258,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
 });
 
 // =============================================================================
-// TASK-772 — approve OCC, on a consultation that is actually SIGNABLE.
+// approve OCC, on a consultation that is actually SIGNABLE.
 //
 // These two cases used to live in the block above, against the consultation it
 // opens and leaves in `OPEN`. That made the 412 case unreachable: `approve`
@@ -277,7 +277,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
 // note above and this file's header ("treat it as RED until a live run
 // confirms it"; that live run never happened).
 //
-// Reaching a signable state needs the harness: since TASK-732 deleted
+// Reaching a signable state needs the harness: since deleted
 // `SummaryProcessor.applyLegacySafetyFloor`, `persistDraft` is the ONLY
 // remaining writer of `PENDING_REVIEW`/`DRAFT_PENDING_SENSORS`. So this block
 // walks the real lifecycle `OPEN → PRIMED → RECORDING → DRAINING` over the
@@ -290,7 +290,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId', () => {
 // =============================================================================
 const HARNESS_SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
-test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () => {
+test.describe('OCC on POST :id/summary/:contextItemId/approve', () => {
   let token: string;
   let consultationId = '';
   let summaryId = '';
@@ -299,7 +299,7 @@ test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () 
   test.beforeAll(async ({ request }) => {
     if (!HARNESS_SERVICE_TOKEN) {
       skipReason = 'HARNESS_SERVICE_TOKEN is not set — cannot drive the consultation to a signable state';
-      console.warn(`[TASK-772] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
 
@@ -323,7 +323,7 @@ test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () 
     const openedBody = (await opened.json()) as { id: string; version: number; tenantId?: string };
     consultationId = openedBody.id;
 
-    // The capture stages are consent-gated (TASK-712 `@RequiresConsent`), so
+    // The capture stages are consent-gated ( `@RequiresConsent`), so
     // record an AI_DOCUMENTATION grant first or `prime` answers
     // `403 DOMAIN.CONSENT_DENIED (no_grant)`. Same shape as `consent-abac.spec.ts`.
     const granted = await request.post('/api/v1/admin/consent-grants', {
@@ -338,19 +338,19 @@ test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () 
     });
     if (primed.status() >= 300) {
       skipReason = `POST :id/prime returned ${primed.status()} — cannot stage a signable consultation. body: ${await primed.text()}`;
-      console.warn(`[TASK-772] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
     const started = await request.post(`/api/v1/consultations/${consultationId}/recording/start`, { headers: bearer(token) });
     if (started.status() >= 300) {
       skipReason = `POST :id/recording/start returned ${started.status()}. body: ${await started.text()}`;
-      console.warn(`[TASK-772] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
     const stopped = await request.post(`/api/v1/consultations/${consultationId}/recording/stop`, { headers: bearer(token) });
     if (stopped.status() >= 300) {
       skipReason = `POST :id/recording/stop returned ${stopped.status()}. body: ${await stopped.text()}`;
-      console.warn(`[TASK-772] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
 
@@ -366,7 +366,7 @@ test.describe('TASK-709 — OCC on POST :id/summary/:contextItemId/approve', () 
     });
     if (draft.status() >= 300) {
       skipReason = `internal harness draft returned ${draft.status()} — consultation not promoted to PENDING_REVIEW. body: ${await draft.text()}`;
-      console.warn(`[TASK-772] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
 

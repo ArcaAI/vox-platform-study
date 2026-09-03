@@ -1,6 +1,6 @@
-"""TASK-717 Task 5 — TEXT stream chunks adopt the async task/event envelope.
+"""TEXT stream chunks adopt the async task/event envelope.
 
-Additive and backward compatible (design doc §3.7): a chunk written with a
+Additive and backward compatible : a chunk written with a
 resolved tenant is enveloped (``AsyncEnvelope`` wrapping the existing
 ``StreamChunk`` as ``payload``); a chunk written without one keeps writing
 the bare ``StreamChunk`` exactly as before. Both shapes read back correctly.

@@ -1,7 +1,7 @@
-"""TASK-852 item 4 — the durable interpreter honours the same per-node ``enabled`` toggle the
+"""item 4 — the durable interpreter honours the same per-node enabled toggle the
 realtime lane already does.
 
-TASK-811's realtime executor has read ``config.enabled`` since it shipped
+realtime executor has read config.enabled since it shipped
 (``realtime-lane.ts``: ``enabled: node.config?.enabled !== false``). ``_dispatch_node`` never
 did. A toggle honoured by one runtime and ignored by the other is worse than no toggle: an
 admin switches a node off, watches the live lane stop running it, and the durable lane keeps
@@ -34,7 +34,7 @@ from harness.temporal.interpreter.workflow import WorkflowInterpreter
 #: Reaching ``activity_mismatch`` proves dispatch got PAST the enabled check — a positive
 #: control that needs no Temporal server and no activity execution.
 _DURABLE_TYPE = "consultation.sensors"
-#: A ``lane: "realtime"`` node type — owned by TASK-811's live executor.
+# A lane: "realtime" node type — owned by live executor.
 _REALTIME_TYPE = "consultation.extractEntities"
 
 
@@ -100,7 +100,7 @@ class TestADisabledNodeIsSkippedObservably:
 
 
 class TestAbsentOrTrueMeansEnabled:
-    """Absent must mean ON. Every graph published before TASK-852 carries no ``enabled`` key,
+    """Absent must mean ON. Every graph published before carries no enabled key,
     and a default of OFF would silently stop every one of them."""
 
     @pytest.mark.asyncio

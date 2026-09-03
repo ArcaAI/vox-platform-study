@@ -1,16 +1,16 @@
-"""STT-palette node activities (TASK-724 Task 3) — DELIBERATE PLACEHOLDERS, not the real
+"""STT-palette node activities — DELIBERATE PLACEHOLDERS, not the real
 execution path.
 
-Read `docs/implementation/TASK-724-Palette-Stt/README.md` §1 before assuming these should do real
+Read before assuming these should do real
 work: **the STT palette's central design decision is that a published STT `WorkflowDefinition`
-compiles into an `AsrPipeline` + `AsrPipelineVersion` row (TASK-724 Task 4) rather than being
+compiles into an `AsrPipeline` + `AsrPipelineVersion` row rather than being
 executed node-by-node by this interpreter.** Realtime sessions bind `pipelineId` directly
 (`stt-ws.gateway.ts` -> Redis Streams -> `apps/stt`); batch dispatches through a single harness
-Temporal activity (TASK-724 Task 5) that calls the EXISTING `TranscriptionJobController`/Dramatiq
+Temporal activity that calls the EXISTING `TranscriptionJobController`/Dramatiq
 path once per job, never per-node. No per-frame audio, no per-token transcript, and no realtime
 session lifecycle ever executes inside a Temporal workflow (rule 06's determinism constraint would
 make a per-frame signal loop both a correctness risk and a latency disaster for 16kHz realtime
-audio — see the ticket README's "Known pitfall").
+audio — see "Known pitfall").
 
 So why do these activities exist at all? The cross-language node-registry parity guard
 (`node-registry.ts` / `registry.py` / `node-registry.snapshot.json`) requires every
@@ -37,10 +37,10 @@ from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityR
 from harness.temporal.interpreter.nodes._shared import STATUS_OK, now, record_and_flush
 
 _NOT_A_REAL_EXECUTION_PATH = (
-    "stt-palette nodes are compiled into an AsrPipeline at publish time (TASK-724 Task 4) and "
+    "stt-palette nodes are compiled into an AsrPipeline at publish time (Task 4) and "
     "bound by pipelineId at session-open/batch-dispatch time — this interpreter activity is a "
     "registry-parity placeholder, not the pipeline's real execution path. See "
-    "docs/implementation/TASK-724-Palette-Stt/README.md §1."
+    " §1."
 )
 
 
@@ -100,6 +100,6 @@ async def interpreter_stt_phi_hop(payload: NodeActivityInput) -> NodeActivityRes
     `compile()` refuses any graph that includes this node type; this callable exists only to
     satisfy `NodeSpec.activity`'s required-callable contract for the registration itself. If ever
     reached anyway (a bug bypassing the registry gate), it degrades exactly like its siblings
-    rather than claiming a redaction that TASK-710 has not shipped.
+    rather than claiming a redaction that has not shipped.
     """
     return await _placeholder_result(payload)

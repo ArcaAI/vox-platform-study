@@ -7,13 +7,13 @@
  * `ResolvedToolPlan` (`live-agent.port.ts`) is a `Record<LiveToolKey, …>`. A
  * second list would let the registry and the plan disagree about what a tool is.
  *
- *   ner          → the NLP token-classification call that extracts entities
- *   vitals       → the vitals block of that SAME NLP response (filtered off
+ *   ner → the NLP token-classification call that extracts entities
+ *   vitals → the vitals block of that SAME NLP response (filtered off
  *                  when disabled — it is not a second HTTP call)
  *   groundedness → the optional guardrail groundedness check
  *
  * Previously declared in `services/departmentAgent/constants.ts`. It moved here
- * with the retirement of `DepartmentAgent` (TASK-815) because it never was an
+ * with the retirement of `DepartmentAgent` because it never was an
  * agent concept: it names what the LIVE LOOP can run. The tool PLAN — which of
  * them are on for a given session — is resolved from workflow node config, but
  * the vocabulary itself is code-owned and not configurable, exactly as before.

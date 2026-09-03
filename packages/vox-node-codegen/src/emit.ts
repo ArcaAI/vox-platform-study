@@ -328,7 +328,7 @@ function emitBarrel(surface: AdminSurface): string {
   return `${BANNER}
 
 /**
- * Barrel for \`@arcaai/vox-node\`'s \`/api/v1/admin/**\` surface (TASK-773).
+ * Barrel for \`@arcaai/vox-node\`'s \`/api/v1/admin/**\` surface .
  *
  * The hand-authored {@link AdminResource} base — the part that holds judgment
  * (pagination, \`If-Match\` plumbing, scope-aware error mapping) — is

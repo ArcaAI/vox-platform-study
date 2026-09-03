@@ -5,7 +5,7 @@
 // changes ZERO runtime behaviour, every default below is transcribed
 // verbatim from the consuming service's own fallback constant):
 //
-//   - `metering.outbox.drain.*` — handoff (ws-b-contract.md §11):
+// `metering.outbox.drain.*` — handoff:
 //     the outbox-drainer schedule, already read via
 //     `IAppSettingsService.getValueWithDefault` in
 //     `usage-outbox.processor.ts#UsageOutboxScheduler.getConfig`.
@@ -45,7 +45,7 @@ import {
 } from '../../metering/reconciliation/shadow-metering.constants';
 
 export const METERING_SETTINGS: SettingDescriptor[] = [
-  // ── Outbox drain schedule (ws-b-contract.md §11) ───────────────────────────
+  // ── Outbox drain schedule ─────────────────────────────────────────────
   {
     key: DRAIN_ENABLED_KEY,
     tier: 'global-kv',
@@ -63,7 +63,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     // invariant the registry enforces at assembly).
     label: 'Usage-outbox drain enabled',
     description:
-      'Master switch for the TASK-615 usage-outbox BullMQ drainer (rates + appends AiUsageEvent rows, maintains the hourly/daily rollups). Defaults ON — an undrained outbox means no usage lands on the ledger at all.',
+      'Master switch for the usage-outbox BullMQ drainer (rates + appends AiUsageEvent rows, maintains the hourly/daily rollups). Defaults ON — an undrained outbox means no usage lands on the ledger at all.',
     default: DRAIN_DEFAULTS.enabled,
   },
   {
@@ -110,7 +110,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Metering reconcile seed default',
     description:
-      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
+      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY: reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
     default: false,
   },
 
@@ -128,7 +128,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     killSwitch: true,
     label: 'Shadow-metering drift report enabled',
     description:
-      'Enables the scheduled job that compares ledger totals (AiUsageRollupDaily) against SummaryMeta token sums and the persisted TenantUsageMeter snapshot, alerting (via metering.shadow-drift-detected) when any comparison drifts beyond 2% (research-findings.md §6). Read-only — never blocks, corrects, or enforces anything. Defaults OFF, same shape as metering.reconcile.enabled.',
+      'Enables the scheduled job that compares ledger totals (AiUsageRollupDaily) against SummaryMeta token sums and the persisted TenantUsageMeter snapshot, alerting (via metering.shadow-drift-detected) when any comparison drifts beyond 2%. Read-only — never blocks, corrects, or enforces anything. Defaults OFF, same shape as metering.reconcile.enabled.',
     default: SHADOW_METERING_DEFAULTS.enabled,
   },
   {
@@ -146,7 +146,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     default: SHADOW_METERING_DEFAULTS.cron,
   },
 
-  // ── DISPATCHED-outbox pruning (ws-b-contract.md §11) ──
+  // ── DISPATCHED-outbox pruning ──────────────────────────────────────────
   {
     key: PRUNE_ENABLED_KEY,
     tier: 'global-kv',

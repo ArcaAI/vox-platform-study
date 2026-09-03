@@ -161,7 +161,7 @@ function buildController(
     summaryService as any,
     chainSummaryService as any,
     jobService as any,
-    {} as any, // noteGenerationService — TASK-732
+    {} as any, // noteGenerationService
     timelineService as any,
     cls as any,
     policyEngine as any,
@@ -695,11 +695,11 @@ describe('ConsultationController', () => {
 
   // ═══════════════════════════════════════════════════════════════════════
   // getLatestSummary / getLatestPreSummary — no-summary-yet is 404, not an
-  // empty 200 (TASK-780 F-6). Matches the house pattern used by every other
+  // empty 200. Matches the house pattern used by every other
   // "optional latest resource" endpoint: getDnaReport, getJob, getLiveSession.
   // ═══════════════════════════════════════════════════════════════════════
 
-  describe('getLatestSummary / getLatestPreSummary — no summary yet is 404 (TASK-780 F-6)', () => {
+  describe('getLatestSummary / getLatestPreSummary — no summary yet is 404 (F-6)', () => {
     it('getLatestSummary throws NotFoundException when the service resolves null', async () => {
       const { controller, consultationService, summaryService } = buildController();
       const consultation = makeConsultation({ doctorId: DOCTOR_A });
@@ -880,7 +880,7 @@ describe('ConsultationController', () => {
       expect(result).toEqual(primed);
     });
 
-    // TASK-711 (README §4 Task 9 step 3) — `@RequiresIfMatch()`/`@ExpectedVersion()`
+    // ( Task 9 step 3) — `@RequiresIfMatch()`/`@ExpectedVersion()`
     // must actually fire on `@ApiEndpoint()`-declared routes, not silently no-op.
     // Verified by reading the SAME Reflector metadata `RequiresIfMatchGuard` reads
     // (REQUIRES_IF_MATCH_KEY = 'requiresIfMatch') directly off the decorated method

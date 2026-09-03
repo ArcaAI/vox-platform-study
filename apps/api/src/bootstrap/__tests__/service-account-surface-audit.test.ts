@@ -1,10 +1,10 @@
 /**
- * TASK-762 §5.7 — the boot audits for the third credential class.
+ * the boot audits for the third credential class.
  *
  * Each assertion is proved twice: it THROWS on a synthetic violating module,
  * and it PASSES on the real controllers. A boot audit that has never been seen
  * to fail proves nothing — and assertion B in particular passes VACUOUSLY today
- * (§2.1: no admin controller uses a service-token guard), so the synthetic
+ * (no admin controller uses a service-token guard), so the synthetic
  * violation is the only evidence that it would catch one.
  */
 import { afterEach, beforeEach, describe, it, expect } from 'vitest';
@@ -83,7 +83,7 @@ describe('B — no admin controller may use a peer-service token guard', () => {
       list() {}
     }
 
-    expect(() => auditNoAdminControllerUsesServiceTokenGuard(fakeApp([OffendingAdminController]))).toThrow(/TASK-708 §6 owner ruling forbids mixing/);
+    expect(() => auditNoAdminControllerUsesServiceTokenGuard(fakeApp([OffendingAdminController]))).toThrow(/owner ruling forbids mixing/);
   });
 
   it('THROWS when the guard is applied at the METHOD level rather than the class', () => {
@@ -94,7 +94,7 @@ describe('B — no admin controller may use a peer-service token guard', () => {
       list() {}
     }
 
-    expect(() => auditNoAdminControllerUsesServiceTokenGuard(fakeApp([MethodOffender]))).toThrow(/TASK-762/);
+    expect(() => auditNoAdminControllerUsesServiceTokenGuard(fakeApp([MethodOffender]))).toThrow(/refused to start/);
   });
 
   it('passes for an admin controller with no service-token guard (the real posture)', () => {
@@ -143,7 +143,7 @@ describe('D — svc:* scope coverage', () => {
     expect(() => auditSvcScopeCoverage()).not.toThrow();
   });
 
-  // TASK-767 widened D from "admin coverage" to three checks; TASK-773 (O-1)
+  // widened D from "admin coverage" to three checks; (O-1)
   // added the pre-convention family as a SECOND non-admin source list, each
   // reconciled against its own constant so an undeclared scope names the family
   // it should have joined. The registry derives everything, so none of these can
@@ -305,7 +305,7 @@ describe('G — svc:* route declarations are self-consistent', () => {
   });
 });
 
-// ─── G, strengthened (TASK-773 units A3 + A5) ───────────────────────────────
+// ─── G, strengthened ───────────────────────────────
 
 describe('G (A3) — every admin-plane route declares its machine posture', () => {
   it('THROWS on an admin route that declares NEITHER a svc:* scope nor @ForbidServiceAccount()', () => {
@@ -357,7 +357,7 @@ describe('G (A3) — every admin-plane route declares its machine posture', () =
     // The business plane keeps relying on implicit deny-by-default: the runtime
     // already refuses every machine token there, so demanding an explicit
     // @ForbidServiceAccount() on hundreds of routes would buy no security. The
-    // admin plane is different only because TASK-773 deliberately changed its
+    // admin plane is different only because deliberately changed its
     // default, which makes silence there ambiguous rather than safe.
     @Controller('consultations')
     class BusinessPlane {
@@ -448,7 +448,7 @@ describe('G (A5) — every scope a route declares resolves to at least one CASL 
   });
 });
 
-// ─── H (TASK-773) ───────────────────────────────────────────────────────────
+// ─── H ───────────────────────────────────────────────────────────
 
 /**
  * The synthetic module set for H is built FROM the fixture rather than from a

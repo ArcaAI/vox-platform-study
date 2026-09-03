@@ -2,11 +2,11 @@
  * v1 department- and visit-type-specific prompt template engine.
  *
  * Faithful port of the v1 TEXT selectors:
- *   - visit-type normalization        → `prompt_selector.py:_normalize_visit_type`
+ *   - visit-type normalization → `prompt_selector.py:_normalize_visit_type`
  *                                        (47-66) / `prompts_json.py:_normalize_visit_type` (249-261)
- *   - department synonym resolution    → `prompts_json.py:get_department_schema` (264-289)
+ *   - department synonym resolution → `prompts_json.py:get_department_schema` (264-289)
  *                                        + `prompt_selector.py:select_prompt_template` (78-154)
- *   - the 7-department × 2-visit map   → `prompts_json.py:DEPT_VISIT_SCHEMAS` (31-223)
+ *   - the 7-department × 2-visit map → `prompts_json.py:DEPT_VISIT_SCHEMAS` (31-223)
  *
  * v1 constrains the LLM with the department-specific field set, then normalizes
  * the dept-specific keys BACK to the generic Simplified/Enhanced response
@@ -19,7 +19,7 @@
  *
  * **Re-verified against the LIVE v1 pod 2026-08-07** (Rancher
  * `c-9lwv8`/`apps`/`apps-text-84c9774997-zhp2l` — never a local checkout, which
- * has diverged — see `docs/implementation/TASK-634-.../README.md`).
+ * has diverged — see).
  * `resolveDepartmentKey` below is the UNION of v1's two alias tables, which
  * are themselves NOT identical to each other in production:
  *   - `rheum`/`neuro`/`heme` and the bare `breast&endocrine` (no spaces)

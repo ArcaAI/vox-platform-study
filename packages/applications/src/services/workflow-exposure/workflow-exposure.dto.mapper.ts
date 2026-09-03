@@ -23,9 +23,11 @@ export class WorkflowExposureDtoMapper {
     };
   }
 
-  /** `resultRef` comes from the durable run READ MODEL, never from `upstream`: Temporal state
+  /**
+   * `resultRef` comes from the durable run READ MODEL, never from `upstream`: Temporal state
    *  carries per-node status only, which is precisely why the delivered output needed a column
-   *  (TASK-790, finding M-2). */
+   * .
+   */
   static toStatusResponse(
     slug: string,
     workflowVersionNumber: number,

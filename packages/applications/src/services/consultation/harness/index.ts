@@ -9,6 +9,6 @@ export * from './harness-progress.service.module';
 // Live assurance (per-claim verdict) feed.
 export * from './harness-assurance.service';
 export * from './harness-assurance.service.module';
-// TASK-795 RC-2 — live clinician-assist feed (suggestions + correction proposals).
+// live clinician-assist feed (suggestions + correction proposals).
 export * from './harness-live-assist.service';
 export * from './harness-live-assist.service.module';

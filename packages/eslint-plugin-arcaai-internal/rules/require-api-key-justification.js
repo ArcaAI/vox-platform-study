@@ -1,5 +1,5 @@
 /**
- * require-api-key-justification  (TASK-761, gate G3 — the justification half)
+ * require-api-key-justification (gate G3 — the justification half)
  *
  * A `@ForbidApiKey()` on a BUSINESS-plane controller must carry an
  * `// API-KEY-NOTE` saying why, in prose, at the decorator.
@@ -10,10 +10,9 @@
  * `apps/api/src/bootstrap/`:
  *
  *   - PRESENCE — every API-key-reachable route declares `@RequiredScopes(...)`
- *     or `@ForbidApiKey()` (`api-key-surface-audit.ts`, TASK-742).
+ * or `@ForbidApiKey()` (`api-key-surface-audit.ts`).
  *   - VALUE — a business-plane `@ForbidApiKey()` must be named in
  *     `BUSINESS_PLANE_KEY_FORBIDDEN` (`business-plane-apikey-exemptions-audit.ts`,
- *     TASK-758).
  *
  * Both read resolved Nest metadata through a `Reflector`, which is the right
  * mechanism for a fact about the application graph. A REASON is not such a
@@ -42,19 +41,19 @@
  *
  * Only the business plane, because only there is the decorator a JUDGEMENT:
  *
- *   - `admin/*` is JWT-only by blanket policy A2 (TASK-757) and every one of
+ * `admin/*` is JWT-only by blanket policy A2 and every one of
  *     the ~70 admin controllers carries `@ForbidApiKey()` for the same
  *     structural reason. Demanding 70 copies of one sentence would be noise
  *     that teaches people to paste rather than think, and A2 is already
  *     enforced by `auditAdminControllersDeclareNoApiKeyScopes`.
  *   - `internal/*` is off the API-key surface entirely
- *     (`auditInternalRoutesOffApiKeySurface`, TASK-708).
+ * (`auditInternalRoutesOffApiKeySurface`).
  *
  * A controller whose `@Controller(...)` argument is not a string literal FAILS
  * CLOSED (the note is required): the plane cannot be proven from source, and an
  * unprovable plane is not the same as an exempt one.
  *
- * A class carrying `@ForbidApiKey()` with NO `@Controller` at all is skipped —
+ * A class carrying `@ForbidApiKey()` with NO `@Controller()` at all is skipped —
  * it is not a mounted route surface, and the boot audits cover everything that
  * is actually registered.
  *
@@ -118,7 +117,7 @@ function classPlane(classNode) {
 /**
  * Every comment in the decorator region of `node` — the comments before the
  * node itself (its leading block) and before each of its decorators. Placing
- * the note above `@Controller` rather than above `@ForbidApiKey()` is a
+ * the note above `@Controller()` rather than above `@ForbidApiKey()` is a
  * formatting choice, not a different declaration, so both count.
  */
 function decoratorRegionComments(node, sourceCode) {
@@ -165,13 +164,13 @@ module.exports = {
     type: 'problem',
     docs: {
       description:
-        'Require an `// API-KEY-NOTE` with a written reason on every business-plane `@ForbidApiKey()` (TASK-761 gate G3). The boot audits pin that the exemption is NAMED; only source text can carry WHY.',
+        'Require an `// API-KEY-NOTE` with a written reason on every business-plane `@ForbidApiKey` (gate G3). The boot audits pin that the exemption is NAMED; only source text can carry WHY.',
       recommended: true,
     },
     schema: [],
     messages: {
       missingApiKeyNote:
-        "This business-plane route forbids API keys with no recorded reason. Policy A1 (TASK-758) says a non-admin route is JWT + API key, so `@ForbidApiKey()` here is a REASONED EXEMPTION: add an `// API-KEY-NOTE — <why>` at the decorator saying what a long-lived static credential must never reach (biometrics, a personal model, the credential-issuing plane, ...). `// AUTH-NOTE` does NOT satisfy this — it is the rule-05 marker for a permission decorator that understates the real gate, which is a different question. If the surface should simply accept keys, declare `@RequiredScopes('<scope>')` instead; that is one line and needs no note.",
+        "This business-plane route forbids API keys with no recorded reason. Policy A1  says a non-admin route is JWT + API key, so `@ForbidApiKey()` here is a REASONED EXEMPTION: add an `// API-KEY-NOTE — <why>` at the decorator saying what a long-lived static credential must never reach (biometrics, a personal model, the credential-issuing plane, ...). `// AUTH-NOTE` does NOT satisfy this — it is the rule-05 marker for a permission decorator that understates the real gate, which is a different question. If the surface should simply accept keys, declare `@RequiredScopes('<scope>')` instead; that is one line and needs no note.",
       emptyApiKeyNote:
         "The `// API-KEY-NOTE` here carries no reason — a bare marker is a rubber stamp, not a justification. Write what a long-lived static credential must never reach on this surface, and why JWT-only is the answer.",
     },

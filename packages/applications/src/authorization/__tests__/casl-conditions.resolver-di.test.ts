@@ -1,9 +1,9 @@
 /**
- * TASK-712 Phase 5 Task 15b — SubjectInstanceResolver dependency access.
+ * b — SubjectInstanceResolver dependency access.
  *
  * Task 14 gave `@ResolveSubjectInstance(...)` the raw request and nothing
  * else, so a resolver could build an instance from `params`/`body` but could
- * not LOAD A ROW. Every identity-shaped hazard in `casl-blast-radius.md` §4
+ * not LOAD A ROW. Every identity-shaped hazard in `casl-blast-radius.md`
  * (`userId`, `doctorId`, `targetUserId`, `createdBy`, `isSystemRole`) needs
  * the row, so shadow mode could not be wired to a single real route and
  * `casl_shadow_divergence_total` could never move.

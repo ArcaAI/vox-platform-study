@@ -1,5 +1,5 @@
 /**
- * TASK-761 gate G4 — every WebSocket gateway is triaged for OWNER binding.
+ * gate G4 — every WebSocket gateway is triaged for OWNER binding.
  *
  * Read the audit's own docstring for what this can and cannot prove. In short:
  * it pins the DECLARATION (a gateway class is classified, and names the spec
@@ -48,7 +48,7 @@ function buildFakeApp(providers: Array<new (...args: never[]) => unknown>): Para
 
 const REPO_ROOT = resolve(__dirname, '../../../../..');
 
-describe('WebSocket gateway owner-binding audit (TASK-761 G4)', () => {
+describe('WebSocket gateway owner-binding audit (G4)', () => {
   it('passes against the three REAL gateways in the tree', () => {
     const app = buildFakeApp([SttWsGateway, TtsWsGateway, SttCompatGateway]);
     expect(() => auditWebSocketGatewayOwnerBinding(app)).not.toThrow();
@@ -86,15 +86,15 @@ describe('WebSocket gateway owner-binding audit (TASK-761 G4)', () => {
 
   /**
    * The classification VALUES, pinned individually — this is where the review's
-   * §3.4 findings are recorded in code rather than in prose that drifts.
+   * findings are recorded in code rather than in prose that drifts.
    *
-   *   - `SttWsGateway`  — `enforced`: it owns a server-side session, so a
-   *     second user resuming it is a hijack (TASK-754, commit `e3f3713fb`).
-   *   - `TtsWsGateway`  — `no-owned-session`: there is no server-side resource
+   *   - `SttWsGateway` — `enforced`: it owns a server-side session, so a
+   * second user resuming it is a hijack (commit `e3f3713fb`).
+   *   - `TtsWsGateway` — `no-owned-session`: there is no server-side resource
    *     to take over; the single-use `tts_session:<id>` ticket IS the whole
-   *     authorisation, plus the TASK-755 CSWSH origin gate.
+   * authorisation, plus the CSWSH origin gate.
    *   - `SttCompatGateway` — `compat-exempt` per review A3.
-   */
+ */
   it('pins each gateway classification', () => {
     expect(WS_OWNER_BOUND_GATEWAYS.SttWsGateway.ownerCheck).toBe('enforced');
     expect(WS_OWNER_BOUND_GATEWAYS.TtsWsGateway.ownerCheck).toBe('no-owned-session');

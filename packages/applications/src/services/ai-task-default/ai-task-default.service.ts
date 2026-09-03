@@ -35,7 +35,7 @@ import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultRespon
 /**
  * "Default model for task X" service.
  *
- * ## ⚠ RETIRED BY TASK-844 (owner decision OD-3, 2026-09-01)
+ * ## ⚠ RETIRED BY (owner decision OD-3, 2026-09-01)
  *
  * `AiRoutingPolicy` is now the source of truth for "which provider + model
  * serves task X for tenant Y". This service survives one release as the READ
@@ -56,7 +56,7 @@ import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultRespon
  * boundary on a key the caller can already read, not a cross-tenant existence
  * probe.
  *
- * `text.*` and, as of TASK-735 Phase 0 (owner decision 2026-08-16),
+ * `text.*` and, as of (owner decision 2026-08-16),
  * `guardrail.*` are tenant-admin configurable: those keys honour per-tenant
  * override rows at read time and accept tenant writes. `guardrail.*` carries
  * an ADDITIONAL platform floor on top of that (D2, tighten-only): a write
@@ -65,7 +65,7 @@ import { AiTaskDefaultResponse, AiTaskModelSummary, EffectiveAiTaskDefaultRespon
  * A `featureGuardrailModelSelection` entitlement ceiling is catalogued
  * (`settings-registry/descriptors/entitlements.descriptors.ts`) but NOT yet
  * enforced here — it needs a `PlanEntitlement`/`TenantEntitlement` DB column
- * outside this ticket's file scope (see the TASK-735 ticket README §7).
+ * outside file scope
  */
 @Injectable()
 export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultService {
@@ -75,7 +75,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     // r2605 Finding A — the UNSCOPED base client backs the cross-tenant lane
     // (mirrors `HarnessPolicyService`'s injection of the same token).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // TASK-844 write-through. Both REQUIRED, not optional: degrading silently
+    // write-through. Both REQUIRED, not optional: degrading silently
     // to a single-table write is exactly the drift this transition exists to
     // make impossible.
     private readonly aiRoutingPolicyRepository: AiRoutingPolicyRepository,
@@ -117,7 +117,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   }
 
   /**
-   * TASK-816 (DD-10) — the public projection of {@link resolveEnabledModelBySlug}.
+   *  — the public projection of {@link resolveEnabledModelBySlug}.
    *
    * A workflow node's `llmBinding.modelSlug` is the same KIND of reference an
    * `AiTaskDefault` row's `modelSlug` is, so it resolves through the same
@@ -145,7 +145,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     this.assertKnownTaskKey(taskKey);
 
     // GOVERNANCE: nlp / harness model routing is exclusively super-admin-managed
-    // (text.* and, since TASK-735, guardrail.* are tenant-configurable — see the
+    // (text.* and, since, guardrail.* are tenant-configurable — see the
     // class doc comment). A privilege rule — 403, not 404 (the caller can
     // already READ these keys; only writes are gated).
     if (SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
@@ -155,7 +155,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
 
-    // TASK-735 Phase 0 (D2, tighten-only) — guardrail platform floor: a
+    // (D2, tighten-only) — guardrail platform floor: a
     // binding for a non-SYSTEM tenant must name a slug on the platform-
     // approved list (a SYSTEM-tenant AiModel row), regardless of whether the
     // caller also holds a tenant-owned model of the same slug. Writing the
@@ -197,7 +197,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
         configJson: dto.configJson ?? null,
         createdBy: this.requestUserId ?? undefined,
       });
-      // TASK-844 write-through: the retired projection and the authoritative
+      // write-through: the retired projection and the authoritative
       // `AiRoutingPolicy` row commit TOGETHER, so they cannot diverge.
       const saved = await this.unitOfWork.runInTransaction(async (trx) => {
         const row = await this.aiTaskDefaultRepository.create(entity, trx);
@@ -242,7 +242,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
       return AiTaskDefaultDtoMapper.toResponse(existing);
     }
     const previousVersion = existing.version;
-    // TASK-844 write-through — same transaction as the create path above.
+    // write-through — same transaction as the create path above.
     const updated = await this.unitOfWork.runInTransaction(async (trx) => {
       const row = await this.aiTaskDefaultRepository.updateWithVersion(existing.id, existing, dto.expectedVersion, trx);
       await this.mirrorToRoutingPolicy(scopedTenantId, taskKey, model, dto.configJson ?? null, trx);
@@ -258,7 +258,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   // ────────────────────────────── internals ──────────────────────────────
 
   /**
-   * TASK-844 write-through — project this `AiTaskDefault` row onto its
+   * write-through — project this `AiTaskDefault` row onto its
    * authoritative `AiRoutingPolicy` counterpart.
    *
    * An `AiTaskDefault` row IS an elected default by definition (that is the
@@ -353,7 +353,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   }
 
   /**
-   * TASK-735 Phase 0 (D2) — the guardrail platform floor. Throws
+   * (D2) — the guardrail platform floor. Throws
    * `ForbiddenException` unless `slug` resolves to an ENABLED, SYSTEM-tenant
    * `AiModel` row. Deliberately independent of `resolveEnabledModelBySlug`:
    * that method also accepts a TENANT-owned row for the same slug, which

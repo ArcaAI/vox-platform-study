@@ -6,8 +6,8 @@
  * `safePublish`, so ungrounded segments carry their mark before the clinician
  * reads them. Fail posture (pairs with the input gate, adapted to a
  * best-effort streaming surface):
- *   - gate disabled (default)      → payload unchanged, guardrail never called
- *   - transient blip               → absorbed by a bounded retry (verified after a clean re-check)
+ *   - gate disabled (default) → payload unchanged, guardrail never called
+ *   - transient blip → absorbed by a bounded retry (verified after a clean re-check)
  *   - sustained outage / malformed → segments marked `unverified`, feed STILL publishes
  *   - NO error path may ever yield `grounded`
  */
@@ -233,7 +233,7 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     // Owner decision D-D: the CANONICAL credential is looked up FIRST; the legacy
     // per-service `GUARDRAIL_SERVICE_TOKEN` is only the migration fallback.
     expect(secretsService.getSecretOptional).toHaveBeenCalledWith('INTERNAL_ACCESS_TOKEN');
-    // TASK-737: `X-Tenant-Id` is mandatory on this hop — guardrail resolves the
+    // `X-Tenant-Id` is mandatory on this hop — guardrail resolves the
     // tenant's own safety configuration from it.
     expect(config.headers['X-Tenant-Id']).toBe(TENANT);
   });

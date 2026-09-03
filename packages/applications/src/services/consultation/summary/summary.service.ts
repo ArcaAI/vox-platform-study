@@ -247,7 +247,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // compile; unwired ⇒ no override is ever applied and the tenant
     // `text.finalize` AiTaskDefault decides exactly as before.
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
-    // TASK-704 seam. `generatePreSummary` calls `noteGenerationService.generate`
+    // seam. `generatePreSummary` calls `noteGenerationService.generate`
     // (PRE_SUMMARY has no harness equivalent — always a side-effect-free
     // 'legacy' decision, logged for observability). `generateSummary` is
     // DIFFERENT and deliberately does NOT call `generate()` here: for
@@ -263,7 +263,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // instead, purely to log the resolved harnessEnabled for observability.
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
-    // TASK-710 hop 1 — PHI redaction before the synchronous NER call.
+    // hop 1 — PHI redaction before the synchronous NER call.
     //
     // DELIBERATELY NOT `@Optional()` (owner directive D-A, 2026-08-17: no
     // production data yet, so ship day-1-complete rather than
@@ -276,11 +276,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // redactor: `extractEntities` throws when it is absent (see below), so
     // there is no code path on which unredacted content reaches NLP.
     //
-    // This closes the hole TASK-732 re-opened: hop 1 was originally wired into
-    // `jobs/processors/ner.processor.ts`, which TASK-732 deleted, leaving this
-    // synchronous path posting `contextItem.content` raw (finding A-02).
+    // This closes the hole re-opened: hop 1 was originally wired into
+    // `jobs/processors/ner.processor.ts`, which deleted, leaving this
+    // synchronous path posting `contextItem.content` raw.
     @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
-    // TASK-792 W1 — the gate-edit learning loop's enqueue seam.
+    // the gate-edit learning loop's enqueue seam.
     //
     // `@Optional()` and TRAILING, deliberately, for the reason the port itself
     // documents: this is the clinician SIGN-OFF path. A deployment with no
@@ -289,13 +289,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // ticket. Trailing also keeps every existing positional
     // `new SummaryService(...)` fixture compiling untouched.
     @Optional() @Inject(IGateEditMiningQueue) private readonly gateEditMiningQueue?: IGateEditMiningQueue,
-    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // the SHARED TEXT enrichment path. Since lane B
     // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
     // body with no `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // TASK-810 carry-over A — the section vocabulary for the edit-capture
+    // carry-over A — the section vocabulary for the edit-capture
     // diff. `content-diff.util.ts` no longer owns a hardcoded four-key SOAP
     // tuple, so the tenant's PINNED document shape has to arrive from
     // somewhere; this is that seam. Optional + trailing so the 17 existing
@@ -304,8 +304,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     // documented whole-document fallback, which is exactly today's behaviour
     // for an unparseable note.
     @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplateService?: IDocumentTemplateServicePort,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -326,7 +326,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-704 — route a trigger with NO harness equivalent through the seam
+   * route a trigger with NO harness equivalent through the seam
    * purely to make the harnessEnabled read happen in one place and get the
    * decision logged. Safe to call unconditionally: `generate()` never has a
    * side effect for a trigger outside `HARNESS_SUPPORTED_TRIGGERS`, and this
@@ -358,7 +358,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-704 — no harness equivalent for pre-summary; logs the decision
+    // no harness equivalent for pre-summary; logs the decision
     // through the single seam without affecting generation below.
     await this.logGenerationDecision(GenerationTrigger.PRE_SUMMARY, consultationId, tenantId, userId ?? undefined);
 
@@ -502,7 +502,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   /**
    * Generate final consultation summary
    *
-   * TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+   * boundary (owner decision,: KEPT,
    * permanently legacy (see the decision block below) — the "summary" half
    * of the v1-compat surface named explicitly by the owner. Unlike
    * `PreSummaryProcessor`/`ComprehensiveSummaryProcessor`, this generator is
@@ -521,7 +521,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-704 — DECIDED (see ticket README §6/§7): this sync route does NOT
+    // DECIDED: this sync route does NOT
     // call `noteGenerationService.generate` and does not start a harness
     // workflow, permanently, not just pending sign-off.
     //
@@ -551,7 +551,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     //      pattern that exists nowhere else in this codebase.
     //   Entry point #4 (`POST :id/summary/async`, now
     //   `ConsultationController.generateSummaryAsync` calling the seam
-    //   directly — TASK-732 deleted the `SummaryProcessor` that used to make
+    // directly — deleted the `SummaryProcessor` that used to make
     //   this decision) is already the fully-wired, harness-routing entry
     //   point for this exact trigger (`SUMMARY_REGENERATE`) — its
     //   async/job-polling contract is what harness-enabled tenants should
@@ -578,7 +578,7 @@ export class SummaryService extends BaseService implements ISummaryService {
         const config = await this.noteGenerationService.resolveConfig(consultationId);
         this.logger.log({
           message:
-            'sync generateSummary: harnessEnabled resolved (logging-only, decided — this route never routes to harness; see TASK-704 README §6/§7)',
+            'sync generateSummary: harnessEnabled resolved (logging-only, decided — this route never routes to harness; see )',
           consultationId,
           harnessEnabled: config.harnessEnabled ?? false,
         });
@@ -646,7 +646,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation.departmentId, consultation.doctorId, request.dnaStyleId);
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
-      // Tenant-configured visit type (TASK-815 §11 row 3); `parentConsultationId`
+      // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript: content,
@@ -668,10 +668,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     const textResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
-      // TASK-815: there is no per-agent finalize model override any more. It
+      // there is no per-agent finalize model override any more. It
       // was `DepartmentAgent.llmOverrides.finalize`, resolved fail-CLOSED so a
       // named-but-unusable model raised rather than silently finalizing on the
-      // tenant default. Its successor is a per-node `llmBinding` (TASK-816),
+      // tenant default. Its successor is a per-node `llmBinding`,
       // which has not landed — so finalize resolves the tenant `text.finalize`
       // `AiTaskDefault` (tenant → SYSTEM), which is what every consultation
       // whose agent named no override already used. Nothing is being failed
@@ -886,7 +886,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * The tenant's PINNED document shape, for keying the edit-capture
-   * `fieldChanges` map (TASK-810 carry-over A). Null when no catalog is wired
+   * `fieldChanges` map ( carry-over A). Null when no catalog is wired
    * or resolution fails.
    *
    * `resolveForGeneration` is itself fail-open (it falls back to the compiled
@@ -979,7 +979,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // context.service.ts `encryptContent`).
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
-    // TASK-709: Compare-And-Set against `_version` — the CAS predicate is
+    // Compare-And-Set against `_version` — the CAS predicate is
     // the `@RequiresIfMatch()`-gated `expectedVersion` folded onto the DTO by
     // the controller. Drift throws `OptimisticConcurrencyException` -> 412.
     //
@@ -1048,15 +1048,15 @@ export class SummaryService extends BaseService implements ISummaryService {
    *      (`HarnessAuditService`) — fail-closed: if the audit append throws, the
    *      whole approval is rejected and the consultation is NOT signed.
    *   3. Flips `Consultation.status` → `SIGNED` via `ConsultationEntity.transitionTo`
-   *      (TASK-711) — a legality ASSERTION around the pre-existing write, never a
+   * a legality ASSERTION around the pre-existing write, never a
    *      widening of it; an illegal predecessor throws (mapped to 409).
    *
    * RELAXED sign-off governance (clinician autonomy + full
-   * audit, doc 08 §7.1):
+   * audit, doc 08):
    *   Q2a — signing BEFORE assurance lands is allowed with no acknowledgement;
    *         a `SIGNED_BEFORE_ASSURANCE` WORM annotation is appended so the
    *         late-verdict path (`finalizeAssurance` Q2b) can correlate.
-   *   Q4  — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
+   *   Q4 — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
    *         explicit one-click `overrideSafetyFlag`, recorded (no free-text) as a
    *         `SAFETY_OVERRIDE` WORM event. A REGEN/groundedness flag stays signable.
    */
@@ -1095,7 +1095,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     //         NULL, i.e. an optimistically-delivered DRAFT_PENDING_SENSORS draft)
     //         is ALLOWED with no acknowledgement; we annotate the WORM trail with
     //         SIGNED_BEFORE_ASSURANCE so the late-verdict path can correlate.
-    //   Q4  — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
+    //   Q4 — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
     //         explicit one-click override, recorded as a SAFETY_OVERRIDE WORM
     //         event. A REGEN/groundedness flag stays signable — those are review
     //         prompts, not safety stops.
@@ -1222,7 +1222,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // ContextItem write lanes in this service).
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
-    // TASK-709: 3. Flip the consultation lifecycle → SIGNED, and persist BOTH
+    // 3. Flip the consultation lifecycle → SIGNED, and persist BOTH
     // the Consultation and the ContextItem rows as Compare-And-Sets. The
     // `contextItem` CAS predicate is the caller-supplied `expectedVersion`
     // (the `@RequiresIfMatch()`-gated header the client echoed back); the
@@ -1241,7 +1241,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const expectedVersion = options?.expectedVersion as number;
     if (consultation) {
       const consultationExpectedVersion = consultation.version;
-      // TASK-711 — the sign legality ASSERTION, added around this write
+      // the sign legality ASSERTION, added around this write
       // WITHOUT touching the write site's business gates above (the
       // authenticated-user check, tenant assertion, idempotency read, safety
       // FLAG hard block, fail-closed-ordered ATTEST WORM append are all
@@ -1249,7 +1249,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // the three states `approveSummary` can be reached from:
       // DRAFT_PENDING_SENSORS (Q2a optimistic delivery), PENDING_REVIEW
       // (the legacy path), and TIMED_OUT ("the clock never signs, a human
-      // still can" — state-machine.md §2). Any other predecessor is a
+      // still can" — Any other predecessor is a
       // genuine ordering bug and `transitionTo` throws — mapped to 409 here
       // rather than the domain `BusinessException`'s default 500, mirroring
       // `ConsultationService.applyTransition`.
@@ -1300,7 +1300,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       });
     }
 
-    // 5. TASK-792 W1 — hand the sign-off to the gate-edit learning loop.
+    // 5. — hand the sign-off to the gate-edit learning loop.
     //
     //    This is the ONLY live writer of `GateEditExemplar`: the miner compares
     //    the immutable `ai_draft_v1` snapshot against the note the clinician
@@ -1491,17 +1491,17 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Context item has no content for entity extraction');
     }
 
-    // TASK-710 hop 1 — pseudonymize BEFORE the text leaves this process.
+    // hop 1 — pseudonymize BEFORE the text leaves this process.
     // `pseudonymize` (not `full`): NER exists to extract the clinical entities,
     // and GLiNER's PII taxonomy never covers medication/condition spans, so
     // they survive verbatim while identifiers become stable `[PERSON_1]`-style
     // tokens (see `IPhiRedactor`'s mode doc).
     //
     // Fail-closed on BOTH failure shapes, with no silent fallback to raw text:
-    //  - redactor unwired  → throw here (the dependency is non-`@Optional()`,
+    //  - redactor unwired → throw here (the dependency is non-`@Optional()`,
     //                        so in production this is unreachable — it is the
     //                        belt to the DI braces, not the primary guard);
-    //  - redactor throws   → propagate, aborting before `callNlpService`.
+    //  - redactor throws → propagate, aborting before `callNlpService`.
     if (!this.phiRedactor) {
       throw new BusinessException('PHI redactor is not available; refusing to send unredacted content to the NLP service');
     }
@@ -1540,7 +1540,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // on a freshly generated requestId for THIS synchronous call (this path
     // has no natural durable job id the way an async BullMQ job would),
     // never on consultationId (attribution only — shares `buildNerUsageEvent`
-    // with what was, before TASK-732 deleted it, the legacy async NER
+    // with what was, before deleted it, the legacy async NER
     // generator's own usage event, so the shape couldn't drift; that shared
     // helper now has only this one caller). No business
     // transaction to join — entity persistence above isn't wrapped in one —
@@ -1647,7 +1647,7 @@ export class SummaryService extends BaseService implements ISummaryService {
           }
         }
       }
-      // TASK-768: this used to be
+      // this used to be
       // `BadRequestException(\`Failed to call TEXT service: ${primaryError}\`)`,
       // which answered 400 for an ABSENT dependency and handed the caller
       // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the CAUSE instead: the
@@ -1688,21 +1688,21 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async executeTextGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
-    // TASK-808 (OD-9 exemption: credential injection ONLY) — this is the
+    // (OD-9 exemption: credential injection ONLY) — this is the
     // FINALIZE path, whose output is the note a clinician signs, and it reached
     // TEXT with no `provider_overrides` entry at all, so every finalize 503'd
-    // with PROVIDER_CREDENTIALS_MISSING once TASK-799 lane B (`70eec34d5`)
+    // with PROVIDER_CREDENTIALS_MISSING once lane B (`70eec34d5`)
     // removed TEXT's per-provider env plane. Injected through the ONE shared
     // implementation so the tenant → SYSTEM cascade and the `funding` label
     // that derives metering both apply. Awaited BEFORE the repair loop below so
     // the original and the corrective retry post byte-identical credentials.
-    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY on this hop — this
+    // migration fallback).: `X-Tenant-Id` is MANDATORY on this hop — this
     // is the FINALIZE path, whose output is the note a clinician signs, and it
     // reached Text with no tenant at all, so the tenant's BYOK provider/credential
     // was never resolved and the derived `funding`/`cost_basis` was attributed to
@@ -1937,7 +1937,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // `nlp.ner` here, rather than posting without `model_name` and taking the
       // same 503 back from NLP one hop later, attributed to the wrong thing.
       const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
-      // TASK-737/738: this call sent NO headers object at all — neither the
+      // /738: this call sent NO headers object at all — neither the
       // service token (so it only ever worked against an NLP with the empty-token
       // dev bypass) nor the tenant. NLP delegates tenant-scoped classification on
       // to Text, so an absent tenant propagates two hops before resolving the
@@ -1956,7 +1956,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       );
       return { ...response.data, modelUsed: modelSelection.model_name };
     } catch (error) {
-      // TASK-768 — see `callTextWithTenantFallback`: rethrow the cause, let the
+      // see `callTextWithTenantFallback`: rethrow the cause, let the
       // gateway boundary classify and build the body. Composing a message here
       // is what leaked the NLP host:port as a 400.
       this.logger.error({
@@ -1974,7 +1974,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * `parentConsultationId` is still the consultation's own follow-up signal —
    * that rule has not changed. What changed is that WHICH visit type the signal
    * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * than a literal repeated at each call site. An unwired
    * resolver serves the two shipped types, so the answer is byte-identical to
    * the ternary this replaces.
    */

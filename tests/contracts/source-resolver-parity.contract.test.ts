@@ -3,7 +3,7 @@
  * Nothing in CI has ever compared them, and they have now drifted twice on the
  * same line of reasoning:
  *
- *   1. TASK-855 L6 mirrored the resolver into nlp and tts rather than sharing it.
+ * 1. mirrored the resolver into nlp and tts rather than sharing it.
  *   2. The HF_HUB_OFFLINE fix (2502ac387) landed in stt and nlp only, leaving tts
  *      and harness raising pre-emptively for a further day. tts is a
  *      bucket-mounted service running with HF_HUB_OFFLINE=1, so every resolve

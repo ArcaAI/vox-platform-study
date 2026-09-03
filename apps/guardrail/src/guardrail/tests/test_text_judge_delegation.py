@@ -1,9 +1,9 @@
-"""Guardrail delegates LLM judgement to `apps/text` (TASK-735 Phase 2b / 5).
+"""Guardrail delegates LLM judgement to `apps/text` ( / 5).
 
 Guardrail owns POLICY — the medical-validation criteria, the confidence floor,
 the verdict shape and the fail-closed posture. It owns NO engine: the actual
 model call goes to `text`'s isolated judge lane
-(`POST /api/v1/generate/internal/judge`, contract in the ticket README §7
+(`POST /api/v1/generate/internal/judge`, contract in
 "Phase 2a"), which is outside `text`'s own moderation gate and runs on its own
 pool so the safety plane cannot starve behind the traffic it protects.
 
@@ -102,7 +102,7 @@ def _client(http_client: Any, **overrides: Any) -> TextJudgeClient:
         "provider": "lm-studio",
         "model": "guardian-1",
         "tenant_id": "11111111-1111-1111-1111-111111111111",
-        # Criteria is CONFIG (TASK-777 A-3) — the client refuses to construct without it.
+        # Criteria is CONFIG — the client refuses to construct without it.
         "criteria": "you are a medical context validator",
     }
     kwargs.update(overrides)
@@ -166,7 +166,7 @@ async def test_parses_the_verdict_and_rides_usage_back_for_billing() -> None:
 
 @pytest.mark.asyncio
 async def test_unparseable_judgement_is_undetermined_not_a_keyword_guess() -> None:
-    """TASK-777 A-4 — REVERSED from the behaviour this test used to pin.
+    """REVERSED from the behaviour this test used to pin.
 
     The old `_keyword_verdict` fallback scored the RAW MODEL OUTPUT against a
     hardcoded 40-term taxonomy. It was defended as "deterministic, and readily

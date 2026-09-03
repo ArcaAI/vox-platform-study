@@ -16,12 +16,12 @@
  *
  * The contract:
  *
- *   context schema      CREATE-ONLY. Never re-created, never updated, and never
+ *   context schema CREATE-ONLY. Never re-created, never updated, and never
  *                       created alongside a default the tenant already owns.
  *
  * The suite used to carry a second contract — FILL-IF-ABSENT for the seven
  * loop-config columns on a seeded `DepartmentAgent`, plus a CREATE-ONLY agent
- * version row. Both went with `DepartmentAgent` (TASK-815); the loop resolves
+ * version row. Both went with `DepartmentAgent`; the loop resolves
  * its agent-shaped fields from the tenant's governing `WorkflowDefinition` now,
  * and no seed writes them.
  */

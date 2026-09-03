@@ -30,7 +30,7 @@ import { RateLimitMatchKindName, resolveRateLimit } from './rate-limit-resolver'
 const ROUTE_MATCH_PATTERN = /^(\*|[A-Z]+):\/[^\s]*$/;
 
 /**
- * Admin CRUD over rate-limit rules, plus the resolution `explain` (TASK-785).
+ * Admin CRUD over rate-limit rules, plus the resolution `explain`.
  *
  * Every mutation ends by invalidating {@link RateLimitRuleCache}, so a change is
  * live on this node before the response returns and on peers within one pub/sub

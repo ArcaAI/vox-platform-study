@@ -128,7 +128,7 @@ export interface V1SummaryPromptOptions {
   visitType?: string;
   /**
    * Whether pre-summary enrichment is enabled (decided by the controller per
-   * TEXT_Summary_Endpoints.md §3.1). When true, `pre_summary_text` is injected
+   * TEXT_Summary_Endpoints.md When true, `pre_summary_text` is injected
    * under v1's `PRIOR MEDICAL CONTEXT` prefix.
    */
   includePreSummary?: boolean;
@@ -355,7 +355,7 @@ function renderPatientInfo(sessionData: SessionDataDto): string {
  * Assembly order is v1's (`JsonPromptFactory.build_template_by_department`):
  *
  *   system = V1_SUMMARY_SYSTEM_PROMPT [+ bilingual directive] [+ DNA style]
- *   user   = <department body PREFACE>
+ *   user = <department body PREFACE>
  *          + V1_SUMMARY_USER_PROMPT_TEMPLATE (5 tokens substituted)
  *          + PRIOR MEDICAL CONTEXT (when enrichment is on)
  *          + STRICT JSON RESPONSE FORMAT (carrying the department schema)

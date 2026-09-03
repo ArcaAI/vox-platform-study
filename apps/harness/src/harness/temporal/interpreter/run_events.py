@@ -1,18 +1,18 @@
-"""TASK-849 lane A step 1 — the TASK-717 **Phase C** producer for workflow runs.
+"""lane A step 1 — the **Phase C** producer for workflow runs.
 
-TASK-717 shipped the envelope and the resume-token CONVENTION (Phases A/B) and
+shipped the envelope and the resume-token CONVENTION (Phases A/B) and
 explicitly deferred Phase C: *a reference producer wired into any service*. Until
 now nothing produced run events at all, which is why the gateway's
 ``WorkflowStreamService`` had to POLL the dispatcher's plain-JSON status read
 (``workflow-stream.service.ts``'s own class doc says so). This module is that
 producer, and its existence is what lets the poll go away.
 
-**Two lanes, and the split is the whole point** (program §3.4 rule 17, ticket §3
+**Two lanes, and the split is the whole point** (program rule 17,
 step 2):
 
 * **Redis Streams — the DELTA lane.** Token / STT / TTS deltas, and the control
   events' own MIRROR, are written here. Redis assigns the message id, which is the
-  transport-native cursor a resume token wraps (async-contract §3.6). The stream is
+  transport-native cursor a resume token wraps (async-contract The stream is
   ``MAXLEN``-trimmed, so a consumer that falls far enough behind gets a *gap* rather
   than silence — the gateway detects it and re-snapshots.
 * **Temporal — the CONTROL lane.** Node/stage/run outcomes remain what they already
@@ -60,10 +60,10 @@ RUN_EVENT_STREAM_KEY_PREFIX = "wf:run:"
 #: commitment on a shared Redis, and the delta lane is deliberately high-volume. Same
 #: value apps/text's ``TaskManager`` uses for the same reason. A consumer that falls
 #: further behind than this sees a TRIMMED-ID GAP, which the client contract handles by
-#: re-snapshotting (ticket §3 step 4) rather than by silently losing tokens.
+# re-snapshotting rather than by silently losing tokens.
 RUN_EVENT_STREAM_MAX_LEN = 10_000
 
-#: The transport name embedded in the opaque resume token (async-contract §3.6). The
+# The transport name embedded in the opaque resume token (async-contract The
 #: consumer never parses the token; this string exists so a future transport swap is
 #: detectable rather than silently mis-read.
 RUN_EVENT_TRANSPORT = "redis-stream"
@@ -106,7 +106,7 @@ DELTA_EVENT_TYPES = frozenset({EVENT_TOKEN_DELTA})
 
 
 # ---------------------------------------------------------------------------
-# Idempotency keys — derived from INTENT, never from chance (async-contract §3.5)
+# Idempotency keys — derived from INTENT, never from chance (async-contract
 # ---------------------------------------------------------------------------
 
 

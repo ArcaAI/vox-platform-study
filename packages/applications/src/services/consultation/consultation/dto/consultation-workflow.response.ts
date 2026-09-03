@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * `GET /api/v1/consultations/:id/workflow` (TASK-813) — WHICH engine governs a
+ * `GET /api/v1/consultations/:id/workflow` — WHICH engine governs a
  * consultation, and the identity of the tenant-authored graph when one does.
  *
  * ## Why this route exists

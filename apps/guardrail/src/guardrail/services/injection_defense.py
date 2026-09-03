@@ -18,7 +18,7 @@ rather than configuration:
 Sanitizing after wrapping would let smuggled characters sit inside the envelope;
 classifying before sanitizing screens text nobody will actually execute.
 
-Threats answered here (ticket README §3): **T3** invisible-instruction smuggling,
+Threats answered here : **T3** invisible-instruction smuggling,
 **T2** indirect injection via transcribed or retrieved content, **T6** detecting a
 response that echoes the containment envelope.
 """

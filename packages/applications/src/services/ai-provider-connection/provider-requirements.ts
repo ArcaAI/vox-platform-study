@@ -1,5 +1,5 @@
 /**
- * TASK-799 — what each provider REQUIRES, declared once and enforced on write.
+ * what each provider REQUIRES, declared once and enforced on write.
  *
  * THE DEFECT THIS CLOSES. `provider-extras.ts` made `extraJson` a validated
  * passthrough — it checks the SHAPE of what an operator sends. Nothing checked
@@ -125,7 +125,7 @@ export const PROVIDER_REQUIREMENTS: Readonly<Record<string, ProviderRequirement>
     why: 'Bedrock is addressed per region — the region is part of the endpoint, not a preference — and the account is keyed.',
   },
 
-  // ── model-registry: the weight-fetch plane (TASK-799) ─────────────────────
+  // ── model-registry: the weight-fetch plane ─────────────────────
   'model-registry:huggingface': {
     columns: ['apiKey'],
     extras: [{ key: 'model', label: 'the model id (org/repo)' }],

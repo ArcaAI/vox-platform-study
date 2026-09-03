@@ -1,8 +1,8 @@
--- TASK-740 — eliminate the `smr` identifier from the DB-persisted plane.
+-- eliminate the `smr` identifier from the DB-persisted plane.
 --
 -- Owner directive 2026-08-17 (owner-decisions-2026-08-17.md §3b decision 3):
 -- "`smr` was renamed to `text`. Do NOT use `smr` anymore!" — which reverses the
--- frozen-identifier position TASK-707 took on exactly these two surfaces.
+-- frozen-identifier position took on exactly these two surfaces.
 --
 -- Both statements below are RENAMES, never DROP+ADD: the columns and the task
 -- keys carry admin-managed configuration (a tenant's chosen provider/model),

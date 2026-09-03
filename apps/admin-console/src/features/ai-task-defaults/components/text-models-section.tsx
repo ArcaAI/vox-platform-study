@@ -17,7 +17,7 @@ const PRIMARY_META: Record<(typeof TEXT_PRIMARY_TASK_KEYS)[number], { title: str
   },
 };
 
-/** Per-key card copy for the prompt-template test bench (TASK-740 D-2). */
+/** Per-key card copy for the prompt-template test bench. */
 const TEST_META: Record<(typeof TEXT_TEST_TASK_KEYS)[number], { title: string; description: string }> = {
   'text.test': {
     title: 'Prompt test-bench model',

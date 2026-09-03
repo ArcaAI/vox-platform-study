@@ -74,14 +74,14 @@ describe('CLOUD_BYO_PROVIDERS — the frozen C5 map', () => {
       llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
       stt: ['azure-speech', 'sarvam', 'openai'],
       tts: ['azure', 'sarvam'],
-      // TASK-799 P1-C — the integration capabilities. `rerank` is deliberately
+      // C — the integration capabilities. `rerank` is deliberately
       // EMPTY: the only reranker is the self-hosted TEI service, so there is no
       // cloud account for a tenant to bring a key to and the SYSTEM row is the
       // sole source. That empty list is a governance statement, not an omission.
       embeddings: ['azure', 'openai'],
       rerank: [],
       vector: ['qdrant'],
-      // TASK-799 — the weight-fetch plane. A tenant that brings its own models
+      // the weight-fetch plane. A tenant that brings its own models
       // brings the account they are fetched from: an HF org token (the only way
       // to reach a gated repo) and, for weights it stages itself, its own
       // object store. WHOSE credential is spent is decided by the MODEL row's

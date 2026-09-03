@@ -203,7 +203,7 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
       'Vault database-engine admin password',
       'Password for the `vault_admin` PostgreSQL role that VAULT ITSELF uses to mint short-lived DB credentials. ' +
         'CLASSIFIED `env`, NOT `vault-kv`, DELIBERATELY: it is consumed at Vault PROVISIONING time by `infrastructure/docker/configs/vault/dev-init.sh`, `scripts/setup-dev-vault-db.sh` and docker-compose — before any Vault kv-v2 read is possible. Storing it in Vault would be circular. ' +
-        'It is a real credential and belongs on the §6 rotation list; the bootstrap floor is where it has to live.',
+        'It is a real credential and belongs on the rotation list; the bootstrap floor is where it has to live.',
       'open-to-default',
     ),
     sensitivity: 'secret',

@@ -1,4 +1,4 @@
-"""TASK-818 Lane B — resumable streaming.
+"""resumable streaming.
 
 The properties this file defends, each named by the ticket:
 
@@ -10,9 +10,9 @@ The properties this file defends, each named by the ticket:
   producer.
 * **AC-5** — the replay buffer takes **one** durable write per batch of 16–32
   deltas (or 25 ms), never one per token.
-* **§3C.3(4,5)** — ``id: {generation_id}:{seq}``, ``generation_id`` in the first
+* **,5)** — id: {generation_id}:{seq}, generation_id in the first
   event, resume by ``Last-Event-ID`` / ``?from_seq=``, 204 for an unknown id.
-* **§3C.5/3C.6** — abandonment resolves tenant → SYSTEM and defaults to "never
+* **** — abandonment resolves tenant → SYSTEM and defaults to "never
   abandon"; idempotency maps a key to one generation and 409s on payload drift.
 """
 
@@ -236,7 +236,7 @@ async def _start_and_interrupt(
     A producer that survives this survives a closed tab, a dropped network and a
     sleeping laptop, none of which are as abrupt.
 
-    Returns the generation id, taken from the first frame (§3C.3(4) exists so
+    Returns the generation id, taken from the first frame ( exists so
     that a client can persist it before any token arrives).
     """
     raw = bytearray()
@@ -467,7 +467,7 @@ class TestReconnectIsGaplessAndDuplicateFree:
 
     @pytest.mark.asyncio
     async def test_first_event_carries_the_generation_id(self, redis) -> None:
-        """§3C.3(4): persistable before any token arrives."""
+        """persistable before any token arrives."""
         app = _build_app(redis, _SlowProvider(count=3))
         async with _client(app) as client:
             async with client.stream(
@@ -525,7 +525,7 @@ class TestDurableWritesAreCoalesced:
         assert [e.seq for e in await manager.read_events("gen-batch", after_seq=17)] == [18, 19, 20]
 
 
-# ── §3C.6: idempotency ──────────────────────────────────────────────────────
+# ──: idempotency ──────────────────────────────────────────────────────
 
 
 class TestStreamingIdempotency:
@@ -565,7 +565,7 @@ class TestStreamingIdempotency:
         assert "idempotency_conflict" in response.text
 
 
-# ── §3C.5: abandonment is configuration, tenant → SYSTEM ────────────────────
+# ──: abandonment is configuration, tenant → SYSTEM ────────────────────
 
 
 class TestGenerationPolicyResolution:

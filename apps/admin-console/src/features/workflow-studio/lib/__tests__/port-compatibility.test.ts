@@ -1,5 +1,5 @@
 /**
- * Port-type compatibility (TASK-809 Task 12). `portPrimitiveSatisfies` pins the lattice
+ * Port-type compatibility. `portPrimitiveSatisfies` pins the lattice
  * verbatim against `@arcaai/workflow-contract`'s `port-model.ts` (the console hand-mirrors it —
  * see `port-compatibility.ts`'s module comment); `checkPortCompatibility` is the predicate the
  * Studio canvas wires into both drag-time (`isValidConnection`) and commit-time (`connect`).
@@ -106,7 +106,7 @@ describe('checkPortCompatibility', () => {
     expect(result).toEqual({ ok: true });
   });
 
-  // The anti-hallucination-laundering rule made structural (TASK-809 §2b / port-model.ts):
+  // The anti-hallucination-laundering rule made structural ( / port-model.ts):
   // a generated document must never reach the NER node's transcript input.
   it('ANTI-LAUNDERING: refuses document -> ner (consultation.synthesize.out -> consultation.extractEntities.in)', () => {
     const result = checkPortCompatibility(

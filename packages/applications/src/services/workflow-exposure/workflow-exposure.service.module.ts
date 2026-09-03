@@ -10,17 +10,17 @@ import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
 
 /**
- * WorkflowExposureService DI module (TASK-722).
+ * WorkflowExposureService DI module.
  *
- * - CommonServiceModule       -> config (`WORKFLOW_EXPOSURE_*`) + `IS3Service` (claim-check
+ * - CommonServiceModule -> config (`WORKFLOW_EXPOSURE_*`) + `IS3Service` (claim-check
  *   blob write).
- * - CoreDatabaseModule        -> `WorkflowDefinitionRepository`.
- * - RedisCacheModule          -> `IRedisCacheService` (Idempotency-Key replay cache). `@Global()`
+ * - CoreDatabaseModule -> `WorkflowDefinitionRepository`.
+ * - RedisCacheModule -> `IRedisCacheService` (Idempotency-Key replay cache). `@Global()`
  *   once registered, but imported explicitly here so this module is self-contained if loaded in
  *   isolation (a unit-test Nest context, for example).
  * - HarnessGatewayServiceModule -> the outbound harness dispatcher client (leaf module, matches
  *   every other consumer: `note-generation`, `live-documentation`, `summary`, `knowledge`, `eval`).
- * - WorkflowRunServiceModule  -> `IWorkflowRunService` (the read-model / ownership-anchor writes).
+ * - WorkflowRunServiceModule -> `IWorkflowRunService` (the read-model / ownership-anchor writes).
  * - EntitlementsServiceModule -> `IEntitlementsService` (`monthlyWorkflowInvocations` meter check).
  */
 @Module({
@@ -31,7 +31,7 @@ import { WorkflowExposureService } from './workflow-exposure.service';
     HarnessGatewayServiceModule,
     WorkflowRunServiceModule,
     EntitlementsServiceModule,
-    // TASK-850 lane A -> `IConsultationService`, used ONLY to re-resolve the PATH
+    // lane A -> `IConsultationService`, used ONLY to re-resolve the PATH
     // `consultationId` against the caller's tenant before it may become a run's `subject`. No
     // cycle: ConsultationServiceModule imports neither this module nor anything leading back to
     // it (its own module doc records the same check for ConsentServiceModule).

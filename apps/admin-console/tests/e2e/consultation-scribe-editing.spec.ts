@@ -1,5 +1,5 @@
 /**
- * TASK-793 W1 + W2 — runtime verification of the clinician path against a
+ * + W2 — runtime verification of the clinician path against a
  * RUNNING gateway. Compiling is not working, and rendering is not writing:
  * these specs assert what actually goes on the WIRE.
  *
@@ -63,7 +63,7 @@ test.describe('Consultation Scribe — the clinician path', () => {
 
     const request = await openBody;
     const payload = request.postDataJSON() as { patientId: string; departmentId?: string };
-    expect(payload.departmentId, 'departmentId must reach the gateway — TASK-789 H-4').toBe(departments[0].id);
+    expect(payload.departmentId, 'departmentId must reach the gateway — H-4').toBe(departments[0].id);
   });
 
   test('W1: an existing draft is editable and the save carries If-Match', async ({ page }) => {
@@ -198,15 +198,15 @@ test.describe('Consultation Scribe — the clinician path', () => {
    * foreground` over `dark:bg-input/30`, giving #a0a0a0 on #3b3a3a = 4.33:1
    * against a 4.5:1 requirement. It fires on EVERY Select left unset in dark
    * mode console-wide — here the footer's "Language" and "Note assistant"
-   * pickers, both of which predate TASK-793 (base commit 6b066dd0f) and live
-   * in `packages/ui`, which TASK-793 does not own. Reported to the
+   * pickers, both of which predate (base commit 6b066dd0f) and live
+   * in `packages/ui`, which does not own. Reported to the
    * orchestrator; excluded here so this spec still guards the surfaces this
    * ticket DOES own.
    *
-   * TASK-793's own pickers are deliberately NOT affected: they default to a
+   * own pickers are deliberately NOT affected: they default to a
    * real sentinel option ("No department" / "Default style") instead of a
    * placeholder, so `data-placeholder` is never set on them.
-   */
+ */
   test('has no WCAG 2.2 AA violations (dark), outside one known packages/ui defect', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto(SCRIBE);

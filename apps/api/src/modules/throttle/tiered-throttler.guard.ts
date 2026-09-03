@@ -24,7 +24,7 @@ import {
 const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
 const THROTTLER_TTL = 'THROTTLER:TTL';
 
-/** Levels whose value came from the tenant's own identity — bucket per tenant (OD-3). */
+/** Levels whose value came from the tenant's own identity — bucket per tenant. */
 const TENANT_SCOPED_LEVELS: ReadonlySet<RateLimitLevel> = new Set<RateLimitLevel>(['tenant-route', 'tenant', 'plan']);
 
 /** Stashed on the request so `RateLimitHeadersInterceptor` can advertise the applied policy. */
@@ -38,7 +38,7 @@ export interface RequestRateLimitResolution {
 
 /**
  * Named throttlers with DB-backed, admin-controlled limits resolved live per
- * request (TASK-785).
+ * request.
  *
  * Under throttler v6 a global guard enforces EVERY configured named throttler on
  * EVERY route unless that tier is skipped. With four registered tiers that would
@@ -46,18 +46,18 @@ export interface RequestRateLimitResolution {
  * while `strict`/`heavy`/`relaxed` only gate routes that opted in via
  * `@Throttle({ <tier>: {...} })`.
  *
- * ## Precedence (OD-1) — delegated to `resolveRateLimit`
+ * ## Precedence — delegated to `resolveRateLimit`
  *
- *   1. tenant × route rule    2. tenant rule    3. plan
- *   4. platform route rule    5. platform base  (the `@Throttle` decorator value,
+ *   1. tenant × route rule 2. tenant rule 3. plan
+ *   4. platform route rule 5. platform base (the `@Throttle` decorator value,
  *                                                else the named tier baseline)
  *
- * The decorator is rank 5's seed, NOT an override (OD-2). It used to outrank both
+ * The decorator is rank 5's seed, NOT an override. It used to outrank both
  * the tenant and the plan, which meant an ENTERPRISE tenant could not be granted
  * more than `auth/login`'s hardcoded 5/min without a redeploy — defeating the
  * point of a runtime-tunable surface.
  *
- * ## Bucket keying (OD-3)
+ * ## Bucket keying 
  *
  * A limit that resolved from ranks 1–3 is counted PER TENANT; one that resolved
  * from ranks 4–5 keeps the historical per-IP counting. Before this, every limit
@@ -74,7 +74,7 @@ export interface RequestRateLimitResolution {
  * resolves on ranks 4–5 and is IP-keyed, exactly as anonymous traffic is.
  *
  * Three credential classes, three lanes, none of which touches the database
- * (TASK-785 O-4 — before it, only the JWT lane existed, so the ENTIRE machine
+ *  — before it, only the JWT lane existed, so the ENTIRE machine
  * plane, including every `@arcaai/vox-node` admin call, was ungoverned by tenant
  * and plan limits):
  *
@@ -176,7 +176,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       return true;
     }
 
-    // Rank 5 — the decorator seeds it (OD-2); the named tier baseline is the
+    // Rank 5 — the decorator seeds it ; the named tier baseline is the
     // floor when the route declares nothing.
     const base = {
       limitValue: legacy?.limit ?? decoratorLimit ?? tierBaseline.limit,
@@ -339,7 +339,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       // boundary should say so itself. Tokens are minted by `createJwt`, which
       // signs with the library's string-secret default: HS256.
       //
-      // Measured cost (TASK-785 R-2): ~95us/verify, ~0.1ms per request. A lean
+      // Measured cost: ~95us/verify, ~0.1ms per request. A lean
       // hand-rolled HMAC path benchmarks ~9x faster, and is deliberately NOT
       // used: re-implementing JWT verification to save 85us on a request that
       // also does Redis I/O trades a real security surface for an unmeasurable

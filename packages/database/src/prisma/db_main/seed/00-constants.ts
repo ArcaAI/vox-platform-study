@@ -5,41 +5,41 @@
  * Every seed file imports from this module instead of declaring local constants.
  *
  * ID Prefix Convention:
- *   00000000-0000-0000-0000-000000000000  →  Reserved system tenant (platform-wide rows)
- *   00000000-0000-0000-0000-XXXXXXXXXXXX  →  Roles (RBAC)
- *   00000000-0000-0000-0001-XXXXXXXXXXXX  →  Policies (RBAC)
- *   50000000-xxxx  →  Customer Tenants (Global, ArcaAI)
- *   60000000-xxxx  →  API Keys + System User
- *   70000000-xxxx  →  Users (0001-0009 admin, 0010-0029 clinical, 0030+ service)
- *   70000000-xxxx  →  Departments (separate entity, same prefix range but dept block)
- *   71000000-xxxx  →  Prompt Templates
- *   71000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt templates
+ *   00000000-0000-0000-0000-000000000000 → Reserved system tenant (platform-wide rows)
+ *   00000000-0000-0000-0000-XXXXXXXXXXXX → Roles (RBAC)
+ *   00000000-0000-0000-0001-XXXXXXXXXXXX → Policies (RBAC)
+ *   50000000-xxxx → Customer Tenants (Global, ArcaAI)
+ *   60000000-xxxx → API Keys + System User
+ *   70000000-xxxx → Users (0001-0009 admin, 0010-0029 clinical, 0030+ service)
+ *   70000000-xxxx → Departments (separate entity, same prefix range but dept block)
+ *   71000000-xxxx → Prompt Templates
+ *   71000000-…-0001-0000000000XX → ArcaAI-tenant prompt templates
  *                     (001-004 demo cross-tenant set; 010-024 = the first 15
  * ArcaAI clinical templates —;
  * 025-032 = the 8 added by, bringing the
  *                     set to 23 = 11 departments × 2 visit types + 1 shared
  *                     pre-summary)
- *   72000000-xxxx  →  Prompt Versions
- *   72000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt versions (mirror of
+ *   72000000-xxxx → Prompt Versions
+ *   72000000-…-0001-0000000000XX → ArcaAI-tenant prompt versions (mirror of
  *                     the template slot above)
- *   72000000-0000-000V-0001-0000000000XX  →  versionNumber V of that template.
+ *   72000000-0000-000V-0001-0000000000XX → versionNumber V of that template.
  *                     The THIRD group carries the version number (the fourth
  *                     stays the tenant slot); `…-0000-…` is versionNumber 1, so
  *                     the original v1 ids are unchanged. The ArcaAI clinical
  *                     prompt snapshots are `…-0002-0001-…` (v2, "hardened") and
  *                     `…-0003-0001-…` (v3, current).
- *   73000000-xxxx  →  DNA Writing Style Reports
- *   74000000-xxxx  →  DNA Writing Style Versions
- *   75000000-xxxx  →  DNA Usage Records
- *   76000000-xxxx  →  Prompt Usage Records
- *   77000000-xxxx  →  DNA Regeneration Settings
- *   78000000-xxxx  →  Department Agents (0002 SYSTEM golden, 0000 Global-tenant
+ *   73000000-xxxx → DNA Writing Style Reports
+ *   74000000-xxxx → DNA Writing Style Versions
+ *   75000000-xxxx → DNA Usage Records
+ *   76000000-xxxx → Prompt Usage Records
+ *   77000000-xxxx → DNA Regeneration Settings
+ *   78000000-xxxx → Department Agents (0002 SYSTEM golden, 0000 Global-tenant
  * clones, 0001 ArcaAI clones — agent golden library)
  * 70000000-…-0002-… → SYSTEM golden departments
  * 71000000-…-0002-… → SYSTEM golden prompt templates
  * 72000000-…-0002-… → SYSTEM golden prompt versions
  * 71000000-…-0004-… → SYSTEM platform-default prompt templates
- *   72000000-…-0004-…  →  their v1 PromptVersion snapshots (mirror slot)
+ *   72000000-…-0004-… → their v1 PromptVersion snapshots (mirror slot)
  *                     A fresh STATIC block, deliberately NOT the golden
  *                     `…-0002-…` generator (whose ids derive from
  *                     `uniqueSourceIds` insertion order in
@@ -48,44 +48,44 @@
  * 79000000-…-XXXX-… → Consultation Context Schemas (day-1 default;
  *                     tenant slot mirrors the 78000000 agent block — 0002
  *                     SYSTEM, 0000 Global, 0001 ArcaAI)
- *   89000000-…-XXXX-…  →  their published ConsultationContextSchemaVersion
+ *   89000000-…-XXXX-… → their published ConsultationContextSchemaVersion
  *                     snapshots (mirror slot)
- *   D0000000-xxxx  →  DepartmentAgentVersion rows. NOT a free-standing block:
+ *   D0000000-xxxx → DepartmentAgentVersion rows. NOT a free-standing block:
  *                     each id is its agent's id with the `78000000` prefix
  *                     swapped for `D0000000` (`agentVersionIdFor`), so agent
  *                     and version stay 1:1 without a second numbering scheme.
- *   80000000-0001  →  AI Models (ASR)
- *   80000000-0002  →  AI Models (VAD)
- *   80000000-0003  →  AI Models (Noise Reduction)
- *   80000000-0004  →  AI Models (ONNX Community)
- *   80000000-0005  →  AI Models (LLM/Summarization — TEXT v2)
- *   80000000-0006  →  AI Models (Local Browser STT)
- *   81000000-xxxx  →  ASR Pipelines
- *   82000000-xxxx  →  STT Global Settings
- *   83000000-xxxx  →  General User Settings
- *   84000000-xxxx  →  SDK User Preferences
- *   85000000-xxxx  →  Per-Tenant Global Settings (general, feature-flags, stt, text)
- *   90000000-xxxx  →  Consultations
- *   91000000-xxxx  →  Context Items
- *   92000000-xxxx  →  Summary Metas
- *   93000000-xxxx  →  Audio Recordings
- *   94000000-xxxx  →  Context Item Versions
- *   95000000-xxxx  →  Named Entities
- *   96000000-xxxx  →  Media (dual-capture demo blobs; defined in 09-consultation)
- *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
- *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
- *   99000000-xxxx  →  Workflow Definitions (TASK-715 model; TASK-720 seeds the
+ *   80000000-0001 → AI Models (ASR)
+ *   80000000-0002 → AI Models (VAD)
+ *   80000000-0003 → AI Models (Noise Reduction)
+ *   80000000-0004 → AI Models (ONNX Community)
+ *   80000000-0005 → AI Models (LLM/Summarization — TEXT v2)
+ *   80000000-0006 → AI Models (Local Browser STT)
+ *   81000000-xxxx → ASR Pipelines
+ *   82000000-xxxx → STT Global Settings
+ *   83000000-xxxx → General User Settings
+ *   84000000-xxxx → SDK User Preferences
+ *   85000000-xxxx → Per-Tenant Global Settings (general, feature-flags, stt, text)
+ *   90000000-xxxx → Consultations
+ *   91000000-xxxx → Context Items
+ *   92000000-xxxx → Summary Metas
+ *   93000000-xxxx → Audio Recordings
+ *   94000000-xxxx → Context Item Versions
+ *   95000000-xxxx → Named Entities
+ *   96000000-xxxx → Media (dual-capture demo blobs; defined in 09-consultation)
+ *   97000000-xxxx → User Voice Profiles (diarization enrollment)
+ *   98000000-xxxx → Transcription Jobs (ASR job queue rows)
+ * 99000000-xxxx → Workflow Definitions ( model; seeds the
  *                     SYSTEM-tenant platform-default Summarization row)
- *   99000000-…-0001-…  →  ArcaAI tenant-authored consultation definitions (TASK-798)
- *   9A000000-xxxx  →  Workflow Assignments. The THIRD UUID group discriminates the
+ * 99000000-…-0001-… → ArcaAI tenant-authored consultation definitions
+ *   9A000000-xxxx → Workflow Assignments. The THIRD UUID group discriminates the
  *                     two tables that share the block: `…-0000-…` is a
  *                     WorkflowAssignment row, `…-0001-…` its WorkflowAssignmentChange
  *                     WORM entry. One block because a change row has no identity
  *                     apart from the assignment it records.
- *   9B000000-xxxx  →  Workflow Test Fixtures (Workbench synthetic inputs)
- *   A0000000-xxxx  →  Audit Log Entries
- *   F0000000-xxxx  →  Consent Grants (patient AI-documentation consent). MOVED here
- *                     from `E0000000-…` by TASK-790: that block belongs to
+ *   9B000000-xxxx → Workflow Test Fixtures (Workbench synthetic inputs)
+ *   A0000000-xxxx → Audit Log Entries
+ *   F0000000-xxxx → Consent Grants (patient AI-documentation consent). MOVED here
+ * from `E0000000-…` by: that block belongs to
  *                     Service Accounts, and both blocks had issued
  *                     `…-000000000001`. PostgreSQL `uuid` is CASE-INSENSITIVE,
  *                     so the lowercase service-account id and the uppercase
@@ -95,13 +95,13 @@
  *                     "sharing a numbering block is the first step towards
  *                     sharing a mechanism" failure the E0 note below warns
  *                     against.
- *   E0000000-xxxx  →  Service Accounts (TASK-762 machine identity; seeded by
- *                     TASK-766). A block of its own rather than an extension of
+ * E0000000-xxxx → Service Accounts ( machine identity; seeded by
+ * ). A block of its own rather than an extension of
  *                     the `60000000-…` API-key block, because a ServiceAccount
  *                     is a DIFFERENT credential class — sharing a numbering
  *                     block would be the first step towards sharing a mechanism.
- *   B0000000-xxxx  →  Plan Entitlements
- *   C0000000-xxxx  →  Tenant Allowed Origins — bootstrap loopback rows ONLY.
+ *   B0000000-xxxx → Plan Entitlements
+ *   C0000000-xxxx → Tenant Allowed Origins — bootstrap loopback rows ONLY.
  *                     Not used by any seed file: these ids are allocated by
  *                     `migrations/20260808160000_task_641_bootstrap_loopback_origins`,
  *                     which guarantees the six SYSTEM loopback rows exist in
@@ -241,7 +241,7 @@ export const SEED_DEPARTMENT_IDS = {
   // ---------------------------------------------------------------------------
   // Global customer tenant (50000000-…) — the PLATFORM-GENERIC day-1 catalog.
   //
-  // OWNER RULING (2026-08-20, TASK-763 §5 OD-8): "what belong to BCMCH keep
+  // OWNER RULING (2026-08-20, OD-8): "what belong to BCMCH keep
   // those in ArcaAI, for SYSTEM and GLOBAL, use different ones."
   //
   // The former Global catalog was EIGHTEEN rows whose first eleven
@@ -350,7 +350,7 @@ export const SEED_API_KEY_RAW = {
 } as const;
 
 // =============================================================================
-// SERVICE ACCOUNTS (TASK-762 machine identity — seeded by TASK-766)
+// SERVICE ACCOUNTS ( machine identity — seeded by)
 //
 // A ServiceAccount is the THIRD credential class. It shares no mechanism with
 // the `ApiKey` block above: its own `svc:*` scope namespace, its own issuance
@@ -362,7 +362,7 @@ export const SEED_API_KEY_RAW = {
 // development|test only). Outside dev/test the seed creates the ROW with an
 // unguessable, immediately-discarded secret, so the account exists, is visible
 // with its scopes, and becomes usable through `POST /admin/service-accounts/
-// :id/rotate` — which is the only honest answer given TASK-762's rule that the
+// id/rotate` — which is the only honest answer given rule that the
 // secret is shown once and never persisted recoverably.
 // =============================================================================
 
@@ -398,7 +398,7 @@ export const SEED_SERVICE_ACCOUNT_DEV_SECRETS = {
 // Mirrors TEMPLATE_IDS in 07-prompt-template.ts. The 22 BCMCH/v1-format
 // specialty template ids (SURGERY/MEDICINE/BREN/RHEUM/ORTH/NEUR/HEME/DERM/DIET/
 // NEPH/SONC x {new referral, revisit}) were retired from the Global catalog by
-// TASK-763 OD-8 and are NOT re-listed here: those bodies live on the tenant they
+// and are NOT re-listed here: those bodies live on the tenant they
 // belong to, as ARCAAI_CLINICAL_TEMPLATE_IDS in 07b-arcaai-clinical-templates.ts.
 // The Global generic replacements are TEMPLATE_IDS.GENERIC_* (block 0003).
 export const SEED_TEMPLATE_IDS = {
@@ -817,7 +817,7 @@ export const SEED_AUDIT_LOG_IDS = {
 } as const;
 
 // =============================================================================
-// WORKFLOW DEFINITIONS (TASK-715 model; TASK-720 seeds the platform default)
+// WORKFLOW DEFINITIONS ( model; seeds the platform default)
 // =============================================================================
 
 export const SEED_WORKFLOW_DEFINITION_IDS = {
@@ -825,7 +825,7 @@ export const SEED_WORKFLOW_DEFINITION_IDS = {
 } as const;
 
 // =============================================================================
-// CONSENT GRANTS (TASK-712, consent-abac Phase 6)
+// CONSENT GRANTS (consent-abac Phase 6)
 //
 // Seeded in 22-consent-grant.ts: EXTERNAL_TOOL_LOOKUP / STYLE_LEARNING /
 // QUALITY_REVIEW grants for the demo patients in 09-consultation.ts.

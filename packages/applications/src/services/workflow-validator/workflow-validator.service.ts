@@ -1,23 +1,23 @@
 /**
- * WorkflowValidatorService — the IMPURE half of TASK-716's validator (Task 8).
+ * WorkflowValidatorService — the IMPURE half of validator.
  *
- * The split this service exists to hold (TASK-716 §3.2, mirroring
+ * The split this service exists to hold (mirroring
  * `departmentAgent/constants.ts`'s "pure functions here, the repository-backed
  * half in the service"):
  *
- * | Pure — `@arcaai/workflow-contract`      | Impure — here                          |
+ * | Pure — `@arcaai/workflow-contract` | Impure — here |
  * |-----------------------------------------|----------------------------------------|
- * | graph algorithms, predicate evaluators   | loading rule ROWS (SYSTEM ∪ tenant)    |
- * | `validate()` over a GIVEN rule set       | computing `ruleSetVersion`             |
- * | the compiler                             | the one-way-strictness merge           |
+ * | graph algorithms, predicate evaluators | loading rule ROWS (SYSTEM ∪ tenant) |
+ * | `validate()` over a GIVEN rule set | computing `ruleSetVersion` |
+ * | the compiler | the one-way-strictness merge |
  *
  * Deliberately NOT here: persisting the report and broadcasting the sys-event.
- * `WorkflowDefinitionService` (TASK-734) already owns the definition lifecycle
+ * `WorkflowDefinitionService` already owns the definition lifecycle
  * and does both; a second writer would double-broadcast `ResourceUpdated` on
  * every validate. This service resolves and evaluates — the caller decides what
  * to do with the verdict.
  *
- * TOTALITY IS THE CONTRACT (§3.5): "a validator that is not total is a validator
+ * TOTALITY IS THE CONTRACT: "a validator that is not total is a validator
  * that can be bypassed." Every failure path in this file — a repository throw, a
  * DB row naming a predicate kind the code catalogue does not have, a malformed
  * `predicateConfig` — resolves to a synthetic `WF-INTERNAL` ERROR finding and

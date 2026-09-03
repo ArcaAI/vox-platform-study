@@ -1,7 +1,7 @@
 /**
  * Data Encryption Initiative — seed-time Vault-Transit encryption.
  *
- * PHI field encryption (the bulk of this file) plus — since TASK-799 Round 4 —
+ * PHI field encryption (the bulk of this file) plus — since Round 4
  * non-PHI SECRET-FIELD encryption under a second Transit key
  * (`encryptSeedSecret`, at the bottom). One file because this holds the seed's
  * ONLY Vault client and its AppRole/unwrap/login dance.
@@ -203,7 +203,7 @@ const SEED_PHI_MODELS = {
       { plaintext: 'styleText', ciphertext: 'encryptedStyleText' },
     ],
   },
-  // TASK-798 — the Workbench's saved SYNTHETIC test payload. Mirrors the read-side registry
+  // the Workbench's saved SYNTHETIC test payload. Mirrors the read-side registry
   // (`phi-read-decrypt.ts`: `encryptedInput: { plaintext: 'input', json: true }`) exactly; the
   // plaintext `input` column was dropped, so ciphertext is the system of record. Registered even
   // though the contract forbids real patient data in a fixture, because the column is encrypted

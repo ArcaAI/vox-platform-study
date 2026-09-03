@@ -1,4 +1,4 @@
-"""Degrade-away-from-unhealthy routing (TASK-725 Task 2).
+"""Degrade-away-from-unhealthy routing.
 
 design.md's worker-pool standard: "the service degrades routing away from
 unhealthy pools rather than queueing into a dead engine." Wired as a check

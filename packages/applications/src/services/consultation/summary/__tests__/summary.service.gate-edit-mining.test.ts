@@ -1,5 +1,5 @@
 /**
- * TASK-792 W1 — `approveSummary` is the live writer of the gate-edit corpus.
+ * `approveSummary` is the live writer of the gate-edit corpus.
  *
  * Before this ticket `GateEditExemplar` had NO live writer: `enqueue()` had zero
  * call sites anywhere in the repo. The capture substrate was already correct —

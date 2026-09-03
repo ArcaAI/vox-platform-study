@@ -14,7 +14,7 @@ underneath it: ``bedrock`` built a ``boto3`` client with no credentials
 list, so neither was ever asked to fail closed. A hand-written list can only lock the
 adapters someone remembered; iteration locks the ones nobody has written yet.
 
-TASK-799 lane B widened the guarantee in two directions:
+lane B widened the guarantee in two directions:
 
 * **From credentials to CONNECTIONS.** ``TEXT_<PROVIDER>_BASE_URL`` was the same defect
   one field over — a process-wide value no tenant could override and no admin could

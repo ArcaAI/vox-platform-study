@@ -138,7 +138,7 @@ test.describe('backend residuals (filter validation + recording fixture)', () =>
   // --- 4. Recording-shaped audio fixture (P2-7a, owner env P2-7b) ------------
 
   test('Recordings: the seeded recording-shaped fixture surfaces with its audio metadata', async ({ request }) => {
-    test.skip(!MEDIA_CONSULTATION_ID, 'No media consultation available (E2E_CONSULTATION_ID explicitly empty) — TASK-376 seed not present.');
+    test.skip(!MEDIA_CONSULTATION_ID, 'No media consultation available (E2E_CONSULTATION_ID explicitly empty) —  seed not present.');
 
     // The recordings route is TENANT-SCOPED → read as the consultation's
     // tenant-bound owner (env-overridable, defaults to the seeded doctor).

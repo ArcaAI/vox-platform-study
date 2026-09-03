@@ -14,7 +14,7 @@
  * ## Files this generator owns
  *
  * Everything in the output directory EXCEPT `admin-resource.ts` and
- * `__tests__/`, which are hand-authored (ticket §3.2: the base class is "the
+ * `__tests__/`, which are hand-authored (the base class is "the
  * part that carries judgment"). Generation therefore also DELETES generated
  * files that no longer correspond to an area — otherwise removing an admin
  * area would leave a module exporting a resource for a scope that no longer

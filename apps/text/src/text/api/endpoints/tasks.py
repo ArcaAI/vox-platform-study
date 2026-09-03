@@ -1,7 +1,7 @@
 """Task and generation management endpoints.
 
 The cancel routes here are the **only** thing that stops a running generation
-early (TASK-818 §3C.4). A dropped socket is not a cancel, and nothing in this
+early ( A dropped socket is not a cancel, and nothing in this
 service infers one from connection state.
 """
 
@@ -69,7 +69,7 @@ async def cancel_generation(
     request: Request,
     task_manager: TaskManager = Depends(get_task_manager),
 ) -> dict[str, Any]:
-    """Stop a running generation. The explicit act §3C.4 requires."""
+    """Stop a running generation. The explicit act requires."""
     state = await _cancel(request, generation_id, task_manager)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Generation '{generation_id}' not found")

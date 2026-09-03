@@ -16,7 +16,7 @@
  * required. The allow-list should be empty after W6 ships; every entry
  * is a deliberate exception that must be reviewed.
  *
- * /** @allowedDirectPrisma TASK-XXX: <one-sentence justification> *\/
+ * /** @allowedDirectPrisma: <one-sentence justification> *\/
  * const row = await this.databaseService.client.foo.findFirst(...);
  *
  * The escape-hatch comment must appear within the previous 3 source
@@ -27,7 +27,7 @@
  * directory (in practice apps/api) — it does not affect domain /
  * application / database packages where direct Prisma access is
  * legitimate (service layer).
-*/
+ */
 'use strict';
 
 const MAX_LINES_LOOK_BACK = 3;
@@ -38,8 +38,8 @@ const ALLOW_DIRECTIVE = /@allowedDirectPrisma(\s+([^*]+?))?\s*$/m;
  * `<...>.databaseService.client`. Returns true on a hit.
  *
  * Accepts both:
- *   this.databaseService.client            (ThisExpression base)
- *   foo.databaseService.client             (other identifier base; defensive)
+ *   this.databaseService.client (ThisExpression base)
+ *   foo.databaseService.client (other identifier base; defensive)
  *
  * We don't recurse PAST `.client` — the rule only fires when the
  * chain ENDS at `.client`. Subsequent property accesses (`.user`,
@@ -134,13 +134,13 @@ module.exports = {
     type: 'problem',
     docs: {
       description:
-        'Forbid `this.databaseService.client.*` access inside controller files. Use a service or repository (TASK-307 §W6 / audit C-10 / F-1 / H-9).',
+        'Forbid `this.databaseService.client.*` access inside controller files. Use a service or repository (§W6 / audit C-10 / F-1 / H-9).',
       recommended: true,
     },
     schema: [],
     messages: {
       directPrismaInController:
-        "Controllers must not access `this.databaseService.client` directly (TASK-307 W6.4 / audit C-10). Route through a service or repository. If this access is genuinely unavoidable, add `/** @allowedDirectPrisma <reason> */` immediately above this line.",
+        "Controllers must not access `this.databaseService.client` directly (W6.4 / audit C-10). Route through a service or repository. If this access is genuinely unavoidable, add `/** @allowedDirectPrisma <reason> */` immediately above this line.",
     },
   },
 

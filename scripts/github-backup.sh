@@ -7,8 +7,8 @@ set -eu
 
 # Configuration
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/4bits-vn/project-hope-v2.git}"
-GITHUB_USERNAME="${GITHUB_USERNAME:?Set GITHUB_USERNAME env var (TASK-302 Phase 0 Item 6)}"
-GITHUB_TOKEN="${GITHUB_TOKEN:?Set GITHUB_TOKEN env var (TASK-302 Phase 0 Item 6 — see _section-a-rotation-log.md)}"
+GITHUB_USERNAME="${GITHUB_USERNAME:?Set GITHUB_USERNAME env var (Phase 0 Item 6)}"
+GITHUB_TOKEN="${GITHUB_TOKEN:?Set GITHUB_TOKEN env var (Phase 0 Item 6 — see _section-a-rotation-log.md)}"
 BACKUP_BRANCH="${BACKUP_BRANCH:-back-up}"
 
 # Create authenticated GitHub URL

@@ -92,7 +92,7 @@ function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): 
  * version govern it, and the per-kind action subscriptions + start/ending action
  * lists `ConsultationLoopWorkflow` dispatches.
  *
- * ## What TASK-815 changed
+ * ## What changed
  *
  * Every field this service used to read off a `DepartmentAgent` now comes from
  * the tenant's own configuration:
@@ -114,7 +114,7 @@ function declaredKinds(version: ConsultationContextSchemaVersionEntity | null): 
  *
  * The agent carried `alwaysActions` (EXTEND) and `neverActions` (VETO) over the
  * endpoint stage. Both are subsumed by the ordered
- * `consultation.endpoint.actions` list TASK-812 introduced, which can add,
+ * `consultation.endpoint.actions` list introduced, which can add,
  * ORDER and omit — strictly more than the two levers could express between
  * them. `resolveEndpointSequence` still accepts them as optional inputs (they
  * are its own tested contract); this service simply no longer supplies any.

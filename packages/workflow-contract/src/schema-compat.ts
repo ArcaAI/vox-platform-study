@@ -1,5 +1,5 @@
 /**
- * TIER 2 of TASK-847 step 7 — the shallow structural check, and the tier whose defining property
+ * TIER 2 of step 7 — the shallow structural check, and the tier whose defining property
  * is restraint.
  *
  * ## The three tiers, and which one is the authority

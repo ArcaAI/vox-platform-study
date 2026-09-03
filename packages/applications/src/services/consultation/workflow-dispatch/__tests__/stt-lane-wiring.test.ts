@@ -1,20 +1,20 @@
 /**
- * TASK-790 W4 — the STT assignment lane resolves to a real `pipelineId` (TASK-789 H-5).
+ * the STT assignment lane resolves to a real `pipelineId`.
  *
  * `SttPipelineResolverService` was exported for a consumer its own module comment calls "a
  * FUTURE, separate wiring pass" and was injected NOWHERE — zero production callers. Meanwhile
  * the rest of the lane is genuinely live: publishing an `stt`-palette graph already writes a real
- * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` (finding C-7), and
+ * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` , and
  * the compiled pipeline already appears in the consultation Listener selector. The only missing
  * link was assignment -> slug -> pipelineId.
  *
- * Wired at consultation open, beside the consultation-palette dispatch that TASK-789 C-1 landed —
+ * Wired at consultation open, beside the consultation-palette dispatch that landed
  * the one place that already resolves the assignment cascade for a tenant + department. The two
  * lanes are INDEPENDENT: a tenant may assign an `stt` graph and no `consultation` graph, so the
  * STT resolution must not be skipped by the consultation lane's early return.
  *
  * Deliberately NOT wired here: the final bind of this id into the realtime WS session. That lives
- * under `apps/api/src/modules/streaming/**`, which TASK-724's grep-gate deliberately fences —
+ * under `apps/api/src/modules/streaming/**`, which grep-gate deliberately fences
  * touching it must force an explicit decision, not ride along in this change.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -35,7 +35,7 @@ function build(withResolver = true) {
   return new ConsultationWorkflowDispatchService(
     mockAssignments as any,
     mockDefinitionRepository as any,
-    // TASK-795 W1 — the dispatcher now records which engine governs.
+    // the dispatcher now records which engine governs.
     ({ findById: vi.fn().mockResolvedValue({ id: 'c-1', metadata: null }), update: vi.fn().mockResolvedValue({}) }) as any,
     mockWorkflowRunService as any,
     mockHarnessGateway as any,
@@ -44,7 +44,7 @@ function build(withResolver = true) {
   );
 }
 
-describe('TASK-790 W4 — STT pipeline resolution at consultation open (H-5)', () => {
+describe(' W4 — STT pipeline resolution at consultation open (H-5)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAssignments.resolve.mockResolvedValue(noAssignment);

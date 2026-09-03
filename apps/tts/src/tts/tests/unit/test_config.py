@@ -37,7 +37,7 @@ class TestEnvPrefix:
     ) -> None:
         """ONE internal credential, and `TTS_SERVICE_TOKEN` is not it.
 
-        The legacy per-service token is retired (TASK-799 lane C). It survived as
+        The legacy per-service token is retired ( lane C). It survived as
         a "zero-cost backward-compatibility fallback", but the cost was that two
         call sites read it DIRECTLY rather than through the accessor — so a
         deployment configured the way owner decision D-D specifies (shared token
@@ -71,7 +71,7 @@ class TestAzureCredentialByok:
         assert AzureSpeechConfig().api_key.get_secret_value() == ""
 
     def test_region_is_control_plane_owned_not_env_sourced(self, monkeypatch) -> None:
-        """The region left env with the rest of the connection (TASK-799 lane C).
+        """The region left env with the rest of the connection ( lane C).
 
         Same mechanism as the KEY above, different reason: the key is closed
         because it is a secret, the region because region is a DATA RESIDENCY

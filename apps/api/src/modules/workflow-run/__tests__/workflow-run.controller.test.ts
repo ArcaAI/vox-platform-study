@@ -1,5 +1,5 @@
 /**
- * WorkflowRunController unit tests (TASK-723).
+ * WorkflowRunController unit tests.
  *
  * The class-level `@CanRead('WorkflowRun')` gate, the tier 30-49 working-
  * tenant resolution (tenant admins pinned to their own CLS tenant; a

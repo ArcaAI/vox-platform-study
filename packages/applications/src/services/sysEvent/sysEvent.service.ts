@@ -118,9 +118,9 @@ export class SysEventService implements ISysEventService {
    * and the caller forgot to explicitly pass responsibleEntityId.
    */
   private warnIfMissingResponsibleEntity(event: SysEvent, eventType: string): void {
-    // A MACHINE actor is a present actor (TASK-762). Without this the
+    // A MACHINE actor is a present actor. Without this the
     // service-account path would trip the "missing author" warning on every
-    // mutation and train operators to ignore it — while §5.6 test 32 still
+    // mutation and train operators to ignore it — while test 32 still
     // requires the warning to fire when NEITHER actor is set.
     if (!event.responsibleEntityId && !event.responsibleServiceAccountId && !event.disableAuditLog) {
       this.logger.warn({

@@ -52,7 +52,7 @@ def _llm_governor_test_defaults(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _byo_credentials_absent(monkeypatch):
-    """TASK-799 lane B — the hermetic suite's BYO-credential posture is ABSENT.
+    """lane B — the hermetic suite's BYO-credential posture is ABSENT.
 
     The judge and the retriever now resolve their credentials from the gateway's
     `AiProviderConnection` plane, INSIDE the activity that uses them. This suite

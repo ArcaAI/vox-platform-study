@@ -10,7 +10,7 @@ import { IBaseService } from '../../interfaces';
 export interface IConsentGrantService extends IBaseService {
   create(request: CreateConsentGrantRequest): Promise<ConsentGrantResponse>;
   revoke(id: string, request: RevokeConsentGrantRequest): Promise<ConsentGrantResponse>;
-  /** Tenant-scoped consent register — paginated, optional patient/purpose/lifecycle filters (TASK-805). */
+  /** Tenant-scoped consent register — paginated, optional patient/purpose/lifecycle filters. */
   list(query: ListConsentGrantsQuery): Promise<PaginatedConsentGrantResponse>;
   /**
    * Grant every purpose for a patient, attributed to the CLS request user —

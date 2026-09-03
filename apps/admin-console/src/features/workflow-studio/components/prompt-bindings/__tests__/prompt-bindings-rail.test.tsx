@@ -1,5 +1,5 @@
 /**
- * DD-11's "new version available" affordance (TASK-810 task 14).
+ * DD-11's "new version available" affordance ( task 14).
  *
  * The point under test is not the rendering — it is that the rail distinguishes
  * THREE states and only flags one of them. An out-of-band prompt edit moves no
@@ -142,7 +142,7 @@ describe('PromptBindingsRail (DD-11)', () => {
     // The admin sees what they would adopt BEFORE adopting it.
     await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).toBe('Reviewed wording from the library.'));
 
-    // Saving that content UNCHANGED is the ADOPT path since §7b item 1 — the label says so,
+    // Saving that content UNCHANGED is the ADOPT path since item 1 — the label says so,
     // rather than promising a v6 the server will not mint.
     fireEvent.click(within(dialog).getByRole('button', { name: /Adopt v5 for this node/ }));
 

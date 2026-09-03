@@ -27,7 +27,7 @@ load_env()
 _MODEL_IDENTITY_FIELDS = frozenset({"model_name", "tokenizer_name", "model_path", "model_version"})
 
 
-# Fields the CONTROL PLANE owns (TASK-799 lane D). Dropped from every env-ish
+# Fields the CONTROL PLANE owns. Dropped from every env-ish
 # source for the same reason model identity is: the value has exactly one
 # writer, and a second way to set it is a way for the two to disagree.
 #
@@ -188,7 +188,7 @@ class NLPServiceConfig(BaseSettings):
     # default. Neither half is decoration:
     #
     # * a `default=os.getenv(...)` is an env read evaluated once at class-
-    #   definition time — the module-scope pattern TASK-558 removed, and it
+    # definition time — the module-scope pattern removed, and it
     #   cannot be reached by the Vault `secrets_dir` tier at all;
     # * an `__init__` that pre-fills these from `os.getenv` is worse, because
     #   `init_settings` is the HIGHEST-precedence source in `build_hope_sources`,
@@ -214,7 +214,7 @@ class NLPServiceConfig(BaseSettings):
     # — `apps/nlp/.env.sample` shipped `LOG_LEVEL=info`, and every other service
     # in the fleet takes a name. So `NLP_LOG_LEVEL=INFO` used to be a boot-time
     # ValidationError while `NLP_LOG_LEVEL=20` was undocumented anywhere. Accept
-    # both spellings of the ONE name (TASK-799 B.3); `core/logging.py` reads the
+    # both spellings of the ONE name ; `core/logging.py` reads the
     # same variable and resolves it the same way.
     log_level: int = Field(default=LogLevel.INFO)
 
@@ -270,9 +270,9 @@ class NLPServiceConfig(BaseSettings):
         default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
     )
 
-    # The LEGACY per-service credential (`NLP_SERVICE_TOKEN`) is GONE
-    # (TASK-799 lane D). It existed only as a migration fallback while call
-    # sites were moved onto `peer_service_token()`; Phase 0 finished that move,
+    # The LEGACY per-service credential (`NLP_SERVICE_TOKEN`) is gone.
+    # It existed only as a migration fallback while call
+    # sites were moved onto `peer_service_token()`; that move finished,
     # so what remained was a SECOND accepted credential — a second thing to
     # rotate, and a second way to be silently unauthenticated when only one of
     # the two is set.
@@ -303,7 +303,7 @@ class NLPServiceConfig(BaseSettings):
     # effective-config route this URL points at.
     gateway_url: str = Field(default="http://localhost:8868/api/v1")
 
-    # ── Gateway internal-route credential (TASK-855 L6 follow-on) ──────────
+    # ── Gateway internal-route credential ( follow-on) ──────────
     # NOT the same credential as `internal_access_token` above. That one is
     # the shared `X-Service-Token` this process ACCEPTS inbound and PRESENTS
     # on PEER (service-to-service) calls — e.g. `EffectiveConfigClient`'s pull
@@ -328,7 +328,7 @@ class NLPServiceConfig(BaseSettings):
     #
     # BOOTSTRAP TRANSPORT, and env-tier for the same reason `gateway_url` is:
     # it is the ADDRESS of a backing service, not a value read from one. Rule 00
-    # §Configuration Principles keeps exactly this class of variable in env —
+    # Principles keeps exactly this class of variable in env
     # "what is needed to reach the DB or authenticate to Vault" — and nothing
     # else.
     #
@@ -344,7 +344,7 @@ class NLPServiceConfig(BaseSettings):
     # plane (`nlp.inference.maxConcurrent`).
     inference_max_concurrent: int = Field(default=4, ge=1)
 
-    # Owner decision (2026-08-20, TASK-729 §6): outbound peer HTTP (the
+    # Owner decision (2026-08-20): outbound peer HTTP (the
     # `nlp` → `text` delegation behind `/classify/topic`/`/classify/intent`)
     # gets its OWN bound, never `inference_max_concurrent`. That semaphore
     # protects local GPU/CPU inference slots; a slow HTTP round-trip to `text`
@@ -355,7 +355,7 @@ class NLPServiceConfig(BaseSettings):
     # configured the exact same way as `inference_max_concurrent` above.
     peer_call_max_concurrent: int = Field(default=8, ge=1)
 
-    # Micro-batching + backpressure bounds (TASK-778).
+    # Micro-batching + backpressure bounds.
     #
     # BOOTSTRAP FLOOR ONLY, and deliberately TRANSPORT-shaped: these are queue
     # and batch geometry, not model identity, taxonomy, threshold or any other
@@ -376,9 +376,9 @@ class NLPServiceConfig(BaseSettings):
     # buys cache contention rather than throughput.
     inference_max_inflight_batches: int = Field(default=2, ge=1, le=32)
 
-    # ── Two service classes, two queue geometries (TASK-782) ───────────────
+    # ── Two service classes, two queue geometries ───────────────
     #
-    # TASK-778 shipped ONE geometry and measured p95 ~1.7 s at 100 concurrent —
+    # shipped ONE geometry and measured p95 ~1.7 s at 100 concurrent
     # fine for the asynchronous per-utterance redaction pass, unfit for a
     # SYNCHRONOUS inline gate on a clinician's turn. The two jobs have different
     # latency budgets, so they no longer share a queue.
@@ -392,14 +392,14 @@ class NLPServiceConfig(BaseSettings):
     # `latency_class` on the request selects the lane; absent ⇒ bulk, so an
     # existing caller keeps byte-identical behaviour.
     # 2, not 4: the lane exists for latency, and the measured cost of a wider
-    # gate batch is paid by the request that is waiting for the verdict
-    # (TASK-782 §5.4).
+    # gate batch is paid by the request that is waiting for the verdict.
+
     inference_interactive_batch_max_size: int = Field(default=2, ge=1, le=64)
     inference_interactive_batch_linger_ms: int = Field(default=2, ge=0, le=1000)
     inference_interactive_queue_max_depth: int = Field(default=64, ge=1)
     inference_interactive_queue_max_wait_seconds: float = Field(default=2.0, gt=0)
 
-    # ── Where the tensors execute (TASK-782) ───────────────────────────────
+    # ── Where the tensors execute ───────────────────────────────
     #
     # TRANSPORT/TOPOLOGY, not model identity — env-tier for the same reason the
     # batch geometry is, and unlike a model id, which may never be a settings
@@ -432,7 +432,7 @@ class NLPServiceConfig(BaseSettings):
     # operator's login shell: `~/.zshrc` is sourced by INTERACTIVE shells only,
     # and services, CI jobs and coding agents all run in non-interactive ones.
     # An undeclared value silently redirects every download to
-    # `~/.cache/huggingface`, which is how TASK-778's first "measured against
+    # `~/.cache/huggingface`, which is how first "measured against
     # real weights" claim came to be unsubstantiated.
     #
     # Unprefixed (`validation_alias` bypasses the `NLP_` prefix) because it
@@ -511,7 +511,7 @@ class TokenClassificationConfig(BaseSettings):
     model_path: str | None = Field(default=None)
     tokenizer_name: str
 
-    # NER settings that used to live here are GONE (TASK-799 lane G):
+    # NER settings that used to live here are GONE :
     # `aggregation_strategy`, `ignore_labels` and `assertion_enabled` were
     # `TOKEN_CLASSIFIER_*` env fields. A LABEL SET in an env var is precisely
     # what rule 00 §Configuration Principles forbids, and the first two are
@@ -530,7 +530,7 @@ class TokenClassificationConfig(BaseSettings):
     settings_customise_sources = classmethod(_model_identity_filtered_sources)
 
 
-# `OntologyLinkerConfig` is GONE (TASK-799 lane G). Its two fields —
+# `OntologyLinkerConfig` is GONE. Its two fields
 # `NLP_LINKER_ENABLED` and `NLP_LINKER_CONFIDENCE_FLOOR` — were an env-owned
 # master switch and threshold for a CLINICAL enrichment. A threshold is not an
 # env var (rule 00), and neither is a per-model enrichment toggle: both now ride
@@ -608,10 +608,10 @@ class TextCorrectorConfig(BaseSettings):
 
 
 class ExternalTextConfig(BaseSettings):
-    """apps/nlp's peer-to-peer client config for calling `text` (TASK-729).
+    """apps/nlp's peer-to-peer client config for calling `text`.
 
     Mirrors `apps/text`'s `ExternalGuardrailConfig` field-for-field: this is
-    the first outbound peer-service call `apps/nlp` makes (§2.3/§2.4 of the
+    the first outbound peer-service call `apps/nlp` makes ( of the
     ticket — every prior `httpx` call site targets the gateway, never a peer
     AI service). Used by `nlp.topic`/`nlp.intent` to delegate open-taxonomy
     labeling to a real LLM call, with the tenant's topic/intent list injected
@@ -631,7 +631,7 @@ class ExternalTextConfig(BaseSettings):
     # `TEXT_URL` is the repo-wide name for this address — `apps/guardrail`
     # already reads it under the same alias, and `turbo.json#globalEnv` declares
     # it once for the whole fleet. `NLP_EXTERNAL_TEXT_BASE_URL` was a second name
-    # for the same endpoint (TASK-799 lane D): two names for one address is how
+    # for the same endpoint: two names for one address is how
     # half a fleet ends up pointed at a decommissioned host.
     base_url: str = Field(
         default="http://localhost:8862",

@@ -1,5 +1,5 @@
 /**
- * TASK-857 — the bootstrap TENANT_ADMIN must be able to LOG IN.
+ * the bootstrap TENANT_ADMIN must be able to LOG IN.
  *
  * `93-bootstrap-tenant-admin.ts` created the user, the profile and the
  * tenant-scoped role assignment — and no `UserDepartment`. Login requires BOTH

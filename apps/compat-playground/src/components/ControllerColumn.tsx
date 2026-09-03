@@ -43,7 +43,7 @@ export function ControllerColumn() {
         <CardHeader>
           <CardTitle>Language</CardTitle>
           <CardDescription>
-            From <code className="font-mono text-xs">useArcaSttLanguageModes()</code> (TASK-587) — falls back to a static list when the catalog is
+            From <code className="font-mono text-xs">useArcaSttLanguageModes()</code>  — falls back to a static list when the catalog is
             empty. Pick before you start.
           </CardDescription>
         </CardHeader>

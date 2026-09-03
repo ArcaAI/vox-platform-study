@@ -35,7 +35,7 @@
  *     freeze) so the desired bar is visible and cannot pass by accident.
  *
  * Live-stack requirement: needs STT behind the gateway; self-skips with an
- * explicit reason when unreachable. Prereqs + invocation: ticket README
+ * explicit reason when unreachable. Prereqs + invocation: 
  * (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
 import { test, expect } from '@playwright/test';
@@ -177,7 +177,7 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
         contentType: 'application/json',
       });
       // Also to stdout so the `list` reporter surfaces the baseline inline.
-      console.log('\n[TASK-455 AC-2] resume-after-drop baseline:\n' + JSON.stringify(baseline, null, 2));
+      console.log('\n[ AC-2] resume-after-drop baseline:\n' + JSON.stringify(baseline, null, 2));
 
       // Stable invariant ONLY — whether the gateway answers the resume, replays,
       // duplicates (seq reset), or freezes IS the C3-01 baseline recorded above

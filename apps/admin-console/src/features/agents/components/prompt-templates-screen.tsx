@@ -9,7 +9,7 @@
  * governance surface were buried two tabs deep inside a screen titled "Agent
  * Catalog", which is why the pre-summary/summary distinction had nowhere to
  * live. That screen owned the `DepartmentAgent` catalog and is now gone
- * entirely (TASK-815 retired the resource; `/agents` keeps a one-release
+ * entirely ( retired the resource; `/agents` keeps a one-release
  * redirect HERE). This screen owns `PromptTemplate` end to end, keeping one
  * authoritative editor per backend resource (rule 13).
  *

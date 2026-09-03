@@ -1,5 +1,5 @@
 /**
- * Permission-matrix derivation (build spec §4).
+ * Permission-matrix derivation (build spec
  *
  * A role's effective permissions are a DERIVED, read-only view computed from
  * its attached policies. Each policy carries CASL rules
@@ -68,7 +68,7 @@ export interface PermissionMatrix {
 }
 
 /**
- * Curated resource rows in display order (build spec §4). Subjects appearing in
+ * Curated resource rows in display order (build spec Subjects appearing in
  * attached policies but absent here are appended below, first-seen order.
  */
 const CURATED_SUBJECTS: readonly { subject: string; label: string }[] = [

@@ -12,7 +12,7 @@ export class SummaryApprovalRequest {
   overrideSafetyFlag?: boolean;
 
   /**
-   * TASK-709 optimistic-concurrency token. Mirrors
+   * optimistic-concurrency token. Mirrors
    * `UpdateDepartmentRequest.expectedVersion` verbatim: required. Approval
    * writes the ContextItem row (and flips the parent Consultation to
    * SIGNED), so it needs the same Compare-And-Set predicate as the other

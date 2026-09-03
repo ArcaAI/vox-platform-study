@@ -158,7 +158,7 @@ describe('updateSectionContent — the accepted write', () => {
   });
 
   it('accepts an EMPTY edit AND clears the stored body — a deletion that only moves the state is a lost deletion', async () => {
-    // TASK-820. This case used to assert only that a write was ATTEMPTED, while
+    // This case used to assert only that a write was ATTEMPTED, while
     // stubbing `encryptContentIntoEntity` — so it passed throughout the window in
     // which an empty edit committed CONFIRMED/revision/_version on top of the
     // clinician's UNDELETED text. `content` is transient, so "the body is empty"
@@ -167,7 +167,7 @@ describe('updateSectionContent — the accepted write', () => {
     //
     // Hence a REAL `DocumentSectionRepository` (so the production
     // `encryptContentIntoEntity` and the real `encryptStringToCiphertext` run)
-    // with only persistence doubled — the same shape the TASK-819 block below uses.
+    // with only persistence doubled — the same shape the block below uses.
     const repository = new DocumentSectionRepository({ getDatabaseService: () => ({}) } as never);
     const before = sectionAt(7);
     const after = sectionAt(8, DocumentSectionState.CONFIRMED);
@@ -189,7 +189,7 @@ describe('updateSectionContent — the accepted write', () => {
     const response = await service.updateSectionContent(CONSULTATION, DOCUMENT, SECTION, { content: '', expectedVersion: 7 });
 
     // Still accepted: a clinician emptying their own section owes the transcript
-    // no contradiction (TASK-811 §8b). The fix clears the body, it does not refuse.
+    // no contradiction ( The fix clears the body, it does not refuse.
     expect(response.content).toBe('');
     expect(updateWithVersion).toHaveBeenCalledTimes(1);
 
@@ -241,7 +241,7 @@ describe('reads decrypt', () => {
 });
 
 /**
- * TASK-819 — the HTTP half of "a failed encryption must not commit".
+ * the HTTP half of "a failed encryption must not commit".
  *
  * The store's own suite proves the row is left alone; this proves the CALLER is
  * told. Nothing on the encryption path is stubbed: a real `VaultSecretsProvider`
@@ -249,7 +249,7 @@ describe('reads decrypt', () => {
  * `DocumentSectionRepository.encryptContentIntoEntity`. Only persistence is a
  * double — and it exists to assert it is never reached.
  */
-describe('TASK-819 — an unencryptable edit is never reported as a write', () => {
+describe('an unencryptable edit is never reported as a write', () => {
   function serviceWithUnreachableVault() {
     const repository = new DocumentSectionRepository({ getDatabaseService: () => ({}) } as never);
     const updateWithVersion = vi.fn(async () => undefined);

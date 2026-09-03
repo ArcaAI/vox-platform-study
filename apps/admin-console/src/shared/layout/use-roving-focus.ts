@@ -3,7 +3,7 @@
 import { useCallback, useRef, type KeyboardEvent } from 'react';
 
 /**
- * Roving tabindex for a composite navigation widget (TASK-788 AC-8).
+ * Roving tabindex for a composite navigation widget.
  *
  * The rail and the scoped sidebar are each ONE tab stop: exactly one item
  * carries `tabIndex=0` (the active one, else the first), every sibling carries

@@ -1,5 +1,5 @@
 /**
- * Boot-time audit (TASK-742): the API-key surface is DECLARED, never inferred.
+ * Boot-time audit: the API-key surface is DECLARED, never inferred.
  *
  * `UnifiedAuthGuard`'s API-key path fails closed — a route that declares no
  * `@RequiredScopes(...)` refuses API-key callers outright
@@ -25,7 +25,7 @@
  * omission surfaces to the engineer who added the route, at the moment they
  * add it, with the route named. This is the same shape as
  * `admin-route-permission-audit.ts`'s "@Public() or a permission decorator"
- * rule, which has held the JWT side of the gateway honest since TASK-307.
+ * rule, which has held the JWT side of the gateway honest since.
  *
  * ─── Why this exists alongside the two hand-listed audits ──────────────────
  *
@@ -102,7 +102,7 @@ export function auditEveryApiKeyReachableRouteDeclaresScopes(app: INestApplicati
 
         offenders.push(
           `Route ${httpMethod} ${fullPath} on ${ControllerClass.name}.${methodName} declares nothing about API-key access. ` +
-            `Since TASK-742 the API-key path fails closed, so this route already REFUSES every API key at runtime — ` +
+            `Since  the API-key path fails closed, so this route already REFUSES every API key at runtime — ` +
             `the declaration is missing, not the enforcement. Add @RequiredScopes('<scope>') ` +
             `(packages/applications/src/services/apiKey/apikey-scopes.registry.ts) if an API key legitimately reaches it, ` +
             `or @ForbidApiKey() if it is an interactive-human-only surface.`,
@@ -113,7 +113,7 @@ export function auditEveryApiKeyReachableRouteDeclaresScopes(app: INestApplicati
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-742: refused to start — ${offenders.length} route(s) declare neither @RequiredScopes(...) nor @ForbidApiKey():\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} route(s) declare neither @RequiredScopes(...) nor @ForbidApiKey():\n${list}`);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Descriptor governance (TASK-799 Phase 4, E.1).
+ * Descriptor governance.
  *
  * These rules decide what an admin is OFFERED, and they have to agree with what
  * the gateway will actually accept — otherwise the screen either hides a legal

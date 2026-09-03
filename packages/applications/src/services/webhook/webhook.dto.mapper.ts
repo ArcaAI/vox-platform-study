@@ -6,7 +6,7 @@ export class WebhookDtoMapper {
   static ToResponse(entity: WebhookEntity): WebhookResponse {
     // `hashedSecret` is deliberately never mapped onto `WebhookResponse` (the
     // class carries no such field) — only its presence/absence, as
-    // `hasSecret`. See TASK-727 / webhook.response.ts.
+    // `hasSecret`. See / webhook.response.ts.
     return AutoClassMapper(entity, WebhookResponse, {
       hasSecret: (source) => Boolean(source.hashedSecret),
     });

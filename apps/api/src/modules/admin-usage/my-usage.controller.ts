@@ -14,7 +14,7 @@ import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
  * (there is no by-id route here). READ-ONLY by construction.
  */
 /**
- * TASK-758 — the counterpart to `/users/me/*`'s bound-user rule: the bare
+ * the counterpart to `/users/me/*`'s bound-user rule: the bare
  * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
  * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
  * its own sentence rather than a shared one.

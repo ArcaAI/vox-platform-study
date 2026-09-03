@@ -72,7 +72,7 @@ function readClinicalTaxonomy(metadata: unknown): Record<string, unknown> | unde
  * established at all, and reading under the ambient tenant would be the very
  * cross-tenant leak the pin exists to prevent.
  *
- * CLINICAL TAXONOMY (TASK-799 lane G) — the same read also carries the NER
+ * CLINICAL TAXONOMY — the same read also carries the NER
  * plane's configuration. `apps/nlp` used to hold an ontology vocabulary, vitals
  * plausibility bands, a ConText/NegEx trigger lexicon and its NER contract
  * (`TOKEN_CLASSIFIER_*` / `NLP_LINKER_*`) as Python literals and env fields;

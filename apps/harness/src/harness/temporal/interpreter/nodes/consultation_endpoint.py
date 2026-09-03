@@ -1,4 +1,4 @@
-"""TASK-812 — the ENDPOINT STAGE: ``session.timeout``, ``summary.finalize``, ``feedback.capture``.
+"""the ENDPOINT STAGE: session.timeout, summary.finalize, feedback.capture.
 
 The endpoint stage is the ordered sequence that runs before a consultation session closes. Before
 this ticket it existed only as a hardcoded literal in the gateway
@@ -82,7 +82,7 @@ from harness.temporal.models import (
 #: a conservative one, and the loop is the authority on expiry, not a graph author.
 _KNOWN_REASONS = {ENDPOINT_REASON_ENDED, ENDPOINT_REASON_TIMED_OUT, "CANCELLED"}
 
-#: Only a proposal a clinician actually accepted may be promoted (DD-8).
+#Only a proposal a clinician actually accepted may be promoted.
 _ACCEPTED_STATUS = "ACCEPTED"
 
 

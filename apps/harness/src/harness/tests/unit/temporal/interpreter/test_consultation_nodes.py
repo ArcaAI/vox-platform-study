@@ -1,4 +1,4 @@
-"""TASK-731 Phase C/D — node-activity tests for the three node types `nodes/consultation.py`
+"""/D — node-activity tests for the three node types `nodes/consultation.py`
 owns: `consultation.consentGate`, `consultation.phiHop` (both `implemented: true`) and
 `consultation.hitlGate` (`implemented: false` — Phase B not built).
 
@@ -49,7 +49,7 @@ class TestConsultationRegistryShape:
         assert NODE_REGISTRY["consultation.phiHop"].implemented is True
 
     def test_no_consultation_vision_or_priming_key_exists(self):
-        # README §1.3 (vision, permanently deferred) / §2.3 + R-4 (priming, deferred).
+        # (vision, permanently deferred) / + R-4 (priming, deferred).
         for key in NODE_REGISTRY:
             assert not key.startswith("consultation.vision")
         assert "consultation.priming" not in NODE_REGISTRY

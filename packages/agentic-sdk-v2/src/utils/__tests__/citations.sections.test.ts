@@ -1,6 +1,6 @@
 /**
  * @arcaai/vox — N-section document support in the citations helpers
- * (TASK-810 carry-over B).
+ * ( carry-over B).
  *
  * `SoapSection` was a CLOSED four-value union (`'S'|'O'|'A'|'P'`) and
  * `groupClaimsBySection` always returned exactly four groups. That made the

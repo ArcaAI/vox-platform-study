@@ -3,7 +3,7 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID } from './00-constants';
 
 /**
- * TASK-763 — the day-1 bootstrap SUPER_ADMIN.
+ * the day-1 bootstrap SUPER_ADMIN.
  *
  * ## The gap this closes
  *
@@ -26,7 +26,7 @@ import { SYSTEM_TENANT_ID } from './00-constants';
  * ## Why env, when rule 00 says "minimise env vars"
  *
  * Because this IS the bootstrap floor that rule names. `09-infrastructure-devops.md`
- * §Configuration Tiers keeps in `env` only what is needed *to reach the database
+ * Tiers keeps in `env` only what is needed *to reach the database
  * or authenticate to Vault*; a first-admin credential is the same class of
  * thing — the one input that cannot be read from the system it is used to
  * unlock. It is consumed EXACTLY ONCE and never read at runtime, which is why
@@ -156,7 +156,7 @@ export const seedBootstrapAdmin = async (client: CorePrismaClient) => {
     return { success: true, created: false as const };
   }
 
-  // TASK-766 OD-1: `Role` is tenant-scoped, and the built-in roles are
+  // `Role` is tenant-scoped, and the built-in roles are
   // SYSTEM-tenant rows. Pin the tenant so this never matches a customer
   // tenant's custom role that happens to be named SUPER_ADMIN.
   const superAdminRole = await client.role.findFirst({ where: { name: 'SUPER_ADMIN', tenantId: SYSTEM_TENANT_ID } });

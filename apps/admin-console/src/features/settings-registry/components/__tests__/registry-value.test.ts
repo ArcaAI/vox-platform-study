@@ -1,5 +1,5 @@
 /**
- * `dataType` translation for the registry lane (TASK-799 Phase 4, E.1).
+ * `dataType` translation for the registry lane.
  *
  * The write lane validates `value` against the descriptor's declared type and
  * 400s a mismatch, so these conversions are the difference between a save and a

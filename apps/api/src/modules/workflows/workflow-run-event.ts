@@ -6,7 +6,7 @@ import { WorkflowRunStatusResponse } from '@arcaai/applications';
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
 /**
- * The Redis Stream key carrying one run's produced events (TASK-849 lane A).
+ * The Redis Stream key carrying one run's produced events.
  *
  * MUST stay byte-identical to the producer's own `run_event_stream_key()`
  * (`apps/harness/src/harness/temporal/interpreter/run_events.py`). Two spellings
@@ -18,7 +18,7 @@ export function runEventStreamKey(runId: string): string {
 }
 
 /**
- * The transport name embedded in a resume token (async-contract §3.6). Also
+ * The transport name embedded in a resume token (async-contract Also
  * matches the producer's `RUN_EVENT_TRANSPORT`. A token minted by a different
  * transport is rejected rather than fed to `XREAD` as a cursor.
  */
@@ -44,11 +44,11 @@ export interface WorkflowRunEventPayload {
 }
 
 /**
- * Build the async-contract envelope (TASK-717 S-5) for a SNAPSHOT of a run's
+ * Build the async-contract envelope for a SNAPSHOT of a run's
  * live status.
  *
- * **This is no longer a poll tick.** It was, until TASK-849 lane A built the
- * TASK-717 Phase C producer: there was no `text/event-stream` endpoint and no
+ * **This is no longer a poll tick.** It was, until lane A built the
+ * producer: there was no `text/event-stream` endpoint and no
  * Redis-stream-backed progress channel on the interpreter dispatcher, so this
  * gateway synthesized an event per poll. It now emits this shape EXACTLY TWICE
  * per connection at most — once on connect, and once more if a trimmed-id gap
@@ -96,12 +96,12 @@ export function buildWorkflowRunEventEnvelope(tenantId: string, status: Workflow
 /**
  * One SSE wire frame.
  *
- * `resumeToken` is the OPAQUE, transport-assigned cursor (async-contract §3.6) — the value the
+ * `resumeToken` is the OPAQUE, transport-assigned cursor (async-contract — the value the
  * browser echoes back as `Last-Event-ID` and never parses. It is present on every frame read
  * from the run's Redis Stream, where Redis assigns the message id, and ABSENT on the snapshot
  * frame, where there is no stream position to name.
  *
- * That absence is a rule, not an omission: §3.6 forbids synthesizing a token a transport cannot
+ * That absence is a rule, not an omission: forbids synthesizing a token a transport cannot
  * actually resume from. Emitting the envelope's own `id` there would look like a cursor and
  * resume nothing — which is exactly the failure the opaque-token convention exists to prevent
  * (this file's previous version did emit `envelope.id`, back when there was no producer and

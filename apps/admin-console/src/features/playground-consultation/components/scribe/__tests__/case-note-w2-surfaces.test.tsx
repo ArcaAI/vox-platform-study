@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — the three clinician surfaces, wired into the case note.
+ * the three clinician surfaces, wired into the case note.
  *
  * Corrections write through the clinician's OWN edit buffer (`editor.change`), so the
  * two-writer contract in `use-note-editor.ts` is untouched: an accepted correction is a
@@ -98,7 +98,7 @@ function props(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> =
   };
 }
 
-describe('CaseNoteColumn — W2 surfaces (TASK-797)', () => {
+describe('CaseNoteColumn — W2 surfaces ', () => {
   it('shows correction proposals while the clinician is editing', async () => {
     render(<CaseNoteColumn {...props({ editor: editor(), correctionProposals: await corrections() })} />);
     expect(screen.getByRole('button', { name: /accept correction: metfromin/i })).toBeTruthy();

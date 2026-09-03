@@ -97,15 +97,15 @@ class TestApplyGate:
 
 
 class TestTask713IccBaselineGate:
-    """TASK-713 closure (owner ruling, 2026-08-20): the release-gate ICC
+    """closure (owner ruling, 2026-08-20): the release-gate ICC
     threshold was lowered from the literature-derived 0.80 target to **0.73**,
     the MEASURED baseline against the real `curated-v2.0.0` golden set
-    (`icc=0.7306`, Gwet AC2=0.9196, n=288 — TASK-713 README §"Fresh run
+    (`icc=0.7306`, Gwet AC2=0.9196, n=288 — run
     outcome"). Proves the gate now reflects that decision at today's actual
     quality: passes at the measured reading, and still fails a reading below
     the new floor — so an accidental future widen/narrow of `icc_threshold`
     is caught here, not discovered live in CI. The bar for restoring 0.80 is
-    tracked as debt in TASK-780, not laundered by this test.
+    tracked as debt in, not laundered by this test.
     """
 
     _CURATED_V2_AGGREGATES = {
@@ -119,7 +119,7 @@ class TestTask713IccBaselineGate:
         assert EvalConfig().icc_threshold == 0.73
 
     def test_gate_passes_at_the_measured_curated_v2_icc(self):
-        # The exact TASK-713 measured reading: icc=0.7306 on n=288.
+        # The exact measured reading: icc=0.7306 on n=288.
         run = _run(dict(self._CURATED_V2_AGGREGATES))
         measured = CalibrationReport(
             icc=0.7306, ac2=0.9196, n=288, k=2, icc_threshold=EvalConfig().icc_threshold
@@ -231,7 +231,7 @@ class TestRunAndGate:
 
     @pytest.mark.asyncio
     async def test_icc_gate_disabled_skips_calibration_entirely(self):
-        # TASK-713: a small CI judge that scores every case identically (a
+        # a small CI judge that scores every case identically (a
         # ceiling effect) drives ICC to ~0 regardless of the underlying
         # agreement quality — `icc_threshold` is validated to [0, 1], so
         # lowering it can never accommodate that. `icc_gate_enabled=False`
@@ -276,7 +276,7 @@ class TestRunAndGate:
 
     @pytest.mark.asyncio
     async def test_run_and_gate_threads_case_concurrency_into_the_runner(self, monkeypatch):
-        # TASK-713: EvalConfig.case_concurrency (HARNESS_EVAL_CASE_CONCURRENCY in
+        # EvalConfig.case_concurrency (HARNESS_EVAL_CASE_CONCURRENCY in
         # CI) must actually reach GoldenSetRunner, not just exist as an unused
         # config field — the CI wall-clock budget depends on this wiring.
         seen: dict[str, object] = {}

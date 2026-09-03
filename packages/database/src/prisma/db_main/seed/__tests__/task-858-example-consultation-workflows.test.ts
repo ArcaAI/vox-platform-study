@@ -1,5 +1,5 @@
 /**
- * TASK-858 D3 — the three example consultation workflows.
+ * the three example consultation workflows.
  *
  * ## What this suite is actually for
  *
@@ -70,7 +70,7 @@ const rowFor = (key: string, scope: 'platform' | 'arcaai') => {
 };
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D3 — six PUBLISHED consultation definitions, three graphs', () => {
+describe(' D3 — six PUBLISHED consultation definitions, three graphs', () => {
   it('seeds three SYSTEM templates and three ArcaAI copies', () => {
     expect(PLATFORM_EXAMPLE_WORKFLOW_DEFINITIONS).toHaveLength(3);
     expect(ARCAAI_EXAMPLE_WORKFLOW_DEFINITIONS).toHaveLength(3);
@@ -120,7 +120,7 @@ describe('TASK-858 D3 — six PUBLISHED consultation definitions, three graphs',
       const types = (variant.graph.nodes as any[]).map((n) => n.type);
       expect(types.filter((t) => t.startsWith('guard.') || t.startsWith('guardrail.'))).toEqual([]);
       expect(types).not.toContain('agent.presummarization');
-      // …and none of the SOAP graph's extra stages, which stay TASK-798's.
+      // …and none of the SOAP graph's extra stages, which stay.
       for (const excluded of [
         'consultation.retrieveEvidence',
         'consultation.bindTerminology',
@@ -146,7 +146,7 @@ describe('TASK-858 D3 — six PUBLISHED consultation definitions, three graphs',
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D3 — derived blobs are real compiler output', () => {
+describe(' D3 — derived blobs are real compiler output', () => {
   it.each(VARIANT_KEYS)('%s: graphChecksum equals sha256(canonicalJson(graph)) from the real engine', (key) => {
     const variant = variantOf(key);
     expect(variant.graphChecksum).toBe(createHash('sha256').update(canonicalJson(variant.graph)).digest('hex'));
@@ -211,7 +211,7 @@ describe('TASK-858 D3 — derived blobs are real compiler output', () => {
 // ---------------------------------------------------------------------------------------------
 // The REALTIME LANE — what actually runs live, per workflow.
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D3 — the realtime lane each workflow yields', () => {
+describe(' D3 — the realtime lane each workflow yields', () => {
   /** `[type, enabled]` for every lane node, flattened in stage order. */
   const laneNodes = (compiled: any): Array<[string, boolean]> =>
     (buildRealtimeLane(compiled)?.stages ?? []).flatMap((stage: any) => stage.nodes.map((n: any) => [n.type, n.enabled] as [string, boolean]));
@@ -251,7 +251,7 @@ describe('TASK-858 D3 — the realtime lane each workflow yields', () => {
     // A binding whose producer is a DURABLE node is dropped by
     // `buildRealtimeLane`, so a transcript sourced anywhere but
     // `consultation.captureBinding` would compile, validate, and then generate
-    // the note from `''` on every flush — the TASK-821 §17e defect.
+    // the note from `''` on every flush — the defect.
     const lane = buildRealtimeLane(variantOf(key).arcaaiCompiledConfig);
     const all = lane.stages.flatMap((s: any) => s.nodes);
     const capture = all.find((n: any) => n.type === 'consultation.captureBinding');
@@ -291,7 +291,7 @@ describe('TASK-858 D3 — the realtime lane each workflow yields', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D3 — seed-mode posture', () => {
+describe(' D3 — seed-mode posture', () => {
   it('gates the ArcaAI half out of `safe` and keeps the SYSTEM templates in', async () => {
     const { SEED_PHASES_EXCLUDED_FROM_SAFE, isPhaseEnabled } = await import('../seed-mode');
     // `createdBy: <the ArcaAI tenant admin>` on a PUBLISHED clinical workflow

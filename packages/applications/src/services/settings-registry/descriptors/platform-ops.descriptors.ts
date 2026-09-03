@@ -11,8 +11,8 @@
 // The registry lane merely makes them discoverable and writable.
 //
 // Sources of truth for the defaults:
-//   - rate-limit.*        `rate-limit/rate-limit.constants.ts`
-//   - audit-retention.*   `audit-retention/audit-retention.service.ts`
+//   - rate-limit.* `rate-limit/rate-limit.constants.ts`
+//   - audit-retention.* `audit-retention/audit-retention.service.ts`
 //   - agentic.trajectory.* `agent-trajectory-retention/agent-trajectory-retention.service.ts`
 
 // Every descriptor here is `failMode: 'open-to-default'`: these are
@@ -245,9 +245,9 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Origin (CORS) enforcement enabled',
     description:
-      "Master switch for browser-origin enforcement. TRUE is the DEFAULT — for every tenant including SYSTEM and GLOBAL, in every environment, with no row present and no opt-in step (TASK-641 FR-6; reverses TASK-610 §4C's permissive-by-default posture): " +
+      "Master switch for browser-origin enforcement. TRUE is the DEFAULT — for every tenant including SYSTEM and GLOBAL, in every environment, with no row present and no opt-in step (enforcing-by-default; reverses the earlier permissive-by-default posture): " +
       '`isOriginAllowed` consults the `TenantAllowedOrigin` registry, `OriginTenantBindingGuard` enforces origin↔tenant binding, and the STT WebSocket handshake checks the registry — an unregistered origin is refused. ' +
-      "Setting it FALSE restores TASK-610's original behaviour live, with no redeploy: every origin is admitted for every tenant and the allow-list is not consulted. " +
+      "Setting it FALSE restores the original permissive-by-default behaviour live, with no redeploy: every origin is admitted for every tenant and the allow-list is not consulted. " +
       'Register the origins each tenant needs BEFORE relying on enforcement, or legitimate browser traffic gets refused (grep the `origin_registry_miss` log reason). The SYSTEM rows needed for local development ship as unconditional bootstrap seed data, not demo data, precisely so this default is safe on a fresh database. ' +
       'Authentication and tenancy remain the enforcing controls either way; CORS is advisory browser behaviour and never was an authorization boundary.',
     default: true,
@@ -267,7 +267,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     default: 30,
   },
 
-  // ── DNA writing-style profile retention (TASK-733 Task 10) ──────────────
+  // ── DNA writing-style profile retention ──────────────
   //
   // Owner ruling 2026-08-20: a clinician's profile reset is "soft delete
   // now, purge later" — DnaWritingStyleService.resetMyDnaProfile/.deleteReport

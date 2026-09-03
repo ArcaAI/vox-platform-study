@@ -349,14 +349,14 @@ describe('ExceptionInterceptor — ProviderCredentialVetoedException → 409', (
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// Consent & ABAC (TASK-712). `ConsentDeniedException` → 403,
+// Consent & ABAC. `ConsentDeniedException` → 403,
 // `ConsentUnavailableException` → 503 — DELIBERATELY DIFFERENT statuses (R4):
 // a real denial is an expected compliance event; an unavailability verdict
 // is an infrastructure incident wearing a compliance-shaped mask. Conflating
 // them would make a gateway hiccup read as a compliance event, or vice versa,
 // in alerting.
 // ───────────────────────────────────────────────────────────────────────────
-describe('ExceptionInterceptor — Consent & ABAC (TASK-712)', () => {
+describe('ExceptionInterceptor — Consent & ABAC ', () => {
   let interceptor: ExceptionInterceptor;
 
   beforeEach(() => {
@@ -692,14 +692,14 @@ describe('Prisma error sanitisation (audit)', () => {
 // Prisma error code → HTTP status mapping.
 //
 // The code-to-status mapping lives in the interceptor — the single
-// registered handler for Prisma errors (TASK-776 F-03 deleted the unwired
+// registered handler for Prisma errors ( deleted the unwired
 // `PrismaClientExceptionFilter`) — so clients see the classification
 // matching RFC semantics:
-//   P2002 (unique constraint)        → 409 Conflict
-//   P2025 (record not found)         → 404 Not Found
-//   P2003 (foreign key constraint)   → 400 Bad Request
-//   P2014 (required relation)        → 400 Bad Request
-//   <other / unknown code>           → 400 Bad Request (legacy default)
+//   P2002 (unique constraint) → 409 Conflict
+//   P2025 (record not found) → 404 Not Found
+//   P2003 (foreign key constraint) → 400 Bad Request
+//   P2014 (required relation) → 400 Bad Request
+//   <other / unknown code> → 400 Bad Request (legacy default)
 //
 // Sanitisation is preserved: the public body stays
 // `{ statusCode, error, correlationId }` with no `err.meta` / raw message

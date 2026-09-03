@@ -51,7 +51,7 @@ describe('ValidScopesConstraint', () => {
   });
 
   /**
-   * TASK-757 (policy A2) — reserved scopes are un-GRANTABLE.
+   * (policy A2) — reserved scopes are un-GRANTABLE.
    *
    * SEPARATE from `ValidScopesConstraint`, which answers "is this a registry
    * member?" and must keep answering `true` for reserved strings so a key that
@@ -59,8 +59,8 @@ describe('ValidScopesConstraint', () => {
    * question "may this be granted NOW?" and is wired to the CREATE DTO only —
    * on UPDATE the rule is a DELTA rule and a class-validator constraint cannot
    * see the stored key, so it lives in `ApiKeyService.update()`.
-   */
-  describe('NoReservedScopesConstraint (TASK-757)', () => {
+ */
+  describe('NoReservedScopesConstraint ', () => {
     const noReserved = new NoReservedScopesConstraint();
 
     it('rejects an admin: scope', () => {

@@ -14,7 +14,7 @@ export class UpdateDnaReportRequest {
 
   @ApiPropertyOptional({
     description:
-      "TASK-551 — the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear.",
+      "the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear.",
   })
   @IsOptional()
   redactionRules?: Record<string, unknown>;

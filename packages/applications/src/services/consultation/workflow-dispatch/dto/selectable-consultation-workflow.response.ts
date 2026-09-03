@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * One entry of `GET /api/v1/consultations/workflows` (TASK-813 §8) — a workflow this caller may
+ * One entry of `GET /api/v1/consultations/workflows` — a workflow this caller may
  * name in `OpenConsultationRequest.workflowDefinitionSlug`.
  *
  * ## Deliberately four fields

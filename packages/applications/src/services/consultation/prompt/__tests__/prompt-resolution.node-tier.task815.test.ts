@@ -1,5 +1,5 @@
 /**
- * TASK-815 — Tier-1a moves off `DepartmentAgent` onto WORKFLOW NODE CONFIG.
+ * Tier-1a moves off `DepartmentAgent` onto WORKFLOW NODE CONFIG.
  *
  * ## The contract this suite exists to protect
  *
@@ -17,7 +17,7 @@
  * |---|---|
  * | `DepartmentAgentRepository.findDefaultForDepartment(tenant, dept)` | `IWorkflowAssignmentService.resolve(tenant, 'consultation', dept)` → the ACTIVE PUBLISHED definition |
  * | the agent's capability column (`livePromptTemplateId` / `newPatientTemplateId` / …) | the node's `config.promptTemplateId`, selected by the node's effective `taskKey` |
- * | `DepartmentAgent.pinnedVersionNumber` | the node's own `config.promptVersionNumber` pin (DD-11) |
+ * | `DepartmentAgent.pinnedVersionNumber` | the node's own `config.promptVersionNumber` pin |
  * | `resolvedAgentId` = the agent row id | `resolvedAgentId` = the workflow NODE id |
  *
  * The department AXIS survives unchanged: `WorkflowAssignmentService.resolve`

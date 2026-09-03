@@ -1,5 +1,5 @@
 /**
- * TASK-733 Task 3 — assignment CRUD: referential validation at write time, the
+ * assignment CRUD: referential validation at write time, the
  * WORM change row on every mutation, and 404-over-403 for a foreign id.
  */
 import { BadRequestException, NotFoundException } from '@nestjs/common';

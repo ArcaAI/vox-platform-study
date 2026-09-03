@@ -1,6 +1,6 @@
 -- WorkflowDefinition: DB-level defense-in-depth for the two invariants
--- workflow-definition.prisma's file header (§3.4) and TASK-715's README §6
--- risk #2 named HUMAN-GATED — resolved here by TASK-734 §6 (answer: "Lets
+-- workflow-definition.prisma's file header and
+-- risk #2 named HUMAN-GATED — resolved here by (answer: "Lets
 -- review, suggest best practices"). Neither is expressible in the Prisma
 -- schema DSL (no partial/filtered @@unique, no trigger support), so both are
 -- hand-written. Additive only: no existing column or table is touched, and
@@ -29,7 +29,7 @@ WHERE "isActive" = true AND "resourceStatus" != 'DELETED';
 --    status/resourceStatus*/name/description/tags/_metadata/_version/
 --    updatedAt/updatedBy stay writable, because the service's own
 --    `demoteExistingActive` legitimately flips `isActive` on an already-
---    PUBLISHED row, and re-validation (TASK-716's NEEDS_REVIEW sweep)
+-- PUBLISHED row, and re-validation ( NEEDS_REVIEW sweep)
 --    legitimately rewrites `validationReport`/`needsReview` on one too. A
 --    row-blind "no UPDATE at all" trigger would break both.
 --

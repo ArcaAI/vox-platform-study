@@ -1,5 +1,5 @@
 /**
- * WorkflowTestFixtureService encrypt-on-write + PHI response posture (TASK-721 R4).
+ * WorkflowTestFixtureService encrypt-on-write + PHI response posture.
  *
  * Mirrors `eval/__tests__/eval.service.encryption.test.ts` (the GoldenCase
  * exemplar):

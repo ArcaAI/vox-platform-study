@@ -26,7 +26,7 @@ function setupCommandLineOptions(): FactoryGeneratorOptions {
   program
     .name('generate-factory')
     .description(
-      'Preserve & reconcile the hand-curated factory layer (TASK-370). ' + 'Existing factories are reproduced verbatim; barrels are kept in sync.',
+      'Preserve & reconcile the hand-curated factory layer . ' + 'Existing factories are reproduced verbatim; barrels are kept in sync.',
     )
     .option('-o, --output-path <path>', 'Base output directory (expects <base>/domains/src/factories/generated)')
     .option('--check', 'Dry-run: report drift without writing; exit 1 on drift, 0 when clean', false)

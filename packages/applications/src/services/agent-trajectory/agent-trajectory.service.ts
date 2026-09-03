@@ -375,7 +375,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    *
    * Best-effort like `republishToLiveView`: an emission failure is logged
    * and swallowed, never allowed to fail trajectory persistence — metering is
-   * a side effect of work already done (WS-B contract §5).
+   * a side effect of work already done (WS-B contract
    *
    * NOT wrapped in the same DB transaction as `createMany` today:
    * `AgentTrajectoryStepRepository.createMany` has no `tx` parameter (only

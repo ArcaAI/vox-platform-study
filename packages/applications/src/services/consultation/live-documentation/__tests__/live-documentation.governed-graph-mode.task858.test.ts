@@ -1,14 +1,14 @@
 /**
- * TASK-858 lane A2 — the substrate gate becomes MODE-AWARE.
+ * lane A2 — the substrate gate becomes MODE-AWARE.
  *
  * ## The defect
  *
- * `ensureSubstrateResolved` (TASK-811 task 13) stands the WHOLE live engine down —
+ * `ensureSubstrateResolved` ( task 13) stands the WHOLE live engine down
  * `stop(consultationId, { persistSnapshot: false })` — whenever a well-formed `governingEngine`
  * marker is on the consultation. That was right when "this engine" meant the LEGACY hardcoded
  * flush: two engines, one document.
  *
- * Since TASK-852 the same session, with `consultation.realtime.graphExecutor.enabled = true`,
+ * Since the same session, with `consultation.realtime.graphExecutor.enabled = true`,
  * runs the REALTIME LANE of the tenant's own published graph — and the durable interpreter
  * deliberately SKIPS every `lane: 'realtime'` node (`apps/harness/.../interpreter/workflow.py`
  * `_dispatch_node`, `reason="realtime_lane"`). So on a fully wired stack the realtime NER, the
@@ -55,7 +55,7 @@ const ASSIGNED_SLUG = 'arcaai-consultation-soap';
 const GOVERNING_SLUG = 'arcaai-example-medical-ner';
 
 /**
- * A governing graph whose partial-summary node is authored OFF (TASK-852 per-node `enabled`).
+ * A governing graph whose partial-summary node is authored OFF ( per-node `enabled`).
  *
  * It is the discriminator this file leans on: the LEGACY flush calls TEXT unconditionally, so
  * "the session flushed and TEXT was never called" is decisive proof that the lane ran and the
@@ -170,7 +170,7 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
   frozenAt: '2026-08-28T00:00:00.000Z',
 });
 
-/** A well-formed TASK-795 marker — only written when the durable dispatch actually started a run. */
+/** A well-formed marker — only written when the durable dispatch actually started a run. */
 const governedBy = (slug: string) => ({
   [GOVERNING_ENGINE_METADATA_KEY]: {
     engine: TENANT_WORKFLOW_GOVERNS_MARKER,
@@ -266,7 +266,7 @@ async function settle(): Promise<void> {
 // (a) GOVERNED + graph executor ON — the session stays up and runs the governing lane
 // =============================================================================
 
-describe('TASK-858 A2 — governed + graph mode: the realtime lane of the GOVERNING definition runs', () => {
+describe(' A2 — governed + graph mode: the realtime lane of the GOVERNING definition runs', () => {
   it('keeps the session: a governing marker is no longer, by itself, a stand-down', async () => {
     const { service } = buildService({ graphEnabled: true, consultationMetadata: governedBy(GOVERNING_SLUG) });
 
@@ -330,10 +330,10 @@ describe('TASK-858 A2 — governed + graph mode: the realtime lane of the GOVERN
 });
 
 // =============================================================================
-// (b) GOVERNED + graph executor OFF — stand down, exactly as TASK-811 task 13 does
+// (b) GOVERNED + graph executor OFF — stand down, exactly as task 13 does
 // =============================================================================
 
-describe('TASK-858 A2 — governed + LEGACY mode still stands the engine down', () => {
+describe(' A2 — governed + LEGACY mode still stands the engine down', () => {
   it('tears the session down when there is no lane to run', async () => {
     const { service } = buildService({ graphEnabled: false, consultationMetadata: governedBy(GOVERNING_SLUG) });
 
@@ -359,7 +359,7 @@ describe('TASK-858 A2 — governed + LEGACY mode still stands the engine down', 
 // (c) NOT governed + graph executor ON — the cascade, unchanged
 // =============================================================================
 
-describe('TASK-858 A2 — an ungoverned consultation is untouched', () => {
+describe(' A2 — an ungoverned consultation is untouched', () => {
   it('resolves the assignment cascade and documents the consultation', async () => {
     const { service, post, assignments, definitions } = buildService({ graphEnabled: true, consultationMetadata: null });
 
@@ -398,10 +398,10 @@ const COMMITTED_CONSULTATION_CONFIGS: ReadonlyArray<readonly [string, unknown]> 
   ['ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG', examples.ARCAAI_NER_GRAMMAR_FIX_COMPILED_CONFIG],
 ];
 
-/** The durable writers. `persistDraft` is the one TASK-852 §5 names; the other two write too. */
+/** The durable writers. `persistDraft` is the one names; the other two write too. */
 const DURABLE_WRITERS = ['consultation.persistDraft', 'consultation.finalizeAssurance', 'consultation.synthesize'];
 
-describe('TASK-858 A2 — exclusivity holds BY CONSTRUCTION, not by the gate', () => {
+describe(' A2 — exclusivity holds BY CONSTRUCTION, not by the gate', () => {
   it.each(COMMITTED_CONSULTATION_CONFIGS)('%s: its realtime lane contains no durable writer', (_name, compiled) => {
     const lane = buildRealtimeLane(compiled as never);
 
@@ -426,7 +426,7 @@ describe('TASK-858 A2 — exclusivity holds BY CONSTRUCTION, not by the gate', (
 // (e) stop() in graph mode — the durable run's INPUT is preserved, nothing legacy runs
 // =============================================================================
 
-describe('TASK-858 A2 — stop() on a governed graph-mode session', () => {
+describe(' A2 — stop() on a governed graph-mode session', () => {
   it('persists the LIVE_SOAP_SNAPSHOT the durable run warm-starts from', async () => {
     const { service, contextItemRepository } = buildService({
       graphEnabled: true,
@@ -440,7 +440,7 @@ describe('TASK-858 A2 — stop() on a governed graph-mode session', () => {
     await service.flush(CID);
     await service.stop(CID, { persistSnapshot: true });
 
-    // `livedoc.stop` is the durable run's FIRST endpoint action (TASK-812), and
+    // `livedoc.stop` is the durable run's FIRST endpoint action, and
     // `harness.finalize` reads this exact row as `preSummaryText`. It is the durable engine's
     // INPUT, not a second draft — which is why graph mode keeps writing it.
     expect(contextItemRepository.create).toHaveBeenCalled();

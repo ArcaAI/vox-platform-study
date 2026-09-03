@@ -97,8 +97,8 @@ hope-otel = { workspace = true }
 # ---------------------------------------------------------------------------
 # ML / Inference extras
 # ---------------------------------------------------------------------------
-# Install with:  pip install -e ".[ml]"      (CPU / Apple Silicon MPS)
-#                pip install -e ".[ml-gpu]"   (NVIDIA CUDA)
+# Install with: pip install -e ".[ml]" (CPU / Apple Silicon MPS)
+#                pip install -e ".[ml-gpu]" (NVIDIA CUDA)
 #
 # IMPORTANT: pyannote.audio 4.x hard-pins torch==2.8.0, torchaudio==2.8.0.
 # Do NOT upgrade torch past 2.8.x until pyannote releases a compatible version.
@@ -163,7 +163,7 @@ ml = [
 
 nemo = [
     "nemo_toolkit[asr]>=2.7.2,<3.0.0",
-    # Keep the TASK-695 fork: ml/guardrail stay on numba 0.67 / onnxruntime 1.28.
+    # Keep the fork: ml/guardrail stay on numba 0.67 / onnxruntime 1.28.
     # A fresh uv resolve otherwise unifies the conflicting extras onto 0.67 / 1.28.
     "numba>=0.66.0,<0.67.0",
     "onnxruntime>=1.27.0,<1.28.0",

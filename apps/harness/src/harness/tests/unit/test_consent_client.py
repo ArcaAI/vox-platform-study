@@ -1,4 +1,4 @@
-"""ConsentClient (TASK-712, consent-abac Phase 4).
+"""ConsentClient (consent-abac Phase 4).
 
 Hermetic: `httpx.MockTransport` + a fake monotonic clock. No live gateway.
 """

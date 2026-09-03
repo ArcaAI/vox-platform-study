@@ -1,7 +1,7 @@
 /**
  * Asserts a real `compile()` output validates against the NORMATIVE contract
  * (`packages/workflow-contract/schemas/compiled-config.schema.json`)
- * — TASK-716 Task 1's verify step: "the compiled example validates against Task 1's JSON
+ * Verify step: "the compiled example validates against Task 1's JSON
  * Schema (assert this in the test)". `ajv`/`ajv-formats` are devDependencies ONLY (schema
  * conformance testing) — the package's runtime `dependencies` stay empty.
  */
@@ -88,12 +88,12 @@ describe('compiled config vs the normative schema', () => {
   });
 
   /**
-   * TASK-810 — `documentTemplateRefs` is a REQUIRED policy binding, on the same footing as
+   * `documentTemplateRefs` is a REQUIRED policy binding, on the same footing as
    * `promptTemplateRefs`. It is asserted here rather than only in the applications layer because
    * this file is the TypeScript half of the three-sided contract: the normative schema, this
    * compiler, and the two pydantic models must gain the field together or the interpreter
    * rejects every compiled config (`extra="forbid"` on both models).
-   */
+ */
   it('carries documentTemplateRefs, and the normative schema requires it', () => {
     const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'));
     expect(schema.$defs.policyBindings.required).toContain('documentTemplateRefs');

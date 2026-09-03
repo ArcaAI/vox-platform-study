@@ -84,7 +84,7 @@ def connection(
     The successor to the old ``keyed(config)`` helper. That helper set an
     ``api_key`` on a provider's pydantic config, which was the only way a test
     could give an adapter a working credential — and it worked because the
-    adapter had a process-wide config to put one on. Since TASK-799 lane B it has
+    adapter had a process-wide config to put one on. Since lane B it has
     none: endpoint, credential and routing all arrive per request, so a test
     supplies them the same way production does.
     """
@@ -120,7 +120,7 @@ def stub_client(provider, client):
     """Bind ``client`` as the SDK client this provider builds for every request.
 
     Adapter tests that exercise the WIRE (message shape, streaming, structured
-    output) are not about connection resolution, and since TASK-799 lane B there
+    output) are not about connection resolution, and since lane B there
     is no process-wide client to assign — the client is built per request from
     the injected connection. This says "assume a connection resolved, and it
     produced this client".
@@ -227,7 +227,7 @@ async def async_client(app) -> AsyncGenerator[AsyncClient, None]:
         yield client
 
 
-# ── TASK-737 — default `X-Tenant-Id` on suite-issued requests ────────────────
+# ── — default `X-Tenant-Id` on suite-issued requests ────────────────
 #
 # `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped
 # work (owner directive 2026-08-16), and `POST /api/v1/generate` now ENFORCES it

@@ -67,7 +67,7 @@ class OpenAICompatProvider:
         ``TEXT_OPENAI_COMPAT_API_KEY`` (and the inherited ``TEXT_VLLM_API_KEY``)
         used to be the ONLY way to set a key for this adapter — a process-wide
         credential no tenant could override, which is exactly the shape
-        §Configuration Principles forbids. There is no shared client any more, so
+        Principles forbids. There is no shared client any more, so
         two tenants fronting different OpenAI-compatible endpoints can never
         collide on one.
         """
@@ -107,7 +107,7 @@ class OpenAICompatProvider:
         """The ONE place this adapter builds a client, and it takes its endpoint
         as an ARGUMENT.
 
-        V-6 (TASK-818 A-5) is about exactly this seam. `_last_base_url` is a
+        V-6 is about exactly this seam. `_last_base_url` is a
         process-wide memo of the endpoint this process last SERVED from — accurate
         for a platform engine with one SYSTEM-tenant row, and meaningless the
         moment two tenants front their own. It was never used to route a
@@ -189,7 +189,7 @@ class OpenAICompatProvider:
             self._retention_ttl_s = clamp_cache_ttl_seconds(ttl_seconds)
 
     def _apply_request_extras(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
-        """Merge the request's ``extra`` (TASK-858 — `AiRuntimeProfile.extraJson`,
+        """Merge the request's extra  — `AiRuntimeProfile.extraJson`,
         forwarded by the gateway) into the SDK's sanctioned ``extra_body``
         ride-along. Runs AFTER the engine's own dedicated knobs (retention
         ``ttl``, vLLM ``guided_json``) so a profile extra can ADD a field but

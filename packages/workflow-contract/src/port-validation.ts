@@ -1,5 +1,5 @@
 /**
- * Type-checked edge validation and the publish-time descriptor rules (TASK-809 Tasks 5 & 7).
+ * Type-checked edge validation and the publish-time descriptor rules ( Tasks 5 & 7).
  *
  * Closes defect D-5: `workflowGraphProblems` (`graph-model.ts:160`) checks only that
  * `fromPort`/`toPort` are non-empty strings, so `{ fromPort: 'banana', toPort: 'banana' }` was a
@@ -10,14 +10,14 @@
  * ## Why this is not wired into `validate()`
  *
  * Every graph authored before this ticket names its ports `in`/`out` untyped, for ordering and
- * data alike (see `node-ports.ts` §MIGRATION NOTE). Folding the check into `validate()`'s
+ * data alike (see `node-ports.ts` NOTE). Folding the check into `validate()`'s
  * default rule loop would retroactively invalidate every saved definition the moment this
  * package shipped. So it is invoked EXPLICITLY:
  *
  *   - `isValidConnection(...)` — the canvas predicate, one candidate edge at a time.
  *   - `workflowPublishProblems(...)` — the publish gate, whole graph.
  *
- * Migrating the seeded graphs to typed ports is a FOLLOW-ON LANE OF TASK-809 ITSELF (TASK-812 is
+ * Migrating the seeded graphs to typed ports is a FOLLOW-ON LANE OF ITSELF ( is
  * the endpoint stage, not the migration); wiring this gate into the gateway's publish path
  * belongs to whichever lane owns that path. Everything here is pure and total: it returns `problems: string[]` (the house idiom) and
  * never throws, whatever it is handed.
@@ -164,15 +164,15 @@ export function workflowEdgePortProblems(graph: WorkflowGraph, options?: PortVal
  *
  * | Rule | Why |
  * |---|---|
- * | EVERY node MUST be `idempotent`, in either lane | Both runtimes retry. Temporal retries a durable activity; TASK-811's realtime executor retries a realtime node up to its compiled `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode.maxAttempts`). A non-idempotent retry double-writes in a way the author never sees, and the lane makes no difference to that. |
+ * | EVERY node MUST be `idempotent`, in either lane | Both runtimes retry. Temporal retries a durable activity; realtime executor retries a realtime node up to its compiled `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode.maxAttempts`). A non-idempotent retry double-writes in a way the author never sees, and the lane makes no difference to that. |
  * | `key` suffix and `schemaVersion` must agree | A node type is a contract with every saved tenant graph. Reshaping a published node's ports in place silently breaks them; a breaking change becomes `agent.ner@2`, and the suffix must not lie about which version it is. |
  *
- * ## The rule that was REMOVED, and why (TASK-806 lane A, item 7)
+ * ## The rule that was REMOVED, and why (lane A, item 7)
  *
- * TASK-809 §2b declared *"a realtime-lane node MUST NOT be `externalWrite`"*, on the reasoning
+ * declared *"a realtime-lane node MUST NOT be `externalWrite`"*, on the reasoning
  * that "the realtime lane has a latency budget; an inline external write blows it and cannot be
  * compensated on restart". It was written before a realtime runtime existed, and the runtime
- * TASK-811 then shipped FALSIFIES it: of the three node types the realtime executor implements,
+ * then shipped FALSIFIES it: of the three node types the realtime executor implements,
  * `consultation.realtimeSummary` publishes each interim summary to the live consultation feed and
  * `consultation.extractEntities` persists the entities it found. Writing is not an accident of
  * those nodes — publishing the running note IS the realtime lane's product. The rule could only
@@ -180,7 +180,7 @@ export function workflowEdgePortProblems(graph: WorkflowGraph, options?: PortVal
  * exactly the state item 7 exists to end.
  *
  * Neither half of its stated reasoning survives contact with the implementation either. Latency is
- * enforced by a PER-NODE budget the executor races each node against (DD-4), not by a type flag;
+ * enforced by a PER-NODE budget the executor races each node against , not by a type flag;
  * and the realtime lane is not restart-compensated for ANY node, writing or not, because a lane
  * run is a live flush rather than a durable history.
  *
@@ -237,7 +237,7 @@ export function workflowPublishProblems(graph: WorkflowGraph, options?: PortVali
     if (typeof node?.id === 'string' && typeof node?.type === 'string') typeById.set(node.id, node.type);
   }
 
-  // TASK-847 — the `agentic.*` per-node checks a JSON Schema cannot express: exactly-one
+  // the `agentic.*` per-node checks a JSON Schema cannot express: exactly-one
   // provider-configuration selection source, the three-axis loop bounds (including the COST
   // ceiling), and guard/orchestrator references that must name real nodes of the right class.
   //

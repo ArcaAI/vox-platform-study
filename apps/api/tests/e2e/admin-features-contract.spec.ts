@@ -285,10 +285,10 @@ test.describe('admin features (D8 persistence, Users sort/filter/search, media)'
     const consultationId = process.env.E2E_CONSULTATION_ID ?? DEFAULT_MEDIA_CONSULTATION_ID;
     test.skip(
       !consultationId,
-      'No media consultation available. The additive TASK-376 seed (folded into the test-DB seed via ' +
+      'No media consultation available. The additive  seed (folded into the test-DB seed via ' +
         'pnpm test:db:seed and the CI prepare-test-db job) provides consultation ' +
         `${DEFAULT_MEDIA_CONSULTATION_ID}. Override with E2E_CONSULTATION_ID, or set it to an empty ` +
-        'string to skip (see docs/implementation/TASK-376-Media-Seed-And-Backfill/README.md).',
+        'string to skip ().',
     );
 
     // The consultation-context route is TENANT-SCOPED: the cross-tenant

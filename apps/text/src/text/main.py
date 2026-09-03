@@ -188,8 +188,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         translate_registry.register_factory("sarvam", SarvamTranslateProvider)
 
-    # Embedding capability (TASK-725 Task 4) — a SEPARATE registry namespace
-    # from the LLM `provider_registry` above (design-notes.md §(a)). Registration
+    # Embedding capability — a SEPARATE registry namespace
+    # from the LLM `provider_registry` above ( Registration
     # is unconditional because the registry is LAZY — registering a name costs
     # nothing and opens no connection. `tei-embed` carries NO default endpoint:
     # like every self-hosted adapter it is fail-closed on a caller-supplied
@@ -267,7 +267,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             service="text",
         )
 
-    # Push invalidation for that client. Rule 09 §"Config caches":
+    # Push invalidation for that client. Rule 09 :
     # invalidation is the propagation path, the TTL is only a bounded-staleness
     # backstop — before this, a control-plane write took up to 60s to be seen
     # here. The task never raises (every failure degrades to the TTL), so it is
@@ -300,7 +300,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("text.started", providers=registry.list_providers())
     yield
 
-    # TASK-818 Lane B: drain generation producers FIRST, and before the redis
+    # drain generation producers FIRST, and before the redis
     # client closes below — a producer still coalescing its final batch needs the
     # replay buffer to write to, or the tail of a generation a client could still
     # resume is lost. Producers also register with `shutdown_manager`, so this is
@@ -385,7 +385,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.state.pool_health_tracker = PoolHealthTracker()
 
-    # TASK-818 Lane B: the generation hub owns producers that deliberately
+    # the generation hub owns producers that deliberately
     # OUTLIVE the HTTP response subscribed to them — that is what makes a
     # reconnect resumable. Constructed eagerly for the same reason as the tracker
     # above (no I/O, and tests build the app without lifespan), and drained on
@@ -413,7 +413,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.add_middleware(ServiceAuthMiddleware)
     # No CORS middleware. Text is an INTERNAL service: every browser-facing call
     # reaches it through the gateway (`.claude/rules/06-python-services.md`
-    # §"Gateway Integration"), which owns the browser's origin policy. The
+    # ), which owns the browser's origin policy. The
     # `TEXT_CORS_ENABLED` / `TEXT_CORS_ORIGINS` pair defaulted to off and no
     # deployment ever turned it on; keeping it would leave a way to widen a PHI
     # service's origin policy from an env file.

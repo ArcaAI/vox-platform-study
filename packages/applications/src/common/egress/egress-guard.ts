@@ -1,6 +1,6 @@
-// TASK-846 D-3 — SSRF egress guard for tenant-authored connector URLs.
+// SSRF egress guard for tenant-authored connector URLs.
 //
-// WHY THIS EXISTS. TASK-846 (OD-7) let tenant admins author `McpServer.baseUrl`, and the
+// WHY THIS EXISTS. let tenant admins author `McpServer.baseUrl`, and the
 // harness worker connects to whatever that field says. Inside a k3s cluster an unconstrained
 // URL reaches the Kubernetes API, Vault on loopback, PgBouncer, and the cloud metadata
 // endpoint — server-side request forgery with a paying tenant as the attacker.

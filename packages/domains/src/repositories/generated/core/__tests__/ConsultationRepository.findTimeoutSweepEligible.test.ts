@@ -1,6 +1,5 @@
 /**
- * ConsultationRepository.findTimeoutSweepEligible (TASK-711 state-machine.md
- * §1a).
+ * ConsultationRepository.findTimeoutSweepEligible ( state-machine.md
  *
  * Pins the query shape `ConsultationTimeoutSweepService` depends on:
  *   • `status` filtered to the five sweep-eligible members (PRIMED, DRAINING,

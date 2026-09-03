@@ -4,8 +4,8 @@
 # compatibility validation.
 #
 # Ports (test-isolated, distinct from dev/test infra):
-#   5532  → PostgreSQL (direct, mirrors DIRECT_URL)
-#   6532  → PgBouncer  (pooled, mirrors DATABASE_URL)
+#   5532 → PostgreSQL (direct, mirrors DIRECT_URL)
+#   6532 → PgBouncer (pooled, mirrors DATABASE_URL)
 #
 # Usage (zsh):
 #   pnpm pgbouncer-validation:up
@@ -87,7 +87,7 @@ services:
       MAX_CLIENT_CONN: 500
       RESERVE_POOL_SIZE: 10
       RESERVE_POOL_TIMEOUT: 3
-      # ── transaction-mode Prisma 7 requirements (per plan §1.1) ──
+      # ── transaction-mode Prisma 7 requirements (per plan ──
       MAX_PREPARED_STATEMENTS: 200
       SERVER_RESET_QUERY: 'DISCARD ALL'
       SERVER_RESET_QUERY_ALWAYS: 1

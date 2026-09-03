@@ -1,13 +1,13 @@
 /**
- * TASK-783 — build the developer-portal specs from the two committed gateway artifacts.
+ * build the developer-portal specs from the two committed gateway artifacts.
  *
- *   apps/api/openapi.json          (request/response TYPES, from the DTOs)
- *        x                          joined on `METHOD /path`
- *   apps/api/route-manifest.json   (the AUTHORIZATION oracle)
+ *   apps/api/openapi.json (request/response TYPES, from the DTOs)
+ *        x joined on `METHOD /path`
+ *   apps/api/route-manifest.json (the AUTHORIZATION oracle)
  *        |
  *        v
- *   apps/admin-console/src/server/api-docs/openapi.admin.json     — every documented route
- *   apps/admin-console/src/server/api-docs/openapi.business.json  — only what a tenant credential can reach
+ *   apps/admin-console/src/server/api-docs/openapi.admin.json — every documented route
+ *   apps/admin-console/src/server/api-docs/openapi.business.json — only what a tenant credential can reach
  *
  * ## Why join at all
  *
@@ -39,8 +39,8 @@
  * (`api:portal:check`), so a re-run on an unchanged tree must be
  * byte-identical.
  *
- *   pnpm api:portal          # write
- *   pnpm api:portal:check    # fail on drift
+ *   pnpm api:portal # write
+ *   pnpm api:portal:check # fail on drift
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

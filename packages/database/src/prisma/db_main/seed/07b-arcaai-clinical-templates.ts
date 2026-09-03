@@ -32,7 +32,7 @@
  * never replaced: rollback is `ARCAAI_CLINICAL_APPROVED_VERSION = 2` (or an
  * `approvedVersionNumber` edit in the console), with no content to restore.
  *
- * VERSION POLICY (owner decision 2026-08-17, TASK-702): ALL THREE versions stay
+ * VERSION POLICY (owner decision 2026-08-17): ALL THREE versions stay
  * allowed and selectable, and **v3 is the default at go-live**. Mind the
  * asymmetry that makes the second clause load-bearing: v2 and v3 were cleaned
  * of ICD-10 code-authoring instructions, but **v1 still carries them in 10 of
@@ -189,9 +189,9 @@ export const ARCAAI_CLINICAL_TEMPLATE_IDS = {
 // the version number in the THIRD UUID group (the fourth stays the tenant slot),
 // so v1 ids are byte-unchanged and each later version lands in a fresh,
 // collision-free block:
-//   v1  72000000-0000-0000-0001-0000000000XX
-//   v2  72000000-0000-0002-0001-0000000000XX
-//   v3  72000000-0000-0003-0001-0000000000XX
+//   v1 72000000-0000-0000-0001-0000000000XX
+//   v2 72000000-0000-0002-0001-0000000000XX
+//   v3 72000000-0000-0003-0001-0000000000XX
 const versionId = (templateId: string, versionNumber = 1): string => {
   const mirrored = `72${templateId.slice(2)}`;
   if (versionNumber === 1) return mirrored;
@@ -503,7 +503,7 @@ const V2_CONTENT_BY_TEMPLATE_ID: Record<string, string> = {
  * versionNumber 3 — the current corpus.
  *
  * Same 23 templates, same ids. v3 keeps v2's Block A / per-heading `SOURCE:`
- * machinery and adds, per INTEGRATION_NOTES_v3.md §3:
+ * machinery and adds, per INTEGRATION_NOTES_v3.md :
  * - a REBUILT pre-summary — provenance date (trailing `(recorded DD-MMM-YYYY)`,
  *   one per bullet) split from event date (inline, verbatim, never reformatted);
  *   each diagnosis stated once; already-administered interventions kept as
@@ -650,7 +650,7 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
  * upsert-by-id.
  */
 export const seedArcaaiClinicalTemplates = async (client: CorePrismaClient) => {
-  console.log('Seeding ArcaAI clinical prompt library (TASK-592 Workstream D)...');
+  console.log('Seeding ArcaAI clinical prompt library (Workstream D)...');
 
   const departments = await client.department.findMany({
     where: {

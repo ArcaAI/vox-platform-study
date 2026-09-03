@@ -15,7 +15,7 @@ import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.se
 // Platform CAPABILITY rows are seeded here (seed `11-global-setting.ts`
 // `PLATFORM_SETTINGS`, e.g. `enable-local-raw-capture`), and this is also the
 // reference default every tenant clones from at provisioning time (owner
-// ruling 2026-08-20, TASK-763 OD-1): "SYSTEM will be the reference point as
+// ruling 2026-08-20): "SYSTEM will be the reference point as
 // default for all tenants." Inlined to avoid pulling tenant/constants.ts into
 // this baseService.
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -34,8 +34,8 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  * GLOBAL (`50000000-…`) is deliberately EXCLUDED. It is a CUSTOMER tenant —
  * the platform-admin playground for trialling configuration before an
  * explicit promotion into SYSTEM — never a runtime tier (owner ruling
- * 2026-08-20, TASK-763 OD-1; `.claude/rules/00-project-context.md`
- * §"The two reserved tenants are NOT two config tiers"). Admitting it here
+ * 2026-08-20,; `.claude/rules/00-project-context.md`
+ * ). Admitting it here
  * used to let it OUTRANK SYSTEM and let a customer tenant's own rows
  * (e.g. `TenantService.provisionTenantConfigs`'s clone target) leak into the
  * platform-wide cache read by every other tenant. That was reachable:
@@ -382,8 +382,8 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
         if (duplicates.length > 0) {
           const list = duplicates.map(([k, n]) => `${k} (${n} rows)`).join(', ');
           throw new Error(
-            `Phase 0 Item 5 (TASK-302): duplicate platform key(s) detected — ${list}. ` +
-              `Refuse to start. See TASK-301 §P0-1 for context. Set ` +
+            `Phase 0 Item 5 : duplicate platform key(s) detected — ${list}. ` +
+              `Refuse to start. See  §P0-1 for context. Set ` +
               `APP_SETTINGS_BOOT_INVARIANT=skip in NODE_ENV=development only.`,
           );
         }

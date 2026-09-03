@@ -98,7 +98,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
    */
   private installOriginRegistryResolver(): void {
     if (!this.originRegistry) {
-      this.logger.warn('No origin registry wired — CORS denies every browser origin (TASK-610 §4A.1: no env-var fallback)');
+      this.logger.warn('No origin registry wired — CORS denies every browser origin (§4A.1: no env-var fallback)');
       return;
     }
     const registry = this.originRegistry;

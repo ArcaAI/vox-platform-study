@@ -2,13 +2,13 @@
 
 `.claude/rules/00-project-context.md` §Configuration Principles: *"an engine name,
 model id, endpoint, credential, threshold, prompt, taxonomy or label set is NOT a
-literal in code"*. TASK-735 moved model identity and label taxonomies onto the
+literal in code"*. moved model identity and label taxonomies onto the
 registry row; this module does the same for the two things that were left behind —
 the **criteria text** that decides a clinical verdict, and the **numeric floors** a
 verdict must clear.
 
 **Where it lives.** `AiModel._metadata.policy`, alongside the `labelTaxonomy` blob
-TASK-735 established, so a policy value resolves through the *same* two-tier
+established, so a policy value resolves through the *same* two-tier
 `request tenant → SYSTEM` cascade as the selection it belongs to. Nothing new is
 invented: a platform admin edits the SYSTEM row, a tenant may carry its own, and the
 resolver's existing veto / fail-closed semantics apply unchanged.
@@ -68,11 +68,11 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # respectively. A declared-but-unread knob is worse than an absent one — it
     # advertises a control that cannot move the value, so an admin who sets it
     # sees neither an effect nor an error. Removed rather than wired: the two
-    # sources that DO serve those values are the correct ones (§D.2b).
+    # sources that DO serve those values are the correct ones.
     "judgeMinConfidence": _KeySpec(FAIL_OPEN_TO_DEFAULT, JudgePolicy().min_confidence, 0.0, 1.0),
     "piiLeakMinScore": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
     "maxUntrustedChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 100_000.0, 1.0, 10_000_000.0),
-    # --- groundedness (TASK-799 lane D) ---
+    # groundedness 
     #
     # The VERDICT-DECIDING threshold for the clinical groundedness gate. It was a
     # pydantic default (`GUARDRAIL_V2_GROUNDEDNESS_ENTAILMENT_THRESHOLD`), so a
@@ -84,16 +84,16 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # one checkpoint is meaningless against another. Resolving it through the same
     # cascade that chose the model keeps the two in step by construction.
     "groundednessEntailmentThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.5, 0.0, 1.0),
-    # --- realtime consultation plane (TASK-829) -------------------------------
+    # realtime consultation plane
     #
-    # The four session-aggregation numbers. §5.1 is explicit that these must be
+    # The four session-aggregation numbers. is explicit that these must be
     # "calibrated per tenant on clinical text, never on a general corpus" — which
     # is precisely why they are declared here, on the cascade that already
     # resolves per tenant, rather than as constants next to the arithmetic.
     #
     # The defaults below are STARTING POINTS for a tenant that has not calibrated
     # yet, not recommendations. A general-corpus threshold applied to clinical
-    # text flags roughly three-quarters of safe conversation (§2.1).
+    # text flags roughly three-quarters of safe conversation.
     "realtimeNoiseFloor": _KeySpec(FAIL_OPEN_TO_DEFAULT, 0.2, 0.0, 1.0),
     "realtimeExcessRiskThreshold": _KeySpec(FAIL_OPEN_TO_DEFAULT, 1.0, 0.0, 1_000.0),
     "realtimeConsecutiveLimit": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2.0, 1.0, 100.0),
@@ -101,11 +101,11 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     "realtimeMinWindowsForMean": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 10_000.0),
     # The classifier's inspection window, and the modest overlap that covers a
     # phrase straddling two windows. The overlap is for CONTIGUOUS straddle only
-    # and is not the split-injection defence (§2.2) — that is the session
+    # and is not the split-injection defence — that is the session
     # aggregation above.
     "realtimeWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, 200_000.0),
     "realtimeWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 50_000.0),
-    # The hard cumulative ceiling (§5.2 mechanism 3). Beyond it the earlier prefix
+    # The hard cumulative ceiling ( mechanism 3). Beyond it the earlier prefix
     # must be represented by a rolling summary that is ITSELF a validated
     # artifact; the deterministic automaton's state stays whole-stream regardless.
     "realtimeCumulativeCeilingChars": _KeySpec(

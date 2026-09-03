@@ -1,5 +1,5 @@
 /**
- * TASK-737 §4.4 — one contract fixture per gateway→python-service edge.
+ * one contract fixture per gateway→python-service edge.
  *
  * The audit's headline finding was that nine `apps/api` → `apps/text` call
  * sites never even ATTEMPTED to send `X-Tenant-Id`, several with a `tenantId`
@@ -26,11 +26,11 @@ const ROOT = resolve(__dirname, '..', '..');
 /**
  * Every production TypeScript module that POSTs tenant-scoped work to a
  * downstream Python service. Verified against the tree on 2026-08-17 — note
- * `jobs/processors/summary.processor.ts`, which TASK-737 §7.4 still lists, was
- * DELETED by TASK-732 and is therefore not here.
+ * `jobs/processors/summary.processor.ts`, which a later ticket still listed, was
+ * deleted and is therefore not here.
  */
 const TENANT_SCOPED_CALL_SITES = [
-  // → apps/text  /api/v1/generate (+ /translate, /tasks/:id[/stream])
+  // → apps/text /api/v1/generate (+ /translate, /tasks/:id[/stream])
   'apps/api/src/modules/text-compat/text-compat.controller.ts',
   'apps/api/src/modules/streaming/text-proxy.controller.ts',
   'packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts',
@@ -44,10 +44,10 @@ const TENANT_SCOPED_CALL_SITES = [
   'packages/applications/src/services/consultation/live-documentation/live-tool-registry.ts',
   'apps/api/src/modules/ai-inference/ai-inference.client.ts',
   // Closed 2026-08-18: the last pre-contract site. It was off-limits while a
-  // concurrent agent held the file for TASK-700; that agent finished, and the
+  // concurrent agent held the file; that agent finished, and the
   // 428 it was causing on DNA-report generation is now fixed.
   'packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts',
-  // → apps/stt  /internal/streaming/*, /internal/voice-profile/extract,
+  // → apps/stt /internal/streaming/*, /internal/voice-profile/extract,
   //   /api/v1/pipelines/validate.
   //
   // Closed 2026-08-18. These were a LATENT deployed-environment break rather
@@ -85,7 +85,7 @@ const KNOWN_REMAINING_SITES: string[] = [];
  */
 const SANCTIONED_BUILDER = /\b(internalServiceHeaders|tenantHeaderValue)\s*\(/;
 
-describe('TASK-737 — X-Tenant-Id is mandatory on every internal service call', () => {
+describe('X-Tenant-Id is mandatory on every internal service call', () => {
   for (const rel of TENANT_SCOPED_CALL_SITES) {
     describe(rel, () => {
       const src = readFileSync(resolve(ROOT, rel), 'utf8');

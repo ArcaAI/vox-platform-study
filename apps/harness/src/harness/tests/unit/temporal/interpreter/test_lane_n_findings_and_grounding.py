@@ -1,6 +1,6 @@
-"""Lane N (TASK-815 §14a/§14b) — important findings, and grounding as tenant-authored policy.
+"""Lane N  — important findings, and grounding as tenant-authored policy.
 
-TASK-815's audit of the realtime loop found the owner's third acceptance item simply missing:
+audit of the realtime loop found the owner's third acceptance item simply missing:
 *"important information highlighted — DOES NOT EXIST ... there is no red-flag / critical-value /
 allergy-alert / severity layer anywhere"*. The owner's answer to "what makes it important?" was
 not a layer, it was a configuration contract — findings are extracted *"following a set of

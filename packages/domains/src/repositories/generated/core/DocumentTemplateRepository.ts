@@ -9,7 +9,7 @@ import { DocumentTemplateEntityMapper } from '../../../mappers';
 import { DocumentTemplate } from '../../../models';
 
 /**
- * The MUTABLE head of a tenant's clinical-document SHAPE catalog (TASK-810).
+ * The MUTABLE head of a tenant's clinical-document SHAPE catalog.
  *
  * Ordinary tenant-scoped model (the Prisma tenant-scope extension pins
  * `tenantId` on every query; `DocumentTemplate` is in `TENANT_SCOPED_MODELS`

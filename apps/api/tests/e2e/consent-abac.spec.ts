@@ -1,5 +1,5 @@
 /**
- * TASK-712 — Consent & ABAC: end-to-end proof that enforcement is ON BY
+ * Consent & ABAC: end-to-end proof that enforcement is ON BY
  * DEFAULT over real HTTP against the live gateway + seeded/backfilled test
  * database.
  *
@@ -30,7 +30,7 @@ interface ConsentGrantBody {
   purpose: string;
 }
 
-test.describe('TASK-712 — consent enforcement is ON by default', () => {
+test.describe('consent enforcement is ON by default', () => {
   let token: string;
   let doctorToken: string;
 
@@ -94,7 +94,7 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     expect(res.status(), 'revoke').toBe(200);
   }
 
-  // ─── TASK-805 owner directive (2026-08-25): opening a consultation IS the
+  // ─── owner directive (2026-08-25): opening a consultation IS the
   // doctor's consent event. These four tests are the directive itself. ───
 
   test('opening a consultation grants EVERY purpose, attributed to the opening clinician', async ({ request }) => {
@@ -195,7 +195,7 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
 
     // The next gated call ON THE SAME CONSULTATION is denied.
     //
-    // TASK-805 changed what this test can assert. It used to open a SECOND
+    // changed what this test can assert. It used to open a SECOND
     // consultation to prove the denial; under the owner directive that open
     // would itself be a fresh consent event and re-grant. That is deliberate —
     // a revocation bounds the CURRENT consultation, and does not outlive the
@@ -224,13 +224,13 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     expect(stale.status()).toBe(412);
   });
 
-  // ─── TASK-805: the consent REGISTER ───
+  // ───: the consent REGISTER ───
   //
   // `GET /admin/consent-grants` was a per-patient lookup returning a bare
   // array. It is now the governance surface: tenant-wide, paginated, and
   // filterable — which is what makes an admin able to AUDIT consent rather
   // than only confirm a patient id they already knew.
-  test.describe('TASK-805 — the consent register', () => {
+  test.describe('the consent register', () => {
     interface RegisterPage {
       data: ConsentGrantBody[];
       count: number;
@@ -261,14 +261,14 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     test('paginates — page 2 returns different rows and echoes the requested limit', async ({ request }) => {
       // Scoped to a patient this test alone creates. An UNSCOPED offset window
       // is not a stable thing to assert on here: every parallel spec that opens
-      // a consultation now inserts five grants (TASK-805 auto-grant), so rows
+      // a consultation now inserts five grants ( auto-grant), so rows
       // shift between the page-1 and page-2 reads and a repeat proves nothing
       // about ordering. Five grants at limit 2 gives three deterministic pages.
       const patientId = `task-805-page-${Date.now()}`;
       await openConsultation(request, patientId);
 
       const first = await register(request, `?externalPatientId=${patientId}&state=ALL&page=1&limit=2`);
-      expect(first.limit, 'the envelope echoes the EFFECTIVE limit (TASK-776 F-02)').toBe(2);
+      expect(first.limit, 'the envelope echoes the EFFECTIVE limit (F-02)').toBe(2);
       expect(first.count).toBe(5);
       expect(first.data).toHaveLength(2);
 
@@ -373,7 +373,7 @@ test.describe('TASK-712 — consent enforcement is ON by default', () => {
     // this spec granting anything itself.
     const legacyPatientId = 'PAT-20250101-001';
 
-    // TASK-805: this route is now the paginated consent REGISTER — the
+    // this route is now the paginated consent REGISTER — the
     // patient filter is optional and the body is an envelope, not a bare array.
     const listed = await request.get(`/api/v1/admin/consent-grants?externalPatientId=${legacyPatientId}`, { headers: bearer(token) });
     expect(listed.status()).toBe(200);

@@ -1,5 +1,5 @@
 /**
- * `useAutosave` (TASK-719 Task 15). Verifies: debounce coalescing (rapid `schedule()` calls
+ * `useAutosave`. Verifies: debounce coalescing (rapid `schedule()` calls
  * within the window fire exactly one PATCH with the merged/latest patch), If-Match is sent, a
  * 412 pauses autosave and does NOT retry, a 428 surfaces as `onMissingPrecondition` (a client
  * bug, not a safety net), and `resume()` is required to un-pause.

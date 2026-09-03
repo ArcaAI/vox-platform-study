@@ -14,7 +14,7 @@
  * Covers `/admin/*` (mirrors the API gateway's own admin-route detection,
  * `AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`).
  *
- * TASK-759 moved the two surfaces that used to sit OUTSIDE that prefix onto
+ * moved the two surfaces that used to sit OUTSIDE that prefix onto
  * it — `/monitoring/*` → `/admin/monitoring/*`, and
  * `/health/services[/:serviceKey]` → `/admin/health/services[...]` — so the
  * `admin/` branch now covers them. The two legacy branches are KEPT (they
@@ -53,10 +53,10 @@ export const CONSULTATION_ENDPOINTS = {
   OPEN: '/consultations/open',
   /** Get consultation by ID with context */
   GET: (id: string) => `/consultations/${encodeURIComponent(id)}`,
-  /** TASK-813 — which engine governs this consultation (+ the governing definition's identity). */
+  /** which engine governs this consultation (+ the governing definition's identity). */
   WORKFLOW: (id: string) => `/consultations/${encodeURIComponent(id)}/workflow`,
   /**
-   * TASK-813 §8 — the workflows this caller may name at open. STATIC segment, and the gateway
+   * the workflows this caller may name at open. STATIC segment, and the gateway
    * declares it ABOVE `/consultations/:id` for exactly that reason; do not turn it into a
    * parameterised path.
    */
@@ -336,7 +336,7 @@ export const HEALTH_ENDPOINTS = {
  * Monitoring endpoints (SDK-207 WS-4)
  *
  * Matches `MonitoringController` at `@Controller('admin/monitoring')`.
- * TASK-759 moved this controller off the business prefix (`/monitoring`) onto
+ * moved this controller off the business prefix (`/monitoring`) onto
  * the admin plane — it requires `manage:all | read:TenantTelemetry`, an
  * administrative capability, so rule P2 applies. Hard move, no alias: the
  * pre-move paths 404.
@@ -642,7 +642,7 @@ export const AUTH_ENDPOINTS = {
  * all downstream Python microservices (TTS, TEXT, NLP, STT) and returns
  * aggregated results with per-service status.
  *
- * TASK-759 moved it to `AdminHealthServicesController`
+ * moved it to `AdminHealthServicesController`
  * (`@Controller('admin/health/services')`): it is CASL-gated ops telemetry
  * (`manage:all | read:TenantTelemetry`), so it belongs on the admin plane, not
  * on the PUBLIC k8s-probe prefix. The unauthenticated probes in
@@ -684,7 +684,7 @@ export const ENTITLEMENTS_ENDPOINTS = {
   TENANT_OVERRIDE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/override`,
   TENANT_DOWNGRADE: (tenantId: string) => `/admin/entitlements/tenants/${encodeURIComponent(tenantId)}/downgrade`,
   TRIAL_EXPIRY_RUN: '/admin/entitlements/trial-expiry/run',
-  // Tenant self-view (business plane). TASK-760 moved this off the bare
+  // Tenant self-view (business plane). moved this off the bare
   // `entitlements/me` onto the tenant self alias — it is `read:Tenant`,
   // CLS-tenant-scoped, so it belongs under `tenants/me`, not `users/me`.
   ME: '/tenants/me/entitlements',
@@ -841,8 +841,8 @@ export const ROLE_ENDPOINTS = {
  * (`@Controller('admin/users')`).
  *
  * Backend reality (verified 2026-05-23):
- *   - POST   /admin/users/:id/roles                 → assign     (CreateUserRoleAssignmentRequest)
- *   - DELETE /admin/users/:id/roles/:assignmentId   → remove     (by assignmentId, NOT roleId)
+ *   - POST /admin/users/:id/roles → assign (CreateUserRoleAssignmentRequest)
+ *   - DELETE /admin/users/:id/roles/:assignmentId → remove (by assignmentId, NOT roleId)
  *   - There is currently no GET listing endpoint.
  */
 export const ADMIN_USER_ROLES_ENDPOINTS = {
@@ -1205,7 +1205,7 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const TRANSCRIPT_SEGMENT_SUBTYPE = 'TRANSCRIPT_SEGMENT';
 
 /**
- * Workflow INVOCATION endpoints (TASK-850) — running a tenant's published
+ * Workflow INVOCATION endpoints — running a tenant's published
  * workflows, and running one against a consultation.
  *
  * Two route FAMILIES, deliberately not one with a flag. `RUNS` is the unbound

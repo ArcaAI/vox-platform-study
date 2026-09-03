@@ -68,7 +68,7 @@ class AssembleResponse(BaseModel):
 
 
 class ResolvedPromptTemplateResponse(BaseModel):
-    """apps/api response for ``GET /prompt-templates/:id/resolved`` (TASK-720 N-2).
+    """apps/api response for GET /prompt-templates/:id/resolved.
 
     ``found: False`` covers a missing OR cross-tenant id (404-over-403 — the gateway's tenant-
     scope extension already makes a foreign-tenant row read as "not found"). ``found: True,
@@ -272,7 +272,7 @@ def _prune(body: dict[str, Any]) -> dict[str, Any]:
 
 
 class SttBatchJobResponse(BaseModel):
-    """apps/api ``POST/GET /internal/harness/stt/batch-jobs`` response (TASK-724 Task 5)."""
+    """apps/api POST/GET /internal/harness/stt/batch-jobs response."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -284,7 +284,7 @@ class SttBatchJobResponse(BaseModel):
 
 
 class SpeechSynthesisResponse(BaseModel):
-    """apps/api ``POST /internal/harness/tts/synthesize`` response (TASK-849 lane B).
+    """apps/api POST /internal/harness/tts/synthesize response ( lane B).
 
     ``audio_base64`` is the WHOLE artifact, base64 over JSON. Base64 rather than a raw byte
     stream because this is a Temporal ACTIVITY's outbound call, not a browser's: an activity is
@@ -368,18 +368,18 @@ class ApiClient:
                 back to the code defaults.
 
                 ``consultation_id`` is threaded onto the query when supplied, but as of
-                TASK-815 / OD-12 the gateway no longer overlays anything on it: the
+                / OD-12 the gateway no longer overlays anything on it: the
                 per-agent ``harnessOverrides`` tier was retired with ``DepartmentAgent``,
                 and the ``overridesSource`` provenance field is gone from the response.
                 The parameter is kept because the gateway route still accepts it.
 
-                TASK-740 D-1: when ``task_key`` is supplied the gateway resolves
+                when task_key is supplied the gateway resolves
                 ``textProvider``/``textModel`` from the ``AiTaskDefault`` row for THAT key
                 (tenant → SYSTEM) instead of serving the ``HarnessPolicy`` columns. This is
                 what makes a workflow node's ``config.taskKey`` actually select a model;
                 without it every node resolved the same one. Omitted ⇒ unchanged behaviour.
 
-                TASK-816 (DD-10): ``model_slug`` is the executing node's OWN
+                (DD-10): model_slug is the executing node's OWN
                 ``config.llmBinding.modelSlug`` and OUTRANKS ``task_key`` — a node that names a
                 model has stated something no tenant-level row can. Unlike ``task_key`` it is
                 fail-CLOSED: a slug resolving to no ENABLED model returns 400 rather than quietly
@@ -398,7 +398,7 @@ class ApiClient:
     async def get_resolved_prompt_template(
         self, template_id: str, *, tenant_id: str
     ) -> ResolvedPromptTemplateResponse:
-        """Resolve a ``PromptTemplate``'s pinned APPROVED version (TASK-720 N-2 worker fetch).
+        """Resolve a PromptTemplate's pinned APPROVED version ( worker fetch).
 
         Raises :class:`ApiServiceError` only on a transport/HTTP failure — a missing template,
         a cross-tenant id, or a never-approved template are all ordinary ``found``/``approved``
@@ -528,7 +528,7 @@ class ApiClient:
         media_id: str | None = None,
         language: str | None = None,
     ) -> SttBatchJobResponse:
-        """N-5 `POST /internal/harness/stt/batch-jobs` (TASK-724 Task 5).
+        """N-5 `POST /internal/harness/stt/batch-jobs`.
 
         Dispatches through the EXISTING `TranscriptionJobService` /
         `TranscriptionRealtimeService` write path apps/api's own batch-transcription
@@ -552,7 +552,7 @@ class ApiClient:
         return SttBatchJobResponse.model_validate(data)
 
     async def get_stt_batch_job_status(self, job_id: str, *, tenant_id: str) -> SttBatchJobResponse:
-        """N-5 `GET /internal/harness/stt/batch-jobs/{id}` (TASK-724 Task 5) — the
+        """N-5 `GET /internal/harness/stt/batch-jobs/{id}` — the
         batch-dispatch activity's poll call. Bounded, terminal-state polling only;
         never a stream (a Temporal activity is not a long-lived connection)."""
         data = await self._get(f"/stt/batch-jobs/{job_id}", {"tenantId": tenant_id})
@@ -568,7 +568,7 @@ class ApiClient:
         speed: float | None = None,
         language: str | None = None,
     ) -> SpeechSynthesisResponse:
-        """`POST /internal/harness/tts/synthesize` (TASK-849 lane B, step 5).
+        """`POST /internal/harness/tts/synthesize` ( lane B, step 5).
 
         The TTS counterpart of :meth:`create_stt_batch_job`, and the same division of labour:
         harness names the VOICE and apps/api resolves everything the tenant owns around it —
@@ -1140,7 +1140,7 @@ class ApiClient:
         return bool(data.get("ok", False))
 
     # ---------------------------------------------------------------------
-    # TASK-812 — the ENDPOINT STAGE (three routes, one per endpoint node type)
+    # the ENDPOINT STAGE (three routes, one per endpoint node type)
     #
     # None of the three sends an ``Idempotency-Key``, and that is deliberate:
     # each is idempotent by CONSTRUCTION on the gateway side (converging write /

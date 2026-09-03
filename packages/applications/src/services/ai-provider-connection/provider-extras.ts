@@ -1,5 +1,5 @@
 /**
- * TASK-799 P1-C.2 — `extraJson` shape contract.
+ * C.2 — `extraJson` shape contract.
  *
  * THE DEFECT THIS REPLACES: `extraJson` accepted literally anything (a bare
  * `@IsObject()`), while the wire-entry builder forwarded a FIXED ALLOW-LIST of

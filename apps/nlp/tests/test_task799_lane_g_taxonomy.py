@@ -1,4 +1,4 @@
-"""TASK-799 lane G — the clinical taxonomies are configuration, not literals.
+"""lane G — the clinical taxonomies are configuration, not literals.
 
 RED-first. Four taxonomies and five env fields used to live in `apps/nlp`:
 

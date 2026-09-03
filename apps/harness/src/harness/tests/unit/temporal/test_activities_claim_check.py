@@ -77,7 +77,7 @@ def _no_control_plane(monkeypatch: pytest.MonkeyPatch) -> None:
 def _patch_store(monkeypatch: pytest.MonkeyPatch, store: InMemoryBlobStore) -> None:
     """Pin BOTH store-construction seams to one in-memory fake.
 
-    TASK-799 A.2 introduced `open_store` (resolve the platform storage location, then
+    A.2 introduced `open_store` (resolve the platform storage location, then
     build) alongside the primitive `build_blob_store`. Patching only one leaves the
     other reaching for the real control plane, so they are patched together — and the
     `location` a caller writes to is the bootstrap bucket, unchanged, because

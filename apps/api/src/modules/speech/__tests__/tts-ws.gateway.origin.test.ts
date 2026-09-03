@@ -1,4 +1,4 @@
-// TASK-755 G-1 — CSWSH guard for the TTS WebSocket handshake.
+// CSWSH guard for the TTS WebSocket handshake.
 //
 // Browsers do not apply CORS to WebSocket handshakes, so `tts-ws.gateway.ts`
 // must consult the SAME origin registry the CORS callback uses
@@ -60,7 +60,7 @@ const buildReq = (origin?: string, qs = '?sessionId=sess-1&ticket=valid') => ({
   headers: origin === undefined ? {} : { origin },
 });
 
-describe('TtsWsGateway — origin registry CSWSH guard (TASK-755 G-1)', () => {
+describe('TtsWsGateway — origin registry CSWSH guard (G-1)', () => {
   let ticketService: ReturnType<typeof createMockTicketService>;
   let config: ReturnType<typeof createMockConfig>;
   let originRegistry: ReturnType<typeof createMockOriginRegistry>;

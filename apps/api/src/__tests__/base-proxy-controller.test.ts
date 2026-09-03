@@ -599,7 +599,7 @@ describe('Proxy error handler logging and response', () => {
     expect(source).toMatch(/err\.code|err\['code'\]|\(err\s+as\s+any\)\.code/);
   });
 
-  // TASK-768: was 502. A proxy `error` event fires when the peer was never
+  // was 502. A proxy `error` event fires when the peer was never
   // reached — a TRANSPORT failure — which is 503 (retryable, and the only 5xx
   // RFC 9110 pairs with `Retry-After`), not 502 (the peer answered badly).
   it('should send 503 response from on.error handler (not leave client hanging)', async () => {
@@ -608,7 +608,7 @@ describe('Proxy error handler logging and response', () => {
     expect(source).toMatch(/res\.\w*status\w*\(503\)|res\.writeHead\(503/);
   });
 
-  // TASK-768: the body used to carry `err.message` verbatim — i.e.
+  // the body used to carry `err.message` verbatim — i.e.
   // `connect ECONNREFUSED 127.0.0.1:8862`.
   it('should redact topology out of the on.error response body', async () => {
     const source = readFile(join(SHARED, 'base-proxy.controller.ts'));

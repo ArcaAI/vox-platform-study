@@ -11,7 +11,7 @@ import {
 } from '../gen-api-portal';
 
 /**
- * TASK-783 — the portal generator decides what a tenant developer is allowed
+ * the portal generator decides what a tenant developer is allowed
  * to SEE, so its credential logic is a security boundary, not a formatting
  * concern. These tests pin the two rules that are easy to get subtly wrong:
  * `@ForbidApiKey()` being unconditional, and "no declared scope" meaning DENY

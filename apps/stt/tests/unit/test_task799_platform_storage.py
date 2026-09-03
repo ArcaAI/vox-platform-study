@@ -1,4 +1,4 @@
-"""TASK-799 lane A.3 — `STORAGE_PROVIDER` becomes a control-plane selection.
+"""lane A.3 — `STORAGE_PROVIDER` becomes a control-plane selection.
 
 WHY THIS IS NOT AN `stt.*` KNOB. Every other migrated field in `CONTROL_PLANE_KEYS`
 is stt's own tuning and lives under `stt.<group>.<knob>` in

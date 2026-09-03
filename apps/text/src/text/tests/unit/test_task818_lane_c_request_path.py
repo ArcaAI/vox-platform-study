@@ -1,4 +1,4 @@
-"""TASK-818 Lane C — the request-path fixed cost.
+"""the request-path fixed cost.
 
 Lane B removed the 202-and-poll round trip and the per-token Python tax, which
 halved AC-3's p50. What was left was a request-path *fixed* cost, and the plan
@@ -398,7 +398,7 @@ class TestRetryPolicy:
 
 
 class TestRateLimitResponseHeaders:
-    """Soft limit -> 429 + `Retry-After` + `RateLimit-Remaining` (§4.4)."""
+    """Soft limit -> 429 + `Retry-After` + `RateLimit-Remaining`."""
 
     def test_rate_limit_error_carries_remaining(self) -> None:
         from text.core.exception_handlers import _get_headers

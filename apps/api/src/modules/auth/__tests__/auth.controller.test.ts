@@ -182,7 +182,7 @@ function buildController(
     (overrides.eventEmitter ?? { emit: vi.fn() }) as any,
     (overrides.consultationRepository ?? { findById: vi.fn() }) as any,
     (overrides.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) }) as any,
-    {} as never, // workflowRunService (TASK-722)
+    {} as never, // workflowRunService
   );
 }
 
@@ -527,10 +527,10 @@ describe('AuthController', () => {
         userRepository: createMockUserRepository(users),
         authService: createMockAuthService(),
         tenantRepository: createMockTenantRepository(tenantMap),
-        // Pre- retired role, seed placeholder name.  renamed
+        // Pre- retired role, seed placeholder name. renamed
         // the live SUPER_ADMIN role to SUPER_ADMIN, which would otherwise
         // collide in name (not id) with this unrelated retired role.
-        userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN__RETIRED_TASK_417', ['*']) }]),
+        userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN__RETIRED', ['*']) }]),
       });
 
       await expect(controller.login({ username: 'dr_smith', password: 'pass123' }, createMockRequest())).rejects.toThrow(BadRequestException);

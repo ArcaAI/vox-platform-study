@@ -16,7 +16,7 @@ import { SttInternalController } from './stt-internal.controller';
   // TenantSttConfigServiceModule backs the batch-worker BYO override pull.
   // StreamingSessionServiceModule backs the reaper usage push-back.
   // AiProviderConnectionServiceModule backs `model-registry-credential` — both
-  // the generic `ModelRegistryInternalController` route (TASK-855 follow-on)
+  // the generic `ModelRegistryInternalController` route ( follow-on)
   // and the superseded STT-specific one on `SttInternalController` — the
   // weight fetcher's route to the HF token and the model-store S3 pair.
   imports: [

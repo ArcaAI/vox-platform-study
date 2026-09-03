@@ -1,5 +1,5 @@
 /**
- * TASK-825 — an EMPTY `ContextItem` edit must never commit over retained text.
+ * an EMPTY `ContextItem` edit must never commit over retained text.
  *
  * ## The defect this file pins
  *
@@ -14,15 +14,15 @@
  * still held every word of the old text. Probed Prisma payload, pre-fix:
  *
  *   data = { currentVersionNumber: 4, updatedBy: 'doctor-1', version: {increment:1} }
- *   row.encryptedContent = <Buffer vault:v1:the-clinicians-summary>   ← retained
+ *   row.encryptedContent = <Buffer vault:v1:the-clinicians-summary> ← retained
  *
- * Like TASK-820 this needs no outage: it reproduces against a fully WORKING
+ * Like this needs no outage: it reproduces against a fully WORKING
  * encryptor, which is why `workingTransit()` is used throughout.
  *
- * ## Why the disposition differs from TASK-820's
+ * ## Why the disposition differs from
  *
  * `DocumentSection` is a fixed slot in a document template with no per-section
- * delete, so "empty" is the only way to say *nothing to report here* — TASK-820
+ * delete, so "empty" is the only way to say *nothing to report here*
  * correctly PERSISTED the clearing. A `ContextItem` is a discrete row with a
  * first-class `DELETE` (soft delete), and `addContext` ALREADY refuses an empty
  * body for a non-media type (*"Content is required for non-media types"*), which
@@ -39,7 +39,7 @@
  * so every assertion below is on the payload Prisma was actually handed and on
  * the column snapshot that payload produced. Stubbing `encryptContentIntoEntity`
  * — the shape the sibling suite uses — would assert the very thing under test;
- * that is the false assurance TASK-820 §2 documents.
+ * that is the false assurance documents.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
@@ -167,7 +167,7 @@ function harness(type: ContextItemType = ContextItemType.CASE_NOTE) {
 
 // ---------------------------------------------------------------------------
 
-describe('TASK-825 — an empty ContextItem edit never commits over retained text', () => {
+describe('an empty ContextItem edit never commits over retained text', () => {
   it('REFUSES an empty edit on a note, and writes NOTHING at all', async () => {
     const { service, store, versions, updateMany } = harness(ContextItemType.CASE_NOTE);
 

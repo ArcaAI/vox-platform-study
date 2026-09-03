@@ -71,7 +71,7 @@ function buildController(opts: { summaryMetaRepository: { findByContextItem: Ret
     summaryService as never,
     {} as never, // chainSummaryService
     {} as never, // consultationJobService
-    {} as never, // noteGenerationService — TASK-732
+    {} as never, // noteGenerationService
     {} as never, // timelineService
     cls as never,
     policyEngine as never,
@@ -109,7 +109,7 @@ describe('summary provenance over HTTP (controller→service→mapper integratio
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, citationPresence: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', section: 'P', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
-      // No transcriptSegmentRepository wired in this fixture (
+      // No transcriptSegmentRepository wired in this fixture
       // is best-effort) — degrades to [] rather than blocking the read.
       citedSegments: [],
     });

@@ -64,7 +64,7 @@ export class SttStreamingUsagePushbackRequest {
   @IsOptional()
   language_mode?: string | null;
 
-  @ApiPropertyOptional({ description: 'Distinct mic source count (TASK-615 #12).', default: 1 })
+  @ApiPropertyOptional({ description: 'Distinct mic source count (#12).', default: 1 })
   @IsInt()
   @Min(1)
   @IsOptional()

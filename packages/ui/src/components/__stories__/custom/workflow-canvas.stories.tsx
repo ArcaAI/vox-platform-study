@@ -62,13 +62,13 @@ export const Default: Story = {
   render: () => <Editable />,
 };
 
-/** Same graph rendered read-only — no remove affordance, no drag/connect. Used for published/pinned versions and TASK-723's future run overlay. */
+/** Same graph rendered read-only — no remove affordance, no drag/connect. Used for published/pinned versions and future run overlay. */
 export const ReadOnly: Story = {
   args: { nodes: NODES, edges: EDGES, readOnly: true, 'aria-label': 'Summarization workflow canvas (read-only)' },
   render: (args) => <WorkflowCanvas {...args} />,
 };
 
-/** Empty graph — the state before the registry's mandatory nodes are placed, or an empty registry (TASK-720 not landed). */
+/** Empty graph — the state before the registry's mandatory nodes are placed, or an empty registry ( not landed). */
 export const Empty: Story = {
   args: { nodes: [], edges: [], 'aria-label': 'Empty workflow canvas' },
   render: (args) => <WorkflowCanvas {...args} />,

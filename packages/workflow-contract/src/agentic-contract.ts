@@ -1,6 +1,6 @@
 /**
- * The `agentic` catalogue's checks that a JSON Schema cannot express (TASK-847 steps 3, 5, 6 and
- * the §5 risk-1 guard), plus the mechanical form of the ticket's most important rule.
+ * The `agentic` catalogue's checks that a JSON Schema cannot express ( steps 3, 5, 6 and
+ * the risk-1 guard), plus the mechanical form of the ticket's most important rule.
  *
  * ## Why these are not in `node-config-schemas.ts`
  *
@@ -26,7 +26,7 @@
 import type { NodeConfigSchema } from './node-config-schemas';
 
 // =============================================================================================
-// The reference-only guard (§5, risk 1) — the single most important review item in Track D
+// The reference-only guard (risk 1) — the single most important review item in Track D
 // =============================================================================================
 //
 // > *A node schema stores a model id, endpoint or key in graph JSON — silently bypassing the
@@ -39,10 +39,10 @@ import type { NodeConfigSchema } from './node-config-schemas';
 //
 // Two directions, because each catches what the other cannot:
 //
-//   `forbiddenSchemaKeyProblems`  — no node config schema DECLARES a property that could hold a
+//   `forbiddenSchemaKeyProblems` — no node config schema DECLARES a property that could hold a
 //                                   resolved value. With `additionalProperties: false` on every
 //                                   schema, what is not declared cannot be authored.
-//   `compiledGraphLeakProblems`   — the artifact that actually reaches Temporal is walked for
+//   `compiledGraphLeakProblems` — the artifact that actually reaches Temporal is walked for
 //                                   forbidden keys AND for secret-SHAPED values, so an endpoint
 //                                   smuggled under an innocent key name is still caught.
 
@@ -143,7 +143,7 @@ export function forbiddenSchemaKeyProblems(schemas: Readonly<Record<string, Node
       for (const [name, sub] of Object.entries(properties as Record<string, unknown>)) {
         if (isForbiddenKey(name)) {
           problems.push(
-            `${nodeType}${path}/properties/${name}: a node config schema may not declare \`${name}\` — a workflow graph stores REFERENCES only, never a resolved credential, endpoint or provider-native model id (TASK-837 §3.4 rule 16).`,
+            `${nodeType}${path}/properties/${name}: a node config schema may not declare \`${name}\` — a workflow graph stores REFERENCES only, never a resolved credential, endpoint or provider-native model id (§3.4 rule 16).`,
           );
         }
         walk(sub, nodeType, `${path}/properties/${name}`);
@@ -194,7 +194,7 @@ export function compiledGraphLeakProblems(compiled: unknown): string[] {
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
         if (isForbiddenKey(key)) {
           problems.push(
-            `${path}/${key}: a compiled workflow graph may not carry \`${key}\` — store a REFERENCE and resolve it in the activity (TASK-837 §3.4 rule 16).`,
+            `${path}/${key}: a compiled workflow graph may not carry \`${key}\` — store a REFERENCE and resolve it in the activity (§3.4 rule 16).`,
           );
           continue;
         }
@@ -216,7 +216,7 @@ export function compiledGraphLeakProblems(compiled: unknown): string[] {
 }
 
 // =============================================================================================
-// Hyper-parameter capability gating (step 3)
+// Hyper-parameter capability gating 
 // =============================================================================================
 
 /** The closed hyper-parameter vocabulary the generic agent node offers. */

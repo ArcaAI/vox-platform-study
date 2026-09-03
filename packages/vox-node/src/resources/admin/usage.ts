@@ -65,7 +65,7 @@ export class AdminUsageResource extends AdminResource {
   /**
    * Run the reconciliation sweep NOW against the last settled window, and record the attempts.
    *
-   * Not a mutation of business data: the sweep only READS the ledger and each vendor report, then appends audit rows. It never writes to the ledger (§6 rule 5). Provided because the scheduled sweep ships OFF, so without it the audit trail stays empty until an operator enables the cron.
+   * Not a mutation of business data: the sweep only READS the ledger and each vendor report, then appends audit rows. It never writes to the ledger ( rule 5). Provided because the scheduled sweep ships OFF, so without it the audit trail stays empty until an operator enables the cron.
    *
    * `POST /api/v1/admin/usage/reconciliation/run` — `AdminReconciliationController.run`.
    */

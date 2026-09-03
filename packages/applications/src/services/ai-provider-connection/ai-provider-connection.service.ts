@@ -352,7 +352,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         // the guard cannot become a credential override.
         if (tier === 'tenant' && !isCloud) continue;
 
-        // SYSTEM tier: this IS the platform default. TASK-799 P1-C — the tier
+        // SYSTEM tier: this IS the platform default. -C — the tier
         // is no longer filtered by `isCloudByoProvider`. That filter conflated
         // two different rules and broke the second one: "a TENANT may not own
         // this" is not "the PLATFORM may not serve it". A super-admin-written
@@ -372,7 +372,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
   /**
    * F-028 — restore a soft-deleted tombstone and overwrite every field from the
-   * create-intent request, exactly as a fresh `create()` would populate them (an
+   * create()-intent request, exactly as a fresh `create` would populate them (an
    * omitted `apiKey` means NO key material on the revived row). CAS-gated against
    * the tombstone's OWN current version (never `dto.expectedVersion`, which the
    * caller only knows as `0`), so a concurrent revive still throws
@@ -483,7 +483,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     // (and no gate — the SYSTEM tenant does not need permission to spend the
     // platform's own money).
     //
-    // These rows are returned as `systemRows`, NOT `tenantRows` — TASK-855 L8.
+    // These rows are returned as `systemRows`, NOT `tenantRows` —.
     // The fold in `resolveTenantCloudOverrides` filters its 'tenant' tier to
     // `isCloudByoProvider` rows only (R4/C5: a tenant may only OWN a cloud
     // row); mislabelling SYSTEM's own rows as that tier silently dropped every
@@ -533,7 +533,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
 
     // WHOLE-SERVICE shape: the SYSTEM tier is read even when the gate denies,
     // because the denial is PER PROVIDER and only the rows themselves say which
-    // ones it covers. TASK-799 P1-C: skipping the read wholesale also withheld
+    // ones it covers. -C: skipping the read wholesale also withheld
     // the platform's SELF-HOST infrastructure rows — the ones the gate was
     // never meant to touch — which is precisely why `rerank:tei` and
     // `vector:qdrant` were storable but undeliverable. Suppression is applied
@@ -601,7 +601,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (!this.secretsService || !row.encryptedApiKey) return null;
     try {
       const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-      // TASK-799 P1-C.2 — VALIDATED PASSTHROUGH, not an allow-list.
+      // C.2 — VALIDATED PASSTHROUGH, not an allow-list.
       //
       // This used to forward exactly four keys (`model`/`foundryModel`,
       // `project`, `location`) while `extraJson` accepted anything, so every
@@ -649,7 +649,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   }
 
   /**
-   * TASK-799 — resolve ONE credential for a consumer that cannot reach the DB.
+   * resolve ONE credential for a consumer that cannot reach the DB.
    *
    * The `/internal/*` projection of the cascade. See
    * `IProviderConnectionService#resolveCredential` for the four-outcome contract
@@ -723,7 +723,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   }
 
   /**
-   * TASK-799 — refuse a connection that cannot serve a request, at SAVE time.
+   * refuse a connection that cannot serve a request, at SAVE time.
    *
    * `provider-requirements.ts` holds the declarations and the reasoning; this is
    * only the throw. `ArgumentInvalidException` (→ 400) rather than a Forbidden

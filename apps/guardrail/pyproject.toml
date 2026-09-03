@@ -45,7 +45,7 @@ dependencies = [
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
     "sqlalchemy[asyncio]>=2.0.52",
     "asyncpg>=0.31.0",
-    # NO ML RUNTIME. TASK-735 Phases 3 & 6 moved the GLiNER detector and the
+    # NO ML RUNTIME. Phases 3 & 6 moved the GLiNER detector and the
     # MiniCheck GGUF scorer into `apps/nlp`, and weight staging went with them:
     # `gliner2-onnx`, `transformers`, `onnxruntime` and `minio` are all gone.
     # Guardrail is policy + HTTP now, and must stay that way (rule 06: "do not
@@ -81,7 +81,7 @@ test = [
     "fakeredis[lua]>=2.37.0",
 ]
 
-# The `groundedness` extra is GONE (TASK-735 Phase 6): the MiniCheck GGUF and its
+# The `groundedness` extra is GONE: the MiniCheck GGUF and its
 # llama-cpp-python dependency moved to `apps/nlp` with the weights.
 
 lint = [
@@ -140,7 +140,7 @@ exclude = "/tests/"
 [[tool.mypy.overrides]]
 
 # `gliner2_onnx`, `llama_cpp*` and `minio` are gone with the models and the weight
-# staging they served (TASK-735 Phases 3 & 6).
+# staging they served ( Phases 3 & 6).
 module = [
     "prometheus_client",
     "prometheus_fastapi_instrumentator",

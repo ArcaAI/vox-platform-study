@@ -46,13 +46,13 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   }
 
   /**
-   * Find the catalog row a provider-native model id belongs to (TASK-858).
+   * Find the catalog row a provider-native model id belongs to.
    *
    * Every TEXT caller resolves a request's `model` to `AiModel.sourceUri` — the id
    * the engine itself answers to — while `AiRuntimeProfile.modelSlug` is keyed by
    * the catalog `slug`. This is the translation between the two. Same routing
    * rule as `findBySlug`: an explicit `tx` bypasses the tenant-scope extension.
-   */
+ */
   async findByProviderAndSourceUri(
     tenantId: string,
     provider: string,

@@ -5,7 +5,7 @@ import { redirect308 } from '../../common';
 import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
  *
  * `text` was the NAME OF A SERVICE (`apps/text`, port 8862) leaking through
  * the gateway as a public prefix. The capability is text generation, so the

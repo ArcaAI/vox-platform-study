@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readGenerationId } from '../text-stream-open';
 
 /**
- * TASK-818 §3C.3(1)/(4) — learning a generation's id without consuming it.
+ * learning a generation's id without consuming it.
  *
  * The single-call contract puts the id in the first SSE frame's `data`, so a
  * caller whose real consumer is a browser reads that one frame and lets go. The

@@ -1,5 +1,5 @@
 /**
- * Frame N.1 — Run trace screen (TASK-723, Phase C).
+ * Frame N.1 — Run trace screen.
  *
  * The structured `?view=list` peer is exercised with the REAL components
  * (no canvas-specific DOM measurement polyfill needed) and carries the axe
@@ -128,7 +128,7 @@ describe('RunTraceScreen — list view (?view=list)', () => {
     const passthroughButton = await screen.findByRole('button', { name: /Passthrough/ });
     passthroughButton.click();
     expect(await screen.findByText('2 attempts')).toBeDefined();
-    // The drawer opens on the Output tab by default (TASK-849 lane C step 6's Input/Output/Error
+    // The drawer opens on the Output tab by default (lane C step 6's Input/Output/Error
     // rewrite); the generic "Payload not available" notice is now per-tab ("Output not available").
     expect(screen.getByText(/Output not available/)).toBeDefined();
   });
@@ -235,10 +235,12 @@ describe('RunTraceScreen — canvas view (default)', () => {
   });
 });
 
-/** Instrumented EventSource double (pattern from `transcription-jobs-screen.test.tsx` /
- *  `use-event-stream.test.tsx`) — proves the TASK-849 lane C push wiring end to end: a
+/**
+* Instrumented EventSource double (pattern from `transcription-jobs-screen.test.tsx` /
+ * `use-event-stream.test.tsx`) — proves the lane C push wiring end to end: a
  *  RUNNING run mints a ticket, opens a stream, and a `workflow.node.failed` frame reaches
- *  both the live activity feed and the per-node problem map without waiting on a REST poll. */
+ *  both the live activity feed and the per-node problem map without waiting on a REST poll. 
+ */
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
   readonly url: string;

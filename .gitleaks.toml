@@ -40,7 +40,7 @@ tags = ["jwt", "session", "secret"]
 [[rules]]
 id = "hope-s3-credentials"
 description = "S3 access/secret committed (non-placeholder)"
-# TASK-832: two holes, both found by a lane that read the file the rule missed.
+# Two holes, both found by a lane that read the file the rule missed.
 #   1. The separator was `[:=]` only. Ruby hash-rocket form —
 #      `'aws_access_key_id' => 'REAL'` — puts a CLOSING QUOTE between the name and
 #      the `=`, so the rule could not match it. Real MinIO credentials sat in
@@ -221,12 +221,12 @@ paths = [
   '''research/deploy-.*\.md$''',
   '''research/proxmox-.*\.md$''',
   '''research/setup-.*\.md$''',
-  # TASK-832: was `research/configs/.*` — UNBOUNDED, so it excluded every file
+  # Was `research/configs/.*` — UNBOUNDED, so it excluded every file
   # type under that tree, not just prose. docs/research/configs/gitlab/gitlab.rb
   # carries REAL MinIO credentials and this entry is why the gate reported clean.
   # Narrowed to prose, matching every sibling entry in this block.
   '''research/configs/.*\.md$''',
-  # ⚠️ TASK-828 §7 — TEMPORARY, PER-FILE, AND DATED. These three files contain
+  # TEMPORARY, PER-FILE, AND DATED. These three files contain
   # LIVE credentials (MinIO keys, four GitLab runner auth tokens, an Azure AD
   # client secret, a Langfuse DB password). The remediation is ROTATION, not an
   # allowlist — this exists ONLY so the gate is not permanently red while that

@@ -53,7 +53,7 @@ function DisabledCard() {
           <>
             The studio shell is off in this environment (fail-closed). The gateway enables it only when the operator sets{' '}
             <code className="font-mono">ENABLE_PRISMA_STUDIO=true</code>; access additionally requires the dedicated{' '}
-            <code className="font-mono">manage:PrismaStudio</code> permission (TASK-419). No broken iframe is shown.
+            <code className="font-mono">manage:PrismaStudio</code> permission . No broken iframe is shown.
           </>
         }
       />

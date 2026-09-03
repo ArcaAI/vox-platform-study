@@ -109,7 +109,7 @@ def _input(**kw: Any) -> CallMcpToolInput:
         "policy_tool_allowlist": None,
         "phi_enabled": True,
         "phi_fail_closed": True,
-        # TASK-712 (consent-abac Phase 4) — present by default so the
+        # (consent-abac Phase 4) — present by default so the
         # (pre-existing) allowlist/PHI/network-error security tests below
         # exercise THOSE gates, not the new consent gate ahead of them.
         "tenant_id": "t-1",
@@ -146,7 +146,7 @@ class _AllowAllConsentClient:
         )
 
 
-# TASK-846 D-3 — the activity now runs an SSRF egress gate on `server.base_url`, and it
+# the activity now runs an SSRF egress gate on `server.base_url`, and it
 # FAILS CLOSED: with no control-plane allow-list every call is refused before the network
 # path these tests are about. `_wire` therefore stubs the allow-list with the fixture's
 # own host plus a resolver that answers with a public (TEST-NET-3) address, so these
@@ -171,7 +171,7 @@ def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None,
     monkeypatch.setattr(activities, "_mcp_egress_resolver", lambda: _egress_resolver)
     monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
     # Default: consent always allowed — the allowlist/PHI/network tests below
-    # are about THOSE gates, not consent (TASK-712, consent-abac Phase 4).
+    # are about THOSE gates, not consent (consent-abac Phase 4).
     monkeypatch.setattr(
         activities, "_consent_client", lambda s: consent or _AllowAllConsentClient()
     )
@@ -392,7 +392,7 @@ class TestSizeCapClaimCheck:
 
 
 # ---------------------------------------------------------------------------
-# 6) Consent (TASK-712, consent-abac Phase 4) — step (0.5), BEFORE the allowlist
+# 6) Consent (consent-abac Phase 4) — step (0.5), BEFORE the allowlist
 # ---------------------------------------------------------------------------
 
 

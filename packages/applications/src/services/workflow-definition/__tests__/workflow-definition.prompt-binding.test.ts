@@ -1,5 +1,5 @@
 /**
- * TASK-810 DD-11 — prompt binding, and the two update paths that must never be
+ * prompt binding, and the two update paths that must never be
  * confused with each other.
  *
  * | Path | Version | Pin |
@@ -377,7 +377,7 @@ describe('DD-11 PATH 2 — REGRESSION: an out-of-band edit moves NO node pin', (
 });
 
 /**
- * §7b item 1 — ADOPTING AN UNCHANGED VERSION IS A PIN MOVE, NOT AN AUTHORING ACT.
+ * item 1 — ADOPTING AN UNCHANGED VERSION IS A PIN MOVE, NOT AN AUTHORING ACT.
  *
  * DD-11's PATH 2 deliberately leaves node pins where they are when a template is
  * edited out of band, so adoption is the COMMON path, not the rare one. Before

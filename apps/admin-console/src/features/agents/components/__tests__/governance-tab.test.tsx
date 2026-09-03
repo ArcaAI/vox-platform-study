@@ -5,7 +5,7 @@
  * Approve). Golden-set CRUD and the full eval-runs grid stay on
  * `/harness/observability` (rule 13 "one authoritative editor per resource").
  *
- * TASK-815 / OD-11 removed the picker's DEFAULT. It used to pre-select the
+ * / OD-11 removed the picker's DEFAULT. It used to pre-select the
  * golden set attached to a `DepartmentAgent` bound to this template, and to
  * annotate each option with the agents holding it. That binding moved onto the
  * workflow NODE that references the template (`config.evalGate`), so there is

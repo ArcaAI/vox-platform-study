@@ -5,7 +5,7 @@
  * WHY AN ALLOW-LIST AND NOT A DENY-LIST
  * ============================================================================
  * The usage ledger is the only plane the billing pipeline reads, and decision
- * D17 keeps that pipeline outside 45 CFR §164.312(b) *on the grounds that it
+ * D17 keeps that pipeline outside 45 CFR *on the grounds that it
  * carries no PHI*. `attributesJson` is the sole free-shaped column on the row,
  * so it is the sole way that claim could become false. A deny-list protects
  * against the keys someone thought of; an allow-list protects against the ones
@@ -29,18 +29,18 @@ type UsageAttributeType = 'string' | 'number' | 'boolean';
 /**
  * The declared keys and their types.
  *
- * | key            | why it earns a slot                                        |
+ * | key | why it earns a slot |
  * |----------------|------------------------------------------------------------|
  * | `channelCount` | dual-mic recordings bill 1x (OQ2) but keep the count for repricing |
- * | `engine`       | which self-hosted engine served the call (COGS attribution) |
- * | `pipelineId`   | STT pipeline-tier rate resolution + provenance              |
- * | `languageMode` | `en` / `ml` / `ml-en` — drives pipeline-tier cost           |
- * | `serviceTier`  | provider service tier (`batch` is ~50% off at every lab)    |
- * | `interrupted`  | the abort path emitted this row (fairness + reconciliation) |
- * | `streamKind`   | `ws` / `sse` — how the usage was observed                   |
- * | `cacheTtl`     | Anthropic 5m vs 1h cache write (x1.25 vs x2.00)             |
- * | `endpointKind` | which API shape the normalizer branched on                  |
- * | `contextBand`  | the price-book context band this row was rated against      |
+ * | `engine` | which self-hosted engine served the call (COGS attribution) |
+ * | `pipelineId` | STT pipeline-tier rate resolution + provenance |
+ * | `languageMode` | `en` / `ml` / `ml-en` — drives pipeline-tier cost |
+ * | `serviceTier` | provider service tier (`batch` is ~50% off at every lab) |
+ * | `interrupted` | the abort path emitted this row (fairness + reconciliation) |
+ * | `streamKind` | `ws` / `sse` — how the usage was observed |
+ * | `cacheTtl` | Anthropic 5m vs 1h cache write (x1.25 vs x2.00) |
+ * | `endpointKind` | which API shape the normalizer branched on |
+ * | `contextBand` | the price-book context band this row was rated against |
  */
 export const USAGE_ATTRIBUTE_KEYS = {
   channelCount: 'number',

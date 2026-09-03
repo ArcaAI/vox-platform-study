@@ -1,5 +1,5 @@
 /**
- * TASK-742 — the API-key authorization path must FAIL CLOSED.
+ * the API-key authorization path must FAIL CLOSED.
  *
  * Before this ticket, `UnifiedAuthGuard.handleApiKeyAuth` authenticated the key
  * and `return true`d. `enforceApiKeyScopes` returned EARLY (permitting) whenever
@@ -87,7 +87,7 @@ const buildApiKey = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('UnifiedAuthGuard — API-key path fails closed (TASK-742)', () => {
+describe('UnifiedAuthGuard — API-key path fails closed ', () => {
   let guard: UnifiedAuthGuard;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- hand-rolled service doubles; matches this folder's existing test style.
   let apiKeyService: any;
@@ -193,7 +193,7 @@ describe('UnifiedAuthGuard — API-key path fails closed (TASK-742)', () => {
 
 // ─── Rule: the JWT path is completely unaffected ────────────────────────
 
-describe('UnifiedAuthGuard — JWT path unaffected by the API-key deny-by-default rule (TASK-742)', () => {
+describe('UnifiedAuthGuard — JWT path unaffected by the API-key deny-by-default rule ', () => {
   let guard: UnifiedAuthGuard;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let clsService: any;

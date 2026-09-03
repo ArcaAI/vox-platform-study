@@ -73,7 +73,7 @@ class TestVaultSecretsDirCannotSetModelIdentity:
 
         # Stronger than "not the attacker's model": there is no default left for
         # the filtered source to be compared against, so an unsupplied selection
-        # cannot resolve to anything at all (TASK-799 C.2).
+        # cannot resolve to anything at all.
         with pytest.raises(pydantic.ValidationError):
             TokenClassificationConfig()
 

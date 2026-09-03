@@ -1,5 +1,5 @@
 /**
- * ConsultationTimeoutSweepService (TASK-711 state-machine.md §1a).
+ * ConsultationTimeoutSweepService
  *
  * Covers:
  *   - self-scheduling cron (mirrors AgentTrajectoryRetentionService's suite

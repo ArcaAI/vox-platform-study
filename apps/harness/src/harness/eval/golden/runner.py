@@ -49,7 +49,7 @@ class GoldenSetRunner:
         # errors (JudgeConnectionError) still propagate so a broken backend can never
         # masquerade as a green gate built from zero scored cases.
         self._tolerate_judge_errors = tolerate_judge_errors
-        # TASK-713: cases are scored CONCURRENTLY (bounded by this many
+        # cases are scored CONCURRENTLY (bounded by this many
         # in-flight cases at once), not one-at-a-time. Default 1 preserves the
         # original strictly-sequential behaviour byte-for-byte (existing callers
         # never pass this, so nothing changes for them). Actual network-level

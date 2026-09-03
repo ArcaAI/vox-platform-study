@@ -32,7 +32,7 @@ const ALL_TENANTS_LABEL = 'All tenants';
 const ALL_TENANTS_VALUE = '__all__';
 
 /**
- * Tenant scope switcher (PHASE-2-PLAN §3.6). A searchable combobox (`Command` in a
+ * Tenant scope switcher (PHASE-2-PLAN A searchable combobox (`Command` in a
  * `Popover`) over the caller's tenant list. Super-admins (`allowAll`) get the
  * cross-tenant "All tenants" option; tenant-admins pass `disabled` to pin the
  * control to their own tenant. Filtering is controlled (`shouldFilter={false}`) so

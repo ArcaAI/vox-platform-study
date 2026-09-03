@@ -7,7 +7,7 @@
  * streaming routes are authenticated with `X-API-Key` (see
  * `core/transport.ts`), a header `EventSource` has no way to attach. This
  * module implements just enough of the SSE wire format (WHATWG "Server-Sent
- * Events" §9.2) to decode HOPE's frames: `event:`/`data:`/`id:` fields,
+ * Events" to decode HOPE's frames: `event:`/`data:`/`id:` fields,
  * multi-line `data:`, `:`-prefixed comment/keepalive frames, and both
  * `\n`/`\r\n`/`\r` line endings.
  */

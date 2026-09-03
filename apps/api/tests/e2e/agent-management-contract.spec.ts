@@ -16,10 +16,10 @@
  *
  * What is REAL here (asserted as real behaviour):
  *   • `POST /admin/prompt-templates` (create, DEPARTMENT_DEFAULT via departmentId)
- *   • `GET  /admin/prompt-templates?departmentId=` (frame-30 instruction library)
- *   • `GET  /admin/prompt-templates/:id` (OCC token `version`)
+ *   • `GET /admin/prompt-templates?departmentId=` (frame-30 instruction library)
+ *   • `GET /admin/prompt-templates/:id` (OCC token `version`)
  *   • `PATCH /admin/prompt-templates/:id` (frame-31 save) — `@RequiresIfMatch` OCC
- *   • `GET  /admin/prompt-templates/:id/versions(/:n)` (frame-31 rail / frame-32 diff)
+ *   • `GET /admin/prompt-templates/:id/versions(/:n)` (frame-31 rail / frame-32 diff)
  *   • `POST /admin/prompt-templates/:id/versions/:n/activate` (frame-32 rollback)
  *   • `POST /admin/prompt-templates/:id/test` (frame-33 playground) — `@RequiresIfMatch`
  *   • `PATCH /admin/departments/:id/prompt-config` (frame-30 pre-summary slot) — OCC
@@ -214,7 +214,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
 
     const res = await request.patch(`${PROMPTS}/${promptId}`, {
       headers: ifMatch(token, prior.version),
-      data: { content: UPDATED_CONTENT, status: 'PUBLISHED', changeReason: 'TASK-382 e2e edit' },
+      data: { content: UPDATED_CONTENT, status: 'PUBLISHED', changeReason: ' e2e edit' },
     });
     expect(res.status(), 'valid If-Match PATCH succeeds').toBe(200);
     const updated = (await res.json()) as PromptTemplate;
@@ -284,7 +284,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
   // `POST :id/test/finalize` call. `prompt-management.controller.ts` says so
   // explicitly ("This route no longer writes, so it carries NO `If-Match`
   // requirement"), so a bare POST must be ACCEPTED, never 428.
-  // TASK-764: the CONTRACT here is the ABSENCE of an OCC gate — a bare,
+  // the CONTRACT here is the ABSENCE of an OCC gate — a bare,
   // header-less POST must never be refused for want of an `If-Match` (428) nor
   // on a version compare (412). Whether the run then REACHES the generator is
   // environmental: the route forwards to apps/text (TEXT), which is optional in
@@ -301,7 +301,7 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
 
     if ([200, 201].includes(res.status())) return;
     console.warn(
-      `[TASK-764] prompt test run returned ${res.status()} — TEXT unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`,
+      `[] prompt test run returned ${res.status()} — TEXT unavailable; the no-OCC-gate contract is verified. Body: ${await res.text()}`,
     );
   });
 

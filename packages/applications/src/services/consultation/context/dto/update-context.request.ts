@@ -50,7 +50,7 @@ export class UpdateContextRequest {
   payload?: Record<string, unknown>;
 
   /**
-   * TASK-709 optimistic-concurrency token. Mirrors
+   * optimistic-concurrency token. Mirrors
    * `UpdateDepartmentRequest.expectedVersion` verbatim: required. The client
    * echoes the `version` it read from a prior GET; the service runs a
    * Compare-And-Set (`contextItemRepository.updateWithVersion`) and fails

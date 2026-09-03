@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * One `FieldDescriptor` (`lib/schema-form.ts`) -> a `Field` family control (TASK-719 Task 9).
- * Controlled state only — no `react-hook-form` (README §2.5). Rule 11 §9: labels always
+ * One `FieldDescriptor` (`lib/schema-form.ts`) -> a `Field` family control.
+ * Controlled state only — no `react-hook-form` ( Rule 11: labels always
  * visible, required marked `*`, errors below the field in `text-destructive text-sm`
  * (`FieldError` already carries that class).
  */

@@ -2,7 +2,7 @@
 # `hope-tts`, bound to the `hope-tts` ServiceAccount.
 #
 # LEAST PRIVILEGE BY ENUMERATION, NOT BY GLOB. Each path is one secret this
-# workload actually reads (see deployment/vault-agent/README.md § Per-service
+# workload actually reads (see deployment/vault-agent/README.md
 # secret sets). A `secret/data/hope/*` glob would let any compromised pod read
 # every platform credential, which is the posture this policy is removing.
 #

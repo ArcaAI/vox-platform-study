@@ -1,5 +1,5 @@
 /**
- * Task keys governed by `TenantNlpTaskInstructions` (TASK-729) — the
+ * Task keys governed by `TenantNlpTaskInstructions` — the
  * open-taxonomy `nlp.*` task types whose per-tenant CONTENT (topic list /
  * intent list / free-text guidance) is tenant-writable. Deliberately a
  * separate, smaller list from `AI_TASK_KEYS` (ai-task-default/constants.ts):

@@ -14,7 +14,7 @@ import type { DownloadAiModelJobPayload } from './ai-model-download.processor';
 
 /**
  * AiModelDownloadService — the trigger + status-poll half of the model
- * download/publish action (TASK-855 lane L3). Mirrors `DirectorySyncService`:
+ * download/publish action. Mirrors `DirectorySyncService`:
  * a thin admin-triggered enqueue in front of a BullMQ processor
  * (`AiModelDownloadProcessor`) that does the actual fetch/verify/publish
  * work, kept OUT of the request path.

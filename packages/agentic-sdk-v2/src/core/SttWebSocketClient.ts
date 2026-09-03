@@ -783,7 +783,7 @@ export class SttWebSocketClient {
           reconnectUrl = SttWebSocketClient.replaceTicketParam(reconnectUrl, freshTicket);
           this.lastUrl = reconnectUrl;
         } catch (err) {
-          this.logger?.error('Failed to refresh stream ticket — aborting reconnect (TASK-298 D-18)', {
+          this.logger?.error('Failed to refresh stream ticket — aborting reconnect (D-18)', {
             operation: 'attemptReconnect',
             component: 'SttWebSocketClient',
             error: err as Error,
@@ -1219,7 +1219,7 @@ export class SttWebSocketClient {
 
   private dropFrameDueToBackpressure(reason: 'queue_full' | 'buffered_amount_high'): void {
     this.droppedFrameCount++;
-    this.logger?.warn('Dropping audio frame due to backpressure (TASK-298 D-15)', {
+    this.logger?.warn('Dropping audio frame due to backpressure (D-15)', {
       operation: 'sendAudioFrame',
       component: 'SttWebSocketClient',
       attributes: {
@@ -1268,7 +1268,7 @@ export class SttWebSocketClient {
     const handshake: WsResumeRequest = { type: 'resume', sessionId, lastSeq };
     try {
       ws.send(JSON.stringify(handshake));
-      this.logger?.debug('Sent resume handshake to server (TASK-298 D-17)', {
+      this.logger?.debug('Sent resume handshake to server (D-17)', {
         operation: 'sendResumeHandshake',
         component: 'SttWebSocketClient',
         attributes: { sessionId, lastSeq },

@@ -1,5 +1,5 @@
 /**
- * TASK-846 / OD-11 (2026-09-01) — `mcpToolsEnabled` is a PER-TENANT setting.
+ * / OD-11 (2026-09-01) — `mcpToolsEnabled` is a PER-TENANT setting.
  *
  * It shipped as a super-admin-only knob: it sat in `SUPER_ADMIN_ONLY_POLICY_KEYS`,
  * so (a) a tenant PATCH was 403'd and (b) `getEffectivePolicy` OVERLAID the SYSTEM
@@ -7,7 +7,7 @@
  * on for itself. OD-11 reverses that: it resolves on the standard
  * **tenant → SYSTEM** cascade, widening only on ABSENCE (`null` = "no opinion").
  *
- * Without this, TASK-846's authorization and console work still leave a silent
+ * Without this, authorization and console work still leave a silent
  * blocker — connectors configurable but nothing invocable.
  *
  * Also pinned here: `resolveMcpServers` must carry the TENANT's own connectors,

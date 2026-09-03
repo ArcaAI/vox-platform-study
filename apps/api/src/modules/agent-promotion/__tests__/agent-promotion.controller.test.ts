@@ -16,7 +16,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { AgentPromotionController } from '../agent-promotion.controller';
 
 describe('AgentPromotionController — authorization metadata', () => {
-  // TASK-815 / OD-10 repointed the subject with the promotable: the thing being
+  // / OD-10 repointed the subject with the promotable: the thing being
   // promoted between tenants is a `WorkflowDefinition` version, and the service
   // asks for `manage:WorkflowDefinition` in BOTH tenants. Keeping the old
   // subject would have left the class gated on one that no longer exists.

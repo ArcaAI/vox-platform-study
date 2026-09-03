@@ -1,5 +1,5 @@
 /**
- * TenantNlpTaskInstructionsService — unit tests (TASK-729).
+ * TenantNlpTaskInstructionsService — unit tests.
  *
  * Mirrors the `ai-task-default`/`tenant-frontend-config` test style:
  * repository, EventEmitter2 and ClsService are mocked. Asserts: taskKey

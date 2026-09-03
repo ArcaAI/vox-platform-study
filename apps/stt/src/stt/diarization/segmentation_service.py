@@ -40,7 +40,7 @@ class SegmentationService:
 
             from stt.core.config.settings import get_settings
 
-            # TASK-799 — one resolution path for the platform HuggingFace token,
+            # one resolution path for the platform HuggingFace token,
             # shared with the embedding services. Segmentation weights are
             # platform infrastructure with no tenant owner, so this resolves the
             # SYSTEM tier.

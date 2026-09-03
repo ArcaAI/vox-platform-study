@@ -3,11 +3,11 @@ import type { CorePrismaClient } from '../../../client';
 import { SYSTEM_TENANT_ID } from './00-constants';
 
 /**
- * TASK-766 — the day-1 bootstrap TENANT_ADMIN.
+ * the day-1 bootstrap TENANT_ADMIN.
  *
  * ## The gap this closes
  *
- * TASK-763 gave a `RUN_SEED="safe"` deployment its first SUPER_ADMIN
+ * gave a `RUN_SEED="safe"` deployment its first SUPER_ADMIN
  * (`92-bootstrap-admin.ts`). It did not give any TENANT its administrator: the
  * only tenant-admin accounts in the chain live in `91-user.ts`
  * (`tenant_admin`, `arcaai_admin`), which is on `SEED_PHASES_EXCLUDED_FROM_SAFE`
@@ -148,7 +148,7 @@ export function resolveBootstrapTenantAdminConfig(env: NodeJS.ProcessEnv = proce
 }
 
 /**
- * TASK-857 — the department a bootstrap tenant administrator joins, by preference.
+ * the department a bootstrap tenant administrator joins, by preference.
  *
  * Login requires BOTH halves of tenant membership for a non-super-admin: an
  * active role assignment AND an active `UserDepartment`
@@ -261,7 +261,7 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
   if (existingById) {
     console.log(`  Bootstrap tenant admin already exists (username "${existingById.username}") — leaving the credential untouched.`);
 
-    // TASK-857: this phase is create-only, so an account provisioned before the
+    // this phase is create-only, so an account provisioned before the
     // membership fix would keep its unloggable state forever. Repair the
     // MEMBERSHIP (never the password) for the tenant it actually administers —
     // read off its own role assignment, not off the current env, so a changed
@@ -288,7 +288,7 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
     return { success: true, created: false as const };
   }
 
-  // TASK-766 OD-1: `Role` is tenant-scoped, and TENANT_ADMIN is a SYSTEM-tenant
+  // `Role` is tenant-scoped, and TENANT_ADMIN is a SYSTEM-tenant
   // built-in that every tenant resolves via SYSTEM_SHARED_READ_MODELS — it is
   // NOT cloned per tenant. Pin the tenant so this cannot match a customer
   // tenant's own custom role of the same name.
@@ -332,7 +332,7 @@ export const seedBootstrapTenantAdmin = async (client: CorePrismaClient) => {
   });
 
   // The OTHER half of tenant membership. A role assignment alone authenticates
-  // to a 401 (TASK-857).
+  // to a 401.
   await ensureBootstrapTenantAdminMembership(client, user.id, tenant.id, tenant.key);
 
   console.log(`  Created TENANT_ADMIN "${config.username}" <${config.email}> on tenant "${tenant.key}" (${tenant.id}).`);

@@ -1,5 +1,5 @@
 /**
- * TASK-815 / OD-12 — the per-agent harness-override tier is RETIRED, not moved.
+ * / OD-12 — the per-agent harness-override tier is RETIRED, not moved.
  *
  * `getEffectivePolicy` used to run `applyAgentOverrides` on EVERY return path:
  * given a `consultationId` it resolved the consultation's department, then that

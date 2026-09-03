@@ -1,13 +1,13 @@
 // ============================================================================
-// ⚠⚠ RETIRED BY TASK-844 (owner decision OD-3, 2026-09-01) ⚠⚠
+// ⚠⚠ RETIRED BY (owner decision OD-3, 2026-09-01) ⚠⚠
 //
 // This model is NO LONGER THE SOURCE OF TRUTH. Every row was migrated into
 // `AiRoutingPolicy` as an `isDefault = true` provider configuration, and
 // `AiRoutingPolicy` is now where "which provider + model serves task X for
 // tenant Y" is decided. See `ai-routing-policy.prisma`.
 //
-// **OD-3 explicitly reverses TASK-816's ruling that `AiTaskDefault` survives.**
-// The reversal instrument is TASK-844; the reason is finding F-7 — this model's
+// **OD-3 explicitly reverses ruling that `AiTaskDefault` survives.**
+// The reversal instrument is; the reason is finding F-7 — this model's
 // `@@unique([tenantId, taskKey])` permits EXACTLY ONE row per task, so there is
 // nowhere to put a second candidate and no default election to hold. The
 // product requires many configurations per task with one elected default, which
@@ -76,7 +76,7 @@ model AiTaskDefault {
   modelSlug  String // references AiModel.slug (no FK — house convention)
   configJson Json?  @db.JsonB
 
-  // TASK-843 — the canonical task taxonomy this row's `taskKey` belongs to.
+  // the canonical task taxonomy this row's `taskKey` belongs to.
   // DERIVED from `taskKey`, never independently chosen: the mapping is
   // `AI_TASK_KIND_BY_TASK_KEY` in
   // `packages/applications/src/services/ai-task-default/constants.ts`.
@@ -86,7 +86,7 @@ model AiTaskDefault {
   // writer lands NULL rather than carrying a plausible-but-wrong default.
   // "Nobody set it" is a state a resolver can fail closed on; a default of
   // TEXT_GENERATION would silently mislabel every `guardrail.*` and `nlp.*`
-  // row, which is 8 of the 12 rows the seed creates. TASK-844 tightens this to
+  // row, which is 8 of the 12 rows the seed creates. tightens this to
   // NOT NULL once `AiTaskDefaultService.upsertRow` sets it.
   taskKind AiTaskKind? // task-specific extras (thresholds, etc.)
 
@@ -105,8 +105,8 @@ model AiTaskDefault {
   @@unique([tenantId, taskKey], name: "AiTaskDefault_tenant_task_unique")
   @@index([tenantId], name: "AiTaskDefault_tenantId_idx")
   @@index([taskKey], name: "AiTaskDefault_taskKey_idx")
-  // TASK-843 — "every binding this tenant has for task kind X", the read
-  // TASK-844's unified selection surface is built on. Leads with `tenantId` so
+  // "every binding this tenant has for task kind X", the read
+  // unified selection surface is built on. Leads with `tenantId` so
   // it also serves the plain tenant-scope reads the extension injects.
   @@index([tenantId, taskKind], name: "AiTaskDefault_tenantId_taskKind_idx")
   @@schema("core")

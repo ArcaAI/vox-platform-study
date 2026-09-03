@@ -55,7 +55,7 @@ export enum ResourceType {
   // Gate-edit mining store (parity with audit.prisma; see
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
-  // RETAINED after TASK-815 retired `DepartmentAgent` itself. Nothing
+  // RETAINED after retired `DepartmentAgent` itself. Nothing
   // broadcasts this `resourceType` any more, but historical `AuditLog` rows
   // carry it and audit history is immutable on a PHI platform — and PostgreSQL
   // cannot drop an enum value without rewriting the table that uses it. Kept in
@@ -107,41 +107,41 @@ export enum ResourceType {
   AgentPromotion = 'AgentPromotion',
   WorkflowDefinition = 'WorkflowDefinition',
   ConsentGrant = 'ConsentGrant',
-  // Workflow test fixture (TASK-721). Ordinary CRUD, unlike sibling
+  // Workflow test fixture. Ordinary CRUD, unlike sibling
   // WorkflowRun (telemetry, no ResourceType) — parity with audit.prisma.
   WorkflowTestFixture = 'WorkflowTestFixture',
-  // Tenant NLP task instructions (TASK-729) — tenant-writable topic/intent
+  // Tenant NLP task instructions — tenant-writable topic/intent
   // instruction content, deliberately separate from AiTaskDefault's
   // model-selection governance. Parity with audit.prisma.
   TenantNlpTaskInstructions = 'TenantNlpTaskInstructions',
-  // Institutional-RAG knowledge document (TASK-728) — the mutable head row
+  // Institutional-RAG knowledge document — the mutable head row
   // is the audited resource; KnowledgeChunk is deliberately NOT its own
   // ResourceType (see audit.prisma). Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   KnowledgeDocument = 'KnowledgeDocument',
   ServiceAccount = 'ServiceAccount',
-  // Per-scope workflow assignment (TASK-733) — WHICH workflow definition
+  // Per-scope workflow assignment — WHICH workflow definition
   // governs a tenant/department for a palette. Its own audited resource:
   // WorkflowAssignmentService broadcasts on every mutation, and the
   // assignment is a governance act distinct from the definition it points
   // at. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   WorkflowAssignment = 'WorkflowAssignment',
-  // Workflow-graph safety rule (TASK-716) — a SYSTEM-tenant row is the
+  // Workflow-graph safety rule — a SYSTEM-tenant row is the
   // platform invariant register made executable; a tenant row may only ADD
   // strictness. Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   WorkflowInvariantRule = 'WorkflowInvariantRule',
-  // Rate-limit rule (TASK-785) — a SYSTEM-tenant row is a platform-wide
+  // Rate-limit rule — a SYSTEM-tenant row is a platform-wide
   // per-route limit; a customer-tenant row overrides it for that tenant alone.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   RateLimitRule = 'RateLimitRule',
-  // Clinical-document shape catalog (TASK-810) — the MUTABLE head row is the
+  // Clinical-document shape catalog — the MUTABLE head row is the
   // audited resource. `DocumentTemplateVersion` is deliberately NOT a
   // ResourceType (an immutable snapshot written as part of its parent's
   // publish; the ConsultationContextSchemaVersion / PromptVersion precedent).
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   DocumentTemplate = 'DocumentTemplate',
-  // Provider routing policy (TASK-818) — a policy change can redirect PHI to a
-  // different vendor, so every mutation is audited under HIPAA §164.312(b).
+  // Provider routing policy — a policy change can redirect PHI to a
+  // different vendor, so every mutation is audited under HIPAA
   // Each AUTHORED revision is another row of the same resource (the
   // `policyVersion` natural key), not a ResourceType of its own.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.

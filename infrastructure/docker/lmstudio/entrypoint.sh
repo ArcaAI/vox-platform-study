@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# TASK-824 — LM Studio (`llmster`) serving entrypoint
+# LM Studio (`llmster`) serving entrypoint
 # =============================================================================
 # Every rule below was MEASURED against llmster 0.0.23-1 in a container on
 # 2026-08-30, not inferred from docs. Where a measurement contradicts the
@@ -10,31 +10,31 @@
 #
 #   `lms` EXITS 0 WHETHER OR NOT THE THING YOU ASKED ABOUT IS TRUE.
 #
-#   Measured:  `lms server status`  -> exit 0 BEFORE the daemon even exists
-#              `lms daemon status`  -> exit 0 for "LM Studio is not running"
+#   Measured: `lms server status` -> exit 0 BEFORE the daemon even exists
+#              `lms daemon status` -> exit 0 for "LM Studio is not running"
 #                                      AND for "llmster v0.0.23+1 is running"
 #              `lms runtime select` -> exit 0 selecting a CUDA engine on a
 #                                      machine with NO GPU AT ALL
 #
 #   So EVERY gate here matches OUTPUT TEXT, never `$?`. This is the same
-#   failure shape as §4.11's HTTP hazard (200 for unknown paths -> check the
+# failure shape as HTTP hazard (200 for unknown paths -> check the
 #   body) reappearing one layer down in the CLI. Do not "simplify" any check
 #   below into an exit-code test.
 #
-#   ⚠️ README §4.7's published wait-loop is broken by exactly this:
+# ⚠️ published wait-loop is broken by exactly this:
 #        for _ in $(seq 1 60); do lms server status >/dev/null 2>&1 && break; ...
 #      `lms server status` exits 0 immediately, so the loop breaks on its FIRST
 #      iteration and never waits for anything. Every later command then races
 #      the daemon. Fixed at A-1 below.
 #
 # Boot order:
-#   A-0  refuse to start unless the model volume is verified        (§3.3, §5 L-4)
-#   A-1  daemon up, then WAIT — on output, not exit code            (§4.2)
-#   A-2  select AND verify the accelerator                          (§4.1, §8.4)
-#   A-3  publish weights; assert every expected key is visible      (§4.10)
-#   A-5  start HTTP with explicit --port AND --bind                 (§4.2)
-#   A-6  preload after the server                                   (§4.3)
-#   A-7  hold PID 1, drain on SIGTERM                               (§5 L-5)
+# A-0 refuse to start unless the model volume is verified
+# A-1 daemon up, then WAIT — on output, not exit code
+# A-2 select AND verify the accelerator
+# A-3 publish weights; assert every expected key is visible
+# A-5 start HTTP with explicit --port AND --bind
+# A-6 preload after the server
+# A-7 hold PID 1, drain on SIGTERM
 #
 # Exit 78 (EX_CONFIG) for every assertion failure, so a misconfiguration is
 # distinguishable from a crash in `kubectl describe`.
@@ -92,11 +92,11 @@ mkdir -p "${MODELS_DIR}" "${STAGING_DIR}"
 # -----------------------------------------------------------------------------
 # A-1. Daemon, then wait — on OUTPUT.
 # -----------------------------------------------------------------------------
-# `lms daemon up` forks and exits (§4.2): it prints a PID and returns, and no
+# `lms daemon up` forks and exits: it prints a PID and returns, and no
 # --foreground flag exists anywhere in `lms`. That is the entire reason this
 # wrapper exists. Every later `lms` call talks to the daemon over the unix
 # socket in ~/.lmstudio/.internal/ — which is why .internal stays in the image
-# and never on a network volume (§4.4).
+# and never on a network volume.
 log "starting llmster daemon"
 lms daemon up || true
 
@@ -112,24 +112,24 @@ done
 log "daemon up: $(lms daemon status 2>/dev/null | head -1)"
 
 # -----------------------------------------------------------------------------
-# A-2. ACCELERATOR — the runtime half of README §0 risk A-3.
+# A-2. ACCELERATOR — the runtime half of risk A-3.
 # -----------------------------------------------------------------------------
 # The Dockerfile closes the BUILD half (a CPU tarball cannot satisfy the pinned
 # +cuda12 SHA-512). It CANNOT close these three, all of which yield a server
 # that starts, serves and answers on CPU with no error anywhere:
 #
-#   (i)   MEASURED, AND NOT IN THE TICKET: the bundle ships BOTH engines and
+#   (i) MEASURED, AND NOT IN THE TICKET: the bundle ships BOTH engines and
 #         SELECTS THE CPU ONE BY DEFAULT. On the arm64 bundle, a fresh
 #         container reports:
-#             llama.cpp-linux-arm64@2.31.2                  <-- SELECTED
+#             llama.cpp-linux-arm64@2.31.2 <-- SELECTED
 #             llama.cpp-linux-arm64-nvidia-cuda13@2.31.2
 #         So shipping the right bundle is NECESSARY BUT NOT SUFFICIENT. Without
 #         an explicit `lms runtime select`, a correct CUDA image runs on CPU.
-#         This is a second, independent silent-CPU path beyond §4.1's.
-#   (ii)  the pod lands without runtimeClassName: nvidia / nvidia.com/gpu;
+# This is a second, independent silent-CPU path beyond.
+#   (ii) the pod lands without runtimeClassName: nvidia / nvidia.com/gpu;
 #   (iii) the node driver is below the 550.54.14 floor.
 #
-# §8.4 establishes this is UNDETECTABLE OVER HTTP — /api/v1/models reports
+# establishes this is UNDETECTABLE OVER HTTP — /api/v1/models reports
 # `format: "gguf"`, a weights format, not an accelerator, and no
 # /api/v1/(runtime|engine|system|server) path exists. This block is therefore
 # the ONLY place in the platform where a silent CPU-only deployment is caught.
@@ -229,9 +229,9 @@ encoding artefact — but check 'lms runtime ls' if throughput looks like CPU."
 fi
 
 # -----------------------------------------------------------------------------
-# A-3. PUBLISH WEIGHTS — README §4.10, corrected by measurement.
+# A-3. PUBLISH WEIGHTS —, corrected by measurement.
 # -----------------------------------------------------------------------------
-# §4.10 concludes, from three pieces of evidence, that a GGUF dropped on the
+# concludes, from three pieces of evidence, that a GGUF dropped on the
 # volume "is simply not visible" and that `lms import` is therefore mandatory.
 # The three pieces of evidence are each CORRECT — there is no rescan verb in
 # `lms`, no rescan RPC, and no rescan concept in the docs — but the INFERENCE
@@ -239,9 +239,9 @@ fi
 #
 #   MEASURED, llmster 0.0.23-1, 2026-08-30:
 #     * a GGUF placed at <models>/<publisher>/<model>/x.gguf BEFORE daemon start
-#       is indexed at start                       -> `lms ls` shows it
+#       is indexed at start -> `lms ls` shows it
 #     * a GGUF dropped there WHILE the daemon runs is indexed within seconds,
-#       with no import, no restart and no rescan  -> `lms ls` shows it
+#       with no import, no restart and no rescan -> `lms ls` shows it
 #
 #   There is no rescan COMMAND because the daemon watches the directory. Those
 #   are different claims, and only the first was ever evidenced.
@@ -254,7 +254,7 @@ fi
 # THE MODEL KEY IS DERIVED FROM THE DIRECTORY, NOT THE FILENAME.
 #   MEASURED: --user-repo hopetest/imported-model on a file named
 #   hope-test-model.gguf produced key `text-embedding-imported-model`.
-#   This is the §7.4 `sourceUri` trap: `resolveTextSelectionForKey` puts
+# This is the `sourceUri` trap: `resolveTextSelectionForKey` puts
 #   AiModel.sourceUri on the wire as the OpenAI `model` field, so the <model>
 #   segment here MUST equal the seed row's sourceUri or every generation 404s.
 #
@@ -342,7 +342,7 @@ publish_and_verify
 # -----------------------------------------------------------------------------
 # A-5. HTTP layer. BOTH --port AND --bind are mandatory.
 # -----------------------------------------------------------------------------
-# MEASURED, and stronger than §4.2 states: in a FRESH container the daemon's
+# MEASURED, and stronger than states: in a FRESH container the daemon's
 # own record reads {"host":"127.0.0.1","port":41343} — loopback on a RANDOM
 # high port. `lms server start --help` confirms the port defaults to "the same
 # port as the last time it was started", and a fresh container has no last
@@ -358,11 +358,11 @@ publish_and_verify
 log "starting HTTP server on ${BIND}:${PORT}"
 lms server start --port "${PORT}" --bind "${BIND}"
 
-# §4.11 / bug #1323, MEASURED — every one of these returned HTTP 200:
-#     /lmstudio-greeting        200 {"lmstudio":true}
+# / bug #1323, MEASURED — every one of these returned HTTP 200:
+#     /lmstudio-greeting 200 {"lmstudio":true}
 #     /this-path-does-not-exist 200 {"error":"Unexpected endpoint or method..."}
-#     /health                   200 {"error":"Unexpected endpoint or method..."}
-#     /totally/bogus            200 {"error":"Unexpected endpoint or method..."}
+#     /health 200 {"error":"Unexpected endpoint or method..."}
+#     /totally/bogus 200 {"error":"Unexpected endpoint or method..."}
 # A status-code probe therefore passes against a broken server AND against
 # paths that do not exist. The BODY is the only signal. This is also why the
 # k8s liveness probe is an `exec`, not an `httpGet` — httpGet cannot inspect a
@@ -387,11 +387,11 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # split, because alive-but-not-ready is a pod the Service has rightly removed
 # from rotation, not one the kubelet should kill.
 #
-# §4.3 says to "turn JIT loading off" and gate readiness on /v1/models.
+# says to "turn JIT loading off" and gate readiness on /v1/models.
 # MEASURED: there is NO JIT control anywhere in the CLI — not on
 # `lms server start`, not on `lms load`, not on `lms server`. And with JIT on,
 # /v1/models lists every model ON DISK regardless of load state (both test
-# models appeared with nothing loaded), exactly as §4.3 warns.
+# models appeared with nothing loaded), exactly as warns.
 #
 # So readiness cannot be /v1/models, and it cannot be an httpGet at all.
 # MEASURED alternative: GET /api/v1/models returns per model
@@ -404,7 +404,7 @@ if [ -n "${LMS_LOAD:-}" ]; then
   # --gpu / --ttl / --parallel / --identifier are CLI-ONLY. REST
   # POST /api/v1/models/load accepts only model, context_length,
   # eval_batch_size, flash_attention, num_experts, offload_kv_cache_to_gpu
-  # (§4.5) — `parallel` is readable over HTTP but not writable. `--parallel` is
+  # `parallel` is readable over HTTP but not writable. `--parallel` is
   # the headless Max Concurrent Predictions knob: source-verified, absent from
   # the published docs, default 4, llama.cpp runtime only.
   # shellcheck disable=SC2086

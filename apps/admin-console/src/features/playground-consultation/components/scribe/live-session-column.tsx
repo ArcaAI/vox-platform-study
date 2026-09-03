@@ -133,7 +133,7 @@ export interface LiveSessionColumnProps {
   /** Request an on-the-fly switch to the tenant fallback pipeline (SDK `audio.switchToFallback`). */
   onSwitchToFallback?: () => void;
   /**
-   * TASK-805 — why recording is blocked on consent, or null when it is not.
+   * why recording is blocked on consent, or null when it is not.
    *
    * A CONVENIENCE gate, never the security boundary: `PatientConsentGuard`
    * remains authoritative and 403s regardless of what this column renders. It
@@ -141,7 +141,7 @@ export interface LiveSessionColumnProps {
    * AI_DOCUMENTATION grant exists — never while the read is in flight and never
    * when it failed — so an unreadable consent register degrades to "let the
    * server decide", not to a locked-out clinician.
-   */
+ */
   consentBlockedReason?: string | null;
   /** Opens the attestation dialog. Absent ⇒ the gate explains but offers no action. */
   onRecordConsent?: () => void;
@@ -255,9 +255,11 @@ export function LiveSessionColumn({
           </Button>
         )}
       </div>
-      {/* Consent gate (TASK-805). A disabled control must always carry a
+      {/*
+ Consent gate. A disabled control must always carry a
           visible reason (rule 11 §5) — and here the reason is also the fix, so
-          the banner carries the action rather than only explaining the block. */}
+          the banner carries the action rather than only explaining the block. 
+*/}
       {consentBlockedReason ? (
         <div
           id="consent-gate"

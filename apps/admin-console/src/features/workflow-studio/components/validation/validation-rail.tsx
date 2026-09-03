@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `ValidationRail` (TASK-719 Task 14) — the server `ValidationReport` grouped by severity then
+ * `ValidationRail` — the server `ValidationReport` grouped by severity then
  * node. Activating a row moves both selection AND DOM focus (`use-focus-node.ts`). Findings with
  * `nodeId === null` are graph-level (README: "a graph-level bucket… distinct from per-node
  * groups" — `WF-INTERNAL`/`WF-SHAPE` land there per `validation-report.contract.md`).

@@ -3,7 +3,7 @@ import { KnowledgeDocumentsScreen } from '@/features/knowledge/components/knowle
 
 export const metadata: Metadata = { title: 'Knowledge Base' };
 
-/** Frame — Knowledge Base list (tier 30-49, TASK-728). */
+/** Frame — Knowledge Base list (tier 30-49). */
 export default function KnowledgePage() {
   return <KnowledgeDocumentsScreen />;
 }

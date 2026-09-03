@@ -21,7 +21,7 @@ import { DnaWritingStyleProcessor } from '../../dna-writing-style/dna-writing-st
 import { DnaWritingStyleServiceModule } from '../../dna-writing-style/dna-writing-style.service.module';
 
 /**
- * TASK-808 — DI wiring guard for the six repaired TEXT `/generate` callers.
+ * DI wiring guard for the six repaired TEXT `/generate` callers.
  *
  * `TextRequestEnrichmentService` is injected `@Optional()` on all six, so a
  * module that does NOT import `TextRequestServiceModule` resolves it to
@@ -65,7 +65,7 @@ const CALLERS: Array<[name: string, service: unknown, module: unknown]> = [
   ['DnaWritingStyleProcessor', DnaWritingStyleProcessor, DnaWritingStyleServiceModule],
 ];
 
-describe('TASK-808 — TextRequestEnrichmentService resolves for every repaired TEXT caller', () => {
+describe('TextRequestEnrichmentService resolves for every repaired TEXT caller', () => {
   for (const [name, service, module] of CALLERS) {
     it(`${name} injects TextRequestEnrichmentService`, () => {
       expect(effectiveConstructorTokens(service)).toContain(TextRequestEnrichmentService);

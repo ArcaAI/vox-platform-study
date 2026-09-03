@@ -2,9 +2,9 @@
 
 A **binding** node, never a loop: it starts or stops the live-documentation session and
 returns; the debounce/retrigger behaviour stays in ``LiveDocumentationService`` where
-``contracts/palette-contract.md`` §3 puts it ("realtime, per-frame, or debounced-retrigger
+contracts/palette-contract.md puts it ("realtime, per-frame, or debounced-retrigger
 behaviour never enters a Temporal workflow's deterministic execution model; only the durable,
-one-shot checkpoints do"). Compile target per §1 row 4: ``livedoc_start`` / ``livedoc_stop``.
+one-shot checkpoints do"). Compile target per row 4: livedoc_start / livedoc_stop.
 
 ``config.action`` selects which. There is no default — a node that does not say which end of the
 capture it binds is an authoring error, and guessing ``start`` would silently leave sessions

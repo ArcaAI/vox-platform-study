@@ -384,14 +384,14 @@ describe('AuditLogService', () => {
   /**
    * Multi-tenant isolation for AuditLogService
    *
-   * Audit finding C-5 (HIPAA §164.312(b)): fetch methods were tenant-blind,
+   * Audit finding C-5 (HIPAA: fetch methods were tenant-blind,
    * letting a Tenant-A admin enumerate every tenant's audit log.
    *
    * All fetch methods MUST inject `this.tenantId` from CLS into the repository
    * `where` clause; `fetchById` MUST throw `NotFoundException` (never
    * `Forbidden` — that would leak existence) when the loaded entity's tenant
    * does not match the caller. Only `SUPER_ADMIN` may bypass.
-   */
+ */
   describe('Multi-tenant scoping', () => {
     describe('fetchAll', () => {
       it('should inject caller tenantId into repository where clause', async () => {

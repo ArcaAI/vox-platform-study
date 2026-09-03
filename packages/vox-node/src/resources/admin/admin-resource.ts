@@ -1,6 +1,6 @@
 /**
- * TASK-773 Phase D2 — the hand-authored base every `/api/v1/admin/**` resource
- * is generated on top of (§3.2: "Generated: `src/resources/admin/*.ts` …
+ * the hand-authored base every `/api/v1/admin/**` resource
+ * is generated on top of ("Generated: `src/resources/admin/*.ts` …
  * Hand-authored, once: the `AdminResource` base (pagination iterator, If-Match
  * plumbing, error mapping)").
  *
@@ -255,12 +255,12 @@ function normalizePageIndex(page: number | undefined): number {
 export abstract class AdminResource {
   /**
    * The `svc:admin:*` scope that reaches EVERY route on this resource — the
-   * `svc:` twin of the `admin:*` scope the controller carried before TASK-757
+   * `svc:` twin of the `admin:*` scope the controller carried before
    * (`toServiceAccountScope`). Generated subclasses declare it from the route
    * manifest, so the required scope is readable at the call site and quotable
    * in a 403.
    *
-   * It is the resource's FLOOR, not a complete answer: since TASK-773 decision
+   * It is the resource's FLOOR, not a complete answer: since decision
    * O-3 an individual read route may accept its area's `:read` sibling as well,
    * which the generated method passes per call ({@link AdminRequestSpec.svcScopes})
    * so its 403 names what that route actually wants. A token holding only this
@@ -282,10 +282,10 @@ export abstract class AdminResource {
    * matches with OR (`enforceServiceAccountScopes` is `required.some(...)`), so
    * holding any one of them is enough. It defaults to the resource's own
    * {@link svcScope}, which is the case for all but the read routes widened by
-   * TASK-773 decision O-3.
+   * decision O-3.
    */
   /*
-   * NAME DELIBERATELY QUALIFIED. This was `explain()` until TASK-785 added a
+   * NAME DELIBERATELY QUALIFIED. This was `explain()` until added a
    * generated `admin.rateLimit.explain()` route method, which collided with it:
    * a subclass cannot widen a private base member, so the whole resource failed
    * to compile. Every generated method is named after its ROUTE, so any short
@@ -413,7 +413,7 @@ export abstract class AdminResource {
    * for await (const tenant of hope.admin.tenants.listAll()) { … }
    * ```
    *
-   * ### The trap this USED to avoid (TASK-776 F-02 — fixed, but read on)
+   * ### The trap this USED to avoid (fixed, but read on)
    *
    * The obvious implementation — read `page`/`limit` off each response and
    * increment — used to be WRONG against this gateway: the services echoed

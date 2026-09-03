@@ -33,7 +33,7 @@ class TextClassificationResponse(BaseModel):
     model_version: str = Field(..., description="Text classification model version")
 
 
-# Multi-label text classification (owner decision 2026-08-20, TASK-729 §6).
+# Multi-label text classification (owner decision 2026-08-20,
 #
 # `nlp.toxicity` is MULTI-LABEL: an utterance may be simultaneously toxic +
 # threat + insult, which the single-`predicted_label` shape above cannot
@@ -111,7 +111,7 @@ class TokenClassificationRequest(BaseModel):
     aggregation_strategy: str | None = Field(
         default=None, description="Entity aggregation strategy; absent => the model row's own"
     )
-    # The CLINICAL TAXONOMY this call executes against (TASK-799 lane G):
+    # The CLINICAL TAXONOMY this call executes against :
     # ontology vocabulary, vitals plausibility bands, ConText/NegEx triggers and
     # the checkpoint's own NER contract. The gateway resolves it from
     # `AiModel._metadata.clinicalTaxonomy` on the row `nlp.ner` selects and
@@ -176,7 +176,7 @@ class TokenClassificationResponse(BaseModel):
     )
 
 
-# Topic / Intent Classification (TASK-729) — OPEN-taxonomy tasks delegated to
+# Topic / Intent Classification — OPEN-taxonomy tasks delegated to
 # `text` via ExternalTextClient. Unlike `/classify/text`, these carry the
 # gateway-injected tenant instructions (topic list / intent list, resolved
 # server-side from `TenantNlpTaskInstructions`) AND `tenant_id` (forwarded as

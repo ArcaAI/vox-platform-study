@@ -1,8 +1,8 @@
-"""EmbeddingProvider protocol and EmbeddingProviderRegistry (TASK-725 Task 4).
+"""EmbeddingProvider protocol and EmbeddingProviderRegistry.
 
 A SEPARATE registry namespace from the nine `LLMProvider`s in
 `providers/base.py::ProviderRegistry` — decided in Task 1's design (see
-`docs/implementation/TASK-725-Worker-Pool-Text/design-notes.md`). Mirrors
+). Mirrors
 `translation/base.py::TranslateProviderRegistry`, which already established
 this exact "separate capability, separate registry, same lazy/connection-gated
 shape" pattern for the `translate` capability — an embedding provider and an

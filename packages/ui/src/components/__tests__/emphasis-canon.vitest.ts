@@ -3,7 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * TASK-787 J-17 · Emphasis canon guard for HOPE-owned `packages/ui` source.
+ * · Emphasis canon guard for HOPE-owned `packages/ui` source.
  *
  * WHY THIS EXISTS. Under the Tatva achromatic identity `--primary` and
  * `--foreground` resolve to the SAME value in light (`var(--neutral-900)`) and
@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
  * That is the dangerous part. A future author reaching for `text-primary` to mean
  * "selected" / "active" / "emphasised" gets a class that compiles, passes review
  * and renders nothing — which is precisely how `audio-pipelines-screen.tsx`
- * shipped a `selected ? 'text-primary font-semibold' : 'font-medium'` row whose
+ * shipped a `selected ? 'text-primary font-semibold': 'font-medium'` row whose
  * two branches were pixel-identical. In this palette emphasis comes from WEIGHT
  * (400 vs 500 — the Geometry Contract allows no others), SIZE, POSITION, a
  * background fill, or a rule/indicator. Never from this token.

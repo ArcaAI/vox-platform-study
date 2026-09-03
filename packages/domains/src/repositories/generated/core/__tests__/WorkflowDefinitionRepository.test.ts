@@ -1,7 +1,7 @@
 /**
  * WorkflowDefinitionRepository — repository shape.
  *
- * `findPublishedBySlug` is the exposure gateway's (TASK-722) resolution
+ * `findPublishedBySlug` is the exposure gateway's resolution
  * primitive: it must filter by tenantId + slug + PUBLISHED + isActive +
  * ENABLED, and must return `null` — never throw — on a miss (foreign tenant,
  * unpublished/inactive slug, or a slug that never existed), so the caller can
@@ -115,7 +115,7 @@ describe('WorkflowDefinitionRepository — findAllVersionsBySlug', () => {
   });
 });
 
-describe('WorkflowDefinitionRepository — findActivePublishedByTenant (TASK-722)', () => {
+describe('WorkflowDefinitionRepository — findActivePublishedByTenant ', () => {
   let findMany: ReturnType<typeof vi.fn>;
   let repo: WorkflowDefinitionRepository;
 

@@ -1,7 +1,7 @@
 /**
- * Lane N (TASK-815 §14a) — IMPORTANT FINDINGS on the realtime lane.
+ * Lane N — IMPORTANT FINDINGS on the realtime lane.
  *
- * §14a's verdict on the owner's third acceptance item was blunt: *"important information
+ * Verdict on the owner's third acceptance item was blunt: *"important information
  * highlighted — DOES NOT EXIST. Entities reach the client re-anchored into the note so the UI
  * *can* highlight them, but there is no red-flag / critical-value / allergy-alert / severity layer
  * anywhere."* The owner's answer to "what makes information important?" was not a layer — it was a

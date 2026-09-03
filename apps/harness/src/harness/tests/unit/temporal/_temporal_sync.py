@@ -103,7 +103,7 @@ async def await_history_event(
     """Poll ``handle``'s event history until an event satisfying ``predicate`` is recorded.
 
     The deterministic alternative to signalling a workflow after a fixed real-time
-    delay and hoping it has reached a particular point by then (TASK-718 Task 12 —
+    delay and hoping it has reached a particular point by then
     a raw ``asyncio.sleep`` before a signal is exactly the flakiness rule 06's
     Pitfalls section warns about: a busy machine can push scheduling past any fixed
     margin). Waiting for e.g. a specific ``EVENT_TYPE_ACTIVITY_TASK_SCHEDULED`` event

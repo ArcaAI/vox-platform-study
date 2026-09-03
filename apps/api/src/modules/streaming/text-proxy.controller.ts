@@ -122,7 +122,7 @@ interface TextGenerateRequest {
 /**
  * A visit type on the wire: a KEY or an ALIAS from the caller tenant's
  * `consultation.visitTypes` catalogue. It was a closed `'new_visit' |
- * 'referral'` union until TASK-815 §11 row 3 — and both of those are aliases of
+ * `'referral'` union — and both of those are aliases of
  * the SHIPPED "New patient" type, so a caller sending either is unaffected.
  */
 type VisitType = string;
@@ -166,7 +166,7 @@ const STREAM_READ_TIMEOUT_MS = 300_000;
 // document can't blow the TEXT context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
-// SUPER_ADMIN (formerly SUPER_ADMIN, renamed ) is the single
+// SUPER_ADMIN (formerly SUPER_ADMIN, renamed) is the single
 // elevated role; the earlier, unrelated pre- SUPER_ADMIN role has
 // been retired.
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
@@ -197,11 +197,11 @@ interface ProviderListingEntry {
 @ApiTags('text')
 @ApiBearerAuth()
 @Controller('text-generations')
-// TASK-742: the streaming summarization surface parallel to the already-scoped
+// the streaming summarization surface parallel to the already-scoped
 // `TextCompatController` (`/api/smr/api/v1`), which uses this same scope for
 // the identical capability — kept in step deliberately.
 @RequiredScopes('consultation:report:write')
-// TASK-767 — the standalone summarization/text-generation feature, reachable by
+// the standalone summarization/text-generation feature, reachable by
 // the third credential class. Renamespaced from the `consultation:report:write`
 // above, and deliberately the SAME scope the compat sibling declares: one
 // capability, one grant, whichever door the caller uses.
@@ -252,20 +252,20 @@ export class TextProxyController {
     @Optional()
     @Inject(IUsageLedgerService)
     private readonly usageLedger?: IUsageLedgerService,
-    // TASK-700: the gated accessor for a doctor's effective DNA writing-style
+    // the gated accessor for a doctor's effective DNA writing-style
     // text (tenant+doctor opt-out gate, latest report, decrypt). @Optional so
     // existing positional test fixtures keep compiling; absent ⇒ no style is
     // injected (matches the general fail-open-but-additive DNA posture).
     @Optional()
     @Inject(IDnaWritingStyleService)
     private readonly dnaWritingStyleService?: IDnaWritingStyleService,
-    // TASK-799 A.2 — the tenant → SYSTEM cascade behind the `guardrail_policy`
+    // A.2 — the tenant → SYSTEM cascade behind the `guardrail_policy`
     // push. @Optional so existing positional test fixtures keep compiling;
     // absent ⇒ no policy is pushed, which is identical to a tenant that has
     // expressed no opinion (the platform posture then stands).
     @Optional()
     private readonly effectiveSettingsService?: EffectiveSettingsService,
-    // TASK-815 §11 row 3 — the caller tenant's VISIT-TYPE catalogue. This route
+    // the caller tenant's VISIT-TYPE catalogue. This route
     // used to enforce a hardcoded `['new_visit', 'referral']` allow-list and
     // 400 anything else, which made "tenant-admin defined and controlled" false
     // at the front door. @Optional so existing positional test fixtures keep
@@ -313,7 +313,7 @@ export class TextProxyController {
    * the model from a resolution that may have chosen a different provider would
    * forward an incoherent pair — a new failure mode, not a fix. So:
    *
-   *   - model absent            → resolve BOTH (byte-identical to before);
+   *   - model absent → resolve BOTH (byte-identical to before);
    *   - model pinned, no provider → fill the PROVIDER only, model untouched;
    *   - provider pinned + model pinned → nothing is resolved or overwritten.
    */
@@ -381,10 +381,10 @@ export class TextProxyController {
   /**
    * Headers for every gateway→TEXT hop out of this controller.
    *
-   * TASK-737: `X-Tenant-Id` is MANDATORY here. It was omitted UNCONDITIONALLY on
+   * `X-Tenant-Id` is MANDATORY here. It was omitted UNCONDITIONALLY on
    * all seven call sites below, so TEXT resolved `x_tenant_id=None` and fell back to
    * the platform default — never applying the tenant's own BYOK provider/credential,
-   * and (because TASK-735 derives `funding`/`cost_basis` from whichever tier supplied
+   * and (because it derives `funding`/`cost_basis` from whichever tier supplied
    * the credential) mis-attributing the spend, with nothing thrown or logged anywhere.
    *
    * A SUPER_ADMIN driving these routes with no working tenant selected genuinely has
@@ -455,7 +455,7 @@ export class TextProxyController {
       return new HttpException({ detail: fallbackMessage }, status);
     }
 
-    // TASK-768: no upstream status means the peer never answered — a TRANSPORT
+    // no upstream status means the peer never answered — a TRANSPORT
     // failure, which is 503 (retryable), not 502 (the peer answered badly). The
     // status now comes from the shared classifier so this controller and the
     // gateway boundary can never disagree; the v1 body SHAPE is unchanged.
@@ -619,23 +619,23 @@ export class TextProxyController {
   }
 
   /**
-   * `POST /api/v1/generate` under the TASK-818 §3C.3(1) single-call contract,
+   * `POST /api/v1/generate` under the single-call contract,
    * returning what this gateway's TWO-CALL surface promises its callers.
    *
    * Non-streaming is unchanged: the JSON body, passed through.
    *
    * Streaming is the migration. TEXT no longer answers `202 {task_id,
    * stream_url}`; it answers **200 + `text/event-stream` immediately**, with the
-   * generation id in the first frame's `data` (§3C.3(4)). Buffering that (which
+   * generation id in the first frame's `data`. Buffering that (which
    * is what axios does by default, and what this method used to get) would
    * accumulate an entire clinical generation into a string, hand it back as if
    * it were a JSON ack, and time out at 30 s. So we stream it, take the id off
    * the first frame, and drop this subscription.
    *
-   * Dropping it is NOT a cancel (§3C.4): the producer is owned by TEXT's
+   * Dropping it is NOT a cancel: the producer is owned by TEXT's
    * generation hub, not by this response, so it runs on and every delta lands in
    * the replay buffer. The caller's own `GET .../stream` then replays from seq 0
-   * — no gap, and this gateway holds no state (§3C.3(6)).
+   * — no gap, and this gateway holds no state.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async postTextGenerate(base: string, payload: TextGenerateRequest, label: string): Promise<any> {
@@ -721,7 +721,7 @@ export class TextProxyController {
   }
 
   /**
-   * The gateway KEEPS its two-call surface, deliberately (TASK-818 Lane E).
+   * The gateway KEEPS its two-call surface, deliberately.
    *
    * TEXT moved to a single call — `POST /generate` IS the stream — and this
    * gateway now speaks that contract upstream (`postTextGenerate`). It does not
@@ -733,7 +733,7 @@ export class TextProxyController {
    *     `text_task:<taskId>`. A POST-that-is-the-stream has no id until its
    *     first frame, so there is nothing to scope a ticket to.
    *  2. **`EventSource` cannot POST** and cannot set `Authorization` — which is
-   *     precisely why the ticket-in-query design exists (§3C.3(7) makes the same
+   * precisely why the ticket-in-query design exists (it makes the same
    *     observation about browsers).
    *  3. The console and `PromptManagementService` both hand a browser a GET URL
    *     to open; neither owns a `fetch`-based SSE reader.
@@ -836,7 +836,7 @@ export class TextProxyController {
     };
 
     try {
-      // TASK-818 §3C.3(6) — forward the cursor upstream. `Last-Event-ID` is the
+      // forward the cursor upstream. `Last-Event-ID` is the
       // CANONICAL form and is what TEXT's `parse_cursor` reads first; the
       // `?last_event_id=` query is kept alongside it because TEXT accepts both
       // and a stripped header would resume the generation from seq 0 SILENTLY,
@@ -893,9 +893,9 @@ export class TextProxyController {
         // The client hung up. Whatever usage already crossed the wire is real
         // and must be recorded.
         emitUsageOnce();
-        // TASK-818 §3C.3(6) — drop ONLY our own upstream subscription. This is
+        // drop ONLY our own upstream subscription. This is
         // deliberately NOT a cancel: TEXT's producer outlives every subscriber
-        // (§3C.3(1)) and cancellation is an explicit `POST .../cancel` (§3C.4),
+        // and cancellation is an explicit `POST .../cancel`,
         // so the generation runs on and the client resumes it gaplessly from its
         // `Last-Event-ID`. Calling the cancel route from here would destroy the
         // resumability this relay exists to carry.

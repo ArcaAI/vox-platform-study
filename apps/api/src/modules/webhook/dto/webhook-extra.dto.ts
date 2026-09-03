@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { WebhookResponse } from '@arcaai/applications';
 
 /**
- * TASK-727: the raw webhook signing secret is shown exactly once — at
+ * the raw webhook signing secret is shown exactly once — at
  * creation (`POST admin/webhooks`) or rotation (`POST admin/webhooks/:id/rotate-secret`).
  * Mirrors `CreateApiKeyResponse` exactly.
  */

@@ -16,7 +16,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
  * AiRoutingPolicyAdminController — provider ROUTING and FAILOVER policy
- * (TASK-818 §3A), mounted at `/admin/routing-policies` (global prefix →
+ * (mounted at `/admin/routing-policies` (global prefix →
  * `/api/v1/admin/routing-policies`).
  *
  * A policy is the ORDERED N-way candidate chain that serves one AI task: which
@@ -57,7 +57,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * API keys are refused outright (`@ForbidApiKey()`, the admin-plane rule).
  *
  * Service accounts are refused too, and that refusal is DECLARED with
- * `@ForbidServiceAccount()` rather than left to deny-by-default. Since TASK-773
+ * `@ForbidServiceAccount()` rather than left to deny-by-default. Since
  * the admin plane is the machine class's plane, so silence there is ambiguous
  * rather than safe — the boot audit refuses to start on an undeclared admin
  * route precisely so a missed sweep cannot be mistaken for a deliberate

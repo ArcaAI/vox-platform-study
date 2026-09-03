@@ -83,7 +83,7 @@ export function LiveTranscript(props: LiveTranscriptProps) {
         <div
           ref={ctrl.scrollRef}
           role="log"
-          // Pause announcements while editing to avoid churn (a11y §3.6.5).
+          // Pause announcements while editing to avoid churn (a11y
           aria-live={ctrl.editingId ? 'off' : 'polite'}
           aria-relevant="additions"
           aria-label={props['aria-label'] ?? 'Live transcript'}

@@ -8,7 +8,7 @@ import * as Models from '../../../models';
 // `AiTaskDefaultEntityMapper` / `DepartmentEntityMapper` treatment.
 //
 // NOTE — `policyVersion` is deliberately NOT in this list. It is the AUTHORED,
-// supersede-only revision (TASK-818 §3A.3), a real column a human writes, and
+// supersede-only revision (a real column a human writes, and
 // stripping it would make a new revision unsavable. Only the OCC counter is
 // non-writable.
 const FIELDS_NOT_WRITABLE: string[] = ['version'];

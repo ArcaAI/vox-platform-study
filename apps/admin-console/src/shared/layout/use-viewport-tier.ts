@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Responsive tiers (redesign build spec §2): Desktop >= 1280 (full multi-pane),
+ * Responsive tiers (redesign build spec: Desktop >= 1280 (full multi-pane),
  * Tablet 768–1279 (sidebar → icon rail, 3-pane → 2-pane), Mobile < 768 (single
  * column, drawers → full-screen sheets). Backed by `matchMedia` and SSR-safe —
  * it defaults to `desktop` on the server / before hydration (the app is

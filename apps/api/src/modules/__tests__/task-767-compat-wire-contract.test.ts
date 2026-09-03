@@ -1,21 +1,21 @@
 /**
- * TASK-767 — the v1-compat surfaces are frozen WIRE contracts, not frozen ACCESS.
+ * the v1-compat surfaces are frozen WIRE contracts, not frozen ACCESS.
  *
  * The requirement is that a service account can drive standalone speech-to-text
  * and summarization "via SDK compat and API compat". The obvious objection is
  * that those surfaces are frozen and therefore untouchable. That reading
  * conflates two different things:
  *
- *   WIRE contract  — path, HTTP verb, accepted request fields, response shape.
+ *   WIRE contract — path, HTTP verb, accepted request fields, response shape.
  *                    A v1 client sends bytes; those bytes must keep working.
- *                    THIS is what is frozen (TASK-740, TASK-760 §scope fence).
+ * THIS is what is frozen (scope fence).
  *   ACCESS posture — which credential classes may present themselves.
  *                    Expressed entirely in guard metadata (`@RequiredScopes`,
  *                    `@RequiredSvcScopes`, `@ForbidApiKey`), which the caller
  *                    cannot observe except as 401/403 on a request it was
  *                    never entitled to make.
  *
- * TASK-742 already moved the access posture of these very controllers — it
+ * already moved the access posture of these very controllers — it
  * added `@RequiredScopes` where there had been none — without anyone treating
  * that as a wire change, and `task-562-text-compat.spec.ts` still passes on the
  * original v1 bodies. Adding `@RequiredSvcScopes` is the same kind of edit for
@@ -81,7 +81,7 @@ function acceptedFields(Dto: new () => object): string[] {
 // STT compat — `POST /api/stt/*` (prefix-excluded in main.ts)
 // ---------------------------------------------------------------------------
 
-describe('SttCompatController wire contract is unchanged by TASK-767', () => {
+describe('SttCompatController wire contract is unchanged by ', () => {
   it('exposes exactly the three v1 routes, at the v1 paths and verbs', () => {
     expect(routeTable(SttCompatController)).toEqual([
       { handler: 'startSession', path: 'start_session', verb: 'POST' },
@@ -118,7 +118,7 @@ describe('SttCompatController wire contract is unchanged by TASK-767', () => {
 // Summarization compat — `POST /api/smr/api/v1/*` (prefix-excluded in main.ts)
 // ---------------------------------------------------------------------------
 
-describe('TextCompatController wire contract is unchanged by TASK-767', () => {
+describe('TextCompatController wire contract is unchanged by ', () => {
   it('exposes exactly the two v1 routes, at the v1 paths and verbs', () => {
     expect(routeTable(TextCompatController)).toEqual([
       { handler: 'presummary', path: 'presummary', verb: 'POST' },
@@ -174,7 +174,7 @@ describe('TextCompatController wire contract is unchanged by TASK-767', () => {
 // What DID change: access posture only, and additively.
 // ---------------------------------------------------------------------------
 
-describe('TASK-767 changed ACCESS, and only additively', () => {
+describe(' changed ACCESS, and only additively', () => {
   const svcScopes = (target: object) => Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, target) as string[] | undefined;
   const keyScopes = (target: object) => Reflect.getMetadata(API_KEY_REQUIRED_SCOPES, target) as string[] | undefined;
 

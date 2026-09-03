@@ -39,7 +39,7 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
     // 5 min 30 s of audio (330 000 ms) → rounds to 6 minutes.
     audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: 330_000 } }) },
     summaryMeta: { count: vi.fn().mockResolvedValue(7) },
-    // WORKFLOW_INVOCATIONS (TASK-722) — COUNT(WorkflowRun WHERE startedAt ∈ window).
+    // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window).
     workflowRun: { count: vi.fn().mockResolvedValue(4) },
     // Rollup-backed unit meters. Every metric maps to one
     // `aiUsageRollupDaily.aggregate` call except `guardrailCalls`.

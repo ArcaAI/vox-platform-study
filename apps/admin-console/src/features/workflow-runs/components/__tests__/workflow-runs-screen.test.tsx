@@ -1,5 +1,5 @@
 /**
- * Frame N — Workflow Runs list screen (TASK-723, Phase C).
+ * Frame N — Workflow Runs list screen.
  *
  * fetch is stubbed at the network boundary. Assertions cover: the fill-height
  * grid renders keyset rows, the sandbox toggle round-trips `includeSandbox`

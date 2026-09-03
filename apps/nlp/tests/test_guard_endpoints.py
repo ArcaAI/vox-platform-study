@@ -1,4 +1,4 @@
-"""TASK-735 Phase 3/6 — `apps/nlp` hosts the guardrail-class models.
+"""/6 — `apps/nlp` hosts the guardrail-class models.
 
 GLiNER2 (PII spans + LLM-safety classification) and MiniCheck (NLI entailment)
 moved OUT of `apps/guardrail` and into this service, which already owns NER,
@@ -63,7 +63,7 @@ def test_pii_spans_are_byte_exact_document_offsets(client, monkeypatch):
     text = "Call Jane Roe at jane@roe.example."
 
     class FakeGuard:
-        # TASK-778: the route drives the runtime's BATCH verb so concurrent
+        # the route drives the runtime's BATCH verb so concurrent
         # requests share one forward pass. The single-text contract this file
         # originally pinned survives unchanged at the HTTP layer — which is what
         # `apps/guardrail`'s `NlpGuardClient` depends on.

@@ -93,7 +93,7 @@ function isEmptyValue(value: React.ReactNode): boolean {
 }
 
 /**
- * KPI / stat tile (PHASE-2-PLAN §3.2). Semantic accent border + optional icon chip,
+ * KPI / stat tile (PHASE-2-PLAN Semantic accent border + optional icon chip,
  * `tabular-nums` value, and a color-blind-safe delta (trend icon + sign + semantic
  * color resolved by `deltaIntent`). Honors the `AsyncStateProps` loading/empty/error
  * contract and two density modes.

@@ -7,8 +7,8 @@
  * Transcription → Summary → NER pipeline.
  *
  * Emitters:
- *   - SttInternalService     → TranscriptionCreated
- *   - SummaryGenerated / NerExtracted had no producer left after TASK-732
+ *   - SttInternalService → TranscriptionCreated
+ * SummaryGenerated / NerExtracted had no producer left after
  *     deleted the legacy async summary/NER generators that used to emit
  *     them; `ConsultationEventHandler` still subscribes to both
  *     (out-of-scope defensive/dead code, not this ticket's to remove).
@@ -180,7 +180,7 @@ export interface ContextRemovedPayload extends ConsultationPipelineEventBase {
  * Payload for `ConsultationPipelineEvent.SummaryGenerated`.
  *
  * Previously emitted by the legacy async summary generator after a summary
- * ContextItem was persisted (deleted TASK-732 — no current producer).
+ * ContextItem was persisted (deleted — no current producer).
  * Triggers auto-NER extraction if the pipeline config allows it.
  */
 export interface SummaryGeneratedPayload extends ConsultationPipelineEventBase {
@@ -212,7 +212,7 @@ export interface SummaryGeneratedPayload extends ConsultationPipelineEventBase {
  * Payload for `ConsultationPipelineEvent.NerExtracted`.
  *
  * Previously emitted by the legacy async NER generator after named entities
- * were persisted (deleted TASK-732 — no current producer).
+ * were persisted (deleted — no current producer).
  * This is the final step in the auto-pipeline.
  */
 export interface NerExtractedPayload extends ConsultationPipelineEventBase {

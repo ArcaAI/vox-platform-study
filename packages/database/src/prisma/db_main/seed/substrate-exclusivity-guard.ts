@@ -1,5 +1,5 @@
 /**
- * TASK-798 W2 — the Substrate-A exclusivity detector.
+ * the Substrate-A exclusivity detector.
  *
  * ## The hazard this exists to prevent
  *
@@ -22,7 +22,7 @@
  *
  * ## What "the gate exists" is taken to mean
  *
- * TASK-795 owns `packages/applications/src/services/consultation/**` and is implementing the
+ * owns `packages/applications/src/services/consultation/**` and is implementing the
  * exclusivity mechanism. The observable consequence must be that the loop-signal decision path
  * consults workflow governance — today it cannot, because the file's executable code contains no
  * reference to a workflow at all.

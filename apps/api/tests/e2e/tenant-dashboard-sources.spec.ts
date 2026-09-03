@@ -8,21 +8,21 @@
  * isolation / RBAC posture the dashboard relies on. It deliberately does NOT
  * assert any TARGET flow (open sockets, consumption, per-model stream counts, or
  * server-side range aggregation) — those have no backend (see
- * docs/qa/traceability/tenant-dashboard.md §3).
+ * docs/qa/traceability/tenant-dashboard.md
  *
  * Sources & verified gating (apps/api, 2026-06-30):
- *   1. GET /admin/tenants/:id/usage  tenant.controller.ts:151  → getUsageStats
+ *   1. GET /admin/tenants/:id/usage tenant.controller.ts:151 → getUsageStats
  *      — @CanAny(['manage','Tenant'],['update','Tenant']); per-row
  *        `assertTenantInScope` (:63): non-super-admin reading ANOTHER tenant → 403.
- *   2. GET /admin/audit-logs         audit-log.controller.ts:65 (fetchAll)
+ *   2. GET /admin/audit-logs audit-log.controller.ts:65 (fetchAll)
  *      — @CanRead('AuditLog'); tenant-scoped, super-admin cross-tenant.
- *   3. GET /admin/monitoring/sessions      monitoring.controller.ts 🔒
+ *   3. GET /admin/monitoring/sessions monitoring.controller.ts 🔒
  *      — controller @CanAny(['manage','all'],['read','TenantTelemetry']):
  *        SUPER_ADMIN via manage:all, TENANT_ADMIN via the
  *        read:TenantTelemetry grant; a plain DOCTOR (neither) → 403.
- *   4. GET /admin/health/services          health.controller.ts 🔒
+ *   4. GET /admin/health/services health.controller.ts 🔒
  *      — same @CanAny posture as /admin/monitoring/sessions.
- *   5. GET /admin/consultations      admin-consultation.controller.ts:52 (list)
+ *   5. GET /admin/consultations admin-consultation.controller.ts:52 (list)
  *      — @CanManage('Consultation') → TENANT_ADMIN / SUPER_ADMIN; DOCTOR → 403.
  *
  * Run against a live, seeded stack (`pnpm test:e2e`, or a dev stack via
@@ -153,7 +153,7 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
   // so the tenant dashboard can read platform-infra session counts.
   test('TD2: tenant_admin (own tenant, read:TenantTelemetry) reads /admin/monitoring/sessions', async ({ request }) => {
     const res = await authGet(request, '/api/v1/admin/monitoring/sessions', tenantAdminToken);
-    expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
+    expect(res.status(), 'tenant_admin holds read:TenantTelemetry (#21) → 200').toBe(200);
     const body = (await res.json()) as SessionsResponse;
     expect(typeof body.services, 'sessions has a per-service map').toBe('object');
     expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
@@ -182,7 +182,7 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
   // TENANT_ADMIN with read:TenantTelemetry gets 200.
   test('TD5: tenant_admin (own tenant, read:TenantTelemetry) reads /admin/health/services', async ({ request }) => {
     const res = await authGet(request, '/api/v1/admin/health/services', tenantAdminToken);
-    expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
+    expect(res.status(), 'tenant_admin holds read:TenantTelemetry (#21) → 200').toBe(200);
     const body = (await res.json()) as ServiceHealthResponse;
     expect(typeof body.status, 'overall status string present').toBe('string');
     expect(typeof body.services, 'per-service health map present').toBe('object');

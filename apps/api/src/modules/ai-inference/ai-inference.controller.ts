@@ -28,12 +28,12 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * AiInferenceController — the USER-PLANE `/text-analyses/*` proxy over the
  * NLP Python service, backing the Agent Playground's NER tab (matrix row 38).
  *
- * TASK-760 (decision D-2) — this used to be mounted at the bare `ai` prefix and
+ * (decision D-2) — this used to be mounted at the bare `ai` prefix and
  * carried the guardrail check too. `ai` was one prefix over two unrelated
  * capabilities, named after neither: a SAFETY VERDICT on caller-supplied text
  * (now `safety-checks`, `SafetyCheckController`) and a set of LINGUISTIC
  * ANALYSES of caller-supplied text (here). The class name is deliberately
- * unchanged — it is referenced by the boot-audit fixtures owned by TASK-761. `@Authorize()` (no permission pair):
+ * unchanged — it is referenced by the boot-audit fixtures owned by. `@Authorize()` (no permission pair):
  * any authenticated caller — SUPER_ADMIN or TENANT_ADMIN acting under their
  * OWN account — may call it, mirroring `TextProxyController` (`/text/*`). These
  * are stateless inference calls over caller-supplied text — no tenant-owned
@@ -50,7 +50,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  */
 /**
  * Pull the NER plane's clinical taxonomy off a registry row's `_metadata`
- * (TASK-799 lane G), or null.
+ * , or null.
  *
  * The same shape-only check `resolveNerModelInjection` applies on the clinical
  * path — validating the CONTENTS belongs to the executor that applies them, and
@@ -90,7 +90,7 @@ export class AiInferenceController {
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
-    // (item 2) — tenantId + clinician-attribution source for
+    //  — tenantId + clinician-attribution source for
     // the playground NER usage-ledger row. Optional (mirrors AiInferenceClient's
     // own `cls` field) so unit fixtures compile without a mock; absent ⇒ no
     // tenantId is resolvable, so emission simply doesn't happen (see below).
@@ -101,7 +101,7 @@ export class AiInferenceController {
     // compiling; absent ⇒ no emission (fail-open — metering must never block
     // the playground tool).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
-    // TASK-729 — resolves the tenant's nlp.topic/nlp.intent instruction
+    // resolves the tenant's nlp.topic/nlp.intent instruction
     // content (topic list / intent list) to inject into the NLP proxy body.
     // Optional so unit fixtures compile without a mock; absent = no
     // instructions injected (the NLP endpoint then fails closed with 503,
@@ -129,7 +129,7 @@ export class AiInferenceController {
     // payload stays byte-for-byte identical to pre-527 for every existing row.
     let modelPath: string | null = null;
     let runtimeParams: Record<string, unknown> = {};
-    // The CLINICAL TAXONOMY the resolved checkpoint declares (TASK-799 lane G):
+    // The CLINICAL TAXONOMY the resolved checkpoint declares :
     // ontology vocabulary, vitals plausibility bands, ConText/NegEx triggers and
     // the NER contract, all previously Python literals / `TOKEN_CLASSIFIER_*`
     // env fields inside `apps/nlp`. It travels with the MODEL, so an override

@@ -11,7 +11,7 @@ import type { RunNodeRollup, RunTrace } from '../api/types';
 
 /** Never color-only (rule 11 §7) — a distinct icon pairs with every status label, mirroring
  *  `features/workflow-runs/components/node-run-badge.tsx`'s own set (built fresh here per the
- *  cross-feature rule, not imported — flagged in the ticket README as a promotion candidate). */
+ *  cross-feature rule, not imported — flagged  as a promotion candidate). */
 const STATUS_META: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive'; Icon: typeof IconCircleCheck }> = {
   STARTED: { label: 'In progress', variant: 'secondary', Icon: IconLoader2 },
   OK: { label: 'OK', variant: 'default', Icon: IconCircleCheck },
@@ -25,9 +25,9 @@ function statusMeta(status: string) {
 }
 
 /**
- * Per-node inspection (TASK-721 Task 8): for the run's current trace, list each node group and
+ * Per-node inspection: for the run's current trace, list each node group and
  * open a `DetailDrawer` with timing/status. Reuses `admin/workflow-runs/:runId/trace` verbatim
- * (README §2.5) — a sandbox run is a `WorkflowRun` row like any other. Payloads resolve through
+ *  — a sandbox run is a `WorkflowRun` row like any other. Payloads resolve through
  * the claim-check indirection the interpreter provides, and `AgentTrajectoryStepResponse`
  * strips `payloadRef` entirely under the PHI posture (mirrors
  * `features/workflow-runs/components/run-node-detail-drawer.tsx`'s own finding) — honoured here
@@ -35,7 +35,7 @@ function statusMeta(status: string) {
  * reads as "no output").
  */
 /**
- * Run-level outcome (TASK-797 W1). Rendered ABOVE the per-node list because a degraded node is
+ * Run-level outcome. Rendered ABOVE the per-node list because a degraded node is
  * invisible in that list by construction (see `RunTrace.run` in `../api/types`), so a reader who
  * only scanned node badges would conclude a degraded run was clean.
  *

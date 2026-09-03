@@ -1,5 +1,5 @@
 /**
- * PaginatedQuery DTO Tests (TASK-776 F-02)
+ * PaginatedQuery DTO Tests
  *
  * Offset pagination echoed the RAW `limit` query value in the response
  * envelope even though the EFFECTIVE page size applied to the query was the

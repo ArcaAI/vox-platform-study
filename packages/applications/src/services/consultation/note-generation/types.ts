@@ -1,24 +1,24 @@
 /**
- * TASK-704 — Generator Entry-Point Seam.
+ * Generator Entry-Point Seam.
  *
  * Types for `NoteGenerationService`, the single seam every note-generation
  * entry point routes through. See `note-generation.service.ts` for the
- * decision logic and `../../../../../docs/implementation/TASK-704-Generator-Entry-Point-Seam/README.md`
+ * decision logic and `../../../../../
  * for the full requirement analysis.
  */
 
 /**
  * Every place a consultation note can be produced, collapsed to the four
  * DECISION kinds the seam actually needs (the seven concrete entry points
- * enumerated in the ticket's §2.1 map onto these):
+ * enumerated in the map onto these):
  *
- *   - TRANSCRIPTION_CREATED  — entry #1 (auto-pipeline, ConsultationEventHandler)
- *   - SUMMARY_REGENERATE     — entry #2 (sync generateSummary) + #4 (async generateSummaryAsync)
- *   - PRE_SUMMARY            — entry #3 (sync generatePreSummary) + #5 (async generatePreSummaryAsync)
- *   - COMPREHENSIVE_SUMMARY  — entry #6 (sync generateComprehensiveSummary) + #7 (async generateComprehensiveSummaryAsync)
+ *   - TRANSCRIPTION_CREATED — entry #1 (auto-pipeline, ConsultationEventHandler)
+ *   - SUMMARY_REGENERATE — entry #2 (sync generateSummary) + #4 (async generateSummaryAsync)
+ *   - PRE_SUMMARY — entry #3 (sync generatePreSummary) + #5 (async generatePreSummaryAsync)
+ *   - COMPREHENSIVE_SUMMARY — entry #6 (sync generateComprehensiveSummary) + #7 (async generateComprehensiveSummaryAsync)
  *
  * PRE_SUMMARY and COMPREHENSIVE_SUMMARY have no harness-side equivalent today
- * (confirmed in §2 of the ticket — no Temporal workflow in apps/harness is
+ * (confirmed in of the ticket — no Temporal workflow in apps/harness is
  * named for either) — `generate()` always resolves them to `legacy`.
  */
 export enum GenerationTrigger {

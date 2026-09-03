@@ -4,11 +4,11 @@ This is a LOCAL, harness-scoped Pydantic mirror of the single normative schema �
 ``packages/workflow-contract/schemas/compiled-config.schema.json``
 — produced by ``packages/workflow-contract``'s TypeScript compiler. It is deliberately NOT the
 full cross-language parity package (``packages/py-workflow-contract`` / ``hope_workflow_contract``)
-that TASK-716's own Task 7b still owes the platform (see that ticket's README §7, "not built, not
-reached in this session's time budget") — this module only implements what THIS ticket's
+that Task 7b still owes the platform (see "not built, not
+reached in this session's time budget") — this module only implements what the
 config-loader activity needs: parse, structural admission, and checksum verification.
 
-**Known gap, named rather than hidden** (see the ticket README §7 for the honest accounting):
+**Known gap, named rather than hidden** (for the honest accounting):
 ``canonical_json`` below is a best-effort Python port of
 ``packages/workflow-contract/src/canonical-json.ts``'s algorithm (key-sorted objects, order-
 preserved arrays, ``JSON.stringify``-equivalent primitive encoding). It has NOT been verified
@@ -19,7 +19,7 @@ by the TS implementation; if the two canonicalizers ever diverge (the most likel
 ``JSON.stringify`` drops the ``.0`` suffix on whole-number floats, which this port special-cases,
 and JS does not escape non-ASCII characters, which this port matches via ``ensure_ascii=False``),
 every real config would fail checksum verification here. Closing that gap for real is exactly
-TASK-716 Task 7b's parity-test job; until that lands, this module's checksum check should be
+Task 7b's parity-test job; until that lands, this module's checksum check should be
 treated as validated-in-principle, not proven-in-practice against the actual TS output.
 """
 
@@ -35,7 +35,7 @@ from harness.temporal.interpreter import caps
 
 
 class InterpreterConfigError(RuntimeError):
-    """Raised by config admission (Task 5, contracts/execution-semantics.md §2). Always fail LOUD.
+    """Raised by config admission (Task 5, contracts/execution-semantics.md). Always fail LOUD.
 
     ``code`` is one of: malformed_json, unsupported_format_version, checksum_mismatch,
     gates_not_supported_v1, structural_bounds_exceeded, invalid_shape.
@@ -154,7 +154,7 @@ class CompiledPromptTemplateRef(BaseModel):
 
 
 class CompiledDocumentTemplateRef(BaseModel):
-    """TASK-810 DD-2 — WHICH ``DocumentTemplate`` version one generation node decodes into.
+    """WHICH DocumentTemplate version one generation node decodes into.
 
     Same three keys as :class:`CompiledPromptTemplateRef`, a different pin: that one pins
     what the model is TOLD, this one pins the SHAPE its output is decoded into.
@@ -216,7 +216,7 @@ class CompiledWorkflowConfig(BaseModel):
 
 
 def parse_and_verify(raw: str) -> CompiledWorkflowConfig:
-    """The six-step admission sequence from contracts/execution-semantics.md §2.
+    """The six-step admission sequence from contracts/execution-semantics.md.
 
     Steps 1 (claim-check dereference) and 6 (structural bounds) happen around/after this
     function (dereference is the caller's job — ``load_config`` in ``activities.py``; the
@@ -246,7 +246,7 @@ def parse_and_verify(raw: str) -> CompiledWorkflowConfig:
             "checksum_mismatch", f"expected {claimed_checksum}, computed {recomputed}"
         )
 
-    # Gate admission (TASK-731 Phase B). This used to be a blanket `gates != []` refusal
+    # Gate admission. This used to be a blanket `gates != []` refusal
     # ("HITL gate execution is out of scope for this interpreter version"). The interpreter now
     # executes ONE blocking gate as a child workflow, so the refusal narrows rather than
     # disappearing — every shape the interpreter cannot faithfully execute is still refused

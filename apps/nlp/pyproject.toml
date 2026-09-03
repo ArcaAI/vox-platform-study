@@ -32,11 +32,11 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     # --- NLP / ML ---
     "spacy>=3.8.15",
-    # GLiNER2 — hosts the guardrail-plane models (TASK-735 Phase 3):
+    # GLiNER2 — hosts the guardrail-plane models :
     # PII spans and multi-task LLM-safety moderation. Model IDS are NOT pinned
     # here: they are SYSTEM `AiModel` rows the caller resolves and sends.
     "gliner2",
-    # llama.cpp for the MiniCheck GGUF NLI scorer (TASK-735 Phase 6). Imported
+    # llama.cpp for the MiniCheck GGUF NLI scorer. Imported
     # LAZILY in `services/entailment_scorer.py`, so a deployment that never
     # scores entailment never loads it.
     "llama-cpp-python>=0.3.0",
@@ -50,7 +50,7 @@ dependencies = [
     # CPU-only) for scanned pages/images. Route, don't OCR everything.
     "pymupdf>=1.28.2",
     "rapidocr-onnxruntime>=1.3.0",
-    # --- Config propagation (owner decision D-5, TASK-799) ---
+    # Config propagation (owner decision D-5)
     # Subscriber-only: `apps/nlp` publishes nothing and stores nothing in Redis.
     # It exists so the `arca:config:invalidate` channel the gateway publishes on
     # has a transport here; without it this service converged on control-plane
@@ -65,8 +65,8 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     # --- Text processing ---
     "symspellpy>=6.10.0",
-    # `minio` backs the `s3://` model-source scheme (TASK-855 L6). Removed by
-    # TASK-799 lane D.1e when it had no real caller; re-added now that
+    # `minio` backs the `s3://` model-source scheme. Removed by
+    # lane D.1e when it had no real caller; re-added now that
     # `nlp/models/source_resolver.py` is wired into `dependencies._weights_source`.
     # Imported LAZILY inside `_make_s3_client`, so a deployment that never
     # resolves an `s3://` source_uri never imports it.
@@ -164,7 +164,7 @@ warn_unused_ignores = true
 warn_return_any = true
 
 [[tool.mypy.overrides]]
-# `gliner2` and `llama_cpp*` arrived with the guardrail-plane models (TASK-735
+# `gliner2` and `llama_cpp*` arrived with the guardrail-plane models
 # Phases 3 & 6). `llama_cpp.*` (not just `llama_cpp`) because the MiniCheck scorer
 # drives llama.cpp's encoder-decoder path via `llama_cpp._internals.LlamaBatch`,
 # which the high-level completion API omits for T5 graphs.
@@ -194,7 +194,7 @@ module = ["fitz", "fitz.*", "rapidocr_onnxruntime", "rapidocr_onnxruntime.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# `minio` (TASK-855 L6, `nlp/models/source_resolver.py`) ships no inline types.
+# `minio` (`nlp/models/source_resolver.py`) ships no inline types.
 module = ["minio", "minio.*"]
 ignore_missing_imports = true
 
@@ -228,7 +228,7 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests requiring real NLP models (deselect with '-m \"not e2e\"')",
-    # TASK-778 throughput driver. Deselected from the normal suite because a
+    # throughput driver. Deselected from the normal suite because a
     # throughput measurement on a shared runner measures the runner, not the code.
     "load: Throughput/backpressure load driver (deselect with '-m \"not load\"')",
 ]

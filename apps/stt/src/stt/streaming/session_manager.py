@@ -237,10 +237,10 @@ class SessionManager:
         # publishing the closing utterance twice. See ``_begin_tail_flush``.
         self._tail_flush_started: set[str] = set()
         self._running = False
-        # PLANNED scale-down flag (TASK-726) — distinct from the startup
+        # PLANNED scale-down flag — distinct from the startup
         # crash-recovery replay path above. Set by begin_drain(); rejects new
         # sessions in create_session() while leaving self._sessions
-        # completely untouched. See design-notes.md §(a).
+        # completely untouched. See
         self._draining = False
 
         # Cache settings values at init time to avoid calling get_settings()
@@ -342,7 +342,7 @@ class SessionManager:
     def begin_drain(self) -> None:
         """Mark this worker draining: reject NEW sessions, let in-flight ones
         finish naturally. Idempotent. Distinct from the startup crash-recovery
-        replay path — see design-notes.md §(a) for why the two never conflate.
+        replay path — see for why the two never conflate.
         """
         if not self._draining:
             logger.info(
@@ -3986,7 +3986,7 @@ class SessionManager:
                     session._vad_active = runtime.vad_enabled
 
                     # TODO: Replay last ~2 s of audio from Redis Stream to
-                    # warm VAD state.  Deferred — VAD starts cold but
+                    # warm VAD state. Deferred — VAD starts cold but
                     # stabilizes within 1-2 s of new audio.
 
                     self._register_inference_runtime(session, inference_worker)

@@ -90,7 +90,7 @@ async def analyze_content(
     """Analyze content for safety issues in real-time.
 
     The models are DB-selected (``guardrail.safety`` + ``guardrail.pii``, tenant-first)
-    and RUN IN ``apps/nlp`` (TASK-735 Phase 3); a missing selection or taxonomy fails
+    and RUN IN apps/nlp; a missing selection or taxonomy fails
     closed with 503 (raised by ``get_safety_analyzer`` before this body). A delegation
     failure ALSO fails closed with 503 — this route can never answer 200/``safe`` for a
     check that did not run.

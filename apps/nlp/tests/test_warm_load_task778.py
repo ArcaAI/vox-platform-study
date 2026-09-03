@@ -1,4 +1,4 @@
-"""TASK-778 — models are WARMED at startup, from config, never from a literal.
+"""models are WARMED at startup, from config, never from a literal.
 
 A cold GLiNER2 load measured 220s on this hardware (download + init). Serving
 that on the first request means the first consultation of every deploy pays a
@@ -11,7 +11,7 @@ Two constraints shape the design:
   the control plane (`AiTaskDefault` ⋈ `AiModel`, served through
   `/internal/effective-config`), never from an env var or a Python literal;
 * warming must NOT block or fail boot. A gateway outage, or a model that cannot
-  load, leaves the service up and lazy — exactly the pre-TASK-778 behaviour.
+  load, leaves the service up and lazy — exactly the earlier behaviour.
 """
 
 from __future__ import annotations

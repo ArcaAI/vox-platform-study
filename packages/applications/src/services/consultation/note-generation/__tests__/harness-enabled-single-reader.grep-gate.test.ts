@@ -1,5 +1,5 @@
 /**
- * TASK-704 — Generator Entry-Point Seam.
+ * Generator Entry-Point Seam.
  *
  * Grep-gate: `harnessEnabled` must be read in exactly one runtime location
  * that DECIDES WHICH GENERATOR PRODUCES A NOTE —
@@ -16,7 +16,7 @@
  * CONDITIONAL reads of `harnessEnabled` (`if (config.harnessEnabled`,
  * `if (cascade?.harnessEnabled`, or equivalent) anywhere in that tree.
  *
- * TASK-732 update: `events/consultation-event.handler.ts`'s SECOND
+ * update: `events/consultation-event.handler.ts`'s SECOND
  * conditional reader — `handleSummaryGenerated`'s "skip the legacy NER job,
  * the harness workflow already persists its own NamedEntity rows" decision —
  * was collapsed to an UNCONDITIONAL skip when the legacy NER generator
@@ -27,7 +27,7 @@
  *
  * A plain (non-conditional) reference to `.harnessEnabled` — e.g. logging its
  * resolved value for observability, as `SummaryService.generateSummary` does
- * on its HUMAN-GATED logging-only path (ticket README §6) — is NOT a second
+ * on its HUMAN-GATED logging-only path — is NOT a second
  * "reader" in the sense this gate cares about: it never branches generation
  * behavior on the value, so it is intentionally NOT flagged here.
  */
@@ -56,8 +56,8 @@ function listTsFiles(dir: string): string[] {
   return out;
 }
 
-describe('harnessEnabled has exactly one runtime reader (TASK-704 grep-gate, hardened by TASK-732)', () => {
-  it('finds zero conditional harnessEnabled reads anywhere in the consultation tree (no allow-list — TASK-732 removed the second reader)', () => {
+describe('harnessEnabled has exactly one runtime reader (grep-gate, hardened by)', () => {
+  it('finds zero conditional harnessEnabled reads anywhere in the consultation tree (no allow-list — removed the second reader)', () => {
     const files = listTsFiles(CONSULTATION_ROOT);
     expect(files.length, 'sanity: the consultation tree must not be empty').toBeGreaterThan(20);
 

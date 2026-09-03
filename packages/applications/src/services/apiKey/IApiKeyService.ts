@@ -12,7 +12,7 @@ export interface CreateApiKeyResult {
 
 export interface IApiKeyService extends IBaseService {
   /**
-   * TASK-785 O-4 — the tenant this key belongs to, for RATE LIMITING ONLY.
+   * the tenant this key belongs to, for RATE LIMITING ONLY.
    * `null` on a miss. Reads a short-lived Redis hint written on the previous
    * successful authentication; NEVER falls back to the database, because
    * `TieredThrottlerGuard` calls it before authentication on every request.

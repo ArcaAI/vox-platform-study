@@ -1,4 +1,4 @@
-"""The outbound screen is an IN-BOUNDARY path — pinned, not assumed (TASK-799).
+"""The outbound screen is an IN-BOUNDARY path — pinned, not assumed.
 
 `apps/harness` posts a generated clinical note to ``POST /guardrail/screen/outbound``
 and deliberately does NOT redact it first (``activities.py`` passes

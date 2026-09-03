@@ -133,7 +133,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
   });
 
   it('stamps the prompt version for a `default`-tier session, which carries NO agent id', async () => {
-    // The governed SYSTEM live default (and, since TASK-815, any session with no
+    // The governed SYSTEM live default (and, since, any session with no
     // live-bound workflow node) freezes `agentId: null` by contract. That is a
     // real agent tier serving a pinned, immutable PromptVersion — the lineage
     // must survive into finalize, with only the id column left null.
@@ -217,11 +217,11 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
     /**
      * RF-4 gave the session's `DepartmentAgent` an `llmOverrides.finalize` that
      * OUTRANKED the tenant `text.finalize` AiTaskDefault, resolved fail-CLOSED.
-     * TASK-815 retired it with the agent; its successor is a per-node
-     * `llmBinding` (TASK-816), which has not landed. So the tenant selection is
+     * retired it with the agent; its successor is a per-node
+     * `llmBinding`, which has not landed. So the tenant selection is
      * what decides for EVERY consultation — including one that carries live
      * lineage, which is the case that used to differ.
-     */
+ */
     it('the tenant text.finalize selection decides, even for a consultation carrying live lineage', async () => {
       withSnapshot({ subType: 'LIVE_SOAP_SNAPSHOT', agent: LINEAGE });
       const svc = buildService();

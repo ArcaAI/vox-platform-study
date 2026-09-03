@@ -1,5 +1,5 @@
 /**
- * TASK-758 — the `me` semantics, documented rather than merely implemented.
+ * the `me` semantics, documented rather than merely implemented.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from the KEY'S
  * BOUND USER (`apiKeyEntity.userId`) and the CLS tenant from the key's tenant.
@@ -19,7 +19,7 @@
  * route, so a future edit cannot quietly drop it.
  *
  * `UserPreferencesController` is included even though it was API-key reachable
- * BEFORE this ticket (`user:preferences:write`, TASK-742): it is the surface
+ * BEFORE (`user:preferences:write`): it is the surface
  * that proves the ambiguity, and leaving the one already-keyed `me` route
  * undocumented would be the exact gap A1 is closing.
  */

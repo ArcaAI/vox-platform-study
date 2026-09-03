@@ -1,4 +1,4 @@
-"""GET /providers admin introspection additions (TASK-725 Task 3) — per-provider
+"""GET /providers admin introspection additions — per-provider
 pool health + in-flight-request count layered onto the existing probe
 contract. Hermetic. RED: written before providers.py exposed these fields.
 """

@@ -1,5 +1,5 @@
 /**
- * The workflow PORT type vocabulary and its compatibility lattice (TASK-809 Task 2).
+ * The workflow PORT type vocabulary and its compatibility lattice.
  *
  * ## Why a vocabulary at all
  *
@@ -30,11 +30,11 @@
  *
  * ## `control` — the ninth member
  *
- * TASK-809 §2b names EIGHT data types. A ninth, `control`, is required and is NOT a data type:
+ * names EIGHT data types. A ninth, `control`, is required and is NOT a data type:
  * it types an ORDERING edge, which carries no payload. Every graph in this repo already
  * contains such edges (`core.start -> …`, `consultation.consentGate -> …`,
  * `consultation.hitlGate -> …`); none of the eight can type them, because those nodes produce
- * no data. The precedent is explicit — TASK-715's README:735 already specified a port primitive
+ * no data. The precedent is explicit — README:735 already specified a port primitive
  * as "one of CONTEXT_PRIMITIVES … or 'CONTROL'".
  *
  * `control` is safety-NEUTRAL by construction: it satisfies only itself, in both directions
@@ -56,7 +56,7 @@
 
 /**
  * The closed port type vocabulary. `control` types ordering edges; the other eight are
- * TASK-809 §2b's data types. Closed on purpose — an open vocabulary is an API surface that
+ * Data types. Closed on purpose — an open vocabulary is an API surface that
  * cannot be versioned, and every later ticket (810/811/812/815) consumes this list.
  */
 export const WORKFLOW_PORT_PRIMITIVES = [
@@ -76,7 +76,7 @@ export const WORKFLOW_PORT_PRIMITIVES = [
 export type WorkflowPortPrimitive = (typeof WORKFLOW_PORT_PRIMITIVES)[number];
 
 /**
- * TASK-847 — the FIVE tier-1 KINDS (`portKindOf` below), and the two primitives the generic
+ * the FIVE tier-1 KINDS (`portKindOf` below), and the two primitives the generic
  * `agentic` node types need before they can be typed at all.
  *
  * ## `object` — the unrefined STRUCTURED type
@@ -123,7 +123,7 @@ interface WorkflowPortBase {
 /**
  * One declared port on a node type.
  *
- * ## `outputKey` — the socket's RUNTIME key (TASK-809 OD-15, option A)
+ * ## `outputKey` — the socket's RUNTIME key (option A)
  *
  * A port name is an AUTHORING handle: `out`, `entities`, `verdict` are what the canvas draws and
  * what an edge's `fromPort`/`toPort` names. The interpreter, however, threads values by reading a
@@ -196,7 +196,7 @@ export const CONTEXT_PRIMITIVES_MIRROR = ['STREAM_AUDIO', 'TEXT', 'DOCUMENT', 'I
 
 /**
  * The bridge: which `CONTEXT_PRIMITIVES` member each port type refines. `'CONTROL'` for the
- * ordering type, which is not a context primitive at all (TASK-715 README:735's own phrasing).
+ * ordering type, which is not a context primitive at all ( README:735's own phrasing).
  * This is what lets a context variable of a given primitive be matched against a node input.
  */
 export const PORT_PRIMITIVE_CONTEXT_PRIMITIVE: Readonly<Record<WorkflowPortPrimitive, string>> = Object.freeze({
@@ -214,7 +214,7 @@ export const PORT_PRIMITIVE_CONTEXT_PRIMITIVE: Readonly<Record<WorkflowPortPrimi
 });
 
 /**
- * TIER 1 of TASK-847 step 7 — the cheap KIND check the Studio canvas runs on every drag, before
+ * TIER 1 of step 7 — the cheap KIND check the Studio canvas runs on every drag, before
  * an edge exists at all (`isValidConnection`).
  *
  * It is a PROJECTION of the lattice, not a second opinion about it: it collapses the eleven

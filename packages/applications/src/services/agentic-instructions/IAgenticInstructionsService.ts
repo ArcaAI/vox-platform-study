@@ -10,7 +10,7 @@ export interface AgenticInstructionsResolveOptions {
    *
    * Either a PHASE selector (`'pre-summary'`, `'live'`) or a VISIT-TYPE KEY
    * from the tenant's `consultation.visitTypes` catalogue. It stopped being a
-   * closed union at TASK-815 §11 row 3: an admin must be able to ask this
+   * closed union at row 3: an admin must be able to ask this
    * surface about a visit type its own tenant defined, and a three-value enum
    * could only ever answer for the platform's two.
    *

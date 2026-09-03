@@ -1,4 +1,4 @@
-"""TASK-782 — the shared per-model execution permit, and why it must be priority-aware.
+"""the shared per-model execution permit, and why it must be priority-aware.
 
 Separate QUEUES for the interactive and bulk lanes are necessary and not
 sufficient: both lanes ultimately drive the SAME weights, so a bulk forward pass

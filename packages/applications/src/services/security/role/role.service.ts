@@ -26,7 +26,7 @@ export class RoleService extends BaseService implements IRoleService {
   }
 
   async create(request: CreateRoleRequest): Promise<RoleEntity> {
-    // TASK-766 OD-1: `Role` is tenant-scoped now, so `CreateRoleProps.tenantId`
+    // `Role` is tenant-scoped now, so `CreateRoleProps.tenantId`
     // is required and has no default. Pin it to the caller's CLS tenant — a
     // role created through this path is a TENANT-owned custom role, never a
     // platform one (built-ins are seeded under the SYSTEM tenant).

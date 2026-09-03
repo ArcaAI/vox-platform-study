@@ -24,7 +24,7 @@ const sdk = vi.hoisted(() => ({
   storeApi: null as any,
   userSettings: null as any,
   liveSummary: null as any,
-  // TASK-858 Lane D — the two TASK-813 discovery hooks the screen now calls.
+  // the two discovery hooks the screen now calls.
   selectableWorkflows: null as any,
   governingWorkflow: null as any,
 }));
@@ -140,7 +140,7 @@ const PIPELINES = [
   { id: 'pl-2', name: 'Fast Draft', slug: 'fast-draft', isDefault: false },
 ];
 
-/** TASK-805 — grants the point-of-care consent read returns for the open patient. */
+/** grants the point-of-care consent read returns for the open patient. */
 interface ConsentStubGrant {
   id: string;
   externalPatientId: string;
@@ -236,7 +236,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
   /**
    * The consultation list must not race SDK initialization.
    *
-   * Observed at runtime (TASK-814 §9 browser pass, impersonated clinician): the
+   * Observed at runtime ( browser pass, impersonated clinician): the
    * query fired before `AgenticProvider` had put `apiClient` on the store, so
    * `listConsultations()` rejected with `Error: SDK not initialized`. The retry
    * was then left in TanStack's `paused` fetchStatus, so the query stayed
@@ -247,7 +247,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
    *
    * An empty state is not a loading state: until the SDK is ready the query must
    * not run at all.
-   */
+ */
   it('does not query the consultation list until the SDK is initialized', async () => {
     stubFetch();
     sdk.arca.isReady = false;
@@ -293,7 +293,7 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     await waitFor(() => expect(sdk.userSettings.list).toHaveBeenCalled());
   });
 
-  // TASK-805 — the consent gate. `recording/start` carries
+  // the consent gate. `recording/start` carries
   // `@RequiresConsent(AI_DOCUMENTATION)`, so a patient with no active grant
   // must be blocked BEFORE the microphone opens, with the fix attached.
   describe('consent gate', () => {
@@ -359,9 +359,9 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
 });
 
 /**
- * TASK-858 Lane D — a clinician selects the workflow that governs the consultation.
+ * a clinician selects the workflow that governs the consultation.
  *
- * TASK-813 shipped both halves of this (selection at open, and the read-back that says what
+ * shipped both halves of this (selection at open, and the read-back that says what
  * actually took the consultation) and the console called NEITHER: `useSelectableConsultation-
  * Workflows` had zero call sites, so every session ran whatever the assignment cascade picked
  * and nothing on screen said which engine that was.

@@ -1,4 +1,4 @@
-"""TASK-799 — the entailment calibration must travel guardrail -> nlp.
+"""the entailment calibration must travel guardrail -> nlp.
 
 `apps/nlp` refuses to score without it, so an unforwarded blob degrades the
 groundedness gate to `unverified`: safe, but silently non-functional. Both

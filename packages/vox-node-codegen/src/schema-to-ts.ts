@@ -6,7 +6,7 @@
  * `required`, `additionalProperties`, `allOf`/`oneOf`/`anyOf`, `nullable`.
  * Anything outside that renders as `unknown` rather than a guess: the Phase B
  * fidelity spike measured a real minority of admin operations with no usable
- * schema (`openapi-fidelity.md` §B2), and the recorded decision was to emit
+ * schema (`openapi-fidelity.md`, and the recorded decision was to emit
  * `unknown` at those specific call sites rather than block the generator or
  * invent a shape.
  *
@@ -231,7 +231,7 @@ function renderPropertyDoc(schema: OpenApiSchema | undefined): string {
 
 /** Flatten to one line and neutralize any `*&#47;` that would close the comment early. */
 export function sanitizeComment(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/\*\//g, '*\\/').trim();
+  return text.replace(/\s+/g, ' ').replace(/\*\//g, '*\\/').trim;
 }
 
 function escapeSingleQuotes(value: string): string {

@@ -1,4 +1,4 @@
-"""Content-safety POLICY over the delegated `apps/nlp` executor (TASK-735 Phase 3).
+"""Content-safety POLICY over the delegated `apps/nlp` executor.
 
 This is what is LEFT of `providers/gliner.py` after the weights moved out: the
 half that decides things. It owns
@@ -125,7 +125,7 @@ class SafetyAnalyzer:
     async def classify_tasks_scored(
         self, task_names: Sequence[str], text: str
     ) -> ClassifiedTasks:
-        """`classify_tasks`, with the per-label confidences kept (TASK-830).
+        """`classify_tasks`, with the per-label confidences kept.
 
         The realtime plane's session aggregate needs a GRADED per-window score;
         `analyze_content` and `services/screening.py` need only the labels and are
@@ -221,7 +221,7 @@ class SafetyAnalyzer:
     ) -> list[Any]:
         """Analyze many texts concurrently; per-element failures stay per-element.
 
-        BOUNDED when a gate is supplied (TASK-777 B-4): the list is caller-supplied,
+        BOUNDED when a gate is supplied : the list is caller-supplied,
         so a bare `gather` lets one request fan out arbitrarily wide against the
         peers — the classic way a single client takes a shared safety plane down.
         """

@@ -1,10 +1,10 @@
 /**
- * TASK-827 — W2's suggestion prompt, as CONFIGURATION rather than a Python literal.
+ * W2's suggestion prompt, as CONFIGURATION rather than a Python literal.
  *
  * `consultation.suggestions` ran on `_SUGGESTION_SYSTEM_PROMPT`, a module-level constant in
- * `apps/harness/.../consultation_realtime.py`. It is the identical defect TASK-826 fixed one node
+ * `apps/harness/.../consultation_realtime.py`. It is the identical defect fixed one node
  * over in the SAME file, and it violates the same rule: `00-project-context.md`
- * §Configuration Principles, *"a ... prompt ... is NOT a literal in code"*.
+ * Principles, *"a ... prompt ... is NOT a literal in code"*.
  *
  * ## What this file asserts, and why each half is here
  *
@@ -12,7 +12,7 @@
  * `test_realtime_capability_nodes.py::TestSuggestionInstructionIsGoverned`. What that suite CANNOT
  * assert is that the platform default actually exists, sits in the right tenancy tier, and is
  * bound on the node: a governed resolver with nothing seeded to resolve degrades on every run,
- * which is the "runs for nobody" failure TASK-815 §14a names. So this file asserts the
+ * which is the "runs for nobody" failure names. So this file asserts the
  * CONFIGURATION, and that suite asserts the RUNTIME.
  *
  * ## Why the tenancy assertion is the load-bearing one

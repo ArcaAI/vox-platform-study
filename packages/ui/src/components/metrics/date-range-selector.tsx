@@ -45,7 +45,7 @@ function rangeForPreset(preset: Exclude<RangePreset, 'custom'>, now: Date): { fr
 }
 
 /**
- * Date-range toolbar control (PHASE-2-PLAN §3.2). A radio-style `ToggleGroup` of
+ * Date-range toolbar control (PHASE-2-PLAN A radio-style `ToggleGroup` of
  * presets (week/month/year resolved via date-fns) plus a `custom` option that opens a
  * range `Calendar` in a `Popover`. Emits `{ from, to, preset }` on every change.
  */

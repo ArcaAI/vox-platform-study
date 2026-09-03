@@ -121,7 +121,7 @@ export class LoopConfigResponse {
   idleTimeoutSeconds: number | null;
 
   /**
-   * TASK-812 (D-12) — whether expiry RUNS the endpoint sequence.
+   * (D-12) — whether expiry RUNS the endpoint sequence.
    *
    * The gateway sends `true`, because a timed-out consultation that never finalizes silently
    * loses the encounter: real recorded clinical work is left unfinalized, unlocked and never
@@ -139,7 +139,7 @@ export class LoopConfigResponse {
    */
   @ApiProperty({
     description:
-      'Whether reaching the idle bound runs the endpoint sequence (finalize + lock + capture) instead of abandoning the run. True from this gateway; a harness that predates TASK-812 ignores it.',
+      'Whether reaching the idle bound runs the endpoint sequence (finalize + lock + capture) instead of abandoning the run. True from this gateway; a harness that predates  ignores it.',
   })
   endpointOnTimeout: boolean;
 }

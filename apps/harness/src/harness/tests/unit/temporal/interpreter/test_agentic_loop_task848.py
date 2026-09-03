@@ -1,6 +1,6 @@
-"""The ``agentic.loop`` body: bounds, determinism, and history growth (TASK-848).
+"""The agentic.loop body: bounds, determinism, and history growth.
 
-`test_agentic_nodes_task847.py` covers the loop node's CONTRACT and its pre-TASK-848 refusal to
+`test_agentic_nodes_task847.py` covers the loop node's CONTRACT and its earlier refusal to
 run. This file covers what it does now that it runs — and it exercises the REAL
 ``AgenticLoopWorkflow``, the REAL bound arithmetic and the REAL ``continue_as_new`` boundary. Only
 the model call is stubbed (`_agentic_loop_stubs.py`), because a bound is only proven if the thing

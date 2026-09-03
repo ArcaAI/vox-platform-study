@@ -30,7 +30,7 @@ test.describe('Toggle', () => {
       const component = await mount(<Toggle variant="outline">Outline</Toggle>);
       await expect(component).toHaveClass(/border/);
       await expect(component).toHaveClass(/border-input/);
-      // TASK-787 J-12: the outline toggle is border-only — no elevation.
+      // the outline toggle is border-only — no elevation.
       await expect(component).not.toHaveClass(/shadow-(xs|sm|md|lg|xl|raised|overlay)/);
     });
   });

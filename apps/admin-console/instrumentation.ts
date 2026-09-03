@@ -1,8 +1,7 @@
 /**
  * Self-registration — admin-console registers its build
  * identity with the gateway on boot, then heartbeats every 5 minutes.
- * Contract: `docs/implementation/TASK-648-Service-Version-
- * And-Release-Registry/contracts/service-release.api.yaml`
+ * Contract: `contracts/service-release.api.yaml`
  * `POST /internal/service-releases` — idempotent upsert; a repeat call IS
  * the heartbeat, there is no separate heartbeat path.
  *

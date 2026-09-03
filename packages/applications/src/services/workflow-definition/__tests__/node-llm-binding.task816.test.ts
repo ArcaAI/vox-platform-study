@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 1 — the `llmBinding` reader.
+ * the `llmBinding` reader.
  *
  * Mirrors `node-prompt-binding`'s posture exactly: presence-keyed (never a node-TYPE allow-list,
  * which would silently miss the next generation node registered), pure, and tolerant of a

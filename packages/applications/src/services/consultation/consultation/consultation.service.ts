@@ -70,29 +70,29 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // `monthlyConsultations` meter when STARTING a new consultation
     // (kill-switch-gated, → 429 when over the rolling-monthly cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-711 — optional (append-only DI, mirrors `entitlements` above): the
+    // optional (append-only DI, mirrors `entitlements` above): the
     // WORM audit trail for clinically-significant transitions (prime/close/
     // reopen). Absent ⇒ `appendTransitionAudit` no-ops (best-effort by design
     // for routine transitions — see the method doc).
     @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
-    // TASK-711 — optional: resolves the `requirePrimedBeforeRecording`
+    // optional: resolves the `requirePrimedBeforeRecording`
     // kill-switch. Absent ⇒ treated as OFF (the fail-safe default), mirroring
     // `OcrEnrichmentProcessor.ocrEnabled`.
     @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
-    // TASK-789 C-1 — optional: dispatches a tenant-authored `consultation`-palette workflow at
+    // optional: dispatches a tenant-authored `consultation`-palette workflow at
     // open. Absent ⇒ no dispatch, and the consultation runs under the default loop (Substrate A),
-    // which is exactly the pre-TASK-789 behaviour. Optional so existing test fixtures and any
+    // which is exactly the earlier behaviour. Optional so existing test fixtures and any
     // module that does not import ConsultationWorkflowDispatchServiceModule keep constructing.
     @Optional()
     @Inject(IConsultationWorkflowDispatchService)
     private readonly workflowDispatchService?: IConsultationWorkflowDispatchService,
-    // TASK-805 owner directive (2026-08-25) — optional + trailing (append-only
+    // owner directive (2026-08-25) — optional + trailing (append-only
     // DI, so existing positional test fixtures keep constructing). Records the
     // consent the doctor gives by opening the consultation. Absent ⇒ no grant
     // is written and the ABAC gate will refuse recording, which is why
     // `getOrCreate` logs loudly rather than silently when it is unwired.
     @Optional() @Inject(IConsentGrantService) private readonly consentGrantService?: IConsentGrantService,
-    // TASK-813 — optional + trailing (append-only DI, like every dependency above it). READ-ONLY,
+    // optional + trailing (append-only DI, like every dependency above it). READ-ONLY,
     // and used for discovery alone: `getGoverningWorkflow` decorates the durable marker with the
     // definition's human-readable identity. Absent ⇒ the route still answers, with that identity
     // degraded to null — never an error, because "which engine governs" must stay answerable.
@@ -108,9 +108,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * reference on a Consultation write lives in the caller's tenant before
    * any factory or repository call runs:
    *
-   *   - `doctorId`           — User must hold an ENABLED UserRoleAssignment
+   *   - `doctorId` — User must hold an ENABLED UserRoleAssignment
    *                            in `tenantId` (defense vs. audit C-1).
-   *   - `departmentId`       — Department row must be tenant-scoped to
+   *   - `departmentId` — Department row must be tenant-scoped to
    *                            `tenantId` (defense vs. audit C-2).
    *   - `parentConsultationId` — Parent Consultation must live in the same
    *                              tenant (defense vs. audit C-4 / B-3).
@@ -141,7 +141,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-813 OD-1 point 6 — no-op when the caller made no selection; otherwise delegate to the
+   * point 6 — no-op when the caller made no selection; otherwise delegate to the
    * dispatcher's gate, which raises 404 for an invisible definition and 403 for a visible one
    * that cannot govern a consultation.
    *
@@ -168,7 +168,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-813 §8 — the workflows this caller may name at open.
+   * the workflows this caller may name at open.
    *
    * Selection shipped without a way to learn what is selectable, so the contract was "guess a
    * slug, get a 404/403". The answer comes from the DISPATCHER, which owns the gate: the list
@@ -206,7 +206,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * TASK-813 — WHICH engine governs a consultation (see `ConsultationWorkflowResponse`).
+   * WHICH engine governs a consultation (see `ConsultationWorkflowResponse`).
    *
    * Reads the durable marker `ConsultationWorkflowDispatchService` wrote at open, through the
    * SAME well-formedness rule `LoopContextSignalService` gates on, so discovery can never
@@ -273,7 +273,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       parentConsultationId: request.parentConsultationId,
     });
 
-    // TASK-813 OD-1 point 6 — authorize the caller's workflow SELECTION here, before the
+    // point 6 — authorize the caller's workflow SELECTION here, before the
     // get-or-create branch and before any write.
     //
     // Order is the security property, twice over:
@@ -318,7 +318,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
     // Create new consultation
-    // TASK-858 lane A — record the AUTHORIZED selection on the row itself, here, before dispatch
+    // lane A — record the AUTHORIZED selection on the row itself, here, before dispatch
     // is even attempted.
     //
     // The only existing record of a caller's pick is `metadata.governingEngine`, and that marker
@@ -359,7 +359,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { action: 'getOrCreate', created: true },
     });
 
-    // ─── Consent (TASK-805 owner directive, 2026-08-25) ───
+    // ─── Consent ( owner directive, 2026-08-25) ───
     //
     // A doctor opening a consultation IS the consent event: the clinician is
     // with the patient and attests, by that act, that the patient consented to
@@ -385,12 +385,12 @@ export class ConsultationService extends BaseService implements IConsultationSer
       await this.consentGrantService.ensureConsultationConsent(saved.patientId);
     }
 
-    // TASK-789 C-1 — the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
+    // the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
     // Fires only on CREATE: `getOrCreate`'s existing-consultation branch returns earlier, so a
     // re-opened consultation is never dispatched twice. Best-effort by contract — the dispatch
     // service swallows its own failures and returns `dispatched: false`, because a harness
     // outage must never stop a clinician opening a consultation.
-    // TASK-789 day-1: which engine governs a consultation must be OBSERVABLE. Every outcome —
+    // day-1: which engine governs a consultation must be OBSERVABLE. Every outcome
     // including "the dispatcher is not wired" and "no tenant workflow is assigned" — is logged.
     // Both of those were previously SILENT, so a consultation that quietly fell through to the
     // default engine was indistinguishable from one the dispatcher had never been asked about.
@@ -448,7 +448,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       parentConsultationId,
     });
 
-    // TASK-813 — a re-visit does not dispatch a consultation workflow at all (only `getOrCreate`
+    // a re-visit does not dispatch a consultation workflow at all (only `getOrCreate`
     // stamps `trigger: 'consultation open'`), so a selector here has nothing to steer. Logged
     // rather than silently dropped; the DTO field documents that `open` is the only route that
     // honours it.
@@ -919,15 +919,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // TASK-711 — session state machine
+  // session state machine
   //
   // `Consultation.status` is now the ONLY lifecycle tracker (the legacy
   // `metadata.status` JSON key is deleted — see the removed `readStatus`/
   // `transitionStatus` this replaces). Every write goes through
   // `ConsultationEntity.transitionTo`, the single guarded path that
   // consults the legality matrix
-  // (docs/implementation/TASK-711-Session-State-Machine/state-machine.md
-  // §2). `transitionTo` itself handles the idempotent self-transition
+
+  // `transitionTo` itself handles the idempotent self-transition
   // no-op; the two terminal-close methods add one further no-op check
   // (already-terminal → already-terminal is not a self-pair in the
   // matrix's sense, since CLOSED_COMPLETE and CLOSED_INCOMPLETE are two
@@ -957,7 +957,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * Best-effort WORM append for a ROUTINE transition (README §3.3 pitfall
+   * Best-effort WORM append for a ROUTINE transition ( pitfall
    * 6): a failure here is logged but never rolls back the (already
    * persisted) status write — only the `SIGNED` write itself
    * (`summary.service.ts#approveSummary`) stays fail-closed.
@@ -978,7 +978,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       });
     } catch (error) {
       this.logger.warn({
-        message: 'TASK-711: WORM append failed for a routine session transition (non-fatal, status write not rolled back)',
+        message: 'WORM append failed for a routine session transition (non-fatal, status write not rolled back)',
         consultationId: input.consultationId,
         action: input.action,
         error: error instanceof Error ? error.message : String(error),
@@ -991,7 +991,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * Idempotent (no-op if already `PRIMED`, per `transitionTo`).
    *
    * Consent is NOT asserted here: `POST :id/prime`
-   * (apps/api) carries `@RequiresConsent`, the single TASK-712 choke point
+   * (apps/api) carries `@RequiresConsent`, the single choke point
    * that already runs before this method is reached — duplicating the
    * check here would be a second source of truth for the same decision.
    */
@@ -1037,9 +1037,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Close a consultation. The target terminal is DERIVED from the current
-   * status, per state-machine.md §2:
-   *   - `SIGNED       → CLOSED_COMPLETE`   (a human gave clinical feedback)
-   *   - `TIMED_OUT     → CLOSED_INCOMPLETE` (manual close before the sweep fires)
+   * status, per :
+   *   - `SIGNED → CLOSED_COMPLETE` (a human gave clinical feedback)
+   *   - `TIMED_OUT → CLOSED_INCOMPLETE` (manual close before the sweep fires)
    * Any other predecessor is illegal (→ 409) — "how do I close an unsigned,
    * still-active consultation?" is answered by the matrix itself: you
    * cannot, until it either signs or times out. Idempotent: already
@@ -1095,11 +1095,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
-   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE` (state-machine.md §2); any
+   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE` (; any
    * other predecessor is illegal (→ 409). Idempotent: already `REOPENED`
    * is a self-transition, handled by `transitionTo` itself.
    *
-   * Authority unchanged (README §6 Q2, preserved identically for both
+   * Authority unchanged ( Q2, preserved identically for both
    * terminal-closed variants): `verifyConsultationOwnership` at the
    * controller admits the assigned doctor OR any caller holding
    * `manage:Consultation` — this ticket changes *legality*, not *who may act*.
@@ -1146,7 +1146,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * Allowed: `appointmentDate`, `departmentId` (tenant-checked, audit C-2),
    * `metadata` (shallow-merged). Identity / ownership fields (`patientId`,
    * `doctorId`, `tenantId`), the structural `parentConsultationId` link, and
-   * the typed `status` COLUMN (TASK-711 — routed exclusively through
+   * the typed `status` COLUMN — routed exclusively through
    * `transitionTo` via the dedicated prime/close/reopen/recording routes)
    * are NOT mutable here.
    */
@@ -1211,11 +1211,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
   // `transitionTo` legality matrix as every other lifecycle write.
   // `PRIMED → RECORDING` carries the ONE flagged precondition in the whole
   // matrix (`consultation.state.requirePrimedBeforeRecording`, default
-  // OFF — README §4 Task 9 / R1): OFF logs the would-be violation and lets
+  // OFF — Task 9 / R1): OFF logs the would-be violation and lets
   // a legacy caller through unchanged; ON enforces via the matrix itself
   // (illegal → 409). `stopRecording` now transitions to `DRAINING`, not
   // `OPEN` — the previous behaviour erased the fact that capture ever
-  // happened (README §2.1's A-13-adjacent finding). The
+  // happened ( A-13-adjacent finding). The
   // LiveDocumentationService session is started/stopped by the controller
   // around these calls.
   // ============================================
@@ -1239,9 +1239,9 @@ export class ConsultationService extends BaseService implements IConsultationSer
     const requirePrimed = this.tenantSettings?.resolvePlatform<boolean>(CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY).value === true;
 
     if (!requirePrimed && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
-      // TASK-711 grep-gate NOTE — Kill-switch OFF: this is the ONE matrix
+      // grep-gate NOTE — Kill-switch OFF: this is the ONE matrix
       // edge this ticket lets bypass (every other transition is enforced
-      // unconditionally from day one — README §4 Task 9 step 4). Log the
+      // unconditionally from day one — Task 9 step 4). Log the
       // would-be violation and write RECORDING directly (via the deprecated
       // setter, NOT
       // `transitionTo` — the matrix genuinely does not permit this pair,
@@ -1249,7 +1249,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       // flag) so a legacy caller with no prior `prime` call keeps working
       // unchanged.
       this.logger.warn({
-        message: 'TASK-711: recording/start reached without PRIMED — kill-switch OFF, proceeding (would 409 if ON)',
+        message: 'recording/start reached without PRIMED — kill-switch OFF, proceeding (would 409 if ON)',
         consultationId: id,
         currentStatus: consultation.status,
       });
@@ -1278,7 +1278,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
 
   /**
    * Flip the consultation's `status` column `RECORDING → DRAINING` when
-   * capture stops (manual stop, or TASK-712 forcing this same edge on
+   * capture stops (manual stop, or forcing this same edge on
    * mid-capture consent revocation). The harness later promotes a drained
    * consult to `DRAFT_PENDING_SENSORS`/`PENDING_REVIEW` (`persistDraft`).
    */

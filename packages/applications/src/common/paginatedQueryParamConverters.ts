@@ -303,7 +303,7 @@ export function deserializeSortString(sortString: string): { [key: string]: 'asc
 // Re-exported so existing `DEFAULT_PAGE_SIZE`/`DEFAULT_PAGE` imports from this
 // module keep working. `PaginatedQuery` (`./dto/paginated.query.ts`) is the
 // single source of truth for the values — it also applies them as the DTO's
-// own runtime defaults (TASK-776 F-02), so the raw `page`/`limit` a client
+// own runtime defaults, so the raw `page`/`limit` a client
 // omits already equal what is used here.
 export { DEFAULT_PAGE, DEFAULT_PAGE_SIZE };
 export const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;

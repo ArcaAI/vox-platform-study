@@ -79,7 +79,7 @@ _fill_secret() {
 _EXTERNAL_SECRET_KEYS=(
   AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
-  # TASK-799: surfaced once the six per-service samples became GENERATED, which
+  # surfaced once the six per-service samples became GENERATED, which
   # widened the consolidated sample this script reports on. All five are real
   # third-party credentials with no local equivalent to synthesize.
   HARNESS_JUDGE_AZURE_API_KEY            # Azure OpenAI, sibling of the openai-compat key above
@@ -90,7 +90,7 @@ _EXTERNAL_SECRET_KEYS=(
 
 # Legacy per-service tokens SUPERSEDED by the one shared INTERNAL_ACCESS_TOKEN
 # (owner decision D-D). Every call site was routed through `peer_service_token()`
-# in TASK-799 Phase 0, which prefers the shared token and falls back to these only
+# in, which prefers the shared token and falls back to these only
 # for an environment that has not migrated yet. A FRESH env has therefore no use
 # for them, and leaving them as the literal CHANGE_ME is actively wrong: it reads
 # as "paste something here" for a credential that should stay unset. Blanked, and
@@ -273,7 +273,7 @@ _apply_test_overrides() {
   _set_env "$file" OTEL_EXPORTER_OTLP_ENDPOINT ""
   _set_env "$file" OTEL_TRACES_ENABLED false
   _set_env "$file" OTEL_METRICS_ENABLED false
-  # TASK-722 R-1: the public workflow-exposure surface is OFF everywhere by
+  # the public workflow-exposure surface is OFF everywhere by
   # default (`.env.sample`/`.env.dev` keep the platform default `false`) — but
   # the e2e suite (`task-722-workflow-exposure.spec.ts`) needs it ON to
   # exercise the real routes rather than only their kill-switch 404. This is a

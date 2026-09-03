@@ -107,7 +107,7 @@ export abstract class BaseProxyController {
             }
 
             if (res instanceof ServerResponse && !res.headersSent) {
-              // TASK-768: `errorDetail` is `err.message || err.code` — i.e.
+              // `errorDetail` is `err.message || err.code` — i.e.
               // `connect ECONNREFUSED 127.0.0.1:8862`. It stays in `logPayload`
               // above (operator) and is redacted out of the body (client). The
               // status is 503, not 502: a proxy `error` event means the peer was

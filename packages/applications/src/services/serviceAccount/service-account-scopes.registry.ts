@@ -1,9 +1,9 @@
 /**
- * The `svc:*` scope namespace — TASK-762.
+ * The `svc:*` scope namespace —.
  *
  * ─── Why this is a SEPARATE registry ────────────────────────────────────────
  *
- * The TASK-708 §6 owner ruling ("we cannot mix the `/admin/*` and `/internal/*`
+ * The owner ruling ("we cannot mix the `/admin/*` and `/internal/*`
  * routes as they were designed for different purposes") means the machine
  * identity for administration must be a THIRD credential class sharing NO
  * mechanism with tenant API keys. Scope vocabulary is a mechanism. Adding
@@ -16,29 +16,29 @@
  *
  * ─── Why the vocabulary is DERIVED, not hand-written ────────────────────────
  *
- * TASK-757 puts the 56 `admin:*` scopes in reserve: they still name exactly one
+ * puts the 56 `admin:*` scopes in reserve: they still name exactly one
  * admin controller area each, they are just no longer reachable by an API key.
- * Re-typing them here would guarantee drift and would make §5.7 boot-audit
+ * Re-typing them here would guarantee drift and would make boot-audit
  * assertion D ("every `svc:*` scope maps to a live admin area, and every admin
  * area is covered by exactly one `svc:*` scope") an aspiration rather than a
  * fact. Instead every `admin:<area>` scope is RENAMESPACED to `svc:admin:<area>`
  * at module load, carrying its `implies` verbatim. Adding an admin controller
  * area therefore extends both surfaces in one edit, and D holds by construction.
  *
- * The ticket §3 Option 2 "Fit" row sanctions exactly this ("reuses the `admin:*`
- * scope vocabulary TASK-757 puts in reserve (renamespaced `svc:admin:*` or
+ * The Option 2 "Fit" row sanctions exactly this ("reuses the `admin:*`
+ * scope vocabulary puts in reserve (renamespaced `svc:admin:*` or
  * mapped 1:1)").
  *
- * ─── TASK-767 / TASK-773: further derived families ─────────────────────────
+ * ─── /: further derived families ─────────────────────────
  *
  * The registry now holds three families, all renamespaced from
  * `API_KEY_SCOPE_REGISTRY` and none hand-written:
  *
- *   `svc:admin:<area>`  — every concrete `admin:*` scope (TASK-762, above)
- *   `svc:<feature>`     — the standalone STT + summarization scopes
- *                         (TASK-767, {@link STANDALONE_FEATURE_SCOPE_SOURCES})
- *   `svc:<area>`        — admin-plane areas whose gating scope PREDATES the
- *                         `admin:<area>` convention (TASK-773 decision O-1,
+ * `svc:admin:<area>` — every concrete `admin:*` scope (above)
+ *   `svc:<feature>` — the standalone STT + summarization scopes
+ * ({@link STANDALONE_FEATURE_SCOPE_SOURCES})
+ *   `svc:<area>` — admin-plane areas whose gating scope PREDATES the
+ * `admin:<area>` convention ( decision O-1,
  *                         {@link ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES})
  *
  * They are kept as separate families rather than one blanket derivation of the
@@ -66,11 +66,11 @@ export function toServiceAccountScope(apiKeyScope: string): string {
 }
 
 /**
- * TASK-767 — the STANDALONE-FEATURE scopes, the SECOND `svc:` family.
+ * the STANDALONE-FEATURE scopes, the SECOND `svc:` family.
  *
  * ─── Why a second family at all ─────────────────────────────────────────────
  *
- * TASK-762 built this registry as a pure renamespacing of `admin:*`, because a
+ * built this registry as a pure renamespacing of `admin:*`, because a
  * machine identity was only ever meant to reach the ADMINISTRATION plane. The
  * owner requirement of 2026-08-18 is different in kind: *"end-user can use
  * service-account/api-key for standalone features: speech-to-text,
@@ -83,7 +83,7 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  *
  * ─── Why it is DERIVED too, and from the API-key scope ──────────────────────
  *
- * The trap TASK-766 §"Coordination note for TASK-767" names is the reason this
+ * The trap names is the reason this
  * is a list of SOURCE scope names rather than hand-written definitions:
  * `hasServiceAccountScope` is pure string matching, so an unregistered `svc:`
  * string still SATISFIES the guard, while `serviceAccountPolicyRules` silently
@@ -101,8 +101,8 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  * keys, so the machine class reaches exactly the same routes as the human-
  * delegated class and not one more:
  *
- *   `stt:transcription:write`   → `audio/transcription-jobs`   (native STT)
- *   `stt:stream:write`          → `api/stt`                    (compat STT)
+ *   `stt:transcription:write` → `audio/transcription-jobs` (native STT)
+ *   `stt:stream:write` → `api/stt` (compat STT)
  *   `consultation:report:write` → `text-generations` (native summarization)
  *                                 AND `api/smr/api/v1` (compat summarization)
  *
@@ -118,16 +118,16 @@ export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'stt
 export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATURE_SCOPE_SOURCES.map(toServiceAccountScope);
 
 /**
- * TASK-773 (owner decision **O-1**, 2026-08-19) — the ADMIN-PLANE
+ * (owner decision **O-1**, 2026-08-19) — the ADMIN-PLANE
  * PRE-CONVENTION scopes, the THIRD `svc:` family.
  *
  * ─── The finding this exists for ────────────────────────────────────────────
  *
- * TASK-773 §2.8 enumerated CONTROLLERS rather than scopes for the first time
+ * enumerated CONTROLLERS rather than scopes for the first time
  * and found three admin-plane controllers with nothing for the `svc:admin:*`
  * derivation to consume. `WebhookController` is one of them: it sits at
  * `admin/webhooks` but is gated by `@RequiredScopes('webhook:event:write')` —
- * a scope minted before the `admin:<area>` naming convention existed. TASK-757
+ * a scope minted before the `admin:<area>` naming convention existed.
  * reserved the three `webhook:` strings *precisely because* their only consumer
  * is that admin controller, so the area is administration by every test except
  * the spelling of its scope. O-1 opens it to the machine class; the other two
@@ -159,7 +159,7 @@ export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATU
  *
  * ─── Why DERIVED, like the other two ────────────────────────────────────────
  *
- * Same TASK-766 trap: `hasServiceAccountScope` is pure string matching, so a
+ * Same trap: `hasServiceAccountScope` is pure string matching, so a
  * hand-written `svc:` entry with no `implies` passes the scope guard and is
  * then refused by CASL. Deriving from the API-key scope that already gates the
  * SAME route lands both halves in one edit, with the identical ability
@@ -219,8 +219,8 @@ function buildRegistry(): Record<string, ScopeDefinition> {
   // `API_KEY_SCOPE_REGISTRY` is a module-load crash, not a silently missing
   // registry row that `hasServiceAccountScope` would then accept as a bare
   // string while CASL refused it.
-  deriveFamilyInto(registry, STANDALONE_FEATURE_SCOPE_SOURCES, 'STANDALONE_FEATURE_SCOPE_SOURCES'); // TASK-767
-  deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES'); // TASK-773 / O-1
+  deriveFamilyInto(registry, STANDALONE_FEATURE_SCOPE_SOURCES, 'STANDALONE_FEATURE_SCOPE_SOURCES');
+  deriveFamilyInto(registry, ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES, 'ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES');
 
   // Wildcards carry `[]` and are resolved by EXPANSION in
   // `resolveServiceAccountImpliedPermissions`, never by a literal of their own —

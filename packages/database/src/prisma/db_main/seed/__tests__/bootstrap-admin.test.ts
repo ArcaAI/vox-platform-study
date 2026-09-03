@@ -9,7 +9,7 @@ import { SEED_USER_IDS } from '../00-constants';
 import { SEED_PHASES_EXCLUDED_FROM_SAFE, isPhaseEnabled } from '../seed-mode';
 
 /**
- * TASK-763 — the day-1 bootstrap administrator.
+ * the day-1 bootstrap administrator.
  *
  * The gap: `RUN_SEED="safe"` (the documented production bootstrap) excludes
  * `91-user`, so a fresh deployment had ZERO users and — with no registration

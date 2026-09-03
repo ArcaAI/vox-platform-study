@@ -1,4 +1,4 @@
-"""The interpreter's side of the HITL gate (TASK-731 Phase B).
+"""The interpreter's side of the HITL gate.
 
 `test_gate_workflow.py` covers what the gate DOES once started. This file covers whether the
 interpreter starts it at all — the four refusals and the two outcomes — plus the two properties
@@ -278,7 +278,7 @@ class TestNoGate:
 
 class TestSignalSurface:
     def test_the_interpreter_still_accepts_only_cancel(self):
-        # TASK-718 R-2: v1 refuses a durable-wait signal surface, and Phase B must not widen it
+        # v1 refuses a durable-wait signal surface, and Phase B must not widen it
         # for every palette. The gate's `approval` belongs to the CHILD type, not this one.
         definition = temporal_workflow._Definition.from_class(WorkflowInterpreter)  # noqa: SLF001
         assert definition is not None

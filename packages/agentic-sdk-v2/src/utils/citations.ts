@@ -118,7 +118,7 @@ export function selectClaimsNeedingAttention(claims: CitationClaim[]): CitationC
  *
  * - Claims carrying only LEGACY SOAP codes (what `apps/harness` emits today),
  *   or no claims at all, group into the same four S/O/A/P sections, in the
- *   same order, with the same labels as before TASK-810. This is the
+ * same order, with the same labels as before. This is the
  *   backward-compatible path and it is byte-identical to the old behaviour.
  * - As soon as any claim carries a template section key, the groups are
  *   derived from the claims themselves in first-appearance order — so a

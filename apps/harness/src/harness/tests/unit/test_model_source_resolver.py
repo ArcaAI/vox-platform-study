@@ -367,9 +367,9 @@ async def test_s3_credential_error_names_the_real_source_not_env_vars(
     """The unresolved-credential message must not send operators to dead env vars.
 
     It used to say: "Set the *_MODEL_S3_ENDPOINT / _ACCESS_KEY / _SECRET_KEY
-    environment variables." Those are not merely deprecated -- TASK-799 removed
+    environment variables." Those are not merely deprecated -- removed
     the env-credential model platform-wide (`apps/stt` renamed its fields'
-    aliases to `..._ENV_REMOVED_TASK_799` so the old names can never bind), and
+    aliases to `..._ENV_REMOVED` so the old names can never bind), and
     `HARNESS_MODEL_S3_*` never existed in this repo at all. Following that
     advice does nothing, which makes it an operator-facing lie on top of a
     rule-09 config-tier violation: an S3 credential is `vault-kv`/`db-secret`

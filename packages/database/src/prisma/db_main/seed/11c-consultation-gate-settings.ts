@@ -4,17 +4,17 @@
  * Turns the consultation-pipeline kill-switch ON for every environment that
  * seeds — including a fresh local `pnpm setup:dev`:
  *
- *   consultation.ocr.enabled  the in-cluster PyMuPDF + RapidOCR pass that fills
+ *   consultation.ocr.enabled the in-cluster PyMuPDF + RapidOCR pass that fills
  *                             `ContextItem.metaData.extractedText`
  *
- * ⚠️ TASK-705 — `harness.loop.enabled` USED TO BE SEEDED HERE AND IS NOT ANY
+ * ⚠️ — `harness.loop.enabled` USED TO BE SEEDED HERE AND IS NOT ANY
  * MORE. Do not add it back. Seeding it `'true'` while its descriptor declared
  * `false` was a real defect, not a clever workaround: the two disagreed, and
  * `migrate.sh` defaults `RUN_SEED=none` (with `hope-v2-dev` pinning it to
  * `"none"` by owner decision 2026-08-09), so the row carrying the real intent
  * was never re-asserted anywhere. Loop eligibility is now the tenant's
  * SUBSCRIPTION ENTITLEMENT (`agenticLoop`, resolved from `PlanEntitlement` /
- * `TenantEntitlement` — owner decision 2026-08-17 §2 row 705), and what remains
+ * `TenantEntitlement` — owner decision 2026-08-17 row 705), and what remains
  * of the operational device is `harness.loop.emergencyStop`, whose disarmed
  * `false` default IS the intended day-1 state. There is nothing left to seed.
  *
@@ -23,10 +23,10 @@
  * assembly for any kill-switch whose `default === true`. That invariant is not
  * in the way — it is the reason the shape below is correct:
  *
- *   descriptor default stays OFF  →  an unseeded / half-provisioned deployment
+ *   descriptor default stays OFF → an unseeded / half-provisioned deployment
  *                                    still resolves OFF, which is fail-safe
- *   the seeded ROW carries 'true' →  every seeded environment comes up enabled
- *   `defaultValue` stays 'false'  →  "reset to default" reverts to fail-safe
+ *   the seeded ROW carries 'true' → every seeded environment comes up enabled
+ *   `defaultValue` stays 'false' → "reset to default" reverts to fail-safe
  *
  * This is the same sanctioned pattern `11-global-setting.ts` already uses twice,
  * for `pipeline.templateResync.enabled` and `departmentAgent.templateResync
@@ -39,7 +39,7 @@
  * operator's first `PUT` creates a SECOND platform row for the same key — which
  * `AppSettingsService` refuses to boot on. So the rows below use
  * `SYSTEM_TENANT_ID` (`00000000-…` — the sole platform-configuration tier;
- * owner ruling 2026-08-20, TASK-763 OD-1), namespace `registry`, and names
+ * owner ruling 2026-08-20), namespace `registry`, and names
  * copied verbatim from the descriptor labels. `consultation-gate-seed-parity.test.ts`
  * in `@arcaai/applications` holds all four coordinates to the registry, because
  * `packages/database` must not depend on `@arcaai/applications`.
@@ -50,7 +50,7 @@
  * repo-wide by `seed/__tests__/seed-idempotency.test.ts`.
  *
  * Disabling the switch afterwards is one call, no redeploy:
- *   PUT /api/v1/admin/settings/registry/consultation.ocr.enabled  { "value": false }
+ *   PUT /api/v1/admin/settings/registry/consultation.ocr.enabled { "value": false }
  *
  * The loop's emergency stop is pulled the same way, in the opposite direction:
  *   PUT /api/v1/admin/settings/registry/harness.loop.emergencyStop { "value": true }

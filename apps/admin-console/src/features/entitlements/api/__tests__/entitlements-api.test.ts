@@ -72,7 +72,7 @@ describe('entitlements client', () => {
     await updatePlanEntitlement('PRO', { maxUsers: 50, expectedVersion: 3 });
     expect(calls[2].method).toBe('PATCH');
     expect(calls[2].url).toBe('/api/hope/admin/entitlements/plans/PRO');
-    // TASK-776 H-1 phase 2: the route requires `If-Match`; the validator is the
+    // phase 2: the route requires `If-Match`; the validator is the
     // version the caller already read and carries in the body.
     expect(calls[2].headers.get('if-match')).toBe('"3"');
     expect(calls[2].body).toEqual({ maxUsers: 50, expectedVersion: 3 });

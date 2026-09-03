@@ -37,7 +37,7 @@ import {
 } from '../constants';
 
 // =============================================================================
-// PERSONALIZATION_ENDPOINTS: /user/me -> /users/me (TASK-760 reverses TASK-210)
+// PERSONALIZATION_ENDPOINTS: /user/me -> /users/me ( reverses)
 // =============================================================================
 
 describe('SDK v2 route standardization', () => {
@@ -50,7 +50,7 @@ describe('SDK v2 route standardization', () => {
       expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/users/me/preferences');
     });
 
-    // TASK-760 reversed TASK-210 here: the self plane moved INTO the plural
+    // reversed here: the self plane moved INTO the plural
     // `users` collection, so the stale shape is now the SINGULAR `/user/me`.
     it('should NOT use the retired singular /user/me path', () => {
       expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).not.toMatch(/^\/user\/me\//);
@@ -386,7 +386,7 @@ describe('SDK v2 route standardization', () => {
       expect(HEALTH_ENDPOINTS.READY).toBe('/health/ready');
     });
 
-    it('MONITORING_ENDPOINTS should sit on the admin plane (TASK-759)', () => {
+    it('MONITORING_ENDPOINTS should sit on the admin plane ', () => {
       expect(MONITORING_ENDPOINTS.UPTIME).toBe('/admin/monitoring/uptime');
       expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/admin/monitoring/sessions');
     });

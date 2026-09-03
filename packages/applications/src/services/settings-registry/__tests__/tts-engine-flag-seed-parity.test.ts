@@ -1,6 +1,6 @@
 /**
  * Seed ↔ registry parity for the tts provider/engine enable flags
- * (`11d-tts-engine-flags.ts`, TASK-799 lane H).
+ * (`11d-tts-engine-flags.ts`, lane H).
  *
  * `packages/database` must not depend on `@arcaai/applications`, so the seed
  * mirrors the descriptor keys and labels BY HAND. A hand-mirrored list drifts
@@ -11,13 +11,13 @@
  *
  * THE MECHANISM THE KOKORO ROW USES, stated once:
  *
- *     descriptor default stays `false`  →  an UNSEEDED deployment resolves the
+ *     descriptor default stays `false` → an UNSEEDED deployment resolves the
  *                                          Python field's own value, so nothing
  *                                          is retuned on first deploy
- *     the seeded ROW carries `'true'`   →  every seeded environment comes up
+ *     the seeded ROW carries `'true'` → every seeded environment comes up
  *                                          with an engine registered, which is
  *                                          what `/health/ready` needs
- *     `defaultValue` stays `'false'`    →  "reset to default" returns the code
+ *     `defaultValue` stays `'false'` → "reset to default" returns the code
  *                                          value, not the seeded one
  *
  * It is the same shape `11c-consultation-gate-settings.ts` uses for the OCR
@@ -96,7 +96,7 @@ describe('tts engine-flag seed ↔ registry parity', () => {
   });
 
   it('seeds onto the SYSTEM tenant — the sole platform-configuration tier — never GLOBAL or a customer tenant', () => {
-    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // Owner ruling 2026-08-20: the runtime cascade is request
     // tenant → SYSTEM. GLOBAL/`SEED_TENANT_ID` (`50000000-…`) is a CUSTOMER
     // tenant and must never be a platform write target.
     const source = seedSource();

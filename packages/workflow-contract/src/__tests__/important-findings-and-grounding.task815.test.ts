@@ -1,7 +1,7 @@
 /**
- * Lane N — the two capabilities TASK-815 §14a/§14b recorded as ABSENT, expressed as contract.
+ * Lane N — the two capabilities recorded as ABSENT, expressed as contract.
  *
- * ## §14a: "important information highlighted — DOES NOT EXIST"
+ * ##: "important information highlighted — DOES NOT EXIST"
  *
  * The owner's specification for it is a configuration statement, not an algorithm:
  *
@@ -16,7 +16,7 @@
  * node whose INSTRUCTIONS are a bound, tenant-authored prompt template, whose INPUTS are the
  * consultation context the owner named, and whose OUTPUT rides the existing highlight path.
  *
- * ## §14b: grounding, and the ORDERING correction
+ * ##: grounding, and the ORDERING correction
  *
  * > "Grounding is a set of policies defined/declared/overwriten by tenant admin where LLM will
  * > follow and evaluate the: redacted transcript ..., redacted summary ..., highlighted important
@@ -84,7 +84,7 @@ describe(`${FINDINGS} — important findings as a tenant-instructed agent node`,
   it('produces `entities` under its OWN output key, so findings ride the existing highlight path', () => {
     const output = NODE_PORTS[FINDINGS].outputs.find((port) => port.name === 'out');
     // Same primitive as NER output — that is what lets `groundEntitiesToNote` re-anchor findings
-    // into the rendered note with no second anchoring mechanism (TASK-811's path, reused).
+    // into the rendered note with no second anchoring mechanism ( path, reused).
     expect(output).toMatchObject({ primitive: 'entities', required: true, multiple: true });
     // A DISTINCT runtime key, so a consumer can tell a tenant-declared important finding apart
     // from an NER entity rather than merging two different claims into one highlight set.

@@ -10,7 +10,7 @@ export interface CreateAiTaskDefaultProps extends BaseEntityFactoryCreateProps {
   taskKey: IAiTaskDefaultEntity['taskKey'];
   modelSlug: IAiTaskDefaultEntity['modelSlug'];
   configJson?: IAiTaskDefaultEntity['configJson'];
-  // TASK-843 — optional while Phase 1 is additive; derived from `taskKey` via
+  // optional while Phase 1 is additive; derived from `taskKey` via
   // `AI_TASK_KIND_BY_TASK_KEY` in the applications layer.
   taskKind?: IAiTaskDefaultEntity['taskKind'];
 

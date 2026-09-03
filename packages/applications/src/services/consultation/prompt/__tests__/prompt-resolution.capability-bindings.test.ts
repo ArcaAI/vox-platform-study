@@ -1,7 +1,7 @@
 /**
  * Capability-keyed tier-1a bindings in `PromptResolutionService`.
  *
- * TASK-815 moved tier-1a's SOURCE from `DepartmentAgent`'s five capability
+ * moved tier-1a's SOURCE from `DepartmentAgent`'s five capability
  * columns onto WORKFLOW NODE CONFIG: the governing definition's node whose
  * effective `taskKey` names the capability supplies `promptTemplateId` and its
  * own version pin. The C1/C2 invariants below are re-expressed against that
@@ -9,14 +9,14 @@
  *
  * Covers the C1 rollout invariants that belong to C2:
  *
- *   C2-T2  agent-vs-column resolution equality — for all 7 × 2 ArcaAI cells the
+ *   C2-T2 agent-vs-column resolution equality — for all 7 × 2 ArcaAI cells the
  *          agent tier returns the SAME promptId / versionNumber / content bytes
  *          as a legacy-column-only fixture; only `resolvedFrom` flips
  *          'department' → 'agent', and that flip is asserted INTENTIONAL and
  *          checked against its one behavioural consumer.
- *   C2-T6  compat pre-summary resolution snapshot — a call with no departmentId
+ *   C2-T6 compat pre-summary resolution snapshot — a call with no departmentId
  *          and no variant resolves the identical template before and after C2.
- *   C2-T7  existing-agent null-binding fallback — an agent with null visit
+ *   C2-T7 existing-agent null-binding fallback — an agent with null visit
  *          bindings resolves its BASE template for both visit types (the
  *          36-seeded-row no-op proof).
  *
@@ -120,7 +120,7 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   // C2-T2 — visit-type-aware agent tier (F-01 closed)
   // =========================================================================
 
-  describe('C2-T2 — where the VISIT-TYPE axis lives after TASK-815', () => {
+  describe('C2-T2 — where the VISIT-TYPE axis lives after ', () => {
     it('the node tier serves one finalize prompt for BOTH visit types — it has no visit-type axis', async () => {
       publishGraph([finalizeNode('one-finalize-tpl')]);
 
@@ -204,10 +204,10 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
   });
 
   // =========================================================================
-  // The pre-summary chain has NO node tier (TASK-815)
+  // The pre-summary chain has NO node tier
   // =========================================================================
 
-  describe('pre-summary — tier-1a is the agent.presummarization NODE (TASK-806 lane A item 1)', () => {
+  describe('pre-summary — tier-1a is the agent.presummarization NODE (lane A item 1)', () => {
     it('consults the governing graph, but a NOTE node can never answer a pre-summary request', async () => {
       // The tier's successor — a PRE-SUMMARISATION NODE (`agent.presummarization`, DD-6) — now
       // exists, so the slot is filled rather than empty. What has NOT changed is the property the
@@ -241,7 +241,7 @@ describe('PromptResolutionService — capability-keyed bindings', () => {
     it('is unchanged for the compat signature — which never reached the tier anyway (RF-5)', async () => {
       // Compat calls resolve({ tenantId, promptType: 'pre-summary' }) with no
       // department, so it could never reach tier-1a before either. This is the
-      // lock that TASK-815 changed nothing on the frozen compat route.
+      // lock that changed nothing on the frozen compat route.
       mockPromptTemplateRepository.findAll.mockResolvedValue([{ id: 'tenant-presum-tpl' }]);
 
       const result = await service.resolve({ tenantId: TENANT, promptType: 'pre-summary' });

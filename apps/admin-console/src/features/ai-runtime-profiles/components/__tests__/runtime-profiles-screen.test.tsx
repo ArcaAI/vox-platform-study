@@ -1,5 +1,5 @@
 /**
- * AI runtime profiles screen + editor (TASK-799 Phase 4, E.2).
+ * AI runtime profiles screen + editor.
  *
  * These routes shipped five operations with no console screen at all, so the
  * tests here pin what "having a button" actually has to mean: the tier gate,

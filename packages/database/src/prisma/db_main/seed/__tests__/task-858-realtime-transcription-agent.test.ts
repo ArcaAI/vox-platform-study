@@ -1,5 +1,5 @@
 /**
- * TASK-858 D2 — the realtime transcription agent seed.
+ * the realtime transcription agent seed.
  *
  * ## What this suite is actually for
  *
@@ -95,7 +95,7 @@ const nodeTypes = (graph: any) => graph.nodes.map((n: any) => n.type);
 const nodeOf = (graph: any, id: string) => graph.nodes.find((n: any) => n.id === id);
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D2 — the transcription agent is a real stt-palette definition', () => {
+describe(' D2 — the transcription agent is a real stt-palette definition', () => {
   it('seeds a SYSTEM template and an ArcaAI copy of the SAME graph', () => {
     expect(PLATFORM_TRANSCRIPTION_DEFINITION.tenantId).toBe(SYSTEM_TENANT_ID);
     expect(ARCAAI_TRANSCRIPTION_DEFINITION.tenantId).toBe(SEED_CUSTOMER_TENANT_IDS.ARCAAI);
@@ -174,7 +174,7 @@ describe('TASK-858 D2 — the transcription agent is a real stt-palette definiti
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D2 — derived blobs are real compiler output', () => {
+describe(' D2 — derived blobs are real compiler output', () => {
   it.each(DEFINITIONS)('%s: graphChecksum equals sha256(canonicalJson(graph)) from the real engine', (_label, row) => {
     expect(row.graphChecksum).toBe(createHash('sha256').update(canonicalJson(REALTIME_TRANSCRIPTION_GRAPH)).digest('hex'));
   });
@@ -230,7 +230,7 @@ describe('TASK-858 D2 — derived blobs are real compiler output', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D2 — the compiled AsrPipeline is what a publish would have written', () => {
+describe(' D2 — the compiled AsrPipeline is what a publish would have written', () => {
   const compiledArcaai = () => {
     const result = compile(REALTIME_TRANSCRIPTION_GRAPH, {
       definitionId: ARCAAI_TRANSCRIPTION_DEFINITION.id,
@@ -285,7 +285,7 @@ describe('TASK-858 D2 — the compiled AsrPipeline is what a publish would have 
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D2 — exactly one default ASR pipeline per tenant', () => {
+describe(' D2 — exactly one default ASR pipeline per tenant', () => {
   it('declares itself the ArcaAI default', () => {
     expect(ARCAAI_TRANSCRIPTION_PIPELINE.isDefault).toBe(true);
   });
@@ -354,7 +354,7 @@ function mockClient(calls: any[], options: { definitionExists?: boolean } = {}):
 }
 
 // ---------------------------------------------------------------------------------------------
-describe('TASK-858 D2 — seed-mode posture', () => {
+describe(' D2 — seed-mode posture', () => {
   it('gates the ArcaAI half out of `safe` and keeps the SYSTEM template in', async () => {
     const { SEED_PHASES_EXCLUDED_FROM_SAFE, isPhaseEnabled } = await import('../seed-mode');
     // The ArcaAI row claims a named human authored a PUBLISHED clinical

@@ -1,5 +1,5 @@
 /**
- * TASK-809 Tasks 5/7 — type-checked edge validation, closing D-5 ("edge validation only checks
+ * Tasks 5/7 — type-checked edge validation, closing D-5 ("edge validation only checks
  * `fromPort`/`toPort` are non-empty strings", `graph-model.ts:34,36,160`).
  *
  * `workflowGraphProblems` stays registry-agnostic on purpose (it is the pure SHAPE check, and
@@ -8,7 +8,7 @@
  * `isValidConnection`. It is deliberately NOT folded into `validate()`'s default rule loop:
  * every graph authored before this ticket names its ports `in`/`out` untyped, so silently
  * promoting the check into `validate()` would retroactively invalidate every saved definition.
- * Wiring it into the publish path (and migrating the seeds) is TASK-812's lane.
+ * Wiring it into the publish path (and migrating the seeds) is lane.
  */
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';

@@ -15,7 +15,7 @@ import { ApiReference } from './api-reference';
  * The reference screen. `contentMode="fill"` hands the remaining height to
  * Scalar, which brings its own sidebar and scroll — nesting it inside the
  * template's own scroll container would produce two scrollbars (rule 11
- * §Screen Template: one scroll container per panel).
+ * Template: one scroll container per panel).
  */
 export function ApiReferenceScreen({ canReadAdminPlane }: { canReadAdminPlane: boolean }) {
   const [plane, setPlane] = useState<SpecPlane>('business');

@@ -10,7 +10,7 @@
  * `@IsEnum(AgentStepType)`. The post is FIRE-AND-FORGET, so a value the enum does not carry is
  * rejected 400 and the rejection is SILENTLY SWALLOWED — the trajectory simply never appears.
  *
- * That is exactly the bug this guard exists to prevent (TASK-789 finding C-9): the harness
+ * That is exactly the bug this guard exists to prevent: the harness
  * declared `STEP_NODE = "NODE"` and shipped it on every interpreter node, while `AgentStepType`
  * had no `NODE` member — so every Substrate-B run's trace was dropped without a trace. The
  * domain⇔database halves both PASSED at the time, because both were missing it; only the
@@ -97,7 +97,7 @@ describe('AgentStepType enum parity (domain ⇔ database ⇔ harness)', () => {
   });
 });
 
-describe('AgentStepStatus enum parity (domain ⇔ database ⇔ harness) — TASK-789 C-10', () => {
+describe('AgentStepStatus enum parity (domain ⇔ database ⇔ harness) —  C-10', () => {
   const databaseValues = new Set<string>(Object.values(PrismaAgentStepStatus));
   const domainValues = new Set<string>(Object.values(DomainAgentStepStatus));
 

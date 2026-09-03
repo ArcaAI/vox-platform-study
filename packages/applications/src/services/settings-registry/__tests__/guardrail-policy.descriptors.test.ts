@@ -1,4 +1,4 @@
-// Guardrail policy descriptors (TASK-735 Phase 4).
+// Guardrail policy descriptors.
 //
 // Covers: registration/shape, the failMode split (closed for anything that
 // decides a verdict, open-to-default for pure tuning), and the tighten-only

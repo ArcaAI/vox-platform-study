@@ -11,7 +11,7 @@ Contract mirrors the ontology linker: absent/un-parseable fields stay ``None``;
 a value outside its physiologic range is treated as no-match, never clamped or
 fabricated. ``extract_vitals`` returns ``None`` when nothing matched at all.
 
-THE PLAUSIBILITY BANDS ARE CONFIGURATION (TASK-799 lane G). They used to be
+THE PLAUSIBILITY BANDS ARE CONFIGURATION ( lane G). They used to be
 module constants (``_SYSTOLIC_RANGE = (60, 260)`` &c.), so a paediatric or
 neonatal service could not adjust a band without a code change — rule 00 names a
 threshold as something that is never a literal in code. They now arrive per

@@ -66,7 +66,7 @@ vi.mock('@arcaai/domains', async (importOriginal) => {
   return {
     ...actual,
     StorageAccessKeyFactory: {
-      // TASK-786: raw-secret generation moved OUT of the factory and into the
+      // raw-secret generation moved OUT of the factory and into the
       // SERVICE, so it can honour the `security.secret.*` policy (a domain
       // factory is DI-free and can never reach the settings cache). The tests
       // below stub the service's own generator instead of this one.

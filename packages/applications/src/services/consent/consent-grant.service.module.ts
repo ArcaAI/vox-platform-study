@@ -9,7 +9,7 @@ import { IConsultationConsentService } from './IConsultationConsentService';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
-  // (`CONSENT_GIVEN`/`CONSENT_WITHDRAWN` — TASK-712 Phase 4 follow-up).
+  // (`CONSENT_GIVEN`/`CONSENT_WITHDRAWN` — follow-up).
   imports: [CommonServiceModule, CoreDatabaseModule, HarnessAuditServiceModule],
   providers: [
     ConsentGrantService,

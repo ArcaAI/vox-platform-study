@@ -1,5 +1,5 @@
 /**
- * TASK-779 area 3 — CORE BUSINESS TASKS: the consultation lifecycle end to end.
+ * area 3 — CORE BUSINESS TASKS: the consultation lifecycle end to end.
  *
  * The neighbouring suites already cover a lot and are NOT duplicated here:
  * `consultation-state-machine.spec.ts` owns prime/close/reopen and their OCC gates,
@@ -113,7 +113,7 @@ test.beforeAll(async ({ request }) => {
   expect(foreignTenantId).not.toBe(ownTenantId);
 });
 
-test.describe('TASK-779 core business — session open is GET-OR-CREATE', () => {
+test.describe(' core business — session open is GET-OR-CREATE', () => {
   test('opening twice for the same patient+day returns the SAME consultation, not a duplicate', async ({ request }) => {
     const first = await openConsultation(request, 'getorcreate');
     expect(first.status, 'a newly opened consultation is OPEN').toBe('OPEN');
@@ -165,7 +165,7 @@ test.describe('TASK-779 core business — session open is GET-OR-CREATE', () => 
   });
 });
 
-test.describe('TASK-779 core business — the capture path', () => {
+test.describe(' core business — the capture path', () => {
   test('a case note posted to :id/context appears in the case-notes projection and on the timeline', async ({ request }) => {
     const consultation = await openConsultation(request, 'casenote');
     const content = `t779 capture probe ${RUN_ID}`;
@@ -200,10 +200,10 @@ test.describe('TASK-779 core business — the capture path', () => {
     expect(timelineBody.events.length, 'the note added an event on top of the open event').toBeGreaterThan(1);
   });
 
-  test('summary/latest on a consultation that has never been summarised is a 404 (TASK-780 F-6 fixed)', async ({ request }) => {
+  test('summary/latest on a consultation that has never been summarised is a 404 (F-6 fixed)', async ({ request }) => {
     const consultation = await openConsultation(request, 'nosummary');
     const response = await request.get(`/api/v1/consultations/${consultation.id}/summary/latest`, { headers: bearer(doctorToken) });
-    // TASK-780 F-6 fixed: "no summary yet" now answers 404, matching the house pattern
+    // fixed: "no summary yet" now answers 404, matching the house pattern
     // used by every other "optional latest resource" endpoint (getDnaReport, getJob,
     // getLiveSession) — a client that calls `.json()` unconditionally no longer throws
     // on a zero-byte body.
@@ -211,7 +211,7 @@ test.describe('TASK-779 core business — the capture path', () => {
   });
 });
 
-test.describe('TASK-779 core business — the async job contract', () => {
+test.describe(' core business — the async job contract', () => {
   test('an async pre-summary enqueues a job that reaches a terminal state, with a legal status vocabulary and monotonic progress', async ({
     request,
   }) => {

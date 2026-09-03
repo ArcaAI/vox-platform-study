@@ -11,13 +11,13 @@ import {
 } from './dto';
 
 /**
- * The runs/observability read model service (TASK-723) — D6's "CQRS-lite ...
+ * The runs/observability read model service — D6's "CQRS-lite ...
  * read models for runs/observability".
  */
 export interface IWorkflowRunService {
   /**
    * Tenant-scoped, keyset-paginated, filterable runs list. `includeSandbox`
-   * defaults to `false` — the single query-level filter point for TASK-721's
+   * defaults to `false` — the single query-level filter point for
    * sandbox runs.
    */
   listRuns(tenantId: string, filters?: ListWorkflowRunsFilters, options?: ListWorkflowRunsOptions): Promise<CursorPage<WorkflowRunResponse>>;
@@ -33,7 +33,7 @@ export interface IWorkflowRunService {
   getRunTrace(tenantId: string, runId: string, options?: GetRunTraceOptions): Promise<RunTraceResponse>;
 
   /**
-   * Idempotent on `(tenantId, sessionId, runId)`. The write contract TASK-718
+   * Idempotent on `(tenantId, sessionId, runId)`. The write contract
    * calls (currently unwired — see the ticket's R2). Emits NO sys-event
    * (telemetry exemption).
    */
@@ -43,7 +43,7 @@ export interface IWorkflowRunService {
   recordRunFinished(input: RecordRunFinishedInput): Promise<WorkflowRunResponse>;
 
   /**
-   * Live HITL-gate state for a run (TASK-731 Phase B). Cross-tenant id throws
+   * Live HITL-gate state for a run. Cross-tenant id throws
    * `NotFoundException` — the tenancy boundary is asserted against the run READ MODEL before
    * anything is asked of the harness.
    *

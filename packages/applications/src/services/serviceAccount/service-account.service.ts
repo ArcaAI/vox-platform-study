@@ -63,7 +63,7 @@ interface StoredToken {
 
 /**
  * `ServiceAccountService` — the platform-issued machine identity for
- * administration (TASK-762).
+ * administration.
  *
  * ─── The single most important gate in the design ───────────────────────────
  *
@@ -71,9 +71,9 @@ interface StoredToken {
  * class-level `@CanManage('ServiceAccount')` deliberately UNDERSTATES the real
  * gate — the sanctioned "super-admin-only action on a resource whose ability
  * tenant admins could otherwise hold" pattern from `05-nestjs-api.md`
- * §"Imperative Privilege Checks". §2.6 of the ticket shows what happens without
+ * of the ticket shows what happens without
  * it: `@CanManage('ApiKey')` is tenant-admin-reachable, and that is the whole of
- * the TASK-756 defect. A tenant admin must never be able to mint a service
+ * the defect. A tenant admin must never be able to mint a service
  * account, not even one scoped to their own tenant, because verifying
  * scope-against-ability at mint time is a WEAKER guarantee than never letting
  * the mint happen.
@@ -81,9 +81,9 @@ interface StoredToken {
  * These are 403 PRIVILEGE boundaries. The 404-over-403 cross-tenant posture is
  * separate and is enforced by `assertTenantOwnership`.
  *
- * ─── Credential storage: a deviation from §5.4, stated plainly ──────────────
+ * ─── Credential storage: a deviation from, stated plainly ──────────────
  *
- * §5.4 specifies that the client secret is written to Vault and resolved back
+ * specifies that the client secret is written to Vault and resolved back
  * through `SecretsService`. `ISecretsProvider` is **read-only** — it has
  * `getSecret*` and a backend-triggered `rotateSecret(key)`, but no write path,
  * for any of its five providers. Adding one would change the platform secrets
@@ -92,7 +92,7 @@ interface StoredToken {
  * effect of this ticket.
  *
  * What is implemented instead is strictly stronger on the "never a plaintext DB
- * column" rule that §Configuration Tiers actually mandates:
+ * column" rule that Tiers actually mandates:
  *
  *   - The secret is generated, returned to the issuing SUPER_ADMIN **exactly
  *     once**, and then discarded by the platform. It is never persisted in any
@@ -107,9 +107,9 @@ interface StoredToken {
  *     (`previousSecretVerifier` + `previousCredentialExpiresAt`), not by
  *     re-reading stored material.
  *
- * The one §5.4 property NOT met is operator RE-retrieval of a lost secret; the
+ * The one property NOT met is operator RE-retrieval of a lost secret; the
  * remedy is `POST :id/rotate`, which is the same remedy every non-recoverable
- * credential system offers. Recorded in the ticket README as an open item.
+ * credential system offers. Recorded  as an open item.
  */
 @Injectable()
 export class ServiceAccountService extends BaseService {
@@ -325,7 +325,7 @@ export class ServiceAccountService extends BaseService {
       workingTenantId,
       scopes: account.scopes,
       // Derived from the PERSISTED column, never from a token claim and never
-      // inferred — §2.7's failure mode in both directions.
+      // inferred — 's failure mode in both directions.
       roles: account.superAdmin ? [SUPER_ADMIN_ROLE] : [],
       allowedTenantIds: account.allowedTenantIds ?? null,
       expiresAt: Date.now() + ttl * 1000,
@@ -424,7 +424,7 @@ export class ServiceAccountService extends BaseService {
 
   /**
    * The tenant a service-account token is bound to, for RATE LIMITING ONLY
-   * (TASK-785 O-4). `null` when the token is unknown, expired or unreadable.
+   * `null` when the token is unknown, expired or unreadable.
    *
    * Deliberately does LESS than {@link authenticateByToken}: one Redis GET, no
    * DB confirmation read, no scope or ability check. `TieredThrottlerGuard` runs
@@ -497,7 +497,7 @@ export class ServiceAccountService extends BaseService {
   }
 
   /**
-   * TASK-756's privilege ceiling, applied to this class from day one rather
+   * privilege ceiling, applied to this class from day one rather
    * than retrofitted. A SUPER_ADMIN holds `manage:all`, so the fast path
    * short-circuits — but the unknown-scope refusal below still runs for
    * everyone, because resolving an unrecognised string to "no requirement"

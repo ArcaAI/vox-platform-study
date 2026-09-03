@@ -1,4 +1,4 @@
-"""TASK-799 lane D — apps/nlp's env surface.
+"""lane D — apps/nlp's env surface.
 
 Five reductions, each of a different kind:
 

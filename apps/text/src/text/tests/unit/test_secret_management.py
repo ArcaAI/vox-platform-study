@@ -2,7 +2,7 @@
 
 The guarantee is unchanged; what carries a secret is not. Provider credentials
 used to live on `AzureOpenAIConfig.api_key` and friends, and this file checked
-that those fields were `SecretStr`. Since TASK-799 lane B there is no provider
+that those fields were `SecretStr`. Since lane B there is no provider
 credential field at all — a key arrives per request on a `ProviderOverride`, and
 the process holds exactly one secret of its own, the shared
 ``INTERNAL_ACCESS_TOKEN``.

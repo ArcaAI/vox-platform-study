@@ -4,25 +4,24 @@
  * ============================================================================================
  *
  * These rule INSTANCES were authored by this ticket's engineering pass from the
- * `01-invariant-register.md` assessment, exactly as TASK-716 §6 Risk #1 anticipates: "The 22
+ * `01-invariant-register.md` assessment, exactly as Risk #1 anticipates: "The 22
  * initial rules were derived from the register by this ticket's author, not by a clinician.
  * They need clinical review before Phase C, and the review's outcome may add, remove or
  * re-scope rules." That review has NOT happened in this session. See
- * `docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/rule-model.md` for the
  * full DRAFT status statement, the register cross-references, and the reviewer sign-off box.
  *
  * This export exists so the golden test suite (`__tests__/golden.test.ts`) has something
- * concrete to run against and so a future `WorkflowInvariantRule` seed (TASK-716 Task 11, not
+ * concrete to run against and so a future `WorkflowInvariantRule` seed (not
  * built here) has a starting point — it does NOT wire these rules as a publish-blocking gate
  * anywhere. No application service in this repo imports this module. Wiring `validate()`
- * behind a real publish path is TASK-716 Task 8, gated in this session on TASK-715's node
- * registry (Phases B–F) not existing yet — see the ticket README §7.
+ * behind a real publish path is, gated in this session on node
+ * registry (Phases B–F) not existing yet
  *
  * SCOPE NOTE — 17 of the ticket's ~22-23 catalogued rules, not all of them: the six
  * `schema`-class rules (`WF-C-001..006`) each need either the code-owned node registry
- * (`WORKFLOW_NODE_REGISTRY`, TASK-715 Phases B–F, not built) or repository/entitlement I/O
- * (`WF-C-004`, `WF-C-006` — deliberately impure per TASK-716 §3.2) and so are NOT included
- * here; they are implemented directly by the impure `WorkflowValidatorService` (Task 8) once
+ * (`WORKFLOW_NODE_REGISTRY`, Phases B–F, not built) or repository/entitlement I/O
+ * (`WF-C-004`, `WF-C-006` — deliberately impure per and so are NOT included
+ * here; they are implemented directly by the impure `WorkflowValidatorService` once
  * that registry exists. The 7 structural + 10 invariant rules below need only the graph and an
  * abstract `WorkflowEvaluationContext` (registry-class lookup), so they are genuinely
  * evaluable — and testable — today.
@@ -50,8 +49,8 @@ function rule(partial: Omit<DraftWorkflowRule, 'status'>): DraftWorkflowRule {
 
 /**
  * The Summarization-palette rule set (structural + invariant classes only — see the SCOPE NOTE
- * above). Consultation-palette rules arrive with TASK-731; STT with TASK-724 — neither is
- * touched here (out of scope per the ticket README §1).
+ * above). Consultation-palette rules arrive with; STT with — neither is
+ * touched here (out of scope
  */
 export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
   // ---- structural (palette-independent) --------------------------------------------------
@@ -221,14 +220,14 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
     registerRefs: ['INV-067'],
     title: 'A node routing to a cloud provider resolves provider selection fail-closed; no env fallback is expressible.',
   }),
-  // ---- structural (Summarization palette's OWN mandatory subgraph — TASK-720 Task 3) --------
+  // structural (Summarization palette's OWN mandatory subgraph —)
   //
   // These express the palette-specific rule design.md D5 requires: exactly one input, exactly
   // one output, generation and the guardrail gate both present, generation ordered before the
   // gate, and nothing routing generated text to the output around the gate. They are `structural`
   // (graph shape, not the register's clinical invariants) and palette-scoped (`summarization`),
   // so they sit alongside the generic WF-S-* rules above without touching them. See
-  // `docs/implementation/TASK-720-Palette-Summarization/contracts/palette.md` for the full
+  // for the full
   // rationale.
   //
   // CORRECTION (superseding this comment's earlier claim that the generic WF-S-002/003/004/007
@@ -316,12 +315,12 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
 ] as const;
 
 /**
- * The STT-palette's own mandatory-subgraph rule set (TASK-724 Task 3). Structural-only.
+ * The STT-palette's own mandatory-subgraph rule set. Structural-only.
  * Palette-scoped (`paletteKey: 'stt'`), so these never evaluate against a summarization (or any
  * other) palette's graph — `validate()`'s existing per-rule `paletteKey` filter already routes
  * each graph correctly.
  *
- * See `docs/implementation/TASK-724-Palette-Stt/contracts/palette.md` for the full rationale,
+ * See for the full rationale,
  * including why `stt.phiHop` (registered `implemented: false` in `node-registry.ts`/`registry.py`)
  * needs no rule of its own here: an `implemented: false` node type makes `compile()` refuse ANY
  * graph containing it, a stronger gate than a validator rule could express.
@@ -390,8 +389,7 @@ export const DRAFT_STT_RULE_SET: readonly DraftWorkflowRule[] = [
 ] as const;
 
 /**
- * The Consultation-palette rule set (TASK-731 Task 2/11 — a partial pass; see the ticket
- * README §7 and `docs/implementation/TASK-731-Palette-Consultation/contracts/validator-rules.md`
+ * The Consultation-palette rule set (/11 — a partial pass;
  * for the full CR-01..CR-19 statement set and which ones are NOT graph rules — 19 of them are
  * implemented here as `WF-CONS-*` (CR-12 and CR-16 landed after the first partial pass); the rest are enforced elsewhere (registry-level fields,
  * deferred pending a node type that does not exist yet, or deferred pending the impure
@@ -568,7 +566,7 @@ export const DRAFT_CONSULTATION_RULE_SET: readonly DraftWorkflowRule[] = [
     severity: 'ERROR',
     paletteKey: 'consultation',
     registerRefs: ['INV-029', 'INV-052', 'INV-085', 'INV-092', 'INV-133', 'INV-152', 'INV-219', 'INV-237'],
-    title: 'consultation.persistDraft declares occ: true (CR-07, the TASK-709 authorship protection made structural).',
+    title: 'consultation.persistDraft declares occ: true (CR-07, the authorship protection made structural).',
   }),
   // ---- CR-18: only bindTerminology may produce a code -------------------------------------
   rule({
@@ -621,7 +619,7 @@ export const DRAFT_CONSULTATION_RULE_SET: readonly DraftWorkflowRule[] = [
   }),
   // ---- CR-16: no stage-level abort — force-stop applies to the timed-out node only --------
   //
-  // The `op: 'in'` template `validator-rules.md` §3 named, applied to every ACTIVITY-classed
+  // The `op: 'in'` template `validator-rules.md` named, applied to every ACTIVITY-classed
   // node in the palette (the two gates are not activities and degrade differently by design —
   // they are the only `critical: true` nodes, CR-14). `'abort'` is excluded by omission, and
   // the value must be stated: an undeclared error policy is how a stage-wide abort gets in

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_TASK_KEYS, AI_TASK_KIND_BY_TASK_KEY, resolveAiTaskKind } from '../constants';
 
 /**
- * TASK-843 — the canonical AI task taxonomy.
+ * the canonical AI task taxonomy.
  *
  * The load-bearing test here is the LAST one: the backfill in
  * `task_843_ai_task_taxonomy/migration.sql` hand-writes the same taskKey → kind
@@ -41,7 +41,7 @@ function parseMigrationCase(sql: string): Record<string, string> {
   return mapping;
 }
 
-describe('TASK-843 — AI task taxonomy', () => {
+describe('AI task taxonomy', () => {
   it('classifies every declared task key', () => {
     const unclassified = AI_TASK_KEYS.filter((k) => !AI_TASK_KIND_BY_TASK_KEY[k]);
     expect(unclassified).toEqual([]);
@@ -83,7 +83,7 @@ describe('TASK-843 — AI task taxonomy', () => {
     expect(AI_TASK_KIND_BY_TASK_KEY['nlp.ner']).not.toBe(AI_TASK_KIND_BY_TASK_KEY['guardrail.pii']);
   });
 
-  it('agrees with the SQL backfill in the TASK-843 migration', () => {
+  it('agrees with the SQL backfill in the  migration', () => {
     const sql = readFileSync(MIGRATION_SQL, 'utf8');
     const fromSql = parseMigrationCase(sql);
 
@@ -110,9 +110,9 @@ describe('TASK-843 — AI task taxonomy', () => {
         // No `AiTaskDefault` key: served by a provider's NATIVE endpoint
         // (Sarvam), not by selecting a model. OD-8, 2026-09-01.
         AiTaskKind.TRANSLATION,
-        // Selected through AsrPipeline / TenantSttConfig until TASK-844.
+        // Selected through AsrPipeline / TenantSttConfig until.
         AiTaskKind.SPEECH_TO_TEXT,
-        // Selected through TenantTtsConfig until TASK-844.
+        // Selected through TenantTtsConfig until.
         AiTaskKind.TEXT_TO_SPEECH,
         // Selected per-connection (`ProviderService = 'embeddings'`); no task
         // key exists yet.

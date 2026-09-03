@@ -127,7 +127,7 @@ describe('Seed Constants (00-constants)', () => {
     expect((SEED_DEPARTMENT_IDS as Record<string, string>).ER_ARCAAI).toBeUndefined();
   });
 
-  it('should have retired the Global-tenant specialty department IDs (TASK-763 OD-8)', () => {
+  it('should have retired the Global-tenant specialty department IDs (OD-8)', () => {
     // DIET / NEPH / SONC and the rest of the specialty roster are ArcaAI's, and
     // exist only under the *_ARCAAI keys now. Keeping Global copies is what made
     // the SYSTEM golden library ship one hospital's catalog to every tenant.
@@ -278,7 +278,7 @@ describe('Policy Seed Data', () => {
       // Includes the `prompt-template-read` policy, the clinical
       // documentation harness policies (`harness-platform-manage`,
       // `harness-tenant-manage`), the `prisma-studio-manage` policy, and
-      // TASK-783's `api-documentation-read` (21 -> 22).
+      // `api-documentation-read` (21 -> 22).
       expect(DEFAULT_POLICIES.length).toBe(22);
     });
 
@@ -695,7 +695,7 @@ describe('Department Seed Data', () => {
     expect(codes).toHaveLength(expectedCodes.length);
   });
 
-  it('should carry none of the ArcaAI/BCMCH specialty codes (TASK-763 OD-8)', () => {
+  it('should carry none of the ArcaAI/BCMCH specialty codes (OD-8)', () => {
     // The Global catalog IS the source of the SYSTEM golden library, so a
     // specialty code here becomes every new tenant's day-1 department.
     const codes = new Set(DEFAULT_DEPARTMENTS.map((d) => d.code));
@@ -773,7 +773,7 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     expect(ARCAAI_ALL_CLINICAL_DEPARTMENTS).toEqual([...ARCAAI_CLINICAL_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT]);
   });
 
-  // TASK-815 removed the case that asserted the four Phase-8b departments carry
+  // removed the case that asserted the four Phase-8b departments carry
   // no default `DepartmentAgent`. There are no agent rows at all now, so the
   // property it guarded is vacuous; the SPLIT it guarded — which departments
   // carry visit-type prompt columns — is asserted by the case above and by
@@ -1967,9 +1967,9 @@ describe('ASR Pipeline isDefault invariant', () => {
 
 // =============================================================================
 // DEFAULT MODEL WIRING
-//   (a) TEXT  → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
+//   (a) TEXT → gemma-4-e2b-it-qat via HarnessPolicy (GlobalSetting keys RETIRED)
 //   (b) Guardrail → granite-guardian-4.1-8b via AiTaskDefault (keys RETIRED)
-//   (c) STT  → unchanged (CT2 registered; whisper-large-v3-turbo default)
+//   (c) STT → unchanged (CT2 registered; whisper-large-v3-turbo default)
 // =============================================================================
 
 // =============================================================================
@@ -2315,7 +2315,7 @@ describe('Prompt Template Seed Data', () => {
 
     it('should include the CUSTOM template, no longer department-bound', () => {
       // Cardiology left the Global catalog with the specialty roster
-      // (TASK-763 OD-8). The template is retained but re-homed to
+      // The template is retained but re-homed to
       // departmentId: null rather than left pointing at a deleted department —
       // `PromptTemplate.departmentId` is a real FK, so a dangling id is a failed
       // migration, not a stale reference.
@@ -2329,7 +2329,7 @@ describe('Prompt Template Seed Data', () => {
     // Replaces the per-specialty DERM/DIET/NEPH/SONC pairs. Those bodies were
     // BCMCH's and now live only on the ArcaAI tenant
     // (07b-arcaai-clinical-templates.ts); the Global catalog carries generic
-    // care-setting bodies instead (TASK-763 OD-8).
+    // care-setting bodies instead.
     it('binds every Global department prompt column to a template that exists', () => {
       const byId = new Map(DEFAULT_PROMPT_TEMPLATES.map((t) => [t.id, t]));
       DEFAULT_DEPARTMENTS.forEach((dept) => {
@@ -2570,7 +2570,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
   const llmModels = DEFAULT_AI_MODELS.filter((m) => m.taskType === ModelTaskType.SUMMARIZATION || m.taskType === ModelTaskType.TEXT_GENERATION);
 
   describe('Provider Coverage', () => {
-    it('should include no Ollama models (TASK-736 — Ollama removed entirely)', () => {
+    it('should include no Ollama models (Ollama removed entirely)', () => {
       const ollamaModels = llmModels.filter((m) => m.tags.includes('ollama') || (m as { provider?: string }).provider === 'ollama');
       expect(ollamaModels.length).toBe(0);
     });
@@ -2600,7 +2600,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       expect(llamaCppModels.length).toBe(1);
     });
 
-    it('should be exactly 10 LLM rows (6 owner-approved matrix, Ollama retired by TASK-736 + 2 self-host + 2 bedrock/judge)', () => {
+    it('should be exactly 10 LLM rows (6 owner-approved matrix, Ollama retired by + 2 self-host + 2 bedrock/judge)', () => {
       expect(llmModels.length).toBe(10);
     });
   });
@@ -2700,7 +2700,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
         'ollama-granite4-latest',
         'lms-qwen3.5-0.8b',
         'lms-gemma-4-e2b-it-sft-rlvr-medical',
-        // TASK-736 — Ollama removed entirely (owner directive 2026-08-16).
+        // Ollama removed entirely (owner directive 2026-08-16).
         'ollama-gemma4-12b-mlx',
         'ollama-gemma4-e2b-it-qat',
         'ollama-qwen3.5-2b',
@@ -2942,10 +2942,10 @@ describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     return { client, created, changes };
   };
 
-  it('exposes the SYSTEM defaults (auto on, harness ON since TASK-732)', () => {
+  it('exposes the SYSTEM defaults (auto on, harness ON since)', () => {
     expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoSummaryEnabled).toBe(true);
     expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoNerEnabled).toBe(true);
-    // TASK-732 (Phase 2 exit criterion): the legacy signable generator this
+    // (Phase 2 exit criterion): the legacy signable generator this
     // toggle used to fall back to when false was deleted, so the SYSTEM
     // default flipped to true.
     expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled).toBe(true);

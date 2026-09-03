@@ -4,7 +4,6 @@
  * Conformance regression suite (COMPAT SDK layer).
  *
  * Locks the SDK half of R-C1 from the scorecard in
- * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`
  *
  *   R-C1 — "Start recording → realtime TRANSCRIPT ONLY (no live summarization
  *   loop)". The API half (no live route on `text-compat`) is locked in
@@ -38,7 +37,7 @@ describe('R-C1 — the compat SDK exposes no live-summarization hook', () => {
   });
 
   it('ships exactly the summarization entry point v1 had — `useText` — and no live sibling', () => {
-    // TASK-740 eliminated the `text` identifier, so the deprecated `useTEXT` alias
+    // eliminated the `text` identifier, so the deprecated `useTEXT` alias
     // is gone and `useText` is the only name left to match. The predicate hunted
     // for `TEXT`/`Summar`, which now matches nothing — it has to name the entry
     // point it is guarding, or the assertion silently stops guarding anything.

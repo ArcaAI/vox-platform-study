@@ -1,6 +1,6 @@
-// TASK-808 — the regression gate. THIS is the deliverable, not the six edits.
+// the regression gate. THIS is the deliverable, not the six edits.
 //
-// TASK-799 lane B (`70eec34d5`) deleted `apps/text`'s per-provider env plane, so
+// lane B (`70eec34d5`) deleted `apps/text`'s per-provider env plane, so
 // every adapter now resolves its endpoint+credential from the per-request
 // `provider_overrides` entry and FAILS CLOSED with
 // `503 PROVIDER_CREDENTIALS_MISSING` when the gateway does not inject one
@@ -36,7 +36,8 @@ const GENERATE_POST = /`\$\{[^`]*\}\/api\/v1\/generate`/;
  * is derived from the supplying row rather than stamped at the call site.
  *
  * `attachLlmByok` is the pre-existing hand-rolled equivalent inside
- * `apps/api/src/modules/text-compat/**`, which is under the TASK-806 compat
+ * `apps/api/src/modules/text-compat/**
+*`, which is under the compat
  * fence ("Do NOT touch the compat things"). It is allow-listed BY NAME rather
  * than by file so it cannot silently become the pattern new code copies —
  * hand-rolling the injection is what created this outage.
@@ -74,7 +75,7 @@ function scanGenerateCallers(): string[] {
 describe('every gateway caller of TEXT /api/v1/generate injects provider_overrides', () => {
   it('finds the known call-site surface (the scan itself is working)', () => {
     // A scan that silently matched nothing would pass the real assertion below
-    // vacuously. TASK-808 diagnosed EIGHT callers; fewer means the regex drifted
+    // vacuously. diagnosed EIGHT callers; fewer means the regex drifted
     // away from the code it is supposed to guard.
     expect(scanGenerateCallers().length).toBeGreaterThanOrEqual(8);
   });
@@ -95,7 +96,7 @@ describe('every gateway caller of TEXT /api/v1/generate injects provider_overrid
 });
 
 /**
- * TASK-858 — the SAME gate for the runtime profile.
+ * the SAME gate for the runtime profile.
  *
  * `applyTextRuntimeProfile` is how `AiRuntimeProfile` (the platform admin's
  * per-`(provider, model)` hyperparameters and engine extras) reaches a TEXT

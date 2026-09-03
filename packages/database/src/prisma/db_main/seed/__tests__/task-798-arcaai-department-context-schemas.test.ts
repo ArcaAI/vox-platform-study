@@ -1,5 +1,5 @@
 /**
- * TASK-798 W3 — two departments, two observable behaviours.
+ * two departments, two observable behaviours.
  *
  * The requirement is that the department (and the clinician's writing style) visibly change the
  * output. Three of the four axes that decide this were already seeded — per-department
@@ -45,7 +45,7 @@ const DEFINITION_MODULE = path.resolve(
 const JSON_SCHEMA_SUBSET_DIST = path.resolve(HERE, '../../../../../../json-schema-subset/dist/index.mjs');
 if (!existsSync(JSON_SCHEMA_SUBSET_DIST)) {
   throw new Error(
-    `TASK-798: cannot validate the seeded context-schema definitions — @arcaai/json-schema-subset is not built.\n` +
+    `cannot validate the seeded context-schema definitions — @arcaai/json-schema-subset is not built.\n` +
       `Run: pnpm --filter @arcaai/json-schema-subset build\n` +
       `(expected at ${JSON_SCHEMA_SUBSET_DIST})`,
   );
@@ -70,7 +70,7 @@ const kindKeys = (departmentId: string) =>
 const outputKeys = (departmentId: string) =>
   ((schemaFor(departmentId).definition as { outputs?: { key: string }[] }).outputs ?? []).map((o) => o.key);
 
-describe('TASK-798 W3 — department-scoped consultation context schemas', () => {
+describe(' W3 — department-scoped consultation context schemas', () => {
   it('seeds one DEPARTMENT-scoped schema for each of the two ArcaAI departments', () => {
     expect(ARCAAI_DEPARTMENT_CONTEXT_SCHEMAS).toHaveLength(2);
     for (const row of ARCAAI_DEPARTMENT_CONTEXT_SCHEMAS) {
@@ -112,7 +112,7 @@ describe('TASK-798 W3 — department-scoped consultation context schemas', () =>
   });
 });
 
-describe('TASK-798 W3 — the definitions are real, not merely well-formed-looking', () => {
+describe(' W3 — the definitions are real, not merely well-formed-looking', () => {
   it.each([SEED_DEPARTMENT_IDS.GEN_ARCAAI, SEED_DEPARTMENT_IDS.RHEUM_ARCAAI])(
     '%s: passes the REAL contextSchemaDefinitionProblems() with zero problems',
     (departmentId) => {
@@ -140,7 +140,7 @@ describe('TASK-798 W3 — the definitions are real, not merely well-formed-looki
   });
 });
 
-describe('TASK-798 W3 — re-seed safety', () => {
+describe(' W3 — re-seed safety', () => {
   it('is CREATE-ONLY: an existing default for that (tenant, scope, department) is never overwritten', async () => {
     const calls: string[] = [];
     const client: any = {

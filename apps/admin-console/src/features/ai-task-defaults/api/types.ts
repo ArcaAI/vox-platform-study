@@ -7,7 +7,7 @@
 import { AI_TASK_KEYS, isTenantEditableTaskKey, taskKeyService, type AiTaskKey } from '@/shared/catalog/ai-task-keys';
 
 /**
- * Fixed task-key registry — MOVED to `@/shared/catalog/ai-task-keys` by TASK-845
+ * Fixed task-key registry — MOVED to `@/shared/catalog/ai-task-keys` by
  * and re-exported here so this feature's public surface is unchanged.
  *
  * It moved because the unified AI-platform screen became a second reader, and
@@ -30,7 +30,7 @@ export const TEXT_PRIMARY_TASK_KEYS = ['text.live', 'text.finalize'] as const;
  * concern (authoring, not clinical documentation), so it is rendered apart from
  * the summarization keys rather than folded into them.
  *
- * TASK-740 D-2: this key was seeded and backend-live but had NO console surface
+ * this key was seeded and backend-live but had NO console surface
  * at all, while `resolveTestTextTarget` is fail-CLOSED — so an unconfigured
  * tenant got a `BadRequestException` for a value it had no way to set.
  */

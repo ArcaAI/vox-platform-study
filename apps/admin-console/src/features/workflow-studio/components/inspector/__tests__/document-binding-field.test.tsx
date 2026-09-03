@@ -1,12 +1,12 @@
 /**
- * DD-2's document binding as a REAL control (TASK-810 §7b item 2).
+ * DD-2's document binding as a REAL control.
  *
  * Before this, `documentTemplateId` and `documentVersionNumber` reached the inspector as two
  * generated schema fields: a free-text UUID box and a bare number box. An admin could not see
  * which templates exist, could not tell whether their pin was behind, and could typo a UUID
  * into a published clinical graph.
  *
- * The staleness treatment deliberately mirrors `PromptBindingsRail` (DD-11), including the
+ * The staleness treatment deliberately mirrors `PromptBindingsRail` , including the
  * part that is easy to get wrong: an UNPINNED node is NOT flagged. It is following the
  * template on purpose. Badging it would put a permanent warning on a correct configuration and
  * teach admins to ignore the badge that does mean something.

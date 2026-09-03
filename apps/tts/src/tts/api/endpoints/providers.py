@@ -1,5 +1,5 @@
 """Admin introspection — per-provider health, degrade-routing state, and
-GPU/device classification (TASK-726 Task 4/5).
+GPU/device classification (/5).
 
 `/health/ready` (health.py) stays the k8s probe surface, deliberately
 collapsing per-provider state into one pass/degraded/fail signal. This is
@@ -8,9 +8,9 @@ the operator/KEDA-adjacent view: per-provider `healthy` (the SAME
 PRE-EXISTING per-provider `CircuitBreaker` in `routing/router.py` that
 `TTSRouter.candidates()` already excludes tripped providers with — this
 endpoint surfaces its live state, it does not add new degrade-routing logic;
-see docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(c)),
+see (c)),
 and the GPU/device classification the deployment repo pins node pools
-against (§(b)).
+against ((b)).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["providers"])
 
-# Static per-engine classification (design-notes.md §(b)) — a local ML engine
+# Static per-engine classification — a local ML engine
 # that loads weights into device memory vs. an API-bound cloud engine with no
 # local device at all. A static fact about the ENGINE, not a per-request
 # routing decision, so it is a plain module constant rather than instance

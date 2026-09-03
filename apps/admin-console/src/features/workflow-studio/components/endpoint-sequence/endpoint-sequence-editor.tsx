@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-812 (D-10) — the endpoint-sequence ORDERING editor.
+ * (D-10) — the endpoint-sequence ORDERING editor.
  *
  * ## What this closes
  *

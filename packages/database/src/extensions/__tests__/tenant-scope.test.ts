@@ -105,48 +105,48 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // 75 → 76: adds AgentPromotion (immutable cross-tenant promotion
     // record, owned by the TARGET tenant) — NOT SYSTEM-shared, or any tenant
     // could enumerate which agents moved between which tenants.
-    // 76 → 77: adds WorkflowDefinition (TASK-715 — workflow substrate
+    // 76 → 77: adds WorkflowDefinition — workflow substrate
     // persistence floor; rows ARE versions, no head/version split). NOT
     // SYSTEM-shared — a tenant reads only its own definitions, and the
     // SYSTEM-tenant platform defaults reach a tenant via the seed's clone
     // path, exactly as ConsultationContextSchema does.
-    // 77 → 78: adds ConsentGrant (TASK-712 — consent-abac). Ordinary
+    // 77 → 78: adds ConsentGrant (consent-abac). Ordinary
     // tenant-owned rows keyed (tenantId, externalPatientId, purpose); no
     // SYSTEM row, NOT SYSTEM-shared.
-    // 78 → 79: adds WorkflowRun (TASK-723 — runs/observability read model).
+    // 78 → 79: adds WorkflowRun (runs/observability read model).
     // One row per run, NOT SYSTEM-shared — a tenant's runs are never visible
     // cross-tenant.
-    // 79 → 80: adds WorkflowTestFixture (TASK-721 — Workbench saved fixtures).
+    // 79 → 80: adds WorkflowTestFixture (Workbench saved fixtures).
     // Ordinary tenant-owned rows, NOT SYSTEM-shared.
-    // 80 → 81: adds TenantNlpTaskInstructions (TASK-729 — tenant-writable
+    // 80 → 81: adds TenantNlpTaskInstructions — tenant-writable
     // nlp.topic/nlp.intent instruction content). Ordinary tenant-owned rows,
     // deliberately NOT SYSTEM-shared (unlike AiTaskDefault, there is no
     // SYSTEM-tenant platform-default row for this model).
-    // 81 → 83: adds WorkflowAssignment + WorkflowAssignmentChange (TASK-733 —
+    // 81 → 83: adds WorkflowAssignment + WorkflowAssignmentChange
     // WHICH definition governs a tenant/department for a palette, and its
     // append-only change log). Ordinary tenant-owned rows, deliberately NOT
     // SYSTEM-shared: the platform-default tier is the tenant's own active
     // published definition, never a SYSTEM assignment row read cross-tenant.
-    // 83 → 84: adds WorkflowInvariantRule (TASK-716 — the validator's rule
+    // 83 → 84: adds WorkflowInvariantRule — the validator's rule
     // rows). UNLIKE its workflow-substrate siblings above, this one IS
     // SYSTEM-shared (see the SYSTEM_SHARED_READ_MODELS assertion below): a
     // tenant's validator must resolve the SYSTEM platform rule set merged
     // with any rows the tenant added itself, or it would silently
     // under-enforce every safety rule it didn't happen to also author.
-    // 84 → 85: adds Role (TASK-766 OD-1). SYSTEM-tenant rows are the
+    // 84 → 85: adds Role. SYSTEM-tenant rows are the
     // platform's built-in roles (also SYSTEM-shared, see below); tenant rows
     // are a tenant admin's own custom roles, now protected by this extension
     // instead of a handler-level guard. `Policy`/`RolePolicy` stay global.
-    // +1 (86): RateLimitRule (TASK-785).
-    // +2 (88): DocumentTemplate + DocumentTemplateVersion (TASK-810) — the
+    // +1 (86): RateLimitRule.
+    // +2 (88): DocumentTemplate + DocumentTemplateVersion — the
     // clinical-document shape catalog, head + immutable version.
-    // +1 (89): DocumentSection (TASK-811) — the per-section child table of a
+    // +1 (89): DocumentSection — the per-section child table of a
     // live-generated clinical document.
-    // -2 (87): DepartmentAgent + DepartmentAgentVersion (TASK-815) — both models
+    // 2 (87): DepartmentAgent + DepartmentAgentVersion — both models
     // dropped. `AgentPromotion` STAYS: the promotable moved to a
     // `WorkflowDefinition` version, but the WORM record is still the target
     // tenant's own row.
-    // +1 (88): AiRoutingPolicy (TASK-818) — the config-plane routing policy.
+    // +1 (88): AiRoutingPolicy — the config-plane routing policy.
     // SYSTEM row = platform default, tenant row wins on presence; also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
     expect(TENANT_SCOPED_MODELS.size).toBe(88);
@@ -192,12 +192,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     }
   });
 
-  // TASK-766 OD-1: `Role` gained a `tenantId` column and is now genuinely
+  // `Role` gained a `tenantId` column and is now genuinely
   // tenant-scoped (SYSTEM-tenant rows are the platform's built-in roles;
   // tenant rows are custom roles a tenant admin created). `Policy`/
   // `RolePolicy` deliberately stay global — see rbac.prisma's comment on
   // `Role.tenantId` for why.
-  it('DOES include Role (TASK-766 OD-1) but keeps Policy/RolePolicy global', () => {
+  it('DOES include Role (OD-1) but keeps Policy/RolePolicy global', () => {
     expect(TENANT_SCOPED_MODELS.has('Role')).toBe(true);
     expect(TENANT_SCOPED_MODELS.has('Policy')).toBe(false);
     expect(TENANT_SCOPED_MODELS.has('RolePolicy')).toBe(false);
@@ -319,12 +319,12 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     // lookup itself: it matches on a unique, cryptographically random secret,
     // and the row it returns is what ESTABLISHES the tenant context.
     'ApiKey',
-    // TASK-762 — the service-account TOKEN EXCHANGE reads this table by
+    // the service-account TOKEN EXCHANGE reads this table by
     // `clientId` before any principal exists, so it can never carry a CLS
     // tenant. Identical pre-auth shape to `ApiKey` directly above: inside an
     // HTTP request CLS is active but empty (`tenantId === undefined` AND
     // `isSuperAdmin() === false`), the exact combination `makeReadHandler`
-    // throws on. The ticket README §5.1 asked for this model to be added to
+    // throws on. asked for this model to be added to
     // TENANT_SCOPED_MODELS; doing so would have reproduced the `ApiKey`
     // failure above (every credential authenticating as 401).
     //
@@ -412,7 +412,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'AsrPipeline',
         'AiModel',
         // Role's SYSTEM-tenant rows are the platform's built-in roles
-        // (TASK-766 OD-1) — every tenant reads them directly (list, clone
+        // every tenant reads them directly (list, clone
         // source, member counts) rather than getting a per-tenant clone.
         // Writes are NOT widened; a tenant admin's write to a SYSTEM role id
         // matches zero rows (service layer already refuses it earlier via the
@@ -441,7 +441,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'AiProviderConnection',
         'AiRuntimeProfile',
         // AiRoutingPolicy's SYSTEM row is the platform-default candidate
-        // chain (TASK-818 §3A.3). Same "tenant row → SYSTEM row" shape as
+        // chain ( Same "tenant row → SYSTEM row" shape as
         // AiTaskDefault; the resolver runs under the caller's own CLS, so
         // without the widening every tenant lacking its own row fails closed.
         // No secrets — candidates reference an AiProviderConnection rather
@@ -474,7 +474,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'PromptTemplate',
         'PromptVersion',
         // WorkflowInvariantRule's SYSTEM-tenant rows ARE the platform
-        // invariant register made executable (TASK-716); every tenant's
+        // invariant register made executable; every tenant's
         // WorkflowValidatorService must read them merged with its own
         // additions to validate ANY graph — the same "every tenant must
         // resolve the SYSTEM row to function at all" shape as HarnessPolicy/
@@ -525,12 +525,12 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
     });
   });
 
-  // TASK-766 OD-1. Mirrors the PromptTemplate block above: reads widen to
+  // Mirrors the PromptTemplate block above: reads widen to
   // [caller, SYSTEM] (so a tenant sees the platform's built-in roles plus its
   // own custom ones); writes stay pinned to the exact caller tenant (so a
   // write aimed at a SYSTEM role id, or another tenant's role id, matches
   // zero rows instead of silently succeeding).
-  describe('Role tenant-scope widening (TASK-766 OD-1)', () => {
+  describe('Role tenant-scope widening (OD-1)', () => {
     const CALLER = '50000000-0000-0000-0001-000000000000';
 
     it('widens an unscoped findUnique to [caller, SYSTEM] so a built-in role resolves', async () => {
@@ -1021,7 +1021,7 @@ describe('Non-allow-listed (global / root) models pass through unchanged', () =>
     expect(query).toHaveBeenCalledWith({ data: { username: 'alice' } });
   });
 
-  // TASK-766 OD-1: `Role` moved OFF this pass-through list — it is now
+  // `Role` moved OFF this pass-through list — it is now
   // tenant-scoped (see the dedicated "Role tenant-scope widening" describe
   // block below). `Policy` (the CASL rule catalog `Role`s attach via
   // `RolePolicy`) deliberately stays here: a tenant admin can only attach/

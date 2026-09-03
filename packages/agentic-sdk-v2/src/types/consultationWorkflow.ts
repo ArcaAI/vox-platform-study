@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — consultation workflow DISCOVERY types (TASK-813).
+ * @arcaai/vox — consultation workflow DISCOVERY types.
  *
  * Mirrors `ConsultationWorkflowResponse` from
  * `GET /consultations/:id/workflow`. See that DTO for why `inputSchema` is
@@ -38,7 +38,7 @@ export interface ConsultationWorkflow {
 }
 
 /**
- * One entry of `GET /consultations/workflows` (TASK-813 §8) — a workflow that may be passed as
+ * One entry of `GET /consultations/workflows` — a workflow that may be passed as
  * `OpenSessionInput.workflowDefinitionSlug`.
  *
  * Mirrors `SelectableConsultationWorkflowResponse`. Deliberately four fields: enough to render a

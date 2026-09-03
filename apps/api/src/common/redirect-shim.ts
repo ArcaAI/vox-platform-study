@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
 
 /**
- * TASK-760 — the one place a retired business-plane URI is turned into a
+ * the one place a retired business-plane URI is turned into a
  * redirect.
  *
- * **308, never 301/302.** RFC 7231 §6.4.2/§6.4.3 explicitly permit a client
+ * **308, never 301/302.** RFC 7231 §6.4.2/ explicitly permit a client
  * that follows a 301/302 to rewrite a POST/PATCH/DELETE into a GET, which
  * silently drops the request body — a summarization POST would arrive at the
  * new path as an empty GET and the caller would see a confusing 404/405
@@ -23,8 +23,8 @@ export const API_V1_PREFIX = '/api/v1';
  * Emits `308 Permanent Redirect` to `${API_V1_PREFIX}/${targetPath}`,
  * carrying the original query string across verbatim.
  *
- * @param req   the inbound request (read only for its query string)
- * @param res   the express response
+ * @param req the inbound request (read only for its query string)
+ * @param res the express response
  * @param targetPath the NEW path, WITHOUT the global `api/v1` prefix and
  *                   without a leading slash (e.g. `users/me/preferences`)
  */

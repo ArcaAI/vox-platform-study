@@ -7,7 +7,7 @@ import { WorkflowTestFixtureEntityMapper } from '../../../mappers';
 import { WorkflowTestFixture } from '../../../models';
 
 /**
- * Per-tenant saved synthetic Workbench test input (TASK-721). Plain
+ * Per-tenant saved synthetic Workbench test input. Plain
  * tenant-scoped CRUD — no cross-aggregate lookups beyond the standard
  * `Repository<Entity, Model>` contract.
  */

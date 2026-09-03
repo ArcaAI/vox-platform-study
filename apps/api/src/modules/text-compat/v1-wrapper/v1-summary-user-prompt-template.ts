@@ -22,7 +22,7 @@
  *
  * Source: the RUNNING v1 TEXT pod (Rancher cluster c-9lwv8, namespace apps,
  * pod apps-text-84c9774997-zhp2l), NOT a local v1 checkout — the two have
- * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
+ * diverged (see
  * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before
  * concatenation, then cross-checked two independent reconstruction methods
@@ -30,7 +30,7 @@
  * byte-for-byte agreement. See D-12 and the README Phase 5.
  *
  * GENERATED, DO NOT HAND-EDIT — regenerate from the pod, never retype.
- * sha256 e322b23fba40846904bc11c33025cb948c5e2dc65768a5f062ad534fcb3d4ddd  1840 bytes
+ * sha256 e322b23fba40846904bc11c33025cb948c5e2dc65768a5f062ad534fcb3d4ddd 1840 bytes
  */
 
 /**

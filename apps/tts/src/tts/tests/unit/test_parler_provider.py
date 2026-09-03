@@ -61,7 +61,7 @@ async def test_uses_the_requested_speaker_in_the_description():
     This provider used to pick between its own `speaker_ml` / `speaker_en`
     settings and ignore `req.provider_voice` entirely — so the catalog binding
     the router had already resolved for it was silently discarded. Two
-    representations of one fact, with the wrong one winning (TASK-799 lane C).
+    representations of one fact, with the wrong one winning ( lane C).
     """
     gen = FakeGenerate()
     provider = IndicParlerProvider(IndicParlerConfig(), generate=gen)
@@ -117,7 +117,7 @@ def test_desc_source_uses_mirror_offline_when_path_set():
     assert kwargs == {"local_files_only": True}
 
 
-# --- `s3://` local-mirror override resolution (TASK-855 L6) ---
+# `s3://` local-mirror override resolution
 
 
 @pytest.mark.asyncio

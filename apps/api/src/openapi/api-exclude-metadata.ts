@@ -12,13 +12,13 @@
  * Neither decorator stores a boolean. Both go through
  * `@nestjs/swagger`'s `decorators/helpers.ts`, which wraps the argument:
  *
- *   - `@ApiExcludeEndpoint()`   -> `createMethodDecorator(key, { disable: true })`
+ *   - `@ApiExcludeEndpoint()` -> `createMethodDecorator(key, { disable: true })`
  *                                  stores the OBJECT `{ disable: true }`.
  *   - `@ApiExcludeController()` -> `createClassDecorator(key, [true])`
  *                                  stores the ARRAY `[true]`.
  *
  * Reading either with `=== true` is therefore always false. `emit-route-manifest.ts`
- * did exactly that until TASK-783, so every one of the 657 manifest rows
+ * did exactly that until, so every one of the 657 manifest rows
  * reported `apiExcluded: false` while 69 routes (every `*RedirectShimController`
  * and every `/internal/*` controller) were genuinely excluded. The cross-check
  * those flags exist to power could never fire in either direction.

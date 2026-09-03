@@ -1,5 +1,5 @@
 /**
- * TASK-852 items 2 and 6 — the tenant lane RESOLVES, and an admin can SEE that it does.
+ * items 2 and 6 — the tenant lane RESOLVES, and an admin can SEE that it does.
  *
  * ## Why these two items are one suite
  *
@@ -183,7 +183,7 @@ function buildService(opts: BuildOpts = {}) {
 // Item 2 — the seeded assignment RESOLVES to a tenant lane
 // =============================================================================
 
-describe('TASK-852 item 2 — the ArcaAI assignment resolves to a TENANT lane, not the platform fallback', () => {
+describe(' item 2 — the ArcaAI assignment resolves to a TENANT lane, not the platform fallback', () => {
   it('reports `tenant-graph` with the assigned slug and version — the whole point of landing the rows', async () => {
     const { service, assignments, definitions } = buildService({ graphEnabled: true });
 
@@ -234,7 +234,7 @@ describe('TASK-852 item 2 — the ArcaAI assignment resolves to a TENANT lane, n
 // Item 6 — the read-out is honest in every direction
 // =============================================================================
 
-describe('TASK-852 item 6 — the read-out reports REAL state, including when there is none', () => {
+describe(' item 6 — the read-out reports REAL state, including when there is none', () => {
   it('a tenant with NO assignment gets the platform lane, named as such — not a tenant lane it does not have', async () => {
     const { service } = buildService({ graphEnabled: true });
 

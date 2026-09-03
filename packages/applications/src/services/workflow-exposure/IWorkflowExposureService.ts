@@ -13,7 +13,7 @@ export interface InvokeWorkflowOptions {
   /** `request['apiKey'].id` when the caller authenticated with an API key — audit provenance only. */
   apiKeyId?: string;
   /**
-   * The consultation this run acts on, **from the URL PATH** — TASK-850 lane A.
+   * The consultation this run acts on, **from the URL PATH** — lane A.
    *
    * A controller may set this ONLY from a route parameter on a consultation-scoped path
    * (`POST /consultations/:consultationId/workflows/:slug/runs`). It must never be read from a
@@ -34,11 +34,11 @@ export interface ListWorkflowOptions {
   consultationBound?: boolean;
 }
 
-/** How the caller wants the response delivered (TASK-850 lane A step 7). */
+/** How the caller wants the response delivered (lane A step 7). */
 export type WorkflowRunResponseMode = 'async' | 'blocking' | 'stream';
 
 /**
- * The exposure plane's application service (TASK-722 Task 5): invoke a
+ * The exposure plane's application service: invoke a
  * tenant's published workflow, read a run's live status, cancel it, and list
  * what is invokable.
  *

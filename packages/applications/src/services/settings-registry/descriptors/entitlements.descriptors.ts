@@ -60,7 +60,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
    * than substitute a permissive default — the same fail-closed rule the
    * settings framework applies to provider/model SELECTION.
    *
-   * `default: false` is the seeded plan value on all four tiers (OD-7); grants
+   * `default: false` is the seeded plan value on all four tiers ; grants
    * are issued per tenant through `TenantEntitlement`.
    */
   {
@@ -79,7 +79,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     default: false,
   },
   /*
-   * TASK-735 Phase 0 (D2, tighten-only) — the guardrail model-selection
+   * (D2, tighten-only) — the guardrail model-selection
    * entitlement ceiling. `failMode: 'closed'` for the same reason as
    * `featurePlatformDefaultCredential` above: this decides whether a tenant
    * may pick its OWN safety-plane model rather than inheriting the SYSTEM
@@ -92,7 +92,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
    * `TenantEntitlement` column addition (`packages/database` migration +
    * `resolve-entitlements.ts`/`entitlements.constants.ts` + the
    * `plan-matrix-parity.test.ts` seed/constant pair), which is outside this
-   * ticket's file scope — see the TASK-735 ticket README §7.
+   * ticket's file scope
    */
   {
     key: 'entitlements.featureGuardrailModelSelection',
@@ -106,7 +106,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     category: 'Plan',
     label: 'Guardrail model selection',
     description:
-      'Whether the tenant may select its own guardrail (safety-plane) model from the platform-approved catalog, instead of inheriting the SYSTEM default. Granted per tenant, never by plan tier. NOT YET ENFORCED — see the TASK-735 ticket README §7 for the pending DB wiring.',
+      'Whether the tenant may select its own guardrail (safety-plane) model from the platform-approved catalog, instead of inheriting the SYSTEM default. Granted per tenant, never by plan tier. NOT YET ENFORCED — pending DB wiring.',
     default: false,
   },
 ];

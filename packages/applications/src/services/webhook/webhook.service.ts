@@ -22,7 +22,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { DEFAULT_GENERATED_SECRET_POLICY, GeneratedSecretPolicy, generateSecretString, resolveGeneratedSecretPolicy } from '../security/secretPolicy';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
-/** Vault kv-v2 secret name for the DEDICATED webhook-secret encryption pepper (§ platform-secrets.descriptors.ts `webhook.secretPepper`). */
+/** Vault kv-v2 secret name for the DEDICATED webhook-secret encryption pepper ( platform-secrets.descriptors.ts `webhook.secretPepper`). */
 const WEBHOOK_SECRET_PEPPER_NAME = 'WEBHOOK_SECRET_PEPPER';
 
 /**
@@ -63,7 +63,7 @@ const WEBHOOK_FILTER_MODEL = 'Webhook';
  *
  * The resolution: `hashedSecret` stores AES-256-GCM CIPHERTEXT of the raw
  * secret (reversible), keyed by material derived from the dedicated
- * `WEBHOOK_SECRET_PEPPER` (§ `platform-secrets.descriptors.ts`). This is the
+ * `WEBHOOK_SECRET_PEPPER` ( `platform-secrets.descriptors.ts`). This is the
  * same "peppered, Vault-backed, per-tenant secret never stored in plaintext"
  * shape rule `09-infrastructure-devops.md`'s `db-secret` tier describes for
  * `TenantBucket.credentialsRef` — encrypted-at-rest, decryptable only with

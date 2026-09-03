@@ -1,4 +1,4 @@
-"""TASK-799 A.1 (F-02) — the safety sensor DELEGATES its screen to apps/guardrail.
+"""A.1 (F-02) — the safety sensor DELEGATES its screen to apps/guardrail.
 
 Rule `06-python-services.md`: *"Do not grow a second inference stack."* Before this,
 `apps/harness` built an IBM Granite Guardian client and talked to an engine directly,
@@ -117,7 +117,7 @@ class TestScreenMapping:
         await screen.screen("a note")
         captured = screen.captured  # type: ignore[attr-defined]
         assert captured["url"] == "http://guardrail.test/api/v1/guardrail/screen/outbound"
-        # TASK-737: tenant identity is mandatory on every internal tenant-scoped hop.
+        # tenant identity is mandatory on every internal tenant-scoped hop.
         assert captured["headers"]["x-tenant-id"] == TENANT
         assert captured["headers"]["x-service-token"] == "tok"
         assert captured["body"]["response"] == "a note"

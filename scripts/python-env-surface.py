@@ -2,7 +2,7 @@
 """`pnpm env:python-surface` — emit the six Python services' DECLARED env surface.
 
 ── WHY THIS EXISTS ───────────────────────────────────────────────────────────
-`scripts/env-sync.mts` is the repo's one env drift gate. Until TASK-799 Phase 1.5
+`scripts/env-sync.mts` is the repo's one env drift gate. Until
 it globbed only `*.ts,*.tsx,*.mts,*.cts,*.mjs,*.js` — no `*.py` — and inlined the
 six Python services' `.env.sample` files verbatim without validating them. The
 generator header called that a "declared boundary, not an oversight", and the
@@ -297,7 +297,7 @@ def collect(spec: ServiceSpec) -> list[EnvField]:
                     # A service enforces a BYOK-only credential by pointing the
                     # field's `validation_alias` at a name NOTHING can ever set
                     # (`TEXT_AZURE_API_KEY__ENV_REMOVED_TASK_602`, `apps/text`
-                    # config.py:94; the three `__ENV_REMOVED_TASK_799` harness
+                    # config.py:94; the three `__ENV_REMOVED` harness
                     # judge/Qdrant keys). The name is a TOMBSTONE, not a knob:
                     # emitting it would advertise an env credential path that was
                     # deliberately closed, and each closure has a test asserting
@@ -475,7 +475,7 @@ def _git_tracked_python_files() -> list[str]:
         # TypeScript side. Its own comment states the principle: prose ABOUT a
         # variable is not a program that READS one, and treating it as a read
         # poisons the Turborepo cache key with a name no build consumes.
-        # Without this, TASK-822's verify/*.py scripts put MLFLOW_TRACKING_URI
+        # Without this, verify/*.py scripts put MLFLOW_TRACKING_URI
         # into turbo.json#globalEnv. Measured 2026-08-31.
         return [f for f in listed if f and "node_modules" not in f and not f.startswith("docs/")]
     except (OSError, subprocess.SubprocessError):
@@ -599,10 +599,10 @@ def scan_bare_reads() -> dict[str, list[str]]:
     return {name: sorted(files) for name, files in sorted(reads.items())}
 
 
-# ── The declared-but-never-read check (TASK-799 Phase 3.2) ────────────────────
+# ── The declared-but-never-read check ────────────────────
 #
 # A settings field nobody reads is CONFIG THEATRE: an operator sets it, nothing
-# happens, and nobody finds out. Phases 0-2 of TASK-799 deleted ~95 of them, all
+# happens, and nobody finds out. Phases 0-2 of deleted ~95 of them, all
 # found by hand — which is why they accumulated at all (assessment RC-3:
 # "migrations were executed per-item by hand, so coverage equals the set that
 # existed on the day someone ran the sweep"). This is the check that stops the
@@ -692,14 +692,14 @@ _TTS_CONTROL_PLANE_HANDOFF = (
     "field from the control plane (its table is keyed by dotted path, "
     "'azure.max_concurrent'), and nothing in apps/tts then READS it — so the "
     "registry key, the descriptor and the overlay all exist to move a value "
-    "that lands nowhere. Found by `pnpm env:python-dead` during TASK-799 Phase "
+    "that lands nowhere. Found by `pnpm env:python-dead` during  Phase "
     "3.2, whose lane owned apps/{text,stt,guardrail,harness} and NOT apps/tts. "
     "Fix is to wire it at the provider or drop the field, the overlay entry and "
     "the descriptor together; then delete this line, which the staleness rule "
     "will demand anyway."
 )
 
-#: TASK-799 — four STT credential fields whose ENV PATH is closed (a dead
+# — four STT credential fields whose ENV PATH is closed (a dead
 #: `validation_alias`, `populate_by_name` off) but whose FIELD must survive.
 #: Production reads none of them: the HuggingFace token and the model-registry
 #: S3 pair are now `AiProviderConnection` rows resolved per MODEL-OWNER tenant.
@@ -708,7 +708,7 @@ _TTS_CONTROL_PLANE_HANDOFF = (
 #: guard that keeps it closed. Unread here is the correct end state, not a
 #: migration that stalled.
 _STT_CREDENTIAL_ENV_CLOSED = (
-    "TASK-799: env path structurally closed; the value is now a model-registry "
+    "env path structurally closed; the value is now a model-registry "
     "AiProviderConnection resolved per model-owner tenant. The field is retained "
     "solely so the tests that assert the env path stays closed can construct it."
 )

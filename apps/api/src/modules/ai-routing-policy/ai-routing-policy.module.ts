@@ -4,8 +4,8 @@ import { AiRoutingPolicyAdminController } from './ai-routing-policy-admin.contro
 
 /**
  * AiRoutingPolicyModule — mounts the `/admin/routing-policies` surface
- * (TASK-818 §3A). `AiRoutingPolicyService` (tenant → SYSTEM resolution, the
- * three §3A.4 hard gates, the supersede-only lifecycle and its audit trail)
+ * ( `AiRoutingPolicyService` (tenant → SYSTEM resolution, the
+ * three hard gates, the supersede-only lifecycle and its audit trail)
  * comes from `@arcaai/applications`; `ClsService` resolves from its global
  * module.
  */

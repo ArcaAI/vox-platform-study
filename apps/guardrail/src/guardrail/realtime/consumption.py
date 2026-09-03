@@ -1,6 +1,6 @@
 """C-2 and C-3 — the gate a downstream task must pass before it may read.
 
-The streaming tier (§5.1) produces one verdict per finalized segment, cheaply and
+The streaming tier produces one verdict per finalized segment, cheaply and
 fast, and that is genuinely useful: it drives the clinician-facing signals and it
 caches the task-agnostic half of the answer. What it does **not** do is authorise
 anybody to read anything.
@@ -48,7 +48,7 @@ ACTION_REVALIDATE_CUMULATIVE: Final = "REVALIDATE_CUMULATIVE"
 ACTION_RECOMPUTE_INJECTION: Final = "RECOMPUTE_INJECTION"
 ACTION_BLOCK: Final = "BLOCK"
 
-#: Machine codes the console keys its copy off. Deliberately NOT prose: §9 rules
+# Machine codes the console keys its copy off. Deliberately NOT prose: rules
 #: that alert copy must never say "attack" or "malicious" — dictation artefacts
 #: and quoted emails land in these categories — and the surest way to honour that
 #: is for the safety plane never to author the sentence in the first place.

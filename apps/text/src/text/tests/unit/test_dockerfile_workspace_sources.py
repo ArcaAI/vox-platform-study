@@ -8,7 +8,7 @@ nothing else catches it: lint, mypy and this whole suite pass against a
 dependency the Dockerfile has never heard of. It surfaces only in the ``build``
 stage, which runs on release-line branches, long after the change merged.
 
-That is exactly how ``hope-async-contract`` (TASK-717) broke ``build-text``: it
+That is exactly how hope-async-contract broke build-text: it
 was added to ``[tool.uv.sources]`` and to the pip installs in CI, but never to
 the Dockerfile.
 

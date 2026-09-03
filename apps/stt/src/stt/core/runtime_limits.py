@@ -33,7 +33,7 @@ async def refresh_model_cache_retention() -> None:
             get_model_cache().apply_retention(retention)
 
         # Same snapshot, second consumer: the ~70 registry keys that ARE
-        # settings fields (TASK-799 lane C). Applied HERE rather than only at
+        # settings fields. Applied HERE rather than only at
         # boot because this is the read-triggered path — it is what runs after
         # the invalidation listener drops the cache, so a control-plane write
         # converges within one model-load rather than waiting for a restart.
@@ -54,11 +54,11 @@ async def refresh_settings_from_control_plane() -> list[str]:
 
     The companion to :func:`refresh_model_cache_retention`: that one applies the
     frozen `retention` VIEW to a live object the settings do not own, this one
-    applies the ~70 registry keys that ARE settings fields (TASK-799 lane C).
+    applies the ~70 registry keys that ARE settings fields ( lane C).
     Both read the same cached snapshot, so calling them together costs one fetch.
 
     Read-triggered and idempotent. NEVER raises — a control-plane outage leaves
-    every field on its bootstrap value, which is exactly the pre-TASK-799
+    every field on its bootstrap value, which is exactly the pre-
     behaviour.
     """
     try:

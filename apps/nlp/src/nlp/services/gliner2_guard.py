@@ -1,4 +1,4 @@
-"""GLiNER2 guardrail-class inference (TASK-735 Phase 3).
+"""GLiNER2 guardrail-class inference.
 
 Hosts the owner-specified GLiNER2 safety-plane models — moved here from
 `apps/guardrail`, which must hold zero resident weights. Three checkpoints are
@@ -53,7 +53,7 @@ def _span_fields(entity: Any) -> tuple[str, int, int, float, str] | None:
         return None
     label = field("label") or field("type") or ""
     # The runtime reports `confidence`; `score` is accepted only as a fallback
-    # for stubs and older builds. Reading `score` FIRST is what TASK-735 did,
+    # for stubs and older builds. Reading `score` FIRST is what the older path did,
     # and against real weights every span then came back at 0.0 — under any
     # caller threshold, i.e. a detected identifier silently discarded.
     score = field("confidence")
@@ -153,7 +153,7 @@ class Gliner2GuardService:
             tasks,
             batch_size=batch_size,
             threshold=threshold,
-            # TASK-830. The confidences are ALREADY COMPUTED — gliner2's
+            # The confidences are ALREADY COMPUTED — gliner2's
             # `_extract_classification_result` softmaxes/sigmoids the classifier
             # logits and carries `(label, confidence)` — and `_format_results`
             # throws them away unless asked. The entity path above has always
@@ -218,7 +218,7 @@ class Gliner2GuardService:
     ) -> dict[str, Any]:
         return await asyncio.to_thread(self._sync_classify, text, tasks, threshold)
 
-    # ── batch API (TASK-778) ─────────────────────────────────────────────
+    # ── batch API ─────────────────────────────────────────────
     #
     # `gliner2` pushes N texts through ONE encoder pass. The fixed per-pass
     # cost — tokeniser dispatch, schema encoding, the Python↔torch boundary — is

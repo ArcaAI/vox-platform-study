@@ -804,7 +804,7 @@ async def test_streaming_latency_replay_harness() -> None:
     metrics = compute_latency_metrics(frames, events, frame_ms, sla_ms)
     feed_span_ms = frames[-1].entry_ms - frames[0].entry_ms if len(frames) > 1 else 0
     report = {
-        "harness": "TASK-351 P2-5 streaming latency replay (AC-11)",
+        "harness": " P2-5 streaming latency replay (AC-11)",
         "generated_at": datetime.now(UTC).isoformat(),
         "target": {
             "stt_base_url": base_url,

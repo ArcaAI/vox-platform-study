@@ -4,7 +4,7 @@ import { CommonServiceModule } from '../../baseServices/common.service.module';
 import { ConsultationEndpointService } from './consultation-endpoint.service';
 
 /**
- * TASK-812 — the consultation ENDPOINT STAGE module.
+ * the consultation ENDPOINT STAGE module.
  *
  * Exported as the concrete class rather than behind a symbol token, matching the other
  * harness-facing consultation services (`HarnessInternalService`, `LiveDocumentationService`):

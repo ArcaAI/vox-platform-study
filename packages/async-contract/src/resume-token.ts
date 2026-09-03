@@ -1,5 +1,5 @@
 /**
- * Resume-token convention (§3.6 of
+ * Resume-token convention ( of
  * docs/programs/agentic-workflow-platform/async-contract.md).
  *
  * Opaque, transport-assigned, consumer-echoed: `base64url(JSON({v, t, c}))`.
@@ -48,7 +48,7 @@ function base64UrlDecode(input: string): string | null {
  * Wrap a transport-native cursor into an opaque resume token.
  *
  * Callers on a non-resumable transport (BullMQ, Temporal) MUST NOT call this
- * — §3.6 forbids a synthetic token where the transport cannot actually resume.
+ * forbids a synthetic token where the transport cannot actually resume.
  */
 export function encodeResumeToken(transport: string, cursor: string): string {
   const wire: ResumeTokenWire = { v: 1, t: transport, c: cursor };

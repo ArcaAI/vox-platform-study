@@ -1,4 +1,4 @@
-"""TASK-850 lane A — the run-identity channel is SEPARATE from the run payload.
+"""lane A — the run-identity channel is SEPARATE from the run payload.
 
 Closes link 1 of finding C-8: ``RunIdentity`` (``nodes/_consultation_shared.py``) and
 ``nodes/consultation.py`` both read ``consultationId`` / ``externalPatientId`` / ``userId``
@@ -161,7 +161,7 @@ class TestPayloadCannotCarryIdentity:
 class TestIdempotencyPolicies:
     @pytest.mark.asyncio
     async def test_start_declares_use_existing_and_reject_duplicate(self, harness):
-        """TASK-850 step 6. ``USE_EXISTING`` joins a RUNNING execution; ``REJECT_DUPLICATE`` is
+        """step 6. USE_EXISTING joins a RUNNING execution; REJECT_DUPLICATE is
         what stops a retry after the run CLOSED from starting a second, separately-billed
         execution — Temporal's default reuse policy (``ALLOW_DUPLICATE``) would do exactly that.
         """

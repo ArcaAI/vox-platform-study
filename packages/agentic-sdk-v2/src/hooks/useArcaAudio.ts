@@ -328,7 +328,7 @@ export function useArcaAudio() {
         const attributes = { language: options?.language, pipelineId: options?.pipelineId, ...(droppedOptions.length ? { droppedOptions } : {}) };
         if (droppedOptions.length) {
           logger?.warn(
-            'startAudio ignored — capture already active; capture-shaped options were DROPPED. Start capture from the hook that carries the sources (see TASK-609).',
+            'startAudio ignored — capture already active; capture-shaped options were DROPPED. Start capture from the hook that carries the sources (see).',
             {
               operation: 'startAudio',
               component: 'useArcaAudio',

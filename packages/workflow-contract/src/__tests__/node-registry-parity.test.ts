@@ -1,5 +1,5 @@
 /**
- * Cross-language parity guard (TASK-734 Task 3): `WORKFLOW_NODE_REGISTRY` (this package) and
+ * Cross-language parity guard: `WORKFLOW_NODE_REGISTRY` (this package) and
  * `NODE_REGISTRY` (`apps/harness/src/harness/temporal/interpreter/registry.py`) must agree on
  * every key, or a definition that validates in the gateway fails admission in the interpreter
  * (see `node-registry.ts`'s module docstring). Neither runtime can import the other's module,
@@ -22,10 +22,12 @@ interface FixtureEntry {
   defaultTimeoutSeconds: number;
   defaultMaxAttempts: number;
   entitlementKey: string | null;
-  /** TASK-809 OD-15 — the FIRST port field that is SHARED, not TS-only. See the projection below. */
+  /** the FIRST port field that is SHARED, not TS-only. See the projection below. */
   outputKeys: Record<string, string | null>;
-  /** TASK-806 lane A item 7 — the SECOND shared field: it decides which runtime executes a node,
-   *  and the durable interpreter has to read it in order to skip a `realtime` one. */
+  /**
+* lane A item 7 — the SECOND shared field: it decides which runtime executes a node,
+   *  and the durable interpreter has to read it in order to skip a `realtime` one. 
+ */
   lane: 'realtime' | 'durable';
 }
 
@@ -38,7 +40,7 @@ function loadFixtureEntries(): FixtureEntry[] {
  * Projects this package's registry onto exactly the fields the fixture carries — mirrors what
  * the Python test does to `NODE_REGISTRY` on its side.
  *
- * ## `outputKeys` — TASK-809 OD-15 deliberately reopened the parity surface for ONE field
+ * ## `outputKeys` — deliberately reopened the parity surface for ONE field
  *
  * Task 10 closed the port contract as TS-only, and the fixture's own `_comment` still says
  * `classes`/`paletteKey` are excluded for that reason. `outputKey` is the exception, and it has
@@ -82,13 +84,13 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
 
   it('carries exactly the seed + boundary + summarization + stt + consultation + endpoint-stage + agentic keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
-      // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+      // lane A — the target catalogue and the guards.
       'agent.discharge_summary',
       'agent.dna_redaction',
       'agent.feedback',
       // Lane R (R1) — the realtime grammar/spelling pass.
       'agent.grammar',
-      // Lane N (TASK-815 §14a) — the first catalogue entry with NO pipeline counterpart: important
+      // Lane N — the first catalogue entry with NO pipeline counterpart: important
       // findings did not exist in any form, so this is a real implementation rather than a delegation.
       'agent.important_findings',
       'agent.ner',
@@ -97,7 +99,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'agent.retrieval',
       'agent.summarization',
       'agent.transcription',
-      // TASK-847 — the GENERIC (`agentic`) catalogue: the eight node types of the owner's
+      // the GENERIC (`agentic`) catalogue: the eight node types of the owner's
       // specification, closing program finding F-12's have/missing table.
       'agentic.agent',
       'agentic.data',
@@ -125,7 +127,7 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
       'consultation.synthesize',
       'core.end',
       'core.start',
-      // TASK-812 — the endpoint stage. Sorted position, not pipeline position; the list is
+      // the endpoint stage. Sorted position, not pipeline position; the list is
       // asserted sorted so a future addition never looks like a reorder.
       'feedback.capture',
       'generate.text',

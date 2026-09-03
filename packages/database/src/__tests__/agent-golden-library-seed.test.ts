@@ -8,7 +8,7 @@
  *
  * The suite used to carry two more sections — golden `DepartmentAgent` rows and
  * the locked clone set the fixture tenants got from them. Both went with
- * `DepartmentAgent` (TASK-815); a prompt template's binding to a workflow lives
+ * `DepartmentAgent`; a prompt template's binding to a workflow lives
  * on the NODE that references it now, so there is no per-department agent row to
  * lock an inventory on.
  */
@@ -31,7 +31,7 @@ const goldenDepartmentById = new Map(GOLDEN_DEPARTMENTS.map((d) => [d.id, d]));
 describe('Agent Golden Library seed', () => {
   describe('SYSTEM golden departments', () => {
     it('promotes the full 8-department care-setting catalog to the SYSTEM tenant', () => {
-      // Eight CARE SETTINGS, not a specialty roster (TASK-763 OD-8). The count
+      // Eight CARE SETTINGS, not a specialty roster. The count
       // is pinned deliberately: this array is cloned into every newly-provisioned
       // tenant, so growing it silently hands every future customer more
       // departments than they asked for.

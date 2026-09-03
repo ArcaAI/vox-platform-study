@@ -19,7 +19,7 @@ export interface CategoryMeta {
   description: string;
 }
 
-/** Ordered categories rendered in the rail (matches build spec §6 / artboard 2b). */
+/** Ordered categories rendered in the rail (matches build spec / artboard 2b). */
 export const CONFIG_CATEGORIES: readonly CategoryMeta[] = [
   { id: 'general', label: 'General', description: 'Organization-wide defaults and feature flags.' },
   { id: 'clinical', label: 'Clinical defaults', description: 'Consultation, transcription and clinical documentation defaults.' },

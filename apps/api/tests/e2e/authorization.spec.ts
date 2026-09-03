@@ -27,7 +27,7 @@ const CHECK_BULK_ROUTE = (userId: string) => `/api/v1/users/${userId}/permission
 const CHECK_ROUTE = (userId: string) => `/api/v1/users/${userId}/permission-checks`;
 
 /**
- * TASK-760 — `POST /rbac/check[/bulk]` became `POST /users/:id/permission-checks[/bulk]`.
+ * `POST /rbac/check[/bulk]` became `POST /users/:id/permission-checks[/bulk]`.
  *
  * The retired paths carried NO user in the URI (the target defaulted to the
  * caller, or came from the body's optional `userId`), so the resource form
@@ -211,7 +211,7 @@ test.describe('Authorization Flow', () => {
     // interactive login. This assertion had never actually executed: it sat
     // behind a 404 status-guard, and once repointed it still needed the
     // API-key auth path to work at all.
-    // TASK-763 (owner decision 2026-08-18): the seeded SERVICE_ACCOUNT key was
+    // (owner decision 2026-08-18): the seeded SERVICE_ACCOUNT key was
     // narrowed from `'*'` to `['internal:stt:worker']`, because the STT worker is
     // its only consumer and it only ever calls `/internal/stt/*`. The wildcard
     // bought it nothing while giving a tenant-bound key unrestricted reach.

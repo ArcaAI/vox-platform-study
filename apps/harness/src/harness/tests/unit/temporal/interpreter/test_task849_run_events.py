@@ -1,6 +1,6 @@
-"""TASK-849 lane A step 1 — the TASK-717 Phase C producer.
+"""lane A step 1 — the producer.
 
-What these tests are FOR: TASK-717 shipped the envelope and the resume-token convention
+What these tests are FOR: shipped the envelope and the resume-token convention
 and deferred the producer. Everything here asserts that the producer harness now has
 really does emit the already-specified contract — conforming envelopes, intent-derived
 idempotency keys, one bounded stream per run — rather than a second, harness-shaped
@@ -135,7 +135,7 @@ class TestEnvelopeConformance:
 
 
 class TestIdempotencyKeysAreDerivedFromIntent:
-    """async-contract §3.5's one rule: a key is a pure function of WHAT happened."""
+    """async-contract 's one rule: a key is a pure function of WHAT happened."""
 
     def test_the_same_intent_reproduces_the_same_key(self):
         assert node_settled_key(RUN, "n1", 1) == node_settled_key(RUN, "n1", 1)
@@ -209,7 +209,7 @@ class TestBestEffortMirrorPosture:
 class TestTheMessageIdIsTheTransportCursor:
     @pytest.mark.asyncio
     async def test_emit_returns_the_redis_message_id(self):
-        """Redis assigns the cursor; the producer never invents one (async-contract §3.6 —
+        """Redis assigns the cursor; the producer never invents one (async-contract
         the token is transport-assigned, and the gateway wraps THIS id)."""
         redis = FakeRedisStream()
         producer = RunEventProducer(redis)

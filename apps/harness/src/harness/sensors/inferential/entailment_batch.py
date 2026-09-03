@@ -6,7 +6,7 @@ single claim — ~N serial long-prefill judge calls. This helper collapses that 
 array of claims is labelled in one response, cutting BOTH the repeated prefill and
 the repeated reasoning decode.
 
-The parser is deliberately **conservative** (clinical safety invariant §7.3):
+The parser is deliberately **conservative** (clinical safety invariant :
 anything ambiguous — unparseable/truncated array, a missing id, a non-bool
 ``supported``, or a duplicate-id conflict — maps the affected claim(s) to
 *ungrounded* (``False``). Extra ids that match no real claim are ignored and can

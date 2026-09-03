@@ -36,14 +36,14 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   }
 
   /**
-   * The row the exposure gateway (TASK-722) invokes: the tenant's ACTIVE
+   * The row the exposure gateway invokes: the tenant's ACTIVE
    * PUBLISHED version of `slug`. Returns `null` — never throws — for a
    * foreign tenant's slug, an unpublished/inactive slug, or a slug that does
    * not exist at all, so the caller maps every one of those to a 404
    * (404-over-403; rule 04 §NEVER). Uses `findFirstTolerant` because the base
    * `findFirst` THROWS `DataNotFoundException` on a miss — a genuine miss
    * here is the expected common case, not an error.
-   */
+ */
   async findPublishedBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity | null> {
     return this.findFirstTolerant({ tenantId, slug, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE });
   }
@@ -51,8 +51,8 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   /**
    * The tenant's published + ACTIVE workflows, one row per slug (the movable
    * pointer means at most one such row per `(tenantId, slug)`) — backs
-   * `GET /api/v1/workflows` (TASK-722's exposure plane list route).
-   */
+   * `GET /api/v1/workflows` ( exposure plane list route).
+ */
   async findActivePublishedByTenant(tenantId: string): Promise<WorkflowDefinitionEntity[]> {
     return this.findAll({
       filters: { tenantId, ...WorkflowDefinitionRepository.PUBLISHED_AND_ACTIVE },
@@ -63,8 +63,8 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   /**
    * Every version row for a `(tenantId, slug)` lineage, most recent first —
    * used to compute the next `versionNumber` and to resolve
-   * `parentVersionId` branches (TASK-719).
-   */
+   * `parentVersionId` branches.
+ */
   async findAllVersionsBySlug(tenantId: string, slug: string): Promise<WorkflowDefinitionEntity[]> {
     return this.findAll({
       filters: { tenantId, slug, resourceStatus: ResourceStatusType.ENABLED },
@@ -91,7 +91,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   }
 
   /**
-   * TASK-856 — the ONE row a clone may be seeded from: `tenantId IN [caller, SYSTEM]`, and the
+   * the ONE row a clone may be seeded from: `tenantId IN [caller, SYSTEM]`, and the
    * SYSTEM half narrowed to the platform template library ({@link PUBLISHED_AND_ACTIVE}).
    * Returns `null` for every other id, so the caller maps a foreign tenant's definition to a
    * 404 exactly like a nonexistent one (404-over-403).
@@ -100,14 +100,14 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * NOT a `SYSTEM_SHARED_READ_MODELS` member (`tenant-scope.ts`: "the SYSTEM-tenant
    * platform-default rows reach a tenant via the clone path, not shared read"), so the extended
    * client would THROW on the SYSTEM branch of this filter rather than serve it. Widening the
-   * allow-list instead would leak SYSTEM rows into every tenant's `list()`, where `getById`
+   * allow-list() instead would leak SYSTEM rows into every tenant's `list`, where `getById`
    * then 404s them. The tenant pin therefore lives HERE, explicitly, in the only query that is
    * allowed to see two tenants — the same posture (and the same justification) as
    * `TenantService.provisionTenantDepartmentCatalog`'s golden-department read.
    *
    * A tenant's OWN row is clonable at any status: forking your own draft is the ordinary case.
    * A SYSTEM row must be PUBLISHED + ACTIVE — a SYSTEM draft is unreleased platform work.
-   */
+ */
   async findCloneSource(id: string, tenantId: string, client: unknown): Promise<WorkflowDefinitionEntity | null> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors findMaxVersionNumber; the caller-supplied client's delegate shape isn't exposed through DomainModel typings.
     const model: any = (client as Record<string, any>)[this._modelName];
@@ -122,7 +122,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
   }
 
   /**
-   * TASK-856 — the platform template library: the SYSTEM tenant's live published definitions,
+   * the platform template library: the SYSTEM tenant's live published definitions,
    * one row per slug (the movable `isActive` pointer guarantees that). Same
    * {@link PUBLISHED_AND_ACTIVE} predicate `findCloneSource` accepts for a SYSTEM source, so
    * what a tenant can SEE in the library and what it can CLONE are the same set by
@@ -130,7 +130,7 @@ export class WorkflowDefinitionRepository extends Repository<WorkflowDefinitionE
    * constant exists to prevent.
    *
    * Takes the UNSCOPED client for the reason spelled out on `findCloneSource`.
-   */
+ */
   async findSystemTemplates(client: unknown): Promise<WorkflowDefinitionEntity[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see findCloneSource.
     const model: any = (client as Record<string, any>)[this._modelName];

@@ -1,4 +1,4 @@
-// TASK-799 lane A.1 — the `db-config` read lane for `storage.platformDefault.*`.
+// lane A.1 — the `db-config` read lane for `storage.platformDefault.*`.
 //
 // The resolver is a DISPATCH layer, not a second store: it reads the SYSTEM
 // `TenantStorageConfig` row through the repository that already owns it and

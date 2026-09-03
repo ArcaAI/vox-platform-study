@@ -1,10 +1,10 @@
 /**
- * TASK-757 (policy A2) — reserved scopes are refused at GRANT time.
+ * (policy A2) — reserved scopes are refused at GRANT time.
  *
  * A2 makes `/api/v1/admin/*` JWT-only, so every `admin:*` and `webhook:*` scope
  * is inert at request time (`@ForbidApiKey()` is checked BEFORE the scope check
  * in `UnifiedAuthGuard`, so not even the bare `'*'` wildcard rescues a key).
- * The strings are kept as vocabulary for TASK-762's service-account plane and
+ * The strings are kept as vocabulary for service-account plane and
  * so pre-existing stored keys stay readable — but they must stop being
  * GRANTABLE, or the platform keeps minting credentials it will always refuse.
  *
@@ -20,10 +20,10 @@
  *   `admin:*`, on a field the caller never touched. The delta check therefore
  *   lives in `ApiKeyService.update()`.
  *
- * Unlike TASK-756's privilege ceiling, this rule has **no SUPER_ADMIN fast
+ * Unlike privilege ceiling, this rule has **no SUPER_ADMIN fast
  * path**. The ceiling asks "may this caller grant this much power?"; A2 asks
  * "may a long-lived static bearer credential reach the admin plane at all?",
- * and the answer is no for everyone until TASK-762 lands a real machine
+ * and the answer is no for everyone until lands a real machine
  * credential class.
  */
 
@@ -81,7 +81,7 @@ const storedKey = (scopes: string[] | null) => ({
   setProperty: vi.fn(),
 });
 
-describe('TASK-757 — ApiKeyService refuses to grant reserved scopes', () => {
+describe('ApiKeyService refuses to grant reserved scopes', () => {
   let service: ApiKeyService;
 
   beforeEach(() => {

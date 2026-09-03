@@ -38,7 +38,7 @@ import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.
 import { HarnessAuditService } from '../harness-audit/harness-audit.service';
 
 /**
- * Admin CRUD for `ConsentGrant` (TASK-712, consent-abac).
+ * Admin CRUD for `ConsentGrant` (consent-abac).
  *
  * This service does NOT evaluate consent for a caller — that is
  * `ConsultationConsentService.assertConsent`/`checkConsent`, the ABAC choke
@@ -51,7 +51,7 @@ import { HarnessAuditService } from '../harness-audit/harness-audit.service';
  * previously-dead enum members real writers (README acceptance criterion).
  * `consultationId` is `null` on these rows: a grant/revoke is keyed on
  * `(tenantId, externalPatientId, purpose)`, not a consultation — see
- * `harness.prisma`'s field comment and `consent-design.md` §6 for the
+ * `harness.prisma`'s field comment and `consent-design.md` for the
  * hash-compatibility reasoning that makes the column nullable in the first
  * place. `modelName`/`modelVersion`/`sensorScores`/`citations` carry the same
  * sentinel shape `SummaryService.approveSummary` already uses for the
@@ -80,7 +80,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
    * `ConsentGrant_tenant_patient_purpose_active_key` (WHERE "revokedAt" IS
    * NULL). A second `create` for the same triple fails at the database ONLY
    * while an active grant already exists; `revoke` then `create` again (or
-   * widening — consent-design.md §3) both work, because the revoked row no
+   * widening — consent- both work, because the revoked row no
    * longer occupies the active slot.
    */
   async create(request: CreateConsentGrantRequest): Promise<ConsentGrantResponse> {
@@ -164,7 +164,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
   }
 
   /**
-   * Every purpose a consultation implies (TASK-805 owner directive,
+   * Every purpose a consultation implies ( owner directive,
    * 2026-08-25). Enumerated from the enum rather than hand-listed so a new
    * `ConsentPurpose` is covered the day it is added — a purpose that exists
    * but is silently never granted would reintroduce exactly the dead-end this
@@ -234,7 +234,7 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
   }
 
   /**
-   * The consent register (TASK-805). Tenant-scoped, paginated, with optional
+   * The consent register. Tenant-scoped, paginated, with optional
    * patient / purpose / lifecycle filters.
    *
    * Replaces the original `getByPatient(externalPatientId)`, which REQUIRED a

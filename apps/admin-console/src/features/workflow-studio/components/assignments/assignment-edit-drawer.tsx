@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Assignment matrix — the cell editor (TASK-733 half (a) Task 6). One tier
+ * Assignment matrix — the cell editor ( half (a) Task 6). One tier
  * (`scope` + `scopeId` + `paletteKey`) per open; the `Select` carries an
  * `INHERIT_SENTINEL` option (Radix reserves the empty string) that maps to
  * "no explicit assignment here" — choosing it and saving DELETEs an existing

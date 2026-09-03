@@ -69,7 +69,7 @@ export function TranscriptColumn({ lines, interim, isPreSession }: TranscriptCol
       <CardHeader>
         <CardTitle>Live results</CardTitle>
         <CardDescription>
-          One timeline — the transcription (with timestamp) and the metadata returned alongside it (TASK-564 passthrough), aligned row by row.
+          One timeline — the transcription (with timestamp) and the metadata returned alongside it (passthrough), aligned row by row.
         </CardDescription>
       </CardHeader>
       <CardContent className="min-h-0 flex-1">

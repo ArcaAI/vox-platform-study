@@ -1,5 +1,5 @@
 /**
- * TASK-790 W1 — the exposure plane's palette boundary (TASK-789 finding C-8).
+ * the exposure plane's palette boundary.
  *
  * `POST /workflows/:slug/invoke` forwards caller-controlled `dto.input` verbatim into
  * `InterpreterInput.payload` with `sandbox: false`. The interpreter's `external_write`
@@ -68,7 +68,7 @@ function build() {
   );
 }
 
-describe('TASK-790 W1 — exposure-plane palette boundary (C-8)', () => {
+describe(' W1 — exposure-plane palette boundary (C-8)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigService.getConfigValue.mockImplementation((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined));
@@ -131,12 +131,12 @@ describe('TASK-790 W1 — exposure-plane palette boundary (C-8)', () => {
 });
 
 /**
- * TASK-790 (M-2) — an invoker can retrieve what the run actually produced.
+ * (M-2) — an invoker can retrieve what the run actually produced.
  *
  * `getRunStatus` read Temporal state only, so `output.deliver`'s real external write was
  * unrecoverable. The read model now carries the delivered output; the status route surfaces it.
  */
-describe('TASK-790 M-2 — getRunStatus reads back the delivered output', () => {
+describe(' M-2 — getRunStatus reads back the delivered output', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigService.getConfigValue.mockImplementation((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined));

@@ -1,18 +1,18 @@
 #!/usr/bin/env python
-"""Harness availability-measurement report — TASK-730 Task 4.
+"""Harness availability-measurement report —.
 
 Produces the exact measurement the consultation-session-workflow assessment names as decisive
 for whether the harness-mandatory end state (design.md D1) holds
-(``docs/architecture/consultation-session-workflow/assessment/README.md`` §5, last paragraph):
+(docs/architecture/consultation-session-workflow/assessment/README.md, last paragraph):
 
     "harness 5xx rates, generation latency percentiles, and a Temporal query for duplicate
-    harness-doc-{consultationId} executions (which also reveals how often §3.5's overwrite
+    harness-doc-{consultationId} executions (which also reveals how often 's overwrite
     actually fires)."
 
 This is a ONE-OFF ops script, not a durable Temporal activity: the measurement is a point-in-time
 report an operator runs and reviews, not something that needs to execute inside a workflow or run
 repeatedly in-band. It lives under ``scripts/`` rather than ``apps/harness/src/harness/temporal/``
-for that reason (see TASK-730 README.md §4 Task 4's own framing).
+for that reason (.md Task 4's own framing).
 
 WHAT THIS SCRIPT DOES NOT DO: it does not run a PromQL query itself (no Prometheus HTTP client
 dependency is added to keep this script zero-additional-dependency against the harness/worker
@@ -29,8 +29,8 @@ USAGE (requires a reachable Temporal server — local dev: ``pnpm infra:dev:up``
     ~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py --since-days 30
     ~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py --json report.json
 
-NOT RUN as part of TASK-730's execution: local infra (Temporal included) was down in that session
-(see the ticket README's Implementation Summary) and there is no cluster/VM Temporal reachable
+NOT RUN as part of execution: local infra (Temporal included) was down in that session
+('s ) and there is no cluster/VM Temporal reachable
 from it either. This script is authored and syntax-checked only; its output in this ticket's
 README is explicitly marked "not run," never fabricated.
 """

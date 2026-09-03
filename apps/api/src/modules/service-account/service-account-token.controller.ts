@@ -8,7 +8,7 @@ import { UseGuards } from '@nestjs/common';
 
 /**
  * `POST /api/v1/auth/service-token` — the ONE route that ever accepts a
- * service-account client secret (TASK-762 §5.4).
+ * service-account client secret
  *
  * ─── Why `@Public()` + a dedicated guard ────────────────────────────────────
  *

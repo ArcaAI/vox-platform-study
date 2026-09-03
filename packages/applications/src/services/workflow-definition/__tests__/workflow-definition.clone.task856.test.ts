@@ -1,5 +1,5 @@
 /**
- * TASK-856 — `WorkflowDefinitionService.clone` / `.listTemplates`.
+ * `WorkflowDefinitionService.clone` / `.listTemplates`.
  *
  * A CLONE is a NEW workflow (new `(tenantId, slug)` lineage, `versionNumber` 1, DRAFT) seeded
  * from an existing definition's graph. It is categorically NOT a new VERSION — `create` with
@@ -34,7 +34,7 @@ const mockWorkflowDefinitionRepository = {
   findMaxVersionNumber: vi.fn(),
   findPublishedBySlug: vi.fn(),
   findAllVersionsBySlug: vi.fn(),
-  // TASK-856 seams.
+  // seams.
   findCloneSource: vi.fn(),
   findSystemTemplates: vi.fn(),
 };
@@ -117,7 +117,7 @@ const systemTemplate = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   });
 
-describe('WorkflowDefinitionService — cloning (TASK-856)', () => {
+describe('WorkflowDefinitionService — cloning ', () => {
   let service: WorkflowDefinitionService;
 
   beforeEach(() => {

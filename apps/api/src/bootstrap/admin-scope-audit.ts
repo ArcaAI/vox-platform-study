@@ -1,13 +1,13 @@
 /**
- * Boot-time audit for policy **A2** (TASK-757): `/api/v1/admin/*` is a
+ * Boot-time audit for policy **A2**: `/api/v1/admin/*` is a
  * **JWT-only** plane. API keys are prohibited there, so an `admin/`-prefixed
  * route must carry `@ForbidApiKey()` and must never declare `@RequiredScopes`.
  *
- * This file previously enforced the OPPOSITE invariant (TASK-708 Task 5: each
+ * This file previously enforced the OPPOSITE invariant (each
  * named admin controller keeps its named `@RequiredScopes` value). A2 inverts
  * it. The 56 `admin:*` scope strings were NOT deleted — they are reserved in
  * `apikey-scopes.registry.ts` (refused at grant time, dropped from the
- * advertised catalog) and remain the vocabulary TASK-762's service-account
+ * advertised catalog) and remain the vocabulary service-account
  * plane reuses. Deletion would not have stopped regrowth anyway:
  * `@RequiredScopes` takes a RAW STRING and `enforceApiKeyScopes` never consults
  * the registry, so only enforcement stops a new admin controller from inventing
@@ -33,7 +33,7 @@
  *    `KnowledgeController` and `WorkflowSandboxRunController` were never
  *    transcribed into it. That drift is precisely the argument for (1).
  *
- * CLASS-level, not method-level, for the named list: TASK-708 Task 4 applied
+ * CLASS-level, not method-level, for the named list: applied
  * one decorator per controller and A2 replaces it in place, so the named audit
  * reads metadata off the CONTROLLER CLASS. The derived sweep reads BOTH levels.
  */
@@ -131,7 +131,7 @@ interface ScopedController {
   expect: 'FORBID';
 }
 
-/** The `/admin/*` surface TASK-708 Task 4 closed. */
+/** The `/admin/*` surface closed. */
 /**
  * Every `admin/`-prefixed controller registered in the gateway — **70** of
  * them, all expecting `'FORBID'`.
@@ -139,7 +139,7 @@ interface ScopedController {
  * Under A2 there is no per-controller scope VALUE left to pin, so the list's
  * remaining job is to notice a controller that vanishes from the module graph
  * (which the derived sweep cannot see, because it only walks what is
- * registered). It also closes the transcription gap in the TASK-708 original:
+ * registered). It also closes the transcription gap in the original:
  * `KnowledgeController`, `WorkflowSandboxRunController`, `ConsentGrantController`
  * and `ServiceAccountController` were all absent from it.
  *
@@ -226,7 +226,7 @@ export function auditAdminScopedControllers(controllers: ScopedController[] = AD
     if (forbidden !== true) {
       offenders.push(
         `${controller.name} is an /admin/* controller but carries no @ForbidApiKey() metadata. ` +
-          `Policy A2 (TASK-757): the admin plane is JWT-only.`,
+          `Policy A2 : the admin plane is JWT-only.`,
       );
     }
 
@@ -237,14 +237,14 @@ export function auditAdminScopedControllers(controllers: ScopedController[] = AD
     if (Array.isArray(scopes) && scopes.length > 0) {
       offenders.push(
         `${controller.name} is an /admin/* controller and still declares @RequiredScopes(${scopes.join(', ')}). ` +
-          `Policy A2 (TASK-757) prohibits API keys on the admin plane; remove the decorator.`,
+          `Policy A2  prohibits API keys on the admin plane; remove the decorator.`,
       );
     }
   }
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-757: refused to start — ${offenders.length} /admin/* controller(s) violate policy A2 (JWT-only):\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} /admin/* controller(s) violate policy A2 (JWT-only):\n${list}`);
   }
 }
 
@@ -265,8 +265,8 @@ const ADMIN_ROUTE_RE = /^\/(?:api\/v\d+\/)?admin(\/|$)/;
  * `admin-route-permission-audit.ts` instead).
  *
  * This does NOT check that a declaration is PRESENT — that is
- * `auditEveryApiKeyReachableRouteDeclaresScopes`'s job (TASK-742) and stays
- * there. The two compose: TASK-742 says "declare something", A2 says "on the
+ * `auditEveryApiKeyReachableRouteDeclaresScopes`'s job and stays
+ * there. The two compose: says "declare something", A2 says "on the
  * admin plane the only legal something is `@ForbidApiKey()`".
  */
 export function auditAdminControllersDeclareNoApiKeyScopes(app: INestApplicationContext): void {
@@ -306,10 +306,10 @@ export function auditAdminControllersDeclareNoApiKeyScopes(app: INestApplication
 
         offenders.push(
           `Route ${fullPath} on ${ControllerClass.name}.${methodName} declares @RequiredScopes(${scopes.join(', ')}) ` +
-            `on the admin plane. Policy A2 (TASK-757): /api/v1/admin/* is JWT-only — API keys are prohibited there, ` +
+            `on the admin plane. Policy A2 : /api/v1/admin/* is JWT-only — API keys are prohibited there, ` +
             `and every admin:* scope is inert at runtime because @ForbidApiKey() is checked before the scope check. ` +
             `Replace the decorator with @ForbidApiKey(). If this surface genuinely needs a machine credential, that ` +
-            `is TASK-762's service-account plane (@RequiredSvcScopes), not a tenant API key.`,
+            `is  service-account plane (@RequiredSvcScopes), not a tenant API key.`,
         );
       }
     }
@@ -317,7 +317,7 @@ export function auditAdminControllersDeclareNoApiKeyScopes(app: INestApplication
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-757: refused to start — ${offenders.length} admin-plane route(s) declare @RequiredScopes:\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} admin-plane route(s) declare @RequiredScopes:\n${list}`);
   }
 }
 

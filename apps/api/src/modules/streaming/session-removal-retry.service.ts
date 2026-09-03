@@ -66,7 +66,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
    *
    * `tenantId` rides along for the same reason: the retries are the SAME
    * internal DELETE, so they must stay as attributable as the first attempt
-   * (TASK-737). Only in-process retries carry it; the Redis set is accounting.
+   * Only in-process retries carry it; the Redis set is accounting.
    */
   enqueue(sessionId: string, interrupted = false, tenantId?: string | null): void {
     if (!sessionId || this.destroyed) {
@@ -77,7 +77,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
     this.scheduleAttempt(sessionId, 1, interrupted, tenantId);
 
     this.logger.warn({
-      message: 'Session removal failed — parked for retry (TASK-351 P1-3)',
+      message: 'Session removal failed — parked for retry (P1-3)',
       sessionId,
       maxAttempts: SESSION_REMOVAL_RETRY_MAX_ATTEMPTS,
     });

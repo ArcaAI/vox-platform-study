@@ -107,7 +107,7 @@ export function withMovedPin(graph: WorkflowGraph, nodeId: string, versionNumber
  * actually snapshots — `content` and `variables`.
  *
  * This is what makes ADOPTING an unchanged prompt a pure pin move instead of an
- * authoring act (§7b item 1). DD-11's PATH 2 deliberately leaves node pins where
+ * authoring act. DD-11's PATH 2 deliberately leaves node pins where
  * they are when a template is edited out of band, so adoption is the COMMON
  * path — and before this guard every adoption minted a byte-identical version
  * row, filling the very version list an admin opens to understand what changed.
@@ -117,7 +117,7 @@ export function withMovedPin(graph: WorkflowGraph, nodeId: string, versionNumber
  * new row, so a checksum over `content` alone would swallow it.
  *
  * `canonicalJson` sorts object keys and PRESERVES array order, so re-serialised
- * variables ( `{b,a}` vs `{a,b}` ) compare equal while a reordered list — which
+ * variables ( `{b,a}` vs `{a,b}`) compare equal while a reordered list — which
  * is a real edit — does not. The same primitive drives `graphChecksum` here and
  * the context-schema republish guard, deliberately: two digest implementations
  * eventually disagree about whether anything changed.

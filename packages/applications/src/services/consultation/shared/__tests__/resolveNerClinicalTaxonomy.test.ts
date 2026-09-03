@@ -1,5 +1,5 @@
 /**
- * TASK-799 lane G — the gateway half of the nlp clinical-taxonomy move.
+ * lane G — the gateway half of the nlp clinical-taxonomy move.
  *
  * `apps/nlp` no longer carries an ontology vocabulary, vitals plausibility
  * bands, a ConText/NegEx trigger lexicon or a NER contract of its own. They live

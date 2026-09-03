@@ -4,7 +4,7 @@ import type { RunNodeRollup, WorkflowGraphNode } from '../api/types';
  * Best-effort correlation of a run's per-node rollups onto the AUTHORED graph
  * nodes that (most likely) produced them.
  *
- * The trajectory row carries no per-node id (Task 1 contract §5 — the
+ * The trajectory row carries no per-node id (Task 1 contract — the
  * interpreter stamps only the node TYPE onto the persisted step, never the
  * authored node's id) — this is a real, disclosed gap, not something this
  * function can paper over. The correlation below is the closest honest

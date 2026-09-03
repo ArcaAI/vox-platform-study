@@ -125,10 +125,10 @@ export {
   UNCONFIGURED_CONSULTATION_SCHEMA_BUNDLE,
 } from './consultationSchema';
 
-// TASK-813 — consultation workflow DISCOVERY (which engine governs a consultation).
+// consultation workflow DISCOVERY (which engine governs a consultation).
 export type { ConsultationWorkflow, SelectableConsultationWorkflow } from './consultationWorkflow';
 
-// TASK-850 — workflow INVOCATION (running one), as distinct from the discovery
+// workflow INVOCATION (running one), as distinct from the discovery
 // types above (which one governs a consultation).
 export type {
   TerminalRunStatus,
@@ -221,7 +221,7 @@ export type {
   HighlightSegment,
   LegacySoapSectionCode,
   SensorScores,
-  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup (TASK-810).
+  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup.
   SoapSection,
   SoapSectionGroup,
   TranscriptSource,

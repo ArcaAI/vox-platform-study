@@ -1,4 +1,4 @@
-"""The PLATFORM BASELINE clinical taxonomy, as a test fixture (TASK-799 lane G).
+"""The PLATFORM BASELINE clinical taxonomy, as a test fixture ( lane G).
 
 `apps/nlp` ships no clinical taxonomy of its own any more: the ontology
 vocabulary, vitals plausibility bands, ConText/NegEx triggers and the NER

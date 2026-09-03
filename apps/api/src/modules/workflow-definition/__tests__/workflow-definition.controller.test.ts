@@ -1,5 +1,5 @@
 /**
- * WorkflowDefinitionController unit tests (TASK-734).
+ * WorkflowDefinitionController unit tests.
  *
  * CASL enforcement runs in the global UnifiedAuthGuard (e2e-covered); these specs pin the
  * controller's OWN contract: the class-level `@CanManage` metadata, service delegation, and
@@ -32,7 +32,7 @@ function makeController() {
     deleteById: vi.fn().mockResolvedValue(definitionResponse({ resourceStatus: 'DELETED' })),
     validate: vi.fn().mockResolvedValue(definitionResponse({ status: 'VALIDATED' })),
     publish: vi.fn().mockResolvedValue(definitionResponse({ status: 'PUBLISHED' })),
-    // TASK-856
+    
     clone: vi.fn().mockResolvedValue(definitionResponse({ id: 'def-2', slug: 'discharge_summary_copy' })),
     listTemplates: vi.fn().mockResolvedValue([definitionResponse({ id: 'sys-1', tenantId: '00000000-0000-0000-0000-000000000000', status: 'PUBLISHED' })]),
   };
@@ -60,7 +60,7 @@ describe('WorkflowDefinitionController — authorization metadata', () => {
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.publish)).toBe(RequestMethod.POST);
   });
 
-  // TASK-856 — the two clone routes.
+  // the two clone routes.
   it('declares POST :id/clone (a creation, so Nest\'s default 201 stands — not a 200 transition)', () => {
     expect(Reflect.getMetadata(PATH_METADATA, WorkflowDefinitionController.prototype.clone)).toBe(':id/clone');
     expect(Reflect.getMetadata(METHOD_METADATA, WorkflowDefinitionController.prototype.clone)).toBe(RequestMethod.POST);
@@ -81,7 +81,7 @@ describe('WorkflowDefinitionController — authorization metadata', () => {
     expect(methods.indexOf('fetchTemplates')).toBeLessThan(methods.indexOf('fetchById'));
   });
 
-  it('answers validate/publish with 200, not Nest\'s default 201 for POST (TASK-780 F-2)', () => {
+  it('answers validate/publish with 200, not Nest\'s default 201 for POST (F-2)', () => {
     // These are state transitions on an EXISTING resource (DRAFT -> VALIDATED /
     // DRAFT -> PUBLISHED), not creations of a new one — the documented
     // `@ApiResponse({ status: 200 })` (and openapi.json) is the correct contract,
@@ -148,7 +148,7 @@ describe('WorkflowDefinitionController — delegation', () => {
     expect(result.status).toBe('VALIDATED');
   });
 
-  it('clone delegates the source id and body to the service (TASK-856)', async () => {
+  it('clone delegates the source id and body to the service ', async () => {
     const { controller, workflowDefinitionService } = makeController();
     const request = { targetSlug: 'discharge_summary_copy', name: 'Discharge Summary (copy)' };
     const result = await controller.clone('def-1', request as never);
@@ -156,7 +156,7 @@ describe('WorkflowDefinitionController — delegation', () => {
     expect(result).toMatchObject({ id: 'def-2', slug: 'discharge_summary_copy' });
   });
 
-  it('fetchTemplates delegates to listTemplates (TASK-856)', async () => {
+  it('fetchTemplates delegates to listTemplates ', async () => {
     const { controller, workflowDefinitionService } = makeController();
     const result = await controller.fetchTemplates();
     expect(workflowDefinitionService.listTemplates).toHaveBeenCalledTimes(1);

@@ -1,5 +1,5 @@
 /**
- * TASK-729 — NLP task type expansion, E2E.
+ * NLP task type expansion, E2E.
  *
  * NOT RUN as part of this ticket's execution (LOCAL INFRA IS DOWN — no
  * Postgres/Redis/API — and there is no cluster access; this file is authored
@@ -91,7 +91,7 @@ async function readInstructionsRow(request: APIRequestContext, token: string, ta
 // symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
 test.describe.configure({ mode: 'serial' });
 
-test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new endpoint)', () => {
+test.describe('nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new endpoint)', () => {
   let superAdminToken: string;
   let tenantAdminToken: string;
 
@@ -156,7 +156,7 @@ async function getDb(): Promise<InstructionsDb> {
   return dbClient;
 }
 
-test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructions)', () => {
+test.describe('nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructions)', () => {
   let superAdminToken: string;
   let tenantAdminToken: string;
   let arcaaiTenantId: string;

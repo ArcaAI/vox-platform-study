@@ -1,5 +1,5 @@
 /**
- * WorkflowSandboxRunService unit tests (TASK-721 Phase C).
+ * WorkflowSandboxRunService unit tests.
  *
  * Mocks `IWorkflowDefinitionService` (fresh compile), `WorkflowTestFixtureRepository`, the
  * harness gateway, `IWorkflowRunService`, S3 (claim-check), EventEmitter2 and ClsService.

@@ -1,5 +1,5 @@
 /**
- * TASK-799 — per-provider REQUIRED FIELDS.
+ * per-provider REQUIRED FIELDS.
  *
  * The defect: `extraJson` was shape-checked but nothing said which fields a
  * given provider actually NEEDS, so an Azure connection could be saved with no

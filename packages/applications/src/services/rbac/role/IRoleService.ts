@@ -66,7 +66,7 @@ export interface RbacRolePolicyRow {
 export interface RbacRoleRecord {
   id: string;
   /**
-   * TASK-766 OD-1. The owning tenant: `SYSTEM_TENANT_ID` for a platform
+   * The owning tenant: `SYSTEM_TENANT_ID` for a platform
    * built-in (every tenant reads these — `Role` is a SYSTEM-shared read model),
    * or a customer tenant for a role that tenant created. It is what
    * distinguishes "my custom role, which I may edit" from "the platform's role,

@@ -87,7 +87,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   it('registers the four pipeline toggles sourced from PIPELINE_SETTING_DESCRIPTORS', () => {
     const auto = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoSummaryEnabled');
     expect(auto).toMatchObject({ tier: 'db-config', dataType: 'boolean', maxScope: 'doctor', default: true });
-    // harnessEnabled is the rollout knob — capped at DEPARTMENT. TASK-732
+    // harnessEnabled is the rollout knob — capped at DEPARTMENT.
     // flipped its default to true (the legacy signable generator it used to
     // fall back to no longer exists).
     const harness = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled');
@@ -184,7 +184,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
     // These task-model defaults are platform-owned: nlp (revoked tenant
     // writes) and harness.judge. Both resolve to the super-admin resource
-    // and carry globalOnly. TEXT and, since TASK-735 (owner decision
+    // and carry globalOnly. TEXT and, since (owner decision
     // 2026-08-16, reversing the 2026-07-17 super-admin-only directive),
     // guardrail are NOT in this set — see the test below.
     for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
@@ -195,7 +195,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   });
 
   // TEXT summarization model selection (primary + per-tenant fallback), and
-  // guardrail.* since TASK-735 Phase 0, are tenant-admin configurable: the
+  // guardrail.* since, are tenant-admin configurable: the
   // descriptors resolve to the tenant-editable AiTaskDefault resource and are
   // NOT flagged globalOnly. (guardrail.* writes still pass through the D2
   // platform-approved-list floor enforced in AiTaskDefaultService — this

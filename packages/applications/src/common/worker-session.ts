@@ -29,16 +29,16 @@ export type WorkerSessionKind =
   // Admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
   | 'directory-sync'
   // Webhook delivery: SysEvent → matching Webhook fan-out, and the signed
-  // per-webhook HTTP POST (TASK-727).
+  // per-webhook HTTP POST.
   | 'webhook-delivery'
   // Usage-outbox drain tick: rates each claimed row and appends the
   // AiUsageEvent + rollups. One context PER ROW — the batch spans tenants.
   | 'usage-outbox-drain'
-  // Session-timeout sweep tick (TASK-711 state-machine.md §1a): transitions
+  // Session-timeout sweep tick: transitions
   // stale sweep-eligible consultations to CLOSED_INCOMPLETE. One context PER
   // ROW — the sweep query itself spans every tenant.
   | 'session-timeout-sweep'
-  // Admin-triggered AiModel weight download (TASK-855 lane L3): fetch from
+  // Admin-triggered AiModel weight download: fetch from
   // HuggingFace/s3://, verify, publish into hope-models, write back the row.
   | 'ai-model-download';
 

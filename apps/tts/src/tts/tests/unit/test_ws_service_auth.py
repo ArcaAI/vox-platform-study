@@ -46,7 +46,7 @@ def _clean_token_env(monkeypatch):
 def _app(*, shared: str = "", legacy: str = "", monkeypatch=None):
     """Build the app with a given credential configuration.
 
-    `legacy` sets the RETIRED `TTS_SERVICE_TOKEN` (TASK-799 lane C). It is kept
+    `legacy` sets the RETIRED `TTS_SERVICE_TOKEN` ( lane C). It is kept
     as a parameter precisely so a test can prove the old name is now INERT —
     setting it must neither grant access nor, worse, silently disable auth.
     """
@@ -113,7 +113,7 @@ def test_ws_rejects_a_wrong_token_when_only_the_shared_token_is_set(monkeypatch)
 
 
 def test_ws_refuses_the_retired_legacy_token(monkeypatch):
-    """`TTS_SERVICE_TOKEN` is retired and must now be inert (TASK-799 lane C).
+    """`TTS_SERVICE_TOKEN` is retired and must now be inert ( lane C).
 
     Two things are asserted at once, and the second is the one that would hurt:
     presenting the legacy token is refused, AND setting the legacy variable does

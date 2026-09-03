@@ -3,7 +3,7 @@ import { AiUsageUnit, UsageMeterMetric } from '@arcaai/domains';
 /**
  * Shadow-metering report job.
  *
- * research-findings.md §6: "shadow-meter one full billing cycle before
+ * research-findings.md: "shadow-meter one full billing cycle before
  * enforcing anything … alert on drift > 2%". This job never enforces
  * anything itself — it is read-only, comparing three surfaces that should
  * agree within tolerance:
@@ -31,7 +31,7 @@ export const SHADOW_METERING_DEFAULTS = {
   cron: '0 4 * * *',
 } as const;
 
-/** research-findings.md §6 — the alert threshold, restated here for the settings description. */
+/** research-findings.md — the alert threshold, restated here for the settings description. */
 export const SHADOW_METERING_DRIFT_THRESHOLD_PCT = 2;
 
 /** The event name emitted (via `EventEmitter2`) when any comparison in a tenant's report breaches. Mirrors `ENTITLEMENTS_QUOTA_BLOCKED_EVENT` — a narrow, purpose-built payload, not a full `SysEvent`. No consumer is wired in this lane (owns the reconciliation folder only, not `sysEvent.service.ts`); a future subscriber can persist an audit row the same way `handleEntitlementsQuotaBlockedEvent` does. */

@@ -4,9 +4,9 @@
  * This resolution is the ONLY path the bound can reach the workflow by: the
  * harness pins the config at start and never re-reads it (C1), so a bound that
  * fails to resolve here is a loop that parks forever — the exact defect
- * TASK-686 fixed, reintroduced one layer up.
+ * fixed, reintroduced one layer up.
  *
- * Extracted from `loop-config.service.test.ts` when TASK-815 rebuilt
+ * Extracted from `loop-config.service.test.ts` when rebuilt
  * `LoopConfigService` off `DepartmentAgent`. Everything else in that file
  * asserted agent-derived fields and moved to
  * `loop-config.node-source.task815.test.ts`; the idle bound is orthogonal to

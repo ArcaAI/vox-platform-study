@@ -1,7 +1,7 @@
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 
 /**
- * Decision #6 (R-8, `docs/implementation/TASK-722-Exposure-V1/README.md` §6):
+ * Decision #6 (R-8, :
  * a PUBLICLY-invoked workflow may NOT route to a cloud LLM provider unless
  * the tenant has explicitly opted in — public exposure inherits the
  * strictest egress posture (fail-closed by default), and cloud selection is
@@ -21,7 +21,7 @@ import { isCloudByoProvider } from '../ai-provider-connection/constants';
  * node registry (`@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY`) ships
  * only `noop`/`passthrough`, and neither ever sets `config.provider` — no
  * compiled graph can trip this check until a palette node that selects an LLM
- * provider exists (TASK-720/731). It activates automatically the moment one
+ * provider exists (/731). It activates automatically the moment one
  * does, with no further wiring.
  *
  * Returns the first disallowed provider name found, or `null` when the

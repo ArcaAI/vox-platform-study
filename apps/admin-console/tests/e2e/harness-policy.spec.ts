@@ -81,8 +81,8 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
    * Edits a genuinely tenant-writable knob (clinical gate SLA). The safety/PHI toggles are
    * `SUPER_ADMIN_ONLY_POLICY_KEYS`, so a tenant PATCH against one always 403s and they
    * render read-only. (The former "Safety provider"/"Safety model" inputs are gone
-   * entirely — TASK-816 Phase 4 dropped their columns.)
-   */
+   * entirely — dropped their columns.)
+ */
   test('editing and reverting a tenant-writable field round-trips with no net mutation', async ({ page }) => {
     await page.goto('/harness/policy');
     await waitForSettled(page);

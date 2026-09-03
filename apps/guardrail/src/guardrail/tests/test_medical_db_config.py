@@ -54,9 +54,9 @@ class _VetoStubResolver:
 
 def test_db_config_cannot_be_switched_off(monkeypatch) -> None:
     """DB-backed model resolution is the ONLY source of a model identity, so
-    there is no longer a switch that turns it off (TASK-799 lane D).
+    there is no longer a switch that turns it off ( lane D).
 
-    TASK-735 Phase 2b deleted the env engines the old `db_config_enabled=False`
+    deleted the env engines the old `db_config_enabled=False`
     branch fell back to, which left a flag whose only non-default value 503'd
     every route. The variable is now inert."""
     monkeypatch.setenv("GUARDRAIL_DB_CONFIG_ENABLED", "false")
@@ -132,7 +132,7 @@ async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
 
 @pytest.mark.asyncio
 async def test_db_config_enabled_vetoed_tenant_fails_closed_503() -> None:
-    # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is a
+    # Tenant-first resolution: a DISABLED tenant row is a
     # VETO — 503, never a silent fold-through to the SYSTEM row.
     settings = Settings()
     resolver = _VetoStubResolver()

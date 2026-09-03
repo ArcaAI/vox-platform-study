@@ -262,7 +262,7 @@ export class ServiceReleaseService extends BaseService implements IServiceReleas
   }
 
   /**
-   * TASK-804 — run a WRITE path under the SYSTEM tenant context.
+   * run a WRITE path under the SYSTEM tenant context.
    *
    * `ServiceRelease` and `ServiceInstance` are in `TENANT_SCOPED_MODELS`, and
    * that Prisma extension fails CLOSED without a tenant context:

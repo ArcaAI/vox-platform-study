@@ -1,5 +1,5 @@
 /**
- * TASK-799 P1-C — a tenant secret that is NOT a vendor LLM/STT/TTS credential.
+ * C — a tenant secret that is NOT a vendor LLM/STT/TTS credential.
  *
  * Two defects are locked here:
  *

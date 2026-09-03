@@ -1,15 +1,14 @@
 """``ConsultationGateWorkflow`` — the durable human wait behind ``consultation.hitlGate``
-(TASK-731 Phase B).
 
-## Why a new workflow type, and not the child-delegation `palette-contract.md` §2 describes
+## Why a new workflow type, and not the child-delegation `palette-contract.md` describes
 
-§2 decided "delegate the gate to the existing, replay-fixtured ``HarnessDocWorkflow`` gate
+decided "delegate the gate to the existing, replay-fixtured HarnessDocWorkflow gate
 machinery as a child workflow", and defended it mainly on *reuse*: "reuses that code UNCHANGED …
 the property `03-compliance-posture.md` calls 'the hardest property to get right, and it is
 right' (timeout never signs) is never re-derived."
 
-That option is not implementable as written, and the reason is not the one §2 flagged as its own
-falsifier. §2's stated precondition — "TASK-718's `contracts/versioning.md` … forbids a parent
+That option is not implementable as written, and the reason is not the one flagged as its own
+falsifier. 's stated precondition — " `contracts/versioning.md` … forbids a parent
 from starting a non-declared child workflow kind" — was re-confirmed this pass and is FINE:
 `versioning.md` has no such prohibition; it requires a `workflow.patched` gate for a new command
 in the shared loop (rule 3), which the interpreter side now carries.
@@ -22,12 +21,12 @@ retrieves evidence, assembles a prompt, generates, runs both sensor passes and p
 consultation the interpreter's own graph has already persisted one for. That is not delegation;
 it is a competing writer.
 
-So this module implements §2's REASONING against the code that actually exists:
+So this module implements 's REASONING against the code that actually exists:
 
 * **A child, not an interpreter extension.** The interpreter's signal surface stays exactly
-  ``cancel``-only — TASK-718 R-2's "v1 refuses it and the schema enforces the refusal" is
+  cancel-only — 's "v1 refuses it and the schema enforces the refusal" is
   preserved in full, and no other palette's runs inherit an ``approval`` signal they can never
-  use. This was §2's decisive axis against option (A).
+  use. This was 's decisive axis against option (A).
 * **A NEW ``@workflow.defn`` type.** A type with no recorded histories has no era to stay
   compatible with, which is precisely the precedent ``ConsultationLoopWorkflow`` set
   (`workflows.py:1634`: *"Being a NEW workflow type is what makes this safe"*). Nothing here

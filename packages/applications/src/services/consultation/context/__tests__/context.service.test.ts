@@ -53,7 +53,7 @@ const mockContextItemRepository = {
   findWithAllRelations: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
-  // TASK-709: updateContext now writes through the OCC-aware
+  // updateContext now writes through the OCC-aware
   // Compare-And-Set variant; delegate to `update` so this suite's existing
   // `.update` configuration keeps driving behavior unchanged. The CAS
   // predicate itself (the `expectedVersion` argument) is asserted directly
@@ -1001,10 +1001,10 @@ describe('ContextService', () => {
       expect(existingItem.content).toBe('Original content');
     });
 
-    // TASK-709: OCC — updateContext routes through the Compare-And-Set
+    // OCC — updateContext routes through the Compare-And-Set
     // repository call, threading the caller-supplied `expectedVersion`
     // through, and never falls back to the legacy non-versioned write.
-    describe('optimistic concurrency (TASK-709)', () => {
+    describe('optimistic concurrency ', () => {
       it('routes through updateWithVersion using request.expectedVersion, not the legacy update()', async () => {
         const existingItem = createMockContextItemEntity({
           id: 'context-item-occ-1',
@@ -3624,10 +3624,10 @@ describe('ContextService', () => {
   //
   // The ContextItem aggregate owns three cross-aggregate references the
   // multi-tenancy audit (C-3) flagged as leak vectors:
-  //   - consultationId            (parent Consultation, on every create)
-  //   - contextItemId             (parent ContextItem, on update / NER add)
+  //   - consultationId (parent Consultation, on every create)
+  //   - contextItemId (parent ContextItem, on update / NER add)
   //   - caseNoteIds / preSummaryIds /
-  //     previousSummaryIds        (ContextItem chains stored on SummaryMeta)
+  //     previousSummaryIds (ContextItem chains stored on SummaryMeta)
   //
   // Each must be asserted in the caller's tenant before any factory or
   // repository call runs. Failures route through `assertParentInScope`,
@@ -3783,8 +3783,8 @@ describe('ContextService', () => {
   // The three public read paths that consume the consultation-ID
   // array resolved by `resolveLinkedConsultationIds` and pass it to
   // an `ids: string[]` repository method:
-  //   - `getSharedContext`        → findSharedContext(allIds)
-  //   - `getSharedCaseNotes`      → findCaseNotesFromChain(allIds)
+  //   - `getSharedContext` → findSharedContext(allIds)
+  //   - `getSharedCaseNotes` → findCaseNotesFromChain(allIds)
   //   - `getAggregateNamedEntities('chain')` via the same helper
   //
   // These tests simulate the defense-in-depth scenarios called out

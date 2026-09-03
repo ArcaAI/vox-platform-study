@@ -8,7 +8,7 @@
 //
 // Scope:
 //   - This worker DOES NOT rotate secrets itself. It REACTS to rotations
-//     performed by operators (manual runbook §16 of the SRE blueprint)
+// performed by operators (manual runbook of the SRE blueprint)
 //     or by the optional scheduled-rotation processor (Task 6.6).
 //   - One worker per cluster (leader-elected by the deployment module
 //     in apps/api, Task 6.5). Multiple workers would publish duplicate

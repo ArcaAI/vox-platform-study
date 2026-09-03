@@ -1,4 +1,4 @@
-# Build context for the vLLM serving image (TASK-823).
+# Build context for the vLLM serving image ().
 #
 # The context is this directory ONLY (see .gitlab/ci/build.yml `build-vllm`
 # -> DOCKER_CONTEXT), so it is already tiny. This file keeps it that way and

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { JsonValue } from '@arcaai/domains';
 
-/** One persisted `AiRoutingPolicy` revision (TASK-818 §3A.3). */
+/** One persisted `AiRoutingPolicy` revision */
 export class AiRoutingPolicyResponse {
   @ApiProperty({ description: 'Policy id (uuid7)' })
   id!: string;
@@ -12,19 +12,19 @@ export class AiRoutingPolicyResponse {
   @ApiProperty({ description: 'AI task key this policy routes', example: 'text.finalize' })
   taskKey!: string;
 
-  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  // ─────────── — the provider-configuration binding ───────────
   //
-  // TASK-844 re-grained this table to ONE ROW PER PROVIDER CONFIGURATION and
+  // re-grained this table to ONE ROW PER PROVIDER CONFIGURATION and
   // moved the ordered chain off `candidatesJson` onto the rows themselves, but
   // the READ shape was never widened to match. Every field below already
   // existed on `AiRoutingPolicyEntity` and in `ProviderConfigurationRow`; they
   // were simply unreachable over HTTP, so no client could render the elected
   // default, the provider a configuration binds to, or the model it selects —
-  // which is the whole substance of a configuration. Added by TASK-845, whose
+  // which is the whole substance of a configuration. Added by, whose
   // Providers and Tasks tabs are the first read client.
 
   @ApiPropertyOptional({
-    description: 'Canonical task taxonomy this `taskKey` belongs to (TASK-843). NULL means a row an un-migrated writer left unclassified.',
+    description: 'Canonical task taxonomy this `taskKey` belongs to . NULL means a row an un-migrated writer left unclassified.',
     nullable: true,
   })
   taskKind!: string | null;
@@ -32,7 +32,10 @@ export class AiRoutingPolicyResponse {
   @ApiPropertyOptional({ description: 'Human label for this configuration. Not a key, and never part of resolution.', nullable: true })
   displayName!: string | null;
 
-  @ApiPropertyOptional({ description: 'FK → AiProviderConnection.id — WHERE this configuration sends work and how it authenticates.', nullable: true })
+  @ApiPropertyOptional({
+    description: 'FK → AiProviderConnection.id — WHERE this configuration sends work and how it authenticates.',
+    nullable: true,
+  })
   providerConnectionId!: string | null;
 
   @ApiPropertyOptional({ description: 'FK → AiModel.id — the catalogue model this configuration selects.', nullable: true })
@@ -54,7 +57,7 @@ export class AiRoutingPolicyResponse {
   @ApiProperty({ description: 'Candidate on/off without deleting the row. A disabled configuration is skipped by resolution and cannot be elected.' })
   enabled!: boolean;
 
-  @ApiPropertyOptional({ description: 'Opaque residency-class label; compared for EQUALITY only by the §3A.4 fallback gates.', nullable: true })
+  @ApiPropertyOptional({ description: 'Opaque residency-class label; compared for EQUALITY only by the fallback gates.', nullable: true })
   residency!: string | null;
 
   @ApiPropertyOptional({
@@ -76,7 +79,7 @@ export class AiRoutingPolicyResponse {
   @ApiProperty({ description: 'PRIORITY | WEIGHTED | LEAST_BUSY | LOWEST_LATENCY | LOWEST_COST' })
   strategy!: string;
 
-  @ApiProperty({ description: 'STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE. STRICT is the platform default (§3A.4).' })
+  @ApiProperty({ description: 'STRICT | STRICT_UNLESS_OPTED_IN | POLICY_MAY_OVERRIDE. STRICT is the platform default.' })
   explicitProviderMode!: string;
 
   @ApiProperty({ description: 'Tie-break when two rows match equally specifically' })
@@ -98,7 +101,7 @@ export class AiRoutingPolicyResponse {
   })
   fallback!: JsonValue | null;
 
-  @ApiPropertyOptional({ description: 'Circuit/health thresholds (§3A.5)', nullable: true, type: Object })
+  @ApiPropertyOptional({ description: 'Circuit/health thresholds', nullable: true, type: Object })
   health!: JsonValue | null;
 
   @ApiPropertyOptional({ description: 'Cache-affinity / sticky-routing hints', nullable: true, type: Object })

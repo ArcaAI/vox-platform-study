@@ -10,7 +10,7 @@ import { ConsentGrantEntityMapper } from '../../../mappers';
 import { ConsentGrant } from '../../../models';
 
 /**
- * ConsentGrant repository (TASK-712, consent-abac).
+ * ConsentGrant repository (consent-abac).
  *
  * HAND-AUTHORED — `gen:repository` is broken; this follows the
  * `AiProviderConnectionRepository` precedent in this folder.

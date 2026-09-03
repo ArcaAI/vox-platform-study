@@ -3,16 +3,16 @@ import { AiRoutingPolicyFactory, AiTaskKind } from '@arcaai/domains';
 import { AiRoutingPolicyDtoMapper } from '../ai-routing-policy.dto.mapper';
 
 /**
- * TASK-845 — the READ shape must carry TASK-844's re-grain.
+ * the READ shape must carry re-grain.
  *
- * TASK-844 turned this table into one row per PROVIDER CONFIGURATION (a real
+ * turned this table into one row per PROVIDER CONFIGURATION (a real
  * connection FK, a real model FK, an elected default enforced by a partial
  * unique index) but left `AiRoutingPolicyResponse` on the pre-re-grain shape,
  * so none of it was reachable over HTTP. A console cannot render "which
  * provider serves this task, and which row is the elected default" from a
  * payload that contains neither. These cases pin the widened projection.
  */
-describe('AiRoutingPolicyDtoMapper.toResponse — TASK-844 configuration fields', () => {
+describe('AiRoutingPolicyDtoMapper.toResponse —  configuration fields', () => {
   const base = {
     tenantId: '00000000-0000-0000-0000-000000000000',
     taskKey: 'text.finalize',

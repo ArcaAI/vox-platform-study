@@ -1,5 +1,5 @@
 /**
- * TASK-813 — `useConsultationWorkflow`, the discovery hook.
+ * `useConsultationWorkflow`, the discovery hook.
  *
  * The behaviour worth pinning is the FAIL-OPEN posture. A consultation UI must
  * not break because an informational read failed, so a failed read resolves to

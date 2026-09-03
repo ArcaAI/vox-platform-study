@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * One workflow-substrate run, projected for the runs list / detail read APIs
- * (TASK-723). Denormalized read model — `workflowSlug` / `workflowVersionNumber`
+ * Denormalized read model — `workflowSlug` / `workflowVersionNumber`
  * / `definitionName` render without a join even after the definition is
  * renamed or superseded (see workflow-run.prisma header, R7).
  */

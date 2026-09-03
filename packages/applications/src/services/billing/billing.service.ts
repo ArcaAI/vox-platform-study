@@ -64,17 +64,17 @@ import {
  * ============================================================================
  * DATA SOURCES (D13 — rollups, never raw events at invoice time)
  * ============================================================================
- *   usage       → `AiUsageRollupDaily`, plus the bounded ledger AGGREGATES of
+ *   usage → `AiUsageRollupDaily`, plus the bounded ledger AGGREGATES of
  *                 `BillingUsageAggregateRepository` for the two
  *                 operation-shaped rules the rollup grain cannot express
  *                 (D16 guardrail/harness exclusion, OQ1 batch-only audio).
- *   allowances  → `PlanEntitlement` ← `TenantEntitlement` (D11), resolved by
+ *   allowances → `PlanEntitlement` ← `TenantEntitlement` (D11), resolved by
  *                 the pure `resolveBillingAllowances`.
- *   rates       → SELL plane of `AiPriceBook` via `IPriceBookService`,
+ *   rates → SELL plane of `AiPriceBook` via `IPriceBookService`,
  *                 pre-resolved per (unit, usage-day) and MEMOIZED for the
  *                 single computation only — never a cross-request cache (the
- *                 ws-b-contract §11 cache question: a per-computation memo is
- *                 inherently tenant-scoped, so §M4 cannot be violated).
+ * ws-b-contract cache question: a per-computation memo is
+ * inherently tenant-scoped, so cannot be violated).
  *
  * ============================================================================
  * PRORATION — THE HONEST VERSION (D15)
@@ -552,7 +552,7 @@ export class BillingService extends BaseService implements IBillingService {
   /**
    * Pre-resolve SELL rates for every (unit, usage-day) pair so the pure engine
    * can stay synchronous. Memoized for THIS computation only — deliberately
-   * never a cross-request cache (ws-b-contract §11 / §M4: a per-computation
+   * never a cross-request cache (ws-b-contract /: a per-computation
    * memo cannot serve one tenant's rate to another).
    */
   private async prefetchSellRates(

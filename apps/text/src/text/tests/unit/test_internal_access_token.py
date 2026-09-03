@@ -1,4 +1,4 @@
-"""TASK-738 / owner decision D-D — ONE shared internal access token.
+"""/ owner decision D-D — ONE shared internal access token.
 
 `INTERNAL_ACCESS_TOKEN` is THE canonical internal service credential: identical
 across every HOPE service, set by the DevOps engineer, internal use only. This
@@ -9,7 +9,7 @@ suite pins the three properties that make it usable as such:
 2. inbound `X-Service-Token` accepts it — and ONLY it;
 3. outbound peer calls PRESENT it.
 
-TASK-799 lane B closed the legacy `TEXT_SERVICE_TOKEN` window. It was described
+lane B closed the legacy `TEXT_SERVICE_TOKEN` window. It was described
 as zero-cost backward compatibility, but nothing on the other side ever used it,
 and a second ACCEPTED credential is a second thing to rotate and a second thing
 to forget when revoking. "One shared token" is only true if there is one.

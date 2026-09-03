@@ -1,10 +1,10 @@
 import { isSpecPlane, resolveDocsAccess, specForPlane } from '@/server/api-docs';
 
 /**
- * TASK-783 — serves one developer-portal OpenAPI projection to an entitled caller.
+ * serves one developer-portal OpenAPI projection to an entitled caller.
  *
- *   GET /api/docs/spec/business   requires read:ApiDocumentation
- *   GET /api/docs/spec/admin      requires manage:ApiDocumentation
+ *   GET /api/docs/spec/business requires read:ApiDocumentation
+ *   GET /api/docs/spec/admin requires manage:ApiDocumentation
  *
  * Deliberately NOT a static asset and NOT part of the client bundle. The
  * business projection is public-ish in spirit but not in fact: it describes a

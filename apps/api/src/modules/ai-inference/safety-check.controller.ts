@@ -8,7 +8,7 @@ import { AnalyzeGuardrailRequest } from './dto/analyze-guardrail.request';
  * SafetyCheckController — content-safety / PII / prompt-injection verdicts on
  * caller-supplied text, proxied to the Guardrail service.
  *
- * TASK-760 (decision D-2): split out of the retired `ai` prefix. `ai` named
+ * (decision D-2): split out of the retired `ai` prefix. `ai` named
  * neither of the two capabilities it hosted; a safety verdict is its own
  * resource — you POST a piece of text and get back a check — so it gets its
  * own collection rather than sharing one with the NLP analyses.

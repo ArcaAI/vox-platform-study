@@ -40,7 +40,7 @@ import {
  * THE SAME TWO LITERALS appear in the applications-side test — change both or
  * neither.
  *
- * RE-PINNED BY TASK-810, deliberately (ticket §4 Task 13). BOTH digests moved
+ * RE-PINNED BY, deliberately. BOTH digests moved
  * because both prompts moved, and the guard doing its job is exactly why the
  * change had to be made consciously rather than noticed later:
  *
@@ -56,8 +56,8 @@ import {
  *    from doing so (D-21).
  *
  * Previous digests, for the record:
- *   prompt  efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f
- *   system  25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3
+ *   prompt efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f
+ *   system 25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3
  */
 const PINNED_PROMPT_SHA256 = '8a0703713748220d7e005d9ca52f71957c57df04acdbb0e6333ad3b391382d32';
 const PINNED_SYSTEM_PROMPT_SHA256 = 'd3ce3a7c63fd5d4e6aecc32921759759ab79c8800194a7d6c42ecc2d81a3174c';

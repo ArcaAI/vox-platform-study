@@ -3,7 +3,7 @@ import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'clas
 
 /**
  * v1 `PreSummaryRequest` for `POST /api/smr/api/v1/presummary`.
- * (TEXT_Summary_Endpoints.md §4.1; frozen)
+ * (TEXT_Summary_Endpoints.md; frozen)
  *
  * All fields optional. `temperature`/`max_tokens` defaults (0.2 / 800) are
  * applied by the controller so an omitted value round-trips as absent through
@@ -57,7 +57,7 @@ export class PreSummaryRequest {
 
   @ApiPropertyOptional({
     description:
-      "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
+      "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
   })
   @IsOptional()
   @IsString()

@@ -1,5 +1,5 @@
 /**
- * The one-way-strictness merge: SYSTEM register ∪ tenant additions (TASK-716 §3.3).
+ * The one-way-strictness merge: SYSTEM register ∪ tenant additions
  *
  * PURE — no I/O, no throwing (the `departmentAgent/constants.ts` split: the pure
  * cross-field checks live beside the repository-backed half, never inside it).

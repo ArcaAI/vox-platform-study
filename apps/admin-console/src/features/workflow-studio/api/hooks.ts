@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TanStack Query v5 hooks for the Workflow Studio surface (TASK-719 Task 10). Mutations
+ * TanStack Query v5 hooks for the Workflow Studio surface. Mutations
  * invalidate the whole ['workflow-studio'] namespace — an admin console prefers fresh reads
  * over cache cleverness (rule 13). No `fetch` in `useEffect` anywhere in this feature.
  */
@@ -52,19 +52,23 @@ export function useWorkflowDefinitionVersions(id: string) {
   return useQuery({ queryKey: workflowStudioKeys.versions(id), queryFn: () => listWorkflowDefinitionVersions(id), enabled: !!id });
 }
 
-/** The code-owned node registry — effectively static, but still a network read (never a
- *  hard-coded palette; README §1 "zero hard-coded node types"). */
+/**
+* The code-owned node registry — effectively static, but still a network read (never a
+ * hard-coded palette; "zero hard-coded node types").
+ */
 export function useWorkflowNodeRegistry() {
   return useQuery({ queryKey: workflowStudioKeys.registry(), queryFn: listWorkflowNodes, staleTime: 5 * 60 * 1000 });
 }
 
-/** Prompt-template select catalog for the inspector's `PromptTemplatePicker` (Task 19). */
+/** Prompt-template select catalog for the inspector's `PromptTemplatePicker`. */
 export function usePromptTemplateOptions() {
   return useQuery({ queryKey: workflowStudioKeys.promptTemplates(), queryFn: listPromptTemplateOptions, staleTime: 60 * 1000 });
 }
 
-/** TASK-856 — the platform template library. Platform-release cadence, so it is worth a
- *  staleTime; `enabled` lets the clone dialog defer the read until it is actually opened. */
+/**
+* the platform template library. Platform-release cadence, so it is worth a
+ *  staleTime; `enabled` lets the clone dialog defer the read until it is actually opened. 
+ */
 export function useWorkflowTemplates(enabled = true) {
   return useQuery({ queryKey: workflowStudioKeys.templates(), queryFn: listWorkflowTemplates, staleTime: 5 * 60 * 1000, enabled });
 }
@@ -79,8 +83,10 @@ export function useCreateWorkflowDefinition() {
   return useMutation({ mutationFn: (body: CreateWorkflowDefinitionRequest) => createWorkflowDefinition(body), onSuccess: invalidate });
 }
 
-/** TASK-856 — clone into a NEW lineage. Invalidates the whole namespace like every other
- *  mutation here: the clone adds a row to the tenant's definition list. */
+/**
+* clone into a NEW lineage. Invalidates the whole namespace like every other
+ *  mutation here: the clone adds a row to the tenant's definition list. 
+ */
 export function useCloneWorkflowDefinition() {
   const invalidate = useInvalidateWorkflowStudio();
   return useMutation({
@@ -112,7 +118,7 @@ export function usePublishWorkflowDefinition() {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow assignments (TASK-733 half (a)).
+// Workflow assignments.
 // ---------------------------------------------------------------------------
 
 /** The assignment matrix's row source — a self-contained read (rule 13 "features never
@@ -160,7 +166,7 @@ export function useDeleteWorkflowAssignment() {
 }
 
 // ---------------------------------------------------------------------------
-// DD-11 (TASK-810) — prompt binding.
+// DD-11 — prompt binding.
 // ---------------------------------------------------------------------------
 
 /** Per-node prompt pins for one definition, with the "new version available" flag. */
@@ -200,7 +206,7 @@ export function useUpdateNodePrompt() {
 
 
 // ===========================================================================
-// TASK-812 (D-10) — the ordered consultation endpoint sequence
+// (D-10) — the ordered consultation endpoint sequence
 // ===========================================================================
 
 /**

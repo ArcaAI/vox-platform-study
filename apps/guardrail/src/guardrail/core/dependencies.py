@@ -98,9 +98,9 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     selection, pointed at ``apps/text``'s judge lane.
 
     **Fail-closed at every step and with no env engine left to fall back to**
-    (TASK-735 Phase 2b deleted them): an absent ``X-Tenant-Id`` is 428, a DISABLED
+    ( deleted them): an absent X-Tenant-Id is 428, a DISABLED
     tenant row is a 503 veto, and a missing selection is a 503. The
-    ``db_config_enabled=False`` escape hatch is GONE (TASK-799 lane D) — without a
+    db_config_enabled=False escape hatch is GONE ( lane D) — without a
     DB there is no model to name, and inventing one is precisely the hardcoded
     selection this ticket removed. The unreachable-resolver case it used to
     short-circuit is answered by the very next check, with the same 503.
@@ -130,7 +130,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
     except TenantConfigUnavailableError as exc:
         # The tenant's rows could not be READ, which is not the same as absent —
         # answering with SYSTEM's would serve the platform safety FLOOR to a
-        # tenant that may have chosen something stricter (TASK-799 F-08).
+        # tenant that may have chosen something stricter.
         raise HTTPException(
             status_code=503,
             detail=(
@@ -139,7 +139,7 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
             ),
         ) from exc
     except TenantSelectionVetoedError as exc:
-        # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is
+        # Tenant-first resolution: a DISABLED tenant row is
         # a VETO, never a silent fold-through to the SYSTEM row.
         raise HTTPException(
             status_code=503,
@@ -237,7 +237,7 @@ def get_job_processor(request: Request) -> JobProcessor:
 
 
 # ---------------------------------------------------------------------------
-# Delegated aux models (TASK-735 Phases 3 & 6).
+# Delegated aux models ( Phases 3 & 6).
 #
 # Guardrail holds ZERO resident model weights. The GLiNER runtime and the
 # MiniCheck GGUF scorer moved to `apps/nlp` together with their model cache and
@@ -246,8 +246,8 @@ def get_job_processor(request: Request) -> JobProcessor:
 # Two selections, both `AiTaskDefault` ⋈ `AiModel`, both tenant-first with
 # SYSTEM as the platform fallback, both FAIL-CLOSED:
 #
-#   `guardrail.safety`       — the LLM-safety moderation model (six tasks)
-#   `guardrail.pii`          — the PII span model (English only)
+#   `guardrail.safety` — the LLM-safety moderation model (six tasks)
+#   `guardrail.pii` — the PII span model (English only)
 #   `guardrail.groundedness` — the NLI entailment model
 #
 # The label TAXONOMY travels with the selection: it is `AiModel._metadata`'s
@@ -270,7 +270,7 @@ async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: st
     """Resolve one task key's model identity + taxonomy, tenant-first, fail-closed.
 
     There is NO env fallback and no `db_config_enabled` escape hatch (the latter
-    deleted in TASK-799 lane D): guardrail names no model in code, so without the
+    deleted in lane D): guardrail names no model in code, so without the
     registry there is nothing to name, and the resolver check below already says
     so with the same error.
     """
@@ -288,7 +288,7 @@ async def _resolve_selection(app_state: Any, tenant_id: str | None, task_key: st
     try:
         cfg = await resolver.resolve(tenant_id, task_key)
     except TenantConfigUnavailableError as exc:
-        # A failed READ is not "no tenant opinion" (TASK-799 F-08) — fail closed
+        # A failed READ is not "no tenant opinion" — fail closed
         # rather than widen to SYSTEM.
         raise SelectionUnavailableError(
             f"{task_key!r} config for tenant {exc.tenant_id!r} could not be read — "
@@ -434,7 +434,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
 
 
 async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
-    """Build the TASK-829 realtime plane for one tenant.
+    """Build the realtime plane for one tenant.
 
     Reuses `build_safety_analyzer` verbatim — one selection path, one taxonomy,
     one fail-closed posture — and adds the realtime declarations that live
@@ -501,7 +501,7 @@ async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
         overlap_chars=policy_blob.realtime_window_overlap_chars,
         ceiling_chars=policy_blob.realtime_cumulative_ceiling_chars,
         ttl_s=policy_blob.realtime_verdict_ttl_seconds,
-        # The verdict must die when any of these change (§3B.4 condition 3): the
+        # The verdict must die when any of these change ( condition 3): the
         # stamp is a cache entry, and it dies when its key components do.
         policy_version=int(getattr(safety_cfg, "version", 0) or 0),
         classifier_version=str(getattr(safety_cfg, "model", "") or ""),

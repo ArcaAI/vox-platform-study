@@ -15,7 +15,7 @@ import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
 // row ⇒ no fallback). TEXT selection is tenant-admin configurable (NOT in
 // `SUPER_ADMIN_ONLY_TASK_PREFIXES`).
 // `text.test` routes the tenant-admin prompt-template test bench when the
-// caller does not supply an explicit provider/model pair. TASK-740 D-5: this
+// caller does not supply an explicit provider/model pair.: this
 // comment used to describe a `text.test → text.finalize` fallback hop. There is
 // no such hop — `PromptManagementService` resolves `text.test` DIRECTLY and
 // fails CLOSED (BadRequestException naming the key) when it is unconfigured, so
@@ -25,12 +25,12 @@ import { AiTaskKind, ModelTaskType } from '@arcaai/domains';
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
 // (LLM-as-judge), and `nlp.diagnosis` (the diagnosis suggester, split out of
 // the mis-keyed `nlp.classification` doc-type classifier).
-// TASK-729: `nlp.sentiment` / `nlp.toxicity` — two more FIXED-taxonomy
+// `nlp.sentiment` / `nlp.toxicity` — two more FIXED-taxonomy
 // classification tasks served by the SAME generic `/classify/text` endpoint
 // (model-agnostic already; see apps/nlp/src/nlp/api/v1/rest/classify.py).
 // No new Python endpoint — only these two AiTaskDefault keys. Super-admin-only,
 // consistent with every other `nlp.*` key.
-// `vlm.extract`  routes TEXT's vision capability (image → text
+// `vlm.extract` routes TEXT's vision capability (image → text
 // extraction via a vision-language model). It lives in TEXT's own
 // provider/adapter framework — same governance class as `text.*` — so it is
 // tenant-admin configurable, NOT under `SUPER_ADMIN_ONLY_TASK_PREFIXES`.
@@ -38,8 +38,8 @@ export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
   'guardrail.groundedness',
-  // TASK-799 R6 — the PII redaction selections. Seeded and read at runtime by
-  // guardrail's own SQL (`core/tenant_config.py`) since TASK-776, but never
+  // the PII redaction selections. Seeded and read at runtime by
+  // guardrail's own SQL (`core/tenant_config.py`) since, but never
   // declared here, so `assertKnownTaskKey` rejected them on every admin route
   // and no `models.*` descriptor was generated: the platform's PII model was
   // unmanageable through ANY surface. Both are SUPER_ADMIN-only — see
@@ -83,7 +83,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   'nlp.classification': ModelTaskType.TEXT_CLASSIFICATION,
   // diagnosis suggester (symptom→disease text classification).
   'nlp.diagnosis': ModelTaskType.TEXT_CLASSIFICATION,
-  // TASK-729: sentiment / toxicity classifiers reuse the SAME generic
+  // sentiment / toxicity classifiers reuse the SAME generic
   // /classify/text path as nlp.classification/nlp.diagnosis — same task type.
   'nlp.sentiment': ModelTaskType.TEXT_CLASSIFICATION,
   'nlp.toxicity': ModelTaskType.TEXT_CLASSIFICATION,
@@ -102,7 +102,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
 };
 
 /**
- * TASK-843 — taskKey → the CANONICAL TASK TAXONOMY the key belongs to.
+ * taskKey → the CANONICAL TASK TAXONOMY the key belongs to.
  *
  * This is the mapping `AiTaskDefault.taskKind` / `AiRoutingPolicy.taskKind` are
  * derived from, and the SQL `CASE` in the `task_843_ai_task_taxonomy` migration
@@ -202,7 +202,7 @@ export function resolveAiTaskKind(taskKey: string): AiTaskKind | null {
  * (`text.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
  *
- * `guardrail.` was REMOVED here by owner decision 2026-08-16 (TASK-735 Phase
+ * `guardrail.` was REMOVED here by owner decision 2026-08-16 ( Phase
  * 0), reversing the 2026-07-17 super-admin-only directive: guardrail
  * selection is now tenant-admin configurable via the SAME cascade as `text.*`
  * (`getEffective` honours the tenant row; `upsertRow` accepts tenant writes).
@@ -216,14 +216,14 @@ export function resolveAiTaskKind(taskKey: string): AiTaskKind | null {
  * `settings-registry/descriptors/entitlements.descriptors.ts`) that is NOT
  * yet wired to enforcement here — it requires a `PlanEntitlement`/
  * `TenantEntitlement` column (a `packages/database` migration) outside this
- * ticket's file scope. See the TASK-735 ticket README §7 for the gap.
+ * ticket's file scope. for the gap.
  */
 export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
 
 /**
  * SUPER_ADMIN-only task keys that do NOT follow a locked PREFIX.
  *
- * `guardrail.` is deliberately tenant-configurable (TASK-735 Phase 0), so a
+ * `guardrail.` is deliberately tenant-configurable, so a
  * prefix cannot express these two — and widening the prefix would silently
  * re-lock `guardrail.validate` / `.safety` / `.groundedness`, reversing that
  * owner decision as a side effect. Hence a KEY-level list.
@@ -244,9 +244,9 @@ export const SUPER_ADMIN_ONLY_TASK_KEYS = ['guardrail.pii', 'guardrail.pii.spans
 
 /**
  * @deprecated Use {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}. Retained for
- * back-compat with zero production callers (verified 2026-08-16, TASK-735).
+ * back-compat with zero production callers (verified 2026-08-16).
  * Historically pinned to `'guardrail.'`; guardrail left the super-admin-only
- * set in TASK-735 Phase 0, so that value would now be actively wrong. Aliased
+ * set in, so that value would now be actively wrong. Aliased
  * to the first remaining locked prefix instead of a stale literal.
  */
 export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];

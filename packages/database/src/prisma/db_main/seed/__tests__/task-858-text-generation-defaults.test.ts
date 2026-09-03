@@ -1,5 +1,5 @@
 /**
- * TASK-858 D4/D5 — every text-generation task routes to LM Studio
+ * /D5 — every text-generation task routes to LM Studio
  * `gemma-4-e2b-it-qat` (owner correction 2026-09-03: google/gemma-4-E2B-it-qat-q4_0-gguf is THE LM Studio model), on a cold seed AND on an already-seeded database.
  *
  * ## Why the migration is tested here, as text
@@ -35,7 +35,7 @@ const MIGRATION_SUFFIX = '_task_858_text_defaults_gemma_e4b';
 
 const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((row) => [row.taskKey, row]));
 
-describe('TASK-858 D4 — the SYSTEM text-generation defaults', () => {
+describe(' D4 — the SYSTEM text-generation defaults', () => {
   it.each(TEXT_TASK_KEYS)('%s resolves to lms-gemma-4-e2b-it-qat', (taskKey) => {
     const row = byKey.get(taskKey);
     expect(row, `${taskKey} is not seeded`).toBeDefined();
@@ -66,7 +66,7 @@ describe('TASK-858 D4 — the SYSTEM text-generation defaults', () => {
   });
 });
 
-// TASK-858 D5 (a data migration moving already-seeded databases to the E4B model) was
+// (a data migration moving already-seeded databases to the E4B model) was
 // REMOVED on 2026-09-03: the owner corrected the LM Studio model to
 // google/gemma-4-E2B-it-qat-q4_0-gguf, which is what the cold seed always named, so
 // there is nothing for an existing database to migrate to. The migration never left

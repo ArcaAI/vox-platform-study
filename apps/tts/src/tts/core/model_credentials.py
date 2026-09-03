@@ -1,9 +1,9 @@
 """tts mirror of ``stt.core.model_credentials`` — model-registry credentials,
-resolved tenant -> SYSTEM (TASK-855 L6 follow-on).
+resolved tenant -> SYSTEM ( follow-on).
 
 WHAT THIS CLOSES.
 
-``tts/models/source_resolver.py`` (TASK-855 L6) shipped with
+tts/models/source_resolver.py shipped with
 ``config_from_settings`` deliberately CREDENTIAL-FREE: tts had no gateway route
 to a per-model-owner S3 credential, and adding one meant touching ``apps/api``,
 outside that lane's ownership. A parallel lane has since added a GENERIC

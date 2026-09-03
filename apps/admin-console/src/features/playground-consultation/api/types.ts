@@ -174,7 +174,7 @@ export interface LiveSummaryEntity {
  * the TEXT engine — absent on a legacy idempotency-cache hit; never fabricated.
  */
 export interface LiveSummaryStats {
-  /** TASK-796 — the resolved AiTaskDefault key behind an interpreter-produced summary. */
+  /** the resolved AiTaskDefault key behind an interpreter-produced summary. */
   task_key?: string | null;
   total_ms?: number | null;
   ttft_ms?: number | null;
@@ -202,11 +202,11 @@ export interface LiveSummarySnapshot {
   sections: LiveSummarySection[];
   entities: LiveSummaryEntity[];
   /**
-   * TASK-796 — provenance for an INTERPRETER-produced interim summary. Absent on an ordinary
+   * provenance for an INTERPRETER-produced interim summary. Absent on an ordinary
    * live flush. `source: 'interpreter'` is what distinguishes the two; `ordinal`/`total`
    * position the snapshot within its sequence, and `metadata.stats.task_key` names the
    * resolved task.
-   */
+ */
   source?: 'interpreter' | string;
   nodeType?: string;
   ordinal?: number;
@@ -311,7 +311,7 @@ export interface TranscriptContextItem {
 }
 
 /**
- * One transcript segment cited as evidence for a summary (
+ * One transcript segment cited as evidence for a summary
  * `CitedSegmentResponse`). Carries offsets/timing only; the console slices the
  * already-fetched transcript text by `[charStart, charEnd)` for the snippet.
  */

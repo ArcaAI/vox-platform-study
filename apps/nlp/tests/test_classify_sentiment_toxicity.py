@@ -1,6 +1,6 @@
-"""Proves `/classify/text` already serves sentiment/toxicity (TASK-729 Task 2).
+"""Proves `/classify/text` already serves sentiment/toxicity.
 
-Per the ticket (§1/§2.2): sentiment and toxicity are FIXED-taxonomy
+Per the ticket : sentiment and toxicity are FIXED-taxonomy
 classification tasks that the existing generic `/classify/text` endpoint
 already serves — it is model-agnostic (`model_name`/`model_path` select the
 model; the handler carries zero task-specific logic). This ticket adds NO new
@@ -15,7 +15,7 @@ model. This test proves that claim rather than assuming it: it drives
 Mirrors `test_model_override_routes.py`'s fixture-model pattern — imitate,
 don't invent a new fixture style.
 
-TOXICITY LABEL SHAPE — RESOLVED (owner decision, 2026-08-20, TASK-729 §6):
+TOXICITY LABEL SHAPE — RESOLVED (owner decision, 2026-08-20, :
 toxicity is MULTI-LABEL (toxic + threat + insult may all apply to the same
 utterance simultaneously). The single-label tests above still exercise
 `/classify/text` directly (proving the generic single-label path is
@@ -131,7 +131,7 @@ def test_classify_text_serves_toxicity_via_model_name(client, clean_deps) -> Non
 def test_toxicity_multi_label_returns_per_label_scores_and_simultaneous_positives(
     client, clean_deps
 ) -> None:
-    """Owner decision (2026-08-20, TASK-729 §6): toxicity is MULTI-LABEL — an
+    """Owner decision (2026-08-20,: toxicity is MULTI-LABEL — an
     utterance may be toxic AND a threat AND an insult at once. `/classify/text/
     multi-label` returns a per-label score for every label the model exposes,
     plus every label that clears `cls_threshold` (not just one winner)."""

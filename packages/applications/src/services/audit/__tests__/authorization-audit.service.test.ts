@@ -1090,12 +1090,12 @@ describe('AuthorizationAuditService', () => {
   /**
    * Multi-tenant scoping for raw Prisma audit queries
    *
-   * Audit finding C-5 (HIPAA §164.312(b)): `getAuthorizationHistory`,
+   * Audit finding C-5 (HIPAA: `getAuthorizationHistory`,
    * `getRecentDenials`, and `getDenialCount` bypassed `AuditLogRepository`
    * via `(prisma as any).auditLog.findMany(...)` with NO tenant scoping,
    * letting any caller query across all tenants. Methods MUST now inject
    * `tenantId` from CLS into the `where` clause; only SUPER_ADMIN may bypass.
-   */
+ */
   describe('Multi-tenant scoping', () => {
     describe('getAuthorizationHistory', () => {
       it('should inject caller tenantId from CLS into the where clause', async () => {
@@ -1249,14 +1249,14 @@ describe('AuthorizationAuditService', () => {
   });
 
   /**
-   * (audit C-7 finale / NEW-1 / HIPAA §164.312(b)) — derive
+   * (audit C-7 finale / NEW-1 / HIPAA — derive
    * the persisted audit row's `tenantId` from CLS, NOT from the caller-
    * supplied `entry.tenantId`. Caller-supplied is allowed only as a
    * back-compat fallback when no CLS context is wired (background jobs).
    * When neither source resolves a tenant, the write is SKIPPED with a
    * warning — audit rows with NULL tenantId would violate the schema
    * NOT NULL constraint.
-   */
+ */
   describe('logToDatabase uses CLS tenantId', () => {
     const baseEntry: Omit<AuthorizationAuditEntry, 'timestamp'> = {
       userId: 'user-attacker',
@@ -1274,7 +1274,7 @@ describe('AuthorizationAuditService', () => {
       // CLS default (beforeEach) returns `tenant-a`. The entry attempts to
       // attribute the row to `tenant-b` — without the guard a Tenant-A
       // caller could mis-attribute audit rows to Tenant B, breaking the
-      // HIPAA §164.312(b) audit-integrity contract.
+      // HIPAA audit-integrity contract.
       mockPrismaClient.auditLog.create.mockResolvedValue({ id: 'audit-x' });
 
       await service.logAuthorizationDecision({

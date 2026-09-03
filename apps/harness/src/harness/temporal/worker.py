@@ -313,7 +313,7 @@ async def run_worker() -> None:
             # inherits the parent's and must be hosted by this same worker — the identical rule
             # ConsultationLoopWorkflow/SpecialistWorkflow are on this list for.
             ConsultationGateWorkflow,
-            # TASK-848 — the same inheritance rule again, one level deeper. The interpreter starts
+            # the same inheritance rule again, one level deeper. The interpreter starts
             # `AgenticLoopWorkflow` as a child with no explicit task_queue; the loop in turn starts
             # `AgenticSubAgentWorkflow` the same way. Both inherit this queue, so both must be
             # hosted here or a loop node hangs waiting for a worker that never polls for it.
@@ -326,7 +326,7 @@ async def run_worker() -> None:
             *LOOP_ACTIVITIES,
             *REASONING_ACTIVITIES,
             *INTERPRETER_ACTIVITIES,
-            # TASK-848 — the loop's per-iteration checkpoint. Not part of INTERPRETER_ACTIVITIES
+            # the loop's per-iteration checkpoint. Not part of INTERPRETER_ACTIVITIES
             # because the LOOP child executes it, not the interpreter.
             loop_state_checkpoint,
             loop_state_rehydrate,
@@ -347,7 +347,7 @@ async def run_worker() -> None:
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     heartbeat = asyncio.create_task(_write_heartbeat_forever())
-    # Push invalidation for the control-plane pull client (TASK-799 A.3).
+    # Push invalidation for the control-plane pull client.
     invalidation = start_config_invalidation_listener()
 
     # Self-registration: this worker has no inbound HTTP surface

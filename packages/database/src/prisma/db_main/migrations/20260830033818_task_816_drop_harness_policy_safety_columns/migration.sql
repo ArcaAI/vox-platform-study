@@ -1,11 +1,11 @@
--- TASK-816 Phase 4 — drop `HarnessPolicy.safetyProvider` / `.safetyModel`.
+-- drop `HarnessPolicy.safetyProvider` / `.safetyModel`.
 --
 -- These two columns selected NOTHING. The safety screen is built from
 -- `settings.guardrail_base_url` alone (`activities.py::_safety_screen_client`) and
 -- `GuardrailClient.analyze` POSTs only `{text, guardrail_type, request_id}`;
 -- `apps/guardrail` resolves its own provider and model tenant-first from the
 -- `guardrail.safety` AiTaskDefault, fail-closed. That has been the correct home for the
--- guardrail selection since TASK-735/736, and is exactly why these two had nothing left
+-- guardrail selection since /736, and is exactly why these two had nothing left
 -- to do. Phase 2 pinned the absence of a reader with a mutation-verified grep gate
 -- (`test_policy_dead_fields_task816.py`); Phase 4 acts on it.
 --

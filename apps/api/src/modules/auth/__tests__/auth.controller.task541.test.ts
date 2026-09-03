@@ -3,7 +3,7 @@
  *
  * Gap closed: `EventTypes.UserAuthenticated` is a SUCCESS-ONLY bracket, so a
  * rejected login/refresh produced structured warn logs and nothing queryable.
- * HIPAA §164.312(b) access auditing expects rejected access to be reviewable.
+ * HIPAA access auditing expects rejected access to be reviewable.
  *
  * Contract pinned here:
  *   - every login rejection emits exactly ONE
@@ -110,7 +110,7 @@ function buildController(overrides: any = {}) {
     emitter as any,
     {} as any,
     { lookup: vi.fn().mockResolvedValue(null) } as any,
-    {} as never, // workflowRunService (TASK-722)
+    {} as never, // workflowRunService
   );
   return { controller, emitter };
 }

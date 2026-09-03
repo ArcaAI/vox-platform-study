@@ -1,5 +1,5 @@
 /**
- * AiModelDownloadProcessor — the BullMQ worker half of TASK-855 lane L3.
+ * AiModelDownloadProcessor — the BullMQ worker half of lane L3.
  * Mirrors `IngestKnowledgeDocumentProcessor`/`DirectorySyncProcessor`'s test
  * shape: mocked repository/fetcher/S3/cls boundaries, behavioral entity.
  */

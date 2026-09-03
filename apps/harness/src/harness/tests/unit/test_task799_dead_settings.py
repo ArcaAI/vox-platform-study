@@ -1,6 +1,6 @@
-"""TASK-799 A.2 — declared-but-never-read settings fields are deleted, and stay deleted.
+"""A.2 — declared-but-never-read settings fields are deleted, and stay deleted.
 
-Plan §3.2/§3.3: *"~95 dead fields exist because nothing catches them; every one would
+Plan : *"~95 dead fields exist because nothing catches them; every one would
 have been caught by a static check."* A knob that is advertised in `.env.sample`, declared
 in `turbo.json`, and read by NOTHING is worse than no knob at all — an operator sets it,
 observes no effect, and cannot tell a dead field from a bug.

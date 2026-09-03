@@ -65,7 +65,7 @@ export class RbacRoleRepository {
   }
 
   /**
-   * TASK-766 OD-1: the projection now carries `tenantId` so the service can
+   * the projection now carries `tenantId` so the service can
    * tell "my tenant's custom role" from "a SYSTEM-owned platform role" before
    * it writes. The read itself is widened to `[caller, SYSTEM]` by the
    * tenant-scope extension (`Role` is a SYSTEM-shared read model), so ANOTHER
@@ -94,7 +94,7 @@ export class RbacRoleRepository {
   }
 
   /**
-   * TASK-766 OD-1 — the cross-tenant WRITE lane.
+   * the cross-tenant WRITE lane.
    *
    * `Role` is tenant-scoped now, so the EXTENDED client pins every write to the
    * caller's CLS tenant. That is exactly right for a tenant admin, but it

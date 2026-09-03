@@ -43,7 +43,7 @@ def _cfg(**kw) -> SarvamConfig:
     # via model_copy exactly as the router applies a per-tenant override.
     api_key = kw.pop("api_key", "sarvam-key")
     # `model_copy(update=…)`, not kwargs: these fields carry a `validation_alias`
-    # naming a variable nobody sets (TASK-799 lane C closes their env path), and
+    # naming a variable nobody sets (lane C closes their env path), and
     # `populate_by_name` is off — so the field NAME does not construct them either.
     # This is the same mechanism `routing/router._build_override_engine` uses to
     # apply a per-tenant provider override.

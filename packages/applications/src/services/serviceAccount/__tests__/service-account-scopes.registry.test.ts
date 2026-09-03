@@ -1,5 +1,5 @@
 /**
- * TASK-762 — the `svc:*` scope namespace.
+ * the `svc:*` scope namespace.
  *
  * The whole point of the third credential class is that it shares NO mechanism
  * with tenant API keys. The scope namespace is where that is most easily eroded
@@ -9,7 +9,7 @@
  *    A tenant API key must never be mintable with a `svc:*` scope, and a service
  *    account must never carry an `admin:*` one.
  *  - Coverage is DERIVED from the admin scope vocabulary rather than
- *    hand-maintained, which is what makes boot-audit assertion D (§5.7) — every
+ * hand-maintained, which is what makes boot-audit assertion D — every
  *    `svc:*` scope maps to a live admin area and vice-versa — mechanically true
  *    instead of aspirational.
  */
@@ -41,8 +41,8 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
     for (const adminScope of adminScopes) {
       expect(SERVICE_ACCOUNT_SCOPE_REGISTRY[toServiceAccountScope(adminScope)], `no svc:* scope covers ${adminScope}`).toBeDefined();
     }
-    // …and nothing beyond them, apart from the two wildcards, the TASK-767
-    // standalone-feature family and the TASK-773 pre-convention family.
+    // …and nothing beyond them, apart from the two wildcards, the
+    // standalone-feature family and the pre-convention family.
     const nonWildcard = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY).filter((s) => !s.endsWith(':*'));
     expect(nonWildcard.length).toBe(adminScopes.length + STANDALONE_FEATURE_SVC_SCOPES.length + ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES.length);
   });
@@ -65,7 +65,7 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
 });
 
 /**
- * TASK-767 — the trap TASK-766 §"Coordination note" names, pinned.
+ * the trap names, pinned.
  *
  * `hasServiceAccountScope` is pure string matching, so a scope string that is
  * REGISTERED but wired to no ability still satisfies `enforceServiceAccountScopes`
@@ -74,7 +74,7 @@ describe('SERVICE_ACCOUNT_SCOPE_REGISTRY', () => {
  * is the worst failure mode to debug, so BOTH halves are asserted here for every
  * scope in the registry, and again at boot by `auditSvcScopeCoverage`.
  */
-describe('every registered svc: scope is wired on BOTH halves (TASK-767)', () => {
+describe('every registered svc: scope is wired on BOTH halves ', () => {
   const everyScope = Object.keys(SERVICE_ACCOUNT_SCOPE_REGISTRY);
 
   it.each(everyScope)('%s resolves to at least one ability', (scope) => {
@@ -99,14 +99,14 @@ describe('every registered svc: scope is wired on BOTH halves (TASK-767)', () =>
 });
 
 /**
- * TASK-767 — the standalone STT + summarization family.
+ * the standalone STT + summarization family.
  *
  * It is DERIVED from `API_KEY_SCOPE_REGISTRY` for the same reason the admin
  * family is: the `implies` must be the one the API-key path already uses on the
  * SAME route, or the two credential classes would silently diverge on what the
  * identical capability grants.
  */
-describe('STANDALONE_FEATURE_SVC_SCOPES (TASK-767)', () => {
+describe('STANDALONE_FEATURE_SVC_SCOPES ', () => {
   it('every declared source is a real API-key scope', () => {
     for (const source of STANDALONE_FEATURE_SCOPE_SOURCES) {
       expect(API_KEY_SCOPE_REGISTRY[source], `${source} is not an API-key scope`).toBeDefined();
@@ -142,7 +142,7 @@ describe('STANDALONE_FEATURE_SVC_SCOPES (TASK-767)', () => {
 });
 
 /**
- * TASK-773 (owner decision O-1) — the admin-plane PRE-CONVENTION family.
+ * (owner decision O-1) — the admin-plane PRE-CONVENTION family.
  *
  * `WebhookController` sits at `admin/webhooks` but is gated by
  * `webhook:event:write`, a scope minted before the `admin:<area>` convention
@@ -154,10 +154,10 @@ describe('STANDALONE_FEATURE_SVC_SCOPES (TASK-767)', () => {
  *
  * The three properties asserted here are exactly the ones that would break
  * quietly: membership, disjointness from the API-key registry, and a NON-EMPTY
- * ability resolution (the TASK-766 trap — a scope that passes the string guard
+ * ability resolution (the trap — a scope that passes the string guard
  * and is then refused by CASL).
  */
-describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
+describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (O-1)', () => {
   it('every declared source is a real API-key scope — the family is DERIVED, never invented', () => {
     for (const source of ADMIN_PLANE_PRE_CONVENTION_SCOPE_SOURCES) {
       expect(API_KEY_SCOPE_REGISTRY[source], `${source} is not an API-key scope`).toBeDefined();
@@ -180,13 +180,13 @@ describe('ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES (TASK-773 / O-1)', () => {
     }
   });
 
-  it('resolves to a NON-EMPTY ability set on both halves (boot audit D, TASK-766 trap)', () => {
+  it('resolves to a NON-EMPTY ability set on both halves (boot audit D, trap)', () => {
     for (const svcScope of ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES) {
       expect(resolveServiceAccountImpliedPermissions(svcScope).length, `${svcScope} grants nothing`).toBeGreaterThan(0);
       // Each half carries its API-key source's abilities verbatim — the derivation
       // never invents one. `:read` must include `read:WebhookRunHistory`, or it
       // would clear the scope gate on the delivery log and then be 403'd by CASL
-      // (the TASK-766 trap this assertion exists to catch).
+      // (the trap this assertion exists to catch).
       expect(serviceAccountPolicyRules([svcScope])).toEqual(API_KEY_SCOPE_REGISTRY[svcScope.slice('svc:'.length)]!.implies);
     }
   });

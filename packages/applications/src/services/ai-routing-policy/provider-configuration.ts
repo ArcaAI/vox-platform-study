@@ -1,10 +1,10 @@
 /**
- * TASK-844 — the PROVIDER CONFIGURATION as a portable, secret-free artifact.
+ * the PROVIDER CONFIGURATION as a portable, secret-free artifact.
  *
  * Two jobs, both deliberately PURE so they can be tested without a database:
  *
  *  1. **Row → candidate projection.** The re-grain moved the ordered chain out
- *     of `candidatesJson` and onto the rows themselves, but the §3A.4 gates
+ * of `candidatesJson` and onto the rows themselves, but the gates
  *     (`routing-gates.ts`) still reason over `RoutingCandidate`. Projecting here
  *     means the gates did not change at all — the same residency / BAA /
  *     cross-funding rules apply, they just read row scalars now.
@@ -69,7 +69,7 @@ export interface ConfigurationRefs {
 }
 
 /**
- * Project one row onto the `RoutingCandidate` the §3A.4 gates consume.
+ * Project one row onto the `RoutingCandidate` the gates consume.
  *
  * Two fail-closed choices, both matching what `parseCandidates` did with a
  * malformed JSON candidate:

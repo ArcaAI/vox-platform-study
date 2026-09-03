@@ -1,4 +1,4 @@
-"""Guardrail-class model schemas (TASK-735 Phases 3 & 6).
+"""Guardrail-class model schemas ( Phases 3 & 6).
 
 `apps/nlp` is the EXECUTOR for the guardrail plane, never its policy owner
 (decision D3). Every request here carries, from the caller:
@@ -39,11 +39,11 @@ class _GuardModelSelection(BaseModel):
         default=None,
         description="Tenant the decision is attributable to. Absent ⇒ 428.",
     )
-    #: WHICH SERVICE CLASS this call belongs to (TASK-782), not a priority the
+    # WHICH SERVICE CLASS this call belongs to, not a priority the
     #: caller may claim for speed's sake — the two lanes have different queue
     #: geometries AND different declared wait ceilings, so `interactive` is also
     #: a promise to accept a 503 sooner. Absent ⇒ `bulk`, which is exactly the
-    #: TASK-778 behaviour, so an existing caller is unaffected.
+    # behaviour, so an existing caller is unaffected.
     latency_class: Literal["interactive", "bulk"] | None = Field(
         default=None,
         description=(
@@ -108,7 +108,7 @@ class GuardClassifyResponse(BaseModel):
     #: the tasks that were REQUESTED appear; nothing is invented.
     results: dict[str, str | list[str]]
     #: task name → {label: confidence} for the labels present in `results`
-    #: (TASK-830). ADDITIVE: `results` is unchanged, because three guardrail
+    # . ADDITIVE: `results` is unchanged, because three guardrail
     #: call sites parse it as `str | list[str]` and a reshape would have them
     #: comparing `str(dict)` against their benign-label set.
     #:

@@ -1,5 +1,5 @@
 /**
- * TASK-776 / REST review H-1 phase 2 — the seven TIER-A routes now require `If-Match`.
+ * / REST review H-1 phase 2 — the seven TIER-A routes now require `If-Match`.
  *
  * Tier A was the set of PATCH/PUT routes whose response DTO carries `version`,
  * so `ETagInterceptor` emitted a strong `ETag` on the corresponding GET — and
@@ -12,19 +12,19 @@
  *
  *   PATCH /consultations/:id
  *   PATCH /dna-writing-styles/:reportId/default
- *   PUT   /dna-writing-styles/settings
+ *   PUT /dna-writing-styles/settings
  *   PATCH /admin/entitlements/plans/:plan
- *   PUT   /admin/entitlements/tenants/:tenantId/override
- *   PUT   /admin/tenants/:id/tags
- *   PUT   /admin/tenant-idp-config/:id/directory-credentials
+ *   PUT /admin/entitlements/tenants/:tenantId/override
+ *   PUT /admin/tenants/:id/tags
+ *   PUT /admin/tenant-idp-config/:id/directory-credentials
  *
  * Each gets the same three-assertion contract, run against the LIVE gateway:
  *
- *   | request                | expected                                                    |
+ *   | request | expected |
  *   |------------------------|-------------------------------------------------------------|
- *   | no `If-Match`          | 428 `HTTP.PRECONDITION_REQUIRED`                            |
- *   | stale `If-Match`       | 412 `PERSISTENCE.CONCURRENCY_CONFLICT`, and NO write lands  |
- *   | correct `If-Match`     | 2xx, and `_version` increments                              |
+ *   | no `If-Match` | 428 `HTTP.PRECONDITION_REQUIRED` |
+ *   | stale `If-Match` | 412 `PERSISTENCE.CONCURRENCY_CONFLICT`, and NO write lands |
+ *   | correct `If-Match` | 2xx, and `_version` increments |
  *
  * Two routes are create-or-update and use the gateway's create-intent
  * validator `If-Match: "0"` (`expectedVersion.decorator.ts` — a GET on a
@@ -68,7 +68,7 @@ async function expect412(res: import('@playwright/test').APIResponse, what: stri
   expect(body.code).toBe('PERSISTENCE.CONCURRENCY_CONFLICT');
 }
 
-test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
+test.describe(' H-1 phase 2: tier-A routes enforce If-Match', () => {
   let superToken: string;
   let doctorToken: string;
 
@@ -172,7 +172,7 @@ test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
   });
 
   // ==========================================================================
-  // PUT /admin/entitlements/tenants/:tenantId/override  (create-or-update)
+  // PUT /admin/entitlements/tenants/:tenantId/override (create-or-update)
   // ==========================================================================
 
   test('PUT /admin/entitlements/tenants/:tenantId/override — "0" creates, then the version chains', async ({ request }) => {
@@ -255,7 +255,7 @@ test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
   });
 
   // ==========================================================================
-  // PATCH /consultations/:id  — the clinician-facing one, flipped LAST
+  // PATCH /consultations/:id — the clinician-facing one, flipped LAST
   // ==========================================================================
 
   test('PATCH /consultations/:id', async ({ request }) => {
@@ -300,7 +300,7 @@ test.describe('TASK-776 H-1 phase 2: tier-A routes enforce If-Match', () => {
   });
 
   // ==========================================================================
-  // PUT /dna-writing-styles/settings  (create-or-update, doctor self-service)
+  // PUT /dna-writing-styles/settings (create-or-update, doctor self-service)
   // ==========================================================================
 
   test('PUT /dna-writing-styles/settings', async ({ request }) => {

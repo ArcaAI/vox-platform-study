@@ -1,4 +1,4 @@
-"""TASK-829 C-2 and C-3 — the gate that actually matters.
+"""and C-3 — the gate that actually matters.
 
 **C-2 is the do-not-ship condition.** *The validated unit at a consumption point
 is the CUMULATIVE transcript, never the isolated delta.* Per-delta validation is

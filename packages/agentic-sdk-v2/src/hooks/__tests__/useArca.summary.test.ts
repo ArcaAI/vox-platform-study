@@ -233,7 +233,7 @@ describe('summary action behaviors', () => {
   const mockPost = vi.fn();
   const mockGet = vi.fn();
   const mockPatch = vi.fn();
-  // TASK-709: the summary PATCH route is `@RequiresIfMatch()`.
+  // the summary PATCH route is `@RequiresIfMatch()`.
   const mockPatchWithIfMatch = vi.fn();
   const consultationObj = { id: 'c-001', patientId: 'p-123', doctorId: 'd-456', appointmentDate: '2026-02-17', createdAt: '', updatedAt: '' };
 
@@ -383,7 +383,7 @@ describe('WS-5: summary versioning enhancements', () => {
   const mockPost = vi.fn();
   const mockGet = vi.fn();
   const mockPatch = vi.fn();
-  // TASK-709: the summary PATCH route is `@RequiresIfMatch()`.
+  // the summary PATCH route is `@RequiresIfMatch()`.
   const mockPatchWithIfMatch = vi.fn();
   const consultationObj = { id: 'c-001', patientId: 'p-123', doctorId: 'd-456', appointmentDate: '2026-02-17', createdAt: '', updatedAt: '' };
 

@@ -4,7 +4,7 @@ Extracts X-Request-ID from the incoming request (or generates a UUID4),
 binds it to structlog contextvars for the duration of the request, and
 sets the same header on the response.
 
-**Pure ASGI, not `BaseHTTPMiddleware`** (TASK-818 Lane C). The shim runs every
+**Pure ASGI, not `BaseHTTPMiddleware`**. The shim runs every
 request inside its own anyio task group with two memory object streams; three
 stacked layers of it cost ~2.2 ms of CPU per request here — about 30% of the
 whole per-request budget on a service that runs at 96-98% of one core. This

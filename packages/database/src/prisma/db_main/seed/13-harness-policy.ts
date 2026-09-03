@@ -73,7 +73,7 @@ function snapshotKnobs(row: Record<string, unknown>): HarnessPolicyKnobs {
   return out;
 }
 
-const SEED_CHANGE_REASON = 'TASK-506 seed: set TEXT system default (lm-studio / gemma-4-e2b-it-qat)';
+const SEED_CHANGE_REASON = ' seed: set TEXT system default (lm-studio / gemma-4-e2b-it-qat)';
 
 /**
  * Idempotently set the SYSTEM HarnessPolicy TEXT default + record a WORM change.
@@ -86,7 +86,7 @@ const SEED_CHANGE_REASON = 'TASK-506 seed: set TEXT system default (lm-studio / 
 export const seedHarnessPolicy = async (
   client: CorePrismaClient,
 ): Promise<{ success: true; action: 'created' | 'updated' | 'noop'; changeWritten: boolean }> => {
-  console.log('Seeding SYSTEM HarnessPolicy TEXT default (TASK-356 Phase 2)...');
+  console.log('Seeding SYSTEM HarnessPolicy TEXT default (Phase 2)...');
 
   const { textProvider, textModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
   const existing = await client.harnessPolicy.findFirst({

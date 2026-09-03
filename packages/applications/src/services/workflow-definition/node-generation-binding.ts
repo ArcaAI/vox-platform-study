@@ -1,7 +1,7 @@
 import type { WorkflowGraph, WorkflowGraphNode } from '@arcaai/workflow-contract';
 
 /**
- * TASK-847 finding F-32 — the pairing a hyper-parameter capability check needs from a graph:
+ * finding F-32 — the pairing a hyper-parameter capability check needs from a graph:
  * the `generation` block a node TUNES, and the `providerConfigRef` that decides whether those
  * knobs reach anything.
  *

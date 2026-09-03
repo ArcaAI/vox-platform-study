@@ -165,7 +165,7 @@ describe('PipelinePolicyAdminController — row PUT (OCC + max-scope)', () => {
 });
 
 /**
- * TASK-816 Phase 2 — the `globalOnly` lock must be visible AT the route.
+ * the `globalOnly` lock must be visible AT the route.
  *
  * `05-nestjs-api.md` §Imperative Privilege Checks names "the `globalOnly` descriptor lock
  * (PipelinePolicy)" as one of its canonical examples, and requires every such route to carry a

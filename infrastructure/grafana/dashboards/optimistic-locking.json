@@ -102,7 +102,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Fraction of PATCH requests rejected with 412. Alert threshold: > 0.5%. Above this, on-call should page (per TASK-302 Stream D plan, Research §6 Phase E).",
+      "description": "Fraction of PATCH requests rejected with 412. Alert threshold: > 0.5%. Above this, on-call should page (per Stream D plan, Research §6 Phase E).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -341,7 +341,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Optimistic Locking — Config Write Conflicts (TASK-302 Stream D)",
+  "title": "Optimistic Locking — Config Write Conflicts (Stream D)",
   "uid": "optimistic-locking",
   "version": 1,
   "weekStart": ""

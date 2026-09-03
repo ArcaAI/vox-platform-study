@@ -1,10 +1,10 @@
 /**
- * TASK-704 — Generator Entry-Point Seam e2e.
+ * Generator Entry-Point Seam e2e.
  *
  * The literal acceptance criterion from the design brief and
  * `04-target-architecture.md`'s remediation table: on a harness-enabled
  * tenant, `POST :id/summary/async` (entry point #4 — previously one of the
- * six unforked legacy entry points, per the ticket's §2.1) now routes through
+ * six unforked legacy entry points, 's now routes through
  * `NoteGenerationService` and produces the note via the SAME durable harness
  * document workflow entry point #1 already uses — never the legacy BullMQ
  * `SummaryProcessor` body.
@@ -60,9 +60,9 @@ async function loginDoctor(request: any): Promise<string> {
 test.describe.configure({ mode: 'serial' });
 
 test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a harness-enabled tenant', () => {
-  // TASK-764 — this block's original claim ("needs only a live apps/api +
+  // this block's original claim ("needs only a live apps/api +
   // Postgres + Redis — NOT the harness/Temporal/TEXT/NLP stack") stopped being
-  // true when TASK-732 moved the seam decision INTO the controller. The route
+  // true when moved the seam decision INTO the controller. The route
   // no longer enqueues onto a BullMQ queue and returns; it now calls
   // `NoteGenerationService.generate`, which calls `HarnessGatewayService.start`
   // deliberately un-optional-chained ("a missing gateway throws here rather
@@ -85,7 +85,7 @@ test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a
 
     if (createResp.status() < 200 || createResp.status() >= 300) {
       skipReason = `create async summary job returned ${createResp.status()} — is apps/harness (HARNESS_URL) running? body: ${await createResp.text()}`;
-      console.warn(`[TASK-764] ${skipReason}`);
+      console.warn(`[] ${skipReason}`);
       return;
     }
 

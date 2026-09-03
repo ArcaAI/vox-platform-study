@@ -11,17 +11,17 @@
  * Scope (REAL data sources only — TARGET throughput/metrics are NOT asserted):
  *
  *   Dashboard (frame 10):
- *     P1 · GET /admin/tenants     → cross-tenant tenant list (Active-tenants KPI).
- *     P2 · GET /admin/users       → cross-tenant user count (Total-users KPI).
+ *     P1 · GET /admin/tenants → cross-tenant tenant list (Active-tenants KPI).
+ *     P2 · GET /admin/users → cross-tenant user count (Total-users KPI).
  *     P1 · GET /admin/monitoring/sessions → live-session / processing-job counts. 🔒
  *   Monitoring (frame 11):
  *     M1 · GET /admin/monitoring/uptime → per-service elapsed uptime. 🔒
- *     M1 · GET /admin/health/services   → per-service health (degraded-services KPI +
+ *     M1 · GET /admin/health/services → per-service health (degraded-services KPI +
  *          the Services table). 🔒
  *   G1 · super-admin scope — a tenant-scoped `doctor` is 403 on the three 🔒
  *          platform-ops endpoints (MonitoringController is class-gated
  *          @CanAny(['manage','all'],['read','TenantTelemetry']) at monitoring.controller.ts;
- *          /admin/health/services is method-gated on AdminHealthServicesController since TASK-759).
+ * /admin/health/services is method-gated on AdminHealthServicesController since).
  *
  * Deliberately NOT asserted (TARGET — no backend; drawn em-dash on the surfaces,
  * see README + TRACEABILITY-MATRIX T1): requests/min, error-rate, sockets/min,

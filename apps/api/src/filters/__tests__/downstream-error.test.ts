@@ -1,5 +1,5 @@
 /**
- * TASK-768 — Downstream-unreachable error contract.
+ * Downstream-unreachable error contract.
  *
  * Unit tests for the SINGLE boundary that builds a client-facing body for a
  * failed call to a downstream Python service. Two owner requirements are
@@ -79,7 +79,7 @@ describe('classifyDownstreamFailure — classify by CAUSE, never by what the cli
     expect(classifyDownstreamFailure(new Error('getaddrinfo EAI_AGAIN text-svc'))).toBe('transport');
   });
 
-  it('unwraps the happy-eyeballs AggregateError from the TASK-764 evidence', () => {
+  it('unwraps the happy-eyeballs AggregateError from the  evidence', () => {
     // The observed production error: `AggregateError: connect ECONNREFUSED ::1:8862;
     // connect ECONNREFUSED 127.0.0.1:8862`. The AggregateError itself carries no
     // `.code` — the errno lives on its `.errors[]` members.

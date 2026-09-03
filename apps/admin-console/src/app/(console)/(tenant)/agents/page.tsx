@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 
 /**
  * `/agents` — the Agent Catalog — RETIRED with `DepartmentAgent` itself
- * (TASK-815). A prompt template's binding to a workflow now lives on the NODE
+ * A prompt template's binding to a workflow now lives on the NODE
  * that references it, so the screen's whole subject is gone; what a tenant
  * admin came here to do is split between two surfaces that already exist:
  *

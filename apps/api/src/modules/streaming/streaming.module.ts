@@ -48,10 +48,10 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
     // only place the allow-list reaches the socket path. The gateway injects it
-    // `@Optional()` and fails CLOSED (TASK-610 reversed the original fail-OPEN
+    // `@Optional()` and fails CLOSED ( reversed the original fail-OPEN
     // posture; see `stt-ws.gateway.ts#isOriginAllowed`), so omitting this
     // import does not break the build — it refuses every browser origin
-    // instead. Corrected under TASK-755, which mirrored this wiring into
+    // instead. Corrected under, which mirrored this wiring into
     // `speech.module.ts`.
     OriginRegistryServiceModule,
     // Registry-backed providers listings on TextProxyController:
@@ -65,7 +65,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Tenant BYO cloud-credential resolver for the TEXT proxy's
     // cloud-only, minimal-exposure, fail-open `provider_overrides` injection.
     AiProviderConnectionServiceModule,
-    // TASK-799 A.2 — supplies `EffectiveSettingsService`, the tenant → SYSTEM
+    // A.2 — supplies `EffectiveSettingsService`, the tenant → SYSTEM
     // cascade behind the TEXT proxy's `guardrail_policy` push. Absent it the
     // proxy pushes nothing, which reads downstream as "this tenant has no
     // opinion" and leaves the platform posture in force.
@@ -90,7 +90,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // providers, not a sibling controller here) — Nest's module
     // encapsulation means each module that injects the token must import it.
     UsageLedgerServiceModule,
-    // TASK-700: supplies `IDnaWritingStyleService` to `TextProxyController` so
+    // supplies `IDnaWritingStyleService` to `TextProxyController` so
     // its `dna_writing_style_id` path routes through the gated
     // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
     // ungated) repository row directly.

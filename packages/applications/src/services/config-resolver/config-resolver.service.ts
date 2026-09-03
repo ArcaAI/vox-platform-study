@@ -71,7 +71,7 @@ interface SettingDescriptor {
  * The setting registry (/ Q7):
  *  - `autoSummaryEnabled` / `autoNerEnabled` may be set down to DOCTOR scope.
  *  - `harnessEnabled` is capped at DEPARTMENT (never per-doctor) and code-defaults
- *    to `true` since TASK-732 (Phase 2 exit criterion — the legacy signable
+ * to `true` since (Phase 2 exit criterion — the legacy signable
  *    generator this toggle used to fall back to no longer exists; matches the
  *    SYSTEM row flipped in `seed/14-pipeline-policy.ts`).
  *  - `dnaStyleEnabled` is DOCTOR-scope storage (written elsewhere); read here.
@@ -91,7 +91,7 @@ const TOGGLE_KEYS = Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleK
 /** The palette whose assigned definition governs a consultation (mirrors `PromptResolutionService`). */
 const CONSULTATION_PALETTE_KEY = 'consultation';
 
-/** TASK-815 §11 / DD-6 — the node type that carries the DNA-redaction pass. */
+/** / DD-6 — the node type that carries the DNA-redaction pass. */
 const DNA_REDACTION_NODE_TYPE = 'agent.dna_redaction';
 
 function nodeConfigOf(node: WorkflowGraphNode | null | undefined): Record<string, unknown> {
@@ -108,7 +108,7 @@ export class ConfigResolver {
     // Optional + trailing so existing positional test fixtures keep compiling;
     // production DI (CoreDatabaseModule) always supplies it.
     @Optional() @Inject(UserProfileRepository) private readonly userProfileRepository?: UserProfileRepository,
-    // TASK-806 lane A item 2 — the tenant gate for DNA REDACTION moved onto the graph, so the
+    // lane A item 2 — the tenant gate for DNA REDACTION moved onto the graph, so the
     // resolver needs the same two collaborators `PromptResolutionService` uses to reach a
     // tenant's governing consultation definition. `@Optional()` and trailing for the same reason
     // its are: this service is constructed positionally in background job processors and a long
@@ -234,13 +234,13 @@ export class ConfigResolver {
    *
    * A THIRD gate used to sit alongside them: `DepartmentAgent.dnaStylePolicy =
    * DISABLED` forced the result OFF for the department's default agent
-   * regardless of the other two. It retired with `DepartmentAgent` (TASK-815).
+   * regardless of the other two. It retired with `DepartmentAgent`.
    * The direction matters — dropping a gate that could only force redaction OFF
    * means a consultation the tenant AND the doctor both enabled is now redacted
    * where an agent could previously veto it. The owner APPROVED that loss, with
    * a rider that is what this method now implements.
    *
-   * ## The tenant gate is the NODE (TASK-806 lane A item 2)
+   * ## The tenant gate is the NODE (lane A item 2)
    *
    * *"DNA-Redaction must be configured as an agent node."* So the tenant does not
    * enable redaction with a boolean that can disagree with its graph — it enables
@@ -250,7 +250,7 @@ export class ConfigResolver {
    * tier uses.
    *
    * The DOCTOR opt-in does NOT move onto the node, deliberately: it is a
-   * clinician's own preference about their own writing style (TASK-815 §12 P-4
+   * clinician's own preference about their own writing style ( P-4
    * makes that ownership explicit), not something a tenant admin authors into a
    * graph. What the node declares is whether it HONOURS that opt-in —
    * `requireDoctorOptIn`, default true, which reproduces the surviving two-gate

@@ -1,5 +1,5 @@
 /**
- * Wire types for the Workbench (TASK-721 Phase C). Shapes mirror the gateway DTOs in
+ * Wire types for the Workbench. Shapes mirror the gateway DTOs in
  * @arcaai/applications (`WorkflowDefinitionResponse` / `WorkflowTestFixtureResponse` /
  * `SandboxRunResponse` / `SandboxRunStatusResponse` / `RunTraceResponse`). The console cannot
  * import server packages, so they are re-declared here — the same convention
@@ -24,7 +24,7 @@ export interface DefinitionsPage {
   page: number;
 }
 
-/** `WorkflowTestFixtureResponse` — a saved per-tenant synthetic test input (Phase B). */
+/** `WorkflowTestFixtureResponse` — a saved per-tenant synthetic test input. */
 export interface Fixture {
   id: string;
   name: string;
@@ -106,16 +106,18 @@ export interface RunNodeRollup {
   attemptGroupingIsDerived: boolean;
 }
 
-/** `GET admin/workflow-runs/:runId/trace` (`RunTraceResponse`) — reused verbatim for the
- *  Workbench's own node inspector (TASK-721 Task 8): a sandbox run IS a `WorkflowRun` row like
- *  any other, so the SAME bounded trajectory read TASK-723 built serves both surfaces. */
+/**
+* `GET admin/workflow-runs/:runId/trace` (`RunTraceResponse`) — reused verbatim for the
+ * Workbench's own node inspector: a sandbox run IS a `WorkflowRun` row like
+ * any other, so the SAME bounded trajectory read built serves both surfaces.
+ */
 export interface RunTrace {
   run: {
     id: string;
     status: SandboxRunLiveStatus;
     isSandbox: boolean;
     /**
-     * TASK-797: `RunTraceResponse.run` is the FULL `WorkflowRunResponse`, so these counts are
+     * `RunTraceResponse.run` is the FULL `WorkflowRunResponse`, so these counts are
      * already on the wire — this slice previously dropped them. They are optional here because
      * an older/degraded gateway response may omit them, and "absent" must never render as `0`
      * (pitfall 1 again: a fabricated zero reads as "nothing went wrong").
@@ -125,7 +127,7 @@ export interface RunTrace {
      * `STARTED | OK | ERROR | SKIPPED | TIMEOUT` and `RunNodeRollupResponse`'s own docs record
      * that degraded and critically-failed nodes both persist as `ERROR`. This run-level count is
      * the only place degradation is observable at all.
-     */
+ */
     nodeCount?: number | null;
     failedNodeCount?: number | null;
     degradedNodeCount?: number | null;

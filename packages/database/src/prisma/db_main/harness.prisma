@@ -32,13 +32,13 @@ enum HarnessAuditAction {
   // Harness gate SLA-breach escalation records (from apps/harness escalate_gate).
   GATE_ESCALATED // reason=gate_sla_breached — an un-signed gate passed its SLA and was escalated (non-terminal).
   GATE_ABANDONED // reason=gate_sla_abandoned — the terminal escalation before the gate abandons.
-  // TASK-711: session state machine transition audit rows. SIGNED is already
+  // session state machine transition audit rows. SIGNED is already
   // covered by ATTEST — no fourth member for it.
   SESSION_PRIMED // OPEN → PRIMED
   SESSION_TIMED_OUT // PENDING_REVIEW → TIMED_OUT (gate SLA exhausted; the clock never signs)
   SESSION_REOPENED // TIMED_OUT|SIGNED|CLOSED_COMPLETE|CLOSED_INCOMPLETE → REOPENED
-  // TASK-711 follow-up: owner decision on CLOSED_COMPLETE/CLOSED_INCOMPLETE
-  // (state-machine.md §1a) — the terminal close itself is clinically significant now that it
+  // follow-up: owner decision on CLOSED_COMPLETE/CLOSED_INCOMPLETE
+  //  — the terminal close itself is clinically significant now that it
   // types whether a human gave feedback, so it gets its own WORM row (unlike the original
   // design's plain CLOSED, which reused ResourceUpdated only).
   SESSION_CLOSED_COMPLETE // SIGNED → CLOSED_COMPLETE (human closed with a signed note)
@@ -66,7 +66,7 @@ model GoldenSet {
   // Pinned dataset version label (e.g. "v1") an EvalRun executes against, so
   // a run is reproducible against a frozen snapshot of the golden cases.
   pinnedVersion String?
-  // Optional department scoping (OD-5): a golden set may be scoped to a single
+  // Optional department scoping: a golden set may be scoped to a single
   // department's agents. NULL ⇒ tenant-wide. No FK (mirrors the tenantId posture);
   // indexed for the per-department picker on the console eval panel.
   departmentId  String?
@@ -246,7 +246,7 @@ model HarnessAuditEvent {
 
   // Subject of the event
   //
-  // NULLABLE (TASK-712, consent-abac Phase 4): a consent grant/revoke has no
+  // NULLABLE (consent-abac Phase 4): a consent grant/revoke has no
   // consultation — `ConsentGrant` is keyed on (tenantId, externalPatientId,
   // purpose), not a consultation. Widening this from NOT NULL is additive
   // and hash-compatible: `computeHarnessAuditHash` folds
@@ -350,12 +350,12 @@ model HarnessPolicy {
   // Guardrail + PHI toggles. Defaults mirror SafetyGuardConfig
   // (apps/harness/src/harness/core/config.py) + PhiConfig.
   //
-  // TASK-816 Phase 4 dropped `safetyProvider`/`safetyModel` from this model. They selected
+  // dropped `safetyProvider`/`safetyModel` from this model. They selected
   // nothing: the safety screen is built from `settings.guardrail_base_url` alone
   // (`activities.py::_safety_screen_client`) and `GuardrailClient.analyze` POSTs only
   // `{text, guardrail_type, request_id}` — `apps/guardrail` resolves its own provider and
   // model tenant-first from the `guardrail.safety` AiTaskDefault, fail-closed, which is the
-  // correct home for that selection since TASK-735/736. Their `@default`s were also the last
+  // correct home for that selection since /736. Their `@default`s were also the last
   // hardcoded engine name + model id in this model, which rule 00 §Configuration Principles
   // forbids. Do not reintroduce them here; the selection belongs in `AiTaskDefault`.
   safetyEnabled Boolean @default(true)

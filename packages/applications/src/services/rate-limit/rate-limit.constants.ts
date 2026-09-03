@@ -14,7 +14,7 @@ export const RATE_LIMIT_NAMESPACE = 'rate-limit';
 /**
  * Platform tenant that owns the single authoritative set of rate-limit rows.
  * Matches `AppSettingsService.PLATFORM_TENANT_IDS` (SYSTEM only — owner ruling
- * 2026-08-20, TASK-763 OD-1) and the seed `SYSTEM_TENANT_ID`. NEVER the
+ * 2026-08-20) and the seed `SYSTEM_TENANT_ID`. NEVER the
  * GLOBAL/default tenant (`50000000-…`) — that id is a CUSTOMER tenant, never a
  * runtime tier.
  *

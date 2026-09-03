@@ -285,13 +285,13 @@ async def delete_knowledge_document(
     Lane B (`KnowledgeDocumentService.deleteDocument`) calls this BEFORE
     committing the Postgres soft-delete (fail-closed: a 503 here means the
     delete is aborted rather than leaving vectors retrievable behind a
-    "deleted" Postgres row — see TASK-728). Idempotent: deleting an id with no
+    "deleted" Postgres row — see ). Idempotent: deleting an id with no
     matching points is a normal 200, not an error.
     """
     settings = _settings(request)
     # Fail closed for the same reason the Qdrant-outage branch below does: Lane B
     # aborts its Postgres soft-delete on a 503, so a credential we cannot resolve
-    # must never leave vectors retrievable behind a "deleted" row (TASK-728).
+    # must never leave vectors retrievable behind a "deleted" row.
     qdrant_credential = await _resolve_qdrant_credential(settings, tenant_id)
     if not qdrant_credential.usable:
         logger.warning(

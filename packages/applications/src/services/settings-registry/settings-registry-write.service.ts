@@ -29,7 +29,7 @@ export const REGISTRY_SETTING_NAMESPACE = 'registry';
  * channel was `arca:guardrail-config:invalidate`, which appeared exactly once
  * repo-wide — guardrail's SUBSCRIBER, with ZERO publishers. Guardrail believed
  * it had push invalidation and actually had a 60s TTL poll, and the other five
- * services never had a listener at all. Rule 09 §"Config caches" makes the
+ * services never had a listener at all. Rule 09 makes the
  * ordering explicit: "Invalidation is the propagation path; TTL is a
  * bounded-staleness safety net." A per-service channel would multiply the
  * publish fan-out by the service count for a payload every service can filter
@@ -55,7 +55,7 @@ export const PYTHON_CONFIG_INVALIDATION_CHANNEL = 'arca:config:invalidate';
 /**
  * The reserved SYSTEM tenant. Platform-owned KV rows (rate-limit.*, and every
  * other `global-kv` row written at `system` scope) live here — the SOLE
- * platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1).
+ * platform-configuration tier (owner ruling 2026-08-20).
  * GLOBAL (`50000000-…`) is a CUSTOMER tenant, never a config tier: it must
  * never be the target of a `system`-scope write.
  */
@@ -110,11 +110,11 @@ export interface WriteRegistrySettingResult {
  * thing needed to make a key governed and writable.
  *
  * The PUT flow, in order:
- *   1. unknown key                → 400
+ *   1. unknown key → 400
  *   2. `sensitivity === 'secret'` → 400 (secrets never flow through this lane)
  *   3. `globalOnly` + not super admin → 403
- *   4. `assertWithinMaxScope`     → 400 on a too-deep scope
- *   5. tier dispatch              → 400 for anything but `global-kv`
+ *   4. `assertWithinMaxScope` → 400 on a too-deep scope
+ *   5. tier dispatch → 400 for anything but `global-kv`
  *   6. value validated against `dataType`
  *   6b. descriptor-declared `validate` invariant (ordering / cross-field) → 400
  *   7. upsert the backing row, broadcast a sys-event, refresh the read cache
@@ -343,8 +343,8 @@ export class SettingsRegistryWriteService extends BaseService {
    * The tenant whose row `scope` addresses. Pure row targeting — no privilege
    * check (see `assertMayWriteAtScope`).
    *
-   *  - `system`  → the reserved platform tenant.
-   *  - `tenant`  → the caller's WORKING tenant, taken from CLS. Deliberately
+   *  - `system` → the reserved platform tenant.
+   *  - `tenant` → the caller's WORKING tenant, taken from CLS. Deliberately
    *    not a caller-supplied id: the Prisma tenant-scope extension pins every
    *    `GlobalSetting` write to the CLS tenant anyway, so accepting a target id
    *    here would advertise a cross-tenant write path that cannot execute. A

@@ -6,7 +6,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import type { HarnessLiveAssistRequest, HarnessRealtimeDeliveryAck, LiveAssistEventDto } from './dto';
 
 /**
- * HarnessLiveAssistService (TASK-795 RC-2) — the live clinician-assist feed.
+ * HarnessLiveAssistService — the live clinician-assist feed.
  *
  * Ephemeral, Redis-only (no Prisma), exactly like `HarnessProgressService`: the
  * interpreter posts one branch at a time through

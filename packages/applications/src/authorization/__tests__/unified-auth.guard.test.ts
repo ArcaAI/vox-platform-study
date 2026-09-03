@@ -56,7 +56,7 @@ describe('UnifiedAuthGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // TASK-742: the API-key path now DENIES any route that declares no
+    // the API-key path now DENIES any route that declares no
     // `@RequiredScopes(...)`, so a bare "everything is undefined" reflector no
     // longer represents an API-key-reachable route — it represents a route that
     // is not an API-key surface at all. Every API-key test in THIS file is

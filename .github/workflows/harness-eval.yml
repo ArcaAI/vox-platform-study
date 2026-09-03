@@ -1,4 +1,4 @@
-name: Harness Eval Gate (TASK-330)
+name: Harness Eval Gate
 
 # Release-blocking evaluation gate for the clinical-documentation harness.
 # Two independent checks, both run against the PINNED golden-set version:

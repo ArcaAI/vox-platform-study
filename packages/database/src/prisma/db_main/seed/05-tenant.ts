@@ -15,13 +15,13 @@ const GLOBAL_TENANT = {
   id: SEED_TENANT_ID,
   name: 'Global',
   key: '__GLOBAL__',
-  // TASK-763 — was 'System-wide default tenant — do not remove', which is the
+  // was 'System-wide default tenant — do not remove', which is the
   // exact "default tenant" framing `.claude/rules/00-project-context.md`
-  // §"The two reserved tenants are NOT two config tiers" exists to stop. This
+  // exists to stop. This
   // is a CUSTOMER tenant used as a platform-admin playground; the runtime
   // cascade is request tenant → SYSTEM, and this id must never appear in it.
   // (Several runtime constants still DO treat it as a platform tier — see the
-  // TASK-763 README §Owner Decisions; correcting the row's own description is
+  // Decisions; correcting the row's own description is
   // the part that belongs to the seed.)
   description: 'Global — a CUSTOMER tenant used as the platform-admin playground for trialling configuration before promoting it into the SYSTEM tier. Not a config tier; never a runtime fallback.',
 };
@@ -31,16 +31,16 @@ const CUSTOMER_TENANTS = [
     id: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     name: 'ArcaAI',
     key: 'ARCAAI',
-    // TASK-766 — was 'retained as the secondary tenant backing cross-tenant
+    // was 'retained as the secondary tenant backing cross-tenant
     // isolation E2E tests', which described the row by the TEST that reads it
     // rather than by what it IS. This is the day-1 customer tenant: it carries
     // the clinical department catalog, the approved prompt library, the loop
-    // defaults, the frontend pipeline config and (TASK-766) the bootstrap
+    // defaults, the frontend pipeline config and the bootstrap
     // tenant admin + machine identity. It still backs the cross-tenant e2e
     // suite; that is a consequence of being a real second tenant, not its
     // purpose.
     description: 'ArcaAI — the day-1 customer tenant: clinical departments, approved prompt library, agent defaults, tenant administrator and machine identity. Tenant-scoped like any customer; never a config tier.',
-    // TASK-766 OD-2 (owner decision, 2026-08-20): ArcaAI is the one seeded
+    // (owner decision, 2026-08-20): ArcaAI is the one seeded
     // tenant with a commercially-modelled plan. Every other seeded tenant
     // (SYSTEM, Global) keeps `plan = null` and resolves ungated-legacy via
     // `resolveEntitlements`'s Q3 rule — see

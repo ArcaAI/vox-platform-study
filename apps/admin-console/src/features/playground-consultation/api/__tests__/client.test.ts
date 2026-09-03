@@ -134,7 +134,7 @@ describe('playground consultation client', () => {
     expect(state.recording).toBe(false);
   });
 
-  it('TASK-814 §2b: forwards accepted proposals, trimmed to the gateway DTO shape (no extra fields — the ValidationPipe forbids them)', async () => {
+  it(': forwards accepted proposals, trimmed to the gateway DTO shape (no extra fields — the ValidationPipe forbids them)', async () => {
     const calls = installFetchMock(() =>
       Response.json({
         consultationId: 'c-1',
@@ -281,11 +281,11 @@ describe('playground consultation client', () => {
 });
 
 /**
- * TASK-793 W1/W2 — the two request shapes TASK-789 found were never sent.
+ * /W2 — the two request shapes found were never sent.
  * Asserted at the network boundary, because "the field exists on the type" was
  * exactly the evidence that misled the earlier audit.
  */
-describe('TASK-793 — the previously-unsent request shapes', () => {
+describe('the previously-unsent request shapes', () => {
   interface HeaderCall {
     url: string;
     method: string;
@@ -348,7 +348,7 @@ describe('TASK-793 — the previously-unsent request shapes', () => {
 });
 
 /**
- * TASK-815 §12 (P-4) — the two scoping catalogs live on the CLINICIAN plane.
+ *  — the two scoping catalogs live on the CLINICIAN plane.
  *
  * They used to call `admin/departments` and `admin/dna-writing-styles`, which
  * 403 for the one clinical persona the product defines (a tenant admin

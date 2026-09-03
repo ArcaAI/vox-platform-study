@@ -131,7 +131,7 @@ def _n_cases(n: int) -> GoldenSet:
 class _ConcurrencyTrackingJudgeClient:
     """Stub judge client that records the peak number of in-flight calls.
 
-    TASK-713 — proves ``GoldenSetRunner`` actually overlaps case scoring
+    proves GoldenSetRunner actually overlaps case scoring
     (rather than awaiting one case fully before starting the next), which is
     the lever the CI wall-clock budget depends on. A short ``asyncio.sleep``
     per call gives concurrent tasks a window to overlap; without it every
@@ -164,11 +164,10 @@ class _ConcurrencyTrackingJudgeClient:
 
 
 class TestRunnerConcurrency:
-    """``GoldenSetRunner`` fans case scoring out concurrently (TASK-713).
+    """GoldenSetRunner fans case scoring out concurrently.
 
     CI wall-clock for the 18-case golden set is only viable against a live
     judge backend if cases overlap rather than run strictly one-at-a-time; see
-    ``docs/implementation/TASK-713-Harness-Eval-Gate/README.md`` §7 for the
     measured per-call latency this is derisking.
     """
 

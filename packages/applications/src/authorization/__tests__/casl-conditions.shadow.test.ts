@@ -1,5 +1,5 @@
 /**
- * TASK-712 Phase 5 Task 14 — CASL condition-evaluation SHADOW mode.
+ * CASL condition-evaluation SHADOW mode.
  *
  * Scope discipline (owner directive, R1): this suite proves the guard now
  * COMPUTES an instance-aware verdict for opted-in routes and RECORDS every
@@ -273,7 +273,7 @@ describe('UnifiedAuthGuard — CASL shadow mode (Task 14)', () => {
 // metadata KEY the decorator and the guard must agree on.
 describe('ResolveSubjectInstance', () => {
   it('sets SUBJECT_INSTANCE_RESOLVER_KEY metadata to a descriptor carrying the resolver', () => {
-    // TASK-781 changed the stored shape from a bare function to a descriptor
+    // changed the stored shape from a bare function to a descriptor
     // so a route can also declare WHICH subject it resolves and whether the
     // resolver is enforce-grade. `enforceGrade` defaults to false: an
     // undeclared resolver is never enough to make a pair enforceable.

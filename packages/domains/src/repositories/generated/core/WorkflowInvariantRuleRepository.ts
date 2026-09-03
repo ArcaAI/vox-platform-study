@@ -9,7 +9,7 @@ import { WorkflowInvariantRuleEntityMapper } from '../../../mappers';
 import { WorkflowInvariantRule } from '../../../models';
 
 /**
- * The validator's rule rows (TASK-716 Task 3b) — the DATA half of the
+ * The validator's rule rows (b) — the DATA half of the
  * "code-owned predicate types, data-owned rule instances" split.
  *
  * `WorkflowInvariantRule` is BOTH tenant-scoped and a SYSTEM-shared read model

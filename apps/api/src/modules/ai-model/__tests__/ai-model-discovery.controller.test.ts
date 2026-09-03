@@ -176,7 +176,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 });
 
 // =============================================================================
-// Tenant-aware discovery (TASK-799 A.1)
+// Tenant-aware discovery 
 // =============================================================================
 describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', () => {
   it("probes the TENANT's own LM Studio when it has one", async () => {
@@ -283,7 +283,7 @@ describe('AiModelDiscoveryService.discover — tenant-aware engine resolution', 
 });
 
 // =============================================================================
-// Internal-call headers (TASK-839) — the outbound POST to TEXT must carry
+// Internal-call headers — the outbound POST to TEXT must carry
 // `X-Tenant-Id` per the mandatory-tenant-header contract
 // (`.claude/rules/00-project-context.md` §"Tenant identity is mandatory on
 // internal service calls"). Before the fix this header was omitted entirely,

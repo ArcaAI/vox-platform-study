@@ -382,7 +382,7 @@ export class TenantService extends BaseService implements ITenantService {
           configYaml: currentVersionYaml,
           name: savedPipeline.name,
           description: savedPipeline.description ?? undefined,
-          changeReason: 'Cloned from SYSTEM ASR pipeline catalog on tenant provisioning (TASK-505/356 full parity)',
+          changeReason: 'Cloned from SYSTEM ASR pipeline catalog on tenant provisioning (full parity)',
           changedBy: this.requestUser?.id,
           tenantId: newTenantId,
           createdBy: this.requestUser?.id,
@@ -413,7 +413,7 @@ export class TenantService extends BaseService implements ITenantService {
    * copy. This is the department sibling of `provisionTenantPipelineCatalog`
    * and mirrors its contracts exactly.
    *
-   * ## What this used to also do (TASK-815)
+   * ## What this used to also do
    *
    * It cloned a SYSTEM golden `DepartmentAgent` per department, snapshotting the
    * golden prompt template into a tenant-owned APPROVED copy and stamping
@@ -1240,11 +1240,11 @@ export class TenantService extends BaseService implements ITenantService {
    * storage + clinical roll-ups the Tenant Detail "Overview"/"Storage" tiles
    * need. All aggregates read `databaseService.client` directly (house
    * precedent) and are scoped by the explicit `tenantId` argument:
-   *   - storageUsedBytes   = SUM(Media.size)
-   *   - storageQuotaBytes  = SUM(TenantBucket.quotaBytes) over configured
+   *   - storageUsedBytes = SUM(Media.size)
+   *   - storageQuotaBytes = SUM(TenantBucket.quotaBytes) over configured
    *                          buckets, else null ("no quota configured")
    *   - transcriptionMinutes = SUM(AudioRecording.duration ms)/60000
-   *   - summaries24h       = COUNT(SummaryMeta WHERE generatedAt >= now-24h)
+   *   - summaries24h = COUNT(SummaryMeta WHERE generatedAt >= now-24h)
    *   - totalConsultations = COUNT(Consultation)
    *
    * @param tenantId - The tenant ID

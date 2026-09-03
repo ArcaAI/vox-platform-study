@@ -9,16 +9,16 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * non-pipeline AI tasks — the Class-3 generalization of
  * `HarnessPolicy.textProvider/textModel`:
  *
- *   - guardrail.validate   → granite-guardian-4.1-8b     (GUARDRAIL row)
- *   - nlp.ner              → medical-ner                 (TOKEN_CLASSIFICATION row)
- * - nlp.classification → nlp-doc-type-classifier (TEXT_CLASSIFICATION, DISABLED placeholder — )
- * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
+ *   - guardrail.validate → granite-guardian-4.1-8b (GUARDRAIL row)
+ *   - nlp.ner → medical-ner (TOKEN_CLASSIFICATION row)
+ * - nlp.classification → nlp-doc-type-classifier (TEXT_CLASSIFICATION, DISABLED placeholder —)
+ * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row —)
  * - guardrail.safety → gliguard-llm-guardrails-300m (LLM safety moderation, six tasks)
  * - guardrail.pii → gliner2-privacy-filter-pii-multi (PII spans; English only)
- * - guardrail.pii.spans → gliner2-guardrails-pii-multi (joint PII spans + safety; TASK-776)
- * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
+ * guardrail.pii.spans → gliner2-guardrails-pii-multi (joint PII spans + safety;)
+ * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row —)
  * - text.live / text.finalize / text.test / harness.judge → lms-gemma-4-e4b-it-qat
- *   (TEXT_GENERATION rows; owner directive 2026-09-03, TASK-858 D4)
+ * (TEXT_GENERATION rows; owner directive 2026-09-03)
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback.
@@ -141,13 +141,13 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
     'configure it today — the absence blocks nobody permanently.',
 
   // ── declared, but nothing can call them yet ─────────────────────────────
-  // Both keys were added by TASK-729 together with the `apps/nlp` endpoints
+  // Both keys were added by together with the `apps/nlp` endpoints
   // that would serve them, but the GATEWAY half was never built: the only
   // caller, `AiInferenceController`, types its resolver as
   // `taskKey: 'nlp.ner' | 'nlp.diagnosis'` (ai-inference.controller.ts:379),
   // so no request can reach either key. Seeding a model here would configure a
   // capability nothing can invoke, and would have to name a checkpoint nobody
-  // has chosen — TASK-729 proved the plumbing against the FIXTURE ids
+  // has chosen — proved the plumbing against the FIXTURE ids
   // `org/sentiment-model` / `org/toxicity-model`
   // (apps/nlp/tests/test_classify_sentiment_toxicity.py:90,120), never a real
   // one. On a clinical platform a plausible-but-unvetted classifier is worse
@@ -187,7 +187,7 @@ export const SYSTEM_TASK_DEFAULT_EXEMPTIONS: Record<string, string> = {
  * The guard pins this set EXACTLY, so a third such row cannot appear silently
  * while the decision is open.
  */
-// TASK-799 R6 — CLOSED. Both keys are now declared in `AI_TASK_KEYS` and are
+// CLOSED. Both keys are now declared in `AI_TASK_KEYS` and are
 // SUPER_ADMIN-only via `SUPER_ADMIN_ONLY_TASK_KEYS` (owner decision 2026-08-24:
 // they select nlp-hosted TOKEN_CLASSIFICATION models, and D-4 makes those
 // platform-shared; PII redaction is a PHI control, so one vetted model serves
@@ -235,7 +235,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // `resolveTextSelection` consults these keys FIRST. NOTE: the per-tenant
   // `text.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
   //
-  // OWNER DIRECTIVE 2026-09-03 (TASK-858 D4): every text-generation task routes
+  // OWNER DIRECTIVE 2026-09-03: every text-generation task routes
   // to LM Studio `gemma-4-e4b-it-qat` — registry slug `lms-gemma-4-e4b-it-qat`,
   // the QAT build of `google/gemma-4-E4B-it-qat-q4_0-gguf`. These rows used to
   // name the E2B sibling, which was chosen when the platform default mirrored
@@ -246,7 +246,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // these rows are what actually decide the model.
   //
   // ⚠ `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed. An
-  // already-seeded database keeps its E2B rows until the TASK-858 data
+  // already-seeded database keeps its E2B rows until the data
   // migration (`…_task_858_text_defaults_gemma_e4b`) repoints exactly the rows
   // that still carry the OLD seeded values.
   {
@@ -280,8 +280,8 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // Guardrail selection moved out of env into the DB control plane
-  // (Phase B). Both keys are SUPER_ADMIN-only.
-  // TASK-735 Phase 3 — the safety plane is TWO selections now, because the
+  // . Both keys are SUPER_ADMIN-only.
+  // the safety plane is TWO selections now, because the
   // owner-specified models are two different models: moderation and PII are
   // different jobs. Both RUN IN `apps/nlp`; `apps/guardrail` holds no weights.
   // Their label taxonomies ride on the `AiModel._metadata.labelTaxonomy` of the
@@ -298,7 +298,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     taskKey: 'guardrail.pii',
     modelSlug: 'gliner2-privacy-filter-pii-multi',
   },
-  // TASK-776 — the third selection. `guardrail.pii` is the high-volume redaction
+  // the third selection. `guardrail.pii` is the high-volume redaction
   // path (dedicated 205M span model); `guardrail.pii.spans` is the JOINT
   // checkpoint, for prompt/response safety that needs SPANS rather than a bare
   // label. Two keys, not one, because they are different jobs with different
@@ -317,7 +317,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     modelSlug: 'minicheck-flan-t5-large',
   },
   // Harness LLM-as-judge selection moved out of env into the DB
-  // control plane (Phase C). SUPER_ADMIN-only; SYSTEM wins.
+  // control plane. SUPER_ADMIN-only; SYSTEM wins.
   {
     id: '86000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
@@ -333,7 +333,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     // since been corrected to `google/gemma-4-e4b`, which the live instance DOES
     // serve (verified 2026-08-16, ai-models/llm.ts).
     //
-    // OWNER DIRECTIVE 2026-09-03 (TASK-858 D4) moves it once more, to
+    // OWNER DIRECTIVE 2026-09-03 moves it once more, to
     // `lms-gemma-4-e4b-it-qat`. That is a NARROWING of the 2026-08-16 directive,
     // not a reversal of it: both rows are E4B, and the QAT row names the wire id
     // the deployed LM Studio actually serves (`gemma-4-e4b-it-qat` =
@@ -347,13 +347,13 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     // faster turn). That is the owner's accepted trade for judgement quality;
     // it is why the eval gate's CI-provisioning path is still an open choice.
     // `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed —
-    // existing databases move via the TASK-858 data migration.
+    // existing databases move via the data migration.
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
 ];
 
 export const seedAiTaskDefault = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
-  console.log('Seeding SYSTEM AiTaskDefault rows (TASK-506)...');
+  console.log('Seeding SYSTEM AiTaskDefault rows ...');
 
   let created = 0;
   let skipped = 0;
@@ -376,7 +376,7 @@ export const seedAiTaskDefault = async (client: CorePrismaClient): Promise<{ suc
         tenantId: row.tenantId,
         taskKey: row.taskKey,
         modelSlug: row.modelSlug,
-        // TASK-844 — TASK-843 added the column and backfilled the dev DB through
+        // added the column and backfilled the dev DB through
         // a side-car script, but never taught this writer to set it, so every
         // freshly seeded environment landed 12 UNCLASSIFIED rows. Derived, never
         // chosen: the mapping is `AI_TASK_KIND_BY_TASK_KEY` in the applications

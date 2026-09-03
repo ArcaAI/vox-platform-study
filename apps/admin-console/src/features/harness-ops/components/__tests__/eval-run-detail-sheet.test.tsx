@@ -1,5 +1,5 @@
 /**
- * TASK-769: `EvalRunDetailSheet` was a hand-rolled `SheetContent`; it now
+ * `EvalRunDetailSheet` was a hand-rolled `SheetContent`; it now
  * composes the console-wide `DetailDrawer`. These cover the contract the
  * migration must preserve — open/close wiring, the accessible name (the run
  * id), the per-case scores table, and a clean axe pass on the drawer.

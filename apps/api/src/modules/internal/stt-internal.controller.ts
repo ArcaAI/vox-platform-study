@@ -68,7 +68,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 // fails BOOT if this class stops carrying an `internal:`-rooted `@RequiredScopes`
 // — proven by `api-key-scope-audit.test.ts`'s "carve-out is policed, not a hole"
 // case. Do not "converge" this onto a service-token guard without changing
-// `apps/stt` in the same commit. Recorded in `docs/architecture/api-controller-inventory.md` §1.
+// `apps/stt` in the same commit. Recorded in `docs/architecture/api-controller-inventory.md`
 @Controller('internal/stt')
 export class SttInternalController {
   constructor(
@@ -86,7 +86,7 @@ export class SttInternalController {
     // Records the reaper-built usage summary on the STT-side push-back path
     // . Optional so positional test construction still works.
     @Optional() private readonly streamingSession?: StreamingSessionService,
-    // TASK-799 — backs `model-registry-credential`, the weight fetcher's only
+    // backs `model-registry-credential`, the weight fetcher's only
     // route to the HuggingFace token and the model-store S3 pair. Optional and
     // TRAILING so existing positional test construction is unaffected.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionService,
@@ -202,7 +202,7 @@ export class SttInternalController {
 
   @Post('streaming/usage')
   @ApiOperation({
-    summary: 'Record streaming usage from an STT-side reaper finalize (TASK-615 #13 push-back)',
+    summary: 'Record streaming usage from an STT-side reaper finalize (#13 push-back)',
     description:
       'The STT inactivity reaper POSTs the teardown summary it built for a session whose gateway caller crashed and whose ' +
       'removal retries were exhausted, so the transcribe.stream usage is still metered. Idempotent on the session id.',
@@ -304,9 +304,9 @@ export class SttInternalController {
    * broken/absent key simply drops out of the map (worker falls back to env).
    */
   /**
-   * TASK-799 — resolve ONE `model-registry` credential for the STT weight fetcher.
+   * resolve ONE `model-registry` credential for the STT weight fetcher.
    *
-   * SUPERSEDED (TASK-855 follow-on) by the generic
+   * SUPERSEDED ( follow-on) by the generic
    * `GET /internal/model-registry-credential`
    * (`ModelRegistryInternalController`), which every backend service —
    * including STT — can reach. This path is kept ALIVE, not retired: the STT

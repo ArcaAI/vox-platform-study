@@ -1,5 +1,5 @@
 /**
- * TASK-813 — `GET /consultations/:id/workflow`, the discovery route.
+ * `GET /consultations/:id/workflow`, the discovery route.
  *
  * The controller holds no business logic here, so what is worth pinning is the
  * ACCESS ORDER: `verifyConsultationAccess` runs BEFORE the service is asked
@@ -67,7 +67,7 @@ describe('ConsultationController.getGoverningWorkflow', () => {
 });
 
 /**
- * TASK-813 §8 — `GET /consultations/workflows`, the SELECTABLE-set route.
+ * `GET /consultations/workflows`, the SELECTABLE-set route.
  *
  * Two things here are not covered by the generated route-level authz sweep
  * (`task-776-route-authz-matrix.spec.ts`), and both fail SILENTLY if they regress, so they are

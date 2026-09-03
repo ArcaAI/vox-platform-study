@@ -19,7 +19,7 @@ test.describe('Card', () => {
       const component = await mount(<Card>Content</Card>);
       await expect(component).toHaveClass(/rounded-surface/);
       await expect(component).toHaveClass(/border/);
-      // TASK-787 J-12: cards are flat — depth is border + surface, never elevation.
+      // cards are flat — depth is border + surface, never elevation.
       await expect(component).not.toHaveClass(/shadow-(xs|sm|md|lg|xl|raised|overlay)/);
     });
 

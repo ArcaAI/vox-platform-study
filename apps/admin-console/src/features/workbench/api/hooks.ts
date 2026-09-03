@@ -85,9 +85,11 @@ export function useSandboxRunStatus(definitionId: string | null, runId: string |
   });
 }
 
-/** The per-node inspector's data source (Task 8) — reuses `admin/workflow-runs/:runId/trace`
- *  verbatim (README §2.5): a sandbox run is a `WorkflowRun` row like any other. Polls while the
- *  run is live, matching `features/workflow-runs`' own cadence. */
+/**
+* The per-node inspector's data source — reuses `admin/workflow-runs/:runId/trace`
+ * verbatim: a sandbox run is a `WorkflowRun` row like any other. Polls while the
+ *  run is live, matching `features/workflow-runs`' own cadence. 
+ */
 export function useRunTrace(runId: string | null) {
   return useQuery({
     queryKey: workbenchKeys.runTrace(runId ?? ''),

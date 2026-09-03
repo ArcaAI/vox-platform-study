@@ -1,11 +1,11 @@
-"""TASK-713 Task 1: proves ``harness.eval.ci`` produces a genuine PASS/FAIL
+"""proves harness.eval.ci produces a genuine PASS/FAIL
 verdict over the *actual* golden set the CI job points at
 (``eval/golden/fixtures/curated_v1.json``) — not just the synthetic fixture
 used elsewhere in ``test_ci_gate.py``.
 
 This is deliberately hermetic (a stub judge, no network) per
-``.claude/rules/06-python-services.md`` §Pitfalls: the live-backend call is
-provisioned separately (TASK-713 Task 2/3, HUMAN-GATED on the judge-backend
+claude/rules/06-python-services.md : the live-backend call is
+provisioned separately (/3, HUMAN-GATED on the judge-backend
 decision) and must never leak into the hermetic suite. What this test proves
 is the *wiring*: point ``main()`` at the real curated_v1 fixture and confirm
 it exits 0 when every case clears the release-gate thresholds, and exits 1

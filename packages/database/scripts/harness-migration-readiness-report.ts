@@ -1,11 +1,11 @@
 /**
- * TASK-732 Phase 1 Task 2 — missing-note rate + unverified-note harm-proxy instrumentation.
+ * missing-note rate + unverified-note harm-proxy instrumentation.
  *
  * WHAT THIS IS
  * ------------
- * The Postgres half of the go/no-go measurement `docs/implementation/TASK-732-Legacy-Migration-
+ * The Postgres half of the go/no-go measurement
  * Deletion/go-no-go-thresholds.md` defines. It is the sibling of `scripts/harness-availability-
- * report.py` (TASK-730 Task 4, Temporal-side: duplicate-execution counts + the 5xx/latency PromQL
+ * report.py` (Temporal-side: duplicate-execution counts + the 5xx/latency PromQL
  * to paste into Prometheus). That script answers "is the harness reliable when used?"; this one
  * answers "how often does a consultation come away with NO note at all, and how often does the
  * LEGACY path's floor flag a note it did generate?" Read the go-no-go-thresholds.md document
@@ -31,17 +31,17 @@
  *     `SummaryMeta`'s plaintext `guardrailDecisions` JSONB column was dropped (Data Encryption
  *     Initiative Phase 3D) — decrypting it per row needs a live Vault Transit client this
  *     Prisma-only script does not carry. `gateDecision` (also part of the "primary" proxy) IS
- *     plaintext and IS computed here. See go-no-go-thresholds.md §2 for the cost tradeoff.
- *   - It does NOT run the TASK-713 judge over a sample of signed notes (the "strongest" proxy).
+ * plaintext and IS computed here. See go-no-go-thresholds.md for the cost tradeoff.
+ * It does NOT run the judge over a sample of signed notes (the "strongest" proxy).
  *     That is out of this pass's scope by the ticket's own design — recommended, not built.
  *
  * DATA SOURCES
  * ------------
  *   - `AuditLog` (resourceType=Consultation, action=UPDATE, data.action='stopRecording') — the
  *     ONLY persisted timestamp for "a consultation reached capture-stop" that exists in the
- *     schema today. `Consultation.status` is a mutable current-state column (TASK-711's DRAINING
+ * schema today. `Consultation.status` is a mutable current-state column ( DRAINING
  *     value exists in the enum but has ZERO non-test runtime readers as of this pass — grep
- *     confirmed, see go-no-go-thresholds.md §1 — so there is no DRAINING-transition timestamp to
+ * confirmed, see go-no-go-thresholds.md — so there is no DRAINING-transition timestamp to
  *     read yet); `Consultation.updatedAt` gets overwritten by every later transition, so it
  *     cannot answer "when did THIS consultation stop recording" retrospectively. AuditLog's
  *     `ResourceUpdated` event for `stopRecording` (`consultation.service.ts` `setRecordingStatus`)
@@ -216,7 +216,7 @@ async function main() {
   const missingNote = await computeMissingNoteRate(prisma, opts, since);
   const harmProxy = await computeHarmProxy(prisma, opts, since);
 
-  console.log('===== TASK-732 migration readiness report =====');
+  console.log('===== migration readiness report =====');
   console.log(`Generated:   ${new Date().toISOString()}`);
   console.log(`Window:      last ${opts.sinceDays} days (since ${since.toISOString()})`);
   console.log(`SLA:         ${opts.slaMinutes} minutes`);

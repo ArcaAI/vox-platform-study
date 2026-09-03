@@ -1,9 +1,9 @@
 // Deterministic, synthetic example data for the Workbench's `WorkflowTestFixture` surface
-// (TASK-721 Phase C). PURE — no randomness, no wall-clock reads, no I/O: the SAME array on
+// PURE — no randomness, no wall-clock reads, no I/O: the SAME array on
 // every call, so "fixed-seed" here means "reproducible," not "backed by a persisted seed row."
 // Never copy production rows into this file — every value is authored, obviously synthetic
 // placeholder content. See `packages/database/scripts/__tests__/workbench-fixture-examples.test.ts`
-// for the PHI-shape scan (reuses TASK-700's `dna-phi-scan.ts` heuristics) that guards it.
+// for the PHI-shape scan (reuses `dna-phi-scan.ts` heuristics) that guards it.
 
 export interface SyntheticFixtureExample {
   name: string;

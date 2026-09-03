@@ -284,7 +284,7 @@ function queryRegistry(origin: string): boolean | null {
     return registry.has(origin) === true;
   } catch (error) {
     corsLogger.warn({
-      message: 'Origin registry lookup failed — denying (no bootstrap fallback since TASK-610 §4A.1)',
+      message: 'Origin registry lookup failed — denying (no bootstrap fallback since)',
       error: error instanceof Error ? error.message : String(error),
     });
     return null;

@@ -1,4 +1,4 @@
-"""Idempotency-key convention for the async envelope (design doc §3.5).
+"""Idempotency-key convention for the async envelope.
 
 ============================================================================
 THE ONE RULE, restated from ``packages/applications/src/services/usageLedger/
@@ -7,7 +7,7 @@ read its header before touching this file):
 
     A KEY IS DERIVED FROM INTENT, NEVER FROM CHANCE.
 
-Every transport this contract documents is at-least-once (§3.4). An
+Every transport this contract documents is at-least-once. An
 ``idempotencyKey`` minted from a clock, a counter, or a random uuid makes
 every redelivery a NEW event, which defeats the only mechanism a consumer has
 for collapsing duplicates. The key must be a pure function of WHAT happened.
@@ -52,7 +52,7 @@ def _require_id(value: str, name: str) -> str:
 
 
 class AsyncIdempotencyKey:
-    """Intent-derived recipes (design doc §3.5 recipe table). Mirrors idempotency.ts."""
+    """Intent-derived recipes ( recipe table). Mirrors idempotency.ts."""
 
     @staticmethod
     def stt_segment(session_id: str, utterance_index: int) -> str:

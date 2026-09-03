@@ -1,4 +1,4 @@
-"""TASK-735 Phases 3 & 6 — guardrail delegates classification/NER to `apps/nlp`.
+"""Phases 3 & 6 — guardrail delegates classification/NER to `apps/nlp`.
 
 After this phase `apps/guardrail` holds ZERO resident model weights and ZERO
 hardcoded model ids or label taxonomies. It keeps POLICY (which taxonomy, which

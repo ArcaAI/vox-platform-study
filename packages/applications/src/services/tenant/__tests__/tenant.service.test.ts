@@ -104,7 +104,7 @@ const mockPromptVersionRepository = {
 };
 
 // Mock CoreDatabaseService.
-// (C.4) — `updateTenantConfigs` now wraps the
+//  — `updateTenantConfigs` now wraps the
 // per-row CAS loop in `databaseService.baseClient.$transaction(callback)`
 // for all-or-nothing semantics. The mock `$transaction` simply invokes the
 // callback with a stub tx client so the loop executes; tests then assert
@@ -791,7 +791,7 @@ describe('TenantService', () => {
 
     // Clone the SYSTEM agent golden library into the new tenant:
     // a tenant Department copy + APPROVED template snapshot + locked
-    // Golden DEPARTMENT catalog. TASK-815 retired the `DepartmentAgent` half of
+    // Golden DEPARTMENT catalog. retired the `DepartmentAgent` half of
     // this provisioning step (the agent clone, its APPROVED template snapshot,
     // the lock/lineage stamp and the per-department default flip) with the model
     // itself. What HAD to change for the department half to survive is the
@@ -2315,7 +2315,7 @@ describe('TenantService', () => {
     });
   });
 
-  // (C.4) — Prisma `$transaction(callback)` wraps
+  //  — Prisma `$transaction(callback)` wraps
   // the per-row CAS loop, so a mid-batch conflict rolls back BOTH the
   // already-applied rows and the in-flight one. We rely on Prisma's
   // interactive transaction semantics: if the callback throws, the SQL
@@ -2436,9 +2436,9 @@ describe('TenantService', () => {
     });
   });
 
-  // (C.8) — the post-write audit log gets the
+  //  — the post-write audit log gets the
   // version transition for every persisted row so downstream observers
-  // can reconstruct history via `metadata->>'newVersion'` (Research §7).
+  // can reconstruct history via `metadata->>'newVersion'` (Research
   // The pre-write `previousVersion` must be snapshotted BEFORE the CAS so
   // the audit reflects the state the operator actually read.
   describe('updateTenantConfigs — audit-log version correlation (Stream D Phase C)', () => {

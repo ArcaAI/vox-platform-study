@@ -14,7 +14,7 @@
 // `service='llm'` but Azure Speech under `service='stt'`, and `(llm,azure)` /
 // `(stt,azure)` are distinct rows.
 //
-// TASK-799 P1-C.1 — the vocabulary is `llm | stt | tts` (INFERENCE) plus
+// C.1 — the vocabulary is `llm | stt | tts` (INFERENCE) plus
 // `embeddings | rerank | vector` (non-inference INTEGRATIONS). It was widened
 // because the three-value set made this the home for vendor LLM/STT/TTS
 // credentials ONLY, so a tenant secret that was not one of ~11 vendor slots —
@@ -82,7 +82,7 @@ model AiProviderConnection {
 
   // relations
   //
-  // TASK-844 — the back-relation of `AiRoutingPolicy.providerConnectionId`, the
+  // the back-relation of `AiRoutingPolicy.providerConnectionId`, the
   // real FK that replaces F-6's `(service, provider)` string join. `Restrict`
   // is declared on the owning side: a connection a live provider configuration
   // binds cannot be hard-deleted. Adding a back-relation is a Prisma

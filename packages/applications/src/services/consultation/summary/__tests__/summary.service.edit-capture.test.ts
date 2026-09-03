@@ -73,12 +73,12 @@ const makeMocks = () => ({
   findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(async (e: unknown) => e),
     update: vi.fn(async (_id: string, e: unknown) => e),
-    // TASK-709: `updateSummary`/`approveSummary` now write through the
+    // `updateSummary`/`approveSummary` now write through the
     // OCC-aware Compare-And-Set variant.
     updateWithVersion: vi.fn(async (_id: string, e: unknown, _expectedVersion?: number, _tx?: unknown) => e),
   },
   consultationRepository: {
-    // TASK-711: approveSummary calls the real ConsultationEntity.transitionTo.
+    // approveSummary calls the real ConsultationEntity.transitionTo.
     findById: vi.fn().mockResolvedValue(
       new ConsultationEntity({
         id: 'c-1',
@@ -99,7 +99,7 @@ const makeMocks = () => ({
       } as any),
     ),
     update: vi.fn(async (_id: string, e: unknown) => e),
-    // TASK-709: `approveSummary` now CASes the Consultation row too.
+    // `approveSummary` now CASes the Consultation row too.
     updateWithVersion: vi.fn(async (_id: string, e: unknown, _expectedVersion?: number, _tx?: unknown) => e),
   },
   summaryMetaRepository: { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), findByContextItem: vi.fn().mockResolvedValue(null) },

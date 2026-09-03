@@ -1,7 +1,7 @@
 """Text cloud provider/model SELECTION is failMode=closed.
 
 Program: docs/implementation/SOTA-Track/2026-07-28-provider-plane-day1-defaults-followups.md
-(finding F3). Ticket: docs/implementation/TASK-579-Text-Cloud-Default-Model-Fail-Closed/README.md
+(finding F3). Ticket:
 
 Decision A (owner-confirmed): the five CLOUD sub-configs (Azure/Bedrock/OpenAI/
 Anthropic/Vertex) carry no compiled-in vendor ``default_model`` and a cloud
@@ -220,7 +220,7 @@ class TestGenerateSucceedsWithModel:
 class TestLocalEnginesUnaffected:
     """Local/built-in engines do NOT call the cloud guard.
 
-    They never carried a MODEL of their own either — since TASK-799 lane B not
+    They never carried a MODEL of their own either — since lane B not
     even an informational one — but the engine itself has an opinion: LM Studio
     and llama.cpp serve whatever is loaded when the wire `model` is absent. So
     the distinction that survives is about the GUARD, not about a default:
@@ -254,7 +254,7 @@ class TestNoConfigCarriesAModelAtAll:
 
     Decision A emptied the five cloud defaults, which left a typed, named field
     one edit away from carrying a vendor string again — and left the five LOCAL
-    engines still holding real ids. TASK-799 lane B deleted all ten, so
+    engines still holding real ids. lane B deleted all ten, so
     "no compiled-in vendor model" is now a property of the settings TREE rather
     than of ten separately-maintained default values.
     """

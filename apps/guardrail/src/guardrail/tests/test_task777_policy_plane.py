@@ -1,7 +1,7 @@
-"""TASK-777 Lane A — policy-plane correctness.
+"""policy-plane correctness.
 
 Covers the four findings the audit recorded against `apps/guardrail`'s config
-resolution (ticket §2.2):
+resolution :
 
 * **A-1** identical in-flight config reads coalesce into ONE database load;
 * **A-2** invalidation is the propagation path — TTL is only the backstop;
@@ -99,7 +99,7 @@ async def test_single_flight_propagates_a_failure_to_every_waiter() -> None:
             raise RuntimeError("db down")
 
     r = _Boom({})
-    # A DB error is a FAILED READ, not an absent row (TASK-799 F-08), so every
+    # A DB error is a FAILED READ, not an absent row, so every
     # waiter sees the same raise — and only one attempt was made.
     results = await asyncio.gather(
         *(r.resolve(TENANT_A) for _ in range(20)), return_exceptions=True

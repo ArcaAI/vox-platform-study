@@ -7,7 +7,7 @@ import { WorkflowRulePredicateType, WorkflowRuleSeverity } from '../../../enums'
 
 // One PARAMETERIZATION of a code-owned predicate kind — the DATA half of the
 // validator's "code-owned predicate types, data-owned rule instances" split
-// (TASK-716 §3.3). See
+
 // packages/database/src/prisma/db_main/workflow-invariant-rule.prisma for the
 // ownership rules (SYSTEM rows are the platform register; a tenant row may only
 // ADD strictness, never loosen or disable a SYSTEM row — enforced in the

@@ -61,7 +61,7 @@ export class WorkflowRunStatusResponse {
     type: 'object',
     additionalProperties: true,
     description:
-      'What the run DELIVERED (TASK-790, closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.',
+      'What the run DELIVERED (closing finding M-2). Either `{ resultRef: { bucket, key, sizeBytes } }` — a claim-check pointer to fetch out of band — or `{ outputs: { ... } }` inline for a small payload. Null while the run is in flight, and for any graph with no `output.deliver` node. Sourced from the durable run read model, not from Temporal: Temporal state carries per-node status only.',
   })
   resultRef: Record<string, unknown> | null;
 }

@@ -3,7 +3,7 @@
  *
  * Deliberately dependency-free (no Prisma, no Decimal) — the report job feeds
  * plain numbers already summed by its own queries. Keeping this pure means
- * the threshold behaviour (research-findings.md §6: "shadow-meter one full
+ * the threshold behaviour (research-findings.md: "shadow-meter one full
  * billing cycle before enforcing anything … alert on drift > 2%") is testable
  * without a database.
  *
@@ -13,7 +13,7 @@
  * ledger over-counts relative to the surface being reconciled against.
  */
 
-/** research-findings.md §6 — alert threshold, expressed as a fraction (0.02 = 2%). */
+/** research-findings.md — alert threshold, expressed as a fraction (0.02 = 2%). */
 export const DRIFT_ALERT_THRESHOLD = 0.02;
 
 export interface DriftComparison {

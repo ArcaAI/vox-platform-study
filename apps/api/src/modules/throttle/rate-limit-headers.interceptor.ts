@@ -4,7 +4,7 @@ import { tap } from 'rxjs/operators';
 import { RATE_LIMIT_RESOLUTION_KEY, type RequestRateLimitResolution } from './tiered-throttler.guard';
 
 /**
- * Advertise the applied rate-limit policy on the response (TASK-785 AC-9).
+ * Advertise the applied rate-limit policy on the response.
  *
  * Shape follows `draft-ietf-httpapi-ratelimit-headers`: ONE `RateLimit` field
  * plus a `RateLimit-Policy` field. The older three-header form

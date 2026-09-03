@@ -9,7 +9,7 @@ import { buildSwaggerConfig, OPENAPI_CONTRACT_VERSION } from '../swagger.config'
  * `openapi.json` that `packages/vox-node-codegen` and the admin console's
  * developer portal consume, so its output is a contract.
  *
- * This file replaced `swagger-config.test.ts` (deleted in TASK-783), which
+ * This file replaced `swagger-config.test.ts` (deleted in), which
  * constructed its OWN `new DocumentBuilder()` inline and asserted on that —
  * it exercised `@nestjs/swagger`, never `buildSwaggerConfig`, so every
  * assertion passed no matter what this repo's config did. It was also the only
@@ -83,7 +83,7 @@ describe('buildSwaggerConfig', () => {
   });
 
   describe('tag taxonomy', () => {
-    it('populates the top-level tags array (empty before TASK-783)', () => {
+    it('populates the top-level tags array (empty before)', () => {
       expect(document.tags?.length).toBe(API_TAGS.length);
       expect(document.tags?.length).toBeGreaterThan(0);
     });

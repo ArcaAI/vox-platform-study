@@ -11,7 +11,7 @@ import { Authorize, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../dec
 
 /**
  * Admin governance for the institutional-RAG knowledge corpus, at
- * `/admin/knowledge/documents` (TASK-728).
+ * `/admin/knowledge/documents`.
  *
  * `tenantId` is never a route, query or body parameter: every handler is
  * scoped by whatever `IKnowledgeDocumentService` reads off CLS, so a caller

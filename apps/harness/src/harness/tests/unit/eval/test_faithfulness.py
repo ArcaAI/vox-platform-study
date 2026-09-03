@@ -99,7 +99,7 @@ class TestLLMComponents:
 
     @pytest.mark.asyncio
     async def test_llm_verifier_treats_malformed_json_as_unsupported(self):
-        # TASK-713: reproduces a real failure hit measuring against a live
+        # reproduces a real failure hit measuring against a live
         # small local judge (Qwen2.5-1.5B-Instruct) — an occasional malformed
         # verify response (missing delimiter) previously propagated a raw
         # json.JSONDecodeError out of `evaluate` and crashed the ENTIRE

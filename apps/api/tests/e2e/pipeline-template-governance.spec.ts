@@ -164,7 +164,7 @@ test.describe('clone is the customization path', () => {
     const slug = `task-531-clone-${Date.now()}`;
     const created = await request.post(`/api/v1/admin/audio/pipelines/${source.id}/clone`, {
       headers: auth(token),
-      data: { name: 'TASK-531 clone', slug },
+      data: { name: ' clone', slug },
     });
     expect(created.status()).toBe(201);
 
@@ -188,7 +188,7 @@ test.describe('clone is the customization path', () => {
     // And — the whole point — it is editable.
     const edited = await request.patch(`/api/v1/admin/audio/pipelines/${clone.id}`, {
       headers: { ...auth(token), 'If-Match': `"${clone.version}"` },
-      data: patchBody({ name: 'TASK-531 clone (edited)' }, clone.version),
+      data: patchBody({ name: ' clone (edited)' }, clone.version),
     });
     expect(edited.status()).toBe(200);
 

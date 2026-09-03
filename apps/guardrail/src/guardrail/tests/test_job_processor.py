@@ -12,7 +12,7 @@ from guardrail.services.job_processor import JobProcessor
 class RecordingProvider:
     """Stands in for the GLiNER provider the job processor analyses with.
 
-    A plain stub since TASK-735 Phase 2b: it used to subclass the (now deleted)
+    A plain stub since : it used to subclass the (now deleted)
     OpenAI-compat provider, which only ever supplied a constructor — the job
     processor has always talked to GLiNER, never to an LLM engine.
     """

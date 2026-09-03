@@ -1,5 +1,5 @@
 /**
- * AgentPromotionService — promoting a WORKFLOW DEFINITION version (TASK-815 / OD-10).
+ * AgentPromotionService — promoting a WORKFLOW DEFINITION version ( / OD-10).
  *
  * The promotable moved off `DepartmentAgentVersion.configSnapshot` onto a
  * `WorkflowDefinition` version row. Everything the previous suite protected is

@@ -10,7 +10,7 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/text/Dockerfile --target production -t text .
+#   docker build -f apps/text/Dockerfile --target production -t text.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
@@ -93,7 +93,6 @@ COPY --chown=hope:hope apps/text/src ./src
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG
@@ -120,7 +119,7 @@ EXPOSE 8862
 
 # ── SINGLE WORKER, DELIBERATELY. DO NOT ADD `--workers`. ─────────────────────
 #
-# TASK-818 Lane G measured this rather than assuming it. Multi-worker IS the
+# measured this rather than assuming it. Multi-worker IS the
 # remaining throughput lever — one worker saturates a single core (0.95 cores
 # busy) and 4 workers more than doubled throughput at concurrency 10 — but it
 # BREAKS RESUMABILITY, which is a hard owner requirement ("nothing may be
@@ -130,7 +129,7 @@ EXPOSE 8862
 # workers means N independent hubs. A resume request (`GET
 # /generations/{gid}/stream`) is load-balanced to an arbitrary worker, and the
 # `producer is None` branch in api/endpoints/stream.py reads the flushed Redis
-# backlog and RETURNS — it never tails live. §3C.3(5) anticipated an `XREAD
+# backlog and RETURNS — it never tails live. anticipated an `XREAD
 # BLOCK` fallback for exactly this case; it was never implemented.
 #
 # Measured with `uvicorn text.main:app --workers 4` against a real shared
@@ -148,7 +147,6 @@ EXPOSE 8862
 #   2. Re-run the Lane G resume probe and confirm every resume delivers a
 #      terminal frame regardless of which worker serves it.
 #   3. Then add `--workers 2` here (2, not 4 or 8 — see
-#      docs/implementation/TASK-818-Text-LLM-Router/deployment/README.md for
 #      the sweep: 8 workers was WORSE than 4, and in the realistic
 #      latency-injecting mode 100 concurrent streams keep one worker at only
 #      0.51 cores, so workers buy throughput only against a fast local engine).

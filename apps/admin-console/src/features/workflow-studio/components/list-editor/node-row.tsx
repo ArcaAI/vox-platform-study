@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * One row of the structured list/tree editor (TASK-719 Task 13) — a focusable element with an
+ * One row of the structured list/tree editor — a focusable element with an
  * accessible name, its safety-class badge, its validation status, and row actions (Configure /
  * move up/down / Delete), all real `<button>`s. `mandatory` rows expose no Delete and say why —
  * the SAME rule the canvas enforces (`store.deleteNode`), never re-implemented per editor.

@@ -67,7 +67,7 @@ function makeController(ctx: Ctx) {
       curationStatus: 'APPROVED',
       previousStatus: 'PENDING',
     }),
-    // TASK-792 W4: the JSONL fine-tuning export. Declared here (not assigned
+    // the JSONL fine-tuning export. Declared here (not assigned
     // onto the object at the call site) so the mock's inferred type carries
     // them and `tsc --noEmit` stays clean.
     exportFineTuningDataset: vi.fn().mockResolvedValue({
@@ -82,7 +82,7 @@ function makeController(ctx: Ctx) {
   const evalRunService = {
     runGoldenSet: vi.fn().mockResolvedValue({ id: 'run-1' }),
   };
-  // TASK-792 W3 — backs `POST gate-edit-exemplars/:id/promote-to-golden-set`.
+  // backs `POST gate-edit-exemplars/:id/promote-to-golden-set`.
   const goldenCasePromotionService = {
     promoteExemplarToGoldenCase: vi.fn().mockResolvedValue({ id: 'gc-1', label: 'CLINICIAN_DERIVED_PENDING_SME:ex-1' }),
   };
@@ -369,14 +369,14 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
 });
 
 /**
- * TASK-858 lane A — `?consultationId=` on the realtime-capabilities read-out.
+ * lane A — `?consultationId=` on the realtime-capabilities read-out.
  *
  * The parameter is what makes the read-out able to answer "which workflow is governing THIS
- * consultation's live plane", which since TASK-813 can differ from the tenant's assignment. The
+ * consultation's live plane", which since can differ from the tenant's assignment. The
  * controller's whole job is to thread it and to keep the existing tenant pinning; the 404 for an
  * unknown or foreign consultation is the service's (it owns the row read).
  */
-describe('HarnessAdminController — realtime capabilities per consultation (TASK-858)', () => {
+describe('HarnessAdminController — realtime capabilities per consultation ', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('threads the consultation id through to the resolver', async () => {
@@ -621,14 +621,14 @@ describe('HarnessAdminController — gate-edit exemplar curation', () => {
 });
 
 /**
- * TASK-792 W3 + W4 — the two routes that close the feedback loop's tail.
+ * + W4 — the two routes that close the feedback loop's tail.
  *
  * Both are thin: the service owns the rules (curation gate, fail-closed
  * redaction, tenant checks) and is unit-tested there. What the CONTROLLER must
  * get right is that it does not leak clinical text into a response, and that it
  * scopes to the resolved tenant rather than a caller-supplied one.
  */
-describe('HarnessAdminController — gate-edit loop tail (TASK-792)', () => {
+describe('HarnessAdminController — gate-edit loop tail ', () => {
   it('promote-to-golden-set returns ids + provenance only, never note text', async () => {
     const { controller, goldenCasePromotionService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
 

@@ -142,19 +142,19 @@ ContentPart = Annotated[TextContentPart | ImageContentPart, Field(discriminator=
 #: The engine a request that names no provider is routed to.
 #:
 #: ⚠️ THIS IS A HARDCODED SELECTION, and it is retained deliberately rather than
-#: by oversight (TASK-818 §3A.1 calls it "a rule-00 config costume"). Recorded
+# by oversight ( calls it "a rule-00 config costume"). Recorded
 #: here so the next reader does not have to re-derive why it is still standing:
 #:
 #: * It is ASYMMETRIC with `model`, which has NO default: `POST /generate`
-#:   fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
-#:   "Text has no default model"). Provider selection deserves the same posture —
-#:   both halves of a `{provider, model}` pair come from the same `AiTaskDefault`
-#:   / `HarnessPolicy` resolution on the gateway.
+#Fail-closes with a 422 when the model is missing (`api/endpoints/generate.py`
+#"Text has no default model"). Provider selection deserves the same posture —
+#Both halves of a `{provider, model}` pair come from the same `AiTaskDefault`
+#/ `HarnessPolicy` resolution on the gateway.
 #: * It is REACHABLE, not vestigial. `apps/api`
-#:   `streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
-#:   `{provider, model}` only when `!target.model`, so a caller that PINS a model
-#:   and omits the provider reaches this line — and is then routed to LM Studio
-#:   whatever engine that model actually lives on.
+#`streaming/text-proxy.controller.ts::applyTextModelSelection` stamps
+#`{provider, model}` only when `!target.model`, so a caller that PINS a model
+#And omits the provider reaches this line — and is then routed to LM Studio
+#Whatever engine that model actually lives on.
 #:
 #: WHAT BLOCKS REMOVAL, precisely: turning this into a required field (or
 #: `None` + a 422, mirroring `model`) converts that silent mis-route into a hard
@@ -197,7 +197,7 @@ class GenerateRequest(BaseModel):
     # source of the textual instruction every adapter sends; a ``TextContentPart``
     # here is advisory (room for future fine-grained multimodal ordering).
     content_parts: list[ContentPart] | None = None
-    # ADDITIVE degrade-routing opt-in (TASK-725 Task 2). ``None``/absent ⇒ a
+    # ADDITIVE degrade-routing opt-in. None/absent ⇒ a
     # known-unhealthy ``provider`` fails fast with a typed 503
     # (``PoolUnhealthyError``), same as before this field existed. When set and
     # actually registered, a known-unhealthy ``provider`` reroutes to this name
@@ -207,7 +207,7 @@ class GenerateRequest(BaseModel):
     # ``None``/absent ⇒ the platform posture from the PULL channel stands, which
     # is what every caller gets until the gateway resolves a tenant policy.
     guardrail_policy: GuardrailPolicyOverride | None = None
-    # TASK-858 — engine-specific ride-along from `AiRuntimeProfile.extraJson`
+    # engine-specific ride-along from `AiRuntimeProfile.extraJson`
     # (`n_threads`, `num_predict`, `reasoning_effort`, …), injected by the gateway's
     # `applyTextRuntimeProfile`. Undeclared before this, so pydantic dropped it and
     # no profile extra ever reached an engine. The OpenAI-compatible family sends
@@ -229,7 +229,7 @@ class GenerateRequest(BaseModel):
 
 
 class GenerateBatchRequest(BaseModel):
-    """Async batch-generation submission (TASK-725 §7 residual close-out) —
+    """Async batch-generation submission ( residual close-out)
     enqueued onto ``WorkerPoolQueue`` and processed out-of-process by
     ``worker.py::_handle_batch_generation``, which re-validates this payload
     as a `GenerateRequest`.

@@ -2,7 +2,7 @@
  * Seed ↔ registry parity for the consultation-pipeline kill-switch seed
  * (`11c-consultation-gate-settings.ts`).
  *
- * ⚠️ TASK-705 CHANGED WHAT THIS FILE GUARDS. It used to hold TWO keys, and its
+ * ⚠️ CHANGED WHAT THIS FILE GUARDS. It used to hold TWO keys, and its
  * headline case asserted that `harness.loop.enabled` was seeded `'true'` while
  * its descriptor default stayed `false` — the sanctioned way to land a
  * kill-switch ON, since `SettingsRegistry.killSwitches()` throws at assembly for
@@ -13,7 +13,7 @@
  * `migrate.sh` defaults `RUN_SEED=none` and `hope-v2-dev` pins it to `"none"`
  * (owner decision 2026-08-09) — so the row was written once, at bootstrap, and
  * never re-asserted. Loop eligibility is now the tenant's SUBSCRIPTION
- * ENTITLEMENT (`agenticLoop`; owner decision 2026-08-17 §2 row 705) and the
+ * ENTITLEMENT (`agenticLoop`; owner decision 2026-08-17 row 705) and the
  * residual operator stop is `harness.loop.emergencyStop`, whose disarmed
  * default IS the day-1 state. Nothing about the loop is seeded any more, and
  * this file now guards ONE key: `consultation.ocr.enabled`, whose ON-by-default
@@ -21,9 +21,9 @@
  *
  * The mechanism the OCR row uses, unchanged:
  *
- *     descriptor default stays OFF   →  absence still resolves OFF (fail-safe)
- *     the seeded ROW carries 'true'  →  every seeded environment comes up ON
- *     `defaultValue` stays 'false'   →  a "reset to default" reverts to fail-safe
+ *     descriptor default stays OFF → absence still resolves OFF (fail-safe)
+ *     the seeded ROW carries 'true' → every seeded environment comes up ON
+ *     `defaultValue` stays 'false' → a "reset to default" reverts to fail-safe
  *
  * The row identity matters as much as the value. `SettingsRegistryWriteService`
  * resolves an existing row by `(key, namespace='registry', tenantId=GLOBAL)` and
@@ -108,12 +108,12 @@ describe('consultation-gate seed ↔ registry parity', () => {
   });
 
   /*
-   * TASK-705 — the regression guard for the defect this ticket removed. A
+   * the regression guard for the defect removed. A
    * seeded `harness.loop.enabled = 'true'` disagreed with its own descriptor
    * default and was never re-asserted in any environment that does not seed.
    * Loop eligibility is an entitlement now; re-adding a row here would restore
    * a second, silently-disagreeing source of truth.
-   */
+*/
   it('never re-introduces a seeded loop gate — eligibility is the subscription entitlement', () => {
     // Checked against the seeded KEY TABLE, not the file text: the header
     // comment names the retired key on purpose, to explain why it is gone.
@@ -133,7 +133,7 @@ describe('consultation-gate seed ↔ registry parity', () => {
   });
 
   it('writes the same row coordinates the registry write lane resolves', () => {
-    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // Owner ruling 2026-08-20: the runtime cascade is request
     // tenant → SYSTEM, full stop. `SettingsRegistryWriteService.targetTenantFor`
     // resolves a `system`-scope write to `SYSTEM_TENANT_ID`, so the seed's row
     // coordinates must match it exactly, or the operator's first PUT creates a

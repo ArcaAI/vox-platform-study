@@ -5,7 +5,7 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { RateLimitMatchKind } from '../../../enums';
 
-// One rate-limit rule (TASK-785). A SYSTEM-tenant row is a platform-wide
+// One rate-limit rule. A SYSTEM-tenant row is a platform-wide
 // per-route limit; a customer-tenant row overrides it for that tenant alone.
 //
 // `routeMatch` is a ROUTE KEY (`METHOD:/route/pattern`), never a raw URL — the

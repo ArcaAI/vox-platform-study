@@ -3,7 +3,7 @@
  * catalogue (`REQUIRED_NODE_TYPE`, `FORBIDDEN_NODE_TYPE`, `REQUIRED_PATH_THROUGH`,
  * `FORBIDDEN_PATH`, `ORDERED_BEFORE`). Selecting by CLASS (not just type) is what lets a rule
  * say "any node whose descriptor declares `phiBearing`" and survive palette growth
- * (TASK-716 §4 Task 4) without enumerating every current type.
+ *  without enumerating every current type.
  */
 import type { WorkflowGraph, WorkflowGraphNode } from '../graph-model';
 import type { WorkflowEvaluationContext } from './context';

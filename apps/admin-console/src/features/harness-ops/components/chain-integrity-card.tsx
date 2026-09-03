@@ -30,7 +30,7 @@ export function ChainVerdictBadge({ state }: { state: VerdictState }) {
 
 function auditMatches(event: HarnessAuditEvent, needle: string): boolean {
   const haystack = [
-    event.consultationId ?? '', // null for CONSENT_GIVEN/CONSENT_WITHDRAWN (TASK-712)
+    event.consultationId ?? '', // null for CONSENT_GIVEN/CONSENT_WITHDRAWN
     event.action,
     event.modelName,
     event.gateDecision ?? '',

@@ -16,7 +16,7 @@ import { usePermissions } from '@/shared/auth/hooks';
 import { visibleUserMenuEntries } from '@/shared/navigation/nav-config';
 
 export function UserMenu({ session }: { session: SafeSession }) {
-  // TASK-788: /developer and /account are personal chrome, not rail domains.
+  // /developer and /account are personal chrome, not rail domains.
   // Same ability gate they carried in the sidebar — see USER_MENU_ENTRIES.
   const { data: rules } = usePermissions();
   const entries = visibleUserMenuEntries(rules);

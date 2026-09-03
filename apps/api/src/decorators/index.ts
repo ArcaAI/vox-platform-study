@@ -16,7 +16,7 @@ export {
   Public,
   RequiredScopes,
   ForbidApiKey,
-  // Machine identity for administration (TASK-762) — the THIRD credential
+  // Machine identity for administration — the THIRD credential
   // class. Deliberately separate from the two above: `svc:*` is not `admin:*`,
   // and forbidding a machine is not forbidding a tenant API key.
   RequiredSvcScopes,
@@ -32,12 +32,12 @@ export {
   UserAbility,
   SetPermissions,
   SetPermissionMode,
-  // Consent (TASK-712, consent-abac)
+  // Consent (consent-abac)
   RequiresConsent,
   ConsentExempt,
   REQUIRES_CONSENT_KEY,
   CONSENT_EXEMPT_KEY,
-  // CASL instance evaluation (TASK-712 Phase 5) — opts a route into
+  // CASL instance evaluation — opts a route into
   // resolving the subject INSTANCE its seeded `conditions` compare against.
   ResolveSubjectInstance,
 } from '@arcaai/applications';

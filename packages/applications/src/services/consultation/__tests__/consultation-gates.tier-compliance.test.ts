@@ -2,7 +2,7 @@
  * Configuration-tier compliance for the two consultation-pipeline
  * kill-switches (`harness.loop.emergencyStop`, `consultation.ocr.enabled`).
  *
- * TASK-705 renamed the first of those and INVERTED its polarity:
+ * renamed the first of those and INVERTED its polarity:
  * `harness.loop.enabled` (armed = signalling) became
  * `harness.loop.emergencyStop` (armed = halted), because loop ELIGIBILITY moved
  * to the tenant's subscription entitlement and what is left here is purely an
@@ -65,7 +65,7 @@ function loopPayload(overrides: Partial<ContextAddedPayload> = {}): ContextAdded
 }
 
 /**
- * TASK-705 — every case in this file is about the SETTING TIER, so the tenant is
+ * every case in this file is about the SETTING TIER, so the tenant is
  * always entitled here and the emergency stop is the only variable. The
  * composition rule itself (entitlement × stop) is pinned separately, in
  * `../loop/__tests__/loop-entitlement-gate.test.ts`.

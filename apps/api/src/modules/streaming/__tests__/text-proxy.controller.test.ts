@@ -6,7 +6,7 @@ import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decora
 import { TextProxyController } from '../text-proxy.controller';
 
 /**
- * TASK-818 Lane E-stream: `POST /generate` with `stream:true` now answers
+ * stream: `POST /generate` with `stream:true` now answers
  * 200 + text/event-stream, not a 202 ack. The controller harvests
  * `generation_id` off the first frame, so a streaming mock must be a real
  * stream — a plain `{task_id}` object fails inside the harvest and surfaces as
@@ -57,7 +57,7 @@ const createMockDnaWritingStyleRepository = () => ({
   findById: vi.fn(),
 });
 
-// TASK-700: the gated accessor TextProxyController now routes the
+// the gated accessor TextProxyController now routes the
 // `dna_writing_style_id` path through, instead of trusting `styleText` off the
 // raw (ciphertext-only) repository row.
 const createMockDnaWritingStyleService = () => ({
@@ -192,7 +192,7 @@ describe('TextProxyController', () => {
       const result = await controller.generate(body);
 
       expect(result.task_id).toBe('task-stream-1');
-      // TASK-818: the gateway now SYNTHESIZES this ack from the first SSE frame,
+      // the gateway now SYNTHESIZES this ack from the first SSE frame,
       // so the status is its own ('streaming'), not one TEXT reported.
       expect(result.status).toBe('streaming');
       expect(result.stream_url).toContain('/stream');
@@ -304,7 +304,7 @@ describe('TextProxyController', () => {
       errorSpy.mockRestore();
     });
 
-    // TASK-768: was BAD_GATEWAY. No upstream response means TEXT was never
+    // was BAD_GATEWAY. No upstream response means TEXT was never
     // reached — a transport failure — which is 503. The status now comes from
     // the shared classifier (`filters/downstream-error.ts`); the body shape is
     // unchanged.
@@ -1117,7 +1117,7 @@ describe('TextProxyController', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    // TASK-815 §11 row 3: the route no longer enforces a hardcoded
+    // row 3: the route no longer enforces a hardcoded
     // `['new_visit', 'referral']` list — it refuses what the CALLER TENANT's
     // `consultation.visitTypes` catalogue does not name. A garbage value is
     // still a 400; a tenant's own visit type no longer is.

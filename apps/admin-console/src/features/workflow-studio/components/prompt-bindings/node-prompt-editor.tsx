@@ -7,7 +7,7 @@
  * an admin told "this node is behind" needs to SEE what they would be adopting
  * before adopting it.
  *
- * Since §7b item 1, saving that content UNCHANGED is an ADOPTION: the server
+ * Since item 1, saving that content UNCHANGED is an ADOPTION: the server
  * moves this node's pin to the existing latest version and mints nothing (and
  * writes nothing at all if the node is already pinned there). Editing it first
  * is an AUTHORING act and still mints. Because DD-11 PATH 2 deliberately leaves

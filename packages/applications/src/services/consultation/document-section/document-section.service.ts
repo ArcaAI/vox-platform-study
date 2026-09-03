@@ -16,11 +16,11 @@ import { DocumentSectionResponse, UpdateDocumentSectionRequest } from './dto';
  *
  * ## Why this exists
  *
- * TASK-811 gave sections per-section OCC and a four-state machine, and wired the
+ * gave sections per-section OCC and a four-state machine, and wired the
  * MACHINE writer (`LiveDocumentationService.publishSectionPatches` ->
  * `DocumentSectionStore.applyFlushPatch`). The CLINICIAN writer was left to
- * "TASK-812 or the console lane" (TASK-811 §7 follow-up 3), TASK-812 never picked
- * it up, and TASK-814 §6 declined it explicitly ("no section-level mutation
+ * " or the console lane" ( follow-up 3), never picked
+ * it up, and declined it explicitly ("no section-level mutation
  * endpoint exists yet"). So `applyClinicianEdit` had test call sites and nothing
  * else, and a clinician could not persist an edit at all.
  *
@@ -33,7 +33,7 @@ import { DocumentSectionResponse, UpdateDocumentSectionRequest } from './dto';
  * | Store result | HTTP | Reason |
  * |---|---|---|
  * | section absent | **404** | Also the cross-tenant answer — `findSection` filters by `tenantId`, so a foreign section is indistinguishable from a missing one. 404-over-403, deliberately |
- * | `locked` | **409** | The endpoint finalized this encounter (TASK-812 DD-3 locks EVERY document). The request is well-formed and the precondition is fresh; the RESOURCE is in a state that refuses writes. That is a conflict, not a failed precondition — a client that retries with a newer `If-Match` still fails, so 412 would send it into a retry loop it can never leave |
+ * | `locked` | **409** | The endpoint finalized this encounter ( locks EVERY document). The request is well-formed and the precondition is fresh; the RESOURCE is in a state that refuses writes. That is a conflict, not a failed precondition — a client that retries with a newer `If-Match` still fails, so 412 would send it into a retry loop it can never leave |
  * | `occ-conflict` | **412** | The section moved under the client. Re-read and re-apply |
  * | `unavailable` | **503** | Persistence is down. The store never pretends a write happened |
  *
@@ -68,7 +68,7 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     // `ResourceType.Consultation`, not a DocumentSection member — there is none,
-    // and TASK-812's `finalizeDocuments` (the LOCK half of this same state
+    // and `finalizeDocuments` (the LOCK half of this same state
     // machine) already reports section transitions against the parent
     // consultation. Adding a `DocumentSection` enum member would need matching
     // `ALTER TYPE` migrations in `audit.prisma` and the domain enum; the parent

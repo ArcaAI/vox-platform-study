@@ -1,9 +1,9 @@
-"""N-2 — ``prompt.template_ref`` (TASK-720 Task 5, safety class: optional).
+"""N-2 — prompt.template_ref (safety class: optional).
 
 Resolves ``config.promptTemplateId`` through the gateway's
 ``GET /internal/harness/prompt-templates/:id/resolved`` (``ApiClient.get_resolved_prompt_template``)
 to the pinned APPROVED ``PromptVersion`` content — NEVER the mutable ``PromptTemplate.content``
-column (README §2 — resolution serves the version an approval pinned, not the latest edit).
+column  — resolution serves the version an approval pinned, not the latest edit).
 ``config.variableBindings`` (literal, tenant-authored string values — NOT references into the
 run's context, see the node's config schema) fills ``{{var}}`` placeholders in the resolved
 content, mirroring `PromptManagementService`'s own `interpolateTemplate` substitution syntax

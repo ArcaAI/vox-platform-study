@@ -1,5 +1,5 @@
 /**
- * TASK-819 — a section write whose content cannot be encrypted must not commit.
+ * a section write whose content cannot be encrypted must not commit.
  *
  * ## The defect this file pins
  *
@@ -204,7 +204,7 @@ const write = (over: Partial<SectionWriteInput> = {}): SectionWriteInput => ({
 
 // ---------------------------------------------------------------------------
 
-describe('TASK-819 — an unencryptable write does not commit', () => {
+describe('an unencryptable write does not commit', () => {
   it('the encryptor really is unavailable: boot() fails against a closed port', async () => {
     // Establishes that everything below is reacting to an absent dependency
     // rather than to a stub that was told to reject.

@@ -52,7 +52,7 @@ export interface ProviderReconcilerSpec {
 
 /**
  * The providers the platform can be billed by. Sourced from
- * research-findings.md §11.2; every entry names the exact
+ * research-findings.md; every entry names the exact
  * credential an operator has to provision.
  *
  * Deliberately NOT here: self-hosted engines (`whisper_cpp`, `kokoro`,

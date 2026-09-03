@@ -1,4 +1,4 @@
-"""Guardrail service client — direct peer call to ``apps/guardrail`` (TASK-720).
+"""Guardrail service client — direct peer call to apps/guardrail.
 
 Mirrors ``text_client.py``'s shape (thin async ``httpx`` client, one method per endpoint used).
 Unlike Text, this is the harness's FIRST direct call into ``apps/guardrail`` — no prior client
@@ -7,22 +7,22 @@ safety/citation-verify/atomic-fact sensors, is a locally-computed clinical assur
 call to this service). Rule `.claude/rules/06-python-services.md` §Gateway Integration sanctions
 this as the established peer-client pattern (``nlp/services/external_text_client.py``,
 ``text/services/external_guardrail.py``): ``X-Service-Token`` + **mandatory** ``X-Tenant-Id``
-(TASK-737 owner directive — a tenant-scoped internal call with no tenant header is a caller bug,
+( owner directive — a tenant-scoped internal call with no tenant header is a caller bug,
 not something the callee should paper over).
 
-Fail-closed posture (README §2 / this ticket's N-4 contract): ``apps/guardrail``'s own
+Fail-closed posture ( / N-4 contract): apps/guardrail's own
 ``POST /guardrail/analyze`` fails OPEN (``safe=True``) on an internal exception
 (``guardrails.py:96-105``) — a deliberate, documented posture for THAT service, but one this
 client's caller (the ``guardrail.check`` node activity) must never inherit. This client surfaces
 the raw ``GuardrailAnalysis`` (including a non-null ``error`` alongside ``safe=True``) rather than
-collapsing it — the node activity is what decides "no verdict" vs "pass", per README §2's rule.
+collapsing it — the node activity is what decides "no verdict" vs "pass", per rule.
 A TRANSPORT failure (guardrail unreachable, non-2xx, timeout) raises ``GuardrailServiceError``
 instead of ever synthesizing a fake `safe=True` result — this client does not repeat guardrail's
 own fail-open branch for a failure guardrail never even got to run.
 
-``redact()`` (TASK-731, ``consultation.phiHop``'s compile target) calls the SEPARATE
+redact (consultation.phiHop's compile target) calls the SEPARATE
 ``POST /guardrail/redact`` endpoint (``apps/guardrail/src/guardrail/api/endpoints/redact.py:267``)
-TASK-710 shipped — genuinely FAIL-CLOSED on that service's own side (a runtime extraction error is
+shipped — genuinely FAIL-CLOSED on that service's own side (a runtime extraction error is
 a 502, never a 200 echoing unredacted text; a missing model selection is 503), the opposite of
 ``/guardrail/analyze``'s legacy fail-open posture. This client does not soften either: any
 transport/HTTP failure raises ``GuardrailServiceError``, exactly like ``analyze()``.
@@ -165,7 +165,7 @@ class GuardrailClient:
             # Empty token = dev-mode bypass on the guardrail side (rule 06); presented
             # unconditionally so a configured token is always honoured.
             "X-Service-Token": self._service_token,
-            # TASK-737: mandatory on every tenant-scoped internal service call.
+            # mandatory on every tenant-scoped internal service call.
             "X-Tenant-Id": tenant_id,
         }
         try:
@@ -189,7 +189,7 @@ class GuardrailClient:
     ) -> ScreenResult:
         """Screen a model response before it reaches a clinician.
 
-        The delegation target for the harness safety sensor (TASK-799 A.1 / F-02).
+        The delegation target for the harness safety sensor ( A.1 / F-02).
         `apps/guardrail` owns the safety POLICY, the label taxonomy and the tenant
         cascade, and delegates the ENGINE to text/nlp — which is precisely what
         harness must not do for itself.
@@ -208,7 +208,7 @@ class GuardrailClient:
             body["nonce"] = nonce
         headers = {
             "X-Service-Token": self._service_token,
-            # TASK-737: mandatory on every tenant-scoped internal service call. Guardrail
+            # mandatory on every tenant-scoped internal service call. Guardrail
             # answers 428 without it — a screening decision must be attributable.
             "X-Tenant-Id": tenant_id,
         }
@@ -240,7 +240,7 @@ class GuardrailClient:
             body["request_id"] = request_id
         headers = {
             "X-Service-Token": self._service_token,
-            # TASK-737: mandatory on every tenant-scoped internal service call.
+            # mandatory on every tenant-scoped internal service call.
             "X-Tenant-Id": tenant_id,
         }
         try:

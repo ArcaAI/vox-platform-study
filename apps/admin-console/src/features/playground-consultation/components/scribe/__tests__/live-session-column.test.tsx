@@ -40,19 +40,19 @@ describe('LiveSessionColumn', () => {
    * `WaveformProps` but never destructures it, so it falls through `...props`
    * onto the container <div> and React logs
    * "Received `false` for a non-boolean attribute `active`" on every render.
-   * Observed in the browser during the TASK-814 §9 runtime pass.
+   * Observed in the browser during the runtime pass.
    *
    * The prop is a genuine no-op here — the visual idle/live distinction already
    * comes from the `data` swap — so the call site must not pass it. (The
    * upstream prop-type lie is reported separately; packages/ui is out of scope.)
-   */
+ */
   /**
    * WCAG 2.1.1 / 2.1.3 — axe `scrollable-region-focusable` (impact: serious).
    * The transcript pane scrolls but contains no focusable child, so a keyboard
    * user cannot scroll it. jsdom has no layout, so vitest-axe can NEVER catch
    * this — it was found only by @axe-core/playwright in a real browser during
-   * the TASK-814 §9 runtime pass.
-   */
+   * the runtime pass.
+ */
   it('exposes the scrolling transcript pane to the keyboard', () => {
     const { container } = render(<LiveSessionColumn {...baseProps()} />);
     const pane = container.querySelector('.overflow-y-auto');

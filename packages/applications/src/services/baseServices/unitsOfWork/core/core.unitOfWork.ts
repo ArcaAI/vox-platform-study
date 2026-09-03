@@ -101,7 +101,7 @@ export class CoreUnitOfWorkService {
    */
   async startTransaction(): Promise<void> {
     this.logger.warn(
-      'CoreUnitOfWorkService.startTransaction() is deprecated and does not provide transactional isolation in Prisma 7. Use runInTransaction(work) for atomic multi-write operations. TASK-306 P3.2 / AC-11.',
+      'CoreUnitOfWorkService.startTransaction() is deprecated and does not provide transactional isolation in Prisma 7. Use runInTransaction(work) for atomic multi-write operations.  P3.2 / AC-11.',
     );
     this.transactionClient = await this.databaseService.baseClient.$transaction(async (tx) => tx);
     this.cls.set(this.TRANSACTION_CLIENT_KEY, this.transactionClient);

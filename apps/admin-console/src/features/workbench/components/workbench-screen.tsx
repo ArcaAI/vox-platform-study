@@ -16,7 +16,7 @@ import { RelatedPlaygrounds } from './related-playgrounds';
 import { RunPanel } from './run-panel';
 
 /**
- * The Workbench (TASK-721 Phase C) — extends the playground tier (design.md §Plane 3):
+ * The Workbench — extends the playground tier ( 3):
  * sandboxed interpreter runs against synthetic inputs. Region contract (rule 11 §1 Screen
  * Template): `header` (one h1) → `statusBanner` (sandbox watermark + the playground own-account
  * disclosure) → `toolbar` (definition + fixture selectors) → content (run panel, node
@@ -26,9 +26,9 @@ import { RunPanel } from './run-panel';
  * version (`workflow-definition.prisma`'s own file header) — there is no separate "version"
  * concept to select once a row is chosen. This is a deliberate, narrower choice than the
  * ticket's original `?definitionId=&version=` sketch, made once Task 2's contract review
- * confirmed the row-is-a-version model; see the ticket README §7.
+ * confirmed the row-is-a-version model;
  *
- * Isolated node test (§1 item 4) is NOT rendered — Task 2's contract confirmed the interpreter
+ * Isolated node test is NOT rendered — Task 2's contract confirmed the interpreter
  * has no single-node dispatch entry point (R2's blocking condition). Simulating it client-side
  * would produce results the interpreter would not; the gap is documented, not built.
  */

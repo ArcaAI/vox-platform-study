@@ -1,7 +1,7 @@
 /**
- * TASK-724 Task 4 — STT graph -> `AsrPipeline` + `AsrPipelineVersion` compiler.
+ * STT graph -> `AsrPipeline` + `AsrPipelineVersion` compiler.
  *
- * README §1's central design decision: a published `stt`-palette `WorkflowDefinition` does NOT
+ * central design decision: a published `stt`-palette `WorkflowDefinition` does NOT
  * get a new execution surface. It compiles into `AsrPipeline.configYaml` (`models.asr` /
  * `models.vad` / `models.denoise` slug references — the EXACT shape `apps/stt`'s
  * `PipelineYamlParser`/`PipelineConfigReader` already reads, verified against
@@ -13,8 +13,8 @@
  * - `compileSttGraphToYaml` — a PURE function (no I/O) over `CompiledWorkflowConfig` (the
  *   `@arcaai/workflow-contract` `compile()` output). Throws when the graph cannot produce a
  *   valid `AsrPipeline.configYaml` (no `stt.asrEngine` node, or one with no `modelSlug`) — the
- *   ONE piece of §4 Task 2's mandatory-subgraph intent this ticket enforces as a HARD publish
- *   block, since `validate()`'s DRAFT `WF-STT-*` rules never block a write (TASK-734 decision
+ * ONE piece of Task 2's mandatory-subgraph intent enforces as a HARD publish
+ * block, since `validate()`'s DRAFT `WF-STT-*` rules never block a write ( decision
  *   #3) but an `AsrPipeline` with no ASR model is not a row `PipelineYamlParser` can serve.
  * - `SttPipelineCompilerService` — writes the emitted YAML through the EXISTING
  *   `PipelineService` (never a raw repository call), so `PipelineService`'s own
@@ -36,18 +36,22 @@ const NOISE_FILTER_NODE = 'stt.noiseFilter';
 const DIARIZATION_NODE = 'stt.diarization';
 const LANGUAGE_DETECTION_NODE = 'stt.languageDetection';
 
-/** Tags every compiled `AsrPipeline` with the `WorkflowDefinition` id it was compiled from —
- *  the provenance convention README §7 Task 4 recommended over a new schema column
+/**
+ * Tags every compiled `AsrPipeline` with the `WorkflowDefinition` id it was compiled from —
+ * the provenance convention Task 4 recommended over a new schema column
  *  (`AsrPipeline.tags` already exists, no migration). Read this back with
- *  `tags.includes(\`${STT_WORKFLOW_TAG_PREFIX}${workflowDefinitionId}\`)`. */
+ *  `tags.includes(\`${STT_WORKFLOW_TAG_PREFIX}${workflowDefinitionId}\`)`.
+ */
 export const STT_WORKFLOW_TAG_PREFIX = 'workflow-definition:';
 
-/** Mirrors `apps/stt/src/stt/pipeline/language_modes.py`'s `LANGUAGE_MODE_CATALOG` — kept in
- *  sync BY HAND (README §6's disclosed cross-language enum-drift risk; no shared contract test
+/**
+ * Mirrors `apps/stt/src/stt/pipeline/language_modes.py`'s `LANGUAGE_MODE_CATALOG` — kept in
+ * sync BY HAND ( disclosed cross-language enum-drift risk; no shared contract test
  *  exists yet). Only the fields this compiler needs (`primaryLanguage`, whether the mode
  *  code-switches) — the full per-engine resolution (`resolve_mode_for_engine`) stays entirely
  *  inside `apps/stt`, which is the ONLY thing that ever knows which concrete engine will serve
- *  a session; this compiler only needs to seed `PipelineSpec.inference.language`/`code_switching`. */
+ *  a session; this compiler only needs to seed `PipelineSpec.inference.language`/`code_switching`.
+ */
 const LANGUAGE_MODE_TABLE: Readonly<Record<string, { primaryLanguage: string | null; codeSwitch: boolean }>> = Object.freeze({
   en: { primaryLanguage: 'en', codeSwitch: false },
   ml: { primaryLanguage: 'ml', codeSwitch: false },
@@ -134,7 +138,7 @@ export function compileSttGraphToYaml(compiledConfig: CompiledWorkflowConfig): s
 
 /**
  * The deterministic `AsrPipeline` slug for a given `stt`-palette `WorkflowDefinition.slug`.
- * `WorkflowDefinition.slug` matches `WORKFLOW_DEFINITION_SLUG_PATTERN` (TASK-858; formerly the node-id grammar `[a-z0-9_]{2,48}`, may start or
+ * `WorkflowDefinition.slug` matches `WORKFLOW_DEFINITION_SLUG_PATTERN` (; formerly the node-id grammar `[a-z0-9_]{2,48}`, may start or
  * end with `_`); `AsrPipeline.slug` requires `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (hyphens only, must
  * start/end alphanumeric) — the two grammars are NOT interchangeable, so this is a real,
  * tested mapping, not a bare string swap.
@@ -178,7 +182,7 @@ export class SttPipelineCompilerService {
     const dto: CreatePipelineRequest = {
       name: entity.name,
       slug: pipelineSlug,
-      description: `Compiled from stt-palette WorkflowDefinition '${entity.slug}' (TASK-724).`,
+      description: `Compiled from stt-palette WorkflowDefinition '${entity.slug}' .`,
       configYaml,
       tags: [provenanceTag],
     };

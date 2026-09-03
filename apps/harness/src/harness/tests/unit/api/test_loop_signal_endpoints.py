@@ -234,7 +234,7 @@ class TestEndingAndCancelSignals:
 
     @pytest.mark.asyncio
     async def test_ending_signal_forwards_accepted_proposals_task814(self, harness):
-        """TASK-814 §2b — corrections the clinician accepted must reach the signal payload
+        """corrections the clinician accepted must reach the signal payload
         unchanged, so the endpoint stage's `feedback.capture` node has something to promote."""
         http, client, handle, _settings = harness
         proposal = {

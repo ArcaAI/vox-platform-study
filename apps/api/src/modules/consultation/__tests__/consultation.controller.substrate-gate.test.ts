@@ -1,5 +1,5 @@
 /**
- * TASK-811 task 13 — `POST :id/recording/start` and the substrate gate.
+ * task 13 — `POST :id/recording/start` and the substrate gate.
  *
  * ## What this pins, and what it deliberately does NOT
  *
@@ -13,9 +13,9 @@
  * What the CONTROLLER must guarantee is narrower and still worth pinning: that
  * it delegates every recording start to that gated entry point, with the
  * consultation's own identity, and that it does not acquire a second path into
- * the engine. Before TASK-811 the same call existed with nothing behind it —
+ * the engine. Before the same call existed with nothing behind it
  * `startRecording` called `start()` after only an ownership and status check
- * (TASK-806 §2.1). The call site is unchanged; what changed is that `start()`
+ * ( The call site is unchanged; what changed is that `start()`
  * now answers "may I document this consultation?" before it does anything.
  */
 import { describe, it, expect, vi } from 'vitest';

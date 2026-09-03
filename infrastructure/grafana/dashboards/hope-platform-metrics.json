@@ -12,7 +12,7 @@
       "title": "Running model instances (total)",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "sum(model_running_instances) across stt/text/nlp/guardrail. Feeds the TASK-386 platform 'running models' tile.",
+      "description": "sum(model_running_instances) across stt/text/nlp/guardrail. Feeds the  platform 'running models' tile.",
       "targets": [
         { "expr": "sum(model_running_instances)", "legendFormat": "running", "refId": "A" }
       ],

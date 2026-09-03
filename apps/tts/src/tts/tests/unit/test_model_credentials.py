@@ -1,5 +1,5 @@
 """tts mirror of ``apps/stt/tests/unit/test_task799_model_credentials.py`` —
-the model-registry credential client (TASK-855 L6 follow-on).
+the model-registry credential client ( follow-on).
 
 See ``apps/nlp/tests/test_model_credentials.py`` for the nlp twin; the two are
 intentionally close to byte-identical (the client itself has no per-service

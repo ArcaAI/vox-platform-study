@@ -1,5 +1,5 @@
 /**
- * Shared constants for the consent domain (TASK-712, consent-abac).
+ * Shared constants for the consent domain (consent-abac).
  */
 
 /**
@@ -8,14 +8,14 @@
  * the matching cache entry — the `OriginRegistryService` within-node
  * precedent (`.claude/rules/09-infrastructure-devops.md` §Config caches).
  *
- * NOT a cross-process Redis channel — see consent-design.md §4. There is no
+ * NOT a cross-process Redis channel — see consent- There is no
  * second process to invalidate yet in this phase (no gateway-internal
  * endpoint, no harness client).
  */
 export const CONSENT_INVALIDATE_EVENT = 'consent.invalidate';
 
 /**
- * Q3 (HUMAN-GATED, consent-design.md §"Secondary open questions") — the
+ * Q3 (HUMAN-GATED, consent- open questions") — the
  * ticket's stated default: trim only, exact-case match. A single shared
  * function so both the write path (`ConsentGrantService`) and the read path
  * (`ConsultationConsentService`) normalize identically; a mismatch fails

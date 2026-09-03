@@ -1,5 +1,5 @@
 /**
- * TASK-693 §4.1 — `.github/services.json` is the single source of truth for the
+ * `.github/services.json` is the single source of truth for the
  * buildable service inventory. This test is what makes that claim true.
  *
  * The inventory was previously hand-maintained in five places (build.yml job
@@ -13,7 +13,7 @@
  * drift this file exists to prevent.
  *
  * Deliberately compared against the GitLab config while it is still
- * authoritative. When `.gitlab/ci/**` is archived (TASK-693 lane F), retarget
+ * authoritative. When `.gitlab/ci/**` is archived , retarget
  * these parses at the GitHub workflows rather than deleting the test — the
  * invariant outlives the transport.
  */
@@ -84,8 +84,8 @@ function serviceNameOf(block: string): string | null {
 
 /**
  * Tag prefixes a job's rules react to. Handles both spellings build.yml uses:
- *   /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/     — alternation group
- *   /^API-/ || $CI_COMMIT_TAG =~ /^ALL-/        — separate clauses
+ *   /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/ — alternation group
+ *   /^API-/ || $CI_COMMIT_TAG =~ /^ALL-/ — separate clauses
  */
 function tagPrefixesOf(block: string): Set<string> {
   const found = new Set<string>();

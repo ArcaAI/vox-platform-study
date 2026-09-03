@@ -1,5 +1,5 @@
 /**
- * `DocumentTemplate` administration (TASK-810). All paths are gateway-relative
+ * `DocumentTemplate` administration. All paths are gateway-relative
  * under the `/api/hope` BFF proxy, mirroring
  * `apps/api/src/modules/document-template/document-template.controller.ts`.
  *

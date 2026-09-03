@@ -22,10 +22,10 @@ import { DomainRail } from './domain-rail';
 import { rovingItemProps, useRovingFocus } from './use-roving-focus';
 
 /**
- * Tier two of the two-tier shell (TASK-788): the scoped sidebar. It renders
+ * Tier two of the two-tier shell: the scoped sidebar. It renders
  * ONLY the routes of the domain the current URL belongs to — 3 to 10 entries
  * instead of the 56-entry flat list that made `collapsible="icon"` a wall of
- * unlabelled icons (HOPE-16).
+ * unlabelled icons.
  *
  * Three properties are load-bearing:
  *
@@ -37,7 +37,7 @@ import { rovingItemProps, useRovingFocus } from './use-roving-focus';
  *   cannot open (AC-3).
  * - **Tier sub-headers survive.** `NAV_SECTIONS` still groups entries *within*
  *   a domain, because tier tells a super admin which rows are cross-tenant.
- *   Domain and tier are orthogonal (OD-3) and both are visible.
+ *   Domain and tier are orthogonal and both are visible.
  *
  * Collapse is `offcanvas`, not `icon`: with a permanent domain rail alongside,
  * an icon-collapsed sidebar would be a second column of unlabelled icons —
@@ -102,11 +102,13 @@ export function AppSidebar() {
                     const isActive = entry === activeEntry;
                     return (
                       <SidebarMenuItem key={entry.route} className="relative">
-                        {/* Third state signal (AC-5). `SidebarMenuButton`'s own
+                        {/*
+ Third state signal (AC-5). `SidebarMenuButton`'s own
                             `data-[active=true]` classes supply the other two —
                             the --sidebar-accent fill and font-medium — and the
                             fill alone is 1.14:1 on --sidebar (globals.css
-                            §Sidebar, J-11), so it can never stand by itself. */}
+                            J-11), so it can never stand by itself.
+*/}
                         {isActive ? <span aria-hidden className="bg-foreground absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2" /> : null}
                         <SidebarMenuButton asChild isActive={isActive}>
                           <Link

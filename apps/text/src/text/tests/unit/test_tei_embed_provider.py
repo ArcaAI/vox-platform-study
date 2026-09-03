@@ -3,7 +3,7 @@
 Hermetic: httpx.MockTransport stands in for a live tei-embed instance (verified
 against TEI's documented `/embed` REST contract).
 
-TASK-799 lane B: the TEI endpoint is no longer `TEXT_TEI_BASE_URL`. Like every
+lane B: the TEI endpoint is no longer `TEXT_TEI_BASE_URL`. Like every
 other engine, it arrives with the request as a resolved connection, so the tests
 below supply one — and the two that matter most assert what happens when nobody
 does.

@@ -113,7 +113,7 @@ async def _run(body: dict, *, signal_cancel_after_start: bool = False):
                 task_queue=tq,
             )
             if signal_cancel_after_start:
-                # Deterministic, not a wall-clock guess (TASK-718 Task 12): wait for stage
+                # Deterministic, not a wall-clock guess: wait for stage
                 # 0's own node activity (never `interpreter.load_config`, which is scheduled
                 # first and would defeat the point) to actually be SCHEDULED before
                 # signalling. That event can only appear once the workflow has passed the

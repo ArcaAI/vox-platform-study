@@ -1,5 +1,5 @@
 /**
- * TASK-847 step 7 — TIER 2, and the whole point of it is what it does NOT do.
+ * step 7 — TIER 2, and the whole point of it is what it does NOT do.
  *
  * > *Shallow structural (required props, one level of primitive types): **warning only, never
  * > blocking.** Skip `oneOf`/`allOf`/patterns entirely. A validator that cries wolf is the most
@@ -24,7 +24,7 @@ const PRODUCER = {
   required: ['note'],
 };
 
-describe('TASK-847 tier 2 — shallow structural compatibility', () => {
+describe(' tier 2 — shallow structural compatibility', () => {
   it('says nothing when the producer satisfies the consumer', () => {
     expect(schemaCompatWarnings(PRODUCER, { type: 'object', properties: { note: { type: 'string' } }, required: ['note'] })).toEqual([]);
   });
@@ -69,7 +69,7 @@ describe('TASK-847 tier 2 — shallow structural compatibility', () => {
   });
 });
 
-describe('TASK-847 tier 2 — over a graph', () => {
+describe(' tier 2 — over a graph', () => {
   const graph = {
     version: 1,
     nodes: [

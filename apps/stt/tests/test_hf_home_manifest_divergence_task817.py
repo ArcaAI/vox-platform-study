@@ -1,4 +1,4 @@
-"""TASK-817 (F-3) — the image's HF_HOME is overridden in the cluster; say so.
+"""(F-3) — the image's HF_HOME is overridden in the cluster; say so.
 
 `apps/stt/docker/Dockerfile` sets ``HF_HOME=/models/hf-cache``. The deployed
 Deployment (`arca/hope-v2-deployment`, `deployment/k8s/base/stt.yaml`, verified
@@ -25,7 +25,7 @@ defensible is the image asserting one path while the cluster uses another with
 nothing connecting them: an engineer debugging a cache miss reads the Dockerfile,
 goes to `/models/hf-cache`, finds it empty, and concludes the cache is broken.
 
-TASK-817 offers two remedies — change the image value, or document the
+offers two remedies — change the image value, or document the
 divergence. Documenting is the one that changes no runtime behaviour: editing
 the value is a no-op in the cluster (the manifest wins regardless) but silently
 repoints every non-cluster consumer of this image. So this test pins the

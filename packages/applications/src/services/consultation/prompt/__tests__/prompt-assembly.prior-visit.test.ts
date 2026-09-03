@@ -1,7 +1,7 @@
 /**
  * PromptAssemblyService — re-visit carry-forward block.
  *
- * Carry-forward is the highest-risk context feature in the platform (SOTA §4.5:
+ * Carry-forward is the highest-risk context feature in the platform (SOTA :
  * it inherits the copy-paste / cloned-note failure mode), so the tests here lock
  * three properties rather than just "the text appears":
  *

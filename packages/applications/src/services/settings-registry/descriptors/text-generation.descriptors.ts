@@ -1,4 +1,4 @@
-// The platform GENERATION profile for `apps/text` (TASK-799 A.1).
+// The platform GENERATION profile for `apps/text`.
 //
 // `temperature` / `maxTokens` / `topP` had NO config surface at all: they were
 // literals in `apps/text/src/text/core/defaults.py` (`GENERATION_FLOOR`),

@@ -1,5 +1,5 @@
 /**
- * TASK-790 W3(b) — `WorkflowInvariantRule` gets an HTTP-reachable service (TASK-789 finding H-1).
+ * (b) — `WorkflowInvariantRule` gets an HTTP-reachable service.
  *
  * Zero controllers referenced the model, so a tenant admin could not write a row, and
  * `WorkflowValidatorService` — which resolves those rows — was imported nowhere. W3(a) wired the
@@ -11,8 +11,8 @@
  * may never disable, loosen, or delete a SYSTEM-owned row.
  *
  * Two distinct failure modes, deliberately different status codes (rule 05):
- *  - another TENANT's row  -> 404 (cross-tenant, existence hidden)
- *  - the SYSTEM row        -> 403 (privilege; the row's existence is public to every tenant,
+ *  - another TENANT's row -> 404 (cross-tenant, existence hidden)
+ *  - the SYSTEM row -> 403 (privilege; the row's existence is public to every tenant,
  *                                  because they all READ the platform register)
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -70,7 +70,7 @@ function build(roles: string[] = ['TENANT_ADMIN'], tenantId = 'tenant-1') {
   return new WorkflowInvariantRuleService(mockRepository as any, mockEventEmitter as any, mockClsService as any);
 }
 
-describe('TASK-790 W3(b) — WorkflowInvariantRuleService', () => {
+describe(' W3(b) — WorkflowInvariantRuleService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRepository.create.mockImplementation(async (entity: any) => entity);

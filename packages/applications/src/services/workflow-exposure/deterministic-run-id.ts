@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 /**
  * The run id for an idempotent invocation — a pure function of
- * `(tenantId, workflowSlug, idempotencyKey)` (TASK-850 lane A step 6).
+ * `(tenantId, workflowSlug, idempotencyKey)` (lane A step 6).
  *
  * ## Why a DERIVED id rather than a stored one
  *

@@ -1,5 +1,5 @@
 /**
- * TASK-786 — the SUPER_ADMIN credential-policy surface.
+ * the SUPER_ADMIN credential-policy surface.
  *
  * What is worth pinning here is what this service must NOT do: it owns no
  * enforcement. Every write is delegated to `SettingsRegistryWriteService`, the

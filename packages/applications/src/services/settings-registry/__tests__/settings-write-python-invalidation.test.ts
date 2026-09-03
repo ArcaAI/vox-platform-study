@@ -4,7 +4,7 @@
  *
  * Before this, `arca:guardrail-config:invalidate` appeared exactly once
  * repo-wide (guardrail's SUBSCRIBER) and had ZERO publishers, so every Python
- * service converged by 60s poll. Rule 09 §"Config caches": "Invalidation is the
+ * service converged by 60s poll. Rule 09: "Invalidation is the
  * propagation path; TTL is a bounded-staleness safety net."
  *
  * This pins the PUBLISH half. The SUBSCRIBE half is pinned per service in

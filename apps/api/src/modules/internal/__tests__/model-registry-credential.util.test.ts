@@ -1,8 +1,8 @@
 /**
  * resolveModelRegistryCredential — the shared body behind BOTH
- * `GET /internal/model-registry-credential` (generic, TASK-855 follow-on)
+ * `GET /internal/model-registry-credential` (generic, follow-on)
  * and the superseded `GET /internal/stt/model-registry-credential`
- * (`SttInternalController`, TASK-799). One implementation, two routes.
+ * (`SttInternalController`). One implementation, two routes.
  */
 import { BadRequestException } from '@nestjs/common';
 import type { IActiveUserContext, IProviderConnectionService, ResolvedProviderCredential } from '@arcaai/applications';

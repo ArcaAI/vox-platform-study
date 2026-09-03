@@ -1,6 +1,6 @@
 """Self-hosted MiniCheck (Flan-T5-Large) NLI entailment scorer — llama.cpp / GGUF backend.
 
-MOVED here from `apps/guardrail` (TASK-735 Phase 6): `apps/nlp` owns inference,
+MOVED here from `apps/guardrail` : `apps/nlp` owns inference,
 `apps/guardrail` owns the groundedness POLICY (threshold, segment cap, verdict
 shape, fail-closed degradation) and calls this service per segment batch. The
 model id and staged weights path arrive PER REQUEST from guardrail's
@@ -59,7 +59,7 @@ class NliModelUnavailableError(RuntimeError):
 
 logger = get_logger(__name__)
 
-# THE ADAPTER STAYS IN CODE. THE CALIBRATION DOES NOT. (TASK-799 lane G)
+# THE ADAPTER STAYS IN CODE. THE CALIBRATION DOES NOT. 
 #
 # Two things used to sit here as module constants, and they are NOT the same kind
 # of thing — a judgment worth stating rather than sweeping both into config:
@@ -88,11 +88,11 @@ MINICHECK_ADAPTER = "minicheck-flan-t5"
 
 # MiniCheck flan-t5 label tokens (HF vocab ids, preserved by the GGUF conversion):
 # id 3 = "no" (index 0, unsupported), id 209 = "yes" (index 1, supported).
-# support_prob = softmax([logit_no, logit_yes])[1]  (matches Liyan06/MiniCheck).
+# support_prob = softmax([logit_no, logit_yes])[1] (matches Liyan06/MiniCheck).
 MINICHECK_LABEL_TOKEN_NO = 3
 MINICHECK_LABEL_TOKEN_YES = 209
 
-# MiniCheck input template: 'predict: ' + doc + <eos> + claim  (T5 eos = '</s>').
+# MiniCheck input template: 'predict: ' + doc + <eos> + claim (T5 eos = '</s>').
 _PROMPT_PREFIX = "predict: "
 _EOS = "</s>"
 

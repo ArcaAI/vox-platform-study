@@ -1,5 +1,5 @@
 /**
- * TASK-727 — end-to-end webhook delivery against a real receiver.
+ * end-to-end webhook delivery against a real receiver.
  *
  * Exercises the full path this ticket built, live: `Webhook` create
  * (server-generated secret) → a real mutation (`POST admin/departments`)
@@ -15,7 +15,7 @@
  *       secret returned once at creation time (never the stored/encrypted
  *       form — proves the platform can actually recover and sign with it);
  *   (c) the payload carries no PHI/resource content — only ids + `fetchUrl`
- *       (the reference-not-content contract, §3 of the ticket);
+ * (the reference-not-content contract, of the ticket);
  *   (d) calling `fetchUrl` with the test's own bearer token returns the real
  *       resource — proves the reference is actually usable, not just
  *       theoretically safe.
@@ -26,7 +26,7 @@
  * `Webhook.url` is read fresh on every delivery attempt, so this spec can
  * bind an ephemeral port with no env gating and no gateway restart.
  *
- * NOT YET EXECUTED — see the ticket README §7: `pnpm test:e2e`'s
+ * NOT YET EXECUTED —: `pnpm test:e2e`'s
  * `globalSetup` runs `prisma db push --force-reset`, which Prisma's CLI
  * refuses when invoked by an AI agent in this environment. This spec is
  * authored and Playwright-listable; it has not been run.
@@ -63,7 +63,7 @@ interface DeliveryRow {
 // symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
 test.describe.configure({ mode: 'serial' });
 
-test.describe('webhook delivery — end to end (TASK-727)', () => {
+test.describe('webhook delivery — end to end ', () => {
   let token: string;
   let receiver: http.Server;
   let receiverPort: number;
@@ -130,7 +130,7 @@ test.describe('webhook delivery — end to end (TASK-727)', () => {
     const stamp = Date.now().toString(36);
     const deptCreate = await request.post(DEPARTMENTS, {
       headers: { Authorization: `Bearer ${token}` },
-      data: { code: `T727-${stamp}`.slice(0, 20), name: `TASK-727 Dept ${stamp}`, defaultSummaryTemplate: 'SOAP' },
+      data: { code: `T727-${stamp}`.slice(0, 20), name: ` Dept ${stamp}`, defaultSummaryTemplate: 'SOAP' },
     });
     expect([200, 201], `department create → ${deptCreate.status()}`).toContain(deptCreate.status());
     const dept = (await deptCreate.json()) as { id: string };

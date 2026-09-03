@@ -8,8 +8,8 @@ import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
  * `audio/pipelines` (`AudioPipelineController` at `admin/audio/pipelines` is
  * the admin half).
  *
- * TASK-760 (drift D-E): this class used to carry `Public` in its name, which
- * read as "the `@Public()` one". It never carried `@Public()` — it is
+ * (drift D-E): this class used to carry `Public` in its name, which
+ * read as "the `@Public()` one". It never carried `@Public` — it is
  * `@Authorize()` + `@ForbidApiKey()`-free JWT/key surface, and "public" here
  * only ever meant "non-admin". `@Public()` means UNAUTHENTICATED everywhere
  * else in this codebase (it is the deny-by-default opt-out the boot audits

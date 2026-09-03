@@ -7,7 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from '@arcaai/ui/components/shadcn/toggl
 import type { ResolvedAiPlatformScope } from './use-ai-platform-scope';
 
 /**
- * The tenancy control — the whole point of TASK-845 step 2.
+ * The tenancy control — the whole point of step 2.
  *
  * It is a two-position tier switch, not a tenant picker: WHICH customer tenant
  * is chosen in the shell's working-tenant switcher, and this only chooses

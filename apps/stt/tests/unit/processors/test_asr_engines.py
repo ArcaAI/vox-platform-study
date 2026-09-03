@@ -485,7 +485,7 @@ class TestP4EmbeddingDim:
     """The voice-profile embedding dim follows the SCHEMA, not a setting."""
 
     def test_extraction_dim_follows_the_module_constant(self):
-        """TASK-799: `VOICE_PROFILE_EMBEDDING_DIM` is gone; the constant is the source.
+        """`VOICE_PROFILE_EMBEDDING_DIM` is gone; the constant is the source.
 
         It was previously settable from env *and* stated in the Prisma
         `vector(N)` column — one fact, two homes, and an operator could move

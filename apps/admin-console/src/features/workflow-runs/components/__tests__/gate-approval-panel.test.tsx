@@ -1,5 +1,5 @@
 /**
- * The clinician sign-off affordance (TASK-731 Phase B).
+ * The clinician sign-off affordance.
  *
  * What these tests defend is when the control appears AT ALL. `WorkflowRunStatus` cannot tell a
  * run parked on a human from one busy generating text — both are `RUNNING` — so the panel keys

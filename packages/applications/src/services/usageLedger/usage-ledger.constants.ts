@@ -80,7 +80,7 @@ export const PRUNE_DEFAULTS = {
   enabled: false,
   /** Once a day at 03:30 UTC — 30 minutes offset from `AuditRetentionService`'s 03:00 purge so the two maintenance jobs don't contend. */
   cron: '30 3 * * *',
-  /** research-findings.md §6: "Compress raw events after ~7 days" — the outbox row's job (durable at-least-once delivery) is done well before that; 7 days keeps a short operational window for post-incident inspection. */
+  /** research-findings.md: "Compress raw events after ~7 days" — the outbox row's job (durable at-least-once delivery) is done well before that; 7 days keeps a short operational window for post-incident inspection. */
   retentionDays: 7,
 } as const;
 

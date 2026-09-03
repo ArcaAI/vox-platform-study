@@ -1,4 +1,4 @@
-"""Drain behavior on shutdown (TASK-725 Task 6).
+"""Drain behavior on shutdown.
 
 A SIGTERM mid-drain must reject NEW async task submissions while an
 already-in-flight one completes normally. `ShutdownManager` already tracked
@@ -27,7 +27,7 @@ def mock_redis():
 
 
 class TestSigtermMidDrain:
-    # TASK-818 B-10: the async-submission-rejected half went with the worker-pool
+    # the async-submission-rejected half went with the worker-pool
     # plane it exercised. `wait_for_shutdown` is the drain `main.py` actually awaits
     # on every shutdown, so it survives and still earns its place.
     @pytest.mark.asyncio

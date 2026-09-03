@@ -23,7 +23,7 @@ CREATE INDEX "AiRoutingPolicy_tenantId_taskKind_idx" ON "core"."AiRoutingPolicy"
 CREATE INDEX "AiTaskDefault_tenantId_taskKind_idx" ON "core"."AiTaskDefault"("tenantId", "taskKind");
 
 -- ===========================================================================
--- TASK-843 BACKFILL — hand-written; everything above this line is Prisma's.
+-- BACKFILL — hand-written; everything above this line is Prisma's.
 --
 -- `AsrPipeline`, `TenantSttConfig` and `TenantTtsConfig` need NO data step:
 -- their `taskKind` is constant for the table, so the NOT NULL DEFAULT above
@@ -103,7 +103,7 @@ BEGIN
     );
 
   IF unclassified_known > 0 THEN
-    RAISE EXCEPTION 'TASK-843 backfill left % row(s) with a KNOWN taskKey unclassified', unclassified_known;
+    RAISE EXCEPTION ' backfill left % row(s) with a KNOWN taskKey unclassified', unclassified_known;
   END IF;
 
   SELECT count(*) INTO unclassified_other
@@ -114,5 +114,5 @@ BEGIN
   ) rows
   WHERE "taskKind" IS NULL;
 
-  RAISE NOTICE 'TASK-843 backfill complete. % row(s) carry an unrecognised taskKey and were left NULL (fail-closed).', unclassified_other;
+  RAISE NOTICE ' backfill complete. % row(s) carry an unrecognised taskKey and were left NULL (fail-closed).', unclassified_other;
 END $$;

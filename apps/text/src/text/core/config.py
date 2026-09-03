@@ -3,7 +3,7 @@
 `apps/text` is a STATELESS gateway. It selects no provider, holds no vendor
 credential, owns no endpoint and stores no tuning value. Everything that varies
 — by tenant, by provider, by model, by deployment — arrives from the control
-plane through exactly two channels (TASK-799 owner decision D-1):
+plane through exactly two channels ( owner decision D-1):
 
 | Channel | Carries | How it gets here |
 |---|---|---|
@@ -14,7 +14,7 @@ What survives here is only what a process needs *before either channel can
 answer*: its own port and log level, the addresses of the things it must reach,
 the one shared internal credential it authenticates those hops with, and the
 PHI-safe-telemetry boot guard. `.claude/rules/09-infrastructure-devops.md`
-§Configuration Tiers: *"the only sanctioned defaults are bootstrap TRANSPORT
+Tiers: *"the only sanctioned defaults are bootstrap TRANSPORT
 addresses."*
 
 Everything else that used to live here is gone, not renamed:

@@ -10,15 +10,15 @@
  * engine's wire and duplicate that cascade.
  *
  * So this module composes three EXISTING reads per engine:
- *   probe + models   → admin/ai-models/discovery?provider=<engine>
- *   connection row   → admin/providers/llm/<engine>
+ *   probe + models → admin/ai-models/discovery?provider=<engine>
+ *   connection row → admin/providers/llm/<engine>
  *   weight artifacts → storage/buckets/<bucket>/files?prefix=<engine prefix>
  */
 
 import { getJson } from '@/shared/api';
 import type { DiscoveryResponse, EngineArtifact, EngineConnection, InferenceEngineProvider } from './types';
 
-/** Weights bucket (TASK-822 §5A.4 — versioned, object-locked, distinct from the `mlflow` bucket). */
+/** Weights bucket (versioned, object-locked, distinct from the `mlflow` bucket). */
 export const MODEL_ARTIFACT_BUCKET = 'hope-models';
 
 /**

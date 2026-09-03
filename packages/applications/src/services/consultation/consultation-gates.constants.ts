@@ -34,7 +34,7 @@
 // config path in any HOPE environment (see the audit table).
 
 /**
- * TASK-705 — the consultation loop's PLATFORM EMERGENCY STOP.
+ * the consultation loop's PLATFORM EMERGENCY STOP.
  *
  * REPLACES `harness.loop.enabled`, and the polarity flip is the whole point.
  *
@@ -42,8 +42,8 @@
  * commercial eligibility AND an operational stop — and the two want opposite
  * fail-safe defaults, which is exactly the defect it shipped with:
  *
- *   descriptor default   `false`   (the kill-switch invariant: never ship armed)
- *   seeded row value     `'true'`  (the product requirement: on for day 1)
+ *   descriptor default `false` (the kill-switch invariant: never ship armed)
+ *   seeded row value `'true'` (the product requirement: on for day 1)
  *
  * Those two disagree, and nothing reconciles them. Worse, they disagree
  * SILENTLY in the direction that matters: `packages/database/migrate.sh`
@@ -56,12 +56,12 @@
  * THE FIX IS TO SEPARATE THE TWO CONCERNS AND GIVE EACH ITS OWN DEFAULT.
  * Eligibility is now the tenant's SUBSCRIPTION ENTITLEMENT
  * (`ResolvedFeatures.agenticLoop`, resolved tenant-plan → platform matrix from
- * the database — owner decision 2026-08-17 §2 row 705). What is left here is a
+ * the database — owner decision 2026-08-17 row 705). What is left here is a
  * pure operational device, and with NEGATIVE polarity its fail-safe default and
  * the day-1 product requirement finally agree:
  *
- *   default `false`  =  no emergency in progress  =  entitled tenants run
- *   set     `true`   =  stop every loop, platform-wide, no redeploy
+ *   default `false` = no emergency in progress = entitled tenants run
+ *   set `true` = stop every loop, platform-wide, no redeploy
  *
  * So there is nothing left to seed, and nothing left to disagree about. The
  * `killSwitch: true` classification is retained and honest: the switch still
@@ -80,18 +80,18 @@ export const HARNESS_LOOP_EMERGENCY_STOP_KEY = 'harness.loop.emergencyStop';
 export const CONSULTATION_OCR_ENABLED_KEY = 'consultation.ocr.enabled';
 
 /**
- * TASK-711 (Task 9) — the ONE breaking precondition in the session
+ *  — the ONE breaking precondition in the session
  * state-machine rollout: `PRIMED → RECORDING` is enforced only when this
  * gate is ON. Default OFF so no existing SDK/admin-console caller (none of
  * which call `POST :id/prime` yet) is broken on deploy; OFF logs the
  * would-be violation and proceeds, ON enforces (409 on `recording/start`
- * without a prior `prime`). Deleted once TASK-712 makes `prime` the
- * consent checkpoint end-to-end (state-machine.md §2 row 2).
+ * without a prior `prime`). Deleted once makes `prime` the
+ * consent checkpoint end-to-end.
  */
 export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.state.requirePrimedBeforeRecording';
 
 /**
- * TASK-711 (state-machine.md §1a) — general session-idleness timeout, in
+ *  — general session-idleness timeout, in
  * minutes, consulted by the scheduled sweep (`ConsultationTimeoutSweepService`)
  * that transitions stale sessions to `CLOSED_INCOMPLETE`. NOT a kill-switch
  * (no on/off semantics) — a tuning knob, `failMode: open-to-default` so an
@@ -101,7 +101,7 @@ export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.st
 export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sessionTimeoutMinutes';
 
 /**
- * TASK-711 (state-machine.md §1a mechanism) — cron cadence for
+ * ( mechanism) — cron cadence for
  * `ConsultationTimeoutSweepService`'s own tick, i.e. how OFTEN the sweep
  * checks for stale sessions (distinct from `..sessionTimeoutMinutes` above,
  * which is HOW STALE a session must be). Mirrors the `audit-retention.cron` /
@@ -113,10 +113,10 @@ export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sess
 export const CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY = 'consultation.state.sessionTimeoutSweep.cron';
 
 /**
- * TASK-811 — the PER-TENANT rollout flag for the realtime GRAPH EXECUTOR.
+ * the PER-TENANT rollout flag for the realtime GRAPH EXECUTOR.
  *
  * The live flush historically ran a hardcoded 11-step sequence for every
- * recording session regardless of what the tenant had authored. TASK-811
+ * recording session regardless of what the tenant had authored.
  * replaces that with a walk over a compiled realtime lane — the highest-volume
  * internal hop in the platform, re-anchoring every annotation offset and
  * introducing per-section concurrency. So it lands behind a flag, and the legacy

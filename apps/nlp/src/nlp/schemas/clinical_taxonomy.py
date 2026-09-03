@@ -1,4 +1,4 @@
-"""The clinical taxonomy the NER plane executes against (TASK-799 lane G).
+"""The clinical taxonomy the NER plane executes against ( lane G).
 
 `apps/nlp` is the EXECUTOR for the clinical NER plane, never its policy owner —
 the same contract `schemas/guard.py` already declares for the guardrail plane.

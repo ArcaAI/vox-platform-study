@@ -5,14 +5,14 @@ Static allow-list test: cheap, CI-stable, no OTel runtime needed. Scans the
 GenAI semantic-convention namespace Text stamps onto spans
 (`core/observability.py` + `providers/*.py`; grepping the whole monorepo for
 `gen_ai\\.` shows these are the ONLY `gen_ai.*` call-sites in HOPE today,
-research-findings.md §2) -- and asserts every one found is on an explicit
+research-findings.md -- and asserts every one found is on an explicit
 ALLOW-LIST.
 
 An allow-list (not a deny-list) fails closed: a deny-list only catches names
 someone thought to ban in advance, but a NEW `gen_ai.*` attribute added later
 by an unrelated change would silently pass a deny-only check. Here it fails
 the build until a human adds it to `ALLOWED_GEN_AI_ATTRIBUTES` -- which is the
-point where research-findings.md §2's content-bearing list gets checked.
+point where research-findings.md 's content-bearing list gets checked.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 # The complete set of gen_ai.* attribute names Text is allowed to stamp onto
 # spans today (verified against core/observability.py + providers/*.py).
 # Adding a new one is a deliberate, reviewed decision -- confirm it is NOT
-# content-bearing (research-findings.md §2) before adding it here.
+# content-bearing (research-findings.md before adding it here.
 ALLOWED_GEN_AI_ATTRIBUTES = frozenset(
     {
         # Span NAMES (the string passed to `tracer.start_as_current_span(...)`

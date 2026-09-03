@@ -1,5 +1,5 @@
 /**
- * TASK-858 Lane D — the governing-workflow read-back line.
+ * the governing-workflow read-back line.
  *
  * The three states are the point: "we could not read it" must never render as "the platform
  * default engine governs", because dispatch is best-effort and those are genuinely different

@@ -1,5 +1,5 @@
 /**
- * TASK-858 D3 — regenerate the three example consultation workflows' seed blobs
+ * regenerate the three example consultation workflows' seed blobs
  * from the REAL `validate()` / `compile()` / `registryChecksum()` engine.
  *
  * Same contract as `regen-arcaai-consultation-workflow-seed.ts`, which this is

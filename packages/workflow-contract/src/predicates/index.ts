@@ -1,11 +1,11 @@
 /**
- * The closed predicate catalogue (TASK-716 §4 Task 4 / §3.3): the CLOSED set of predicate
+ * The closed predicate catalogue ( Task 4 /: the CLOSED set of predicate
  * *kinds* is code; a rule *instance* is a parameterization of one kind and lives as a
  * `WorkflowInvariantRule` row (data). Adding a new kind is a deploy — correctly, since it is
  * executable code (a topological sort, a dominator check). Tightening an existing kind's
  * parameters (a new forbidden edge, a raised severity) is a row insert.
  *
- * Every evaluator here is TOTAL: it returns findings, never throws (§3.5 — "a validator that
+ * Every evaluator here is TOTAL: it returns findings, never throws — "a validator that
  * is not total is a validator that can be bypassed"). `evaluatePredicate` is a second line of
  * defense: it wraps the call in try/catch and converts an unexpected throw into the synthetic
  * `WF-INTERNAL` finding rather than ever resolving to "ok".

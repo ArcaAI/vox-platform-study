@@ -1,5 +1,5 @@
 /**
- * KnowledgeDocumentService unit tests — institutional RAG (TASK-728).
+ * KnowledgeDocumentService unit tests — institutional RAG.
  *
  * The service now follows the standard application-service pattern
  * (`extends BaseService`, symbol-token DI, sys-event broadcasts on every

@@ -1,15 +1,15 @@
 /**
- * TASK-762 §5.5 — the THIRD auth branch in `UnifiedAuthGuard`.
+ * the THIRD auth branch in `UnifiedAuthGuard`.
  *
  * The invariants under test are the ones that keep the three credential classes
  * genuinely separate rather than separate-by-convention:
  *
  *  - `@ForbidApiKey()` and `@ForbidServiceAccount()` are INDEPENDENT. Reusing
  *    one decorator for both would re-create exactly the "one mechanism, two
- *    purposes" conflation the TASK-708 §6 owner ruling forbids.
+ * purposes" conflation the owner ruling forbids.
  *  - Scopes and abilities are a CONJUNCTION in both directions, never a
  *    fallback — the same rule the API-key path enforces.
- *  - `isSuperAdmin` reflects the account's CONFIGURED value. §2.7: a principal
+ * `isSuperAdmin` reflects the account's CONFIGURED value.: a principal
  *    that omits `roles` silently fails every super-admin check, one that fills
  *    it carelessly silently becomes a super admin. Both directions are pinned.
  *  - A request presenting two credential classes is REJECTED, never silently

@@ -107,7 +107,7 @@ export const PHI_MODEL_CIPHERTEXT: Readonly<Record<string, readonly string[]>> =
   contextItemVersion: ['encryptedChangeSummary', 'encryptedContent', 'encryptedContentDiff', 'encryptedFieldChanges'],
   dnaWritingStyleReport: ['encryptedReportData', 'encryptedStyleText'],
   dnaWritingStyleVersion: ['encryptedReportData', 'encryptedStyleText'],
-  // TASK-811 — a live-generated document's section prose. Unlike its sibling
+  // a live-generated document's section prose. Unlike its sibling
   // `TranscriptSegment` (structural metadata only) a section CARRIES PHI: the
   // text is generated and exists nowhere else to slice from.
   documentSection: ['encryptedContent'],

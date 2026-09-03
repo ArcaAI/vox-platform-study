@@ -286,7 +286,7 @@ async function main() {
   const prisma = getPlatformAdminPrismaClient_Unscoped() as any as BackfillClient;
 
   const mode = opts.apply ? 'APPLY' : 'DRY RUN (default — no writes)';
-  console.log('===== TASK-656 — backfill ContextItem.mediaId (raw-key → Media UUID) =====');
+  console.log('===== backfill ContextItem.mediaId (raw-key → Media UUID) =====');
   console.log(`mode   : ${mode}`);
   console.log(`tenant : ${opts.tenantId ?? 'ALL'}`);
   console.log(`bucket : ${opts.bucket}`);

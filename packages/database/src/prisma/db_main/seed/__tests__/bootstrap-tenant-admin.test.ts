@@ -10,11 +10,11 @@ import { BOOTSTRAP_SUPER_ADMIN_USER_ID } from '../92-bootstrap-admin';
 import { SEED_USER_IDS } from '../00-constants';
 
 /**
- * TASK-766 — the day-1 bootstrap TENANT_ADMIN.
+ * the day-1 bootstrap TENANT_ADMIN.
  *
  * These lock the RULES, not the database write. No seed test in this repo
  * touches a live database (see `seed-idempotency.test.ts`), so the write path
- * is covered by running the seed twice against the test DB (ticket §6) and the
+ * is covered by running the seed twice against the test DB  and the
  * decision logic is covered here.
  */
 

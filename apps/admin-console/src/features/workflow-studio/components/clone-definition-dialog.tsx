@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `CloneDefinitionDialog` (TASK-856) — "make a new workflow from this one", and "start from a
+ * `CloneDefinitionDialog` — "make a new workflow from this one", and "start from a
  * platform template".
  *
  * A SHORT dialog, not a `DetailDrawer`: this collects two fields and confirms an action, which
@@ -154,10 +154,12 @@ export function CloneDefinitionDialog({
                       <div key={template.id} className="flex items-start gap-2">
                         <RadioGroupItem id={`clone-template-${template.id}`} value={template.id} className="mt-1" />
                         <Label htmlFor={`clone-template-${template.id}`} className="flex flex-col items-start gap-0.5 font-normal">
-                          {/* The palette is a BADGE, not a run of mono text (TASK-858 Lane D): the library now
+                          {/*
+ The palette is a BADGE, not a run of mono text : the library now
                               mixes `consultation` example workflows with the `stt` transcription agent, and
                               cloning the wrong palette yields a workflow that cannot govern a consultation
-                              at all. It has to be scannable at a glance. */}
+                              at all. It has to be scannable at a glance. 
+*/}
                           <span className="flex flex-wrap items-center gap-1.5">
                             <span className="font-medium">{template.name}</span>
                             <Badge variant="outline">{template.paletteKey}</Badge>

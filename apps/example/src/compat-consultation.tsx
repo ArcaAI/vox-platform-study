@@ -13,8 +13,7 @@
  * the `<ArcaCompatProvider>` wrapper in `compat-main.tsx` and the import specifier
  * below (`@arcaai/vox/compat` instead of `@arcaai/agentic-sdk`).
  *
- * See ../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md
-*/
+ */
 
 import { useRef, useState } from 'react';
 import {
@@ -68,7 +67,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
   //     The third arg is the delivered metadata: caller keys you tagged via
   //     sendAudioData (device_id/role/chunk_id), normalized with chunk_id /
   //     detected_language, plus derived speaker_id (diarization). See
-  //     ../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md.
+  
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: 'en',

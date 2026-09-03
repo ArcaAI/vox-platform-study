@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://arcaai.dev/hope/workflow-compiled-config.schema.json",
   "title": "CompiledWorkflowConfig",
-  "description": "The interpreter's (TASK-718, Python) input contract. Produced ONLY by @arcaai/workflow-contract's compiler (TASK-716 Task 5) from a server-validated WorkflowDefinition.graph. Never authored or accepted from a request DTO. See ../README.md for the normative rules that accompany this schema (no SIGNED node, onTimeout never means approved, formatVersion must be refused when unknown, checksum must be verified before execution).",
+  "description": "The interpreter's (Python) input contract. Produced ONLY by @arcaai/workflow-contract's compiler (Task 5) from a server-validated WorkflowDefinition.graph. Never authored or accepted from a request DTO. See ../README.md for the normative rules that accompany this schema (no SIGNED node, onTimeout never means approved, formatVersion must be refused when unknown, checksum must be verified before execution).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -75,7 +75,7 @@
         "activity": {
           "type": "string",
           "minLength": 1,
-          "description": "A closed set drawn from apps/harness/src/harness/temporal/activities.py's @activity.defn names. No activity here writes SIGNED (TASK-716 §2.7)."
+          "description": "A closed set drawn from apps/harness/src/harness/temporal/activities.py's @activity.defn names. No activity here writes SIGNED (§2.7)."
         },
         "config": { "type": "object" },
         "timeoutSeconds": {
@@ -166,7 +166,7 @@
         },
         "documentTemplateRefs": {
           "type": "array",
-          "description": "TASK-810 DD-2 — WHICH DocumentTemplate version each generation node decodes its output into, pinned at publish. Structurally identical to promptTemplateRefs and a different guarantee: that one pins what the model is TOLD, this one pins the SHAPE it is decoded into, so a tenant publishing a new template version cannot restructure a document a published workflow is already producing. SORTED by nodeId — the artifact is checksummed, so authoring order must not mint a new checksum for a semantically identical graph. An UNPINNED binding is absent, never versionNumber 0.",
+          "description": " DD-2 — WHICH DocumentTemplate version each generation node decodes its output into, pinned at publish. Structurally identical to promptTemplateRefs and a different guarantee: that one pins what the model is TOLD, this one pins the SHAPE it is decoded into, so a tenant publishing a new template version cannot restructure a document a published workflow is already producing. SORTED by nodeId — the artifact is checksummed, so authoring order must not mint a new checksum for a semantically identical graph. An UNPINNED binding is absent, never versionNumber 0.",
           "items": {
             "type": "object",
             "additionalProperties": false,

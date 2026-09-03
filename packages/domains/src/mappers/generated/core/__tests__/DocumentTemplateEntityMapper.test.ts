@@ -1,5 +1,5 @@
 /**
- * TASK-810 — `DocumentTemplate*` mapper round-trip tests.
+ * `DocumentTemplate*` mapper round-trip tests.
  *
  * Mirrors the `TenantAllowedOriginEntityMapper` / `AiTaskDefaultEntityMapper`
  * suite, and exists because D-23 recorded two OCC-written models

@@ -1,10 +1,10 @@
 /**
- * TASK-732 Phase 4 Task 14 — every note-generation path produces an assured
+ * every note-generation path produces an assured
  * draft.
  *
- * TASK-714 bought this property TEMPORARILY on the legacy path only ("no
+ * bought this property TEMPORARILY on the legacy path only ("no
  * code path creates a `RAW_SUMMARY` without a `SummaryMeta`" — its own
- * Acceptance Criteria). TASK-732 deleted that legacy path and its floor.
+ * Acceptance Criteria). deleted that legacy path and its floor.
  * This test is the PERMANENT form of the same property: after this ticket
  * there is the harness path, plus the kept helper/rollup generators
  * (`ComprehensiveSummaryProcessor` + its sync twin `ChainSummaryService`,
@@ -52,7 +52,7 @@ const RAW_SUMMARY_CALL = /ContextItemFactory\.CreateRawSummary\(/;
 const SUMMARY_META_FACTORY_CALL = /SummaryMetaFactory\.Create\w*\(/;
 const SUMMARY_META_WRITE = /summaryMetaRepository\.(create|updateWithVersion)\(/;
 
-describe('TASK-732 Phase 4 — note-generation assurance contract', () => {
+describe(' Phase 4 — note-generation assurance contract', () => {
   it("ContextItemFactory.CreateRawSummary always sets type: RAW_SUMMARY (the premise this contract's file-level check relies on)", () => {
     const factorySource = readFileSync(
       resolve(REPO_ROOT, 'packages/domains/src/factories/generated/core/ContextItemFactory.ts'),
@@ -68,7 +68,7 @@ describe('TASK-732 Phase 4 — note-generation assurance contract', () => {
     expect(files.length, 'sanity: the applications tree must not be empty').toBeGreaterThan(100);
 
     const rawSummaryProducers = files.filter((f) => RAW_SUMMARY_CALL.test(readFileSync(f, 'utf8')));
-    // Sanity floor — the known producers as of this pass (README §2.5/§0.1 and
+    // Sanity floor — the known producers as of this pass (and
     // the deletion-manifest's Task 8 record): ContextService (manual save),
     // HarnessInternalService (the harness callback), ComprehensiveSummaryProcessor,
     // ChainSummaryService, SummaryService (sync generateSummary). A count below
@@ -92,13 +92,13 @@ describe('TASK-732 Phase 4 — note-generation assurance contract', () => {
 
     expect(
       violations,
-      `TASK-714 bought "no RAW_SUMMARY without a SummaryMeta" temporarily on the legacy path; TASK-732 made it ` +
+      ` bought "no RAW_SUMMARY without a SummaryMeta" temporarily on the legacy path;  made it ` +
         `permanent by deleting every OTHER path. A violation below means a note-generation path can produce an ` +
         `un-assured draft:\n${violations.join('\n')}`,
     ).toEqual([]);
   });
 
-  it('the deleted legacy generator is not among the producers (regression lock for TASK-732)', () => {
+  it('the deleted legacy generator is not among the producers (regression lock for)', () => {
     const files = listTsFiles(APPLICATIONS_SRC);
     const rawSummaryProducerNames = files.filter((f) => RAW_SUMMARY_CALL.test(readFileSync(f, 'utf8'))).map((f) => f.split('/').pop());
     expect(rawSummaryProducerNames).not.toContain('summary.processor.ts');

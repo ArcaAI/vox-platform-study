@@ -152,7 +152,7 @@ export class PipelineTemplateResyncService extends BaseService {
     });
 
     const saved = await this.pipelineRepository.create(clone);
-    await this.snapshotVersion(saved, tenantId, 'Added by SYSTEM pipeline template resync (TASK-531)');
+    await this.snapshotVersion(saved, tenantId, 'Added by SYSTEM pipeline template resync ');
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -210,7 +210,7 @@ export class PipelineTemplateResyncService extends BaseService {
 
     const updated = await this.pipelineRepository.updateWithVersion(existing.id, existing, existing.version);
 
-    await this.snapshotVersion(updated, tenantId, `Fast-forwarded to SYSTEM template '${template.slug}' by resync (TASK-531)`);
+    await this.snapshotVersion(updated, tenantId, `Fast-forwarded to SYSTEM template '${template.slug}' by resync `);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: existing.id,

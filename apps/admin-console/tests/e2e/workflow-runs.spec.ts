@@ -1,11 +1,11 @@
 /**
- * TASK-723 Phase C, Task 11 — Workflow Runs (tier 30-49) against a RUNNING
+ * Task 11 — Workflow Runs (tier 30-49) against a RUNNING
  * stack (rule 12 gate 3): screen smoke, filter/URL round-trip, the sandbox
  * toggle, the trace overlay + list-view peer, the read-only pinned-version
  * deep link, a foreign run id, and axe scans in both themes.
  *
  * Follows `harness-observability.spec.ts` and the shared helpers. Data is
- * whatever the seeded/dev tenant already has — TASK-718's dispatcher does not
+ * whatever the seeded/dev tenant already has — dispatcher does not
  * yet call `recordRunStarted`/`recordRunFinished` (README R2), so an empty
  * runs list is an EXPECTED outcome in most environments today; "settled"
  * therefore accepts data rows, the empty state, or the error card.
@@ -97,7 +97,7 @@ test.describe('workflow run trace', () => {
 
   test('opening a run renders the trace overlay on the pinned version graph, or the pruned/empty state honestly', async ({ page }) => {
     const runId = await firstRunId(page);
-    test.skip(runId === null, 'No workflow runs seeded in this environment yet (TASK-718 write side is not wired — README R2)');
+    test.skip(runId === null, 'No workflow runs seeded in this environment yet (write side is not wired — README R2)');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     const canvas = page.locator('[data-slot="workflow-canvas"]');
     const pruned = page.getByText('Trace pruned by retention');

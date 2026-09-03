@@ -275,13 +275,13 @@ describe('HarnessPolicyScreen', () => {
    * super-admin-only server-side. The TENANT tab must render them disabled
    * with a visible reason rather than letting a tenant admin flip a switch
    * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
-   */
+ */
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
     // Mirrors TENANT_LOCKED_POLICY_KEYS in ../policy-fields.ts, by rendered
-    // label. TASK-740 D-3 locked textProvider/textModel too — both sit in the
+    // label. locked textProvider/textModel too — both sit in the
     // backend's SUPER_ADMIN_ONLY_POLICY_KEYS, so a tenant edit could only 403.
-    // `Safety provider`/`Safety model` are absent because TASK-816 Phase 4 deleted the
+    // `Safety provider`/`Safety model` are absent because deleted the
     // controls with their columns — see ../policy-fields.ts and policy-fields.test.ts.
     const LOCKED = [
       'Safety guardrail',

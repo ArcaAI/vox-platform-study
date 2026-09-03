@@ -1,5 +1,5 @@
 /**
- * TASK-847 step 7, TIER 1 — the blocking kind check, and the two port primitives the generic
+ * step 7, TIER 1 — the blocking kind check, and the two port primitives the generic
  * (`agentic`) node types need in order to be typed at all.
  *
  * `object` and `audio` are ADDITIONS to a closed vocabulary, so this file asserts three things
@@ -34,7 +34,7 @@ const {
   portPrimitiveSatisfies,
 } = portModel;
 
-describe('TASK-847 — the two new port primitives', () => {
+describe('the two new port primitives', () => {
   it('adds `object` and `audio` to the closed vocabulary', () => {
     expect(WORKFLOW_PORT_PRIMITIVES).toContain('object');
     expect(WORKFLOW_PORT_PRIMITIVES).toContain('audio');
@@ -67,7 +67,7 @@ describe('TASK-847 — the two new port primitives', () => {
   });
 });
 
-describe('TASK-847 tier 1 — the kind projection', () => {
+describe(' tier 1 — the kind projection', () => {
   it('projects every primitive onto exactly one of the five kinds', () => {
     for (const primitive of WORKFLOW_PORT_PRIMITIVES) {
       expect(WORKFLOW_PORT_KINDS).toContain(portKindOf(primitive));

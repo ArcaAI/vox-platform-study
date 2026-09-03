@@ -4,7 +4,7 @@
  * `documentTemplateId` says WHICH `DocumentTemplate` a generation node decodes its output into;
  * `documentVersionNumber` is that node's own movable PIN onto one immutable version of it. The
  * pin is what stops a republished template silently RESTRUCTURING the clinical document a
- * published workflow already produces (`node-config-schemas.ts` §DOCUMENT_BINDING_PROPERTIES).
+ * published workflow already produces (`node-config-schemas.ts`
  *
  * Two invariants live here rather than in the component, so they are testable without a DOM and
  * cannot drift between the control's several call sites:

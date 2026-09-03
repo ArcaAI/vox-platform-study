@@ -191,7 +191,7 @@ async def main() -> int:
     distinct_keys = len(set(GATEWAY.keys))
     note_rows = len(GATEWAY.notes)
 
-    print(f"\n===== TASK-687 LIVE PROOF (real Temporal @ {TEMPORAL_TARGET}) =====")
+    print(f"\n=====  LIVE PROOF (real Temporal @ {TEMPORAL_TARGET}) =====")
     print(f"consultation                : {consultation_id}")
     print(f"workflow id (both starts)   : harness-doc-{consultation_id}")
     print(f"DISTINCT WORKFLOW EXECUTIONS: {distinct_runs}   {run_ids}")

@@ -5,7 +5,7 @@ mapping, and the degrade-safe → fail-CLOSED posture when the guardrail is
 unreachable: a transient blip is absorbed by a bounded retry, a sustained outage
 fails closed, and an errored guardrail can NEVER return ``allowed: True``.
 
-TASK-799 lane B moved the POSTURE off env, split by cardinality (owner decision
+lane B moved the POSTURE off env, split by cardinality (owner decision
 D-1): the platform switch and retry budget arrive on the PULL channel, and
 `require_medical` / `include_reasoning` are PUSHED per request because they
 legitimately differ between tenants. The client's construction takes only the

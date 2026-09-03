@@ -10,10 +10,10 @@ import { activeNavDomainId, domainLandingRoute, visibleNavDomains, visibleNavEnt
 import { rovingItemProps, useRovingFocus } from './use-roving-focus';
 
 /**
- * The 56px capability-domain rail (TASK-788 OD-1/OD-2) — tier one of the
+ * The 56px capability-domain rail (/OD-2) — tier one of the
  * two-tier shell that replaced a single 56-entry `collapsible="icon"` sidebar.
  *
- * Geometry follows TASK-787's Geometry Contract: 36px (`size-9`) items with
+ * Geometry follows Geometry Contract: 36px (`size-9`) items with
  * `rounded-control`, 8px padding (`p-2`) inside a 56px (`w-14`) column. The
  * contract's 12px surface radius applies to the `inline` (mobile) variant,
  * which IS a floating panel; the desktop rail is full-bleed against the
@@ -73,10 +73,12 @@ export function DomainRail({ variant = 'rail' }: { variant?: 'rail' | 'inline' }
 
           return (
             <li key={domain.id} className={cn('relative shrink-0', isInline ? '' : 'flex justify-center')}>
-              {/* Signal 2 of 2 for the rail: a 2px --foreground rule. The fill
+              {/*
+ Signal 2 of 2 for the rail: a 2px --foreground rule. The fill
                   below cannot carry the state alone — under this achromatic
                   palette --sidebar-accent is 1.14:1 on --sidebar in light and
-                  1.34:1 in dark (globals.css §Sidebar, J-11). */}
+                  1.34:1 in dark (globals.css, J-11).
+*/}
               {isActive ? (
                 <span
                   aria-hidden

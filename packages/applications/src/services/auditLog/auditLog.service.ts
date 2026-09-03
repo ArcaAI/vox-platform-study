@@ -107,7 +107,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Fetch all audit logs with pagination and search capabilities.
    * Uses Promise.all to parallelize data fetch and count queries for better performance.
    *
-   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId so
+   * (HIPAA: scoped to the caller's CLS tenantId so
    * a Tenant-A admin can never enumerate Tenant-B audit rows. SUPER_ADMIN
    * bypasses the filter (cross-tenant audit access).
    *
@@ -424,7 +424,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
   }
 
   // OB-10 — the soft-delete capability was intentionally removed for
-  // audit-log immutability (HIPAA §164.312(b)/(c)(1)). Audit rows are append-only
+  // audit-log immutability (HIPAA Audit rows are append-only
   // from the admin surface; any retention/archival must be an explicit, separately
   // audited process — never an ad-hoc admin delete.
 
@@ -597,7 +597,7 @@ export class AuditLogService extends BaseService implements IAuditLogService {
    * Counterpart to `handleUserAuthenticatedEvent`, which is a success-only
    * bracket. Without this, a rejected login left only a structured warn log,
    * so credential stuffing and post-termination access attempts were not
-   * reviewable in the audit table — the gap HIPAA §164.312(b) access auditing
+   * reviewable in the audit table — the gap HIPAA access auditing
    * is meant to close.
    *
    * Shares the success handler's sanctioned direct-write path: a failed login

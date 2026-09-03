@@ -14,7 +14,7 @@
         "type": "postgres",
         "uid": "hope-postgres"
       },
-      "description": "Daily rollup quantity summed per capability (AiUsageRollupDaily.quantitySum), TASK-615 D5/D8. Units differ per capability (tokens, audio-seconds, characters, text-units) — read as relative trend, not an absolute cross-capability comparison.",
+      "description": "Daily rollup quantity summed per capability (AiUsageRollupDaily.quantitySum),  D5/D8. Units differ per capability (tokens, audio-seconds, characters, text-units) — read as relative trend, not an absolute cross-capability comparison.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },

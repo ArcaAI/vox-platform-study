@@ -28,7 +28,7 @@ import { PermissionCheckRedirectShimController } from './permission-check-redire
   // `UserRoleAssignmentServiceModule` backs the new
   // `GET admin/rbac/roles/:id/members` listing on `RolesController`.
   imports: [CoreDatabaseModule, PolicyServiceModule, RbacRoleServiceModule, UserRoleAssignmentServiceModule],
-  // TASK-760 — ORDER IS LOAD-BEARING. `PermissionCheckController`
+  // ORDER IS LOAD-BEARING. `PermissionCheckController`
   // (`users/me/permission-checks`, a LITERAL segment) must precede
   // `UserPermissionCheckController` (`users/:id/permission-checks`), or the
   // `:id` parameter swallows `me` and every self permission check silently

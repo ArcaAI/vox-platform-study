@@ -4,7 +4,7 @@
  * The @OnEvent(ContextAdded) consumer that signals `ConsultationLoopWorkflow`
  * via `HarnessGatewayService.signalContextAdded`.
  *
- * SCOPE SPLIT (TASK-705). The GATE moved out of this file. Whether a signal is
+ * SCOPE SPLIT. The GATE moved out of this file. Whether a signal is
  * allowed at all is now a composition of the tenant's `agenticLoop` subscription
  * entitlement and the `harness.loop.emergencyStop` platform veto, pinned in
  * `./loop-entitlement-gate.test.ts`; the setting-TIER properties (runtime flip,

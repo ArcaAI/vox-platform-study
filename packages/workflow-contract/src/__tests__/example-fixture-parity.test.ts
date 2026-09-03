@@ -1,8 +1,8 @@
 /**
  * `fixtures/example-compiled-config.json` is the ONE shared worked example this ticket's
- * Python mirror (`packages/py-workflow-contract`, TASK-716 Task 7b) round-trips against, so
+ * Python mirror (`packages/py-workflow-contract`) round-trips against, so
  * TypeScript and Python assert the SAME document rather than two hand-typed near-copies that
- * could silently diverge (§2.8's twin-drift concern, generalised to the fixture level, not just
+ * could silently diverge (twin-drift concern, generalised to the fixture level, not just
  * the algorithm level). This test is the guard: it re-derives the same document from the same
  * graph/ctx `compiled-config-schema.test.ts` already uses and asserts byte-identical JSON, so an
  * engine change that alters the compiled shape fails HERE — the signal to regenerate the shared

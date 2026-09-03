@@ -9,7 +9,7 @@ import { CheckPermissionDto, CheckPermissionsBulkDto, CheckPermissionResponse, C
 /**
  * The caller's OWN effective permission set.
  *
- * TASK-760 — `rbac/check` was a verb wearing a resource's clothes: an RPC
+ * `rbac/check` was a verb wearing a resource's clothes: an RPC
  * prefix under an internal subsystem name. It is now two resource
  * collections. This one is the self collection; the by-id collection
  * (`users/:id/permission-checks`) is `UserPermissionCheckController` below.
@@ -72,7 +72,7 @@ export class PermissionCheckController {
 /**
  * Permission checks against a NAMED user.
  *
- * TASK-760 — the by-id half of the retired `rbac/check` RPC. The privilege
+ * the by-id half of the retired `rbac/check` RPC. The privilege
  * rule is UNCHANGED: checking anyone other than yourself still requires
  * `manage:User`, evaluated against the caller (and, under an API key, against
  * the key's bound user). Behaviour is byte-identical to the retired routes —

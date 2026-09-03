@@ -174,7 +174,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   async resolveForTenant(tenantId: EntityId): Promise<ResolvedEntitlements> {
     const tenant = await this.tenantRepository.findById(tenantId);
-    // TASK-785 OD-5: a plan-less CUSTOMER tenant resolves STARTER, not ungated.
+    // a plan-less CUSTOMER tenant resolves STARTER, not ungated.
     // Reserved platform tenants (SYSTEM, Global) still resolve `null`.
     const plan = effectivePlan(tenantId, tenant.plan as TenantPlan | null | undefined);
 
@@ -186,7 +186,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   async getCapabilities(tenantId: EntityId): Promise<EntitlementCapabilitiesResponse> {
     const tenant = await this.tenantRepository.findById(tenantId);
-    // TASK-785 OD-5: a plan-less CUSTOMER tenant resolves STARTER, not ungated.
+    // a plan-less CUSTOMER tenant resolves STARTER, not ungated.
     // Reserved platform tenants (SYSTEM, Global) still resolve `null`.
     const plan = effectivePlan(tenantId, tenant.plan as TenantPlan | null | undefined);
 
@@ -262,7 +262,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
    *   1. NON-THROWING (contract note on `IEntitlementsService`). The caller is
    *      shaping a cascade before a provider is selected; a throw here would
    *      403 requests that were never going to need the platform credential.
-   *   2. It HONOURS the kill switch (OD-6), returning early exactly like
+   *   2. It HONOURS the kill switch , returning early exactly like
    *      `assertQuantityQuota:215` and its three siblings. For a boolean read,
    *      their "return without enforcing" is `true` — the feature is ungated.
    *      So with `entitlements.enabled` OFF the platform-default gate is INERT
@@ -565,7 +565,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.featurePlatformDefaultCredential !== undefined) row.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) row.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) row.rateLimitTier = request.rateLimitTier;
-    // TASK-785 — an ABSOLUTE per-plan limit. `null` is a MEANINGFUL value here
+    // an ABSOLUTE per-plan limit. `null` is a MEANINGFUL value here
     // (clear it and fall back to `rateLimitTier`), so the guard is `!== undefined`.
     if (request.rateLimitPerMinute !== undefined) row.rateLimitPerMinute = request.rateLimitPerMinute;
     if (request.rateLimitWindowMs !== undefined) row.rateLimitWindowMs = request.rateLimitWindowMs;

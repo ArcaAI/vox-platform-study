@@ -12,7 +12,7 @@
  *
  * Both failures are silent: no startup error, no type error, and the route
  * still "exists". `TenantController.fetchByCodeName` shipped this way and was
- * only caught because the TASK-773 SDK codegen cross-checks the Nest route
+ * only caught because the SDK codegen cross-checks the Nest route
  * manifest against the OpenAPI document and refused to generate on the
  * disagreement — Swagger had been rendering the truth, `/code-name/{code}-name`,
  * the whole time.

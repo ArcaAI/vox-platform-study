@@ -13,7 +13,7 @@ import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat }
  */
 export const AI_MODEL_PROVIDERS = [
   // `ollama` is selectable with no platform-seeded catalog rows — the provider
-  // logic stays, the model catalog went (TASK-736, owner decision 2026-08-17).
+  // logic stays, the model catalog went (owner decision 2026-08-17).
   // Mirrors the canonical seed list in
   // packages/database/.../seed/ai-models/shared.ts, which this is pinned to.
   'ollama',

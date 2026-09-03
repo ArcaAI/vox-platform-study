@@ -1,4 +1,4 @@
-// A TENANT's own input-moderation policy for `apps/text` (TASK-799 A.2).
+// A TENANT's own input-moderation policy for `apps/text`.
 //
 // This is the storage half of the PUSH contract whose receiving half already
 // exists: `GenerateRequest.guardrail_policy`
@@ -12,12 +12,12 @@
 // They are the same two CONCEPTS at a different SCOPE, and the scope is what
 // makes them different settings:
 //
-//   text.externalGuardrail.requireMedical   maxScope 'system', consumedBy text
+//   text.externalGuardrail.requireMedical maxScope 'system', consumedBy text
 //     The PLATFORM DEFAULT. Resolved at the SYSTEM tenant and served on the
 //     PULL route as part of the `externalGuardrail` view — one cached snapshot
 //     per text process. It is what a tenant INHERITS when it has no opinion.
 //
-//   text.guardrailPolicy.requireMedical     maxScope 'tenant', NO consumedBy
+//   text.guardrailPolicy.requireMedical maxScope 'tenant', NO consumedBy
 //     The TENANT'S OWN opinion. Resolved per request by
 //     `TextRequestEnrichmentService` and PUSHED onto the body.
 //

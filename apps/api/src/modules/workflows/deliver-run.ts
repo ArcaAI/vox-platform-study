@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import type { WorkflowStreamService } from './workflow-stream.service';
 
 /**
- * The blocking mode's hard ceiling (TASK-850 lane A step 7).
+ * The blocking mode's hard ceiling (lane A step 7).
  *
  * ~60s, and it is a CEILING rather than a timeout on the work: the run keeps going when this
  * expires. The number is chosen against what sits in front of this gateway — 60s is the default

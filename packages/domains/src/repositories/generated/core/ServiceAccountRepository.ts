@@ -10,7 +10,7 @@ import { ServiceAccountEntityMapper } from '../../../mappers';
 import { ServiceAccount } from '../../../models';
 
 /**
- * Service-account repository (TASK-762).
+ * Service-account repository.
  *
  * HAND-AUTHORED — `gen:repository` is broken (`03-domain-layer.md`); follows
  * the `AiProviderConnectionRepository` precedent in this folder.
@@ -26,7 +26,7 @@ import { ServiceAccount } from '../../../models';
  * `packages/database/src/extensions/__tests__/tenant-scope.test.ts`), and
  * `ServiceAccount` is the same pre-auth shape.
  *
- * The ticket README §5.1 says "Add to `TENANT_SCOPED_MODELS`"; that instruction
+ * says "Add to `TENANT_SCOPED_MODELS`"; that instruction
  * would have reproduced the BUG-scale failure the `ApiKey` comment documents
  * (every key on the platform authenticating as 401). Isolation is enforced one
  * layer up instead, in `ServiceAccountService`, on EVERY read path: list reads

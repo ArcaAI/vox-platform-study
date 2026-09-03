@@ -299,7 +299,7 @@ function EditSkeleton() {
 
 /**
  * Frame 30 — the console-wide DetailDrawer for department create AND edit
- * (redesign build spec §3; retires the inline edit panel and the create dialog).
+ * (redesign build spec; retires the inline edit panel and the create dialog).
  * Create mode shows a single form; edit mode shows the If-Match form with the
  * type-to-confirm delete pinned in the footer. The prompt config is its own pane
  * (department-prompt-config-panel), not part of this drawer.

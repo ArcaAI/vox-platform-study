@@ -18,7 +18,7 @@ import type { ProviderConfigurationExport } from '../api/types';
 import type { ResolvedAiPlatformScope } from './use-ai-platform-scope';
 
 /**
- * EXPORT / IMPORT of provider configurations — TASK-845 step 6.
+ * EXPORT / IMPORT of provider configurations — step 6.
  *
  * ## The one rule this component exists to keep
  *
@@ -26,7 +26,7 @@ import type { ResolvedAiPlatformScope } from './use-ai-platform-scope';
  * artifact the gateway produces carries no credential material and no
  * characters of any key: each configuration that needs a secret carries a
  * `credentialRef` LOCATOR built only from (service, provider, keyVersion),
- * plus a `hasCredential` boolean. TASK-844 deliberately refused to emit a
+ * plus a `hasCredential` boolean. deliberately refused to emit a
  * "last 4" — producing one would mean decrypting a live key on a path whose
  * purpose is to not handle key material, and four known characters of a
  * structured vendor key are a partial disclosure, not a mask.

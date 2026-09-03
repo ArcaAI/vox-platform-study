@@ -1,8 +1,8 @@
 /**
- * Boot-time audit — policy **A2** (TASK-757): `/api/v1/admin/*` is a JWT-only
+ * Boot-time audit — policy **A2**: `/api/v1/admin/*` is a JWT-only
  * plane, so an `admin/`-prefixed route must NEVER declare `@RequiredScopes`.
  *
- * This file replaces TASK-708 Task 5's regression guard, which asserted the
+ * This file replaces 's regression guard, which asserted the
  * exact opposite (that each named admin controller KEPT a named
  * `@RequiredScopes` value). The invariant is inverted, not relaxed.
  *
@@ -47,7 +47,7 @@ function buildFakeAppFromRealControllers(
   } as unknown as Parameters<typeof auditAdminControllersDeclareNoApiKeyScopes>[0];
 }
 
-describe('A2 — admin plane declares no API-key scopes (TASK-757, derived sweep)', () => {
+describe('A2 — admin plane declares no API-key scopes (derived sweep)', () => {
   it('FAILS an admin-prefixed controller that declares @RequiredScopes', () => {
     @Controller('admin/things')
     @RequiredScopes('admin:tenant:read')
@@ -86,7 +86,7 @@ describe('A2 — admin plane declares no API-key scopes (TASK-757, derived sweep
     expect(() => auditAdminControllersDeclareNoApiKeyScopes(buildFakeAppFromRealControllers([AdminForbidden]))).not.toThrow();
   });
 
-  it('PASSES a business-plane controller declaring @RequiredScopes — A1 (TASK-758) owns that plane, not A2', () => {
+  it('PASSES a business-plane controller declaring @RequiredScopes — A1  owns that plane, not A2', () => {
     @Controller('things')
     @RequiredScopes('consultation:session:read')
     class BusinessScoped {
@@ -174,7 +174,7 @@ describe('A2 — admin plane declares no API-key scopes (TASK-757, derived sweep
   });
 });
 
-describe('boot-time /admin/* named-surface audit (TASK-757, collapsed to FORBID)', () => {
+describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
   it('passes for every REAL /admin/* controller', () => {
     expect(() => auditAdminScopedControllers()).not.toThrow();
   });
@@ -184,14 +184,14 @@ describe('boot-time /admin/* named-surface audit (TASK-757, collapsed to FORBID)
   });
 
   /**
-   * The two controllers the hand-transcribed TASK-708 list silently missed,
+   * The two controllers the hand-transcribed list silently missed,
    * plus `ConsentGrantController`, which was absent though harmless (it was
    * already forbidden). Their absence is exactly why the derived sweep above
    * exists; listing them here closes the transcription gap as well.
-   */
-  // 70 -> 68: TASK-815 deleted `DepartmentAgentController` and
+ */
+  // 70 -> 68: deleted `DepartmentAgentController` and
   // `DepartmentAgentResyncController` with the resource they administered.
-  it('covers all 68 admin-prefixed controllers, including the three the TASK-708 list missed', () => {
+  it('covers all 68 admin-prefixed controllers, including the three the  list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');

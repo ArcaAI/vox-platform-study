@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Debounced autosave `PATCH` with `If-Match`, paused on 412, never auto-retried (TASK-719 Task
- * 15 / design.md §Data flow, implemented literally — `contracts/definition-api.contract.md`).
+ * Debounced autosave `PATCH` with `If-Match`, paused on 412, never auto-retried ( Task
+ * 15 / flow, implemented literally — `contracts/definition-api.contract.md`).
  *
  * Deliberately NOT a TanStack `useMutation` — the debounce-coalesce-then-single-flight
  * discipline and the "stop autosaving after a conflict, resume only on an explicit user action"
@@ -95,7 +95,7 @@ export function useAutosave({ definitionId, getEtag, onSaved, onStateChange, onM
 
   const schedule = useCallback(
     (patch: UpdateWorkflowDefinitionRequest) => {
-      if (pausedRef.current) return; // Never auto-retry past a 412 — an explicit resume() is required.
+      if (pausedRef.current) return; // Never auto-retry past a 412 — an explicit resume is required.
       pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {

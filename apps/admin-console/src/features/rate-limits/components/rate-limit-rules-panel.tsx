@@ -250,7 +250,7 @@ function RulesSkeleton() {
 }
 
 /**
- * Rules tab (TASK-785) — ranks 1, 2 and 4 of the precedence chain.
+ * Rules tab — ranks 1, 2 and 4 of the precedence chain.
  *
  * The Policy tab still owns the kill-switch and the base tiers (rank 5); the
  * plan lane (rank 3) lives on the entitlements screen. This panel is the only

@@ -49,7 +49,7 @@ export function WhatsNewDialog() {
    * on close" contract as a triggered dialog (rule 11 §Dialogs; WCAG 2.4.3).
    * `useRef`'s initial-value argument runs once per mount; it is a DOM read,
    * not a `.current` access, so it is render-safe.
-   */
+ */
   const previouslyFocusedRef = useRef<HTMLElement | null>(typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null));
 
   const enabled = Boolean(session) && !isImpersonating && popup.status === 'idle';

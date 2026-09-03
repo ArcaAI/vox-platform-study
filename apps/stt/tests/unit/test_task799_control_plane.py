@@ -1,4 +1,4 @@
-"""TASK-799 lane C — stt's tuning knobs live in the control plane, not in env.
+"""lane C — stt's tuning knobs live in the control plane, not in env.
 
 Three properties, each of which was false before this ticket:
 

@@ -44,7 +44,7 @@ async def health_check(
         }
         health_status["status"] = "degraded"
 
-    # LLM judgement is DELEGATED to `apps/text` (TASK-735 Phase 2b), so there is
+    # LLM judgement is DELEGATED to `apps/text`, so there is
     # no engine of guardrail's own to probe here. Report the delegation target as
     # configuration, not as a health verdict: the per-tenant provider/model is
     # resolved per request, and probing `text` on every liveness poll would make a
@@ -55,7 +55,7 @@ async def health_check(
         "base_url": settings.text_url,
     }
 
-    # Classification / NER / entailment are delegated too (TASK-735 Phases 3 & 6):
+    # Classification / NER / entailment are delegated too ( Phases 3 & 6):
     # guardrail holds ZERO resident model weights. Same posture as the judge above —
     # report the delegation target, never probe a peer on a liveness poll.
     health_status["checks"]["classification"] = {

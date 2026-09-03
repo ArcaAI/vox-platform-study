@@ -11,14 +11,14 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
-  // Per-tenant override of PlanEntitlement.maxWorkflowDefinitions (TASK-722).
+  // Per-tenant override of PlanEntitlement.maxWorkflowDefinitions.
   maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  // Per-tenant override of PlanEntitlement.monthlyWorkflowInvocations (TASK-722).
+  // Per-tenant override of PlanEntitlement.monthlyWorkflowInvocations.
   monthlyWorkflowInvocations?: number | null;
   // Per-capability included allowances over the UTC-calendar-month window
   // BigInt: enterprise token/character counts exceed Int32.
@@ -38,7 +38,7 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
-  // TASK-785 — the window paired with `rateLimitPerMinute` (read only when it is set).
+  // the window paired with `rateLimitPerMinute` (read only when it is set).
   rateLimitWindowMs?: number | null;
 }
 

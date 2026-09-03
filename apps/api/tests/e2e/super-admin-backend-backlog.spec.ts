@@ -99,7 +99,7 @@ test.describe.serial('#22 — policy CRUD + system-lockout guard', () => {
       headers: bearer(saGlobalToken),
       data: {
         name: `t390-throwaway-${UNIQUE}`,
-        description: 'TASK-390 e2e throwaway policy',
+        description: ' e2e throwaway policy',
         scope: 'TENANT',
         rules: [{ action: 'read', subject: 'Consultation' }],
       },

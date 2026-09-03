@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 1 (DD-10) — `llmBinding` on node config.
+ *  — `llmBinding` on node config.
  *
  * `AiTaskDefault` semantics RELOCATE onto a per-node binding; they are not deleted. This suite
  * pins the SHAPE of that relocation and the SET of node types that may carry it.
@@ -12,7 +12,7 @@
  * `provider` and the provider-native model id — is DERIVED from the `AiModel` row that slug
  * names. So `modelSlug` is the whole of the transferable selection, and every other field the
  * ticket sketched would either be a hardcoded engine/model literal (`00-project-context.md`
- * §Configuration Principles rule 1) or a SECOND place to say something the platform already
+ * Principles rule 1) or a SECOND place to say something the platform already
  * models:
  *
  * | Sketched field | Where it already lives |
@@ -21,7 +21,7 @@
  * | `model` | derived from `AiModel.sourceUri` for the bound slug |
  * | `contextLength` | `AiRuntimeProfile.contextLength`, keyed by the same `(provider, modelSlug)` |
  * | `maxTokens` / `temperature` | already top-level config keys on every generation schema |
- * | `promptInstruction` | `promptTemplateId` + `promptVersionNumber` (DD-11), governed and pinned |
+ * | `promptInstruction` | `promptTemplateId` + `promptVersionNumber` , governed and pinned |
  *
  * ## Why the SET is derived from `taskKey`
  *
@@ -43,7 +43,7 @@ const propertiesOf = (key: string): Props => NODE_CONFIG_SCHEMAS[key].properties
 /** Node types whose config schema declares `taskKey` — the AiTaskDefault routing key. */
 const taskKeyed = Object.keys(NODE_CONFIG_SCHEMAS).filter((key) => Object.hasOwn(propertiesOf(key), 'taskKey'));
 
-describe('TASK-816 — `llmBinding` is declared on exactly the node types that select a model', () => {
+describe('`llmBinding` is declared on exactly the node types that select a model', () => {
   it('every node type that declares `taskKey` also declares `llmBinding`', () => {
     for (const key of taskKeyed) {
       expect(Object.hasOwn(propertiesOf(key), 'llmBinding'), `${key} declares taskKey but no llmBinding`).toBe(true);
@@ -83,7 +83,7 @@ describe('TASK-816 — `llmBinding` is declared on exactly the node types that s
   });
 });
 
-describe('TASK-816 — the binding SHAPE', () => {
+describe('the binding SHAPE', () => {
   const binding = () => propertiesOf('generate.text').llmBinding as {
     type: string;
     additionalProperties: boolean;

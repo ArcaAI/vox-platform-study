@@ -1,5 +1,5 @@
 /**
- * TASK-779 area 2 — WORKFLOW: the authoring plane `/api/v1/admin/workflow-definitions`.
+ * area 2 — WORKFLOW: the authoring plane `/api/v1/admin/workflow-definitions`.
  *
  * The two existing workflow suites cover the surfaces AROUND this one and say so
  * explicitly: `task-722-workflow-exposure.spec.ts` covers the read/invoke exposure
@@ -17,7 +17,7 @@
  * Graph fixtures mirror `packages/workflow-contract/src/__tests__/palette-canonical-graphs.test.ts`
  * so the wire-level expectations and the unit-level ones cannot drift apart.
  *
- * NOTE ON STATUS CODES (TASK-780 fixed finding F-2): `POST :id/validate` and
+ * NOTE ON STATUS CODES ( fixed finding F-2): `POST :id/validate` and
  * `POST :id/publish` are state transitions on an EXISTING resource, not creations of
  * a new one, so they now carry `@HttpCode(HttpStatus.OK)` and answer 200, matching
  * their `@ApiResponse` — and therefore `openapi.json` — which always declared 200.
@@ -180,7 +180,7 @@ test.afterAll(async ({ request }) => {
   }
 });
 
-test.describe('TASK-779 workflow — authoring lifecycle', () => {
+test.describe(' workflow — authoring lifecycle', () => {
   test('a canonical consultation graph walks DRAFT → VALIDATED → PUBLISHED and lands in its own version lineage', async ({ request }) => {
     const { status, body } = await createDefinition(request, tenantAdminToken, canonicalGraph(), 'lifecycle');
     expect(status, 'create').toBe(201);
@@ -196,8 +196,8 @@ test.describe('TASK-779 workflow — authoring lifecycle', () => {
     expect(read.headers()['etag'], 'the global ETagInterceptor stamps a strong validator from _version').toBe(`"${body.version}"`);
 
     const validated = await request.post(`/api/v1/admin/workflow-definitions/${body.id}/validate`, { headers: bearer(tenantAdminToken) });
-    // TASK-780 F-2: validate is a state transition on an existing resource — 200, not 201.
-    expect(validated.status(), 'validate answers 200 (a state transition, not a creation) — TASK-780 F-2').toBe(200);
+    // validate is a state transition on an existing resource — 200, not 201.
+    expect(validated.status(), 'validate answers 200 (a state transition, not a creation) —  F-2').toBe(200);
     const validatedBody = (await validated.json()) as Definition;
     expect(validatedBody.status, 'a clean engine gate advances DRAFT → VALIDATED').toBe('VALIDATED');
     expect(validatedBody.validatedAt, 'validatedAt is stamped').toBeTruthy();
@@ -210,7 +210,7 @@ test.describe('TASK-779 workflow — authoring lifecycle', () => {
       headers: bearer(tenantAdminToken),
       data: {},
     });
-    expect(published.status(), 'publish answers 200 (a state transition, not a creation) — TASK-780 F-2').toBe(200);
+    expect(published.status(), 'publish answers 200 (a state transition, not a creation) —  F-2').toBe(200);
     const publishedBody = (await published.json()) as Definition;
     expect(publishedBody.status).toBe('PUBLISHED');
     expect(publishedBody.publishedAt, 'publishedAt is stamped').toBeTruthy();
@@ -236,7 +236,7 @@ test.describe('TASK-779 workflow — authoring lifecycle', () => {
   });
 });
 
-test.describe('TASK-779 workflow — the rule catalogue at the wire', () => {
+test.describe(' workflow — the rule catalogue at the wire', () => {
   test('a missing mandatory node reports WF-CONS-007 as an ERROR — and still publishes (rule findings are NON-blocking by design)', async ({
     request,
   }) => {
@@ -308,7 +308,7 @@ test.describe('TASK-779 workflow — the rule catalogue at the wire', () => {
   });
 });
 
-test.describe('TASK-779 workflow — optimistic concurrency on PATCH', () => {
+test.describe(' workflow — optimistic concurrency on PATCH', () => {
   test('missing If-Match → 428; stale → 412; correct → 200 with a bumped ETag; replaying the old validator → 412', async ({ request }) => {
     const { body } = await createDefinition(request, tenantAdminToken, canonicalGraph(), 'occ');
     expect(body.version, 'a fresh row starts at _version 1').toBe(1);
@@ -358,7 +358,7 @@ test.describe('TASK-779 workflow — optimistic concurrency on PATCH', () => {
   });
 });
 
-test.describe('TASK-779 workflow — cross-tenant isolation', () => {
+test.describe(' workflow — cross-tenant isolation', () => {
   test('every by-id operation on a FOREIGN tenant’s definition is 404, never 403', async ({ request }) => {
     const foreign = await createDefinition(request, superAdminToken, canonicalGraph(), 'foreign', foreignTenantId);
     expect(foreign.status, 'super admin authors a real row inside the foreign tenant').toBe(201);

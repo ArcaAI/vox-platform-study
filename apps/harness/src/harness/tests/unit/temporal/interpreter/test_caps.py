@@ -1,7 +1,6 @@
 """RED-first tests for the interpreter's platform caps module (Task 4).
 
 Caps are a defense-in-depth re-clamp (see
-docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md §0.2/§7) —
 compiledConfig already carries clamped values from the TypeScript compiler; this module clamps
 again, independently, tighten-only, with no I/O (pure module constants, no GlobalSetting read).
 """
@@ -42,5 +41,5 @@ class TestStructuralBounds:
     def test_total_nodes_is_a_tighter_bound_than_the_stage_product(self):
         # A config filling every stage to the per-stage cap must still be rejected by
         # MAX_TOTAL_NODES alone if it tries to also max out MAX_STAGES (execution-semantics.md
-        # §7: "a tighter, independent ceiling so the two bounds are not redundant").
+        # "a tighter, independent ceiling so the two bounds are not redundant").
         assert caps.MAX_TOTAL_NODES < caps.MAX_STAGES * caps.MAX_NODES_PER_STAGE

@@ -1,5 +1,5 @@
 /**
- * TASK-790 W3(a) — `WorkflowValidatorService` is actually wired (TASK-789 finding H-1).
+ * (a) — `WorkflowValidatorService` is actually wired.
  *
  * `WorkflowDefinitionService.validateGraph()` called `@arcaai/workflow-contract`'s `validate()`
  * directly against the bundled, code-owned DRAFT catalogue. `WorkflowValidatorService` — 169
@@ -91,7 +91,7 @@ function build(withValidator: boolean) {
   );
 }
 
-describe('TASK-790 W3(a) — WorkflowValidatorService is wired into the definition lifecycle (H-1)', () => {
+describe(' W3(a) — WorkflowValidatorService is wired into the definition lifecycle (H-1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEntitlements.isEnforcementEnabled.mockReturnValue(false);

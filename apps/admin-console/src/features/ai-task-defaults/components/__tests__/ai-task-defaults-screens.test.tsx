@@ -45,7 +45,7 @@ function model(overrides: Partial<TaskModelOption> & Pick<TaskModelOption, 'id' 
 }
 
 // widened AI_TASK_KEYS 3 -> 9 to match the backend, then 15, then 17
-// (TASK-799 R6's two PII keys). The platform screen edits the five keys below
+// (two PII keys). The platform screen edits the five keys below
 // (the rest are covered by the tenant read-only view); this fixture stays
 // deliberately partial.
 const OPTIONS: Partial<Record<AiTaskKey, TaskModelOption[]>> = {
@@ -174,7 +174,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     renderWithProviders(<AiTaskDefaultsPlatformScreen />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI task defaults (platform)' })).toBeDefined();
-    // TASK-735 Phase 0 (2026-08-16): the guardrail card no longer claims
+    // (2026-08-16): the guardrail card no longer claims
     // "platform-controlled (super admins only)" — guardrail is now
     // tenant-configurable via the API. This card still edits the SYSTEM
     // (platform-default) row, so its title reflects that instead. Wait on
@@ -183,7 +183,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     // synchronizes with the async card render.
     expect(await screen.findByRole('heading', { name: /guardrail model/i })).toBeDefined();
     expect(screen.getByText(/platform-approved catalog/i)).toBeDefined();
-    // TASK-799 R6 + owner decision 2026-08-30: both PII keys are editable here.
+    // + owner decision 2026-08-30: both PII keys are editable here.
     expect(screen.getByRole('heading', { name: /pii redaction model/i })).toBeDefined();
     expect(screen.getByRole('heading', { name: /pii span-detection model/i })).toBeDefined();
     expect(screen.getByRole('heading', { name: /medical ner/i })).toBeDefined();

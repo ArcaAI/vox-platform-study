@@ -14,7 +14,7 @@
     { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
   ],
   "annotations": { "list": [] },
-  "description": "HOPE Vault HA cluster — seal/leader/quorum, Raft autopilot, leases & tokens, audit health, storage. TASK-312 Phase E.",
+  "description": "HOPE Vault HA cluster — seal/leader/quorum, Raft autopilot, leases & tokens, audit health, storage.  Phase E.",
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 39,

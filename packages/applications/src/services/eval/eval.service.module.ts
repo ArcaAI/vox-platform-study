@@ -18,7 +18,7 @@ import { GoldenCasePromotionService } from './golden-case-promotion.service';
 @Module({
   // PhiRedactionServiceModule supplies IPhiRedactor for GoldenCasePromotionService,
   // which redacts a consultation transcript fail-closed before it can become
-  // eval ground truth (TASK-792 W3).
+  // eval ground truth.
   imports: [CoreDatabaseModule, HarnessGatewayServiceModule, EffectiveSettingsModule, PhiRedactionServiceModule],
   providers: [EvalService, EvalRunService, EvalPromotionGateService, GoldenCasePromotionService],
   exports: [EvalService, EvalRunService, EvalPromotionGateService, GoldenCasePromotionService],

@@ -4,7 +4,7 @@ import { IsArray, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNe
 
 /**
  * v1 `ConversationSegment` — one transcript turn.
- * (TEXT_Summary_Endpoints.md §3.1.1; frozen)
+ * (TEXT_Summary_Endpoints.md; frozen)
  */
 export class ConversationSegmentDto {
   @ApiProperty({ description: 'Speaker label, e.g. "patient" / "provider"' })
@@ -137,7 +137,7 @@ export class PreviousVisitRecordDto {
 
 /**
  * v1 `SessionData` — the session to summarize.
- * (TEXT_Summary_Endpoints.md §3.1.1; frozen)
+ * (TEXT_Summary_Endpoints.md; frozen)
  */
 export class SessionDataDto {
   // No consultation/session is required to summarize: `session_id` is an OPTIONAL

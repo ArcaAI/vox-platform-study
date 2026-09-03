@@ -2,7 +2,7 @@
 
 The per-provider config classes this file used to exercise (`AzureOpenAIConfig`,
 `BedrockConfig`, `OpenAIConfig`, `AnthropicConfig`, `VertexConfig`, plus
-`RedisConfig` / `CircuitBreakerConfig` / `QueueConfig`) no longer exist: TASK-799
+`RedisConfig` / `CircuitBreakerConfig` / `QueueConfig`) no longer exist:
 lane B moved every one of those values onto the connection and control planes.
 What is left to test here is what is left to configure — nine bootstrap values —
 plus the PHI boot guard and the properties that DERIVE process facts instead of

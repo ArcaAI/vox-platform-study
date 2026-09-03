@@ -6,14 +6,14 @@ writes the resulting history JSON. Not collected by pytest (does not match ``tes
 ``_capture_replay_fixture.py``'s own convention exactly.
 
 The one scenario captured here (``v1``) covers, in a single run, the three command shapes a
-future interpreter change is most likely to break (ticket §4 Task 9):
+future interpreter change is most likely to break ( Task 9):
 
 1. A multi-stage walk (three stages, one node each).
 2. A fan-out stage (three concurrent nodes).
 3. One DEGRADED node (a `config["raise_error"]` noop) alongside a SUCCEEDED sibling in the
    SAME stage, proving the all-settled join's command shape is captured too.
 
-TASK-849 adds the ``--stream`` era: the SAME scenario, recorded with
+adds the --stream era: the SAME scenario, recorded with
 ``_STREAM_PATCH`` live, so the run-event mirror's own `execute_activity` calls are part of
 the captured command sequence. Both fixtures are kept — the pre-stream one proves the patch
 gate costs a pre-existing history nothing, the stream one proves today's in-flight runs
@@ -124,7 +124,7 @@ async def capture(out_path: Path) -> None:
                     session_id="s-fixture-1",
                     workflow_version_id="v-fixture-1",
                     config_ref=ref,
-                    # A REAL uuid since TASK-849: the run-event mirror builds an `AsyncEnvelope`,
+                    # A REAL uuid since: the run-event mirror builds an `AsyncEnvelope`,
                     # whose `tenantId` is uuid-typed. A placeholder id would make every emit
                     # reject its own envelope, and the fixture would then record a command shape
                     # no production run can ever produce.

@@ -47,7 +47,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  // TASK-846 D-3 — the SSRF egress guard is a REQUIRED constructor dependency.
+  // the SSRF egress guard is a REQUIRED constructor dependency.
   // Stubbed permissive here on purpose: this file is about the tenancy/privilege
   // posture, and the guard's own behaviour (range table, allow-list matching,
   // fail-closed) is pinned by `egress-guard.test.ts` +
@@ -70,7 +70,7 @@ describe('McpServerAdminService — SYSTEM-registry write governance (GLOBAL-ADM
 
   it('a tenant admin updating a SYSTEM-owned server gets 403', async () => {
     const { svc, repo } = makeService({ roles: [] });
-    repo.findEnabledById.mockResolvedValue(makeRow()); // makeRow() defaults to the SYSTEM tenant
+    repo.findEnabledById.mockResolvedValue(makeRow()); // makeRow defaults to the SYSTEM tenant
     await expect(svc.update('id-1', { name: 'x' } as any, 1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 

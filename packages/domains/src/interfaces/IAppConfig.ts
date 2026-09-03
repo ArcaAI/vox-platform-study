@@ -23,11 +23,11 @@ export interface IAppConfig {
    */
   REGISTRATION_SELF_SIGNUP_ENABLED: boolean;
 
-  //=========== WORKFLOW EXPOSURE (TASK-722) ============//
+  // =========== WORKFLOW EXPOSURE ============//
   /**
    * R-1 kill-switch: the whole `/api/v1/workflows/:slug/…` public-invoke
    * surface. OFF by default — design.md's precondition is that API-key
-   * scope enforcement (TASK-708) is verified end-to-end before this surface
+   * scope enforcement is verified end-to-end before this surface
    * is enabled, and Temporal is not yet production-ready (R-2). Optional
    * (unlike `REGISTRATION_SELF_SIGNUP_ENABLED`) so existing `IAppConfig`
    * fixtures that predate this field stay valid — `undefined` is treated as
@@ -35,10 +35,9 @@ export interface IAppConfig {
    */
   WORKFLOW_EXPOSURE_ENABLED?: boolean;
   // `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` (decision #6, R-8) REMOVED by owner decision,
-  // TASK-720 R-4 (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
+  // (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
   // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture. See
-  // `docs/implementation/TASK-720-Palette-Summarization/README.md` R-4 and
-  // `docs/implementation/TASK-722-Exposure-V1/README.md`'s Change History.
+  // R-4 and
 
   //=========== INTERNAL SERVICES ============//
   PORT: string;

@@ -1,6 +1,6 @@
 /**
  * Closes the "per-node `configSchema` was never built" gap `registry.contract.md` recorded
- * (TASK-719 Task 3 / `node-config-schemas.ts`'s own docstring). Two things must hold:
+ * (`node-config-schemas.ts`'s own docstring). Two things must hold:
  *
  * 1. Every schema this module ships is AUTHORABLE (`authorableJsonSchemaProblems` from
  *    `@arcaai/json-schema-subset`) — the same cross-check `registry.contract.md`'s Task 3
@@ -20,10 +20,10 @@ describe('NODE_CONFIG_SCHEMAS', () => {
     expect(authorableJsonSchemaProblems(schema)).toEqual([]);
   });
 
-  it('carries a schema for every node type in the registry except `passthrough` (TASK-809 D-9)', () => {
+  it('carries a schema for every node type in the registry except `passthrough` (D-9)', () => {
     expect(Object.keys(NODE_CONFIG_SCHEMAS).sort()).toEqual(
       [
-        // TASK-847 — the GENERIC catalogue. Every one of the eight carries a schema, because for
+        // the GENERIC catalogue. Every one of the eight carries a schema, because for
         // these types the schema IS the node: behaviour is configuration, not key.
         'agentic.agent',
         'agentic.data',
@@ -33,7 +33,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'agentic.output',
         'agentic.stt',
         'agentic.tts',
-        // TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+        // lane A — the target catalogue and the guards.
         'agent.discharge_summary',
         'agent.dna_redaction',
         'agent.feedback',
@@ -66,7 +66,7 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'consultation.synthesize',
         'core.end',
         'core.start',
-        // TASK-812 — the endpoint stage.
+        // the endpoint stage.
         'feedback.capture',
         'generate.text',
         'guardrail.check',
@@ -90,9 +90,9 @@ describe('NODE_CONFIG_SCHEMAS', () => {
 });
 
 /**
- * TASK-809 Task 9 — the 16 `consultation.*` schemas, closing D-9 ("13 of 16 `consultation.*`
+ * the 16 `consultation.*` schemas, closing D-9 ("13 of 16 `consultation.*`
  * node types have no config schema", `node-config-schemas.ts:25-38`; the true count is 16 of 16
- * — the "13" predates TASK-791's three additions).
+ * the "13" predates three additions).
  *
  * `node-types.md` named `contracts/nodes/*.schema.json` files for these and they were never
  * authored, so each schema below is derived from the two sources that DO exist and are already
@@ -192,7 +192,7 @@ describe('consultation.* config schemas (D-9)', () => {
     // The gate's activity reads no `payload.config` (`nodes/consultation.py:44`). It is not
     // `gate`-classed, though, so the compiler routes it through `compileNode`, which DOES read
     // `timeoutSeconds`/`retry` off every node — see the ADDENDUM at the foot of
-    // `node-config-schemas.ts` (TASK-806 lane A, item 5).
+    // `node-config-schemas.ts` (lane A, item 5).
     expect(Object.keys(NODE_CONFIG_SCHEMAS['consultation.consentGate'].properties as object).sort()).toEqual(['retry', 'timeoutSeconds']);
   });
 
@@ -235,7 +235,7 @@ describe('consultation.* config schemas (D-9)', () => {
   });
 });
 
-describe('guardrail.check onFail (TASK-791 W4 — M-1)', () => {
+describe('guardrail.check onFail (W4 — M-1)', () => {
   // The interpreter has NO mechanism for a per-node CONFIG value to override a CODE-OWNED
   // registry property: `critical` lives on `NODE_REGISTRY` and `NodeActivityResult.status` is
   // `Literal['SUCCEEDED','DEGRADED','SKIPPED']` — there is no `FAILED` an activity can return,
@@ -276,7 +276,7 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
     expect(WORKFLOW_NODE_REGISTRY.passthrough.configSchema).toBeUndefined();
   });
 
-  it('passthrough is now the ONLY node type without a schema (TASK-809 closed D-9 for the rest)', () => {
+  it('passthrough is now the ONLY node type without a schema (closed D-9 for the rest)', () => {
     const unschemad = Object.keys(WORKFLOW_NODE_REGISTRY).filter((key) => WORKFLOW_NODE_REGISTRY[key].configSchema === undefined);
     expect(unschemad).toEqual(['passthrough']);
   });
@@ -290,7 +290,7 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
 });
 
 /**
- * TASK-810 carry-over 1 — DD-11's prompt PIN must survive a schema round-trip.
+ * carry-over 1 — DD-11's prompt PIN must survive a schema round-trip.
  *
  * DD-11 stores a node's prompt binding as two keys on that node's OWN config
  * (`node-prompt-binding.ts` in `@arcaai/applications`): `promptTemplateId` (WHICH template) and
@@ -309,11 +309,11 @@ describe('WORKFLOW_NODE_REGISTRY.configSchema wiring', () => {
 describe('DD-11 prompt binding survives a config-schema round-trip', () => {
   /** Node types that may legitimately carry a prompt binding. */
   const PROMPT_CARRYING_KEYS = [
-    // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+    // the GENERIC agent. It is `generation`-classed, so it carries the SAME two
     // binding groups every other generation node does; that set-equality is what stops a new
     // generation node shipping without an approved, version-pinned prompt.
     'agentic.agent',
-    // TASK-806 lane A — DD-9's three generation entries share `consultation.synthesize`'s
+    // lane A — DD-9's three generation entries share `consultation.synthesize`'s
     // schema, so they inherit the DD-11 prompt binding with it.
     'agent.presummarization',
     'agent.summarization',
@@ -403,7 +403,7 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
 });
 
 /**
- * TASK-810 DD-2 — a generation node's DOCUMENT-TEMPLATE binding must survive the same round-trip
+ * a generation node's DOCUMENT-TEMPLATE binding must survive the same round-trip
  * DD-11's prompt pin does.
  *
  * DD-2 ("no runtime shape switching") states that a generation node binds ONE document shape
@@ -423,7 +423,7 @@ describe('DD-11 prompt binding survives a config-schema round-trip', () => {
 describe('DD-2 document-template binding survives a config-schema round-trip', () => {
   /** Node types that PRODUCE a document — i.e. exactly the registry's `generation` class. */
   const DOCUMENT_CARRYING_KEYS = [
-    // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+    // the GENERIC agent. It is `generation`-classed, so it carries the SAME two
     // binding groups every other generation node does; that set-equality is what stops a new
     // generation node shipping without an approved, version-pinned prompt.
     'agentic.agent',

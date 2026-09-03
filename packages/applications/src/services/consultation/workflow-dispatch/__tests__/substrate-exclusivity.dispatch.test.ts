@@ -1,5 +1,5 @@
 /**
- * TASK-795 W1 — SUBSTRATE EXCLUSIVITY, write side.
+ * SUBSTRATE EXCLUSIVITY, write side.
  *
  * `ConsultationWorkflowDispatchService` decides, once, at consultation open, which
  * engine governs. This suite pins that the decision is RECORDED DURABLY, and — just
@@ -7,7 +7,7 @@
  *
  * The ordering is the whole safety argument:
  *
- *   dispatch first, mark second.  Every failure before the mark degrades to
+ *   dispatch first, mark second. Every failure before the mark degrades to
  *   "Substrate A documents this consultation", which is the outcome the owner
  *   brief names as preferable. Marking FIRST would mean a failed
  *   `startWorkflowRun` leaves Substrate A suppressed with nothing in its place —

@@ -42,7 +42,7 @@ import { isTerminalConsultationJob } from './types';
 // ─── REST queries + mutations ───
 
 /**
- * W2 scoping pickers, on the CLINICIAN plane (TASK-815 §12 / P-4).
+ * W2 scoping pickers, on the CLINICIAN plane ( / P-4).
  *
  * Best-effort by design: `retry: false`, and a failure degrades scoping to the
  * tenant tier rather than breaking the workspace. What changed is that the
@@ -153,7 +153,7 @@ export function useStopRecording() {
     }: {
       consultationId: string;
       persistSnapshot?: boolean;
-      /** TASK-814 §2b — corrections the clinician accepted, to promote over the raw transcript. */
+      /** corrections the clinician accepted, to promote over the raw transcript. */
       acceptedProposals?: readonly CorrectionProposal[];
     }) => stopRecording(consultationId, persistSnapshot ?? true, acceptedProposals ?? []),
   });
@@ -309,7 +309,7 @@ export function useConsultationLoopStream(consultationId: string | null, enabled
 }
 
 /**
- * TASK-795 RC-2 / TASK-814 §2b — the `live-assist` plane: interpreter
+ * / — the `live-assist` plane: interpreter
  * suggestions and PROPOSED corrections, live while recording. One SSE
  * connection carries BOTH branches, discriminated by `kind` (a suggestions
  * publish never touches `corrections` and vice versa — see
@@ -369,7 +369,7 @@ export function useLiveAssistStream(consultationId: string | null, enabled = tru
 }
 
 /**
- * TASK-811 DD-3 / TASK-814 DD-3 — N documents, folded from the `section.patch` plane on the
+ * / — N documents, folded from the `section.patch` plane on the
  * SAME `live-summary/stream` channel `useArcaLiveSummary` already opens for the legacy
  * whole-document view. That SDK hook only ever parses the undiscriminated legacy payload, so
  * this is a SEPARATE connection (Redis pub/sub — more than one subscriber is normal), filtered
@@ -404,7 +404,7 @@ export function useDocumentSectionsStream(consultationId: string | null, enabled
     const key = `${patch.documentKey}::${patch.sectionKey}`;
     setSections((current) => {
       const existing = current[key];
-      // TASK-811 §3: a patch whose revision is not greater than the one already held MUST be
+      // a patch whose revision is not greater than the one already held MUST be
       // discarded — the SSE plane makes no ordering guarantee.
       if (existing && patch.revision <= existing.revision) return current;
       return {

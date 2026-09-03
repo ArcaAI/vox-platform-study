@@ -1,7 +1,7 @@
 import type { ListParams } from '@/shared/api';
 
 /**
- * Consent register types (TASK-805) — mirrors `ConsentGrantResponse` /
+ * Consent register types — mirrors `ConsentGrantResponse` /
  * `ListConsentGrantsQuery` on the gateway (`admin/consent-grants`).
  */
 

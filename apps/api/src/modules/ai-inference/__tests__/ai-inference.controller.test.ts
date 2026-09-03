@@ -61,7 +61,7 @@ const effectiveByKey = (byKey: Record<string, unknown>) =>
     return byKey[taskKey];
   });
 
-// TASK-760 — the guardrail route moved off `AiInferenceController` (prefix
+// the guardrail route moved off `AiInferenceController` (prefix
 // `ai`) onto its own `SafetyCheckController` (prefix `safety-checks`). The
 // mapping under test is unchanged; only which class owns it moved.
 function makeSafetyController() {
@@ -90,7 +90,7 @@ describe('SafetyCheckController — guardrail', () => {
 });
 
 describe('AiInferenceController — NER entities', () => {
-  // TASK-799: the controller no longer substitutes `aggregation_strategy: 'simple'`
+  // the controller no longer substitutes `aggregation_strategy: 'simple'`
   // when the caller omits one. That default silently outranked the model row's own
   // `clinicalTaxonomy.aggregationStrategy` on EVERY request, so re-pointing
   // `nlp.ner` at a checkpoint with different conventions had no effect. Absent a
@@ -222,7 +222,7 @@ describe('AiInferenceController — NER entities', () => {
   });
 });
 
-// (item 2) — playground NER usage-ledger emission.
+//  — playground NER usage-ledger emission.
 describe('AiInferenceController — NER usage-ledger emission', () => {
   const aiTaskDefaults = () => ({ getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) });
   const clsFor = (user: { id: string; roles?: string[] } | undefined, tenantId = 't1') => ({
@@ -412,8 +412,8 @@ describe('AiInferenceController — diagnosis suggestions', () => {
   });
 });
 
-// TASK-729 — /ai/nlp/topic + /ai/nlp/intent proxy routes.
-describe('AiInferenceController — nlp/topic, nlp/intent (TASK-729)', () => {
+// /ai/nlp/topic + /ai/nlp/intent proxy routes.
+describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
   const clsFor = (tenantId?: string) => ({ get: vi.fn((k: string) => (k === 'tenantId' ? tenantId : undefined)) });
 
   it('classifyTopic FAILS CLOSED with 503 when there is no CLS tenant', async () => {

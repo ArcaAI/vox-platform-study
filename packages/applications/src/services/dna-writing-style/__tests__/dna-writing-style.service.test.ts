@@ -1555,7 +1555,7 @@ describe('DnaWritingStyleService', () => {
       svc = buildSvc();
     });
 
-    // ── getEffectiveStyleText  ──
+    // ── getEffectiveStyleText ──
     it('getEffectiveStyleText returns the decrypted styleText when the gate is effective', async () => {
       policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
@@ -1750,7 +1750,7 @@ describe('DnaWritingStyleService', () => {
     });
   });
 
-  // TASK-733 Task 10 — the ADMIN half of INV-240's "deletable" requirement: a
+  // the ADMIN half of INV-240's "deletable" requirement: a
   // tenant admin resets a DIFFERENT doctor's profile (on request, or as part of
   // incident response) without impersonating them. Complements the doctor
   // self-service `resetMyDnaProfile` above and shares its `eraseReports` body,

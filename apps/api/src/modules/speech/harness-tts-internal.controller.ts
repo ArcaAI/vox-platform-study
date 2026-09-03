@@ -82,7 +82,7 @@ class HarnessSynthesizeSpeechResponse {
 }
 
 /**
- * HarnessTtsInternalController — the `agentic.tts` node's synthesis dispatch (TASK-849 lane B).
+ * HarnessTtsInternalController — the `agentic.tts` node's synthesis dispatch.
  *
  * The TTS counterpart of `internal/harness/stt/batch-jobs`, and the same division of labour: the
  * harness names WHAT to synthesize and in WHICH voice, and this gateway resolves everything the
@@ -97,7 +97,7 @@ class HarnessSynthesizeSpeechResponse {
  * the tenant's resolved configuration already folded into the body. A Temporal worker has no DB
  * handle and no Vault client by design, so it cannot fold anything — a harness→tts direct call
  * could only run on `apps/tts`'s own static settings, which is a platform default silently
- * winning over a tenant's own configuration: the exact cascade bypass §3.4 rule 16 exists to
+ * winning over a tenant's own configuration: the exact cascade bypass rule 16 exists to
  * prevent, and one that would mis-derive BYOK vs CLOUD funding while it did so.
  *
  * ## Why it lives in the speech module, not on `HarnessInternalController`

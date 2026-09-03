@@ -7,7 +7,7 @@ import { INoteGenerationService } from './INoteGenerationService';
 import { NoteGenerationService } from './note-generation.service';
 
 /**
- * TASK-704 — Generator Entry-Point Seam.
+ * Generator Entry-Point Seam.
  *
  * HarnessGatewayServiceModule supplies the REQUIRED (not @Optional())
  * HarnessGatewayService dependency — omitting this import is exactly the

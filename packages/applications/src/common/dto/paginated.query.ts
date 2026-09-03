@@ -3,7 +3,7 @@ import { IsInt, Min, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
- * The offset-pagination defaults (TASK-776 F-02). Applied here, at the DTO
+ * The offset-pagination defaults. Applied here, at the DTO
  * layer, so the RAW (post-transform) `page`/`limit` already equal the
  * EFFECTIVE values applied to the query — a single source of truth shared by
  * the Swagger `default` annotations below, `withFormattedPaginatedProps`

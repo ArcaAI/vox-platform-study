@@ -1,6 +1,6 @@
 // The VISIT-TYPE CATALOGUE (`global-kv`) — tenant-admin defined and controlled.
 //
-// OWNER RULING (TASK-815 §11 row 3): visit type "becomes tenant-configurable
+// OWNER RULING: visit type "becomes tenant-configurable
 // data with those two seeded defaults — NOT a hardcoded enum, NOT a platform
 // constant. Subject to `00-project-context.md` §Configuration Principles:
 // tenant → SYSTEM, never a literal in code."
@@ -30,7 +30,7 @@
 //     tenants correctly distinguished (the customer tenant `50000000-…` can
 //     never appear in it). A table would mean hand-writing that walk again.
 //   • Registering a descriptor is the ONLY step needed to make a key governed
-//     (09 §Configuration Tiers), so the write lane, the `validate` invariant,
+// (09 Tiers), so the write lane, the `validate` invariant,
 //     `app-settings:invalidate` cache convergence and the settings catalog all
 //     arrive with it, and NO migration is involved — which matters here, because
 //     the resolution is synchronous and in-memory.
@@ -55,7 +55,7 @@
 // A seeded `GlobalSetting` row would be a SECOND source of the same truth,
 // written once at bootstrap and never re-asserted — `migrate.sh` defaults
 // `RUN_SEED=none` and `hope-v2-dev` pins it to `"none"`. That is precisely the
-// defect TASK-705 removed from `harness.loop.enabled`; see
+// defect removed from `harness.loop.enabled`; see
 // `consultation-gate-seed-parity.test.ts`, which now guards ONE key for that
 // reason. A row is warranted only when the intended value DIFFERS from the
 // descriptor default, and here it does not.
@@ -84,7 +84,7 @@ export const VISIT_TYPE_SETTINGS: SettingDescriptor[] = [
     // defaults — failing closed would take out prompt resolution, and therefore
     // every consultation, for a value whose absence has an obviously correct
     // answer. Note this is NOT the model/provider-selection case that
-    // 09 §Configuration Tiers requires `closed` for: an unresolved
+    // 09 Tiers requires `closed` for: an unresolved
     // catalogue cannot silently become another TENANT's, because the only thing
     // it can fall back to is the platform's own published default.
     failMode: 'open-to-default',

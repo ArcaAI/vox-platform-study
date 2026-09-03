@@ -1,6 +1,6 @@
 /**
- * Idempotency-key convention for the async envelope (§3.5 of
- * docs/programs/agentic-workflow-platform/async-contract.md).
+ * Idempotency-key convention for the async envelope
+ * (docs/programs/agentic-workflow-platform/async-contract.md).
  *
  * ============================================================================
  * THE ONE RULE, restated from `usageLedger/idempotency-keys.ts:3-26` (the
@@ -9,7 +9,7 @@
  *
  *   A KEY IS DERIVED FROM INTENT, NEVER FROM CHANCE.
  *
- * Every transport this contract documents is at-least-once (§3.4). An
+ * Every transport this contract documents is at-least-once. An
  * `idempotencyKey` minted from a clock, a counter, or `crypto.randomUUID()`
  * makes every redelivery a NEW event, which defeats the only mechanism a
  * consumer has for collapsing duplicates. The key must be a pure function of
@@ -63,12 +63,12 @@ function requireId(value: string, name: string): string {
 }
 
 /**
- * Recipes from the design doc's recipe table (§3.5). Two recipes named in the
+ * Recipes from the design doc's recipe table. Two recipes named in the
  * table are NOT functions here because they are not derivations:
  *
- *   - Exposure SSE frame (TASK-722): reuse the source envelope's
+ * Exposure SSE frame: reuse the source envelope's
  *     `idempotencyKey` unchanged. There is nothing to compute.
- *   - Webhook delivery (TASK-727): `hook:<subscriptionId>:<sourceEnvelopeId>`
+ * Webhook delivery: `hook:<subscriptionId>:<sourceEnvelopeId>`
  *     — this ONE recipe IS a function, `webhookDelivery` below.
  */
 export const AsyncIdempotencyKey = {
@@ -78,11 +78,11 @@ export const AsyncIdempotencyKey = {
   /** TEXT stream chunk: `text:task:<taskId>:chunk:<sequence>`. */
   textChunk: (taskId: string, sequence: number): string => `text:task:${requireId(taskId, 'taskId')}:chunk:${sequence}`,
 
-  /** Workflow node completion (TASK-718): `wf:run:<runId>:node:<nodeId>:<attemptGeneration>`. */
+  /** Workflow node completion: `wf:run:<runId>:node:<nodeId>:<attemptGeneration>`. */
   workflowNode: (runId: string, nodeId: string, attemptGeneration: number): string =>
     `wf:run:${requireId(runId, 'runId')}:node:${requireId(nodeId, 'nodeId')}:${attemptGeneration}`,
 
-  /** Webhook delivery (TASK-727): `hook:<subscriptionId>:<sourceEnvelopeId>`. */
+  /** Webhook delivery: `hook:<subscriptionId>:<sourceEnvelopeId>`. */
   webhookDelivery: (subscriptionId: string, sourceEnvelopeId: string): string =>
     `hook:${requireId(subscriptionId, 'subscriptionId')}:${requireId(sourceEnvelopeId, 'sourceEnvelopeId')}`,
 } as const;

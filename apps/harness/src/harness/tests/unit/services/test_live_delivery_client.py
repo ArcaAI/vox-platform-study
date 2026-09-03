@@ -1,8 +1,8 @@
-"""TASK-796 — the wire contract for the two realtime delivery planes.
+"""the wire contract for the two realtime delivery planes.
 
 These two publishes are the ONLY way an interpreter-produced summary, suggestion or correction
 proposal reaches a clinician, and the gateway route + console surface are built against exactly
-these bodies. Pinning the path, the method and the key names here is what lets TASK-797 build a
+these bodies. Pinning the path, the method and the key names here is what lets build a
 renderer without guessing — a silent rename on this side is a silent blank panel on that one.
 
 The swallow posture is deliberately NOT here: the client raises like every other method and the

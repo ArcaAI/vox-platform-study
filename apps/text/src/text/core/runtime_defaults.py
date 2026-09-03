@@ -8,7 +8,7 @@ from `AiRuntimeProfile` through `GET /internal/effective-config?service=text`
 (`core/effective_config.py`) and are applied to the LIVE objects by
 `services/runtime_limits.py`.
 
-The distinction matters because it is exactly what TASK-799 was fixing. A
+The distinction matters because it is exactly what was fixing. A
 `pydantic-settings` field whose default is a real operating value is a hardcoded
 configuration wearing a config costume: it looks governed, but no tenant and no
 platform admin can move it without a redeploy. A floor is different in kind — it

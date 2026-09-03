@@ -152,7 +152,7 @@ export class AdminAiTaskDefaultResource extends AdminResource {
   /**
    * Create or update the (tenant, taskKey) default-model row under optimistic concurrency
    *
-   * `modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable (TASK-735), but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.
+   * `modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for tenant admins). `guardrail.*` is tenant-admin configurable, but the slug must resolve to a SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.
    *
    * `PUT /api/v1/admin/ai-task-defaults/row` — `AiTaskDefaultAdminController.upsertRow`.
    *

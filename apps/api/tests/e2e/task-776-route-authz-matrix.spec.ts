@@ -1,5 +1,5 @@
 /**
- * TASK-776 — Route Authorization Conformance Matrix (table-driven)
+ * Route Authorization Conformance Matrix (table-driven)
  *
  * Walks EVERY route in `apps/api/route-manifest.json` and proves the RUNTIME behavior of
  * `UnifiedAuthGuard` agrees with the DECLARED metadata. The manifest is emitted through the
@@ -7,11 +7,11 @@
  * guard regression or a decorator that does not do what it claims.
  *
  * Five assertions, all derived per-route from manifest fields:
- *   A1 NO-CREDENTIAL         isPublic=false                      -> 401 unauthenticated
- *   A2 API-KEY FORBIDDEN     apiKeyForbidden=true                -> 403 for a VALID API key
- *   A3 SVC FORBIDDEN         forbidServiceAccount=true           -> 403 for a VALID SA token
- *   A4 SVC UNDECLARED        !public && svcScopes=[] && !forbid  -> 403 (deny-by-default)
- *   A5 PUBLIC                isPublic=true                       -> NOT 401 without credentials
+ *   A1 NO-CREDENTIAL isPublic=false -> 401 unauthenticated
+ *   A2 API-KEY FORBIDDEN apiKeyForbidden=true -> 403 for a VALID API key
+ *   A3 SVC FORBIDDEN forbidServiceAccount=true -> 403 for a VALID SA token
+ *   A4 SVC UNDECLARED !public && svcScopes=[] && !forbid -> 403 (deny-by-default)
+ *   A5 PUBLIC isPublic=true -> NOT 401 without credentials
  *
  * Why this is safe against a live DB: every assertion expects a REJECTION (401/403), which the
  * guard returns BEFORE the handler runs. No mutating handler is ever reached. If a route DOES
@@ -208,7 +208,7 @@ function assertAll(
 
 // ---------------------------------------------------------------------------
 
-test.describe('TASK-776 route authorization conformance matrix', () => {
+test.describe(' route authorization conformance matrix', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeAll(async ({ request }) => {
@@ -288,7 +288,7 @@ test.describe('TASK-776 route authorization conformance matrix', () => {
     console.log(
       [
         '',
-        '=== TASK-776 route authz conformance sweep ===',
+        '===  route authz conformance sweep ===',
         `manifest routes            : ${allRoutes.length}`,
         `skipped                    : ${skips.size}` + (skips.size ? ` (${[...new Set(skips.values())].join(', ')})` : ' (none)'),
         `swept routes               : ${sweptRoutes.length}`,
@@ -370,9 +370,9 @@ test.describe('TASK-776 route authorization conformance matrix', () => {
     //   routes where isPublic === true && path startsWith '/api/v1/internal/'
     //   = 26 HarnessInternalController + 2 ServiceReleaseInternalController
     //   + 1 ConsentInternalController + 1 EffectiveConfigController = 30.
-    //   (Harness grew from 20: `live-summary` + `live-assist` in TASK-795,
-    //   `provider-credential` in TASK-799, and `endpoint/feedback` +
-    //   `endpoint/finalize` + `endpoint/session` in TASK-812.)
+    // (Harness grew from 20: `live-summary` + `live-assist` in,
+    // `provider-credential` in, and `endpoint/feedback` +
+    // `endpoint/finalize` + `endpoint/session` in .)
     //
     // Every one of those controllers also carries `@ApiExcludeController()`. That flag is a
     // DOCUMENTATION-visibility signal only, and must never be allowed to shrink this inventory

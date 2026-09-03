@@ -1,7 +1,7 @@
-"""TASK-858 — the harness's direct ``apps/text`` calls must carry the resolved
+"""the harness's direct apps/text calls must carry the resolved
 ``AiProviderConnection`` as a ``provider_overrides`` envelope.
 
-``apps/text`` holds no endpoint or credential of its own (TASK-735/736): every
+apps/text holds no endpoint or credential of its own (/736): every
 adapter — the self-hosted LM Studio one included — calls ``require_connection``
 and answers a typed 503 ``PROVIDER_CREDENTIALS_MISSING`` when the request carries
 no ``provider_overrides[provider]``. The gateway injects that envelope for its own

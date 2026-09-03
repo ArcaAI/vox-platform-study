@@ -1,5 +1,5 @@
 /**
- * TASK-825 — the mapper must carry a CLEARED `encryptedContent` through to the
+ * the mapper must carry a CLEARED `encryptedContent` through to the
  * persistence payload as an explicit `null`.
  *
  * This is the invisible dependency of the repository fix: clearing the columns
@@ -7,10 +7,10 @@
  * pass (`if (result) model[key] = result`) drops the null on the way out. It does
  * not — the GENERIC pass above it has already copied the change — but that is a
  * property of a shared auto-mapper that no `ContextItem` test asserted, so a
- * refactor there could silently re-open TASK-825 with the repository fix still in
+ * refactor there could silently re-open with the repository fix still in
  * place. Pinned here, where the dependency actually lives.
  *
- * Mirrors `DocumentSectionEntityMapper.encryptedContent.test.ts` (TASK-820).
+ * Mirrors `DocumentSectionEntityMapper.encryptedContent.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';

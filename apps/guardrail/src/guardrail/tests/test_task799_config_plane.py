@@ -1,4 +1,4 @@
-"""TASK-799 Phase 0 lane B — guardrail's config plane resolves tenant-first,
+"""lane B — guardrail's config plane resolves tenant-first,
 distinguishes absence from failure, and presents the shared internal token.
 
 Three defects, one theme: a value that a tenant is entitled to express was being
@@ -504,7 +504,7 @@ def test_the_prod_reference_exists_and_does_not_resurrect_the_phantom_plane() ->
     """The prod reference must exist and must not lie — and those are two claims.
 
     This replaces an `assert not (...).exists()`. That assertion was a PROXY:
-    the file TASK-799 deleted was entirely the engine plane TASK-735/736 had
+    the file deleted was entirely the engine plane /736 had
     already removed, so "no file" and "no lie" were the same thing at the time.
     They are not the same thing in general, and they came apart the moment the
     file was rewritten as an honest one.

@@ -1,5 +1,5 @@
 /**
- * TASK-767 — the third credential class resolves a tenant on the FROZEN compat
+ * the third credential class resolves a tenant on the FROZEN compat
  * surface.
  *
  * `requireTenantId` is the choke point every compat generation path funnels

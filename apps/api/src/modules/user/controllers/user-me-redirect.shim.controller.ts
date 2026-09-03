@@ -5,7 +5,7 @@ import { redirect308 } from '../../../common';
 import { Authorize, RequiredScopes } from '../../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
  *
  * `user/me/**` (singular) became `users/me/**` (plural) so the self plane sits
  * inside the same `users` collection that already hosts `users/:id/roles` and

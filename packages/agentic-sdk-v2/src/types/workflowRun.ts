@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox — workflow INVOCATION types (TASK-850 lane B).
+ * @arcaai/vox — workflow INVOCATION types.
  *
  * Transcribed from the artifacts the gateway actually ships, not from prose:
  * the DTOs in `packages/applications/src/services/workflow-exposure/dto/`, and

@@ -74,7 +74,7 @@ describe('the entitlement gate (R6)', () => {
     const resolved = await svc.resolveTenantCloudOverrides('tts', TENANT_A);
     expect(resolved.overrides).toEqual({});
 
-    // TASK-799 P1-C — the whole-service read no longer skips the SYSTEM tier
+    // C — the whole-service read no longer skips the SYSTEM tier
     // wholesale. It cannot: the denial is PER PROVIDER (it governs platform
     // SPEND on a vendor account, never platform INFRASTRUCTURE), and only the
     // rows themselves say which providers it covers. Skipping the read also

@@ -1,5 +1,5 @@
 /**
- * NlpTaskInstructionsAdminController unit tests (TASK-729).
+ * NlpTaskInstructionsAdminController unit tests.
  *
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by
  * the guard/interceptor (+ e2e). These specs cover the controller's OWN

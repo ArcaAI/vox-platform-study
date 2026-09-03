@@ -13,7 +13,7 @@
  * Both the type and the list now come from `./services`, where they are pinned
  * to the gateway's `:service` OpenAPI enum by a drift test. They used to be
  * hand-typed here as `'llm' | 'stt' | 'tts'` and went stale the moment
- * TASK-799 P1-C.1 widened the union to six — re-exported rather than moved so
+ * C.1 widened the union to six — re-exported rather than moved so
  * the feature's existing `from './types'` imports keep working.
  */
 export { PROVIDER_SERVICES, isProviderService, type ProviderService } from './services';
@@ -42,7 +42,7 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   embeddings: ['azure', 'openai'],
   rerank: [],
   vector: ['qdrant'],
-  // TASK-799 owner ruling 2026-08-24 — the weight-fetch plane is
+  // owner ruling 2026-08-24 — the weight-fetch plane is
   // PLATFORM-MANAGED: only SYSTEM rows exist, so a tenant row is a 403 on the
   // caller's own tenant (a privilege boundary, not the 404-over-403
   // cross-tenant posture). Empty for the same reason `rerank` is.

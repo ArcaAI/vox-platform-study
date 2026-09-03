@@ -1,6 +1,6 @@
 // Unit tests for the data-migration script
 // (scripts/migrate-icd10-prompt-instructions.ts). The live Postgres round
-// trip is human-gated (see the ticket README §6, executed only with the
+// trip is human-gated (executed only with the
 // user's explicit go-ahead against a named environment); here we lock down
 // the fingerprint-matching / classification / apply logic against an
 // in-memory fake client — NO live DB.
@@ -30,7 +30,7 @@ describe('parseArgs', () => {
 describe('MIGRATION_TARGETS (real data, sanity checks)', () => {
   it('covers the 1 remaining base-catalog row + 22 ArcaAI rows', () => {
     // Was 12 base-catalog rows. Eleven of them were the Global-tenant specialty
-    // templates retired by TASK-763 OD-8 (their bodies were BCMCH's and now live
+    // templates retired by (their bodies were BCMCH's and now live
     // only on the ArcaAI tenant), leaving SOAP_SUMMARY as the only base-catalog
     // target. The 22 ArcaAI rows are untouched and still carry the authoritative
     // fingerprints. Dropping a target only NARROWS what this script will

@@ -8,7 +8,7 @@ import { DeveloperOverviewScreen } from '../developer-overview-screen';
 import { SdkScreen } from '../sdk-screen';
 
 /**
- * TASK-783 — the developer portal's prose screens.
+ * the developer portal's prose screens.
  *
  * These carry the guidance a developer reads BEFORE the reference: the
  * credential classes, the error contract, and the two status codes whose

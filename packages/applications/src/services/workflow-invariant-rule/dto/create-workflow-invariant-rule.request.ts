@@ -3,7 +3,7 @@ import { WorkflowRulePredicateType, WorkflowRuleSeverity } from '@arcaai/domains
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
 
 /**
- * Author one `WorkflowInvariantRule` row (TASK-790 W3b).
+ * Author one `WorkflowInvariantRule` row (b).
  *
  * NOTE the absence of `tenantId`: the row's owner is the CALLER's tenant, read from CLS, never
  * accepted from the body (rule 05 §S-3). The global pipe runs `forbidNonWhitelisted`, so a body

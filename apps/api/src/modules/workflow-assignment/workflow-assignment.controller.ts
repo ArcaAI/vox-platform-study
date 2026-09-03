@@ -5,7 +5,7 @@ import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIf
 
 /**
  * WorkflowAssignmentController — WHICH workflow definition governs a tenant or
- * department for a palette (TASK-733 half (a)), mounted at
+ * department for a palette , mounted at
  * `/admin/workflow-assignments` (global prefix -> `/api/v1/admin/...`).
  *
  * Authorization deliberately reuses `WorkflowDefinition`'s subject and service

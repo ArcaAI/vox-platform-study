@@ -2,7 +2,6 @@
  * Conformance regression suite (APPLICATIONS layer).
  *
  * Locks the conformance scorecard of
- * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling file (COMPAT / API layer — R-C1/R-C2/R-C3):
  *   apps/api/src/modules/text-compat/__tests__/task-635-conformance.test.ts
  *
@@ -122,7 +121,7 @@ describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded 
       versionNumber,
     }));
 
-    // TASK-815: no tier-1a resolvers are wired here on purpose — this suite is
+    // no tier-1a resolvers are wired here on purpose — this suite is
     // about the pre-summary SYSTEM defaults, which the node tier never touches.
     return new PromptResolutionService(
       mockDepartmentRepository as never,

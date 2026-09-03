@@ -111,7 +111,7 @@ async def ground_summary(
     try:
         async with acquire_groundedness_verifier(http_request) as verifier:
             try:
-                # TASK-735 Phase 6 — the scorer is a NETWORK call to `apps/nlp` now,
+                # the scorer is a NETWORK call to `apps/nlp` now,
                 # not in-process CPU work, so it is awaited directly rather than
                 # offloaded to a thread. `_maybe_await` keeps a synchronous verifier
                 # (the in-process test seam) working through the same call site.

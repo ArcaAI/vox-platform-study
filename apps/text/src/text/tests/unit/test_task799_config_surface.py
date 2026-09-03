@@ -1,4 +1,4 @@
-"""TASK-799 lane B — the env surface `apps/text` is allowed to have.
+"""lane B — the env surface `apps/text` is allowed to have.
 
 This is the lock test for the config-plane collapse. Before it, `Settings`
 reached 121 pydantic fields: eight parallel per-provider blocks (base_url /
@@ -7,7 +7,7 @@ spellings of the same four resilience concepts (`TEXT_CB_*`, `TEXT_QUEUE_*`,
 `TEXT_JUDGE_*`), and a 20-name `TEXT_V2_*` transition alias window.
 
 None of that is a bootstrap floor. `.claude/rules/09-infrastructure-devops.md`
-§Configuration Tiers: a variable stays in `env` only when it is required *to
+Tiers: a variable stays in `env` only when it is required *to
 reach* the config source — "the only sanctioned defaults are bootstrap TRANSPORT
 addresses". Everything else is a connection row (`AiProviderConnection`), a
 selection (`AiTaskDefault`), a runtime profile (`AiRuntimeProfile`), a

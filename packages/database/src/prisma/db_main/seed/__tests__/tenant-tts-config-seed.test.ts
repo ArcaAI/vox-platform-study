@@ -5,7 +5,7 @@
  * conventions of `config-plane-seed.test.ts` / `ai-model-consolidation-seed.test.ts`
  * in this directory. The database test suite is static-only (`vitest run`, no
  * DB); the live row-existence + idempotency proof is captured via a `psql`
- * SELECT after a test-DB reseed (see the ticket README, Phase D).
+ * SELECT after a test-DB reseed (, Phase D).
  *
  * The load-bearing rule these tests encode is BUILT-IN-FIRST (OD-2): the Day-1
  * TTS default is DB-sourced from the SYSTEM tenant and points at a platform-run

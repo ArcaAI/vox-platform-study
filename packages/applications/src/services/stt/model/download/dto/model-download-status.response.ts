@@ -4,7 +4,7 @@ import { AiModelDownloadStatus } from '@arcaai/domains';
 /**
  * `GET admin/ai-models/:id/download` response body — 200 OK.
  *
- * FROZEN CONTRACT (TASK-855): `{ status, startedAt, finishedAt, fileSizeMb,
+ * FROZEN CONTRACT: `{ status, startedAt, finishedAt, fileSizeMb,
  * sha256, localPath, error }`. A parallel lane builds a UI against this
  * shape; do not rename or reshape it.
  *

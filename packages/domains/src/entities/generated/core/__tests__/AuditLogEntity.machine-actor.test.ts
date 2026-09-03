@@ -1,5 +1,5 @@
 /**
- * TASK-762 §5.6 — audit attribution for a MACHINE actor.
+ * audit attribution for a MACHINE actor.
  *
  * `AuditLog` carried only `responsibleUserId`/`responsibleIp`, so an admin
  * action performed by a machine was recorded against a PERSON — the human the

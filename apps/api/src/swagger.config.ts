@@ -13,7 +13,7 @@ import { API_TAGS } from './openapi/tags';
  *
  *   - `main.ts` -> the dev-only Swagger UI at `/api/v1/docs`
  *   - `scripts/emit-openapi.ts` -> the committed `apps/api/openapi.json`, which
- *     is the input to `packages/vox-node-codegen` and (TASK-783) to the admin
+ * is the input to `packages/vox-node-codegen` and to the admin
  *     console's developer portal.
  *
  * ## `info.version` is the CONTRACT version, not the build version
@@ -28,7 +28,7 @@ import { API_TAGS } from './openapi/tags';
  * The deployment identity (release tag, commit sha, build time) is an
  * immutable property of the IMAGE, carried in `/app/build-info.json` and read
  * at runtime through `BuildInfoService`. The developer portal renders it from
- * there. See `.claude/rules/09-infrastructure-devops.md` §Release Versioning —
+ * there. See `.claude/rules/09-infrastructure-devops.md` §Release Versioning
  * build identity belongs to none of the configuration tiers, and must not be
  * baked into a document that is supposed to be reproducible.
  *
@@ -104,7 +104,7 @@ export function buildSwaggerConfig(): DocumentBuilder {
     .setTitle('HOPE Platform API')
     .setDescription(DESCRIPTION)
     .setVersion(OPENAPI_CONTRACT_VERSION)
-    // NOTE (TASK-783): `setContact(...)` and `setLicense(...)` are deliberately
+    // NOTE: `setContact(...)` and `setLicense(...)` are deliberately
     // NOT set. A developer-facing reference publishes whatever goes here, and
     // no support address or license URL for this API has been supplied by the
     // owner — the values that previously appeared in `swagger-config.test.ts`

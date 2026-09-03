@@ -1,5 +1,5 @@
 /**
- * TASK-762 §5.6 — `BaseService.broadcastSysEvent` must be able to attribute a
+ * `BaseService.broadcastSysEvent` must be able to attribute a
  * mutation to a MACHINE actor.
  *
  * Before this ticket the method stamped `responsibleEntityId: this.requestUser?.id`

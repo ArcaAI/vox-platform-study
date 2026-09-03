@@ -6,7 +6,7 @@ import { ContextItemType, ContextItemSource } from '@arcaai/domains';
 // harness prompt (`harness-internal.service.ts` assemble, `[case note]` /
 // `[work note]` / attachment labels). 200k chars comfortably covers a long
 // clinical note/attachment while bounding the worst-case prompt-injection /
-// unbounded-payload surface (SOTA §5.1/§5.2, F-03).
+// unbounded-payload surface (SOTA, F-03).
 export const CONTEXT_CONTENT_MAX_LENGTH = 200_000;
 
 export class AddContextRequest {
@@ -62,7 +62,7 @@ export class AddContextRequest {
   @ApiPropertyOptional({
     description:
       "The tenant-declared context kind this item is an instance of (`kinds[].key` of the tenant's pinned " +
-      'ConsultationContextSchema version). Omit it for the pre-TASK-658 behaviour: no schema is consulted and the ' +
+      'ConsultationContextSchema version). Omit it for the pre-existing behaviour: no schema is consulted and the ' +
       'write proceeds exactly as before.',
     example: 'referral_letter',
   })

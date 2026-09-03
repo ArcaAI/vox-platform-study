@@ -100,7 +100,7 @@ function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set
 }
 
 /**
- * The React Flow canvas, themed and wrapped as a props-in/callbacks-out composite (TASK-719
+ * The React Flow canvas, themed and wrapped as a props-in/callbacks-out composite
  * Task 5) — it owns no graph state itself; a consumer (the Studio's Zustand store, Task 11)
  * owns `nodes`/`edges` and re-renders this component. Reachable only through the
  * `./components/workflow-canvas` subpath export (never the root barrel — see `DEPENDENCY.md`).

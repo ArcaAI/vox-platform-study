@@ -16,7 +16,7 @@ import {
 } from './rate-limit-rule.constants';
 
 /**
- * In-memory rate-limit rule cache (TASK-785).
+ * In-memory rate-limit rule cache.
  *
  * `TieredThrottlerGuard` runs FIRST in the guard chain, on every request, before
  * auth — so it can afford exactly one thing on the hot path: a `Map` lookup.
@@ -28,7 +28,7 @@ import {
  *    a `findAll` executed under a request's CLS would be filtered to that
  *    tenant and the rebuilt cache would hold one customer's view of the whole
  *    platform. An admin write triggers a refresh IN-REQUEST, so this is not
- *    hypothetical — it is precisely the cache-poisoning bug TASK-771 fixed for
+ * hypothetical — it is precisely the cache-poisoning bug fixed for
  *    `AppSettingsService`. `clsService.exit(...)` is the fix, and
  *    `rate-limit-rule.cache.test.ts` pins it.
  *

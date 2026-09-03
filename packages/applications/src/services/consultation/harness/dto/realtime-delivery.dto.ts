@@ -17,12 +17,12 @@ import {
 } from 'class-validator';
 
 /**
- * TASK-795 RC-1 / RC-2 — the two realtime-delivery planes the interpreter
+ * / RC-2 — the two realtime-delivery planes the interpreter
  * publishes clinician-facing output through.
  *
  * ## Why these exist
  *
- * TASK-796 enumerated all 18 `/internal/harness/*` routes and found NONE that
+ * enumerated all 18 `/internal/harness/*` routes and found NONE that
  * accepts clinical summary text. The single text-accepting write is
  * `POST .../draft`, which creates a `RAW_SUMMARY` ContextItem — the FINAL note,
  * the wrong kind for a mid-consultation snapshot, and exactly the row the

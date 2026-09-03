@@ -1,11 +1,11 @@
 /**
- * TASK-811 — the REALTIME LANE: what the live flush actually executes.
+ * the REALTIME LANE: what the live flush actually executes.
  *
  * ## What this replaces
  *
  * `LiveDocumentationService.flush()` ran a hardcoded sequence — TEXT, then NER
  * over the raw delta, then the groundedness gate — for every recording session,
- * regardless of what the tenant had authored (TASK-806 §2.1, the root cause this
+ * regardless of what the tenant had authored (the root cause this
  * ticket exists to close). A lane is that sequence expressed as DATA: an ordered
  * list of stages whose nodes carry their own bindings, budgets and failure
  * policy, so the executor walks a structure instead of running a script.
@@ -19,7 +19,7 @@
  * that is the parity claim the cutover rests on, and it is a property of this
  * constant, not of a code path that happens to agree.
  *
- * ## Lane membership comes from `WorkflowNodeDescriptor.lane` (TASK-806 lane A)
+ * ## Lane membership comes from `WorkflowNodeDescriptor.lane` 
  *
  * It did not, and the reasons it could not are worth keeping because both were
  * removed rather than worked around:
@@ -51,7 +51,7 @@ export interface RealtimeNode {
   readonly type: string;
   readonly config: Readonly<Record<string, unknown>>;
   /**
-   * PER-NODE budget (DD-4). Not per flush: one slow model must never stall the
+   * PER-NODE budget. Not per flush: one slow model must never stall the
    * other, so each node races its own timer.
    */
   readonly timeoutMs: number;
@@ -65,7 +65,7 @@ export interface RealtimeNode {
   readonly enabled: boolean;
 }
 
-/** Nodes in one topological level. Every node in a stage runs CONCURRENTLY (DD-4). */
+/** Nodes in one topological level. Every node in a stage runs CONCURRENTLY. */
 export interface RealtimeStage {
   readonly stageIndex: number;
   readonly nodes: readonly RealtimeNode[];
@@ -94,9 +94,9 @@ const DEFAULT_CAPTURE_TIMEOUT_MS = 1_000;
  * The PLATFORM lane — today's flush, as a graph.
  *
  * ```
- * stage 0   capture                      -> transcript
- * stage 1   extract      (in: transcript) -> entities      ┐ concurrent (DD-4)
- *           summarize    (in: transcript) -> document      ┘
+ * stage 0 capture -> transcript
+ * stage 1 extract (in: transcript) -> entities ┐ concurrent 
+ *           summarize (in: transcript) -> document ┘
  * ```
  *
  * `extract` and `summarize` BOTH read the transcript and neither reads the

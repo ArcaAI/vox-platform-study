@@ -1,6 +1,6 @@
-"""TASK-849 lane A step 3 — the two-lane split, MEASURED.
+"""lane A step 3 — the two-lane split, MEASURED.
 
-This is the test the ticket's §5 risk table asks for by name: *"Enforce the split with a
+This is the test the risk table asks for by name: *"Enforce the split with a
 test, not a convention — assert history size against delta count."* Everything else about the
 split is a comment; this is the part that fails when someone routes a token stream through
 Temporal.
@@ -244,7 +244,7 @@ class TestTokenDeltasNeverEnterTemporalHistory:
         # Printed, not just asserted: the ticket asks for this to be MEASURED, and a number
         # nobody can read is not a measurement. Visible under `pytest -s`.
         print(
-            f"\n[TASK-849 two-lane split, measured] "
+            f"\n[ two-lane split, measured] "
             f"deltas={SMALL_DELTAS} -> temporal_history_events={small['events']} | "
             f"deltas={LARGE_DELTAS} -> temporal_history_events={large['events']} | "
             f"history_bytes={len(large['history_json'])}"
@@ -284,7 +284,7 @@ class TestTokenDeltasNeverEnterTemporalHistory:
 
         # And the byte measure, which is what the 50 MB ceiling is actually counted in.
         print(
-            f"\n[TASK-849 two-lane split, measured bytes] "
+            f"\n[ two-lane split, measured bytes] "
             f"deltas={SMALL_DELTAS} -> history_bytes={len(small['history_json'])} | "
             f"deltas={LARGE_DELTAS} -> history_bytes={len(large['history_json'])}"
         )

@@ -6,7 +6,7 @@
  * (`"[DB] User with ID user-123 could not be found."`) echoes both
  * the Prisma model name AND the row id back to the HTTP response,
  * which leaks tenant-catalogue / row-existence signal to any
- * authenticated user (a HIPAA §164.312(a)(1) information-disclosure
+ * authenticated user (a HIPAA information-disclosure
  * concern that mirrors the W5.1.3 / W5.2 / W5.3 "no existence leak"
  * pattern at the service layer).
  *

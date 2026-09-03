@@ -13,9 +13,9 @@ export const WORKFLOW_SANDBOX_STREAM_HEARTBEAT_INTERVAL_MS = 15_000;
 
 /**
  * `WorkflowSandboxStreamService` — the gateway-side half of
- * `GET admin/workflow-definitions/:definitionId/sandbox-runs/:runId/stream` (TASK-721 Task 7).
+ * `GET admin/workflow-definitions/:definitionId/sandbox-runs/:runId/stream`.
  *
- * A near-verbatim sibling of `../workflows/workflow-stream.service.ts` (TASK-722 Task 8), for
+ * A near-verbatim sibling of `../workflows/workflow-stream.service.ts`, for
  * the Workbench's definitionId-keyed sandbox runs instead of the exposure plane's slug-keyed
  * ones. See that class's doc comment for why this is a disclosed POLL BRIDGE (the interpreter
  * dispatcher has no live event-stream producer) rather than a byte-for-byte SSE proxy, and why

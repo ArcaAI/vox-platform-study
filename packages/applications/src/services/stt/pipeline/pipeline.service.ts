@@ -268,7 +268,7 @@ export class PipelineService extends BaseService implements IPipelineService {
 
     const saved = await this.pipelineRepository.create(clone);
 
-    await this.snapshotVersion(saved, `Cloned from pipeline '${source.slug}' (TASK-531)`, userId ?? undefined);
+    await this.snapshotVersion(saved, `Cloned from pipeline '${source.slug}' `, userId ?? undefined);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -669,7 +669,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       // stt DOES carry service-token middleware (`ServiceAuthMiddleware`, whose
       // exempt set is metrics/docs/health only) — the previous comment here
       // claimed the opposite, which is how an unauthenticated call survived.
-      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`. TASK-737: pipelines are
+      // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`.: pipelines are
       // tenant-owned rows and this runs on the CLS-backed create/update request
       // path, so the tenant is present and authoritative.
       const base = process.env.STT_URL || process.env.STT_V2_URL || 'http://localhost:8861';

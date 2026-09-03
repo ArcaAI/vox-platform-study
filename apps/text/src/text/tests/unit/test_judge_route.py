@@ -1,6 +1,6 @@
 """The internal judge route — `text`'s side of the guardrail-delegation cycle break.
 
-RED before GREEN (TASK-735 Phase 2, items 1 and 5).
+RED before GREEN (items 1 and 5).
 
 Guardrail is being rebuilt to own POLICY only and delegate its LLM judgement
 calls to `text`. Naively that closes a cycle: every public `/generate` is gated
@@ -466,7 +466,7 @@ class TestProviderOverrides:
 
 
 # --------------------------------------------------------------------------
-# 6. Metering attribution (item 5)
+# 6. Metering attribution 
 # --------------------------------------------------------------------------
 
 

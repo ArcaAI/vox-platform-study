@@ -25,7 +25,7 @@ const NLP_TIMEOUT_MS = 15_000;
 // forwarded to the console — only the upstream status is preserved. Mirrors the
 // text-proxy posture.
 const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
-/** TASK-768 — opaque transport-failure message. Names the capability, never the topology. */
+/** opaque transport-failure message. Names the capability, never the topology. */
 const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Please retry.';
 
 /**
@@ -37,10 +37,10 @@ const TRANSPORT_ERROR_MESSAGE = 'AI text analysis is temporarily unavailable. Pl
  * verbatim — never re-validated here.
  *
  * Upstream endpoints (source of truth: apps/guardrail, apps/nlp):
- *  - Guardrail `POST /api/guardrail/analyze`     — content-safety / PII / prompt-injection
- *  - NLP       `POST /api/v1/classify/tokens`    — medical token classification (NER)
- *  - NLP       `POST /api/v1/classify/topic`     — open-taxonomy topic classification (TASK-729, delegated by NLP to `text`)
- *  - NLP       `POST /api/v1/classify/intent`    — open-taxonomy intent classification (TASK-729, delegated by NLP to `text`)
+ *  - Guardrail `POST /api/guardrail/analyze` — content-safety / PII / prompt-injection
+ *  - NLP `POST /api/v1/classify/tokens` — medical token classification (NER)
+ * NLP `POST /api/v1/classify/topic` — open-taxonomy topic classification (delegated by NLP to `text`)
+ * NLP `POST /api/v1/classify/intent` — open-taxonomy intent classification (delegated by NLP to `text`)
  *
  * Base URLs resolve from `IConfigService` (`GUARDRAIL_URL` / `NLP_URL`), falling
  * back to the local-dev ports.
@@ -87,12 +87,12 @@ export class AiInferenceClient {
     return this.post(this.nlpUrl(), '/api/v1/diagnosis/suggestions', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
-  /** Topic classification (TASK-729, open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
+  /** Topic classification (open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
   async classifyTopic(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.post(this.nlpUrl(), '/api/v1/classify/topic', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
-  /** Intent classification (TASK-729, open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
+  /** Intent classification (open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
   async classifyIntent(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.post(this.nlpUrl(), '/api/v1/classify/intent', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
@@ -116,7 +116,7 @@ export class AiInferenceClient {
     // fallback. Still ALWAYS attached, even empty, so the receiver rejects it
     // (fail-closed) rather than the PHI-bearing hop downgrading to unauthenticated.
     const token = await resolveInternalAccessToken(this.secretsService, secretKey);
-    // TASK-737: `X-Tenant-Id` is now MANDATORY, not conditional. This route backs
+    // `X-Tenant-Id` is now MANDATORY, not conditional. This route backs
     // the Agent Playground, which a SUPER_ADMIN legitimately drives with no working
     // tenant selected — previously indistinguishable from a header dropped in
     // transit, so the receiver had to guess. It now DECLARES itself instead.
@@ -158,7 +158,7 @@ export class AiInferenceClient {
       this.logger.warn({ message: 'AI inference upstream error (body redacted — may contain PHI)', action, status });
       return new HttpException(UPSTREAM_ERROR_MESSAGE, status);
     }
-    // TASK-768: the transport branch used to interpolate the axios message into
+    // the transport branch used to interpolate the axios message into
     // the client body — i.e. `connect ECONNREFUSED 127.0.0.1:8864`. The cause
     // stays in the log (with the correlationId the client also gets); the client
     // gets a stable, opaque message. `Retry-After` is added by

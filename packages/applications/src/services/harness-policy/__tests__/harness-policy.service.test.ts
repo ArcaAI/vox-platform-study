@@ -632,14 +632,14 @@ describe('HarnessPolicyService', () => {
     });
   });
   /**
-   * TASK-816 Phase 4 — `safetyProvider`/`safetyModel` were dropped from the schema.
+   * `safetyProvider`/`safetyModel` were dropped from the schema.
    *
    * `KNOB_KEYS` derives from `HARNESS_POLICY_DEFAULTS`, so a stale key there would put a
    * dropped column back into every merge / apply / WORM snapshot the service writes — the
    * shape that would 500 against the migrated table. Nothing read either value (Phase 2,
    * mutation-proven); the guardrail selection lives in the `guardrail.safety` AiTaskDefault,
    * resolved by apps/guardrail tenant-first.
-   */
+ */
   describe('the retired safety selection knobs', () => {
     it.each(['safetyProvider', 'safetyModel'])('is not a policy knob default: %s', (key) => {
       expect(Object.keys(HARNESS_POLICY_DEFAULTS)).not.toContain(key);

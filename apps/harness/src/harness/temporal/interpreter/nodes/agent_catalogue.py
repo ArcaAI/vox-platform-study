@@ -1,8 +1,8 @@
-"""The TARGET NODE CATALOGUE (TASK-809 DD-6/DD-9) — TASK-806 lane A.
+"""The TARGET NODE CATALOGUE (/DD-9) — lane A.
 
 Ten ``agent.*`` node types. NINE of them are a THIN DELEGATION to an engine that already
 exists in this interpreter; ``agent.important_findings`` (Lane N) is the one exception, and it is
-an exception because the capability it names did not exist in ANY form — TASK-815 §14a: *"important
+an exception because the capability it names did not exist in ANY form — : *"important
 information highlighted — DOES NOT EXIST ... there is no red-flag / critical-value / allergy-alert
 / severity layer anywhere"*. There was nothing to delegate to, so it is a real implementation; see
 its own docstring for why it still hosts no model and ships no importance taxonomy. That is DD-9's instruction taken literally — *"One generation engine,
@@ -17,7 +17,7 @@ own, so there is no second behaviour to keep in step with the first; and because
 
 ## Why the catalogue exists ALONGSIDE the pipeline keys rather than replacing them
 
-A node type is a contract with every saved tenant graph (``node-registry.ts`` §``schemaVersion``).
+A node type is a contract with every saved tenant graph (node-registry.ts schemaVersion).
 Both committed seed graphs and every golden fixture name ``consultation.*`` keys, so renaming them
 would invalidate saved definitions. The catalogue is therefore additive; the pipeline keys are what
 today's graphs use, and these are what a graph authored against the target contract uses.
@@ -75,7 +75,7 @@ from harness.temporal.interpreter.nodes.consultation_realtime import (
 async def interpreter_agent_transcription(payload: NodeActivityInput) -> NodeActivityResult:
     """The catalogue's capture entry — ``lane: 'realtime'``.
 
-    The runtime that actually turns a live session into a transcript is TASK-811's realtime
+    The runtime that actually turns a live session into a transcript is realtime
     executor, which is why this node is declared ``realtime`` and the durable interpreter SKIPS it
     (``workflow.py``, reason ``realtime_lane``). This durable wrapper exists so the node is
     dispatchable at all: ``compile()`` refuses any graph containing an unimplemented node type, and
@@ -122,7 +122,7 @@ async def interpreter_agent_grammar(payload: NodeActivityInput) -> NodeActivityR
     DISPATCHABLE at all — ``compile()`` refuses a graph containing an unimplemented node type and
     ``NodeSpec`` requires a real registered activity — but it is not the runtime that normally
     executes it. ``_dispatch_node`` SKIPS a ``realtime`` node with ``reason="realtime_lane"``;
-    TASK-811's live executor owns this one, because corrections over a PARTIAL transcript are only
+    live executor owns this one, because corrections over a PARTIAL transcript are only
     useful while the clinician is still watching it grow.
 
     The engine PROPOSES and applies nothing: it returns the source text byte-identical, marks
@@ -183,7 +183,7 @@ async def interpreter_agent_feedback(payload: NodeActivityInput) -> NodeActivity
 
 @activity.defn(name="interpreter.agent_dna_redaction")
 async def interpreter_agent_dna_redaction(payload: NodeActivityInput) -> NodeActivityResult:
-    """TASK-815 §11 — the DNA writing-style redaction pass, as a NODE.
+    """the DNA writing-style redaction pass, as a NODE.
 
     It used to be a resolver flag TRIPLE: a tenant ``dnaRedactionEnabled`` cascade, the doctor's
     own DNA opt-in, and the department default ``DepartmentAgent.dnaStylePolicy`` VETO. The veto
@@ -262,7 +262,7 @@ async def interpreter_agent_important_findings(payload: NodeActivityInput) -> No
 
     The node is ``lane: 'realtime'`` — the owner wants findings surfaced while the clinician is
     still in the room — so ``_dispatch_node`` SKIPS it with ``reason="realtime_lane"`` and
-    TASK-811's live executor owns it, exactly as it owns ``agent.grammar``. This durable
+    live executor owns it, exactly as it owns agent.grammar. This durable
     implementation exists because ``compile()`` refuses a graph containing an unimplemented node
     type and ``NodeSpec`` requires a real registered activity; unlike the delegating wrappers
     around it, it had no engine to point at, so it does the work itself. Both runtimes call the

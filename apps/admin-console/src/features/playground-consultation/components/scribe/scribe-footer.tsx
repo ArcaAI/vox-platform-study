@@ -7,9 +7,9 @@
  * live-summary SSE stats (`useLiveMetrics`); bandwidth stays em-dash until the
  * SDK uplink-bitrate signal lands (SDK follow-up), never fabricated.
  *
- * Naming — AMENDED by TASK-858 Lane D. The Family 2 rollout called the ASR
+ * Naming — AMENDED by The Family 2 rollout called the ASR
  * pipeline the "Listener" capability and forbade the word "agent" here. That is
- * reversed: TASK-858 R1 makes the ASR pipeline a single-task TRANSCRIPTION
+ * reversed: makes the ASR pipeline a single-task TRANSCRIPTION
  * AGENT (an `stt`-palette workflow definition compiled into an `AsrPipeline`),
  * and this screen now offers a second, different choice — the consultation
  * WORKFLOW, picked at session-open. The two selectors have to read as agent vs

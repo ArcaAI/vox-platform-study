@@ -1,15 +1,15 @@
 /**
- * The schema-to-field-descriptor compiler (TASK-719 Task 8) — design.md §Testing strategy's
+ * The schema-to-field-descriptor compiler — strategy's
  * "Contract tests: one schema, three consumers (registry ↔ inspector forms ↔ compiled
  * config)", consumer #2. Pure and framework-free (no React import) so it is unit-testable in
- * isolation and reusable by TASK-721's node-isolation panel.
+ * isolation and reusable by node-isolation panel.
  *
  * Input: a registry node-type config JSON Schema (the `@arcaai/json-schema-subset` authorable
- * subset — TASK-719 `contracts/registry.contract.md`). Output: an ordered `FieldDescriptor[]`.
+ * subset — `contracts/registry.contract.md`). Output: an ordered `FieldDescriptor`.
  *
- * Validation is delegated, never re-implemented (README §3.1 pitfall 1 / §3.2): this module
+ * Validation is delegated, never re-implemented ( pitfall 1 /: this module
  * never decides whether a VALUE is valid — that is `jsonSchemaValueProblems` alone, called by
- * the inspector (Task 9), never re-derived here. This module only decides how to RENDER a
+ * the inspector , never re-derived here. This module only decides how to RENDER a
  * schema; `authorableJsonSchemaProblems` is used only to detect a subtree this rendering
  * cannot represent, so it can degrade to the raw JSON editor for that subtree.
  */
@@ -89,7 +89,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** `promptTemplateId` -> `Prompt Template Id`. Used when the schema carries no `title`, and
- *  re-exported for the palette rail (Task 12) to derive a display label from a bare registry
+ *  re-exported for the palette rail to derive a display label from a bare registry
  *  `type` string — the delivered registry has no `label` field (registry.contract.md). */
 export function humanizeKey(key: string): string {
   const words = key

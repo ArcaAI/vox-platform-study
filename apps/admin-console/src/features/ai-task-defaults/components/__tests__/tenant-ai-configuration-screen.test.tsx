@@ -209,7 +209,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TenantAiConfigurationScreen — narrowed hub structure (TASK-845)', () => {
+describe('TenantAiConfigurationScreen — narrowed hub structure ', () => {
   it('renders exactly the two tabs that did not move', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
@@ -222,7 +222,7 @@ describe('TenantAiConfigurationScreen — narrowed hub structure (TASK-845)', ()
   it('no longer carries the Models or Providers tabs — they moved to /ai-platform', async () => {
     // Those two tabs were the TENANT half of a two-tier cascade whose SYSTEM
     // half lived on a different route. Keeping a copy here would recreate the
-    // duplication TASK-845 removed, so their absence is the contract.
+    // duplication removed, so their absence is the contract.
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 

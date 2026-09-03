@@ -19,7 +19,7 @@ import { Authorize, RequiredScopes } from '../../../decorators';
  * with 403 (rather than a silent 404) to give an unambiguous security signal.
  */
 /**
- * TASK-758 — the `me` semantics an integrator cannot infer from the path.
+ * the `me` semantics an integrator cannot infer from the path.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from
  * `apiKeyEntity.userId`, so under a key `me` is the BOUND USER — not the key's

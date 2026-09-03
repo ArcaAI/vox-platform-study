@@ -23,7 +23,7 @@
 // The invariant is deliberately narrow: a note MAY cite an env var, but only one
 // that `turbo.json#globalEnv` actually declares. `globalEnv` is the repo's own
 // register of "this is a live runtime variable" (`00-project-context.md`
-// §Environment Files), so a name missing from it is, by the repo's own
+// Files), so a name missing from it is, by the repo's own
 // definition, not a runtime variable at all.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

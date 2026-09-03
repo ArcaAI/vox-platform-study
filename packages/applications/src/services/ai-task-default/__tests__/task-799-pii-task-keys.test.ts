@@ -1,4 +1,4 @@
-// TASK-799 R6 — the PII selections are registered AND super-admin-only.
+// the PII selections are registered AND super-admin-only.
 //
 // Both halves matter and neither implies the other. Registering the keys is
 // what makes them manageable at all (`assertKnownTaskKey` rejected them on
@@ -6,7 +6,7 @@
 // is the owner decision of 2026-08-24: they select nlp-hosted
 // TOKEN_CLASSIFICATION models, which D-4 makes platform-shared, and PII
 // redaction is a PHI control where one vetted model serving every tenant is the
-// point. The `guardrail.` PREFIX stays tenant-configurable (TASK-735 Phase 0),
+// point. The `guardrail.` PREFIX stays tenant-configurable,
 // so this is a KEY-level exception and the sibling keys must prove unaffected.
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
@@ -14,7 +14,7 @@ import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isSuperAdminOnlyTaskKey } from 
 
 const PII_KEYS = ['guardrail.pii', 'guardrail.pii.spans'] as const;
 
-describe('TASK-799 R6 — guardrail PII task keys', () => {
+describe(' R6 — guardrail PII task keys', () => {
   it('are declared, so the admin routes stop rejecting them', () => {
     for (const k of PII_KEYS) expect(AI_TASK_KEYS as readonly string[]).toContain(k);
   });

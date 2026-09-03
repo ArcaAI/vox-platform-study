@@ -6,7 +6,7 @@ export abstract class ISummaryService {
   abstract updateSummary(contextItemId: string, request: UpdateSummaryRequest): Promise<SummaryResponse>;
   abstract approveSummary(
     contextItemId: string,
-    // TASK-709: `expectedVersion` is the OCC compare-and-set predicate for
+    // `expectedVersion` is the OCC compare-and-set predicate for
     // the ContextItem row (the `@RequiresIfMatch()`-gated header the
     // controller folds onto this options object).
     options?: { overrideSafetyFlag?: boolean; expectedVersion?: number },

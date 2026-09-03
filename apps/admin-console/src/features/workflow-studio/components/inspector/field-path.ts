@@ -1,6 +1,8 @@
-/** Dot-path get/set over a node's `config` object — matches `schema-form.ts`'s
- *  `path`/`${parentPath}.${key}` convention (TASK-719 Task 9). Pure, no React import, so it is
- *  unit-testable in isolation. */
+/**
+* Dot-path get/set over a node's `config` object — matches `schema-form.ts`'s
+ * `path`/`${parentPath}.${key}` convention. Pure, no React import, so it is
+ *  unit-testable in isolation. 
+ */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

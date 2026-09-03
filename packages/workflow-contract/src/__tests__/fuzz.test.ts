@@ -1,16 +1,15 @@
 /**
- * Fuzz suite (TASK-716 Task 7) — REDUCED SCOPE, honestly flagged rather than silently
+ * Fuzz suite — REDUCED SCOPE, honestly flagged rather than silently
  * shrunk: this session runs 1 000 generated graphs (not the ticket's ≥ 5 000) and asserts
  * TOTALITY (`validate()`/`compile()` never throw, even on malformed input), a wall-clock bound
- * (catches an accidental exponential path enumeration — TASK-716 §6 Risk #3), and the
- * DETERMINISM property (repeat-compile and shuffle-invariance).
+ * (catches an accidental exponential path enumeration — Risk #3), and the
+ * DETERMINISM property (repeat-compile() and shuffle-invariance).
  *
  * NOT implemented in this session: the independent "safety oracle" (naive path enumeration on
  * ≤ 12-node graphs, compared against the fast dominator-based implementation) that the ticket
  * specifies as the primary defense against a wrong `allPathsPassThrough` implementation. That
  * property is exercised only indirectly here, via the targeted `graph-algorithms.test.ts`
- * cases. This is a real gap against the ticket's acceptance criteria — see the ticket README
- * §7 Implementation Summary.
+ * cases. This is a real gap against the ticket's acceptance criteria — 
  */
 import { describe, expect, it } from 'vitest';
 import { compile } from '../compiler';

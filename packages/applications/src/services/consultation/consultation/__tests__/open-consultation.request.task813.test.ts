@@ -1,5 +1,5 @@
 /**
- * TASK-813 OD-1 point 2 — the SDK ↔ `OpenConsultationRequest` wire contract for
+ * point 2 — the SDK ↔ `OpenConsultationRequest` wire contract for
  * the workflow selector.
  *
  * The gateway's global pipe runs `whitelist + forbidNonWhitelisted +
@@ -23,7 +23,7 @@ const pipe = new ValidationPipe({
 
 const metatype = { type: 'body' as const, metatype: OpenConsultationRequest };
 
-describe('OpenConsultationRequest — TASK-813 workflow selector wire contract', () => {
+describe('OpenConsultationRequest —  workflow selector wire contract', () => {
   it('accepts the selector the SDK sends as `OpenSessionInput.workflowDefinitionSlug`', async () => {
     await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: 'arcaai_consultation_v1' }, metatype)).resolves.toMatchObject({
       workflowDefinitionSlug: 'arcaai_consultation_v1',
@@ -38,8 +38,8 @@ describe('OpenConsultationRequest — TASK-813 workflow selector wire contract',
     await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: { slug: 'x' } }, metatype)).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('accepts the hyphenated slugs every seeded workflow actually carries (TASK-858)', async () => {
-    // AMENDED (TASK-858): TASK-813 reused the node-id grammar, which admits no hyphen, while
+  it('accepts the hyphenated slugs every seeded workflow actually carries ', async () => {
+    // AMENDED: reused the node-id grammar, which admits no hyphen, while
     // every seeded definition is hyphenated — so no real workflow could ever be selected.
     for (const slug of ['arcaai-consultation-medical-ner', 'arcaai-consultation-soap', 'platform-default-summarization']) {
       await expect(pipe.transform({ patientId: 'p-1', workflowDefinitionSlug: slug }, metatype)).resolves.toMatchObject({ workflowDefinitionSlug: slug });

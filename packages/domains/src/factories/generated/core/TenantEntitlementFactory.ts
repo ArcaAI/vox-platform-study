@@ -79,7 +79,7 @@ export class TenantEntitlementFactory {
       // `null` = inherit the plan (which is itself `false`), NOT deny —
       // the tri-state's three states are all load-bearing here.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? null,
-      // `null` = inherit the plan default (TASK-724).
+      // `null` = inherit the plan default.
       featurePaletteStt: props.featurePaletteStt ?? null,
       featureAgenticLoop: props.featureAgenticLoop ?? null,
       modelTier: props.modelTier ?? null,

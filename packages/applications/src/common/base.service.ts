@@ -43,7 +43,7 @@ export abstract class BaseService implements IBaseService {
    * `tenantId` is the one exception: it is ALWAYS sourced from the CLS
    * request context and CANNOT be overridden by a caller-supplied
    * `payload.tenantId`. Tenant attribution is a security boundary (HIPAA
-   * §164.312(a)(1)); letting an upstream caller override it would let a
+   * letting an upstream caller override it would let a
    * foreign-tenant payload be misattributed to the active tenant context (or
    * vice versa).
    *
@@ -89,7 +89,7 @@ export abstract class BaseService implements IBaseService {
       // `eventType`, and `JSON.stringify` drops undefined — subscribers received
       // a notification that never said WHAT happened.
       type,
-      // TASK-762 — EXACTLY ONE actor. A service-account request carries a
+      // EXACTLY ONE actor. A service-account request carries a
       // machine principal on its own CLS key; stamping the bound human's id
       // (which is what this line did unconditionally before) attributed a
       // machine's admin action to a person, with no record of which credential
@@ -167,7 +167,7 @@ export abstract class BaseService implements IBaseService {
 
   /**
    * The MACHINE principal for this request, or null for a human one
-   * (TASK-762). Read from its own CLS key — never from `user` — so no existing
+   * Read from its own CLS key — never from `user` — so no existing
    * `requestUser` consumer can accidentally observe a service account as a
    * person.
    */

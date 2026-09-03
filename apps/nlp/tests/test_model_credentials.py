@@ -1,5 +1,5 @@
 """nlp mirror of ``apps/stt/tests/unit/test_task799_model_credentials.py`` —
-the model-registry credential client (TASK-855 L6 follow-on).
+the model-registry credential client ( follow-on).
 
 What these tests pin, in order of how much they matter:
 

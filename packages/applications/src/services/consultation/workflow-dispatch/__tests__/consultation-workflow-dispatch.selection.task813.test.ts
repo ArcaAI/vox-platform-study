@@ -1,5 +1,5 @@
 /**
- * TASK-813 OD-1 points 4-6 — caller-selected workflow at consultation open.
+ * points 4-6 — caller-selected workflow at consultation open.
  *
  * The whole ticket is the authorization. A selector that trusts client input is
  * a cross-tenant hazard, so `assertSelectableForConsultation` is the gate and it

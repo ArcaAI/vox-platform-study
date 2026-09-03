@@ -17,7 +17,7 @@ export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 // existing tenants against. Whatever is written here becomes every future
 // customer's day-1 catalog.
 //
-// OWNER RULING (2026-08-20, TASK-763 §5 OD-8): "what belong to BCMCH keep those
+// OWNER RULING (2026-08-20, OD-8): "what belong to BCMCH keep those
 // in ArcaAI, for SYSTEM and GLOBAL, use different ones." The previous 18 rows
 // duplicated ArcaAI's BCMCH v1 specialty roster (11 identical codes/names) and
 // carried BCMCH's house section vocabulary, so the golden library was shipping

@@ -25,7 +25,7 @@ import { WorkflowInvariantRuleDtoMapper } from './workflow-invariant-rule.dto.ma
 const FILTER_MODEL = 'WorkflowInvariantRule';
 
 /**
- * `WorkflowInvariantRule` CRUD (TASK-790 W3b, closing TASK-789 finding H-1).
+ * `WorkflowInvariantRule` CRUD (b, closing finding H-1).
  *
  * Zero controllers referenced this model, so a tenant admin could not write a rule row and
  * `WorkflowValidatorService` — the 169 lines that resolve and merge those rows — was imported
@@ -47,7 +47,7 @@ const FILTER_MODEL = 'WorkflowInvariantRule';
  * ## Two failure modes, two different codes
  *
  * - Another TENANT's row -> **404**. Cross-tenant, so existence stays hidden (rule 05).
- * - The SYSTEM row       -> **403**. A privilege boundary, NOT the 404-over-403 posture: every
+ * - The SYSTEM row -> **403**. A privilege boundary, NOT the 404-over-403 posture: every
  *   tenant legitimately READS the platform register (the model is in
  *   `SYSTEM_SHARED_READ_MODELS`), so its existence is already known and pretending otherwise
  *   would be incoherent — the caller can see the row in `list()` on the next line.

@@ -1,5 +1,5 @@
 /**
- * TASK-812 — `ConsultationEndpointService`: DD-3 and DD-8, asserted.
+ * `ConsultationEndpointService`: DD-3 and DD-8, asserted.
  *
  * The two decisions this service exists to make true:
  *

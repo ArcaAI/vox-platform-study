@@ -3,7 +3,7 @@ import { cn } from '@arcaai/ui';
 
 /**
  * StatusFooter — the console's IDE-style footer status bar (Figma "09 - Screen
- * Templates" §3; rule 11 §Screen Template). It rides in the `footer` slot of
+ * Templates"; rule 11 §Screen Template). It rides in the `footer` slot of
  * `ScreenTemplate`, pinned at the bottom of the page (below the data grid's
  * pagination). `start` carries the primary status/message (a polite live region
  * so async updates are announced); `end` carries secondary meta (counts,

@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-language canonicalJson/canonical_json parity fixture (TASK-734 Task 4, closing the gap TASK-718 README named: the checksum algorithm was never verified byte-for-byte against a live Node run). Asserted from BOTH packages/workflow-contract/src/__tests__/canonical-json-parity-fixture.test.ts (TS, the oracle that generated canonical/checksum below via the real canonicalJson()) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_compiled_config.py (Python, via compiled_config.canonical_json()). A case fails on either side if that language's implementation stops producing byte-identical output.",
+  "_comment": "Cross-language canonicalJson/canonical_json parity fixture (Task 4, closing the gap README named: the checksum algorithm was never verified byte-for-byte against a live Node run). Asserted from BOTH packages/workflow-contract/src/__tests__/canonical-json-parity-fixture.test.ts (TS, the oracle that generated canonical/checksum below via the real canonicalJson()) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_compiled_config.py (Python, via compiled_config.canonical_json()). A case fails on either side if that language's implementation stops producing byte-identical output.",
   "cases": [
     {
       "name": "flat_object_key_order",

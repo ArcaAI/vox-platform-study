@@ -159,7 +159,7 @@ describe('effective-route query coercion', () => {
 /**
  * The credential-class declarations are DECLARATIVE, so they regress silently:
  * nothing in this controller's own logic changes if a decorator is dropped, and
- * the failure surfaces only as a boot-time refusal (TASK-762/773 assertion G) or,
+ * the failure surfaces only as a boot-time refusal (/773 assertion G) or,
  * worse, as a machine identity quietly gaining reach it was never granted.
  *
  * The class header records the decision: routing policy is machine-CLOSED,

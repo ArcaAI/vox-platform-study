@@ -5,7 +5,7 @@ import type { PermissionRule } from '@/shared/auth/ability';
 import { renderWithProviders } from '@/test/render';
 
 /**
- * Shared harness for the TASK-788 two-tier shell tests.
+ * Shared harness for the two-tier shell tests.
  *
  * Not a test file (the vitest projects include `*.test.ts(x)` only) — it exists
  * so the rail and the scoped sidebar are exercised against the SAME permission
@@ -16,7 +16,7 @@ export const SUPER_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject:
 /**
  * A deliberately narrow, non-admin caller. Produces exactly the shape the ticket's
  * Open Question is about:
- *   - Clinical      -> 1 visible route  (/consultations)
+ *   - Clinical -> 1 visible route (/consultations)
  *   - Knowledge & Agents -> 3 visible routes (/agents, /prompt-templates, /knowledge)
  * Nothing else is reachable, and the caller holds no admin role, so the
  * playground tier stays hidden too (its five demo planes carry `required: []`,

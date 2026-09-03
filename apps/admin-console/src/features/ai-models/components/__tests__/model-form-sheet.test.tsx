@@ -1,5 +1,5 @@
 /**
- * TASK-769: `ModelFormSheet` was a hand-rolled `SheetContent`; it now composes
+ * `ModelFormSheet` was a hand-rolled `SheetContent`; it now composes
  * the console-wide `DetailDrawer` with its actions in the PINNED footer
  * (submit reaches the form through `form={formId}`). Covered here: open/close
  * wiring, the accessible name, that the loaded row still seeds the fields
@@ -116,7 +116,7 @@ describe('ModelFormSheet', () => {
 });
 
 // =============================================================================
-// Weight source (sourceUri / localPath): the two loading modes, TASK-855
+// Weight source (sourceUri / localPath): the two loading modes,
 // =============================================================================
 describe('ModelFormSheet — weight source (Mode U / Mode M)', () => {
   it('disables Local path with a visible reason in register mode — the create DTO does not accept it', async () => {

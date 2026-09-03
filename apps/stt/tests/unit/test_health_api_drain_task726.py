@@ -1,10 +1,9 @@
-"""Readiness probe reflects SessionManager draining state (TASK-726 Task 3).
+"""Readiness probe reflects SessionManager draining state.
 
 This is the ACTUAL "stop routing new sessions here" mechanism: k8s removes a
 pod from its Service Endpoints once /health/ready starts failing, which is
 how a draining stt instance stops receiving new
 `POST /internal/streaming/sessions` calls WITHOUT any gateway-side change —
-see docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
 """
 
 from __future__ import annotations

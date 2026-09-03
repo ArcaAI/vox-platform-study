@@ -137,7 +137,7 @@ module.exports = [
         // Escape hatch (standard ESLint mechanism):
         //
         //     // eslint-disable-next-line no-restricted-syntax
-        //     const prisma = this.databaseService.client; // TASK-XXX: <reason>
+        // const prisma = this.databaseService.client; //: <reason>
         //
         // The `ignores` list is the flat equivalent of the legacy
         // `excludedFiles` pins:
@@ -166,7 +166,7 @@ module.exports = [
                     selector:
                         "MemberExpression[computed=false][property.name='client'][object.type='MemberExpression'][object.computed=false][object.property.name='databaseService']",
                     message:
-                        'TASK-311 AC-8: services in @arcaai/applications must not access `this.databaseService.client` directly. Route through a domain-layer repository (UserRepository, PolicyRepository, RbacRoleRepository, RolePolicyRepository, ...). If this access is genuinely unavoidable, silence with `// eslint-disable-next-line no-restricted-syntax` and document the reason on the same block.',
+                        ' AC-8: services in @arcaai/applications must not access `this.databaseService.client` directly. Route through a domain-layer repository (UserRepository, PolicyRepository, RbacRoleRepository, RolePolicyRepository, ...). If this access is genuinely unavoidable, silence with `// eslint-disable-next-line no-restricted-syntax` and document the reason on the same block.',
                 },
             ],
         },
@@ -186,7 +186,7 @@ module.exports = [
         },
     },
     {
-        // TASK-737 §4.4 — every outbound internal service call that sends
+        // every outbound internal service call that sends
         // `X-Service-Token` must also carry a tenant channel. The propagation
         // audit found NINE `apps/api` → `apps/text` call sites that omitted
         // `X-Tenant-Id` entirely, several with a `tenantId` local in scope one
@@ -205,7 +205,7 @@ module.exports = [
         },
     },
     {
-        // TASK-761 gate G3 (justification half) — a business-plane
+        // gate G3 (justification half) — a business-plane
         // `@ForbidApiKey()` must record WHY in an `// API-KEY-NOTE`.
         //
         // The presence and the named-exemption halves of G3 are boot audits
@@ -270,7 +270,7 @@ module.exports = [
                             name: '@arcaai/database',
                             importNames: ['getPlatformAdminPrismaClient_Unscoped'],
                             message:
-                                'TASK-305 §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` (or `CoreDatabaseService.client`) unless this file is on the §B.4 allow-list (seed scripts, migrations, back-fill scripts, test fixtures, CoreDatabaseService).',
+                                ' §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` (or `CoreDatabaseService.client`) unless this file is on the §B.4 allow-list (seed scripts, migrations, back-fill scripts, test fixtures, CoreDatabaseService).',
                         },
                     ],
                     patterns: [
@@ -278,7 +278,7 @@ module.exports = [
                             group: ['**/database/src/client', '**/database/src/client.js', '**/database/src/client.ts'],
                             importNames: ['getPlatformAdminPrismaClient_Unscoped'],
                             message:
-                                'TASK-305 §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` unless this file is on the §B.4 allow-list.',
+                                ' §B.4: `getPlatformAdminPrismaClient_Unscoped` bypasses tenant-scope and soft-delete. Use `getExtendedPrismaClient()` unless this file is on the §B.4 allow-list.',
                         },
                     ],
                 },

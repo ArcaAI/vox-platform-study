@@ -7,7 +7,7 @@
  *   packages/applications/src/services/ai-routing-policy/dto/*
  *   packages/applications/src/services/ai-routing-policy/provider-configuration.ts
  *
- * TASK-844 re-grained this table so ONE ROW IS ONE PROVIDER CONFIGURATION: the
+ * re-grained this table so ONE ROW IS ONE PROVIDER CONFIGURATION: the
  * ordered chain is the set of rows for a (tenant, taskKey), and exactly one of
  * them carries `isDefault` — enforced by a partial unique index, so it is a
  * database fact rather than a convention this client has to defend.
@@ -18,7 +18,7 @@ export interface AiRoutingPolicy {
   id: string;
   tenantId: string;
   taskKey: string;
-  /** TASK-843 taxonomy, derived from `taskKey`. NULL = written by an un-migrated writer. */
+  /** taxonomy, derived from `taskKey`. NULL = written by an un-migrated writer. */
   taskKind: string | null;
   displayName: string | null;
   /** FK → AiProviderConnection.id — where work is sent and how it authenticates. */
@@ -70,7 +70,7 @@ export interface ResolvedRoutingCandidate {
   maxTtftMs: number | null;
 }
 
-/** Why nothing may serve. `code` is machine-readable, per §3A.4. */
+/** Why nothing may serve. `code` is machine-readable, per */
 export interface RoutingRejection {
   code: string;
   message: string;
@@ -102,13 +102,13 @@ export interface EffectiveRoutingPolicy {
   policyVersion: number | null;
   strategy: string | null;
   explicitProviderMode: string | null;
-  /** The primary candidate (step 0), or null when nothing may serve. */
+  /** The primary candidate , or null when nothing may serve. */
   primary: ResolvedRoutingCandidate | null;
   fallbackChain: ResolvedRoutingCandidate[];
   rejectedCandidates: RejectedRoutingCandidate[];
   /** Set when the request cannot be served at all — selection is fail-closed, never substituted. */
   rejection: RoutingRejection | null;
-  /** Which §3A.4 hard gates the winning policy explicitly relaxed. Empty in the default posture. */
+  /** Which hard gates the winning policy explicitly relaxed. Empty in the default posture. */
   relaxedGates: string[];
   health: unknown;
   maxConcurrentStreams: number | null;
@@ -150,7 +150,7 @@ export interface UpdateAiRoutingPolicyRequest {
 /**
  * One configuration inside an export artifact.
  *
- * There is NO credential field and no `last4` — deliberately. TASK-844's
+ * There is NO credential field and no `last4` — deliberately.
  * `provider-configuration.ts` records why: the credential is Vault-Transit
  * ciphertext, so producing a last-4 would mean decrypting a live key on a path
  * whose whole purpose is to not handle key material, and four known characters

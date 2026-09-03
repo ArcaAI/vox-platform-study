@@ -13,7 +13,7 @@ These tests pin that:
     the raw ``entity`` key) so a merged medication becomes ONE un-prefixed entity
     with correct character offsets;
   * ``ignoreLabels`` -- declared on the selected checkpoint's registry row
-    (``clinicalTaxonomy.tokenClassifier``, TASK-799 lane G) -- are dropped.
+    (clinicalTaxonomy.tokenClassifier, lane G) -- are dropped.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from nlp.schemas.classification import TokenClassificationRequest
 from nlp.schemas.clinical_taxonomy import ClinicalTaxonomy
 from nlp.services.token_classifier import TransformerTokenClassifier
 
-#: The NER contract the checkpoint's registry row declares (TASK-799 lane G).
+# The NER contract the checkpoint's registry row declares.
 _NER_CONTRACT = ClinicalTaxonomy.model_validate(
     {"tokenClassifier": {"aggregationStrategy": "simple", "ignoreLabels": ["O"]}}
 )

@@ -1,5 +1,5 @@
 /**
- * TASK-799 lane B — the harness BYO provider-credential resolve.
+ * lane B — the harness BYO provider-credential resolve.
  *
  * `apps/harness` runs its judge and its retriever inside a Temporal ACTIVITY.
  * There is no inbound gateway request to fold a `provider_overrides` envelope
@@ -59,7 +59,7 @@ function buildService(withConnections = true) {
 
 
 /**
- * TASK-858 — the resolve runs INSIDE a CLS tenant context.
+ * the resolve runs INSIDE a CLS tenant context.
  *
  * `resolveTenantCloudOverrides` reads tenant-scoped `AiProviderConnection` rows,
  * and the tenant-scope extension refuses a read with no CLS tenant
@@ -106,7 +106,7 @@ describe('HarnessInternalService.resolveProviderCredential', () => {
     providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({ overrides: {} });
   });
 
-  it('re-establishes the CLS tenant before touching the tenant-scoped connection rows (TASK-858)', async () => {
+  it('re-establishes the CLS tenant before touching the tenant-scoped connection rows ', async () => {
     const order: string[] = [];
     const cls = {
       run: vi.fn(async (cb: () => unknown) => {

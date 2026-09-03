@@ -41,7 +41,7 @@ import { UserExportService } from './user-export.service';
     // Admin reset-password + public completion.
     UserPasswordServiceModule,
   ],
-  // TASK-760 — ORDER IS LOAD-BEARING, not cosmetic. Nest matches routes in
+  // ORDER IS LOAD-BEARING, not cosmetic. Nest matches routes in
   // controller-registration order, so every LITERAL-segment controller under
   // the `users` collection must be registered BEFORE `UserRolesController`,
   // which is `@Controller('users')` carrying the PARAMETER route

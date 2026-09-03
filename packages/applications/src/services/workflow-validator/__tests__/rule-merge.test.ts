@@ -1,5 +1,5 @@
 /**
- * The one-way-strictness merge (TASK-716 §3.3 / Task 9).
+ * The one-way-strictness merge ( / Task 9).
  *
  * SYSTEM-tenant rows are the platform invariant register. A tenant row may ADD a
  * rule of its own, and may RAISE the severity of a SYSTEM rule with the same

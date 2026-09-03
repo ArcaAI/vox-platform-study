@@ -1,26 +1,26 @@
 # =============================================================================
-# TASK-824 — LM Studio (`llmster`) headless GPU serving image
+# LM Studio (`llmster`) headless GPU serving image
 # =============================================================================
-# Owner decision 2026-08-30 (README §0): LM Studio + vLLM. The llama.cpp
-# recommendation in §2A was considered and OVERRULED. This is the plan of
+# Owner decision 2026-08-30: LM Studio + vLLM. The llama.cpp
+# recommendation in was considered and OVERRULED. This is the plan of
 # record; ../image/ is retained only as the record of that argument and as the
-# documented escape hatch (§2).
+# documented escape hatch.
 #
 # The image embeds a PROPRIETARY binary we hold no redistribution right to.
-# PUSH TO THE INTERNAL REGISTRY ONLY (§0 risk A-5, §5 L-2).
+# PUSH TO THE INTERNAL REGISTRY ONLY ( risk A-5, L-2).
 #
 # -----------------------------------------------------------------------------
-# THE TRAP THIS FILE EXISTS TO DEFEAT (§4.1, §0 risk A-3)
+# THE TRAP THIS FILE EXISTS TO DEFEAT (risk A-3)
 # -----------------------------------------------------------------------------
 # `curl -fsSL https://lmstudio.ai/install.sh | bash` picks its bundle from the
 # BUILD HOST. Re-verified against the live script on 2026-08-30:
 #
-#   install.sh:243 get_release_name()      "Linux x86_64" -> full${_bundle_suffix}
+#   install.sh:243 get_release_name() "Linux x86_64" -> full${_bundle_suffix}
 #   install.sh:594 get_linux_x86_full_bundle_suffix()
 #                    -> "+cuda12" if supports_cuda_12_4_or_newer, else ""
 #   install.sh:586 _minimum_driver_version="550.54.14"
 #   install.sh:447 if ! check_cmd nvidia-smi; then echo ""; return 0
-#   install.sh:442 if ! check_cmd timeout;    then echo ""; return 0   <-- NOTE
+#   install.sh:442 if ! check_cmd timeout; then echo ""; return 0 <-- NOTE
 #
 # The last line is a SECOND trigger the ticket did not record: a builder that
 # lacks coreutils `timeout` gets the CPU bundle EVEN ON A GPU HOST. Two
@@ -31,13 +31,13 @@
 # verify a pinned SHA-512. The two bundles are provably different artifacts
 # (verified 2026-08-30 by fetching both .sha512 files):
 #
-#   full+cuda12.tar.gz  145d84440b8797614edb39b1019085c90fbc215c...  <- we pin
-#   full.tar.gz         29464e0cc52bdf31f6feb9d280d1f499cbef494f...  <- CPU
+#   full+cuda12.tar.gz 145d84440b8797614edb39b1019085c90fbc215c... <- we pin
+#   full.tar.gz 29464e0cc52bdf31f6feb9d280d1f499cbef494f... <- CPU
 #
 # Therefore a CPU tarball CANNOT satisfy this build: sha512sum -c aborts it.
 # That closes the BUILD half of A-3. The RUNTIME half — a correct image landing
 # on a node with no GPU, no runtimeClassName, or a driver below the floor — is
-# closed by the entrypoint's HOPE_EXPECT_ACCEL assertion, because §8.4
+# closed by the entrypoint's HOPE_EXPECT_ACCEL assertion, because
 # establishes that a CPU-only deployment is UNDETECTABLE OVER HTTP.
 # =============================================================================
 
@@ -95,11 +95,11 @@ RUN set -eu; cd /tmp; \
 # bundle.
 #
 # MEASURED, pipeline 1030 / job 15218 (the failing build's own evidence dump):
-#   `lms runtime ls`      -> "No runtimes found."
+#   `lms runtime ls` -> "No runtimes found."
 #   ~/.lmstudio/extensions/backends/ ->
-#       llama.cpp-linux-x86_64-avx2-2.31.2                 (CPU)
-#       llama.cpp-linux-x86_64-vulkan-avx2-2.31.2          (Vulkan)
-#       llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.31.2   (CUDA)
+#       llama.cpp-linux-x86_64-avx2-2.31.2 (CPU)
+#       llama.cpp-linux-x86_64-vulkan-avx2-2.31.2 (Vulkan)
+#       llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.31.2 (CUDA)
 #
 # Both are true at once because `lms runtime ls` enumerates runtimes the HOST
 # CAN RUN -- it is hardware-filtered. A CI runner has no NVIDIA device, so it
@@ -118,7 +118,7 @@ RUN set -eu; cd /tmp; \
 #
 # THE DAEMON MUST BE STARTED FIRST. Measured across two jobs:
 #   job 15218 — `lms daemon up`, THEN `find ~/.lmstudio` -> three backends
-#   job 15283 — no daemon, `ls .../extensions/backends`  -> EMPTY
+#   job 15283 — no daemon, `ls .../extensions/backends` -> EMPTY
 # Same cached bootstrap layer in both, so `llmster bootstrap` does NOT populate
 # extensions/backends; the daemon's FIRST START does. Starting it here means the
 # engines are materialised into THIS layer, i.e. genuinely baked into the image
@@ -174,7 +174,7 @@ RUN set -eu; \
 # Weights live on the mounted volume. ~/.lmstudio — ESPECIALLY .internal/, which
 # holds llmster-install-location.json and the daemon's unix socket — stays in the
 # image: without it `lms daemon up` fails with "no valid installation could be
-# found", and a unix socket on a network volume breaks (§4.4).
+# found", and a unix socket on a network volume breaks.
 RUN rm -rf /home/llmster/.lmstudio/models \
  && ln -s /data/models /home/llmster/.lmstudio/models
 
@@ -221,7 +221,7 @@ RUN set -eu; \
     chown 10001:10001 /app/build-info.json
 USER llmster
 
-# §4.11 / bug #1323: LM Studio returns HTTP 200 FOR UNKNOWN PATHS, so a probe on
+# / bug #1323: LM Studio returns HTTP 200 FOR UNKNOWN PATHS, so a probe on
 # any path always passes — including against a broken server. Both the status
 # AND the body must be checked. Do NOT "simplify" this to a status-code check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \

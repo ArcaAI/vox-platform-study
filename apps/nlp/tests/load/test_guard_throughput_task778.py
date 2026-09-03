@@ -1,4 +1,4 @@
-"""TASK-778 — the 100-concurrent-session load driver. Repeatable, and REAL.
+"""the 100-concurrent-session load driver. Repeatable, and REAL.
 
 The platform target is >= 100 concurrent consultation sessions. This driver
 measures it end to end: 100 concurrent HTTP requests through the real FastAPI
@@ -59,14 +59,14 @@ def _env_int(name: str, default: int) -> int:
 CONCURRENCY = _env_int("NLP_LOAD_TEST_CONCURRENCY", 100)
 ROUNDS = _env_int("NLP_LOAD_TEST_ROUNDS", 3)
 PASS_MS = _env_int("NLP_LOAD_TEST_PASS_MS", 40)
-# Batching geometry under test. Overridable so the tuning in the ticket README
+# Batching geometry under test. Overridable so the tuning 
 # is REPRODUCIBLE — the recorded numbers name the geometry that produced them.
 BATCH = _env_int("NLP_LOAD_TEST_BATCH", 16)
 LINGER_MS = _env_int("NLP_LOAD_TEST_LINGER_MS", 8)
 INFLIGHT = _env_int("NLP_LOAD_TEST_INFLIGHT", 2)
 REAL_MODEL = os.environ.get("NLP_LOAD_TEST_MODEL", "").strip()
 
-# TASK-782 — device placement and the two service classes.
+# device placement and the two service classes.
 #
 # `NLP_LOAD_TEST_DEVICE` is where the tensors execute ("cpu" | "mps" | "cuda" |
 # "auto"). It goes through the same `nlp.core.device` resolution the service
@@ -265,7 +265,7 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     monkeypatch.setattr(nlp_settings.service, "inference_batch_max_size", BATCH)
     monkeypatch.setattr(nlp_settings.service, "inference_batch_linger_ms", LINGER_MS)
     monkeypatch.setattr(nlp_settings.service, "inference_max_inflight_batches", INFLIGHT)
-    # TASK-782: placement is part of the geometry under test, resolved exactly
+    # placement is part of the geometry under test, resolved exactly
     # as the service resolves it.
     monkeypatch.setattr(nlp_settings.service, "inference_device", DEVICE)
     reset_inference_semaphore()
@@ -282,7 +282,7 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
 
     latencies, codes, wall = await _drive(app, body, CONCURRENCY)
     # NOT `== {200}`. Shedding with 503 at the declared ceilings IS the
-    # contract under overload (§3.1), and a driver that asserts all-200 cannot
+    # contract under overload, and a driver that asserts all-200 cannot
     # MEASURE the failure mode it exists to find — it just goes red and reports
     # no numbers. So: assert only that every response is a DECLARED outcome,
     # and report the histogram, throughput AND goodput. A geometry that sheds
@@ -299,7 +299,7 @@ async def test_real_model_throughput_at_target_concurrency(monkeypatch) -> None:
     await guard_dispatch.reset_guard_batchers()
 
 
-# ── TASK-782 — the two service classes, measured together ────────────────
+# ── — the two service classes, measured together ────────────────
 
 
 def _apply_geometry(monkeypatch) -> None:
@@ -327,7 +327,7 @@ def _apply_geometry(monkeypatch) -> None:
 @pytest.mark.skipif(not REAL_MODEL, reason="set NLP_LOAD_TEST_MODEL to measure real weights")
 @pytest.mark.asyncio
 async def test_inline_gate_latency_under_bulk_load(monkeypatch) -> None:
-    """The question TASK-782 exists to answer, measured the only honest way.
+    """The question exists to answer, measured the only honest way.
 
     A synchronous inline gate does not run on an idle service — it runs while
     the asynchronous per-utterance redaction pass is saturating the same

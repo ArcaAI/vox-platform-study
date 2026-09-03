@@ -1,5 +1,5 @@
 /**
- * Drift gate for the provider-connection capability list (TASK-799 Phase 4, E.3).
+ * Drift gate for the provider-connection capability list.
  *
  * The console cannot import `@arcaai/applications` (BFF boundary), so its copy
  * of `ProviderService` has to live in the app. The failure that produced this
@@ -52,7 +52,7 @@ describe('PROVIDER_SERVICES is derived from the gateway contract', () => {
     expect([...PROVIDER_SERVICES]).toEqual(gatewayServiceEnum());
   });
 
-  it('covers the capabilities TASK-799 P1-C.1 added, not just the original three', () => {
+  it('covers the capabilities  P1-C.1 added, not just the original three', () => {
     // Named explicitly so a regression to {llm,stt,tts} reads as the specific
     // bug it is, rather than as an opaque array mismatch.
     expect(PROVIDER_SERVICES).toContain('embeddings');

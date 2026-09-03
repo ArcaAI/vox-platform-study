@@ -1,6 +1,6 @@
-// TASK-846 D-3 — the platform egress allow-list for tenant-authored MCP connector URLs.
+// the platform egress allow-list for tenant-authored MCP connector URLs.
 //
-// WHAT THIS GOVERNS. TASK-846 (OD-7) let tenant admins author `McpServer.baseUrl`, which
+// WHAT THIS GOVERNS. let tenant admins author `McpServer.baseUrl`, which
 // the harness worker then connects to. Unconstrained, that is SSRF with a tenant as the
 // attacker: inside a k3s cluster the same field reaches the Kubernetes API, Vault on
 // loopback, and the cloud metadata endpoint at 169.254.169.254. This key is the set of

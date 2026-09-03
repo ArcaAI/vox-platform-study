@@ -1,7 +1,7 @@
 import { DocumentSectionDeclaration, DocumentSectionForm, DocumentTemplateShape } from './document-template-shape';
 
 /**
- * The TEMPLATE COMPILER (TASK-810 Task 8).
+ * The TEMPLATE COMPILER.
  *
  * ## Why a compiler and not a prompt
  *

@@ -1,4 +1,4 @@
-"""TASK-829 — the realtime ROUTES: attribution, fail-closed, and the C-5 wire shape.
+"""the realtime ROUTES: attribution, fail-closed, and the C-5 wire shape.
 
 Handlers are exercised DIRECTLY with a lightweight fake request, matching the
 rest of this suite (`test_task777_screen_routes.py`): guardrail's `lifespan`
@@ -314,7 +314,7 @@ async def test_a_grammar_check_without_the_corrected_text_is_a_422_not_a_pass(bi
 
 
 async def test_generative_groundedness_is_not_reimplemented_here(bind) -> None:
-    """§7's third row already exists; a second copy is a second inference stack."""
+    """'s third row already exists; a second copy is a second inference stack."""
     bind["install"](_StubAnalyzer())
     with pytest.raises(HTTPException) as exc:
         await check_output(

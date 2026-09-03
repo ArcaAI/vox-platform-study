@@ -160,7 +160,7 @@ class TestProviderResolveModelNoFallback:
 
 
 class TestNoInformationalDefaultSurvives:
-    """Decision 3 kept an informational ``default_model`` field. TASK-799 lane B
+    """Decision 3 kept an informational default_model field. lane B
     removed it.
 
     Keeping it was defensible while it only decorated the `/providers` listing —

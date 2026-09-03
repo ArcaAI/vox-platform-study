@@ -5,23 +5,23 @@
 # Answers "does the harness agentic loop run in this database, right now, and
 # for whom?" — without going through the API.
 #
-# TASK-705 CHANGED THE ANSWER'S SHAPE. The loop used to be governed by ONE
+# CHANGED THE ANSWER'S SHAPE. The loop used to be governed by ONE
 # platform kill-switch (`harness.loop.enabled`), so one row answered the whole
 # question. It is now a SUBSCRIPTION FEATURE composed with an operational veto:
 #
-#     runs(tenant)  ⇔  entitlement(tenant).agenticLoop  AND NOT emergencyStop
+#     runs(tenant) ⇔ entitlement(tenant).agenticLoop AND NOT emergencyStop
 #
 # So this script prints three things, in that order:
 #
-#   1. harness.loop.emergencyStop  — the platform veto (core."GlobalSetting").
+#   1. harness.loop.emergencyStop — the platform veto (core."GlobalSetting").
 #                                    ABSENT is the normal, intended state and
 #                                    means "no emergency": the loop is allowed.
-#   2. entitlements.enabled        — whether entitlement enforcement is ON in
+#   2. entitlements.enabled — whether entitlement enforcement is ON in
 #                                    this environment at all. With it OFF,
 #                                    `isFeatureEnabled` returns true for every
 #                                    tenant, so the commercial gate is INERT and
 #                                    every tenant runs the loop.
-#   3. per-tenant plans            — each tenant's plan, and the loop verdict
+#   3. per-tenant plans — each tenant's plan, and the loop verdict
 #                                    that plan implies (AGENTIC_LOOP_PLAN_DEFAULTS
 #                                    in packages/applications/src/services/
 #                                    entitlements/entitlements.constants.ts).
@@ -33,7 +33,7 @@
 #
 # NOTE: per-tenant/per-plan OVERRIDES of the loop entitlement are not queried,
 # because no `featureAgenticLoop` column exists yet — the plan defaults live in
-# code until that schema change lands (TASK-705 §Schema follow-up). When the
+# code until that schema change lands ( follow-up). When the
 # columns arrive, add them to the plan query below.
 #
 # READ-ONLY. No writes, no migrations, no seeding. Safe to run against any
@@ -128,8 +128,8 @@ How to read this:
   * entitlements.enabled = false       → the commercial gate is INERT here;
     isFeatureEnabled returns true for everyone, so the "NOT entitled" verdicts
     above are advisory only. Deployed environments seed this ON.
-  * No harness.loop.enabled row is expected any more — TASK-705 retired that
+  * No harness.loop.enabled row is expected any more —  retired that
     key. If one is still present it is an inert leftover from an older seed.
 
-See docs/implementation/TASK-705-Loop-Status-Discovery/README.md.
+See 
 NOTES

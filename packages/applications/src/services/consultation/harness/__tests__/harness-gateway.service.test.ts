@@ -111,7 +111,7 @@ describe('HarnessGatewayService', () => {
       expect(body).not.toHaveProperty('redactionRules');
     });
 
-    it('forwards externalPatientId when present (TASK-712, consent-abac Phase 4)', async () => {
+    it('forwards externalPatientId when present (consent-abac Phase 4)', async () => {
       const service = build('http://harness:8866', 'tok');
 
       await service.start('c-9', { tenantId: 'tenant-9', externalPatientId: 'PAT-20250101-001' });
@@ -364,7 +364,7 @@ describe('HarnessGatewayService', () => {
     });
   });
 
-  describe('startWorkflowRun (TASK-722)', () => {
+  describe('startWorkflowRun ', () => {
     it('POSTs to /workflow-runs:start with the runId/sessionId/tenantId/configRef body and the service-token header', async () => {
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-1', workflowId: 'workflow-interpreter-run-1', temporalRunId: 't-1', status: 'started' } });
       const service = build('http://harness:8866', 'tok');
@@ -398,7 +398,7 @@ describe('HarnessGatewayService', () => {
       expect(result.status).toBe('started');
     });
 
-    it('forwards a sandbox flag and payload verbatim (TASK-721 Workbench)', async () => {
+    it('forwards a sandbox flag and payload verbatim (Workbench)', async () => {
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-2', workflowId: 'workflow-interpreter-run-2', temporalRunId: 't-2', status: 'started' } });
       const service = build('http://harness:8866', 'tok');
       const configRef = { store: 's3', bucket: 'harness-claim-check', key: 'abc123', size: 42, sha256: 'a'.repeat(64), content_type: 'text/plain; charset=utf-8' };
@@ -419,7 +419,7 @@ describe('HarnessGatewayService', () => {
     });
   });
 
-  describe('getWorkflowRun (TASK-722)', () => {
+  describe('getWorkflowRun ', () => {
     it('GETs /workflow-runs/{runId} with the service-token header', async () => {
       mockHttpService.axiosRef.get.mockResolvedValue({ data: { runId: 'run-1', status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00Z', endedAt: null } });
       const service = build('http://harness:8866', 'tok');
@@ -435,7 +435,7 @@ describe('HarnessGatewayService', () => {
     });
   });
 
-  describe('cancelWorkflowRun (TASK-722)', () => {
+  describe('cancelWorkflowRun ', () => {
     it('POSTs to /workflow-runs/{runId}:cancel with an empty body — never a caller-supplied signal name', async () => {
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-1', status: 'cancel_requested' } });
       const service = build('http://harness:8866', 'tok');

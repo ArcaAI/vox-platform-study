@@ -18,17 +18,17 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 @Throttle({ default: { limit: 300, ttl: 60000 } })
 @Controller('admin/monitoring')
 // API-KEY-NOTE — CLOSED BY PLANE, NOT BY CONSERVATIVE DEFAULT.
-// Originally @ForbidApiKey() as TASK-742's conservative default: the route
+// Originally @ForbidApiKey() as conservative default: the route
 // family declared nothing about API-key access, which under the deny-by-
 // default rule is a boot failure, and guessing a permissive scope is how the
-// original gap was created. TASK-759 moved the prefix to `admin/monitoring`
+// original gap was created. moved the prefix to `admin/monitoring`
 // (rule P2 — this is an administrative capability, not a business one), so
 // the SAME decorator is now the A2 outcome the admin plane requires: the
 // admin plane is JWT-only. The declaration is no longer awaiting owner
 // classification — the plane classifies it. No key-based consumer ever
 // existed on this surface, so the move breaks nothing.
 @ForbidApiKey()
-// SVC-NOTE (TASK-773, owner decision O-1) — CLOSED to the machine class.
+// SVC-NOTE (owner decision O-1) — CLOSED to the machine class.
 // Like `@ForbidApiKey()` above, this is a decision about WHAT the surface is,
 // not a conservative default awaiting classification. Uptime, heartbeats and
 // session counts are operator telemetry: their consumer is a human reading the

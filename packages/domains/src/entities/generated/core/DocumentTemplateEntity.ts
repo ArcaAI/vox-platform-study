@@ -6,7 +6,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
-// The MUTABLE head of a tenant's clinical-document SHAPE (TASK-810).
+// The MUTABLE head of a tenant's clinical-document SHAPE.
 // Carries identity (slug/name), governance (status/isDefault), the MOVABLE
 // `pinnedVersionNumber` naming which immutable `DocumentTemplateVersion`
 // generation resolves, and golden-library provenance. The shape ITSELF lives

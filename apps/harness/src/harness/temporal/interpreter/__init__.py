@@ -1,8 +1,7 @@
-"""The WorkflowInterpreter package (TASK-718).
+"""The WorkflowInterpreter package.
 
 Executes a published WorkflowDefinition version's compiledConfig by walking its
 stages and routing each node to an already-sanctioned Temporal activity. See
-docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md
 for the full contract.
 
 Deliberately NO eager re-exports here (unlike a typical barrel `__init__.py`):

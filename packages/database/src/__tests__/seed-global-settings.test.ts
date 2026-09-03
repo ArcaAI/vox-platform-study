@@ -70,7 +70,7 @@ const SYSTEM_WIDE_KEYS = [
   'SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED',
   'SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON',
   // The agent golden-library resync sweep's two controls used to sit here.
-  // They went with `DepartmentAgent` (TASK-815) — the sweep reconciled a
+  // They went with `DepartmentAgent` — the sweep reconciled a
   // per-department agent catalog that no longer exists. `TOTAL_IDS` is derived
   // from these arrays, so the count assertion follows on its own.
 ] as const;

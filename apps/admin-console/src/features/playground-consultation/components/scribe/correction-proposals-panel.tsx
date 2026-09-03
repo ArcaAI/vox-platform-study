@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * TASK-797 W2 — spelling / medical-term / drug-name correction review.
+ * spelling / medical-term / drug-name correction review.
  *
- * Implements the four rendering rules TASK-796 declared as SAFETY PROPERTIES, not styling:
+ * Implements the four rendering rules declared as SAFETY PROPERTIES, not styling:
  *
  *  1. NEVER auto-apply. `status` advances only on an explicit click, one proposal at a time —
  *     there is deliberately no "accept all".
@@ -50,12 +50,12 @@ export interface CorrectionProposalsPanelProps {
   /** Re-request the proposals for the current text (796 rule 2's "and re-request"). */
   onStale?: () => void;
   /**
-   * TASK-814 §2b — fires alongside `onAccept`, once the digest gate passes, with the proposal
+   * fires alongside `onAccept`, once the digest gate passes, with the proposal
    * marked `status: 'ACCEPTED'`. Accepting a correction here already IS the clinician's
    * judgement that it is right, so there is deliberately no second "promote" control — the
-   * caller threads this into the promotion-over-the-raw-transcript path (TASK-812 DD-8)
+   * caller threads this into the promotion-over-the-raw-transcript path
    * independently of the note-buffer write `onAccept` performs.
-   */
+ */
   onProposalAccepted?: (proposal: CorrectionProposal) => void;
   /** When set, both actions are disabled and this reason is shown (rule 11 §5). */
   disabledReason?: string | null;

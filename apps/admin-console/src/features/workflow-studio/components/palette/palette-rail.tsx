@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * `PaletteRail` (TASK-719 Task 12) — registry-driven, grouped by `paletteKey`. Renders its
- * documented empty state when the registry is empty (README §1: "zero hard-coded node types…
- * if TASK-720 has not landed, the palette rail renders its empty state") — which is the ACTIVE
+ * `PaletteRail` — registry-driven, grouped by `paletteKey`. Renders its
+ * documented empty state when the registry is empty ("zero hard-coded node types…
+ * if has not landed, the palette rail renders its empty state") — which is the ACTIVE
  * state against the real registry today (`contracts/registry.contract.md`).
  *
  * A filter box sits above the groups. It is pure client-side UI state (never a URL param — the

@@ -1,4 +1,4 @@
-"""Conformance suite for the tts model source resolver (TASK-855 L6).
+"""Conformance suite for the tts model source resolver.
 
 This mirrors the same named quartet of cases in
 `apps/stt/tests/unit/test_model_source_resolver.py` (mirrored-implementation
@@ -388,7 +388,7 @@ async def test_local_override_s3_uri_is_resolved(
     config: ModelSourceConfig, stub_s3: StubS3Client, monkeypatch
 ) -> None:
     # `resolve_local_override` now goes through `config_for_model` (the
-    # credentialed variant, TASK-855 L6 follow-on) rather than the bare
+    # credentialed variant, follow-on) rather than the bare
     # `config_from_settings` — stub the former directly so this test stays
     # about the s3:// dispatch, not about credential-fetch plumbing (that
     # plumbing has its own suite: `test_model_credentials.py`).

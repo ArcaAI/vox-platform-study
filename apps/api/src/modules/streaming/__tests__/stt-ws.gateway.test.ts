@@ -587,7 +587,7 @@ describe('SttWsGateway', () => {
     // existed anywhere on this path: an unreachable/dropped client (grace
     // expiry) must be distinguishable from a client-driven close at the
     // ledger. Both call removeSession with the SAME sessionId (same
-    // idempotency key either way — ws-b-contract.md §4), but only the abort
+    // idempotency key either way — ws-b-contract.md, but only the abort
     // carries interrupted:true.
     it('marks the ledger row interrupted on grace-window expiry, NOT on an explicit close', async () => {
       vi.useFakeTimers();

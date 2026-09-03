@@ -176,7 +176,7 @@ class TestStreamUsesInjectedTaskManager:
                 model="llama3.2:latest",
             )
         )
-        # The SSE endpoint reads via read_chunk_ENTRIES_blocking (TASK-636 added
+        # The SSE endpoint reads via read_chunk_ENTRIES_blocking ( added
         # it to carry the message id + trace carrier alongside each chunk).
         # Stubbing the older read_chunks_blocking left the real name unstubbed,
         # so the AsyncMock auto-created it and returned a MagicMock — which is

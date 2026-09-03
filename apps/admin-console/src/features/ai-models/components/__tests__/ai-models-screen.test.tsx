@@ -116,7 +116,7 @@ describe('AiModelsScreen', () => {
     expect(screen.getByText('whisper')).toBeDefined();
   });
 
-  it('renders the weight-source and download-state chips per row — the catalog view (TASK-855)', async () => {
+  it('renders the weight-source and download-state chips per row — the catalog view ', async () => {
     // MODEL: sourceUri is a bare HF id (hub-id), localPath is null, downloadStatus DOWNLOADED.
     stubFetch(() => Response.json(envelope([MODEL])));
     renderWithProviders(<AiModelsScreen />);

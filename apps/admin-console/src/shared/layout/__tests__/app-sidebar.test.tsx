@@ -40,7 +40,7 @@ describe('AppSidebar — scoped to the active domain', () => {
     // AI Platform spans 10-19, 20-29 and 30-49, so the tier labels stay useful
     // — they tell a super admin which rows are cross-tenant.
     //
-    // TASK-846 / OD-7 (2026-09-01) added the middle one: `/tools-mcp` retiered
+    // / OD-7 (2026-09-01) added the middle one: `/tools-mcp` retiered
     // 10-19 -> 20-29 when tenant admins gained the right to configure MCP
     // connectors, so this domain now spans three tiers instead of two. The
     // "Administration" header is the point of the sub-headers, not a regression:
@@ -98,7 +98,7 @@ describe('AppSidebar — scoped to the active domain', () => {
   });
 
   it('falls back to the first reachable domain on a route no domain owns', async () => {
-    // /account left the rail for the user menu (Phase A) — the shell must still
+    // /account left the rail for the user menu — the shell must still
     // render a frame rather than an empty column, with nothing selected.
     usePathnameMock.mockReturnValue('/account');
     const { container } = renderInShell(<AppSidebar />);
@@ -109,7 +109,7 @@ describe('AppSidebar — scoped to the active domain', () => {
   });
 
   it('shows a narrowly-permissioned caller only the routes they hold (AC-3)', async () => {
-    // `/agents` (the Agent Catalog) left the rail with TASK-815; the first
+    // `/agents` (the Agent Catalog) left the rail with; the first
     // visible entry of this domain for this fixture is now `/prompt-templates`.
     usePathnameMock.mockReturnValue('/prompt-templates');
     renderInShell(<AppSidebar />, NARROW_TENANT_FIXTURE);

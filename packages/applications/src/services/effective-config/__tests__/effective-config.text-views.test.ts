@@ -1,4 +1,4 @@
-// TASK-799 A.1 — the two TEXT views that lane B could not land.
+// A.1 — the two TEXT views that lane B could not land.
 //
 // `apps/text` was written against BOTH groups before either existed
 // (`core/effective_config.py::external_guardrail` / `::generation_defaults`

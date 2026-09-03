@@ -45,7 +45,7 @@ class WidgetsResource extends AdminResource {
     return this.request<Widget>({ method: 'POST', path: 'admin/widgets', body });
   }
 
-  // The three shapes generated code takes for a route widened by TASK-773
+  // The three shapes generated code takes for a route widened by
   // decision O-3: it also accepts the area's `:read` sibling, which it passes
   // down so the 403 names what THIS route wants rather than the area scope.
   readOnly(id: string): Promise<Widget> {

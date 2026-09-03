@@ -2,7 +2,6 @@
  * Conformance regression suite (COMPAT / API layer).
  *
  * Locks the conformance scorecard of
- * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`
  * as executable checks. Each `describe`/`it` is named after the requirement it
  * locks so a failure names the broken contract, not just the broken code.
  *

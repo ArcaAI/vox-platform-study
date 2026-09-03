@@ -57,7 +57,7 @@ export class ServiceAccountFactory {
       allowedTenantIds: props.allowedTenantIds ?? null,
       allowedIps: props.allowedIps ?? null,
       // Fail-safe default: a machine principal is NEVER elevated by omission.
-      // §2.7 of the ticket: a principal that populates `roles` carelessly
+      // of the ticket: a principal that populates `roles` carelessly
       // silently becomes a super admin, so elevation is always an explicit,
       // persisted decision.
       superAdmin: props.superAdmin ?? false,

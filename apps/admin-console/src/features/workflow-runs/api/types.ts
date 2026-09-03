@@ -1,5 +1,5 @@
 /**
- * Wire types for the tenant-scoped Workflow Runs surface (TASK-723, Phase C).
+ * Wire types for the tenant-scoped Workflow Runs surface.
  * Shapes mirror the gateway DTOs in @arcaai/applications
  * (`WorkflowRunResponse` / `RunTraceResponse` / `RunNodeRollupResponse`) and
  * `@arcaai/workflow-contract`'s `WorkflowGraph` (`WorkflowDefinitionResponse.graph`).
@@ -57,7 +57,7 @@ export interface ListWorkflowRunsParams {
   from?: string;
   /** Inclusive upper bound on `startedAt` (ISO-8601 instant). */
   to?: string;
-  /** TASK-721 Workbench sandbox runs — excluded unless explicitly true. */
+  /** Workbench sandbox runs — excluded unless explicitly true. */
   includeSandbox?: boolean;
   cursor?: string;
   limit?: number;
@@ -93,7 +93,7 @@ export interface RunTrace {
   stepCount: number;
   /** True when the bounded trajectory read hit its cap — the rollup is a prefix, not the whole run. */
   truncated: boolean;
-  /** True when the run has zero steps and predates the effective trace-retention window (Task 9). */
+  /** True when the run has zero steps and predates the effective trace-retention window. */
   tracePruned: boolean;
 }
 
@@ -125,7 +125,7 @@ export interface WorkflowGraph {
 
 /**
  * A read-only slice of `WorkflowDefinitionResponse` (`@arcaai/applications`) —
- * only the fields the pinned-version deep link needs (Task 8). Re-declared
+ * only the fields the pinned-version deep link needs. Re-declared
  * for the same cross-feature reason as the rest of this file.
  */
 export interface WorkflowDefinitionSlice {
@@ -138,7 +138,7 @@ export interface WorkflowDefinitionSlice {
 }
 
 /**
- * Live HITL-gate state for a run (TASK-731 Phase B), mirrored off
+ * Live HITL-gate state for a run, mirrored off
  * `RunGateStateResponse` (`packages/applications/.../dto/run-gate.ts`).
  *
  * `waiting` is the ONLY field an Approve affordance may key off. `exists: false` is the normal
@@ -162,7 +162,7 @@ export interface ApproveRunGateBody {
 }
 
 /**
- * TASK-849 lane C — the run-event SSE contract `GET /workflows/:slug/runs/:runId/stream`
+ * lane C — the run-event SSE contract `GET /workflows/:slug/runs/:runId/stream`
  * mints (`apps/api/src/modules/workflows/workflow-stream.service.ts` +
  * `workflow-run-event.ts`). Re-declared here for the same cross-feature reason as the rest
  * of this file — the console never imports server packages.

@@ -23,7 +23,7 @@ export function shouldSeedApiKeys(env: Environment = getNodeEnv()): boolean {
 }
 
 /**
- * TASK-799 lane E — explain an API-key seeding skip by the gate that ACTUALLY
+ * lane E — explain an API-key seeding skip by the gate that ACTUALLY
  * closed.
  *
  * Demo API-key seeding is gated twice and independently: the seed MODE must
@@ -92,7 +92,7 @@ function extractPrefix(rawKey: string): string {
 }
 
 /**
- * TASK-763 — the scope set a seeded SDK key needs to drive the day-1 SDK
+ * the scope set a seeded SDK key needs to drive the day-1 SDK
  * surface, declared ONCE instead of copy-pasted per key.
  *
  * Every entry is derived from a `@RequiredScopes(...)` a route the browser SDK
@@ -100,30 +100,30 @@ function extractPrefix(rawKey: string): string {
  * from what "looks reasonable". The paths were read off the two SDK packages;
  * the scopes off the controllers that serve them:
  *
- * | SDK call                          | Controller                          | Scope |
+ * | SDK call | Controller | Scope |
  * |-----------------------------------|-------------------------------------|-------|
- * | consultation + summarization      | consultation / text-compat          | `consultation:*` (4) |
- * | live + batch transcription        | transcription-job / stt ws          | `stt:*` (3) |
- * | `GET /audio/pipelines`            | `AudioPipelinePublicController`     | `stt:model:read` |
- * | `POST /speech/synthesize`, voices | TTS proxy                           | `tts:speech:write`, `tts:voice:read` |
- * | `GET /prompt-templates/available` | `PromptTemplateController`          | `prompt:template:read` |
- * | `GET /tenant/me`, `/tenant/me/config` | `MyTenantController`            | `tenant:profile:read` |
- * | `GET /tenant/me/context-schema`   | `MyTenantContextSchemaController`   | `tenant:context-schema:read` |
- * | `GET /entitlements/me`            | `MyEntitlementsController`          | `tenant:account:read` |
- * | `GET/PATCH /user/me/settings`     | `UserSettingsController`            | `user:settings:read|write` |
- * | `GET /user/me/preferences`        | `UserPreferencesController`         | `user:preferences:read|write` |
- * | `GET /user/me/departments`, `/rbac/check` | user/rbac `me` reads        | `user:profile:read` |
- * | `GET /changelog`, `/changelog/unseen` | `ChangelogController`           | `platform:changelog:read` |
+ * | consultation + summarization | consultation / text-compat | `consultation:*` (4) |
+ * | live + batch transcription | transcription-job / stt ws | `stt:*` (3) |
+ * | `GET /audio/pipelines` | `AudioPipelinePublicController` | `stt:model:read` |
+ * | `POST /speech/synthesize`, voices | TTS proxy | `tts:speech:write`, `tts:voice:read` |
+ * | `GET /prompt-templates/available` | `PromptTemplateController` | `prompt:template:read` |
+ * | `GET /tenant/me`, `/tenant/me/config` | `MyTenantController` | `tenant:profile:read` |
+ * | `GET /tenant/me/context-schema` | `MyTenantContextSchemaController` | `tenant:context-schema:read` |
+ * | `GET /entitlements/me` | `MyEntitlementsController` | `tenant:account:read` |
+ * | `GET/PATCH /user/me/settings` | `UserSettingsController` | `user:settings:read|write` |
+ * | `GET /user/me/preferences` | `UserPreferencesController` | `user:preferences:read|write` |
+ * | `GET /user/me/departments`, `/rbac/check` | user/rbac `me` reads | `user:profile:read` |
+ * | `GET /changelog`, `/changelog/unseen` | `ChangelogController` | `platform:changelog:read` |
  *
  * NOT included, deliberately:
- *   - Any `admin:*` or `webhook:*` scope. TASK-757 makes `/api/v1/admin/*` a
+ * Any `admin:*` or `webhook:*` scope. makes `/api/v1/admin/*` a
  *     JWT-only plane (`@ForbidApiKey()`, checked BEFORE the scope check), and
- *     TASK-758/757 mark all 59 of those strings `reserved: true` — refused at
+ * /757 mark all 59 of those strings `reserved: true` — refused at
  *     GRANT time and dropped from the advertised catalog. A seeded key carrying
  *     one would be dead on arrival AND unreproducible through the console.
  *   - `media:file:read`. No route declares it, and `read:Storage` is not an
- *     ability any clinical role holds — see the TASK-763 README §Owner Decisions.
- *   - `workflow:*`. The exposure plane ships behind a kill-switch (TASK-722 R-1).
+ * ability any clinical role holds — Decisions.
+ * `workflow:*`. The exposure plane ships behind a kill-switch.
  */
 export const SDK_DAY_ONE_SCOPES = [
   // Transcription
@@ -195,9 +195,9 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.TENANT_ADMIN,
-    // TASK-763 — deliberately EMPTY, not `['webhook:event:read','webhook:event:write']`.
+    // deliberately EMPTY, not `['webhook:event:read','webhook:event:write']`.
     //
-    // `WebhookController` lives at `admin/webhooks`, so TASK-757's policy A2
+    // `WebhookController` lives at `admin/webhooks`, so policy A2
     // (`/api/v1/admin/*` is JWT-only) makes it unreachable by ANY API key, and
     // both `webhook:*` strings are now `reserved: true` in
     // `apikey-scopes.registry.ts` — refused at grant time, dropped from the
@@ -209,7 +209,7 @@ export const DEFAULT_API_KEYS = [
     // inbound reach. `ApiKeyService.hasScope` returns false for an empty array,
     // so this fails CLOSED on every scoped route — which is the honest state.
     // Re-pointing it at a real inbound capability needs an owner decision; see
-    // the TASK-763 README §Owner Decisions.
+    // Decisions.
     scopes: [] as string[],
     rateLimit: 500,
   },
@@ -223,7 +223,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.SERVICE_ACCOUNT,
-    // TASK-763 — narrowed from `['*']` to the one scope this credential is
+    // narrowed from `['*']` to the one scope this credential is
     // actually for.
     //
     // This row is the STT worker's gateway credential: BUG-013 requires
@@ -243,11 +243,11 @@ export const DEFAULT_API_KEYS = [
     // because it stays legitimate on `/internal/*`; that is a reason to scope
     // it precisely, not to leave it wide.
     //
-    // NOTE for TASK-757/762: three comments in `apps/api/src` still describe
+    // NOTE for /762: three comments in `apps/api/src` still describe
     // this credential as "scopes `['*']`" (`stt-internal.controller.ts` and
     // `apikey-scopes.registry.ts`'s `internal:stt:worker` entry). They remain
     // CORRECT about the outcome — the worker still clears the gate — but the
-    // parenthetical is now stale. `apps/api/src` is owned by TASK-757 in this
+    // parenthetical is now stale. `apps/api/src` is owned by in this
     // sprint and was not edited here.
     scopes: ['internal:stt:worker'],
     rateLimit: 5000,

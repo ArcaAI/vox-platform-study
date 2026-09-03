@@ -1743,7 +1743,7 @@ describe('PromptManagementService', () => {
   // ─── prompt quality/score test run ──────────────────────
 
   describe('prompt test run (BUG-018 two-call: start + finalize)', () => {
-    // TASK-818 §3C.3(1) — TEXT no longer ACKS a streaming `POST /generate` with
+    // TEXT no longer ACKS a streaming `POST /generate` with
     // `202 {task_id, stream_url}`. It answers **200 + text/event-stream**, and
     // the id arrives in the first frame's `data`. The POST mock therefore
     // returns an SSE body rather than a JSON ack; `GET /tasks/:id` (the
@@ -1884,7 +1884,7 @@ describe('PromptManagementService', () => {
       expect(mockEventEmitter.emit).not.toHaveBeenCalled();
     });
 
-    // ── TASK-818 §3C.3(1): the id comes off the stream, and letting go of that
+    // ──: the id comes off the stream, and letting go of that
     //    stream is not a cancel ──
     it('takes the generation id off the SSE body and drops only its own subscription', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
@@ -2736,7 +2736,7 @@ describe('PromptManagementService', () => {
     });
   });
 
-  // ─── approveTemplate scope (OD-3): SYSTEM = super-admin only,
+  // ─── approveTemplate scope: SYSTEM = super-admin only,
   //     tenant-owned = manage:PromptTemplate for that tenant ───
   describe('approveTemplate authorization scope (OD-3)', () => {
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -2881,7 +2881,7 @@ describe('PromptManagementService', () => {
     });
   });
 
-  // ─── approveTemplate eval promotion gate  ───
+  // ─── approveTemplate eval promotion gate ───
   describe('approveTemplate eval promotion gate', () => {
     const mockGate = { evaluatePromotion: vi.fn() };
 

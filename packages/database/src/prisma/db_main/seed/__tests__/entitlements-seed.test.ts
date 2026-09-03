@@ -129,7 +129,7 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
     expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('true');
   });
 
-  it('defaults enforcement ON but metering reconcile OFF on a developer laptop (TASK-785 OD-6)', async () => {
+  it('defaults enforcement ON but metering reconcile OFF on a developer laptop (OD-6)', async () => {
     // The two switches diverge here, and only here. Enforcement is a product
     // behaviour a developer should meet locally; the reconcile sweep is a
     // background snapshot job that enforcement does not depend on, so it keeps

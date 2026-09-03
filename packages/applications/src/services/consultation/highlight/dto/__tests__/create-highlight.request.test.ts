@@ -3,7 +3,7 @@
  *
  * `exact` / `note` fold verbatim into the harness prompt as `[highlight]`
  * lines (`harness-internal.service.ts` assemble) — a `@MaxLength` cap on each
- * bounds the prompt-injection / unbounded-payload surface (SOTA §5.1/§5.2).
+ * bounds the prompt-injection / unbounded-payload surface (SOTA
  *
  * Testing Strategy:
  * - Use the REAL class-validator validate() function

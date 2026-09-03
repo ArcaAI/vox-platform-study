@@ -1,13 +1,13 @@
 import { SandboxRunCancelResponse, SandboxRunResponse, SandboxRunStatusResponse, StartSandboxRunRequest } from './dto';
 
 /**
- * The Workbench's sandbox-run application service (TASK-721 Phase C).
+ * The Workbench's sandbox-run application service.
  *
- * Distinct from `IWorkflowExposureService` (TASK-722): that surface invokes a tenant's
+ * Distinct from `IWorkflowExposureService`: that surface invokes a tenant's
  * ACTIVE PUBLISHED version by `slug`, for API-key OR session-JWT callers, always
  * `sandbox: false`. This service is session-JWT-only (admin console), addresses ANY
  * non-deleted version of the tenant's own `WorkflowDefinition` by `id` — DRAFT and
- * VALIDATED included, per the Workbench's "DRAFT or published" requirement (README §1) — and
+ * VALIDATED included, per the Workbench's "DRAFT or published" requirement — and
  * ALWAYS starts with `sandbox: true`. It compiles the graph FRESH on every start (via
  * `IWorkflowDefinitionService.getCompiledConfigForSandboxRun`) rather than reading a
  * persisted `compiledConfig`, which only `publish()` ever stamps.

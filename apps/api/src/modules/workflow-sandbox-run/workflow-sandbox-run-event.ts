@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { ASYNC_ENVELOPE_SCHEMA_VERSION, AsyncEnvelope } from '@arcaai/async-contract';
 import { SandboxRunStatusResponse } from '@arcaai/applications';
 
-/** Mirrors `../workflows/workflow-run-event.ts`'s terminal-status set exactly (TASK-722), for
+/**
+ * Mirrors `../workflows/workflow-run-event.ts`'s terminal-status set exactly, for
  *  the same reason: the interpreter's status vocabulary is a single source of truth this
  *  gateway does not own. Kept as a local copy (not imported) — `workflows/` and
  *  `workflow-sandbox-run/` are sibling, independently-owned gateway modules; see the class doc
- *  on `WorkflowSandboxStreamService` for why this bridge exists at all. */
+ *  on `WorkflowSandboxStreamService` for why this bridge exists at all.
+ */
 const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
 export function isTerminalSandboxRunStatus(status: string): boolean {
@@ -24,8 +26,8 @@ export interface WorkflowSandboxRunEventPayload {
 }
 
 /**
- * Build the async-contract envelope (TASK-717 S-5, reused per TASK-722's precedent) for one
- * polled snapshot of a Workbench sandbox run's live status (TASK-721 Task 7).
+ * Build the async-contract envelope (reused per precedent) for one
+ * polled snapshot of a Workbench sandbox run's live status.
  *
  * Same bridge posture as `../workflows/workflow-run-event.ts`: the interpreter dispatcher has
  * no push event producer (`apps/harness/.../interpreter.py` exposes only plain-JSON
@@ -56,9 +58,11 @@ export function buildWorkflowSandboxRunEventEnvelope(
   };
 }
 
-/** One SSE wire frame — same shape as `../workflows/workflow-run-event.ts`'s `formatSseFrame`.
- *  `id` is the envelope's own identity, NOT a resume cursor (async-contract §3.6: never
- *  synthesize a resume token for this non-resumable poll-bridge transport). */
+/**
+ * One SSE wire frame — same shape as `../workflows/workflow-run-event.ts`'s `formatSseFrame`.
+ * `id` is the envelope's own identity, NOT a resume cursor (async-contract: never
+ *  synthesize a resume token for this non-resumable poll-bridge transport).
+ */
 export function formatSandboxRunSseFrame(envelope: AsyncEnvelope<WorkflowSandboxRunEventPayload>): string {
   return `event: ${envelope.type}\nid: ${envelope.id}\ndata: ${JSON.stringify(envelope)}\n\n`;
 }

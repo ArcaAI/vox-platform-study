@@ -75,7 +75,7 @@ describe('TextModelsSection', () => {
     stubFetch();
     renderWithProviders(<TextModelsSection />);
 
-    // TEXT_TEST_TASK_KEYS is included: TASK-740 D-2 gave `text.test` its own
+    // TEXT_TEST_TASK_KEYS is included: gave `text.test` its own
     // "Prompt test bench" section and card, but this loop still only walked
     // primary+fallback, so the new card was never asserted on.
     for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_TEST_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {

@@ -67,7 +67,7 @@ const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 @ApiTags('speech')
 @ApiBearerAuth()
 @Controller('speech')
-// TASK-742: the TTS proxy — the other surface the conformance review named
+// the TTS proxy — the other surface the conformance review named
 // as reachable unauthorized. Gated by the new `tts:*` family rather than an
 // `stt:*` scope, so a transcription key cannot synthesise speech.
 @RequiredScopes('tts:speech:write')
@@ -183,7 +183,7 @@ export class SpeechProxyController {
     if (typeof status === 'number') {
       return new HttpException({ detail: fallbackMessage }, status);
     }
-    // TASK-768 — see `text-proxy.controller.ts`: no upstream status ⇒ transport
+    // see `text-proxy.controller.ts`: no upstream status ⇒ transport
     // failure ⇒ 503, from the shared classifier. Body shape unchanged.
     const kind = classifyDownstreamFailure(err);
     return new HttpException({ detail: fallbackMessage }, kind ? downstreamStatusFor(kind) : HttpStatus.BAD_GATEWAY);

@@ -1,19 +1,19 @@
 /**
- * Document Templates (TASK-810 task 14) against a RUNNING stack.
+ * Document Templates ( task 14) against a RUNNING stack.
  *
- * WHY THIS FILE EXISTS. TASK-810 §7b "Outstanding verification" recorded that the
+ * WHY THIS FILE EXISTS. "Outstanding verification" recorded that the
  * authoring screen had never been exercised logged-in against a live gateway —
- * its component tree was covered by jsdom tests only, and TASK-814's browser pass
+ * its component tree was covered by jsdom tests only, and browser pass
  * covered the six PLAYGROUND screens, not this one. Every other tenant-scoped
  * screen in this suite has a spec; `/document-templates` was the gap.
  *
  * What it pins, beyond "the screen renders":
- *   - the tier 30–49 contract (rule 12 §5): no working tenant ⇒ the NoTenant gate,
+ * the tier 30–49 contract (rule 12 §5): no working tenant ⇒ the NoTenant gate,
  *     never a 400 or an empty grid pretending to be an empty catalog;
  *   - the head/version/pin triple end to end — publish mints, an IDENTICAL
- *     re-publish is a NO-OP (the §7b checksum short-circuit, previously proven
+ * re-publish is a NO-OP (the checksum short-circuit, previously proven
  *     only by unit test), and an older version can be re-pinned to roll back;
- *   - the axe gate in both themes (rule 11 §11).
+ * the axe gate in both themes (rule 11 §11).
  *
  * Slugs are unique per run, so the spec is re-runnable without a delete step and
  * without contending with a sibling worker.
@@ -106,14 +106,14 @@ test.describe('document templates — authoring', () => {
     await drawer.getByRole('tab', { name: 'Shape' }).click();
     await drawer.getByRole('button', { name: 'Start from SOAP' }).click();
     // A published version needs a title; "Start from SOAP" supplies the platform
-    // one, which is NOT this document's name — see the §7b note this spec adds.
+    // one, which is NOT this document's name — see the note this spec adds.
     await drawer.getByRole('textbox', { name: /^Document title/ }).fill(name);
 
     // --- publish v1 ---------------------------------------------------------
     await drawer.getByRole('button', { name: 'Publish', exact: true }).click();
     await expect(drawer.getByRole('tab', { name: 'Versions (1)' })).toBeVisible();
 
-    // --- an IDENTICAL re-publish mints nothing (§7b checksum short-circuit) ---
+    // an IDENTICAL re-publish mints nothing ( checksum short-circuit)
     await drawer.getByRole('button', { name: 'Publish', exact: true }).click();
     // Give a mint, if one were wrongly happening, time to land before asserting.
     await page.waitForTimeout(1_500);

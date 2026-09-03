@@ -80,7 +80,7 @@ export interface SummaryResponse {
   /** Creation timestamp */
   createdAt: string;
   /**
-   * Row version for optimistic concurrency control (TASK-709) — DISTINCT from
+   * Row version for optimistic concurrency control — DISTINCT from
    * `versionNumber` (the version-browser snapshot counter). Echoed back as
    * `If-Match: "<version>"` (plus the body-field `expectedVersion`) by
    * `updateSummary` / `approveSummary`.
@@ -290,7 +290,7 @@ export interface SummaryActions {
  */
 export interface UpdateSummaryOptions {
   /**
-   * Row version to compare-and-set against (TASK-709). Sent both as
+   * Row version to compare-and-set against. Sent both as
    * `If-Match: "<version>"` and as the body-field `expectedVersion`.
    * Defaults to the version the SDK holds for the summary in its store.
    */
@@ -381,9 +381,9 @@ export interface VersionDiff {
  * Field reconciliation between SDK and backend
  * (`GenerateSummaryRequest`):
  *
- *   - `transcript`       → backend `transcription` (DEPRECATED legacy name).
- *   - `promptTemplateId` → backend `template`      (DEPRECATED legacy name).
- *   - `departmentId`     → mapped into `options.departmentId` (no first-class
+ *   - `transcript` → backend `transcription` (DEPRECATED legacy name).
+ *   - `promptTemplateId` → backend `template` (DEPRECATED legacy name).
+ *   - `departmentId` → mapped into `options.departmentId` (no first-class
  *                          backend field; bag transport for analytics).
  *
  * `useArcaSummary` normalises the legacy fields to the canonical names at

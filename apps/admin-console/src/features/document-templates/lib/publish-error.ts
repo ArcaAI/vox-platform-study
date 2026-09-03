@@ -10,7 +10,7 @@ import { GatewayError } from '@/shared/api';
  *
  * Deliberately a local copy rather than an import from
  * `features/context-schemas` — features never import each other (rule 13
- * §Structure). The two surfaces answer to two different services that merely
+ * The two surfaces answer to two different services that merely
  * happen to share a rejection convention; coupling them would make a change to
  * one silently redefine the other.
  */

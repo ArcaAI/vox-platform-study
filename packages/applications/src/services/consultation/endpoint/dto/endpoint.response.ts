@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** TASK-812 — response DTOs for the three endpoint-stage routes. */
+/** response DTOs for the three endpoint-stage routes. */
 
 export class RecordSessionEndpointResponse {
   @ApiProperty({ description: 'Whether the consultation now carries an endpoint disposition.' })

@@ -26,7 +26,7 @@
 # Requires hope-python-base first:
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 # Build (from repo root):
-#   docker build -f apps/tts/Dockerfile --target production -t tts .
+#   docker build -f apps/tts/Dockerfile --target production -t tts.
 # ─────────────────────────────────────────────────────────────────────────────
 
 ARG BASE_IMAGE=hope-python-base:latest
@@ -144,7 +144,6 @@ RUN mkdir -p /app/.cache/huggingface && chown -R hope:hope /app/.cache
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG

@@ -20,7 +20,7 @@ export class CreateApiKeyRequest extends BaseRequest {
   @IsString({ each: true })
   @ArrayMinSize(1, { message: 'At least one scope is required' })
   @Validate(ValidScopesConstraint)
-  // TASK-757 (policy A2) — reserved (`admin:*`, `webhook:*`) scopes cannot be
+  // (policy A2) — reserved (`admin:*`, `webhook:*`) scopes cannot be
   // granted. CREATE only: every scope here is new, so a membership-style
   // constraint is correct. The UPDATE equivalent is a widening-DELTA check in
   // `ApiKeyService.update()`, because a constraint cannot see the stored key.

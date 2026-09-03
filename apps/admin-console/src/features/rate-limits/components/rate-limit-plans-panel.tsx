@@ -125,7 +125,7 @@ function PlanDialog({
 }
 
 /**
- * Plans tab (TASK-785 US-3) — rank 3 of the precedence chain.
+ * Plans tab — rank 3 of the precedence chain.
  *
  * The rows live on `PlanEntitlement`, whose full CRUD is the entitlements
  * screen; this projects only the rate-limit fields. A super admin managing rate

@@ -1,7 +1,7 @@
 /**
  * Build the {@link AdminSurface} from the two cross-checked input artifacts.
  *
- * ## The cross-check (ticket §3.1)
+ * ## The cross-check
  *
  * Two sources, each authoritative for a different half:
  *
@@ -134,7 +134,7 @@ function isMachineReachable(route: RouteManifestEntry): boolean {
  * The area a route belongs to — derived from EVERY scope it declares, not just
  * the first.
  *
- * A route may declare more than one scope since TASK-773 decision O-3: a read
+ * A route may declare more than one scope since decision O-3: a read
  * route accepts its area's `:read` sibling alongside the `:write` twin the
  * class carries. Those two are the same AREA by construction
  * ({@link areaKeyFromScope} drops the trailing action segment), so the keys must

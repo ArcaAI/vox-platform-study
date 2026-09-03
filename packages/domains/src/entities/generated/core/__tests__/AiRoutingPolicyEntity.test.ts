@@ -1,8 +1,8 @@
 /**
- * AiRoutingPolicy entity/factory behavior (TASK-818 §3A.3).
+ * AiRoutingPolicy entity/factory behavior
  *
  * Locks the three things that are easy to get wrong on this model:
- *  - the factory generates a UUIDv7 id and applies the §3A.3/§3A.4 defaults
+ * the factory generates a UUIDv7 id and applies the defaults
  *    (STRICT explicit-provider mode, PRIORITY strategy, DRAFT status,
  *    kill-switch OFF) rather than leaving them undefined;
  *  - every setter routes through `setProperty`, so `repository.update`
@@ -36,12 +36,12 @@ describe('AiRoutingPolicyEntity', () => {
     expect(entity.hasChanges).toBe(false);
   });
 
-  it('factory defaults match the §3A.3/§3A.4 platform posture', () => {
+  it('factory defaults match the platform posture', () => {
     const entity = create();
     // A policy is authored before it is served.
     expect(entity.status).toBe(AiRoutingPolicyStatus.DRAFT);
     expect(entity.strategy).toBe(AiRoutingStrategy.PRIORITY);
-    // §3A.4 — a named provider that is down is an ERROR, never a silent
+    // a named provider that is down is an ERROR, never a silent
     // substitution. This default deliberately inverts the industry default.
     expect(entity.explicitProviderMode).toBe(AiExplicitProviderMode.STRICT);
     // Kill-switches default OFF.
@@ -93,14 +93,14 @@ describe('AiRoutingPolicyEntity', () => {
   it('validate() rejects a configuration that cannot route', () => {
     expect(() => create({ taskKey: '   ' }).validate()).toThrow(/task key/i);
     expect(() => create({ policyVersion: 0 }).validate()).toThrow(/policy version/i);
-    // TASK-844 — the invariant moved with the grain. It used to be "at least
+    // the invariant moved with the grain. It used to be "at least
     // one entry in `candidatesJson`"; now the ROW is the candidate, so it is
     // "this configuration must name a model".
     expect(() => create({ candidatesJson: [] }).validate()).toThrow(/must name a model/i);
     expect(() => create().validate()).not.toThrow();
   });
 
-  describe('TASK-844 — the provider-configuration binding', () => {
+  describe('the provider-configuration binding', () => {
     it('accepts a row bound by the catalogue FK', () => {
       expect(() => create({ candidatesJson: null, modelId: 'model-1' }).validate()).not.toThrow();
     });
@@ -128,7 +128,7 @@ describe('AiRoutingPolicyEntity', () => {
     });
 
     it('invents no residency class and assumes no BAA coverage', () => {
-      // Both are read by the §3A.4 fallback gates; guessing `baaCovered: true`
+      // Both are read by the fallback gates; guessing `baaCovered: true`
       // for a candidate whose author did not say so is the silent PHI
       // redirection those gates exist to prevent.
       expect(create().residency).toBeNull();

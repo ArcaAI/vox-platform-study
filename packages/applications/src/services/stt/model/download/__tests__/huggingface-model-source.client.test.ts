@@ -3,7 +3,7 @@
  * REST surface. No real network I/O in this suite; `HttpService.axiosRef`
  * is mocked, matching `KnowledgeIngestClient`'s test convention.
  *
- * TASK-855 L8 — the client also resolves the platform HuggingFace token
+ * the client also resolves the platform HuggingFace token
  * (`model-registry`/`huggingface`, SYSTEM-tenant) through an injected
  * `IProviderConnectionService` and attaches it as a bearer token. That
  * resolver is mocked here the same way `axiosRef` is.

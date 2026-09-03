@@ -10,9 +10,9 @@ resolution & BYO"). This module is hop 7 of the F-01 seven-hop contract:
     mutates a shared one, so concurrent tenants cannot race); no injected
     connection ⇒ raise, never substitute.
 
-Before TASK-799 lane B there was a second source: a process-wide
+Before lane B there was a second source: a process-wide
 `TEXT_<PROVIDER>_BASE_URL` / `_ENDPOINT` / `_REGION` read from the environment.
-That is exactly the shape §Configuration Principles forbids — a value no tenant
+That is exactly the shape Principles forbids — a value no tenant
 could override and no admin could change without a redeploy — and it is why a
 keyless local engine looked "configured" while a BYO tenant's own endpoint had
 nowhere to live. There is now one source, and its absence is an error rather than

@@ -73,7 +73,7 @@ test.describe('monitoring', () => {
   });
 
   test('shows per-probe error detail for an unhealthy or degraded service', async ({ page }) => {
-    // TASK-759 moved this onto the admin plane (`admin/health/services`); the mock
+    // moved this onto the admin plane (`admin/health/services`); the mock
     // still pointed at the pre-move path, so it never matched and the test asserted
     // against the REAL response, which has no E2E probe in it.
     await page.route('**/api/hope/admin/health/services', async (route) => {

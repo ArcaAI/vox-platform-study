@@ -3,7 +3,7 @@
 Before this, propagation to every Python service was TTL-ONLY: the single
 Python-facing channel (``arca:guardrail-config:invalidate``) had a subscriber and
 zero publishers, and this service had no listener at all. Rule 09
-§"Config caches": *"Invalidation is the propagation path; TTL is a
+*"Invalidation is the propagation path; TTL is a
 bounded-staleness safety net."*
 
 Two things are pinned here, and they are the whole of this service's half of the

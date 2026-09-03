@@ -1,5 +1,5 @@
 /**
- * TASK-728 — Memory Management Screens: e2e contract tests for
+ * Memory Management Screens: e2e contract tests for
  * `/api/v1/admin/knowledge/documents/*`.
  *
  * SCOPE OF WHAT THIS SPEC CAN PROVE IN THIS ENVIRONMENT (mirrors
@@ -7,7 +7,7 @@
  * the same reason): `KnowledgeDocumentController` deliberately exposes NO
  * create/approve route — document registration/approval stays on the
  * existing worker-triggering ingest flow (see the controller's own doc
- * comment and README §4 Task 5). There is therefore no HTTP write path this
+ * comment and Task 5). There is therefore no HTTP write path this
  * spec (which drives the API only, the e2e convention in this directory)
  * can use to create a REAL `KnowledgeDocument` fixture row, so a genuine
  * "tenant A cannot read tenant B's OWN row" check is not constructible here.
@@ -26,7 +26,7 @@
  *    `@CanManage`/method-level `@Authorize(['read', ...])` gate is live.
  *
  * The moment a create-from-admin-console flow (explicitly out of scope for
- * this ticket, per README §4 Task 5) or a test-only seed route lands, a
+ * per Task 5) or a test-only seed route lands, a
  * companion pass should extend this file with a REAL cross-tenant row check
  * (tenant A cannot read/archive/delete tenant B's document; a chunk read
  * produces a forced `AuditLog` row; a delete produces both an `AuditLog` row
@@ -35,7 +35,7 @@
  *
  * Prerequisites: API server running against the test DB (`pnpm test:up:api`),
  * seeded (`pnpm test:db:seed`). NOT EXECUTED in this session — see the
- * ticket README §7 for why (`pnpm test:e2e`'s globalSetup runs
+ * for why (`pnpm test:e2e`'s globalSetup runs
  * `prisma db push --force-reset`, refused by the Prisma CLI for an AI agent).
  */
 import { test, expect } from '@playwright/test';
@@ -48,7 +48,7 @@ const bearer = (token: string, tenantId?: string) => ({
 
 const BASE = '/api/v1/admin/knowledge/documents';
 
-test.describe('TASK-728 — /api/v1/admin/knowledge/documents', () => {
+test.describe('/api/v1/admin/knowledge/documents', () => {
   let tenantAdminToken: string;
   let superAdminToken: string;
   let defaultTenantId: string;

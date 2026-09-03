@@ -1,5 +1,5 @@
 // ============================================================================
-// AI Routing Policies — THE provider-configuration table (TASK-844, OD-3)
+// AI Routing Policies — THE provider-configuration table 
 //
 // ## What one row is
 //
@@ -7,18 +7,18 @@
 // rows may exist for the same selection; they form the ORDERED CANDIDATE CHAIN,
 // ascending by `priority`, and EXACTLY ONE of them may carry `isDefault = true`.
 //
-// That grain is new. TASK-818 shipped this table as one row per AUTHORED POLICY
+// That grain is new. shipped this table as one row per AUTHORED POLICY
 // REVISION with the candidate list buried in `candidatesJson`, keyed
-// `@@unique([tenantId, taskKey, policyVersion])`. TASK-844 re-grained it because
+// `@@unique([tenantId, taskKey, policyVersion])`. re-grained it because
 // the product requires many configurations per task with one elected default,
 // and a JSON array cannot carry a foreign key, cannot be indexed, cannot be
 // promoted between tenants row-by-row, and cannot be constrained to one default.
 // The re-grain was safe to do in place: the table had ZERO runtime readers and
-// ZERO rows (program TASK-837 finding F-8, confirmed against the dev DB).
+// ZERO rows (program finding F-8, confirmed against the dev DB).
 //
 // ## Owner reversal on record — OD-3 (2026-09-01)
 //
-// TASK-816 ruled that `AiTaskDefault` survives. **OD-3 explicitly reverses it.**
+// ruled that `AiTaskDefault` survives. **OD-3 explicitly reverses it.**
 // `AiTaskDefault` is ABSORBED into this table: every one of its rows is migrated
 // here as an `isDefault = true` candidate, and this table is the source of truth
 // for "which provider + model serves task X for tenant Y". `AiTaskDefault` is
@@ -27,10 +27,10 @@
 //
 // ## Where it sits relative to its siblings — now by FOREIGN KEY, not by string
 //
-//   AiProviderConnection  WHERE a provider lives + HOW to authenticate to it.
-//   AiModel               the model CATALOGUE a configuration selects from.
-//   AiRuntimeProfile      hyperparameters/concurrency per (provider, model).
-//   AiRoutingPolicy       ← THIS. Binds a task to (connection, model) with an
+//   AiProviderConnection WHERE a provider lives + HOW to authenticate to it.
+//   AiModel the model CATALOGUE a configuration selects from.
+//   AiRuntimeProfile hyperparameters/concurrency per (provider, model).
+//   AiRoutingPolicy ← THIS. Binds a task to (connection, model) with an
 //                           order, an election and an on/off switch.
 //
 // Finding F-6 recorded that the provider-configuration unit did not exist as a
@@ -48,10 +48,10 @@
 //
 // Prisma's schema DSL cannot express a partial unique index, so it is
 // hand-written in the migration — the same mechanism, and the same predicate
-// shape, as `WorkflowDefinition_tenant_slug_active_unique` (TASK-734).
+// shape, as `WorkflowDefinition_tenant_slug_active_unique`.
 //
 // **⚠ The index keys on `taskKey`, NOT `taskKind`, and this is load-bearing
-// (finding F-26).** `taskKind` is deliberately COARSER: `TEXT_GENERATION` spans
+// .** `taskKind` is deliberately COARSER: `TEXT_GENERATION` spans
 // `text.live`, `text.finalize`, `text.test` and `harness.judge`; `PII_DETECTION`
 // spans `guardrail.pii` and `guardrail.pii.spans`. An index on the KIND would
 // make those mutually exclusive, so a tenant could not hold a default for both
@@ -93,7 +93,7 @@ model AiRoutingPolicy {
   // core fields
   taskKey String // same vocabulary as AI_TASK_KEYS (e.g. text.live | text.finalize)
 
-  // TASK-843 — the canonical task taxonomy `taskKey` belongs to. DERIVED from
+  // the canonical task taxonomy `taskKey` belongs to. DERIVED from
   // `taskKey` via AI_TASK_KIND_BY_TASK_KEY, never independently chosen.
   // Nullable so a row written by an un-migrated writer lands "unclassified"
   // rather than carrying a plausible-but-wrong default; selection is
@@ -101,7 +101,7 @@ model AiRoutingPolicy {
   // distinguishable from "classified as X".
   taskKind AiTaskKind?
 
-  // ─────────────── TASK-844 — the provider-configuration binding ───────────────
+  // ─────────────── — the provider-configuration binding ───────────────
 
   // Human label for this configuration. Free text; it is what an admin sees in
   // the picker and what an export/import artifact is identified by. NOT a key.
@@ -142,7 +142,7 @@ model AiRoutingPolicy {
   // `resourceStatus` (lifecycle) and from `killSwitch` (operator stop button).
   enabled Boolean @default(true)
 
-  // Promoted OUT of the JSON candidate onto the row, because the §3A.4 hard
+  // Promoted OUT of the JSON candidate onto the row, because the hard
   // gates read them on every fallback hop and a gate input that lives in
   // unindexed JSON cannot be reported on, filtered or constrained.
   //
@@ -154,7 +154,7 @@ model AiRoutingPolicy {
   baaCovered Boolean?
 
   // Task-specific extras carried over from `AiTaskDefault.configJson`
-  // (thresholds and the like). Absorbed verbatim by the TASK-844 backfill.
+  // (thresholds and the like). Absorbed verbatim by the backfill.
   configJson Json? @db.JsonB
 
   // ─────────────────────── authored-revision lineage ───────────────────────
@@ -163,36 +163,36 @@ model AiRoutingPolicy {
   // counter above. `_version` is owned by the database, bumped on every write,
   // and exists so a concurrent PATCH is rejected (`updateWithVersion`).
   //
-  // ⚠ It is no longer part of a natural key. TASK-818 keyed the table
+  // ⚠ It is no longer part of a natural key. keyed the table
   // `@@unique([tenantId, taskKey, policyVersion])`, which was correct at the
   // one-row-per-revision grain and is WRONG at this one: many rows now share
   // `(tenantId, taskKey)` because that is what an ordered candidate chain IS.
-  // That unique index is dropped by the TASK-844 migration. Keeping the column
-  // preserves the supersede-only audit lineage of §3A.8.
+  // That unique index is dropped by the migration. Keeping the column
+  // preserves the supersede-only audit lineage of
   policyVersion Int @default(1)
 
   status               AiRoutingPolicyStatus  @default(DRAFT)
   strategy             AiRoutingStrategy      @default(PRIORITY)
-  explicitProviderMode AiExplicitProviderMode @default(STRICT) // §3A.4 — STRICT is the platform default
+  explicitProviderMode AiExplicitProviderMode @default(STRICT) // STRICT is the platform default
 
   // Position in the ordered candidate chain: LOWER SERVES FIRST. Also the
-  // tie-break when two rows match equally specifically (§3A.3).
+  // tie-break when two rows match equally specifically
   priority Int @default(0)
 
-  // Operator stop button (§3A.8). Defaults OFF, like every kill-switch.
+  // Operator stop button ( Defaults OFF, like every kill-switch.
   killSwitch Boolean @default(false)
 
-  // §3A.3 nested structures, JSONB.
+  // nested structures, JSONB.
   matchJson Json? @db.JsonB // { models, metadata, minContextTokens, maxContextTokens }
 
-  // ⚠ DEPRECATED by TASK-844 and NO LONGER READ BY THE RESOLVER.
+  // ⚠ DEPRECATED by and NO LONGER READ BY THE RESOLVER.
   //
   // This carried the whole ordered chain as an array of
   // `{ rank, weight, connectionRef, model, residency, baaCovered, maxTtftMs }`
   // objects. That chain is now the SET OF ROWS sharing `(tenantId, taskKey)`,
   // ordered by `priority`, each with real FKs. Made nullable so the column can
   // be dropped in a follow-up without a second grain change; it is retained
-  // only so an operator can still read what a pre-TASK-844 revision authored.
+  // only so an operator can still read what a earlier revision authored.
   //
   // Do NOT write it, and do NOT reintroduce a code path that reads it — two
   // homes for the candidate chain is exactly the string-joined fragmentation
@@ -204,17 +204,17 @@ model AiRoutingPolicy {
 
   // Ceilings promoted OUT of JSON because they are queryable facts a super
   // admin sorts and reports on ("which policies cap streams below N?") and the
-  // §3A.7 saturation panels read directly. NULL = no ceiling expressed here;
+  // saturation panels read directly. NULL = no ceiling expressed here;
   // the AiRuntimeProfile cascade still applies.
   maxConcurrentStreams Int?
   requestsPerMinute    Int?
   tokensPerMinute      Int?
 
-  // Cache-affinity / sticky-routing hints (prefix-cache hit rate is a §3A.7
+  // Cache-affinity / sticky-routing hints (prefix-cache hit rate is a
   // saturation panel). Nested and advisory, so JSONB rather than columns.
   affinityJson Json? @db.JsonB
 
-  // Supersede-only lineage (§3A.8): the `policyVersion` this revision replaced,
+  // Supersede-only lineage: the `policyVersion` this revision replaced,
   // and when it was promoted to ACTIVE. Both NULL on a first DRAFT.
   supersedesVersion Int?
   activatedAt       DateTime?
@@ -248,22 +248,22 @@ model AiRoutingPolicy {
   //
   // On `@@unique`, `name:` is the CLIENT-facing compound key and `map:` is the
   // DATABASE index name; on `@@index`, `name:` IS the database name. Getting
-  // that pair backwards is what drifted the ledger permanently in TASK-648.
+  // that pair backwards is what drifted the ledger permanently in.
   //
   // There is NO `@@unique` here any more: the only uniqueness this table owns
   // is the DEFAULT ELECTION, which is partial (`WHERE isDefault = true AND
   // resourceStatus != 'DELETED'`) and therefore inexpressible in the Prisma
-  // DSL. It lives in the TASK-844 migration as raw SQL.
+  // DSL. It lives in the migration as raw SQL.
   //
   // The composite indexes lead with `tenantId`, so they also serve the plain
   // tenant-scope reads the extension injects — no separate `[tenantId]` index.
   @@index([tenantId, taskKey], name: "AiRoutingPolicy_tenantId_taskKey_idx")
-  // TASK-843 — the by-kind read the unified selection surface is built on.
+  // the by-kind read the unified selection surface is built on.
   @@index([tenantId, taskKind], name: "AiRoutingPolicy_tenantId_taskKind_idx")
-  // TASK-844 — "the elected default for this selection", the single hottest
+  // "the elected default for this selection", the single hottest
   // read on the table (every resolution starts here).
   @@index([tenantId, taskKey, isDefault], name: "AiRoutingPolicy_tenantId_taskKey_isDefault_idx")
-  // TASK-844 — reverse lookups: "what breaks if I disable this connection /
+  // reverse lookups: "what breaks if I disable this connection /
   // retire this model?". Also what makes the FK's Restrict check cheap.
   @@index([providerConnectionId], name: "AiRoutingPolicy_providerConnectionId_idx")
   @@index([modelId], name: "AiRoutingPolicy_modelId_idx")

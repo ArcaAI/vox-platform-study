@@ -1,4 +1,4 @@
-"""Repeatable local load test for the guardrail policy plane (TASK-777 Lane B).
+"""Repeatable local load test for the guardrail policy plane.
 
     PYTHONPATH=apps/guardrail/src python apps/guardrail/scripts/loadtest.py \
         --concurrency 100 --requests 2000

@@ -117,7 +117,7 @@ async function main() {
   const converged = await findOwnHarnessDraft(d.id);
   check('converges onto the newest duplicate', converged?.id === dup2.id, `picked=${converged?.id === dup2.id ? 'dup2' : converged?.id === dup1.id ? 'dup1' : 'none'}`);
 
-  console.log('\n===== TASK-687 REAL-DATABASE PROOF (postgres :5433) =====');
+  console.log('\n=====  REAL-DATABASE PROOF (postgres :5433) =====');
   for (const [name, pass, detail] of results) {
     console.log(`  ${pass ? 'PASS' : 'FAIL'}  ${name.padEnd(44)} ${detail}`);
   }

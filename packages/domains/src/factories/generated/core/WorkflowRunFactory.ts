@@ -68,7 +68,7 @@ export class WorkflowRunFactory {
       failedNodeCount: props.failedNodeCount ?? 0,
       degradedNodeCount: props.degradedNodeCount ?? 0,
       firstErrorCode: props.firstErrorCode ?? null,
-      // TASK-790 (M-2). Always null at CreateRun time — a run has delivered nothing
+      // (M-2). Always null at CreateRun time — a run has delivered nothing
       // when it starts; `recordRunFinished` is what writes it.
       resultRef: props.resultRef ?? null,
       Tenant: props.Tenant ?? null,

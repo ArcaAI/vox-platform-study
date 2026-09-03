@@ -133,7 +133,7 @@ class TestSarvamLoaderLoad:
 
     @pytest.mark.asyncio
     async def test_model_selection_fails_closed_when_no_source_uri(self):
-        """TASK-799 / F-11: an unresolved model SELECTION must raise, not default.
+        """/ F-11: an unresolved model SELECTION must raise, not default.
 
         This loader used to fall back to a hardcoded `"saaras:v4"` when the
         `AiModel` row carried no `source_uri`. That is the failure mode rule 09

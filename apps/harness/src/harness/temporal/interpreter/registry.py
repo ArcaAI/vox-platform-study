@@ -3,13 +3,13 @@
 Mirrors ``LoopActionSpec``/``LOOP_ACTION_REGISTRY`` (``workflows.py:1628-1693``) in shape and in
 the ``implemented`` discipline: a node type with NO entry, or an entry with ``implemented=False``,
 dispatches as an OBSERVABLE skip (``unsupported_node_type``) — never a silent no-op (see
-contracts/execution-semantics.md §10 for the full dispatch/security rationale, including why the
+contracts/ for the full dispatch/security rationale, including why the
 workflow always calls ``spec.activity`` directly and only cross-checks the wire's ``activity``
 string, never trusts it for routing).
 
-The registry starts EMPTY of palette nodes — TASK-720 populates it with the summarization
+The registry starts EMPTY of palette nodes — populates it with the summarization
 palette's five node types. This ticket ships only the ``noop``/``passthrough`` entries this
-package's own tests need (ticket §4 Task 4).
+package's own tests need ( Task 4).
 """
 
 from __future__ import annotations
@@ -134,13 +134,13 @@ class NodeSpec:
     ``activity`` is a CALLABLE reference (never a string) — see the module docstring.
     ``activity_name`` is the same activity's Temporal-registered name, precomputed at registry-
     build time (see ``_registered_activity_name``) — the workflow's S-4 cross-check
-    (contracts/execution-semantics.md §10) compares against this field, never the callable
+    (contracts/ compares against this field, never the callable
     itself, and never re-derives the name inside the sandboxed workflow module. ``kind`` is
     reserved for a future ``child_workflow`` dispatch (mirroring ``LoopActionSpec.kind``); v1 only
     ever uses ``"activity"``. ``critical``/``external_write`` are code-owned safety properties,
-    never tenant-configurable (contracts/execution-semantics.md §5/§9).
+    never tenant-configurable (contracts/execution-semantics.md)
 
-    ``output_keys`` is TASK-809 OD-15 (option A), and it is the ONE piece of the port contract
+    output_keys is (option A), and it is the ONE piece of the port contract
     that is SHARED with the TypeScript side rather than TS-only. A port NAME is an authoring
     handle — ``out``, ``entities``, ``verdict``, what the Studio canvas draws and what a graph
     edge's ``fromPort``/``toPort`` names — but this interpreter threads values by reading a KEY
@@ -159,8 +159,8 @@ class NodeSpec:
     projection is asserted against (``node-registry.snapshot.json``) — see
     ``test_node_registry_parity.py``. Never add it to one side only.
 
-    ``lane`` is the SECOND shared field (TASK-806 lane A, item 17/7), and it is shared for the
-    same kind of reason: it changes what this interpreter DOES. ``"realtime"`` means TASK-811's
+    lane is the SECOND shared field ( lane A, item 17/7), and it is shared for the
+    same kind of reason: it changes what this interpreter DOES. "realtime" means
     live executor owns the node, so ``_dispatch_node`` SKIPS it with ``reason="realtime_lane"``
     rather than running it a second time. Before this, ``descriptor.lane`` said ``durable`` on
     every node while ``REALTIME_NODE_TYPES`` (a hand-kept set in the applications layer) said
@@ -230,10 +230,10 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=1,
         output_keys={},
     ),
-    # Summarization palette (TASK-720). `critical`/`external_write`/timeouts mirror
+    # Summarization palette. `critical`/`external_write`/timeouts mirror
     # contracts/palette.md's node table and node-registry.ts's matching five entries exactly.
     # RESTORED (2026-08-17, close-out pass): dropped from this dict by an external tree operation
-    # mid-session (see TASK-724/TASK-731 READMEs); the node activities themselves never stopped
+    # mid-session (see / READMEs); the node activities themselves never stopped
     # existing on disk. Re-added verbatim from the last known-good shape (git history, commit
     # 632f93f14).
     "input.context_binding": NodeSpec(
@@ -282,8 +282,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=3,
         output_keys={"next": None},
     ),
-    # STT palette (TASK-724). Mirrors
-    # docs/implementation/TASK-724-Palette-Stt/contracts/palette.md's node table and
+    # STT palette. Mirrors
     # node-registry.ts's matching eight entries exactly. Every activity here is a documented
     # PLACEHOLDER (nodes/stt_placeholder.py's module docstring) — the STT palette's real
     # execution path is compile-to-AsrPipeline + pipelineId binding, never per-node interpreter
@@ -353,7 +352,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=3,
         output_keys={"loop": None, "next": None},
     ),
-    # PLACEHOLDER — implemented=False, see palette.md. TASK-710/phi-redactor is not landed.
+    # PLACEHOLDER — implemented=False, see palette.md. /phi-redactor is not landed.
     "stt.phiHop": NodeSpec(
         key="stt.phiHop",
         implemented=False,
@@ -363,14 +362,14 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=1,
         output_keys={"out": "transcript", "next": None},
     ),
-    # Consultation palette (TASK-731) — all 13 node types from contracts/node-types.md's node
-    # table. TASK-731 shipped only 3 (consentGate, phiHop, hitlGate); the other 10 were specified
+    # Consultation palette — all 13 node types from contracts/node-types.md's node
+    # table. shipped only 3 (consentGate, phiHop, hitlGate); the other 10 were specified
     # but left unwired, which made the palette unbuildable — DRAFT_CONSULTATION_RULE_SET names
     # nine node types by key and the registry served three of them, so no consultation graph could
     # be authored, let alone compiled. The ten wrappers added here follow the pattern
     # nodes/consultation.py already established for consentGate/phiHop: a thin
     # NodeActivityInput -> NodeActivityResult adapter over the activity
-    # contracts/palette-contract.md §1 already names as that node's compile target.
+    # contracts/ already names as that node's compile target.
     #
     # `default_timeout_seconds`/`default_max_attempts` are NOT invented here — each mirrors what
     # HarnessDocWorkflow already schedules the SAME underlying activity with (workflows.py's
@@ -501,8 +500,8 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=3,
         output_keys={"contextItemId": "contextItemId", "next": None},
     ),
-    # The ONE durable human wait in this substrate (TASK-731 Phase B). `kind="child_workflow"` is
-    # the field NodeSpec has reserved for exactly this since TASK-718 and this is its first use:
+    # The ONE durable human wait in this substrate. `kind="child_workflow"` is
+    # the field NodeSpec has reserved for exactly this since and this is its first use:
     # the interpreter does NOT dispatch `activity` for this node — the compiler lifts every
     # `gate`-classed node out of `stages` into `gates`, and `WorkflowInterpreter._run_gate` starts
     # `ConsultationGateWorkflow` as a child instead (see gate_workflow.py). `activity` stays a
@@ -519,7 +518,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=1,
         output_keys={"out": None, "next": None},
     ),
-    # R3's three missing capabilities (TASK-791 W1-W3). TASK-789 verified none of them had a
+    # R3's three missing capabilities (-W3). verified none of them had a
     # node, activity or sensor anywhere. Mirrors node-registry.ts's matching three entries and
     # the committed parity fixture exactly.
     #
@@ -566,7 +565,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         output_keys={"out": "proposals", "next": None},
     ),
     # -----------------------------------------------------------------------------------------
-    # The ENDPOINT STAGE (TASK-812) — the ordered sequence that runs before a consultation
+    # The ENDPOINT STAGE — the ordered sequence that runs before a consultation
     # session closes. Mirrors node-registry.ts's matching three entries and the committed parity
     # fixture exactly.
     #
@@ -615,7 +614,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         output_keys={"next": None},
     ),
     # ---------------------------------------------------------------------------------------
-    # The TARGET CATALOGUE (TASK-809 DD-6/DD-9) and the guards (DD-7) — TASK-806 lane A.
+    # The TARGET CATALOGUE (/DD-9) and the guards — lane A.
     # Every entry delegates to an engine that already exists; see
     # `nodes/agent_catalogue.py` and `nodes/guards.py` for the mapping and the reasoning.
     # Registered ALONGSIDE the pipeline keys above, never instead of them: a node type is a
@@ -652,7 +651,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         lane="realtime",
     ),
     # Lane R (R1) — the realtime grammar/spelling pass. `lane="realtime"` means `_dispatch_node`
-    # SKIPS it here (reason `realtime_lane`) and TASK-811's live executor owns it; the durable
+    # SKIPS it here (reason `realtime_lane`) and live executor owns it; the durable
     # wrapper exists so the node type is dispatchable and admissible at all.
     "agent.grammar": NodeSpec(
         key="agent.grammar",
@@ -664,10 +663,10 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         output_keys={"out": "proposals", "next": None},
         lane="realtime",
     ),
-    # Lane N (TASK-815 §14a) — IMPORTANT FINDINGS, the one catalogue entry that is NOT a
+    # Lane N — IMPORTANT FINDINGS, the one catalogue entry that is NOT a
     # delegation, because the capability had no engine anywhere to delegate to. `realtime` for the
     # same reason `agent.grammar` is and a stronger one: the owner's bar is findings surfaced
-    # DURING the session, so this interpreter SKIPS it (reason `realtime_lane`) and TASK-811's
+    # DURING the session, so this interpreter SKIPS it (reason `realtime_lane`) and
     # live executor owns it. `external_write=True` mirrors `agent.ner`: findings reach the live
     # consultation feed and the persisted flush snapshot through the same projection, so the flag
     # is the truth about the node rather than a claim about this durable wrapper.
@@ -770,7 +769,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         output_keys={"out": "verdict", "next": None},
     ),
     # ---------------------------------------------------------------------------------------
-    # TASK-847 - the GENERIC (`agentic`) catalogue.
+    # the GENERIC (`agentic`) catalogue.
     #
     # Eight node types whose behaviour is CONFIGURATION rather than key, mirroring
     # `node-registry.ts`. `output_keys` and `implemented` here are asserted against the SAME
@@ -780,8 +779,8 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
     # `agentic.loop` is `implemented=True` and still does not run on THIS path: `compile()`
     # refuses any graph containing an unimplemented type, so the honest posture is an
     # OBSERVABLE `DEGRADED` naming the owning ticket rather than a graph nobody can publish.
-    # TASK-848 made the loop real via a CHILD WORKFLOW; this activity is the replay-only path
-    # a pre-gate history walks through. `agentic.tts` is now REAL (TASK-849 lane B): it
+    # made the loop real via a CHILD WORKFLOW; this activity is the replay-only path
+    # a pre-gate history walks through. `agentic.tts` is now REAL: it
     # dispatches synthesis, streams frames on the delta lane and writes an audio artifact.
     # See `nodes/agentic.py`'s module docstring.
     # ---------------------------------------------------------------------------------------
@@ -836,7 +835,7 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         implemented=True,
         activity=interpreter_agentic_loop,
         critical=False,
-        # The whole `maxDurationSeconds` ceiling the config schema permits, because TASK-848
+        # The whole `maxDurationSeconds` ceiling the config schema permits, because
         # spends that budget as a workflow timer INSIDE the loop; a smaller activity timeout
         # would cap the loop somewhere the author cannot see.
         default_timeout_seconds=3600,

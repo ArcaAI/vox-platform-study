@@ -1,5 +1,5 @@
 /**
- * `position` round-trip (TASK-719 Task 11 / definition-api.contract.md's "no `position` field"
+ * `position` round-trip ( / definition-api.contract.md's "no `position` field"
  * gap, closed). `WorkflowGraphNode.position` is now a first-class, optional sibling of
  * `config` — the Studio writes canvas layout there directly. `fromWorkflowGraph` still reads
  * the legacy `config.__position` nesting as a fallback, so a graph saved before this field

@@ -1,5 +1,5 @@
 /**
- * TASK-815 — tier-1a is `@Optional()`, so it can be silently unwired.
+ * tier-1a is `@Optional()`, so it can be silently unwired.
  *
  * `IWorkflowAssignmentService` and `WorkflowDefinitionRepository` are optional
  * injections on `PromptResolutionService` because it is also constructed

@@ -98,7 +98,7 @@ function ElectDefaultButton({ policy, scope }: { policy: AiRoutingPolicy; scope:
  *  2. **Configurations** — `AiRoutingPolicy` rows: which connection + model
  *     serves which task, and which of them is elected.
  *  3. **Runtime tuning** — `AiRuntimeProfile`: the hyperparameter/capacity plane
- *     that used to be a peer rail entry (TASK-845 step 4). It tunes a
+ * that used to be a peer rail entry. It tunes a
  *     (provider, model) pair, so it belongs beside the configuration that names
  *     that pair, not next to it in the rail.
  */
@@ -195,9 +195,11 @@ export function ProvidersTab({ scope }: { scope: ResolvedAiPlatformScope }) {
                             <Badge variant="outline">{policy.status}</Badge>
                             {!policy.enabled ? <Badge variant="secondary">Disabled</Badge> : null}
                             {policy.killSwitch ? <Badge variant="destructive">Kill switch</Badge> : null}
-                            {/* NULL coverage is read as "not covered" by the
-                                §3A.4 gates, so the console must not render it
-                                as an unanswered question. */}
+                            {/*
+ NULL coverage is read as "not covered" by the
+                                gates, so the console must not render it
+                                as an unanswered question. 
+*/}
                             {policy.baaCovered ? <Badge variant="outline">BAA</Badge> : null}
                           </div>
                         </TableCell>

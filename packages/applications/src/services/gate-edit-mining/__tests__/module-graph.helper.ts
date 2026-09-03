@@ -1,6 +1,6 @@
 /**
  * A small, accurate model of what NestJS can inject where — used by the R7
- * guards (TASK-795 W2/W3) so they assert RESOLUTION rather than the presence of
+ * guards (/W3) so they assert RESOLUTION rather than the presence of
  * an import line.
  *
  * The distinction is load-bearing. Nest does NOT expose a grandchild module's

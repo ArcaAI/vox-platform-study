@@ -31,7 +31,7 @@ router = APIRouter(prefix="/classify", tags=["NLP REST Classify"])
 
 
 def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None) -> None:
-    """TASK-737 — refuse tenant-scoped work that arrives with no tenant.
+    """refuse tenant-scoped work that arrives with no tenant.
 
     `X-Tenant-Id` is MANDATORY on every internal request carrying tenant-scoped
     work (owner directive 2026-08-16); on this surface the gateway injects it into
@@ -51,7 +51,7 @@ def _require_tenant(tenant_id: str | None, task: str, header_tenant: str | None)
         raise HTTPException(
             status_code=428,
             detail=(
-                "tenant_id is required for tenant-scoped classification (TASK-737). "
+                "tenant_id is required for tenant-scoped classification . "
                 "The gateway must inject it; declare 'tenantless:<reason>' for "
                 "genuinely tenant-less internal work."
             ),
@@ -108,7 +108,7 @@ async def classify_text_multi_label(
     """
     Classify text against every label the model exposes, independently.
 
-    Owner decision (2026-08-20, TASK-729 §6): `nlp.toxicity` is MULTI-LABEL —
+    Owner decision (2026-08-20, : `nlp.toxicity` is MULTI-LABEL
     toxic + threat + insult may all apply to the same utterance at once, so
     this route returns a per-label score for EVERY label plus the labels that
     clear `cls_threshold` (zero, one, or several), rather than one
@@ -211,7 +211,7 @@ async def classify_topic(
     request: TopicClassificationRequest,
     http_request: Request,
     external_text_client: ExternalTextClient | None = Depends(get_external_text_client),
-    # Owner decision (2026-08-20, TASK-729 §6): a DEDICATED peer-call
+    # Owner decision (2026-08-20,: a DEDICATED peer-call
     # semaphore, never `inference_bound`. That bound protects local GPU/CPU
     # inference slots; this one protects apps/nlp's own outbound
     # concurrency/connection budget to `text` — two different resources, so a
@@ -222,7 +222,7 @@ async def classify_topic(
     """
     Classify text into one of a tenant's configured topics.
 
-    OPEN-taxonomy delegation to `text` (TASK-729): the topic list is
+    OPEN-taxonomy delegation to `text` : the topic list is
     gateway-injected from `TenantNlpTaskInstructions` — a missing/empty list
     fails closed with HTTP 503, mirroring `/classify/text`'s missing-model_name
     posture (there is no meaningful "classify into no topics" default).
@@ -234,7 +234,7 @@ async def classify_topic(
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Topic classification is not available")
 
-    # TASK-737 — the gateway MUST inject `tenant_id`; topic/intent delegation is
+    # the gateway MUST inject `tenant_id`; topic/intent delegation is
     # per-tenant work (the instruction list is the tenant's own taxonomy), so an
     # absent tenant is a CALLER defect and is refused rather than silently
     # delegated to `text` with no tenant.
@@ -269,7 +269,7 @@ async def classify_intent(
     """
     Classify text into one of a tenant's configured intents.
 
-    OPEN-taxonomy delegation to `text` (TASK-729): the intent list is
+    OPEN-taxonomy delegation to `text` : the intent list is
     gateway-injected from `TenantNlpTaskInstructions` — a missing/empty list
     fails closed with HTTP 503, mirroring `/classify/text`'s missing-model_name
     posture.
@@ -281,7 +281,7 @@ async def classify_intent(
     if external_text_client is None:
         raise HTTPException(status_code=503, detail="Intent classification is not available")
 
-    # TASK-737 — see /topic above.
+    # see /topic above.
     _require_tenant(request.tenant_id, "intent", http_request.headers.get(TENANT_HEADER))
     prompt = _build_intent_prompt(request.text, request.instructions)
     try:

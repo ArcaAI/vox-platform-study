@@ -4,7 +4,7 @@ Round 2 built the subscriber SHAPE in `nlp/core/effective_config.py`
 (`run_invalidation_listener`) and wired the publisher on the gateway, but this
 service held no Redis client at all — so the channel had a handler and no
 transport, and every control-plane write still took up to a full TTL window to be
-seen here. Rule 09 §"Config caches": *invalidation is the propagation path; the
+seen here. Rule 09 : *invalidation is the propagation path; the
 TTL is a bounded-staleness safety net.* Owner decision D-5 (2026-08-23) approved
 the dependency.
 

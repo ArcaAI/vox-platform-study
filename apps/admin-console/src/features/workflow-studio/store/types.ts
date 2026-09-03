@@ -1,5 +1,5 @@
 /**
- * The graph-editing store's own node/edge model (TASK-719 Task 11). Deliberately the SAME
+ * The graph-editing store's own node/edge model. Deliberately the SAME
  * shape `@arcaai/ui`'s `WorkflowCanvasNode`/`WorkflowCanvasEdge` expect (minus the
  * validation-report-derived `problem`, which is computed by a selector, never stored) — canvas
  * and list editor render off one store, so there is exactly one node/edge model to keep in

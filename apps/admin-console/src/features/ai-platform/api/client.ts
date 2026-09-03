@@ -1,5 +1,5 @@
 /**
- * Provider-configuration admin plane (`admin/routing-policies`) — TASK-844.
+ * Provider-configuration admin plane (`admin/routing-policies`) —.
  *
  * SUPER_ADMIN-only on the gateway, enforced imperatively in
  * `AiRoutingPolicyService` rather than by a decorator (there is no "super admin"

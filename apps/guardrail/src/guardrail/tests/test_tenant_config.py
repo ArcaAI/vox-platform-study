@@ -33,7 +33,7 @@ from guardrail.core.tenant_config import (
 
 # Ordinary customer tenants. Deliberately NOT in the reserved `50000000-…`
 # range: that id is the "Global" customer tenant, and the whole point of the
-# TASK-735/736 fix is that it is not a tier the resolver may reach for.
+# /736 fix is that it is not a tier the resolver may reach for.
 TENANT_A = "11111111-1111-1111-1111-111111111111"
 TENANT_B = "22222222-2222-2222-2222-222222222222"
 
@@ -250,7 +250,7 @@ async def test_vetoed_tenant_does_not_affect_a_different_tenants_resolution() ->
 
 
 # ---------------------------------------------------------------------------
-# A failed READ is not an absent row (TASK-799 F-08). It used to resolve to
+# A failed READ is not an absent row. It used to resolve to
 # empty and be negatively cached, which `resolve()` reads as "no tenant opinion"
 # and widens to SYSTEM — silently serving the platform safety FLOOR to a tenant
 # that may have chosen something stricter, for a whole TTL window. It now raises,
@@ -320,7 +320,7 @@ async def test_db_error_costs_one_session_attempt_per_resolve() -> None:
 # ---------------------------------------------------------------------------
 # Delegation: map a resolved per-tenant selection onto the judge client
 #
-# There is no engine sub-config to map onto any more (TASK-735 Phase 2b):
+# There is no engine sub-config to map onto any more :
 # guardrail hosts no LLM, so a resolved selection produces a CLIENT pointed at
 # `apps/text`'s judge lane, carrying the provider/model the DB chose.
 # ---------------------------------------------------------------------------
@@ -330,7 +330,7 @@ def _settings() -> Settings:
     return Settings()
 
 
-# TASK-777 A-3: criteria is CONFIG (failMode=closed) with no code default.
+# criteria is CONFIG (failMode=closed) with no code default.
 _POLICY = {"medicalValidationCriteria": "you are a medical context validator"}
 
 
@@ -450,7 +450,7 @@ def _db_resolver(rows: list | None = None, exc: Exception | None = None) -> Tena
 
 @pytest.mark.asyncio
 async def test_db_tenant_task_default_wins_over_system_row() -> None:
-    # Tenant-first resolution (TASK-735 Phase 1 fix): TENANT_A's own ENABLED
+    # Tenant-first resolution ( fix): TENANT_A's own ENABLED
     # AiTaskDefault row wins over the SYSTEM row for the same task key — the
     # defect this ticket fixes (previously the query pinned to SYSTEM only).
     rows = [
@@ -517,7 +517,7 @@ async def test_db_disabled_system_row_is_absent_not_a_veto() -> None:
 @pytest.mark.asyncio
 async def test_db_prefers_the_tenants_own_model_row_over_the_system_copy() -> None:
     # SYSTEM task default joined against both catalog rows → the TENANT's own
-    # row wins (TASK-799 F-05). The tie-break used to prefer SYSTEM, which is the
+    # row wins. The tie-break used to prefer SYSTEM, which is the
     # one thing a tenant-owned registry row cannot mean.
     rows = [
         _row(SYSTEM_TENANT_ID, TENANT_A, "lm-studio", "tenant-source-uri"),
@@ -634,7 +634,7 @@ def test_resource_status_enum_mirror_matches_postgres() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TASK-735 / TASK-736 — the runtime cascade is exactly TWO tiers:
+# / — the runtime cascade is exactly TWO tiers:
 # request tenant → SYSTEM. `50000000-…` ("Global") is a CUSTOMER tenant used as
 # a platform-admin playground; it is NOT a config tier and must never appear in
 # a resolution step (`.claude/rules/00-project-context.md` §Configuration
@@ -731,12 +731,12 @@ def test_database_config_has_no_default_tenant_id_field(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TASK-736 Phase C — there is no Ollama in this deployment.
+# there is no Ollama in this deployment.
 # ---------------------------------------------------------------------------
 
 
 def test_no_engine_switch_map_survives() -> None:
-    """TASK-736 removed Ollama; TASK-735 Phase 2b removed the whole map with the
+    """removed Ollama; removed the whole map with the
     engines it addressed. A provider name is now a pass-through token for `text`,
     not a key into guardrail's own adapter table."""
     import guardrail.core.tenant_config as tc
@@ -771,7 +771,7 @@ def test_engine_provider_modules_are_gone() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TASK-737 — a DECLARED tenant-less call is not the same thing as a missing one
+# a DECLARED tenant-less call is not the same thing as a missing one
 # ---------------------------------------------------------------------------
 
 
@@ -804,7 +804,7 @@ async def test_declared_tenantless_call_resolves_system_not_a_customer_tenant() 
 
     The distinction matters for what it leaves behind: once declared tenant-less
     work carries a marker, an ABSENT header is unambiguously a caller defect, which
-    is what makes §4.5's later tightening possible at all.
+    is what makes 's later tightening possible at all.
     """
     rows = [
         _row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID, "lm-studio", "granite-guardian-4.1-8b"),

@@ -872,7 +872,7 @@ class TestReasoningPlacement:
         assert "reasoning" not in LoopFinalizeRequest.model_fields
 
     def test_the_specialist_analysis_is_a_verification_task_not_a_generation_task(self):
-        """Specialists emit findings (claims), never note prose — see README §1.5."""
+        """Specialists emit findings (claims), never note prose"""
         fields = set(SpecialistFinding.model_fields)
         assert fields == {"output_kind", "statement", "confidence", "evidence_context_item_ids"}
 

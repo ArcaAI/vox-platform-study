@@ -3,7 +3,7 @@ import { cn } from '@arcaai/ui';
 
 /**
  * ScreenTemplate — the standardized console page frame (Figma "09 - Screen
- * Templates"; rules 11 §Screen Template + 12). It fills the shell's content
+ * Templates"; rules 11 Template + 12). It fills the shell's content
  * region as a fixed-height flex column so ONLY the content scrolls: the top
  * group is pinned above and the footer status bar is pinned below.
  *

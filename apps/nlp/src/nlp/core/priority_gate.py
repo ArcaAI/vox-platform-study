@@ -1,6 +1,6 @@
-"""Priority-ordered execution permit for one weight slot (TASK-782).
+"""Priority-ordered execution permit for one weight slot.
 
-TASK-778 gave every batcher its own in-flight semaphore. That is right while
+gave every batcher its own in-flight semaphore. That is right while
 there is ONE queue per model, and wrong the moment there are two: the
 synchronous inline gate and the asynchronous per-utterance redaction pass have
 different latency budgets but drive the SAME tensor graph, so a bulk pass that

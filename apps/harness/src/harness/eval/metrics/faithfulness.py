@@ -70,7 +70,7 @@ class LLMClaimExtractor:
             parsed = loads_json(raw)
         except ValueError:
             # A genuinely unparseable decomposition (e.g. a small local judge
-            # emitting truncated/malformed JSON — reproduced live, TASK-713)
+            # emitting truncated/malformed JSON — reproduced live)
             # degrades to "no claims" rather than crashing the whole eval run:
             # the same vacuous-truth convention `evaluate()` already applies
             # when the model legitimately extracts zero claims.
@@ -103,7 +103,7 @@ class LLMClaimVerifier:
             # A claim we can't parse a verdict for has no evidence of support —
             # fail CLOSED to unsupported (never raise, never count as
             # supported). Reproduced live against a real small local judge
-            # (TASK-713): an occasional malformed verify response previously
+            # an occasional malformed verify response previously
             # propagated a raw JSONDecodeError and crashed the entire eval-gate
             # run instead of degrading this one claim.
             logger.warning("claim_verification_unparseable", raw_response=raw[:200])

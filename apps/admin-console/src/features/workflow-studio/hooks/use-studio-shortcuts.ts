@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Keyboard shortcuts for the graph editor (TASK-719 UX pass) — undo / redo / duplicate.
+ * Keyboard shortcuts for the graph editor ( UX pass) — undo / redo / duplicate.
  *
  * Deliberately narrow: only chords that are already muscle memory in every editor, and only
  * while the focus is NOT inside a text field. The inspector renders real inputs and a

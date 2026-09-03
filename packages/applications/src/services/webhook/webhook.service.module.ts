@@ -8,7 +8,7 @@ import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 
 /**
- * Registers both delivery-side queues (TASK-727):
+ * Registers both delivery-side queues :
  *  - `JobQueue.SysEvent` — ALREADY registered app-wide by
  *    `RedisServiceModule.register` (via `CommonServiceModule`), but that
  *    registration's exports don't include the BullMQ queue provider itself

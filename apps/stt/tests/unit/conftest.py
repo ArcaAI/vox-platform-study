@@ -1,6 +1,6 @@
 """Unit-suite configuration for STT.
 
-TASK-799 — model-registry credentials resolve over the gateway, and the unit
+model-registry credentials resolve over the gateway, and the unit
 suite is HERMETIC: there is no gateway, so every resolve would fault and every
 loader would correctly fail CLOSED. That is the right production behaviour and
 the wrong test fixture — a unit test of "does the HuggingFace loader wire

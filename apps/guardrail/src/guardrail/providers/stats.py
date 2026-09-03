@@ -1,6 +1,6 @@
 """AD-1 per-call generation stats — guardrail-local mirror.
 
-Guardrail no longer speaks the OpenAI wire itself (TASK-735 Phase 2b delegates
+Guardrail no longer speaks the OpenAI wire itself ( delegates
 judgement to ``apps/text``), so the former ``stats_from_openai_response`` builder
 went with the engine adapters. The SHAPE stays: it is what
 ``services/external_text_client`` maps ``text``'s ``GenerationStats`` onto, and

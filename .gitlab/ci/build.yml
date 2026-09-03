@@ -151,7 +151,7 @@ build-admin-console:
     # assets/rnnoise.wasm is an LFS object. A pointer stub would build
     # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
     GIT_LFS_SKIP_SMUDGE: "0"
-    # TASK-858 — smudge ONLY that object. With the full smudge the checkout
+    # Smudge ONLY that object. With the full smudge the checkout
     # fetched ~26 MB of test audio the image never uses, and against a slow
     # GitLab LFS endpoint the fetch hung until the 30-minute job timeout
     # (pipeline #1113, both Next.js builds, twice). `lfs.fetchinclude` leaves
@@ -208,7 +208,7 @@ build-compat-playground:
     # assets/rnnoise.wasm is an LFS object. A pointer stub would build
     # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
     GIT_LFS_SKIP_SMUDGE: "0"
-    # TASK-858 — smudge ONLY that object. With the full smudge the checkout
+    # Smudge ONLY that object. With the full smudge the checkout
     # fetched ~26 MB of test audio the image never uses, and against a slow
     # GitLab LFS endpoint the fetch hung until the 30-minute job timeout
     # (pipeline #1113, both Next.js builds, twice). `lfs.fetchinclude` leaves
@@ -446,11 +446,11 @@ build-database:
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
 # ── LM Studio (`llmster`) GGUF serving tier ─────────────────────────────────
-# TASK-824. Owner decision 2026-08-30 (ticket §0): LM Studio + vLLM.
+# Owner decision 2026-08-30: LM Studio + vLLM.
 #
 # CI IS THE ONLY BUILDER FOR THIS IMAGE. It embeds a proprietary binary fetched
 # from a vendor CDN and is pushed to the INTERNAL registry only — we hold no
-# redistribution right (ticket §0 risk A-5, §5 L-2). $REGISTRY is internal, so
+# redistribution right (owner decision risk A-5, §5 L-2). $REGISTRY is internal, so
 # the existing push path is already correct; do not add a public mirror.
 #
 # ── WHY THIS JOB DOES NOT USE `curl install.sh | bash` ──────────────────────
@@ -479,7 +479,7 @@ build-database:
 # packages/**, which is outside this lane's boundary. So this job triggers on
 # branch pushes and `ALL-` only — the same shape as build-qdrant-init and
 # build-database. Adding `LMS-` to the grammar is ROOT_CONFIG_REQUEST R-6 in
-# docs/implementation/TASK-824-LM-Studio-Service/deployment-llmster/README.md.
+# the LM Studio service deployment notes.
 
 build-lmstudio:
   extends: .build-template
@@ -590,7 +590,7 @@ verify-lmstudio-runtime:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
-# ── vLLM inference image (TASK-823) ─────────────────────────────────────────
+# ── vLLM inference image ─────────────────────────────────────────
 # `vllm/vllm-openai:v0.28.0` + the out-of-tree GGUF plugin, pinned to a full
 # commit SHA. Rationale, the v0.11.0-vs-v0.28.0 version pincer, and the three
 # limitations this image ships with (no GGUF embeddings, Granite unverified,

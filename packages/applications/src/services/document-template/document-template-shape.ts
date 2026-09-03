@@ -2,7 +2,7 @@ import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
 
 /**
  * The shape of a `DocumentTemplateVersion.shape`, and the validator that
- * decides whether a tenant may publish one (TASK-810).
+ * decides whether a tenant may publish one.
  *
  * ## The load-bearing idea
  *

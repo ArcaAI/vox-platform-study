@@ -6,7 +6,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 
 /**
- * WHICH workflow definition governs a scope for a palette (TASK-733 half (a)).
+ * WHICH workflow definition governs a scope for a palette.
  * `(scope, scopeId)` mirrors `PipelinePolicy` so the resolution is the SAME
  * first-set-wins `walkCascade` walk; `workflowDefinitionSlug` is a LINEAGE key
  * — the ACTIVE PUBLISHED version of that slug is resolved at dispatch time.

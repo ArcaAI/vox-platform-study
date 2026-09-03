@@ -39,7 +39,7 @@ export interface ResolvedToolSetting {
  * The normalized live tool plan. Always fully populated on the snapshot, so the
  * flush path never has to reason about absent config.
  *
- * SINCE TASK-815 there is exactly one value it ever takes on a fresh resolve —
+ * SINCE there is exactly one value it ever takes on a fresh resolve
  * {@link DEFAULT_LIVE_TOOL_PLAN}. The per-session variation used to come from
  * `DepartmentAgent.toolConfig`; its successor is not another JSONB blob but the
  * GRAPH: in the workflow substrate "is NER on for this session" is answered by

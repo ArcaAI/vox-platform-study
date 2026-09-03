@@ -12,7 +12,7 @@ whose work this is cannot both be true, so the request is refused rather than
 silently resolved in favour of one of them.
 
 This is a DISAGREEMENT check, not a second mandatory header: absence of the
-header is the caller's business and is enforced upstream (TASK-737), so a body
+header is the caller's business and is enforced upstream, so a body
 tenant with no header is unchanged.
 """
 

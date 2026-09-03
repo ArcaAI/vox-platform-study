@@ -1,12 +1,12 @@
 /**
- * TASK-702 — the ArcaAI clinical prompt VERSION POLICY, pinned.
+ * the ArcaAI clinical prompt VERSION POLICY, pinned.
  *
  * Owner decision, 2026-08-17
  * (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
- * §2, row 702):
+ * row 702):
  *
  *   > "allow all current prompt versions, v3 will be default versions when
- *   >  go-live."
+ *   > go-live."
  *
  * Two clauses, and they pull in opposite directions, so both are pinned here:
  *
@@ -19,7 +19,7 @@
  *   - **v3 IS THE DEFAULT.** Which is load-bearing rather than cosmetic,
  *     because of a residual clinical-safety fact: **10 of v1's 23 bodies still
  *     instruct the model to write an ICD-10 code** (v2 and v3 were cleaned by
- *     TASK-702; v1 was deliberately not — see `icd10-prompt-containment.test.ts`
+ * v1 was deliberately not — see `icd10-prompt-containment.test.ts`
  *     exception 2). So "all versions allowed" means a version that violates
  *     INV-065/066 is still reachable BY ROLLBACK — an explicit, auditable act —
  *     and must never become reachable BY DEFAULT.
@@ -42,7 +42,7 @@ import {
 
 const ICD10_PATTERN = /ICD-?10/i;
 
-describe('ArcaAI clinical prompt version policy (TASK-702)', () => {
+describe('ArcaAI clinical prompt version policy ', () => {
   describe('all current versions stay available', () => {
     it('seeds exactly versions 1, 2 and 3 — none retired, none added', () => {
       const versions = [...new Set(ARCAAI_CLINICAL_VERSIONS.map((v) => v.versionNumber))].sort();

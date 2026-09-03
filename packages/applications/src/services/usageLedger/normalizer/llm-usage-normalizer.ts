@@ -1,7 +1,7 @@
 import { AiUsageUnit } from '@arcaai/domains';
 
 /**
- * Provider usage-object normalizer (research-findings.md §3).
+ * Provider usage-object normalizer (research-findings.md
  *
  * Every LLM vendor reports token usage in a different shape, and — worse — with
  * different ARITHMETIC. Two providers can return the identical field name and
@@ -12,7 +12,7 @@ import { AiUsageUnit } from '@arcaai/domains';
  * THE CONTRACT: the five counters are DISJOINT.
  * ============================================================================
  *
- *   billable input  = inputTokens + cacheReadTokens + cacheWriteTokens
+ *   billable input = inputTokens + cacheReadTokens + cacheWriteTokens
  *   billable output = outputTokens + reasoningTokens
  *
  * `inputTokens` is the UNCACHED input; `outputTokens` EXCLUDES reasoning. The
@@ -89,13 +89,13 @@ const ZERO_USAGE: NormalizedLlmUsage = Object.freeze({
 /**
  * Normalize one provider usage object into the five disjoint counters.
  *
- * @param provider  Canonical provider id (`openai`, `anthropic`, `bedrock`,
+ * @param provider Canonical provider id (`openai`, `anthropic`, `bedrock`,
  *                  `vertex`, `ollama`, `lm-studio`, `llama-cpp`, `vllm`, ...).
  *                  Recorded for provenance and available to future
  *                  provider-specific quirk handling; the ARITHMETIC is chosen
  *                  by `endpointKind` alone, deliberately.
  * @param endpointKind The API shape that produced `rawUsage`.
- * @param rawUsage  The provider's usage object, or the whole response envelope
+ * @param rawUsage The provider's usage object, or the whole response envelope
  *                  (a nested `usage` / `usageMetadata` is unwrapped for you).
  *                  `null`/`undefined` yields all-zero — a stream that never
  *                  delivered usage must not crash a teardown handler.

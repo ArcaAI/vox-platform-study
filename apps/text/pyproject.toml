@@ -28,7 +28,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.15.0",
     "httpx>=0.28.1",
-    # TASK-818 Lane A: `providers/pool.py` imports httpx2 DIRECTLY. It arrives
+    # `providers/pool.py` imports httpx2 DIRECTLY. It arrives
     # transitively via `openai>=3` (which migrated to it) while `anthropic` is
     # still on httpx — two structurally identical, NOT interchangeable client
     # libraries in one process. Depending on a transitive import for a direct
@@ -61,7 +61,7 @@ dependencies = [
     "hope-env",
     # --- Shared OTel trace-propagation helper ---
     "hope-otel",
-    # --- TASK-717: async task/event envelope contract ---
+    # Async task/event envelope contract
     "hope-async-contract",
     "uuid7>=0.1.0",
 ]
@@ -202,10 +202,10 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests requiring real LLM providers (deselect with '-m \"not e2e\"')",
-    # TASK-737 — opt OUT of conftest's default `X-Tenant-Id` injection, for the
+    # opt OUT of conftest's default `X-Tenant-Id` injection, for the
     # tests that assert the mandatory-header contract itself (an absent header
     # must reach the endpoint and get a 428).
-    "no_default_tenant_header: send requests with no X-Tenant-Id (TASK-737 contract tests)",
+    "no_default_tenant_header: send requests with no X-Tenant-Id (contract tests)",
 ]
 
 # Coverage configuration

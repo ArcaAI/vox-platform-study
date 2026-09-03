@@ -49,7 +49,7 @@ const TRIGGER_OPTIONS: FilterOption[] = [
  * OFF / 30 days when on). A run's trace can therefore go missing before the
  * run row itself does — the trace screen renders that honestly (see
  * `TracePrunedState`); this footer names the mechanism so it is never a
- * surprise. Static copy, not a live setting read — see README §7 for why.
+ * surprise. Static copy, not a live setting read — for why.
  */
 const RETENTION_FOOTER_NOTE =
   'Run history here outlives per-step traces: trajectory retention (agentic.trajectory.retentionDays, default 30d when enabled) prunes step detail before the run row.';
@@ -155,7 +155,7 @@ function WorkflowRunsBody() {
     <EmptyState
       icon={IconListTree}
       title="No workflow runs yet"
-      description="Runs appear here once TASK-718's interpreter dispatches a workflow-substrate execution for this tenant."
+      description="Runs appear here once  interpreter dispatches a workflow-substrate execution for this tenant."
     />
   );
 
@@ -276,7 +276,7 @@ function WorkflowRunsBody() {
   );
 }
 
-/** Frame N — Workflow Runs list (tier 30-49). Definition-scoped tenant view; cross-links `/ai-operations/runs` (§2.4). */
+/** Frame N — Workflow Runs list (tier 30-49). Definition-scoped tenant view; cross-links `/ai-operations/runs`. */
 export function WorkflowRunsScreen() {
   return (
     <WorkingTenantGate

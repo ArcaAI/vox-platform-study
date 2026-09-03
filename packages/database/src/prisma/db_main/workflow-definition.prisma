@@ -1,22 +1,22 @@
 // ============================================================================
 // Workflow Definition — the persistence and vocabulary floor of the
-// agentic-workflow-platform substrate (TASK-715).
+// agentic-workflow-platform substrate.
 //
 // D3 puts full build power in tenant-admin hands on day one, so the model
 // must be able to EXPRESS an unsafe graph while the server is the only thing
 // that decides it is unsafe: `graph` is the canvas model, stored verbatim as
 // authored and NEVER executed directly; `compiledConfig` is the interpreter's
-// input contract, produced server-side at publish (TASK-716) and never
+// input contract, produced server-side at publish and never
 // accepted from a request DTO.
 //
 // Deliberately a SINGLE table whose rows ARE versions — NOT the house
 // governance triple (head + immutable version + movable pin) used by
 // PromptTemplate/PromptVersion, ConsultationContextSchema/…Version, and
 // DepartmentAgent/…Version. A published version IS the addressable product
-// here (TASK-722 binds `/api/v1/workflows/:slug` to it, run rows pin a
-// `workflowVersionId`, TASK-723's trajectory rows join to it), so a
+// here ( binds `/api/v1/workflows/:slug` to it, run rows pin a
+// `workflowVersionId`, trajectory rows join to it), so a
 // head/version split would give two identities to one thing. Recorded in
-// TASK-715 §6 (Risks & Open Questions #1) so a later reviewer sees the
+// (Risks & Open Questions #1) so a later reviewer sees the
 // divergence was deliberate.
 //
 // Lineage uses BOTH a monotone `(tenantId, slug, versionNumber)` addressing
@@ -24,26 +24,26 @@
 // prompt-management.service.ts discipline) AND a `parentVersionId`
 // provenance edge — a workflow author may branch a new draft from ANY
 // published version, not only the latest, which a monotone integer alone
-// cannot express (TASK-715 §3.3).
+// cannot express
 //
 // PUBLISHED/DEPRECATED rows are hard-immutable: design.md's "Immutable
 // config + pinned version = deterministic Temporal replay" means a published
 // `compiledConfig` changing under a running Temporal workflow breaks replay
 // determinism. Enforcement is THREE layers, not one: a service guard
 // (`assertMutable`) + a DTO whitelist that never declares the server-stamped
-// columns + checksum drift-detection (TASK-715 §3.4) — AND, since TASK-734
-// closed the HUMAN-GATED §6 #2 open question ("Lets review, suggest best
+// columns + checksum drift-detection — AND, since
+// closed the HUMAN-GATED #2 open question ("Lets review, suggest best
 // practices"), a fourth, DB-level layer: a `BEFORE UPDATE OR DELETE` trigger
 // (`workflow_definition_immutability_guard`,
 // migrations/20260816090000_task_734_.../migration.sql) that blocks changes
 // to the published bytes (`graph`/`compiledConfig` + their checksums) and
 // lineage identity once `OLD.status` is PUBLISHED/DEPRECATED, and blocks a
 // hard DELETE of such a row outright. THIS IS THE FIRST TRIGGER IN THE
-// REPO's migration history — TASK-715 §3.4 found zero precedent and
-// deliberately avoided one; TASK-734 revisits that call because a
+// REPO's migration history — found zero precedent and
+// deliberately avoided one; revisits that call because a
 // row-scoped trigger (unlike table-scoped `REVOKE`) CAN distinguish DRAFT
 // from PUBLISHED rows in the same table by reading `OLD.status`, so the
-// "second append-only table" alternative §6 #2 sketched turns out not to be
+// "second append-only table" alternative #2 sketched turns out not to be
 // necessary. The known, accepted cost: Prisma does not model triggers (or
 // the partial unique index below), so `prisma migrate diff` will show
 // permanent drift against this file — the trigger/function/partial-index
@@ -69,12 +69,12 @@ model WorkflowDefinition {
   // Which registered palette this definition targets. A `String` column,
   // not an enum: palettes are registry (code) data, and a Prisma enum would
   // need an `ALTER TYPE` migration per palette — the exact deploy coupling
-  // the code-owned registry exists to avoid (TASK-715 §6 #5). An unknown
+  // the code-owned registry exists to avoid ( #5). An unknown
   // palette is a 400 from the service, not a bad row.
   paletteKey String
 
   versionNumber Int
-  // Provenance edge; see the file header + TASK-715 §3.3. Deliberately NO
+  // Provenance edge; see the file header + Deliberately NO
   // `@relation` — a self-relation would put a back-reference array on every
   // row for zero query benefit; lineage reads walk this column directly.
   parentVersionId String?
@@ -88,16 +88,16 @@ model WorkflowDefinition {
   graphChecksum String
 
   // The interpreter's input contract, produced SERVER-SIDE at publish
-  // (TASK-716). Null until PUBLISHED. Never accepted from a request DTO —
+  // Null until PUBLISHED. Never accepted from a request DTO
   // enforced by DTO whitelist, not by this column.
   compiledConfig         Json?   @db.JsonB
   compiledConfigChecksum String?
   // sha256 of the assembled node registry at publish time; a mismatch
-  // against the running registry is what triggers TASK-716's NEEDS_REVIEW
+  // against the running registry is what triggers NEEDS_REVIEW
   // re-validation.
   registryChecksum String?
 
-  // The last server-side ValidationReport (TASK-716 owns its shape).
+  // The last server-side ValidationReport ( owns its shape).
   validationReport Json? @db.JsonB
   needsReview      Boolean @default(false)
 
@@ -109,7 +109,7 @@ model WorkflowDefinition {
   // At most one true per (tenantId, slug) among non-DELETED rows — enforced
   // in the application service (WorkflowDefinitionService.demoteExistingActive,
   // mirroring ConsultationContextSchema.isDefault / DepartmentAgent.isDefault)
-  // AND, since TASK-734 (§6 risk #2 answer), by a partial UNIQUE index —
+  // AND, since ( risk #2 answer), by a partial UNIQUE index
   // Prisma's schema DSL cannot express a filtered/partial index (unlike
   // Postgres itself, which can), so it is hand-written in
   // migrations/20260816090000_task_734_.../migration.sql rather than here.

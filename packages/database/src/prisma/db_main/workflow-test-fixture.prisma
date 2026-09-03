@@ -1,6 +1,6 @@
 // ============================================================================
 // Workflow Test Fixture — per-tenant saved SYNTHETIC test inputs for the
-// Workbench (TASK-721 §1 item 5).
+// Workbench.
 //
 // Not reused from the harness eval golden-set family (GoldenSet/GoldenCase,
 // harness.prisma): those model a consultation transcript + reference note
@@ -8,10 +8,10 @@
 // / `encryptedReferenceNote`). A generic synthetic workflow input is neither a
 // consultation transcript nor a reference note, and pushing one into that
 // table would put non-clinical test data into a PHI-encrypted clinical
-// structure and misuse its EvalRun relations (TASK-721 README §2.7). A small
+// structure and misuse its EvalRun relations ( A small
 // dedicated model is the correct call.
 //
-// PHI POSTURE (README §6/R4 — RESOLVED 2026-08-20, owner ruling): `input` is
+// PHI POSTURE (RESOLVED 2026-08-20, owner ruling): `input` is
 // encrypted with Vault Transit, mirroring GoldenCase's treatment of
 // `transcript`/`referenceNote` (harness.prisma:104-114) exactly: the plaintext
 // `input` column has been DROPPED; `encryptedInput` + the shared `keyVersion`
@@ -52,7 +52,7 @@ model WorkflowTestFixture {
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // synthetic input payload plus the shared Transit key version. The
   // plaintext `input` column has been DROPPED; persisted as ciphertext only
-  // (see the file header — README §6/R4, RESOLVED).
+  // (see the file header —, RESOLVED).
   encryptedInput Bytes?
   keyVersion     Int?
 

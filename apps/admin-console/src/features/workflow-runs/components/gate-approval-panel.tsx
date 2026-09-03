@@ -20,7 +20,6 @@ import type { WorkflowRun } from '../api/types';
 
 /**
  * The clinician sign-off affordance for a run parked at its human-approval gate
- * (TASK-731 Phase B).
  *
  * **Why this reads live state instead of the run row.** `WorkflowRunStatus` has no "waiting on a
  * human" member — a run parked at its gate and a run busy generating text are both `RUNNING`. So

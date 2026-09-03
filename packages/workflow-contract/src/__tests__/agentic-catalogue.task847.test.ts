@@ -1,5 +1,5 @@
 /**
- * TASK-847 — the GENERIC node catalogue (`agentic.*`), the eight node types the owner's
+ * the GENERIC node catalogue (`agentic.*`), the eight node types the owner's
  * specification names.
  *
  * This file is the have/missing table of program finding F-12 turned into assertions. Everything
@@ -46,7 +46,7 @@ function propertiesOf(key: string): Record<string, Record<string, unknown>> {
   return (schemaOf(key).properties ?? {}) as Record<string, Record<string, unknown>>;
 }
 
-describe('TASK-847 — the eight generic node types exist', () => {
+describe('the eight generic node types exist', () => {
   it('registers all eight, under one palette', () => {
     expect([...AGENTIC_NODE_TYPES].sort()).toEqual([...EXPECTED_KEYS].sort());
     for (const key of EXPECTED_KEYS) {
@@ -85,7 +85,7 @@ describe('TASK-847 — the eight generic node types exist', () => {
   });
 });
 
-describe('TASK-847 — the audio boundary is a type, not a convention', () => {
+describe('the audio boundary is a type, not a convention', () => {
   it('takes a STORED artifact into `agentic.stt`, never a live stream', () => {
     const input = NODE_PORTS['agentic.stt'].inputs.find((port) => port.name === 'in');
     expect(input?.primitive).toBe('audio');
@@ -101,7 +101,7 @@ describe('TASK-847 — the audio boundary is a type, not a convention', () => {
   });
 });
 
-describe('TASK-847 — the agent node binds ONE provider configuration, by reference', () => {
+describe('the agent node binds ONE provider configuration, by reference', () => {
   it('accepts a routing-policy id and a task key, and nothing that identifies a provider', () => {
     const properties = propertiesOf('agentic.agent');
     const ref = properties.providerConfigRef as { properties?: Record<string, unknown> };
@@ -136,7 +136,7 @@ describe('TASK-847 — the agent node binds ONE provider configuration, by refer
   });
 });
 
-describe('TASK-847 — the loop node is bounded on all three axes', () => {
+describe('the loop node is bounded on all three axes', () => {
   it('requires iterations, time AND a cost ceiling', () => {
     const bounds = propertiesOf('agentic.loop').bounds as { required?: string[]; properties?: Record<string, unknown> };
     expect([...(bounds.required ?? [])].sort()).toEqual(['maxDurationSeconds', 'maxIterations', 'maxTotalTokens']);
@@ -152,7 +152,7 @@ describe('TASK-847 — the loop node is bounded on all three axes', () => {
   });
 });
 
-describe('TASK-847 — the duplicated guard set cannot drift from the registry', () => {
+describe('the duplicated guard set cannot drift from the registry', () => {
   it('matches the registry`s `guard`-classed types exactly', () => {
     // `agentic-contract.ts` keeps `GUARD_NODE_TYPES` as a literal set because `node-registry.ts`
     // imports `node-config-schemas.ts`, so a module the registry depends on cannot read
@@ -168,7 +168,7 @@ describe('TASK-847 — the duplicated guard set cannot drift from the registry',
   });
 });
 
-describe('TASK-847 — Input/Output/Data carry tenant-defined schemas', () => {
+describe('Input/Output/Data carry tenant-defined schemas', () => {
   it('gives the boundary nodes an `ioSchema`', () => {
     expect(propertiesOf('agentic.input').ioSchema).toBeDefined();
     expect(propertiesOf('agentic.output').ioSchema).toBeDefined();

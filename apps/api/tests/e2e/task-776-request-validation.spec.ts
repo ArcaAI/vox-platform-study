@@ -1,5 +1,5 @@
 /**
- * TASK-776 — Request-validation contract (global ValidationPipe + exception mapping)
+ * Request-validation contract (global ValidationPipe + exception mapping)
  *
  * Verifies, against the LIVE gateway, the behaviors documented for:
  *   1. The global `ValidationPipe` (`transform + whitelist + forbidNonWhitelisted +
@@ -33,7 +33,7 @@ function trackDepartment<T extends { id?: string }>(row: T): T {
   return row;
 }
 
-test.describe('TASK-776: request validation', () => {
+test.describe('request validation', () => {
   let tenantAdminToken: string;
   let superAdminToken: string;
 
@@ -185,7 +185,7 @@ test.describe('TASK-776: request validation', () => {
       const dept = trackDepartment(await created.json());
       expect(dept.version).toBe(1);
 
-      // TASK-776 F-01 (FIXED) — a semantically empty update is now
+      // (FIXED) — a semantically empty update is now
       // DETERMINISTICALLY rejected, on the first PATCH of a freshly created row
       // as much as on any later one.
       //

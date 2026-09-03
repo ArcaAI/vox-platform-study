@@ -76,7 +76,7 @@ export class SummaryProvenanceResponse {
 
   @ApiPropertyOptional({
     description:
-      'Cited transcript segments (TASK-552 Lane C), resolved from citationsMap against the persisted TranscriptSegment rows. Empty (not missing) when the consultation has no single resolvable transcript, no segments are persisted, or nothing was cited — best-effort, never blocks the read.',
+      'Cited transcript segments (Lane C), resolved from citationsMap against the persisted TranscriptSegment rows. Empty (not missing) when the consultation has no single resolvable transcript, no segments are persisted, or nothing was cited — best-effort, never blocks the read.',
     type: [CitedSegmentResponse],
   })
   citedSegments: CitedSegmentResponse[];

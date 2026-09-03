@@ -14,7 +14,7 @@ one of two modes:
   label leaks). Used for retained / derived / cross-patient artifacts (the DNA
   writing-style corpus, the gate-edit exemplar bank).
 
-DECISION #12 (TASK-710 §6/§7, CONFIRMED) — the pseudonymization mechanism is stable
+DECISION #12 (CONFIRMED) — the pseudonymization mechanism is stable
 per-label, per-distinct-value token substitution, verified against `apps/nlp`'s
 actual entity-linking (`ontology_linker.py` + `token_classifier.py`), not assumed:
 `OntologyLinker.link()` is a stateless per-span dictionary lookup with no
@@ -103,7 +103,7 @@ class _Span:
 def _split_for_extraction(text: str, chunk_chars: int) -> list[str]:
     """Partition `text` into chunks of at most `chunk_chars`, cutting on whitespace.
 
-    GLiNER's cost is super-linear in input length (TASK-710 §7 Task 6: 20k chars
+    GLiNER's cost is super-linear in input length ( Task 6: 20k chars
     → 3.6s/5.2GB, 50k → 17.5s/17.8GB), so an unbounded call over a large corpus
     exhausts both the caller's HTTP timeout and the worker's memory. Chunking
     makes both linear and bounded.

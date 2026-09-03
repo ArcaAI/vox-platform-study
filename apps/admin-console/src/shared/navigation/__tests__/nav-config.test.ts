@@ -37,25 +37,25 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // it for their own tenant's rows); total stays 47.
   // /releases (tier 10-19), taking 47 -> 48.
   // /context-schemas (tier 30-49), taking 48 -> 49.
-  // /playground/workbench (tier 50-59, TASK-721), taking 49 -> 50.
-  // /workflow-runs (tier 30-49, TASK-723 Phase C — the definition-scoped
+  // /playground/workbench (tier 50-59), taking 49 -> 50.
+  // /workflow-runs (tier 30-49, — the definition-scoped
   // runs/observability view, cross-linked with /ai-operations/runs), taking
   // 50 -> 51.
-  // /workflow-studio (tier 30-49, TASK-719 — a concurrent sibling ticket's
+  // /workflow-studio (tier 30-49, — a concurrent sibling ticket's
   // graph-authoring surface, landed in this shared file alongside this
   // ticket's own edit), taking 51 -> 52.
-  // /workflow-studio/assignments (tier 30-49, TASK-733 — the Studio
+  // /workflow-studio/assignments (tier 30-49, — the Studio
   // assignment-matrix screen), taking 53 -> 54.
-  // /developer (tier 20-29, TASK-783 — the API documentation portal),
+  // /developer (tier 20-29, — the API documentation portal),
   // taking 54 -> 55.
-  // /security-policy (tier 10-19, TASK-786 — the platform credential policy:
+  // /security-policy (tier 10-19, — the platform credential policy:
   // password complexity/rotation + issued-secret entropy), taking 55 -> 56.
-  // TASK-788 Phase A moved /developer and /account OUT of the rail and into
+  // moved /developer and /account OUT of the rail and into
   // USER_MENU_ENTRIES (they are personal chrome, not a capability domain),
   // taking 56 -> 54 and tier 20-29 from 8 -> 6. No route was deleted: both are
   // still declared, still gated identically, and still reachable — see the
   // USER_MENU_ENTRIES describe below.
-  // TASK-799 Phase 4 added the two screens whose gateway routes had shipped
+  // added the two screens whose gateway routes had shipped
   // with no console consumer at all:
   //   /ai-runtime-profiles (tier 10-19, E.2 — the hyperparameter / capacity /
   //     timing plane; five operations under `admin/ai-runtime-profiles` and no
@@ -64,15 +64,15 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   //     `admin/settings/catalog` + `admin/settings/registry/:key`; 210
   //     descriptors with exactly ONE consumer, a single hardcoded category),
   //     taking 55 -> 56 and tier 20-29 from 6 -> 7.
-  // TASK-805 added `/consent` (the consent register), taking 56 -> 57 and
+  // added `/consent` (the consent register), taking 56 -> 57 and
   // tier 30-49 / domain `clinical` up by one.
   // `/settings` was NOT removed — it keeps the legacy raw-row and secret
   // administration and is relabelled "Settings rows & secrets" to say so.
-  // TASK-810 added `/document-templates` (the clinical document SHAPE catalog —
+  // added `/document-templates` (the clinical document SHAPE catalog
   // the sibling of `/context-schemas`: that screen governs what context may be
   // SUBMITTED, this one what document comes BACK), taking 57 -> 58 and
   // tier 30-49 / domain `knowledge-agents` up by one.
-  // TASK-815 REMOVED `/agents` (the Agent Catalog), taking 58 -> 57 and tier
+  // REMOVED `/agents` (the Agent Catalog), taking 58 -> 57 and tier
   // 30-49 / domain `knowledge-agents` back down by one. The route itself keeps
   // a one-release `redirect()` to `/prompt-templates`, but a redirect is not a
   // navigable destination and has no place in the rail map.
@@ -81,7 +81,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // (all tier 10-19, domain `ai-platform`), taking 57 -> 60 and tier 10-19 from
   // 23 -> 26. They are rail entries rather than tabs of `/ai-services` because
   // the rail is the platform's inventory of engines and registries.
-  // TASK-845 consolidated the AI provider surface into `/ai-platform`
+  // consolidated the AI provider surface into `/ai-platform`
   // (tier 20-29), and retired two rail entries in the process:
   //   * `/ai-task-defaults` — the SYSTEM half of a two-tier cascade whose
   //     tenant half lived on another screen. It is now the platform-default
@@ -113,7 +113,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(policy?.implemented).toBe(true);
   });
 
-  // TASK-783's developer-portal gate assertions moved with the entry itself
+  // developer-portal gate assertions moved with the entry itself
   // into the USER_MENU_ENTRIES describe below — the ability contract
   // (`read:ApiDocumentation`, a DEDICATED delegable subject rather than
   // `manage:all`) is unchanged and still asserted there.
@@ -130,7 +130,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-configuration')).toBe(true);
   });
 
-  it('collapses the two task-default tiers onto one shared-audience screen (TASK-845)', () => {
+  it('collapses the two task-default tiers onto one shared-audience screen ', () => {
     // The platform-default screen is GONE from the rail: SYSTEM and the working
     // tenant are the two tiers of one cascade, so they are a control on one
     // screen rather than two routes. `/ai-task-defaults` keeps a one-release
@@ -231,7 +231,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(demoPlanes.every((entry) => entry.required.length === 0)).toBe(true);
   });
 
-  // TASK-721 Phase C: the Workbench deliberately breaks the tier's
+  // the Workbench deliberately breaks the tier's
   // `required: []` convention because it reads/executes tenant
   // WorkflowDefinition/WorkflowRun rows (resource abilities), not an
   // own-account demo action. Reconciled against the real, now-landed
@@ -358,7 +358,7 @@ describe('visibleNavEntries', () => {
     expect(visible).not.toContain('/ai-models');
     expect(visible).toContain('/users');
     expect(visible).toContain('/tenant-profile');
-    // TASK-788: /account left the rail for the user menu.
+    // /account left the rail for the user menu.
     expect(visible).not.toContain('/account');
     expect(visibleUserMenuEntries(TENANT_ADMIN_RULES).map((entry) => entry.route)).toContain('/account');
     expect(visible).toContain('/playground/consultation');
@@ -369,7 +369,7 @@ describe('visibleNavEntries', () => {
 
   it('shows an authenticated user with zero grants nothing in the rail', () => {
     // Every rail route is now ability-gated: /account was the one ungated entry
-    // and TASK-788 moved it to the user menu, where it still renders.
+    // and moved it to the user menu, where it still renders.
     expect(visibleNavEntries([]).map((entry) => entry.route)).toEqual([]);
     expect(visibleUserMenuEntries([]).map((entry) => entry.route)).toEqual(['/account']);
   });
@@ -392,10 +392,10 @@ describe('visibleNavEntries', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TASK-788 Phase A — the capability-DOMAIN axis.
+// the capability-DOMAIN axis.
 //
-// The rail groups by capability domain (OD-2); the existing NavTier keeps
-// answering *who may open a screen* and is untouched (OD-3). AC-1/AC-2 promise
+// The rail groups by capability domain ; the existing NavTier keeps
+// answering *who may open a screen* and is untouched. AC-1/AC-2 promise
 // the new axis is PURELY additive, so the guard below pins every route string,
 // tier and ability pair verbatim: a future edit cannot relocate a guard without
 // the diff also touching this table.
@@ -442,7 +442,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
     ],
   ],
   ['/ai-models', '10-19', [['manage', 'all']]],
-  // TASK-845 removed `/ai-task-defaults` and `/ai-runtime-profiles` from the
+  // removed `/ai-task-defaults` and `/ai-runtime-profiles` from the
   // rail: the first became the platform-default SCOPE of `/ai-platform` (its
   // URL redirects), the second is now reached from the Providers tab it tunes
   // (its URL is unchanged).
@@ -489,7 +489,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['manage', 'ApiKey'],
     ],
   ],
-  // TASK-799 Phase 4 E.1 — the descriptor-driven registry lane. `read` as well
+  // E.1 — the descriptor-driven registry lane. `read` as well
   // as `manage`: the catalog is RBAC-filtered and readable by any admin, and
   // which keys are WRITABLE (and at which scope) is decided per descriptor.
   ['/settings-registry', '20-29', [
@@ -505,7 +505,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['update', 'Tenant'],
     ],
   ],
-  // TASK-845 — the unified AI provider console. Shared audience: cross-tenant
+  // the unified AI provider console. Shared audience: cross-tenant
   // for a super admin, tenant-scoped for a tenant admin. OR-gated over the
   // reads its tabs make.
   [
@@ -517,7 +517,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['read', 'GlobalSetting'],
     ],
   ],
-  // TASK-846 / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
+  // / OD-7 (2026-09-01) — RELOCATED from the 10-19 block, where it read
   // `['/tools-mcp', '10-19', [['manage', 'all']]]`. Tenant admins may configure
   // MCP connectors, so this is now a shared-audience (20-29) screen gated by the
   // resource's own `manage:McpServer` rather than the `manage:all` super-admin
@@ -550,13 +550,13 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ],
   ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
   ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
-  // TASK-810 — the clinical document SHAPE catalog. `manage:DocumentTemplate`
+  // the clinical document SHAPE catalog. `manage:DocumentTemplate`
   // is the whole gate (`DocumentTemplateAdminController`'s class-level
   // `@CanManage`); this resource carries no imperative privilege check.
   ['/document-templates', '30-49', [['manage', 'DocumentTemplate']]],
   ['/knowledge', '30-49', [['manage', 'KnowledgeDocument']]],
   ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
-  // TASK-805 — the consent register.
+  // the consent register.
   ['/consent', '30-49', [['manage', 'ConsentGrant']]],
   ['/audio/pipelines', '30-49', [['manage', 'AsrPipeline']]],
   [
@@ -604,7 +604,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/workflow-studio', '30-49', [['manage', 'WorkflowDefinition']]],
   ['/workflow-studio/assignments', '30-49', [['manage', 'WorkflowDefinition']]],
   [
-    // TASK-845 NARROWED this entry: the Models (`AiTaskDefault`) and Providers
+    // NARROWED this entry: the Models (`AiTaskDefault`) and Providers
     // (`GlobalSetting`) reads left with the tabs that made them, both now on
     // `/ai-platform`. The URL, tier and domain are untouched — this table
     // exists to make exactly that kind of narrowing visible in a diff.
@@ -639,7 +639,7 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     'ai-platform',
     [
       '/ai-models',
-      // TASK-845 — the unified provider console. It absorbed
+      // the unified provider console. It absorbed
       // `/ai-task-defaults` (retired) and the provider/model half of
       // `/ai-configuration` (narrowed, not retired).
       '/ai-platform',
@@ -656,7 +656,7 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
       '/ai-services/mlflow',
     ],
   ],
-  // `/document-templates` (TASK-810) sits next to `/context-schemas`: the two
+  // `/document-templates` sits next to `/context-schemas`: the two
   // halves of one contract — what context may go in, what document comes out.
   ['knowledge-agents', ['/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles']],
   ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
@@ -673,9 +673,9 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     ],
   ],
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
-  // `/settings-registry` (TASK-799 Phase 4 E.1) joins `/settings` here: same
+  // `/settings-registry` joins `/settings` here: same
   // domain, different resource — descriptor-governed keys vs raw rows/secrets.
-  // `/ai-operations/reconciliation` joined Platform Ops in TASK-845: a vendor
+  // `/ai-operations/reconciliation` joined Platform Ops in: a vendor
   // BILLING auditor that never reads an AI table, filed under AI only because
   // it shares a URL prefix with its `/ai-operations/*` neighbours.
   [
@@ -695,7 +695,7 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   ],
 ];
 
-describe('TASK-788 AC-2 — the domain axis is purely additive', () => {
+describe(' AC-2 — the domain axis is purely additive', () => {
   it('leaves every route string, tier and ability pair exactly where it was', () => {
     expect(NAV_ENTRIES.map((entry) => [entry.route, entry.tier, entry.required.map(([action, subject]) => [action, subject])])).toEqual(
       FROZEN_RAIL_ENTRIES.map(([route, tier, required]) => [route, tier, required.map(([action, subject]) => [action, subject])]),
@@ -742,11 +742,11 @@ describe('NAV_DOMAINS', () => {
   });
 
   // 3·6·11·5·4·7·7·8·6 — ai-platform 10 -> 11 (/ai-runtime-profiles) and
-  // platform-ops 7 -> 8 (/settings-registry), both TASK-799 Phase 4; clinical
-  // 3 -> 4 (/consent, TASK-805).
-  // knowledge-agents 6 -> 5 (TASK-815 removed /agents).
+  // platform-ops 7 -> 8 (/settings-registry), both; clinical
+  // 3 -> 4 (/consent).
+  // knowledge-agents 6 -> 5 ( removed /agents).
   // ai-platform 11 -> 14: LM Studio, vLLM and MLflow.
-  // TASK-845: ai-platform 14 -> 12 (`/ai-task-defaults` and
+  // ai-platform 14 -> 12 (`/ai-task-defaults` and
   // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
   // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
   it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·12·5·4·7·7·9·6)', () => {
@@ -842,7 +842,7 @@ describe('visibleNavDomains (AC-3)', () => {
   });
 });
 
-describe('activeNavDomainId (TASK-788 AC-6 — selection is derived from the URL)', () => {
+describe('activeNavDomainId (AC-6 — selection is derived from the URL)', () => {
   const all = [...NAV_ENTRIES];
 
   it('resolves an exact route to its domain', () => {
@@ -880,7 +880,7 @@ describe('activeNavDomainId (TASK-788 AC-6 — selection is derived from the URL
   });
 });
 
-describe('domainLandingRoute (TASK-788 Open Question — a rail click always navigates)', () => {
+describe('domainLandingRoute (Open Question — a rail click always navigates)', () => {
   it('lands on the domain\'s first visible entry', () => {
     expect(domainLandingRoute('overview', [...NAV_ENTRIES])).toBe('/dashboard');
     expect(domainLandingRoute('platform-ops', [...NAV_ENTRIES])).toBe('/rate-limits');

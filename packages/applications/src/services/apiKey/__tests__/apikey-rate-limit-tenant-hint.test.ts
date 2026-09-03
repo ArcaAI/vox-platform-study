@@ -1,5 +1,5 @@
 /**
- * The API-key → tenant hint that `TieredThrottlerGuard` reads (TASK-785 O-4).
+ * The API-key → tenant hint that `TieredThrottlerGuard` reads.
  *
  * The contract worth pinning is not "it caches" — it is the three properties
  * that make caching SAFE on a pre-auth hot path:

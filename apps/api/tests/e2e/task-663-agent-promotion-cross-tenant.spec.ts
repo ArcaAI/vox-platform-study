@@ -1,7 +1,7 @@
 /**
  * Cross-tenant probes against the promotion surface.
  *
- * TASK-815 / OD-10 changed WHAT is promoted — a `WorkflowDefinition` version
+ * / OD-10 changed WHAT is promoted — a `WorkflowDefinition` version
  * rather than a `DepartmentAgentVersion` — and with it the request body and the
  * CASL subject the route gates on. Neither hazard below is about the
  * promotable, so both survive verbatim; only the id being probed changed from

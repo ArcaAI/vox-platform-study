@@ -17,7 +17,7 @@ export function formatFindAllProps<T = DefaultDbFieldType>({ page, limit, filter
   // `tenantId` and read ACROSS TENANTS — while `formatCountProps` (which wraps
   // instead of branching) counted the correct rows, so the bug surfaced as a
   // page whose contents disagreed with its own count rather than as an obvious
-  // leak. No caller passed a where-with-AND until TASK-805's consent register,
+  // leak. No caller passed a where-with-AND until consent register,
   // which is why it went unnoticed. Sibling keys are now carried through at the
   // top level, where Prisma ANDs them with the array anyway.
   //

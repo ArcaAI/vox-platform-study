@@ -152,7 +152,7 @@ describe('PersonaControl', () => {
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
-  describe('TASK-814 accessibility — 0 axe violations', () => {
+  describe(' accessibility — 0 axe violations', () => {
     it('tenant admin, picker open with results', async () => {
       stubFetch();
       const { container } = renderWithProviders(

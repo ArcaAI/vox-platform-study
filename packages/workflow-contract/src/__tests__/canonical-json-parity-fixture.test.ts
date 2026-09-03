@@ -1,5 +1,5 @@
 /**
- * Cross-language checksum parity guard (TASK-734 Task 4) — closes the gap TASK-718's README
+ * Cross-language checksum parity guard — closes the gap README
  * named explicitly: `compiled_config.py`'s `canonical_json` port was "not verified byte-for-
  * byte against a live Node.js execution of the TypeScript original". This test IS that
  * verification's TS half: it regenerates `canonical`/`checksum` for every fixture case with
@@ -7,7 +7,7 @@
  * `canonicalJson` that silently alters its output breaks this test, not just a downstream
  * consumer). `test_compiled_config.py::TestCanonicalJsonParityFixture` is the Python half — it
  * asserts `compiled_config.canonical_json()` reproduces the SAME `canonical`/`checksum` from
- * the same fixture file, which is the actual byte-for-byte proof TASK-718 could not run.
+ * the same fixture file, which is the actual byte-for-byte proof could not run.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';

@@ -337,7 +337,7 @@ describe('HarnessObservabilityService', () => {
       expect(result.gateEscalationSeconds).toBe(43200);
     });
 
-    it('TASK-711: also surfaces TIMED_OUT consultations (already-breached, still rescuable)', async () => {
+    it('also surfaces TIMED_OUT consultations (already-breached, still rescuable)', async () => {
       const now = Date.now();
       policyRepository.findActiveForTenant.mockResolvedValue(
         HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, gateSlaSeconds: 100, gateEscalationSeconds: 50 }),

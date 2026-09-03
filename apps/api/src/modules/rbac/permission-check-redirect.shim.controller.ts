@@ -7,7 +7,7 @@ import { redirect308 } from '../../common';
 import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
  *
  * `rbac/check{,/bulk,/my-permissions}` was the review's one verb-as-resource
  * finding. The single/bulk checks redirect to the CALLER's own by-id

@@ -491,7 +491,7 @@ async def test_streaming_quality_scorecard(monkeypatch: pytest.MonkeyPatch) -> N
                 scored_any = True
 
     report = {
-        "harness": "TASK-470 Theme-F streaming quality scorecard — through the WS gateway",
+        "harness": " Theme-F streaming quality scorecard — through the WS gateway",
         "thresholds_source": str(_THRESHOLDS_PATH.name),
         "clips": scorecards,
     }

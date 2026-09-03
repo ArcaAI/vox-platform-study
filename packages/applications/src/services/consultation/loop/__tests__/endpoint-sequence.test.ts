@@ -1,5 +1,5 @@
 /**
- * TASK-812 D-10 — the endpoint sequence is ORDERED and EXTENSIBLE, not a literal.
+ * the endpoint sequence is ORDERED and EXTENSIBLE, not a literal.
  *
  * What this replaces, verbatim from `loop-config.service.ts` before this ticket:
  *
@@ -158,7 +158,7 @@ describe('resolveEndpointSequence — audio scoping and degradation', () => {
 });
 
 describe('the endpoint vocabulary', () => {
-  it('the platform default preserves the pre-TASK-812 stage and adds the three new steps', () => {
+  it('the platform default preserves the pre-existing stage and adds the three new steps', () => {
     // Ordering rationale, and it is load-bearing: `livedoc.stop` first so the audio session is
     // closed before anything reads the transcript; `summary.finalize` (which LOCKS every
     // document) BEFORE `feedback.capture`, so a feedback capture that degrades can never cost a

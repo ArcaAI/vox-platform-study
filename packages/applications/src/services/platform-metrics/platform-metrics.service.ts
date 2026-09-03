@@ -22,7 +22,7 @@ import {
 } from './dto';
 
 /**
- * Static model inventory (matches METRIC-CONTRACT.md §3 + FE PLATFORM_MODELS).
+ * Static model inventory (matches METRIC-CONTRACT.md + FE PLATFORM_MODELS).
  * `service` uses the lowercase Prometheus `service` label so rows merge against
  * `model_running_instances{service,model}`.
  */

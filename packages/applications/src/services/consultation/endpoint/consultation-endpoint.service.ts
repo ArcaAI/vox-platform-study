@@ -34,7 +34,7 @@ import type {
 } from './dto';
 
 /**
- * The consultation ENDPOINT STAGE (TASK-812) — the three operations that run before a session
+ * The consultation ENDPOINT STAGE — the three operations that run before a session
  * closes, and the gateway half of the three `trigger: 'on-end'` node types.
  *
  * ## The two decisions this class exists to make true
@@ -43,7 +43,7 @@ import type {
  * `findByConsultation(tenantId, consultationId)`, never `findByDocument(..., 'soap-note')`, and
  * there is no `documentKey` on the request DTO to narrow it with. That absence is the design: a
  * finalize scoped to the SOAP note leaves a discharge summary editable after signature, which is
- * precisely the state a signature is supposed to end. TASK-811 gave sections a `LOCKED` state
+ * precisely the state a signature is supposed to end. gave sections a `LOCKED` state
  * that rejects both flush writers and clinician edits; this is what sets it.
  *
  * **DD-8 — `captureFeedback` is the ONLY promotion path.** `consultation.proposeCorrections`

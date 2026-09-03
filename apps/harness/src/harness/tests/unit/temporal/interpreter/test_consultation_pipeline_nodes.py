@@ -1,12 +1,12 @@
-"""Node-activity tests for the ten consultation-palette nodes wired after TASK-731.
+"""Node-activity tests for the ten consultation-palette nodes wired after.
 
-TASK-731 registered three of the palette's thirteen node types and left ten specified but
+registered three of the palette's thirteen node types and left ten specified but
 unwired, which made the palette unbuildable: `DRAFT_CONSULTATION_RULE_SET` names nine node types
 by key and the registry served three of them. These are the wrappers that close that gap —
 grouped by pipeline stage in `nodes/consultation_{capture,nlp,compose,verify,persist}.py`.
 
 Each wrapper is a thin `NodeActivityInput -> NodeActivityResult` adapter over the activity
-`contracts/palette-contract.md` §1 already names as that node's compile target, so what these
+`contracts/palette-contract.md` already names as that node's compile target, so what these
 tests assert is the ADAPTER: identity read from `run_payload` (never `config`), data read
 generically from `bound_inputs` (never off a fixed port name), and CR-14's degrade-never-raise
 posture on every failure path. The wrapped activities have their own tests elsewhere and are
@@ -295,7 +295,7 @@ class TestRetrieveEvidence:
             _payload("consultation.retrieveEvidence")
         )
         assert result.status == "SUCCEEDED"
-        # TASK-809 OD-15: published under the `context` key this node's `context<schemaRef>`
+        # published under the `context` key this node's `context<schemaRef>`
         # output socket declares, so a bound consumer receives a context OBJECT rather than a
         # flat dict with no key for the socket to name.
         assert result.output["context"]["chunkIds"] == ["k1", "k2"]
@@ -349,7 +349,7 @@ class TestAssemblePrompt:
 
     @pytest.mark.asyncio
     async def test_folds_the_bound_evidence_context_into_the_prompt(self, monkeypatch):
-        """TASK-806 lane A, item 18 — the node now READS its declared `in` port.
+        """lane A, item 18 — the node now READS its declared `in` port.
 
         `consultation.retrieveEvidence` publishes its StrictCitations block under `context`, both
         committed seed graphs wire it into this node, and until now nothing consumed it — so on the
@@ -459,7 +459,7 @@ class TestSynthesize:
 class TestSensors:
     @pytest.fixture(autouse=True)
     def _stub_policy(self, monkeypatch):
-        """TASK-816 Phase 2 — this node now reads the tenant's clinical thresholds off the
+        """this node now reads the tenant's clinical thresholds off the
         effective policy (it used to drop them; see `test_sensor_thresholds_task816.py`). Stub
         the fetch so these adapter tests stay hermetic BY CONSTRUCTION rather than by relying on
         an unreachable gateway to produce the degrade-to-platform path."""
@@ -486,7 +486,7 @@ class TestSensors:
             _payload("consultation.sensors", bound_inputs={"in": {"text": "the draft note"}})
         )
         assert result.status == "SUCCEEDED"
-        # TASK-809 OD-15: the assurance record is ONE object on the `verdict` socket — a flat
+        # the assurance record is ONE object on the `verdict` socket — a flat
         # shape would have let a single-key binding carry `scores` and drop `citationsMap`.
         assert result.output["verdict"]["scores"] == {"coverage": 0.9}
         assert result.output["verdict"]["citationsMap"] == {"c1": ["k1"]}

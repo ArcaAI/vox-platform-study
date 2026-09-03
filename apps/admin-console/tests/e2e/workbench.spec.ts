@@ -1,8 +1,8 @@
 /**
- * The Workbench (TASK-721 Phase C, Task 11) — sandboxed interpreter runs against synthetic
+ * The Workbench — sandboxed interpreter runs against synthetic
  * inputs. Follows `playground.spec.ts`'s stack-guard/login pattern. AUTHORED, NOT EXECUTED this
  * session — `pnpm test:e2e`'s `globalSetup` runs `prisma db push --force-reset`, which the
- * Prisma CLI refuses when invoked by an AI agent (see the ticket README §7). Paste real output
+ * Prisma CLI refuses when invoked by an AI agent ( Paste real output
  * before this file is claimed green.
  */
 

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * React context for the per-editor `GraphStore` (TASK-719 Task 11). Mirrors rule 08 §Store
+ * React context for the per-editor `GraphStore`. Mirrors rule 08 §Store
  * exactly: one `createGraphStore()` per `<GraphStoreProvider>` mount, published through
  * context; `useGraphStore(selector)` / `useGraphStoreApi()` both throw outside a provider.
  * NEVER export the store object itself or a module singleton.

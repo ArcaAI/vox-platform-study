@@ -9,7 +9,7 @@ export interface LoopIterationState {
 }
 
 /**
- * The `◀ 3/12 ▶` per-iteration drill-down for `agentic.loop` nodes (TASK-849 lane C, step 6).
+ * The `◀ 3/12 ▶` per-iteration drill-down for `agentic.loop` nodes.
  *
  * HONEST GAP, recorded by the ticket and not rediscovered here: nothing EMITS
  * `workflow.loop.iteration` today. `_envelope_for` in
@@ -50,7 +50,7 @@ export function LoopIterationDrilldown({ iterations, onStep }: { iterations: Loo
       {!available ? (
         <p className="text-muted-foreground text-xs">
           Iteration data isn&rsquo;t emitted yet &mdash; the interpreter has no per-iteration checkpoint hook wired up. This is a recorded gap
-          (TASK-849), not a bug in this view.
+          , not a bug in this view.
         </p>
       ) : null}
     </div>

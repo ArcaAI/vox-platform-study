@@ -1,4 +1,4 @@
-"""TASK-799 A.2 — the sensor thresholds become control-plane tunable (PULL channel).
+"""A.2 — the sensor thresholds become control-plane tunable (PULL channel).
 
 These seven values gate CLINICAL assurance decisions (entity faithfulness, coverage,
 citation presence, numeric/dose fidelity, groundedness, citation-verify, atomic fact).

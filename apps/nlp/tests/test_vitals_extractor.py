@@ -13,7 +13,7 @@ _BANDS = seeded_taxonomy().vitals
 def extract_vitals(text):
     """`extract_vitals` with the seeded plausibility bands supplied.
 
-    TASK-799 lane G: the bands are configuration and arrive per request on
+    lane G: the bands are configuration and arrive per request on
     `clinicalTaxonomy.vitals`, so every case here passes the seeded platform
     baseline. `test_task799_lane_g_taxonomy.py` pins the other half — a narrowed
     stored band discards a reading the wider one accepted, and no bands at all

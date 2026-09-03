@@ -1,4 +1,4 @@
-"""Consent-assert client (TASK-712, consent-abac Phase 4).
+"""Consent-assert client (consent-abac Phase 4).
 
 The harness's non-HTTP front door onto `IConsultationConsentService.checkConsent`
 (`apps/api`'s `ConsentInternalController`, `POST /internal/consent/assert`).
@@ -10,7 +10,7 @@ consent decisions vary per patient.
 FAIL-CLOSED (mirrors `assertConsent`/`checkConsent` on the TS side): any
 transport/HTTP failure returns a decision with `allowed=False,
 unavailable=True` — NEVER `allowed=True`. `unavailable` is distinct from a
-genuine `allowed=False` with a `reason` — R4 (ticket README): a gateway
+genuine `allowed=False` with a `reason` — R4 (): a gateway
 hiccup must never read as a compliance event. Callers (the Temporal
 activities in `temporal/activities.py`) use this distinction to choose a
 different `error_code` ("consent_unavailable" vs "consent_denied") and,
@@ -23,7 +23,7 @@ channel is not wired here) — a revoke can take up to `ttl_s` to be observed by
 an in-flight harness run. The short default TTL (30s, matching the TS-side
 in-process cache) is the accepted bounded-staleness backstop, not the
 propagation mechanism, per `.claude/rules/09-infrastructure-devops.md`
-§Config caches rule 2. Widening to a real invalidation channel is a follow-up.
+caches rule 2. Widening to a real invalidation channel is a follow-up.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ class _CacheEntry:
 
 def _cache_key(tenant_id: str, external_patient_id: str, purpose: str) -> str:
     # tenant-leading and mandatory — .claude/rules/09-infrastructure-devops.md
-    # §Config caches rule 1 (mirrors ConsultationConsentService.cacheKey on
+    # caches rule 1 (mirrors ConsultationConsentService.cacheKey on
     # the TS side).
     return f"{tenant_id}::{external_patient_id}::{purpose}"
 

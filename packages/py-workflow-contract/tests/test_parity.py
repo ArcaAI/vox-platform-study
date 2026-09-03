@@ -1,6 +1,6 @@
-"""Python <-> TypeScript parity for the ``compiledConfig`` contract (TASK-716 Task 7b).
+"""Python <-> TypeScript parity for the compiledConfig contract (b).
 
-This is the artifact that stops the fourth twin-drift (TASK-716 §2.8). The
+This is the artifact that stops the fourth twin-drift ( The
 normative machine artifact is
 ``packages/workflow-contract/schemas/compiled-config.schema.json``;
 the TypeScript producer is ``packages/workflow-contract/src/compiler.ts``. This
@@ -10,7 +10,7 @@ package is the CONSUMER half in Python. Three independent things are asserted he
    ``additionalProperties: false`` posture must agree with the normative schema,
    definition for definition. Adding a field to ONE side fails this test. That is
    the whole point; if it is ever skipped, the format has three implementations
-   again (contracts/README.md, §"Cross-language duplication").
+   again (contracts/README.md ).
 2. **Shared-example round trip** — the SAME bytes the TypeScript test asserts
    (``packages/workflow-contract/src/__tests__/fixtures/example-compiled-config.json``,
    kept honest on the TS side by ``example-fixture-parity.test.ts``), not a
@@ -105,7 +105,7 @@ def test_the_module_under_test_is_the_one_next_to_this_test() -> None:
 PROMPT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"]["promptTemplateRefs"][
     "items"
 ]
-#: TASK-810 DD-2 — the document-shape binding, structurally identical to the prompt
+# — the document-shape binding, structurally identical to the prompt
 #: ref but a DIFFERENT pin: `promptTemplateRefs` pins WHAT the model is told,
 #: `documentTemplateRefs` pins WHAT SHAPE it is decoded into.
 DOCUMENT_TEMPLATE_REF_SCHEMA = SCHEMA["$defs"]["policyBindings"]["properties"][

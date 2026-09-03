@@ -2,7 +2,7 @@ import { GenerateParams, GenerationDecision, GenerationTrigger } from './types';
 import { ConsultationPipelineConfig } from '../events/consultation.events';
 
 /**
- * TASK-704 — Generator Entry-Point Seam.
+ * Generator Entry-Point Seam.
  *
  * The single seam every note-generation entry point routes through.
  * `harnessEnabled` is read in exactly one runtime location:
@@ -24,14 +24,14 @@ export interface INoteGenerationService {
    * The harness-start call is NOT optional-chained: a missing
    * `HarnessGatewayService` throws (surfacing as a job failure / thrown
    * exception at the caller) rather than silently logging success and
-   * producing zero notes — the fix for the §2.3 silent-drop defect.
+   * producing zero notes — the fix for the silent-drop defect.
    */
   generate(trigger: GenerationTrigger, params: GenerateParams): Promise<GenerationDecision>;
 
   /**
    * Resolve the full per-consultation pipeline config through the same
    * cascade `ConsultationEventHandler.resolvePipelineConfig` used before
-   * TASK-704 (moved here verbatim). Exposed publicly because callers still
+   * (moved here verbatim). Exposed publicly because callers still
    * need the non-routing knobs (`autoSummaryEnabled`, `dnaStyleId`,
    * `summaryTemplate`, ...) for their own trigger-specific request assembly.
    */

@@ -6,7 +6,7 @@ import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
 
-/** TASK-768 — opaque stand-ins. The cause goes to the log; the client gets these. */
+/** opaque stand-ins. The cause goes to the log; the client gets these. */
 const UPSTREAM_ERROR_MESSAGE = 'The harness service returned an error.';
 const TRANSPORT_ERROR_MESSAGE = 'Note generation is temporarily unavailable. Please retry.';
 
@@ -79,11 +79,11 @@ export interface ListWorkflowsParams {
  *
  * Contract assumed of the harness admin surface (paths under
  * `/api/v1/internal/harness`):
- *  - `GET  /workflows?tenantId&status&consultationId&limit&pageToken` → HarnessWorkflowListResult
- *  - `GET  /workflows/{id}?phase=true&tenantId` → HarnessWorkflowDetail
- *  - `POST /workflows/{id}/cancel`    body `{ tenantId?, reason? }` → HarnessWorkflowActionResult
+ *  - `GET /workflows?tenantId&status&consultationId&limit&pageToken` → HarnessWorkflowListResult
+ *  - `GET /workflows/{id}?phase=true&tenantId` → HarnessWorkflowDetail
+ *  - `POST /workflows/{id}/cancel` body `{ tenantId?, reason? }` → HarnessWorkflowActionResult
  *  - `POST /workflows/{id}/terminate` body `{ tenantId?, reason? }` → HarnessWorkflowActionResult
- *  - `POST /workflows/{id}/signal`    body `{ tenantId?, signalName, payload? }` → HarnessWorkflowActionResult
+ *  - `POST /workflows/{id}/signal` body `{ tenantId?, signalName, payload? }` → HarnessWorkflowActionResult
  *
  * Tenant ownership is enforced by the caller (controller): tenant admins are
  * limited to their own tenant; platform admins (GLOBAL ability) act cross-tenant.
@@ -178,7 +178,7 @@ export class HarnessOpsClient {
   private toHttpError(error: unknown, action: string): HttpException {
     if (isAxiosError(error) && error.response) {
       this.logger.warn({ message: 'Harness ops upstream error', action, status: error.response.status });
-      // TASK-768: the `?? { message: error.message }` fallback meant an EMPTY
+      // the `?? { message: error.message }` fallback meant an EMPTY
       // upstream body fell back to the axios message — `connect ECONNREFUSED
       // 127.0.0.1:8866`. An absent body now yields an opaque one; the upstream's
       // own body is still forwarded (this is a super-admin ops surface whose
@@ -187,7 +187,7 @@ export class HarnessOpsClient {
       return new HttpException(body as string | Record<string, unknown>, error.response.status);
     }
     this.logger.error({ message: 'Harness ops transport error', action, ...describeCauseForOperator(error) });
-    // TASK-768: was `\`Harness ops request failed (${action}): ${message}\``,
+    // was `\`Harness ops request failed (${action}): ${message}\,
     // which leaked the harness host:port. Cause to the log, capability to the client.
     return new ServiceUnavailableException(TRANSPORT_ERROR_MESSAGE);
   }

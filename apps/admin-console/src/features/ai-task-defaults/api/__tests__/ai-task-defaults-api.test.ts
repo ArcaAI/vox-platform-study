@@ -43,7 +43,7 @@ describe('task keys', () => {
   // packages/applications/src/services/ai-task-default/constants.ts. This block
   // used to re-declare the expected 15 keys as a literal — which made it a
   // third copy of the same list, drifting alongside the mirror it guarded
-  // (TASK-799 R6's `guardrail.pii` / `guardrail.pii.spans` were missing from
+  // (`guardrail.pii` / `guardrail.pii.spans` were missing from
   // both). Only the constant that has no backend counterpart is checked here.
   it('pins the SYSTEM tenant id', () => {
     expect(SYSTEM_TENANT_ID).toBe('00000000-0000-0000-0000-000000000000');

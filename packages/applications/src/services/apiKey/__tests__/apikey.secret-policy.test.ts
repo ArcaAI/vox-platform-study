@@ -1,5 +1,5 @@
 /**
- * TASK-786 — generated key material follows the SUPER_ADMIN-managed
+ * generated key material follows the SUPER_ADMIN-managed
  * `security.secret.*` policy.
  *
  * The API-key-specific half of the contract is the ALPHABET PIN: `byteLength`

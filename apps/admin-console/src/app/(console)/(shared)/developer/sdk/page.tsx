@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'SDKs',
 };
 
-/** The two published SDKs and which plane each can reach (TASK-783). */
+/** The two published SDKs and which plane each can reach. */
 export default function SdkPage() {
   return <SdkScreen />;
 }

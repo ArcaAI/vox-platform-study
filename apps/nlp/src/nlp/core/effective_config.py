@@ -64,7 +64,7 @@ class EffectiveConfigSnapshot:
         return _positive_int(concurrency.get("maxConcurrent"))
 
     def peer_call_max_concurrent(self) -> int | None:
-        """The served OUTBOUND PEER HTTP bound (TASK-729 §6), or None (no opinion).
+        """The served OUTBOUND PEER HTTP bound (or None (no opinion).
 
         A SEPARATE field in the SAME `concurrency` group `max_concurrent()`
         reads — `nlp` already has one concurrency subset, and this is another
@@ -142,7 +142,7 @@ class EffectiveConfigSnapshot:
         return entry.get("value")
 
     def batching(self) -> dict[str, Any]:
-        """Queue and batch geometry for both service lanes (TASK-799 lane D).
+        """Queue and batch geometry for both service lanes ( lane D).
 
         Shaped as the two lanes' kwargs so the caller can splat them straight
         into `MicroBatcher`, plus the shared in-flight bound (ONE per weight
@@ -189,7 +189,7 @@ class EffectiveConfigSnapshot:
         return served
 
     def logging(self) -> dict[str, Any]:
-        """File/rotation sink knobs with an opinion (TASK-799 lane D).
+        """File/rotation sink knobs with an opinion ( lane D).
 
         `LOG_LEVEL` and `LOG_FILE_PATH` are deliberately NOT here: the level is
         what an operator reaches for first during an incident (env, effective
@@ -289,7 +289,7 @@ class EffectiveConfigClient:
     def handle_invalidation_message(self, payload: Any) -> bool:
         """Drop the cached snapshot in response to ONE pub/sub message.
 
-        Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+        Rule 09 : *invalidation is the propagation path; the TTL
         is a bounded-staleness safety net*. This method is that path — before it,
         this service converged on a control-plane write only by 60s poll, which
         removes the property that justifies moving a value out of env at all.

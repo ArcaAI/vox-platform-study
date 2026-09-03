@@ -45,7 +45,7 @@ describe('resolveEntitlements', () => {
       expect(r.gated).toBe(true);
       expect(r.limits.maxUsers).toBe(5);
       // Derived from the matrix, not restated: these STRUCTURAL caps are sized to
-      // what tenant creation provisions (TASK-785), so a duplicated literal here
+      // what tenant creation provisions, so a duplicated literal here
       // just breaks whenever the provisioned catalog legitimately changes.
       expect(r.limits.maxDepartments).toBe(d.maxDepartments);
       expect(r.limits.maxAsrPipelines).toBe(d.maxAsrPipelines);
@@ -59,7 +59,7 @@ describe('resolveEntitlements', () => {
         monitoringAccess: false,
         platformDefaultCredential: false,
         paletteStt: true,
-        // TASK-705 — the loop is the differentiating plan feature; STARTER is out.
+        // the loop is the differentiating plan feature; STARTER is out.
         agenticLoop: false,
       });
       expect(r.modelTier).toBe('base');
@@ -304,7 +304,7 @@ describe('resolveEntitlements', () => {
   });
 
   /*
-   * TASK-705 — the harness agentic loop as a SUBSCRIPTION FEATURE.
+   * the harness agentic loop as a SUBSCRIPTION FEATURE.
    *
    * The owner ruling (owner-decisions-2026-08-17.md §2 row 705) makes loop
    * eligibility commercial: a plan property resolved from the database, not an
@@ -314,8 +314,8 @@ describe('resolveEntitlements', () => {
    * `TenantEntitlement.featureAgenticLoop` columns now exist, so the per-plan
    * default lives in `PlanEntitlementValues` alongside every other feature and
    * the interim `AGENTIC_LOOP_PLAN_DEFAULTS` map is gone.
-   */
-  describe('agenticLoop entitlement (TASK-705)', () => {
+*/
+  describe('agenticLoop entitlement ', () => {
     it('is the differentiating plan feature: off on STARTER, on for TRIAL/PRO/ENTERPRISE', () => {
       expect(resolveEntitlements(TenantPlan.STARTER).features.agenticLoop).toBe(false);
       for (const plan of [TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
@@ -356,7 +356,7 @@ describe('resolveEntitlements', () => {
   });
 });
 
-describe('effectivePlan — a plan-less tenant defaults to STARTER (TASK-785 OD-5)', () => {
+describe('effectivePlan — a plan-less tenant defaults to STARTER (OD-5)', () => {
   const CUSTOMER = '11111111-1111-1111-1111-111111111111';
 
   it('resolves a customer tenant with no plan to STARTER, not ungated', () => {

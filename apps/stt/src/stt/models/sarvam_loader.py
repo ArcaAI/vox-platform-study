@@ -22,7 +22,7 @@ from .cloud_asr import CloudRestConfig, resolve_override_key
 
 logger = logging.getLogger(__name__)
 
-# There is deliberately NO `DEFAULT_SARVAM_MODEL` here (TASK-799 lane C,
+# There is deliberately NO `DEFAULT_SARVAM_MODEL` here (lane C,
 # assessment F-11). It used to be `"saaras:v4"` and was substituted whenever the
 # resolved `AiModel` row carried no `source_uri` — a hardcoded SELECTION, which
 # rule 09 forbids outright, and one that reached the wire under a tenant's own

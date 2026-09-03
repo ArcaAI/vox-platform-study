@@ -1,4 +1,4 @@
--- TASK-790 (finding M-2, requested by TASK-791) — record a run's delivered OUTPUT.
+-- (finding M-2, requested by) — record a run's delivered OUTPUT.
 --
 -- `output.deliver` is the summarization palette's only `external_write` node: it
 -- performs a real write (claim-check blob, or shaped inline outputs) and then had
@@ -7,8 +7,8 @@
 -- the run finished.
 --
 -- Shape is a discriminated union stored verbatim from the node's `output` object:
---   { "resultRef": { ...ClaimCheckRef... } }   -- claim-check enabled AND offloaded
---   { "outputs":   { ...shaped outputs... } }  -- inline (small payload, or claim-check off)
+--   { "resultRef": { ...ClaimCheckRef... } } -- claim-check enabled AND offloaded
+--   { "outputs": { ...shaped outputs... } } -- inline (small payload, or claim-check off)
 -- Recording only the pointer would silently drop the inline branch, which is the
 -- common one for a short note.
 --

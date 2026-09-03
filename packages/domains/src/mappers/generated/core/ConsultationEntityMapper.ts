@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-711: Consultation lifecycle writes now go through
+// Consultation lifecycle writes now go through
 // `ConsultationRepository.updateWithVersion` (transitionTo, prime/close/reopen,
 // harness writers). `_version` is owned by the database and the only
 // legitimate writer is `Repository.updateWithVersion`. Strip it from every

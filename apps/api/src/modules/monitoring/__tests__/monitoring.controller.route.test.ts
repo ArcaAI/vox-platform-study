@@ -1,5 +1,5 @@
 /**
- * TASK-759 — `MonitoringController` route-taxonomy pin (P2).
+ * `MonitoringController` route-taxonomy pin (P2).
  *
  * The controller requires `manage:all | read:TenantTelemetry` — an
  * administrative capability — so under rule P2 it MUST carry the `admin`
@@ -25,7 +25,7 @@ const API_KEY_FORBIDDEN = 'apiKeyForbidden';
 const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
 const THROTTLER_TTL = 'THROTTLER:TTL';
 
-describe('MonitoringController route taxonomy (TASK-759)', () => {
+describe('MonitoringController route taxonomy ', () => {
   it('is mounted on the admin plane at `admin/monitoring`', () => {
     expect(Reflect.getMetadata(PATH_METADATA, MonitoringController)).toBe('admin/monitoring');
   });

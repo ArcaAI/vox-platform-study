@@ -1,4 +1,4 @@
-"""TASK-799 lane B — `TEXT_CB_*` / `TEXT_QUEUE_*` / `TEXT_JUDGE_*` became ONE budget.
+"""lane B — `TEXT_CB_*` / `TEXT_QUEUE_*` / `TEXT_JUDGE_*` became ONE budget.
 
 Twelve env vars expressed four concepts three times over, with different numbers
 each time. The judge lane's own docstring called it "a separate budget, not a

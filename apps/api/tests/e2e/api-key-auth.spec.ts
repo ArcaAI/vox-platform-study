@@ -7,7 +7,7 @@
  * - Access Control: IP allowlist, scope enforcement, key expiration/revocation
  * - Error handling: Missing keys, invalid keys, expired keys
  *
- * ─── Probe route (TASK-757, policy A2) ──────────────────────────────────────
+ * ─── Probe route (policy A2) ──────────────────────────────────────
  *
  * This spec is about HEADER VARIANTS, revocation and expiry — the route it
  * probes is incidental to what it proves. It used to probe
@@ -347,7 +347,7 @@ test.describe('API Key Authentication', () => {
   });
 
   // ============================================================================
-  // Policy A2 — the admin plane is JWT-only (TASK-757)
+  // Policy A2 — the admin plane is JWT-only
   // ============================================================================
 
   test.describe('Admin plane rejects API keys (policy A2)', () => {

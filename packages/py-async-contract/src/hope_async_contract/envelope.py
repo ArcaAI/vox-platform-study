@@ -1,7 +1,7 @@
-"""The async task/event envelope (TASK-717).
+"""The async task/event envelope.
 
 Normative prose + rationale: ``docs/programs/agentic-workflow-platform/
-async-contract.md`` §3.2. Normative machine artifact:
+async-contract.md Normative machine artifact:
 ``packages/async-contract/schema/async-envelope.v1.json`` (draft 2020-12).
 
 This module and its TypeScript twin (``packages/async-contract/src/

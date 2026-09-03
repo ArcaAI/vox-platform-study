@@ -37,7 +37,7 @@ export function setRouteOverride(routeId: string, body: SetRouteOverrideRequest)
 }
 
 // ---------------------------------------------------------------------------
-// Rules, route catalog, explain (TASK-785)
+// Rules, route catalog, explain
 // ---------------------------------------------------------------------------
 
 const RULES = `${BASE}/rules`;
@@ -74,7 +74,7 @@ export function explainRateLimit(args: { method: string; path: string; tenantId?
 }
 
 // ---------------------------------------------------------------------------
-// Subscription plans — rank 3 (TASK-785 US-3)
+// Subscription plans — rank 3 
 // ---------------------------------------------------------------------------
 
 export function listRateLimitPlans(): Promise<RateLimitPlan[]> {

@@ -3,9 +3,9 @@ import { ArrayNotEmpty, IsArray, IsBoolean, IsEnum, IsInt, IsNotEmpty, IsObject,
 import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
 
 /**
- * Author a NEW routing-policy revision (TASK-818 §3A.3).
+ * Author a NEW routing-policy revision
  *
- * ## TASK-844 — this body now authors ONE PROVIDER CONFIGURATION
+ * ## — this body now authors ONE PROVIDER CONFIGURATION
  *
  * The grain changed: a row is one CANDIDATE, and the ordered chain is the set of
  * rows sharing `(tenantId, taskKey)` ordered by `priority`. Supply
@@ -22,12 +22,12 @@ import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
  * accepted here. Promotion is its own audited transition (`POST :id/activate`)
  * because it is the moment PHI starts flowing to a different vendor, and the
  * supersede-only lineage (`supersedesVersion`, `activatedAt`) has to be written
- * atomically with the archival of the revision it replaces (§3A.8). A `status`
+ * atomically with the archival of the revision it replaces ( A `status`
  * field on a create body would let a caller skip that.
  *
  * The nested structures stay `IsObject`/`IsArray` here and are validated for
  * shape in the service: the global pipe runs `forbidNonWhitelisted`, which
- * governs the TOP-LEVEL body only, and the §3A.4 gates need the parsed
+ * governs the TOP-LEVEL body only, and the gates need the parsed
  * candidate semantics (residency, baaCovered) rather than a decorator's
  * structural pass.
  */
@@ -84,7 +84,7 @@ export class CreateAiRoutingPolicyRequest {
 
   @ApiPropertyOptional({
     description:
-      'Opaque residency-class label. Compared for EQUALITY only by the §3A.4 fallback gate — there is no enumerated list of clouds in code to drift from reality.',
+      'Opaque residency-class label. Compared for EQUALITY only by the fallback gate — there is no enumerated list of clouds in code to drift from reality.',
     example: 'AZURE_EU',
   })
   @IsOptional()
@@ -93,7 +93,7 @@ export class CreateAiRoutingPolicyRequest {
   residency?: string;
 
   @ApiPropertyOptional({
-    description: 'Whether a BAA covers this vendor AND this model. Read by the §3A.4 BAA gate; never defaulted on your behalf.',
+    description: 'Whether a BAA covers this vendor AND this model. Read by the BAA gate; never defaulted on your behalf.',
   })
   @IsOptional()
   @IsBoolean()
@@ -106,7 +106,7 @@ export class CreateAiRoutingPolicyRequest {
 
   @ApiPropertyOptional({
     description:
-      'DEPRECATED by TASK-844 — the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.',
+      'DEPRECATED by the ordered chain is now the SET of rows sharing (tenantId, taskKey), ordered by `priority`. Accepted only so a pre-844 caller is not broken; the resolver no longer reads it.',
     isArray: true,
     type: Object,
     deprecated: true,
@@ -132,7 +132,7 @@ export class CreateAiRoutingPolicyRequest {
 
   @ApiPropertyOptional({
     description:
-      'Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting (§3A.4).',
+      'Explicit-provider semantics. Defaults to STRICT — a request naming a provider that is down errors rather than substituting.',
     enum: AiExplicitProviderMode,
   })
   @IsOptional()
@@ -163,7 +163,7 @@ export class CreateAiRoutingPolicyRequest {
   @IsObject()
   fallback?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ description: 'Circuit/health thresholds (§3A.5)', type: Object })
+  @ApiPropertyOptional({ description: 'Circuit/health thresholds', type: Object })
   @IsOptional()
   @IsObject()
   health?: Record<string, unknown>;

@@ -1,8 +1,8 @@
 /**
- * TASK-710 (re-opened) — PHI redaction on the SYNCHRONOUS NER hop.
+ * (re-opened) — PHI redaction on the SYNCHRONOUS NER hop.
  *
- * TASK-710 originally wired hop 1 (transcript → NLP) into
- * `consultation/jobs/processors/ner.processor.ts`. TASK-732 DELETED that file,
+ * originally wired hop 1 (transcript → NLP) into
+ * `consultation/jobs/processors/ner.processor.ts`. DELETED that file,
  * and the surviving synchronous path — `SummaryService.extractEntities()` —
  * posted `contextItem.content` to the NLP service RAW. Assessment finding A-02
  * was therefore effectively re-opened: PHI reached `apps/nlp` unredacted.
@@ -52,7 +52,7 @@ const createMockContextItem = () => ({
   changes: {},
 });
 
-describe('TASK-710 — SummaryService.extractEntities redacts before calling NLP', () => {
+describe('SummaryService.extractEntities redacts before calling NLP', () => {
   let mockContextItemRepository: { findById: ReturnType<typeof vi.fn> };
   let mockNamedEntityRepository: { create: ReturnType<typeof vi.fn> };
   let mockHttpService: { axiosRef: { post: ReturnType<typeof vi.fn> } };

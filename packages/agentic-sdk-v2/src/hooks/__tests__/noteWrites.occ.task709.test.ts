@@ -1,5 +1,5 @@
 /**
- * TASK-709 — optimistic concurrency on note-content writes.
+ * optimistic concurrency on note-content writes.
  *
  * The three server routes (`PATCH :id/context/:contextId`,
  * `PATCH :id/summary/:summaryId`, `POST :id/summary/:contextItemId/approve`)
@@ -79,7 +79,7 @@ vi.mock('../../store', () => ({
 
 const conflict = () => new AgenticError('UNKNOWN_ERROR', 'HTTP 412', { context: { status: 412, currentVersion: 9 } });
 
-describe('TASK-709 SDK optimistic concurrency', () => {
+describe(' SDK optimistic concurrency', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore.summaries = [summary];

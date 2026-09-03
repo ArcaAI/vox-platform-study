@@ -1,5 +1,5 @@
 /**
- * TASK-709 — Optimistic Concurrency Control on note-content writes.
+ * Optimistic Concurrency Control on note-content writes.
  *
  * `SummaryDtoMapper.toResponse` maps a `SummaryResponse` FROM a
  * `ContextItemEntity` (the summary IS a ContextItem row), so it must surface
@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import type { ContextItemEntity } from '@arcaai/domains';
 import { SummaryDtoMapper } from '../summary.dto.mapper';
 
-describe('SummaryDtoMapper.toResponse — version (TASK-709 OCC)', () => {
+describe('SummaryDtoMapper.toResponse — version (OCC)', () => {
   it('maps entity.version onto the response version field', () => {
     const now = new Date();
     const entity = {

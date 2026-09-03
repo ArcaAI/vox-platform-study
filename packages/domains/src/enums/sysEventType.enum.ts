@@ -5,7 +5,7 @@ export enum SysEventType {
   ResourceDeleted = 'SysEvent.ResourceDeleted',
   ResourceArchived = 'SysEvent.ResourceArchived',
 
-  // TASK-727 decision (Task 6): deliberately left declared-but-unused.
+  // decision: deliberately left declared-but-unused.
   // Webhook delivery (`webhook-delivery.processor.ts`) matches the ORIGINATING
   // event's own type/resourceType/resourceId (e.g. a `Consultation`
   // `ResourceUpdated`) and records each attempt as a `WebhookRunHistory` row —

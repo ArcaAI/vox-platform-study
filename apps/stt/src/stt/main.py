@@ -56,7 +56,7 @@ def _configure_torch_threading() -> None:
             num_threads = os.cpu_count() or 4
 
     # Set OMP/MKL env vars BEFORE importing torch (they are read at
-    # import time by the OpenMP runtime).  If already set, don't
+    # import time by the OpenMP runtime). If already set, don't
     # override — the operator may have tuned them.
     for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         if not os.environ.get(var):
@@ -86,7 +86,7 @@ def _configure_torch_threading() -> None:
         logger.warning("Failed to configure PyTorch threading", error=str(exc))
 
 
-# `_preload_pipeline_models` is REMOVED (TASK-799 lane C). It existed only to
+# `_preload_pipeline_models` is REMOVED. It existed only to
 # read `PRELOAD_PIPELINES`, a knob whose own description said it was deprecated
 # and not used for selection; with the setting gone the function had no input
 # and no caller-visible effect. Models load lazily on first use.
@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # force are the platform's rather than this process's bootstrap defaults
     # from the first request onward. Deliberately AFTER the infrastructure block
     # and deliberately non-fatal: an unreachable gateway leaves every field on
-    # its bootstrap value (the pre-TASK-799 behaviour), and boot must never
+    # its bootstrap value (the earlier behaviour), and boot must never
     # depend on the config plane being up.
     from stt.core.runtime_limits import refresh_settings_from_control_plane
 
@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("STT control-plane settings applied", fields=len(applied))
 
     # Push invalidation for the control-plane pull client. Rule 09
-    # §"Config caches": invalidation is the propagation path, the TTL is only a
+    # invalidation is the propagation path, the TTL is only a
     # bounded-staleness backstop — before this a control-plane write took up to
     # 60s to be seen here. Reuses the streaming module's `redis.asyncio` client
     # (the Dramatiq broker's is SYNC and cannot serve an async pubsub loop)

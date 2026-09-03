@@ -1,4 +1,4 @@
-"""RED-first tests for the summarization palette's five node activities (TASK-720 Task 4/5).
+"""RED-first tests for the summarization palette's five node activities (/5).
 
 Each activity is called directly (mirrors ``test_config_loader.py``'s calling convention for
 ``interpreter.load_config`` — no ``ActivityEnvironment`` wrapper needed since none of these
@@ -72,7 +72,7 @@ class TestContextBinding:
         payload = _input(self._CONFIG, run_payload={"text": "hello world"})
         result = await context_binding_mod.interpreter_context_binding(payload)
         assert result.status == "SUCCEEDED"
-        # TASK-809 OD-15: the bound kinds are published UNDER `context` — the key this node's
+        # the bound kinds are published UNDER `context` — the key this node's
         # `context<schemaRef>` output socket declares. `{kindKey: value}` at the top level named
         # no key at all, which left only the interpreter's whole-object fallback.
         assert result.output == {"context": {"source_text": "hello world"}}
@@ -186,7 +186,7 @@ class TestTemplateRef:
 
 
 class TestTextGenerate:
-    """``generate.text`` — TASK-740 D-1: ``config.taskKey`` must SELECT the model."""
+    """generate.text —: config.taskKey must SELECT the model."""
 
     @pytest.mark.asyncio
     async def test_posts_to_text_with_the_resolved_provider_and_model_and_no_default(
@@ -229,7 +229,7 @@ class TestTextGenerate:
         assert captured["model"] == "some-model"
         assert "the source text" in captured["prompt"]
         # D-1: the task key is threaded to the gateway so the AiTaskDefault row
-        # for THAT key selects the model. Before TASK-740 it was validated and
+        # for THAT key selects the model. Before it was validated and
         # then dropped, so every node resolved the same model.
         assert captured_policy_args["task_key"] == "text.finalize"
 
@@ -302,7 +302,7 @@ class TestGuardrailCheck:
 
     @pytest.mark.asyncio
     async def test_safe_true_with_a_non_null_error_does_not_pass(self, monkeypatch):
-        """The load-bearing fail-closed assertion (README §2/AC): guardrail's own fail-open
+        """The load-bearing fail-closed assertion: guardrail's own fail-open
         branch (`safe=True` + a non-null `error`) must NEVER be treated as a pass."""
 
         class _FakeGuardrail:

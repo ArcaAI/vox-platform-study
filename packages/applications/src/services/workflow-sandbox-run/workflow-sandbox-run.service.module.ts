@@ -8,14 +8,14 @@ import { IWorkflowSandboxRunService } from './IWorkflowSandboxRunService';
 import { WorkflowSandboxRunService } from './workflow-sandbox-run.service';
 
 /**
- * WorkflowSandboxRunService DI module (TASK-721 Phase C).
+ * WorkflowSandboxRunService DI module.
  *
- * - CommonServiceModule          -> `IS3Service` (claim-check blob write).
- * - CoreDatabaseModule           -> `WorkflowTestFixtureRepository`.
- * - HarnessGatewayServiceModule  -> the outbound harness dispatcher client.
+ * - CommonServiceModule -> `IS3Service` (claim-check blob write).
+ * - CoreDatabaseModule -> `WorkflowTestFixtureRepository`.
+ * - HarnessGatewayServiceModule -> the outbound harness dispatcher client.
  * - WorkflowDefinitionServiceModule -> `IWorkflowDefinitionService` (fresh compile of the
  *   tested version's graph, DRAFT included).
- * - WorkflowRunServiceModule     -> `IWorkflowRunService` (the read-model / ownership-anchor
+ * - WorkflowRunServiceModule -> `IWorkflowRunService` (the read-model / ownership-anchor
  *   writes; also the `admin/workflow-runs` list's `includeSandbox` exclusion point).
  */
 @Module({

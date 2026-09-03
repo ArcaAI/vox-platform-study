@@ -1,6 +1,6 @@
 """Retry logic with exponential backoff for provider errors.
 
-Policy (TASK-818 §4.4, Lane C C-6): **at most 3 retries, exponential backoff,
+Policy (Lane C C-6): **at most 3 retries, exponential backoff,
 always jittered — including when the upstream handed us an exact wait — and
 `Retry-After` is authoritative when the upstream sent one.**
 
@@ -56,7 +56,7 @@ def retry_after_from(exc: BaseException) -> float | None:
 
     * our own typed errors, which carry a ``retry_after`` attribute already; and
     * a provider SDK's HTTP error, which carries the raw response — where
-      ``Retry-After`` is either delta-seconds or an HTTP-date (RFC 9110 §10.2.3).
+      Retry-After is either delta-seconds or an HTTP-date (RFC 9110 §10.2.3).
       Both forms are accepted; anything else yields ``None``.
 
     ``None`` means "no opinion", never "zero" — a malformed header must fall back

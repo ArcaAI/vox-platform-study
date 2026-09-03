@@ -4,17 +4,17 @@
  * declared surface, and `pnpm env:sync --check` — fail on drift.
  *
  * ─── THE DECLARED SURFACE (the only source of truth) ─────────────────────────
- *   1. `HOPE_SETTINGS_REGISTRY`  — the settings-registry catalog. Only the
+ *   1. `HOPE_SETTINGS_REGISTRY` — the settings-registry catalog. Only the
  *      ENV-SUPPLIED tiers are rendered: `env` (deploy-time) and `vault-kv`
  *      (Vault kv-v2, but read from `process.env` under the `env` secrets
  *      provider — same NAME either way). `db-config` / `global-kv` /
  *      `db-secret` / `entitlement` are CONTROL-PLANE tiers: putting them in an
  *      env file would re-create the drift this generator exists to remove.
- *   2. `API_ENV_DESCRIPTORS`     — the gateway's own declarations
+ *   2. `API_ENV_DESCRIPTORS` — the gateway's own declarations
  *      (`apps/api/src/config/`), which also build its boot-time zod schema.
  *   3. `ADMIN_CONSOLE_ENV_SETTINGS` — the console's declarations
  *      (`apps/admin-console/src/config/`), which also build its zod schema.
- *   4. `TOOLS_ENV_SETTINGS`      — `@arcaai/tools`' single generator knob. It
+ *   4. `TOOLS_ENV_SETTINGS` — `@arcaai/tools`' single generator knob. It
  *      has no config module of its own, so it is declared below.
  *   5. `scripts/generated/python-env-surface.json` — the six Python services'
  *      pydantic-settings declarations plus their non-pydantic (`os.environ`)
@@ -24,21 +24,20 @@
  * key — never hand-copied.
  *
  * ─── MANAGED OUTPUTS ─────────────────────────────────────────────────────────
- *   • `apps/api/.env.sample`               the platform contract beyond the floor
- *   • `apps/admin-console/.env.sample`     the console's own contract
- *   • `packages/tools/.env.sample`         the generator knob
+ *   • `apps/api/.env.sample` the platform contract beyond the floor
+ *   • `apps/admin-console/.env.sample` the console's own contract
+ *   • `packages/tools/.env.sample` the generator knob
  *   • `apps/{stt,text,guardrail,nlp,harness,tts}/.env.sample`
  *                                          the six Python services, generated
  *                                          from their pydantic-settings
- *                                          declarations (TASK-799 Phase 1.5)
- *   • `.env.sample`                        CONSOLIDATED — the bootstrap floor
+ * declarations
+ *   • `.env.sample` CONSOLIDATED — the bootstrap floor
  *                                          + the 3 TS files + the 6 Python
  *                                          files above, assembled into ONE
  *                                          root artifact. This is what
  *                                          `pnpm setup:dev`/`pnpm setup:test`
  *                                          copy to create `.env.dev`/`.env.test`.
- *   • `turbo.json#globalEnv`                declared surface ∪ real TS reads
- *   • `docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md`
+ *   • `turbo.json#globalEnv` declared surface ∪ real TS reads
  *
  * (The bootstrap floor originally lived in its own `.env.example`
  * file. A SEPARATE `.env.sample` was then hand-assembled that wrapped
@@ -48,7 +47,7 @@
  * section by THIS generator, `.env.example` no longer exists, and `--check`
  * covers the whole consolidated file end to end.)
  *
- * ─── THE PYTHON HALF (TASK-799 Phase 1.5) ────────────────────────────────────
+ * ─── THE PYTHON HALF ────────────────────────────────────
  * This generator used to state that the six Python services were a "declared
  * boundary, not an oversight": their `.env.sample` files were hand-maintained
  * and inlined VERBATIM, and `scanTypeScriptReads()` globbed no `*.py`. The
@@ -60,7 +59,7 @@
  *
  * The boundary is now crossed by a MANIFEST rather than by an import:
  *
- *   `pnpm env:python-surface`  (scripts/python-env-surface.py — needs Python)
+ *   `pnpm env:python-surface` (scripts/python-env-surface.py — needs Python)
  *        introspects every `BaseSettings` subclass with pydantic's OWN
  *        `EnvSettingsSource._extract_field_info`, harvests each field's `#`
  *        comment block as its description, AST-scans non-pydantic
@@ -82,7 +81,7 @@
  *
  * A THIRD gate covers the direction none of the above can see. Everything here
  * asks "is every var that is READ also DECLARED?"; `pnpm env:python-dead`
- * (TASK-799 Phase 3.2, also in scripts/python-env-surface.py) asks the reverse
+ * (also in scripts/python-env-surface.py) asks the reverse
  * — "is every DECLARED settings field actually READ?" A field nobody reads is
  * config theatre: an operator sets it, nothing happens, and no gate here would
  * ever notice. It is a stdlib AST pass, so it runs in its own zero-install CI
@@ -147,7 +146,7 @@ const PYTHON_SERVICES = ['guardrail', 'harness', 'nlp', 'stt', 'text', 'tts'] as
 /**
  * Local-dev values that are NOT the code default — the only hand-owned data in
  * the Python half, and the reason `pnpm setup:dev` yields a WORKING env
- * (TASK-799 Phase 1.5 B.4) rather than one a developer must fix by hand.
+ *  rather than one a developer must fix by hand.
  *
  * A local-dev value cannot be derived from the code: the code default is what
  * the service should do in PRODUCTION, and these are the handful of places
@@ -205,7 +204,7 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
 /**
  * Prose that the Python source does not carry.
  *
- * These fifteen knobs (TASK-778 / TASK-782) used to be DECLARED here as
+ * These fifteen knobs used to be DECLARED here as
  * `SettingDescriptor`s, because `turbo.json#globalEnv` is a repo-wide
  * cache-correctness declaration and a Python-read variable missing from it is
  * undeclared whatever language reads it. The Python manifest now declares them
@@ -234,7 +233,7 @@ const PYTHON_DESCRIPTION_OVERLAY: ReadonlyMap<string, string> = new Map([
     ['NLP_MODEL_CACHE_TTL_SECONDS', 'Idle TTL before an NLP model is evicted from the in-process cache.'],
     ['NLP_MODEL_CACHE_MAX_MODELS', 'LRU ceiling on resident NLP models.'],
     ['NLP_MODEL_LOCAL_ROOTS', 'Optional allow-list of filesystem roots a configured LOCAL model path must resolve inside. Unset = unrestricted, deliberately and documented.'],
-    ['NLP_INFERENCE_INTERACTIVE_BATCH_MAX_SIZE', 'Maximum items coalesced into one INTERACTIVE-lane forward pass (TASK-782). The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry.'],
+    ['NLP_INFERENCE_INTERACTIVE_BATCH_MAX_SIZE', 'Maximum items coalesced into one INTERACTIVE-lane forward pass. The synchronous inline gate and the asynchronous per-utterance pass are different service classes with different latency budgets, so they do not share a queue geometry.'],
     ['NLP_INFERENCE_INTERACTIVE_BATCH_LINGER_MS', 'How long an otherwise-idle INTERACTIVE-lane request waits for company. Measured against the gate budget, not the bulk pass.'],
     ['NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_DEPTH', 'Bounded INTERACTIVE-lane queue depth; at the bound the gate sheds with 503 + `Retry-After`.'],
     ['NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_WAIT_SECONDS', 'Wait ceiling for a queued INTERACTIVE-lane item — this IS the declared inline-gate SLO. Past it the verdict is too late to gate anything, so a 503 the caller fails closed on beats a stale 200.'],
@@ -388,10 +387,10 @@ function fromPythonField(field: PythonField, service: string): PythonEnvVar {
         owner: `apps/${service}`,
         codeDefault,
         // Three reasons to emit a LIVE line, and only three:
-        //   secret        — must be minted/pasted; `generate-env-file.sh` keys off
+        //   secret — must be minted/pasted; `generate-env-file.sh` keys off
         //                   the literal `CHANGE_ME` placeholder to fill it.
-        //   required      — pydantic has no default, so an absent line is a boot failure.
-        //   local-dev     — the code default is right for production and wrong here.
+        //   required — pydantic has no default, so an absent line is a boot failure.
+        //   local-dev — the code default is right for production and wrong here.
         // Everything else is commented out AT its default: an env file should
         // carry the deltas from the code, not a second copy of the code that
         // then drifts from it.
@@ -454,13 +453,13 @@ const BANNER = (source: string) =>
 
 /**
  * The value written for a variable: never a real secret.
- *   secret                    → `CHANGE_ME` (wins even over `sampleValue` —
+ *   secret → `CHANGE_ME` (wins even over `sampleValue` —
  *                                belt-and-suspenders alongside the registry's
  *                                own assembly-time throw, see `settings-registry.ts`)
- *   sampleValue declared      → that value (template-only —
+ *   sampleValue declared → that value (template-only —
  *                                never fed back into a runtime fallback, unlike `default`)
  *   required, no code default → `CHANGE_ME` (the operator MUST supply one)
- *   otherwise                 → the declared default, or empty for "unset by default"
+ *   otherwise → the declared default, or empty for "unset by default"
  *
  * Deliberately NOT `<CHANGE_ME>` (angle brackets): every env file this produces
  * is `source`d as shell by scripts/vault-seed-secrets.sh and generate-prod-secrets.sh
@@ -554,13 +553,13 @@ function renderRootExample(): string {
         '# THE BOOTSTRAP FLOOR — and nothing else.',
         '#',
         '# A variable belongs here only if it is required TO REACH the database or TO',
-        '# AUTHENTICATE to Vault (plan §3.2). Everything else lives in the database or',
+        '# AUTHENTICATE to Vault. Everything else lives in the database or',
         '# in Vault, or in the deployable-specific example file next to it.',
         '#',
         '# `.env.dev` is gitignored and CI/production load no file at all — host env',
         '# only. Locally, `pnpm setup:dev` creates `.env.dev` for you (only if it',
         '# does not already exist) from the consolidated `.env.sample` at the repo',
-        '# root (TASK-583) — since TASK-558 lane C, the TypeScript gateway AND all',
+        '# root, the TypeScript gateway AND all',
         '# six Python services read that ONE resulting file. See',
         '# docs/architecture/environment-configuration-reference.md for the full',
         '# variable reference.',
@@ -661,7 +660,7 @@ const SAMPLE_KEY_RE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
 
 /**
  * The six Python service sections of the consolidated file, GENERATED from the
- * manifest (TASK-799 Phase 1.5). They used to be read VERBATIM off disk as
+ * manifest. They used to be read VERBATIM off disk as
  * hand-maintained files, which is exactly what let them drift ~2x away from the
  * real surface and carry 15 keys with no reader at all — see "THE PYTHON HALF"
  * in the header. Their content now comes from `renderPythonExample()`, the same
@@ -677,7 +676,7 @@ const CONSOLIDATED_HEADER = [
     '# ============================================================================',
     '# HOPE Platform — Consolidated Local Dev/Test Sample (.env.sample)',
     '# ============================================================================',
-    '# GENERATED FILE — DO NOT EDIT BY HAND. Produced by `pnpm env:sync` (TASK-585).',
+    '# GENERATED FILE — DO NOT EDIT BY HAND. Produced by `pnpm env:sync`',
     '# `pnpm env:sync --check` fails the build (CI job `env-drift-check`) when this',
     '# file disagrees with its sources: the settings registry (bootstrap floor +',
     "# apps/api + apps/admin-console + packages/tools) and the 6 Python services'",
@@ -700,7 +699,7 @@ const CONSOLIDATED_HEADER = [
     '# out with a `# [duplicate key, see ... above]` note instead of being',
     '# emitted live — a flat env file can only have ONE active value per key',
     '# name, and emitting two active lines for one key is exactly the',
-    '# "duplicate keys / silent last-wins" defect TASK-558 already found and',
+    '# "duplicate keys / silent last-wins" defect already found and',
     '# fixed once (that service\'s OWN process still gets its correct value when',
     '# launched via its `pnpm <svc>:dev` script, which injects PORT/HOST via',
     '# scripts/dev-service.sh BEFORE the file is read — see',
@@ -818,7 +817,7 @@ export const DOCUMENTATION_SURFACES = [
  * SNIPPETS are blanked for the same reason — see `DOCUMENTATION_SURFACES`.
  */
 /**
- * The per-file half of {@link scanTypeScriptReads}, exported so the
+ * The per-file half of {@link scanTypeScriptReads()}, exported so the
  * snippet-vs-real-read distinction can be tested directly on a string instead
  * of by planting a probe file in the repo.
  */
@@ -895,7 +894,7 @@ export function scanTypeScriptReads(): Set<string> {
  * can). This exists anyway because the manifest is a COMMITTED FILE: a developer
  * who adds `os.getenv("NEW_THING")` and forgets `pnpm env:python-surface` would
  * otherwise sail past `env-drift-check`, which is the exact class of invisibility
- * TASK-799 Phase 1.5 exists to end. A regex over `*.py` needs no Python
+ * exists to end. A regex over `*.py` needs no Python
  * interpreter, so it runs in the same CI job as the rest of this generator and
  * fails the build on the spot.
  *
@@ -965,10 +964,10 @@ function renderDocsTable(globalEnv: string[]): string {
     const lines = [
         '<!-- GENERATED FILE — DO NOT EDIT BY HAND. Produced by `pnpm env:sync`. -->',
         '',
-        '# TASK-558 — The declared environment surface',
+        '# The declared environment surface',
         '',
         'Generated from the settings registry plus each TypeScript deployable’s own',
-        'schema, AND — since TASK-799 Phase 1.5 — the six Python services’',
+        'schema, AND the six Python services’',
         'pydantic-settings declarations via `scripts/generated/python-env-surface.json`.',
         '`pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,',
         'the `.env.sample` files (root consolidated / per-app), or `turbo.json#globalEnv`',
@@ -1220,7 +1219,7 @@ function main(): void {
     }
 
     for (const problem of unread) console.warn(`\n${problem}`);
-    console.log(`\nDeclared surface: ${surfaces} · bootstrap floor ${floorLines} lines · plan §8 targets ≤ ~120 keys and ≤ ~60 lines.`);
+    console.log(`\nDeclared surface: ${surfaces} · bootstrap floor ${floorLines} lines · targets ≤ ~120 keys and ≤ ~60 lines.`);
 }
 
 // `import`ed by the unit tests; executed by `pnpm env:sync`.

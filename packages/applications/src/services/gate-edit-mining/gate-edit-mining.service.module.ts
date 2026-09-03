@@ -12,7 +12,7 @@ import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.se
 /**
  * GateEditMiningService DI module.
  *
- * `IPhiRedactor` is now wired (TASK-710) via `PhiRedactionServiceModule`
+ * `IPhiRedactor` is now wired via `PhiRedactionServiceModule`
  * (`GuardrailPhiRedactor`, an HTTP client over `POST /api/guardrail/redact`).
  * `GateEditMiningService`'s own fail-closed design is UNCHANGED — it still
  * mines nothing if `@Optional() phiRedactor` is ever absent (e.g. a deployment
@@ -24,7 +24,7 @@ import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.se
  * assembly can consume the READ half through a narrow port without importing
  * the mining implementation (consumption (b)).
  *
- * TASK-792 W1 — the WRITE half is registered here for the first time.
+ * the WRITE half is registered here for the first time.
  * `GateEditMiningQueue` and `GateEditMiningProcessor` were declared in
  * `gate-edit-mining.processor.ts` but appeared in NO module's `providers`,
  * making `GateEditMiningQueue` the only unregistered `@Processor` class in this

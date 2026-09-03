@@ -1,4 +1,4 @@
-"""Degrade-away-from-unhealthy routing (TASK-725 Task 2).
+"""Degrade-away-from-unhealthy routing.
 
 Hermetic unit tests for `services/pool_health.PoolHealthTracker` and
 `services/pool_router.resolve_pool_route`. RED: written before implementation.

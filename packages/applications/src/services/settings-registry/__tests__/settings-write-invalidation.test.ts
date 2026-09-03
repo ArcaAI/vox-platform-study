@@ -33,7 +33,7 @@ import { AppSettingsService, APP_SETTINGS_INVALIDATION_CHANNEL } from '../../bas
 import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../settings-registry-write.service';
 import { GlobalSettingFactory, ResourceType, SysEvent, SysEventType, ValueType } from '@arcaai/domains';
 
-/** The SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1). */
+/** The SOLE platform-configuration tier (owner ruling 2026-08-20). */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** A real registry key on the `global-kv` tier (writable through this lane). */

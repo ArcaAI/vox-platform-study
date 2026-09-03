@@ -281,7 +281,7 @@ describe('DnaWritingStyleController', () => {
     });
 
     /**
-     * TASK-815 §12 (P-4) — the ownership property the playground's DNA-style
+     *  — the ownership property the playground's DNA-style
      * picker now RESTS on.
      *
      * The Consultation Scribe moved that picker off `admin/dna-writing-styles`
@@ -289,7 +289,7 @@ describe('DnaWritingStyleController', () => {
      * only because the doctor is the CLS principal: under impersonation CLS
      * holds the IMPERSONATED clinician, so the list must follow the clinician
      * and never the admin acting as them.
-     */
+ */
     it('follows the IMPERSONATED clinician, not the admin acting as them', async () => {
       const impersonatedCls = createMockClsService('doctor-7', { roles: ['DOCTOR'], impersonatedBy: 'admin-1' });
       const scoped = new DnaWritingStyleController(mockDnaService as any, impersonatedCls as any, mockDnaQueue as any);

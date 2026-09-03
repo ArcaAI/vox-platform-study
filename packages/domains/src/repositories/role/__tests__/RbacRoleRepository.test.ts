@@ -12,7 +12,7 @@
  *     `Policy` projected to `{ id, name }`, ordered by `priority asc`.
  *   • `findByIdGuardSelect(id)` returns `{ isSystemRole, name }` for the
  *     system-role-guard pre-check used by update/patch/softDelete (three
- *     callsites — see README §4.1 inventory).
+ * callsites — inventory).
  *   • Parent / cycle-walk helpers expose narrow `select` projections so
  *     the service-level `validateParentRole` stays free of inline
  *     Prisma calls.
@@ -122,7 +122,7 @@ describe('RbacRoleRepository', () => {
   });
 
   describe('findByIdGuardSelect', () => {
-    // TASK-766 OD-1: the projection also carries `tenantId`, so the service can
+    // the projection also carries `tenantId`, so the service can
     // tell an own-tenant custom role from a SYSTEM-owned platform one before it
     // writes.
     it('selects isSystemRole, name and tenantId', async () => {

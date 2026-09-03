@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane A — the invocation handler the four surfaces converge on.
+ * lane A — the invocation handler the four surfaces converge on.
  *
  * Covers the parts that live in the gateway rather than the application service:
  *
@@ -41,7 +41,7 @@ const res = () =>
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('TASK-850 — POST /workflows/:slug/runs is the canonical unbound entry', () => {
+describe('POST /workflows/:slug/runs is the canonical unbound entry', () => {
   it('delegates with no consultation binding at all', async () => {
     const deps = makeDeps();
     const controller = new WorkflowsController(deps.workflowExposureService as never, deps.workflowStreamService as never);
@@ -73,7 +73,7 @@ describe('TASK-850 — POST /workflows/:slug/runs is the canonical unbound entry
   });
 });
 
-describe('TASK-850 — the consultation-bound entry takes its id from the URL', () => {
+describe('the consultation-bound entry takes its id from the URL', () => {
   it('passes the PATH consultationId through as the binding', async () => {
     const deps = makeDeps();
     const controller = new ConsultationWorkflowRunsController(deps.workflowExposureService as never, deps.workflowStreamService as never);
@@ -113,7 +113,7 @@ describe('TASK-850 — the consultation-bound entry takes its id from the URL', 
   });
 });
 
-describe('TASK-850 — response modes', () => {
+describe('response modes', () => {
   it('async (the default) answers 202 with the run handle and never waits', async () => {
     const deps = makeDeps();
     const controller = new WorkflowsController(deps.workflowExposureService as never, deps.workflowStreamService as never);
@@ -146,7 +146,7 @@ describe('TASK-850 — response modes', () => {
     await expect(controller.startRun('discharge_summary', { input: {} }, req, res(), 'blocking', undefined)).rejects.toThrow(/stream/i);
   });
 
-  it('stream delegates to the TASK-849 stream — never a second one', async () => {
+  it('stream delegates to the  stream — never a second one', async () => {
     const deps = makeDeps();
     const controller = new WorkflowsController(deps.workflowExposureService as never, deps.workflowStreamService as never);
     const response = res();
@@ -157,7 +157,7 @@ describe('TASK-850 — response modes', () => {
   });
 });
 
-describe('TASK-850 — a client disconnect NEVER cancels the run', () => {
+describe('a client disconnect NEVER cancels the run', () => {
   it('does not cancel when the blocking wait ends at its ceiling', async () => {
     const deps = makeDeps();
     deps.workflowStreamService.awaitTerminal.mockResolvedValue(null);

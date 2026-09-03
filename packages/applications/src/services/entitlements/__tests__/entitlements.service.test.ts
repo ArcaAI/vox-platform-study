@@ -154,7 +154,7 @@ describe('EntitlementsService', () => {
   });
 
   describe('kill-switch', () => {
-    it('defaults enforcement ON when the setting is absent (TASK-785 OD-6)', () => {
+    it('defaults enforcement ON when the setting is absent (OD-6)', () => {
       // Was OFF, so an unseeded database silently granted every tenant
       // unlimited quota. The seeded row still decides a live environment; this
       // default only covers the "row is missing" case.
@@ -196,7 +196,7 @@ describe('EntitlementsService', () => {
   });
 
   describe('resolveForTenant', () => {
-    it('resolves a plan-less RESERVED tenant to ungated-legacy (TASK-785 OD-5)', async () => {
+    it('resolves a plan-less RESERVED tenant to ungated-legacy (OD-5)', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: null, trialEndsAt: null });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
 
@@ -231,14 +231,14 @@ describe('EntitlementsService', () => {
     });
 
     /*
-     * TASK-766 OD-2 (owner decision, 2026-08-20): the ArcaAI day-1 tenant is
+     * (owner decision, 2026-08-20): the ArcaAI day-1 tenant is
      * seeded with `plan: 'ENTERPRISE'` (packages/database seed/05-tenant.ts,
      * pinned by `tenant-plan-seed.test.ts`). This proves the OTHER half of
      * that decision — that the entitlement path actually resolves a REAL,
      * gated ENTERPRISE quota set for a tenant carrying that plan, rather than
      * silently falling through to `UNGATED_ENTITLEMENTS` (the null-plan Q3
      * default every un-planned seeded tenant — SYSTEM, Global — still gets).
-     */
+*/
     it('resolves an ENTERPRISE-plan tenant (as seeded for ArcaAI) to real gated quotas, never ungated-legacy', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
@@ -287,7 +287,7 @@ describe('EntitlementsService', () => {
       arrangeTenant({ featurePlatformDefaultCredential: false });
       await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(false);
 
-      // …and the seeded plan default (no override row at all) is `false` (OD-7).
+      // …and the seeded plan default (no override row at all) is `false`.
       arrangeTenant(null);
       await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(false);
     });

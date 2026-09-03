@@ -1,8 +1,7 @@
 /**
- * TASK-708 — API-Key Scope Verification: contract tests.
+ * API-Key Scope Verification: contract tests.
  *
  * This spec has two halves, deliberately separated so the split in
- * `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §2/§7
  * is visible in the test file itself rather than only in prose:
  *
  *  1. "Real enforcement" — a sample of the 14 `SDK_DAY1_SCOPED_ROUTES`
@@ -13,18 +12,18 @@
  *     a key WITH the scope must pass the guard (proven by reaching a
  *     downstream 404 for a nonexistent resource, never the scope-denial 403).
  *
- *  2. **Policy A2 (TASK-757)** — `/admin/*` is a **JWT-only** plane. This half
+ * 2. **Policy A2 ** — `/admin/*` is a **JWT-only** plane. This half
  *     has been REWRITTEN, and the direction of the assertion is now the
- *     opposite of what TASK-708 Task 4 left here.
+ * opposite of what left here.
  *
  *     History, because the inversion is not a mistake: `/admin/tenants`
  *     originally had NO `@RequiredScopes(...)` at all, so any key reached it
  *     (`enforceApiKeyScopes` no-opped when no metadata was present, and CASL
- *     was never evaluated on the API-key path — §2.4). Task 4 added
+ * was never evaluated on the API-key path — Task 4 added
  *     `@RequiredScopes('admin:tenant:write')`, and this half asserted the
  *     resulting narrowing. A2 supersedes that on this plane: the residual risk
- *     was never a privilege DELTA (TASK-742 made scope+ability a conjunction,
- *     TASK-756 added a minting ceiling) but a CREDENTIAL CLASS — a static,
+ * was never a privilege DELTA ( made scope+ability a conjunction,
+ * added a minting ceiling) but a CREDENTIAL CLASS — a static,
  *     long-lived bearer secret with no MFA, no session expiry, no
  *     revocation-on-logout, no impersonation trail. Administration removes the
  *     class. So this half now asserts that NO credential reaches
@@ -32,7 +31,7 @@
  *     still does; and half 2b asserts the reserved `admin:*`/`webhook:*`
  *     families can no longer be granted at all.
  *
- *     This is a refinement of the TASK-708 §6 owner ruling ("we cannot mix the
+ * This is a refinement of the owner ruling ("we cannot mix the
  *     `/admin/*` and `/internal/*` routes as they was design for different
  *     purposes"), not a reversal of it: no service token is introduced under
  *     `/admin/*`, and `/internal/*` (half 3) is untouched.
@@ -43,8 +42,7 @@
  *     RESERVED `internal:stt:worker` `@RequiredScopes` scope, NOT a
  *     dedicated service-token guard — `/admin/*` and `/internal/*` were
  *     deliberately closed by two DIFFERENT mechanisms (owner decision,
- *     `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md`
- *     §6), but `/internal/stt/*` is the one documented, POLICED exception
+ * but `/internal/stt/*` is the one documented, POLICED exception
  *     to "/internal/* is guard-only": the STT worker authenticates with an
  *     ordinary API key (BUG-013 — `apps/stt/src/stt/worker.py:209` sends its
  *     seeded SERVICE_ACCOUNT key's raw value as `X-Internal-Service-Key`,
@@ -59,7 +57,7 @@
  *     key (and any platform `'*'`-wildcard key, by the same wildcard
  *     semantics proven in half 2) reaches the handler.
  *
- *  4. "TASK-742 — fail closed" — the DEFAULT changed, not just one route.
+ * 4. " — fail closed" — the DEFAULT changed, not just one route.
  *     `enforceApiKeyScopes` used to return early and PERMIT when a route
  *     declared no `@RequiredScopes`, and CASL was never evaluated on the
  *     API-key path, so any key bearing any trivial scope reached every
@@ -67,12 +65,12 @@
  *     This half asserts the observable consequence on three surfaces the
  *     gateway conformance review named: `/audio/transcription-jobs` (20
  *     routes, 0 scopes), `/speech/*` (TTS), and an `@ForbidApiKey()` route
- *     (`/voice-profile` — re-pointed from `/tenant/me` by TASK-758, which
+ * (`/voice-profile` — re-pointed from `/tenant/me`, which
  *     converted that controller to policy A1's JWT + API key).
- *     Half 2's assertions are UNCHANGED by TASK-742 — `/admin/tenants` was
+ * Half 2's assertions are UNCHANGED — `/admin/tenants` was
  *     already declared, so the new default never applied to it.
  *
- *  5. "Minting privilege ceiling" (TASK-756) — the other end of the same
+ * 5. "Minting privilege ceiling" — the other end of the same
  *     credential's life. Halves 1-4 all ask "what may this key REACH?";
  *     half 5 asks "who was allowed to MINT it?". `ApiKeyService` now refuses
  *     any scope whose implied CASL ability the CALLING principal does not
@@ -114,9 +112,9 @@ async function createScopedApiKey(request: APIRequestContext, token: string, sco
   return { id: body.apiKey.id, rawKey: body.rawKey };
 }
 
-test.describe('TASK-708 — API-key scope contract (locks in current behavior)', () => {
+test.describe('API-key scope contract (locks in current behavior)', () => {
   let adminToken: string;
-  // TASK-756 — the minting ceiling refuses a scope whose implied ability the
+  // the minting ceiling refuses a scope whose implied ability the
   // caller does not hold, so privileged fixtures (`admin:tenant:write`, `'*'`)
   // must be minted by a super admin. The tenant-admin token still mints every
   // ordinary tenant-plane scope this spec uses.
@@ -245,12 +243,12 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 2 — Policy A2 (TASK-757): /admin/* is JWT-only. NO credential reaches
+  // Half 2 — Policy A2: /admin/* is JWT-only. NO credential reaches
   // it, including the bare '*' wildcard.
   // ==========================================================================
   //
   // This block previously asserted the OPPOSITE — that an `admin:tenant:write`
-  // key reached `/admin/tenants` and a `'*'` key did too. TASK-708 Task 4's
+  // key reached `/admin/tenants` and a `'*'` key did too. 's
   // scope narrowing has been superseded on this plane, not reversed: A2
   // narrows further along the same axis. The residual risk scope-narrowing
   // could not address is a CREDENTIAL-CLASS problem — a key is a long-lived
@@ -324,7 +322,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 2b — the reserved families can no longer be GRANTED (TASK-757).
+  // Half 2b — the reserved families can no longer be GRANTED.
   // Scope-narrowing survives on the business plane; only the admin vocabulary
   // is withdrawn.
   // ==========================================================================
@@ -349,7 +347,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       expect(key.rawKey).toBeTruthy();
     });
 
-    test('a business-plane scope is still mintable — A1 (TASK-758) is unaffected', async ({ request }) => {
+    test('a business-plane scope is still mintable — A1  is unaffected', async ({ request }) => {
       const key = await createScopedApiKey(request, adminToken, ['consultation:session:read'], 'task-757-business-still-mintable');
       createdApiKeyIds.push(key.id);
       expect(key.rawKey).toBeTruthy();
@@ -366,7 +364,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     test('an ordinary tenant SDK key (no internal:stt:worker, no wildcard) is 403 — cannot reach it at all', async ({ request }) => {
       // SEEDED_API_KEY is an ordinary DOCTOR-owned SDK key with no
       // `internal:*` scope — proves the gap-closure this ticket delivered:
-      // before TASK-708, `x-internal-service-key` doubled as an ordinary
+      // before, `x-internal-service-key` doubled as an ordinary
       // API-key header (`ApiKeyService.extractApiKeyFromRequest`), so ANY
       // active tenant key reached this controller. `@RequiredScopes('internal:stt:worker')`
       // now 403s it, exactly like every other scope-gated route in half 1.
@@ -409,9 +407,9 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 4 — TASK-742: the API-key path now FAILS CLOSED.
+  // Half 4 —: the API-key path now FAILS CLOSED.
   //
-  // Half 2 closed ONE route family by adding a scope to it. TASK-742 closed the
+  // Half 2 closed ONE route family by adding a scope to it. closed the
   // DEFAULT: a route that declares no `@RequiredScopes(...)` refuses API keys
   // outright, so "we forgot to scope it" no longer means "anyone with any key
   // may call it". The three surfaces below were all reachable, unauthorized, by
@@ -428,7 +426,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   // changed.
   // ==========================================================================
 
-  test.describe('TASK-742 — surfaces that were unauthorized-reachable are now gated', () => {
+  test.describe('surfaces that were unauthorized-reachable are now gated', () => {
     test('STT jobs (/audio/transcription-jobs, 20 routes, previously 0 scopes): an out-of-scope key is 403', async ({ request }) => {
       const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-742-stt-jobs-denied');
       createdApiKeyIds.push(key.id);
@@ -472,13 +470,13 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       expect(body.message).toContain('API key does not have required scope(s): tts:speech:write');
     });
 
-    // Re-pointed from `/tenant/me` to `/voice-profile` by TASK-758: policy A1
+    // Re-pointed from `/tenant/me` to `/voice-profile` by: policy A1
     // converted `MyTenantController` to `@RequiredScopes('tenant:profile:read')`,
     // so it is no longer an `@ForbidApiKey()` surface at all. `/voice-profile`
     // is a REASONED exemption (voice biometrics — a long-lived static
     // credential must never enrol or read a voice profile), named in
     // `BUSINESS_PLANE_KEY_FORBIDDEN` and policed at boot, so it will not move
-    // again the way TASK-742's conservative default did.
+    // again the way conservative default did.
     test('an @ForbidApiKey() surface (/voice-profile) refuses even the "*" wildcard key', async ({ request }) => {
       const key = await createScopedApiKey(request, superAdminToken, ['*'], 'task-742-forbid-wildcard');
       createdApiKeyIds.push(key.id);
@@ -502,7 +500,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 5 — TASK-756: the MINTING privilege ceiling.
+  // Half 5 —: the MINTING privilege ceiling.
   //
   // Halves 1-4 gate what a key may REACH. This one gates who may ISSUE it.
   // `ValidScopesConstraint` only ever proved a requested scope was a REGISTRY
@@ -517,9 +515,9 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   // request. The two are a conjunction.
   // ==========================================================================
 
-  test.describe('TASK-756 — a tenant admin cannot mint a key above its own privilege', () => {
+  test.describe('a tenant admin cannot mint a key above its own privilege', () => {
     /**
-     * TASK-757 changed WHICH control refuses this, not WHETHER it is refused.
+     * changed WHICH control refuses this, not WHETHER it is refused.
      * `admin:*` is now a RESERVED scope, and the DTO-level
      * `NoReservedScopesConstraint` runs in the validation pipe — i.e. BEFORE
      * `ApiKeyService.assertScopeCeiling` — so the refusal arrives as a 400
@@ -589,7 +587,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
 
       const etag = created.headers()['etag'];
 
-      // Refused by A2's widening-delta reserved-scope check since TASK-757;
+      // Refused by A2's widening-delta reserved-scope check since;
       // the ceiling would have refused it too. Either way, 403.
       const widen = await request.patch(`/api/v1/admin/api-keys/${createdBody.apiKey.id}`, {
         headers: { Authorization: `Bearer ${adminToken}`, ...(etag ? { 'If-Match': etag } : {}) },

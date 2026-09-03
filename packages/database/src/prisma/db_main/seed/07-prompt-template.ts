@@ -57,7 +57,7 @@ export const SOAP_PROMPT_CONFIG = {
 };
 
 /**
- * Structured DNA writing-style output schema (TASK-700 PHI containment).
+ * Structured DNA writing-style output schema ( PHI containment).
  *
  * Every property is a CLOSED vocabulary (enum) or a short, headings-only
  * string — deliberately with NO free-text field wide enough to carry a
@@ -100,7 +100,7 @@ export const DNA_PROMPT_CONFIG = {
 };
 
 /**
- * DNA_ANALYSIS prompt content, v3 (TASK-700). Defense-in-depth over the
+ * DNA_ANALYSIS prompt content, v3. Defense-in-depth over the
  * schema (`DNA_PROMPT_CONFIG.outputSchema`): an explicit instruction against
  * reproducing patient content, even though the structural fix is the closed
  * schema, not this sentence.
@@ -127,7 +127,7 @@ export const TEMPLATE_IDS = {
   PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
   // ---------------------------------------------------------------------------
   // GENERIC platform templates for the eight care-setting departments
-  // (04-department.ts). Authored for TASK-763 §5 OD-8: the previous Global
+  // (04-department.ts). Authored for OD-8: the previous Global
   // catalog reused BCMCH's v1 specialty prompt bodies, which the golden library
   // then shipped to every new tenant. These are written to the standard
   // clinical-documentation section conventions instead and name no
@@ -147,7 +147,7 @@ export const TEMPLATE_IDS = {
   GENERIC_BEHAVIORAL_REVIEW: '71000000-0000-0000-0003-000000000011',
   GENERIC_PEDIATRIC_NEW: '71000000-0000-0000-0003-000000000012',
   GENERIC_PEDIATRIC_REVISIT: '71000000-0000-0000-0003-000000000013',
-  // Lane N (TASK-815 §14a/§14b) — the PLATFORM DEFAULT instruction and grounding policy.
+  // Lane N — the PLATFORM DEFAULT instruction and grounding policy.
   //
   // SYSTEM-tenant rows, and that placement is the whole point rather than a filing choice.
   // `00-project-context.md` §Configuration Principles forbids these bodies from being literals in
@@ -158,14 +158,14 @@ export const TEMPLATE_IDS = {
   // binding rather than a cascade.
   IMPORTANT_FINDINGS_SYSTEM: '71000000-0000-0000-0000-000000000041',
   GROUNDING_POLICY_SYSTEM: '71000000-0000-0000-0000-000000000042',
-  // TASK-821 §17e — the LIVE GRAMMAR instruction, and the same tier for the same reason.
+  // the LIVE GRAMMAR instruction, and the same tier for the same reason.
   //
   // `agent.grammar` was registered by Lane R and seeded by nothing, so the live grammar pass ran
   // for no tenant. Seeding the NODE alone would not have changed that: the realtime handler
   // resolves its system prompt from the node's `promptTemplateId` and THROWS when it is unbound,
   // so an unbound node degrades on every flush — "runs for nobody" in a different costume.
   LIVE_GRAMMAR_SYSTEM: '71000000-0000-0000-0000-000000000043',
-  // TASK-826 — the DURABLE note-level correction instruction, and the same tier for the same
+  // the DURABLE note-level correction instruction, and the same tier for the same
   // reason.
   //
   // `consultation.proposeCorrections` ran on `_CORRECTION_SYSTEM_PROMPT`, a Python constant, while
@@ -179,7 +179,7 @@ export const TEMPLATE_IDS = {
   // from `consultation.synthesize`: a FINISHED, complete note. An instruction telling a model the
   // note is still growing would be wrong about the only thing it needs to be right about.
   NOTE_CORRECTIONS_SYSTEM: '71000000-0000-0000-0000-000000000044',
-  // TASK-827 — the platform default for `consultation.suggestions` (W2), the sibling defect of
+  // the platform default for `consultation.suggestions` (W2), the sibling defect of
   // …044's. It is a THIRD body rather than a reuse of either neighbour, and the difference is
   // what the pass is for. …043 and …044 both REVIEW existing words for error — one in a partial
   // transcript, one in a finished note — and neither may add clinical content. This pass adds:
@@ -459,7 +459,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     },
     // Activate structured SOAP output (json_schema).
     metaData: { promptConfig: SOAP_PROMPT_CONFIG } as Prisma.InputJsonValue,
-    // TASK-702: bumped 3 -> 4 — v4 (EXTRA_PROMPT_VERSIONS id …0105) removes the
+    // bumped 3 -> 4 — v4 (EXTRA_PROMPT_VERSIONS id …0105) removes the
     // free-text ICD-10 instruction. v3's PromptVersion snapshot is preserved
     // unmutated (see comment there) since it is a historical record of what
     // was actually served, not a live instruction.
@@ -479,7 +479,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
     },
-    // Constrain DNA output to the closed-vocabulary schema (TASK-700 PHI
+    // Constrain DNA output to the closed-vocabulary schema ( PHI
     // containment) — same mechanism as SOAP_PROMPT_CONFIG above.
     metaData: { promptConfig: DNA_PROMPT_CONFIG } as Prisma.InputJsonValue,
     currentVersionNumber: 3,
@@ -736,7 +736,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   // ──────────────────────────────────────────────────────────────────
   {
     id: TEMPLATE_IDS.CATCHALL_SOAP,
-    // TASK-858 — owned by the SYSTEM tenant, NOT the GLOBAL customer tenant it was
+    // owned by the SYSTEM tenant, NOT the GLOBAL customer tenant it was
     // seeded under originally. This row is `SYSTEM_DEFAULTS.promptId` in
     // prompt-resolution.service.ts — the platform-wide fallback every consultation
     // whose tenant/department expresses no SOAP opinion assembles from. The same
@@ -827,7 +827,7 @@ When no department-specific template matches the current encounter's department,
   // GENERIC care-setting templates — the platform day-1 documentation formats.
   //
   // These replace the 22 BCMCH/v1-format specialty templates the Global catalog
-  // used to carry (TASK-763 §5 OD-8). Those bodies still exist, unchanged, on the
+  // used to carry. Those bodies still exist, unchanged, on the
   // tenant they belong to: 07b-arcaai-clinical-templates.ts. What is authored
   // here is written to the standard clinical-documentation section conventions
   // and names no organisation, house format, or specialty roster, because
@@ -1275,7 +1275,7 @@ Transcript:
     tags: ['generic', 'platform-default', 'peds'],
   },
   // ──────────────────────────────────────────────────────────────────
-  // Lane N — the two PLATFORM-DEFAULT instruction bodies (TASK-815 §14a/§14b)
+  // Lane N — the two PLATFORM-DEFAULT instruction bodies
   //
   // Appended at the END on purpose: `DEFAULT_PROMPT_VERSIONS` maps this array by INDEX onto
   // `VERSION_IDS`, so inserting anywhere else would silently re-point every later template's
@@ -1555,7 +1555,7 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
     },
-    // TASK-700 PHI containment: this is the tenant whose DNA feature is
+    // PHI containment: this is the tenant whose DNA feature is
     // LIVE today (`14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE
     // sets `dnaStyleEnabled: true`), so the schema constraint that closes the
     // free-text output defect must be seeded onto ArcaAI's OWN copy of the
@@ -1627,7 +1627,7 @@ export const EXTRA_PROMPT_VERSIONS = [
     // Historical snapshot of what version 3 WAS — deliberately preserved
     // verbatim (including the pre-fix "ICD-10 codes" clause) rather than
     // mutated in place; the ICD-10 fix ships as a NEW versionNumber 4 row
-    // below, per TASK-702 (rolling `approvedVersionNumber`/`currentVersionNumber`
+    // below, per (rolling `approvedVersionNumber`/`currentVersionNumber`
     // back to 3 must reproduce exactly what was served at the time, ICD-10
     // clause included — the icd10-prompt-containment golden test's allowlist
     // documents this same exception).
@@ -1643,7 +1643,7 @@ export const EXTRA_PROMPT_VERSIONS = [
       department: { type: 'string', required: false },
       severity: { type: 'string', required: false },
     },
-    // TASK-702: reworded from "Restructured with bullet points, added ICD-10
+    // reworded from "Restructured with bullet points, added ICD-10
     // codes and confidence levels" — that phrasing described ICD-10 emission
     // as a positive change, which is misleading once the model is no longer
     // instructed to write codes. The `content` above is left untouched (see
@@ -1652,7 +1652,7 @@ export const EXTRA_PROMPT_VERSIONS = [
     changedBy: SYSTEM_USER_ID,
   },
   {
-    // The ICD-10 prompt-containment fix (TASK-702): supersedes versionNumber
+    // The ICD-10 prompt-containment fix: supersedes versionNumber
     // 3 above without mutating its historical snapshot. SOAP_SUMMARY's
     // `currentVersionNumber` is bumped to 4 so this is the version served.
     id: '72000000-0000-0000-0000-000000000105',

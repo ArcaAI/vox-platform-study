@@ -44,10 +44,10 @@ model TenantSttConfig {
   autoSwitchEnabled  Boolean @default(true)
   configJson         Json?   @db.JsonB
 
-  // TASK-843 — CONSTANT for the table (every row is a speech-to-text binding),
+  // CONSTANT for the table (every row is a speech-to-text binding),
   // so NOT NULL with the correct default. See `AsrPipeline.taskKind` for the
   // full rationale, including why a redundant column is the right migration
-  // seam for TASK-844. This table is NOT retired here.
+  // seam for. This table is NOT retired here.
   taskKind AiTaskKind @default(SPEECH_TO_TEXT)
 
   // resource status fields

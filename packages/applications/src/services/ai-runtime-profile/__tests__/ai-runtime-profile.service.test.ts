@@ -192,10 +192,10 @@ describe('AiRuntimeProfileService — governance (test 8)', () => {
 });
 
 // ===========================================================================
-// TASK-858 — the lookup key the console writes vs the identifier the wire carries
+// the lookup key the console writes vs the identifier the wire carries
 // ===========================================================================
 
-describe('AiRuntimeProfileService — resolveProfile honours a catalog-slug-keyed row for a wire model id (TASK-858)', () => {
+describe('AiRuntimeProfileService — resolveProfile honours a catalog-slug-keyed row for a wire model id ', () => {
   // `AiRuntimeProfile.modelSlug` is documented (schema + seed + console) as an
   // `AiModel.slug`, but every TEXT caller resolves `model` to the row's
   // `sourceUri` — the provider's own model id — before the profile is applied.

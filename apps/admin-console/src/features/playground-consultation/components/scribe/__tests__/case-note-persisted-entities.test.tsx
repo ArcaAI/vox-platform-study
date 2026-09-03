@@ -1,5 +1,5 @@
 /**
- * TASK-797 W3 — entities must survive the end of recording.
+ * entities must survive the end of recording.
  *
  * While recording, entities ride the live-summary SSE snapshot. Once a persisted draft
  * exists the snapshot is gone and, before this, so was every entity: the console showed
@@ -60,7 +60,7 @@ function props(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> =
   };
 }
 
-describe('CaseNoteColumn — persisted entities (TASK-797 W3)', () => {
+describe('CaseNoteColumn — persisted entities (W3)', () => {
   it('lists the persisted named entities alongside a draft', () => {
     render(<CaseNoteColumn {...props({ namedEntities: AGGREGATE })} />);
     expect(screen.getByText('hypertension')).toBeTruthy();

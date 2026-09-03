@@ -65,7 +65,7 @@ class ModelSourceError(Exception):
 def config_from_settings(settings: Any) -> ModelSourceConfig:
     """The CREDENTIAL-FREE part of the resolver config: cache dirs and TLS.
 
-    TASK-799 — this used to be the single seam through which
+    this used to be the single seam through which
     ``HUGGINGFACE_TOKEN`` and the ``STT_MODEL_S3_*`` pair reached the resolver.
     Both are now rows on ``AiProviderConnection`` (``service='model-registry'``)
     and depend on WHICH MODEL is being fetched, which this function cannot know.
@@ -138,7 +138,7 @@ async def resolve_for_model_config(
 ) -> Path:
     """Convenience seam used by the loaders: `AiModelConfig` -> weights dir.
 
-    ``local_path`` is honoured BEFORE any credential is resolved (TASK-858). This
+    local_path is honoured BEFORE any credential is resolved. This
     seam used to call :func:`config_for_model` eagerly, which asks the gateway for
     the HuggingFace and S3 credentials of the model's owner tenant and FAILS CLOSED
     when it cannot — so a model read in place (Mode M: a bucket mount, an
@@ -245,7 +245,7 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
         raise ModelSourceError(
             "Cannot resolve an S3 model source: the endpoint, access key id or "
             "secret key is missing. These are no longer environment variables "
-            "(TASK-799) — configure the 'model-registry' / 's3' provider "
+            " — configure the 'model-registry' / 's3' provider "
             "connection for the tenant that OWNS this model, or for the SYSTEM "
             "tenant to serve every model that has no owner of its own."
         )
@@ -388,7 +388,7 @@ async def _resolve_hf(
     # IS the "pre-populate the hub cache" path the error below recommends —
     # raising before the call made that advice impossible to follow, and turned
     # every AiModel-driven load into a hard failure on a pod whose weights are
-    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # mounted read-only from the model bucket. The offline case is
     # still reported distinctly, but only once a cache MISS has actually
     # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}

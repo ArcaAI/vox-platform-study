@@ -1,5 +1,5 @@
 /**
- * Rules + Explain tabs (TASK-785, frame 16).
+ * Rules + Explain tabs (frame 16).
  *
  * The precedence itself is pinned in the gateway; what matters here is that the
  * screen tells the truth about it — the rank badges, the platform-`*` guard the

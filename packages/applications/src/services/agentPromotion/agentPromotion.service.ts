@@ -54,7 +54,7 @@ const EVAL_GATE_KEY = 'evalGate';
 /**
  * Promote a workflow-definition version from one tenant to another.
  *
- * ## What is promoted (TASK-815 / OD-10)
+ * ## What is promoted ( / OD-10)
  *
  * The promotable used to be a `DepartmentAgentVersion.configSnapshot`. With
  * `DepartmentAgent` retired, the thing a platform admin actually wants to move

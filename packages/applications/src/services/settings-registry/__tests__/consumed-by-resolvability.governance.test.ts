@@ -1,4 +1,4 @@
-// TASK-799 lane A.1 — the structural guard that keeps the bug fixed.
+// lane A.1 — the structural guard that keeps the bug fixed.
 //
 // THE DEFECT THIS EXISTS TO PREVENT. `EffectiveConfigService.resolveKey`
 // deliberately catches a resolver failure and degrades to

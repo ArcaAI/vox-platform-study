@@ -137,7 +137,7 @@ class EffectiveConfigClient:
     def handle_invalidation_message(self, payload: Any) -> bool:
         """Drop the cached snapshot in response to ONE pub/sub message.
 
-        Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+        Rule 09 : *invalidation is the propagation path; the TTL
         is a bounded-staleness safety net*. This method is that path — before it,
         this service converged on a control-plane write only by 60s poll, which
         removes the property that justifies moving a value out of env at all.
@@ -332,7 +332,7 @@ async def refresh_model_cache_retention(app_state: Any) -> None:
     try:
         snapshot = await client.get()
 
-        # Same snapshot, second consumer (TASK-799 lane C): the ~29 registry
+        # Same snapshot, second consumer: the ~29 registry
         # keys that ARE settings fields — provider endpoints, timeouts,
         # concurrency, local-engine model ids and the synthesis limits. Applied
         # on this READ-TRIGGERED path rather than at boot because that is what

@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-816 D-23 — `HarnessPolicy` is OCC-WRITTEN (`harness-policy.service.ts` calls
+// `HarnessPolicy` is OCC-WRITTEN (`harness-policy.service.ts` calls
 // `repository.updateWithVersion`), so `03-domain-layer.md` makes this strip mandatory: `_version`
 // is owned by the database and its only legitimate writer is `Repository.updateWithVersion`.
 // `updateWithVersion` also destructures `version` out defensively, but its own comment calls that

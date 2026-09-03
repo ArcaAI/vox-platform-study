@@ -144,7 +144,7 @@ def load_default_endpoint_model(config: EndpointConfig) -> EndOfTurnModel:
     raise EndpointModelUnavailableError(
         f"Semantic-endpoint model '{config.model_id}' is not staged on this host; "
         "the endpointer degrades to the model-free heuristic. See "
-        "docs/implementation/TASK-473-Semantic-Endpointing/README.md for the "
+        " for the "
         "model-staging ask."
     )
 

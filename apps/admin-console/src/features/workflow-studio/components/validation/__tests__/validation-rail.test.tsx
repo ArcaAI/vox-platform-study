@@ -1,5 +1,5 @@
 /**
- * `ValidationRail` (TASK-719 Task 14). Publish-gate rule (`publishBlockedReason`) reads
+ * `ValidationRail`. Publish-gate rule (`publishBlockedReason`) reads
  * `report.ok` only, per `validation-report.contract.md`.
  */
 import { render, screen } from '@testing-library/react';

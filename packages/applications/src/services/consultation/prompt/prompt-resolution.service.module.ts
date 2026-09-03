@@ -6,7 +6,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
 
 /**
  * `WorkflowAssignmentServiceModule` resolves the `@Optional()`
- * `IWorkflowAssignmentService` that TASK-815 made the source of tier-1a: the
+ * `IWorkflowAssignmentService` that made the source of tier-1a: the
  * governing workflow definition, walked `department -> tenant -> platform
  * default`. `WorkflowDefinitionRepository` comes from `CoreDatabaseModule`,
  * already imported here.

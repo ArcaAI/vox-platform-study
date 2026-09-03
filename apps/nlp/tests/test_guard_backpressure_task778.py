@@ -1,6 +1,6 @@
-"""TASK-778 — guard routes batch, shed load explicitly, and say so in metrics.
+"""guard routes batch, shed load explicitly, and say so in metrics.
 
-Three properties, all of which the TASK-735 routes lacked:
+Three properties, all of which the routes lacked:
 
 1. **Coalescing** — concurrent `/guard/pii` calls that share a taxonomy and
    threshold ride ONE forward pass.
@@ -164,8 +164,8 @@ def test_rejections_are_counted_by_reason(client, monkeypatch) -> None:
 
     monkeypatch.setattr(guard_module, "_acquire_guard", _fake_acquire(BatchingGuard()))
     monkeypatch.setattr(guard_module, "_submit_pii", boom)
-    # `lane` was added to this counter by TASK-782; a request that names no
-    # `latency_class` lands in the bulk lane, which is the TASK-778 behaviour.
+    # `lane` was added to this counter by; a request that names no
+    # `latency_class` lands in the bulk lane, which is the behaviour.
     before = NLP_INFERENCE_REJECTIONS_TOTAL.labels(
         route="guard_pii", reason="queue_full", lane="bulk"
     )._value.get()

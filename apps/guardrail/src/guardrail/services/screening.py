@@ -1,6 +1,6 @@
 """Bidirectional screening — the inbound prompt AND the outbound response.
 
-Guardrail's pre-TASK-777 surface screened text in one direction only, and its
+Guardrail's earlier surface screened text in one direction only, and its
 verdict (`{safe, issues, confidence}`) named neither the tenant whose policy
 decided it, nor the model that ran, nor what would have happened had the check
 failed. On a PHI platform that is not an auditable safety decision.
@@ -77,7 +77,7 @@ _DECLARED_FAIL_MODES: Final[dict[str, str]] = {
 #: Labels that mean "nothing detected". Bootstrap set only — the registry row's
 #: `benignLabels` overrides it through the analyzer's policy.
 #:
-#: RE-EXPORTED from `safety_analyzer`, not restated (TASK-799 lane D, §D.2c). This
+#: RE-EXPORTED from `safety_analyzer`, not restated. This
 #: module used to declare its own SUPERSET (`clean`/`no`/`false` on top), so one
 #: label set decided "benign" in the analyzer and a different one decided it here.
 #: The two are reached on different paths — the analyzer's rides

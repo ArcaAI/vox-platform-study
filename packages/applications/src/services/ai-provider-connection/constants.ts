@@ -13,7 +13,7 @@
 /**
  * The capability a connection row serves. Validated string, no Prisma enum.
  *
- * TASK-799 P1-C.1 — the first three are INFERENCE capabilities; the last three
+ * C.1 — the first three are INFERENCE capabilities; the last three
  * are the non-inference integrations that previously had NOWHERE to live.
  * Because `service` was a closed `{llm,stt,tts}` set, a tenant secret that was
  * not one of ~11 vendor LLM/STT/TTS slots could not be stored at all: a Qdrant
@@ -29,11 +29,11 @@
  * repository and the audit `ResourceType` unchanged. `service` is already a
  * plain `TEXT` column with no database CHECK constraint, so this costs NO DDL.
  *
- * TASK-799 — `model-registry` is the SEVENTH, and it is not an inference
+ * `model-registry` is the SEVENTH, and it is not an inference
  * capability at all: it is the plane that authenticates the fetch of MODEL
  * WEIGHTS. Two credentials had nowhere else to live —
  *
- *   `HUGGINGFACE_TOKEN`  -> `model-registry:huggingface`. HF is a model HUB that
+ *   `HUGGINGFACE_TOKEN` -> `model-registry:huggingface`. HF is a model HUB that
  *     authenticates with a bearer token, not object storage. Forcing it into
  *     `TenantStorageConfig` was rejected: that table carries a `TenantBucket`
  *     FK, so a token stored there would surface model weights in the tenant's
@@ -76,16 +76,16 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
   stt: ['azure-speech', 'sarvam', 'openai'],
   tts: ['azure', 'sarvam'],
-  // TASK-799 P1-C.1 — the integration capabilities. Each list is EVIDENCE-BASED,
+  // C.1 — the integration capabilities. Each list is EVIDENCE-BASED,
   // not aspirational: a provider is listed only where a tenant can genuinely
   // hold its own vendor account today.
   //   `embeddings` — the same Azure/OpenAI accounts that already back `llm`.
-  //   `rerank`     — DELIBERATELY EMPTY. The only reranker is the self-hosted TEI
+  //   `rerank` — DELIBERATELY EMPTY. The only reranker is the self-hosted TEI
   //                  service, which is platform INFRASTRUCTURE; there is no cloud
   //                  rerank adapter for a tenant to bring a key to. A tenant row
   //                  is therefore a 403 and only the SYSTEM row serves. This list
   //                  is the extension point when that changes.
-  //   `vector`     — Qdrant Cloud is a real per-tenant subscription, so a tenant
+  //   `vector` — Qdrant Cloud is a real per-tenant subscription, so a tenant
   //                  may point the plane at its own cluster with its own key.
   embeddings: ['azure', 'openai'],
   rerank: [],

@@ -1,16 +1,16 @@
 /**
- * TASK-806 lane A, item 1 — PRE-SUMMARY resolves from the tenant's
+ * lane A, item 1 — PRE-SUMMARY resolves from the tenant's
  * `agent.presummarization` NODE, and its absence is SURFACED.
  *
- * ## What TASK-815 left behind, and what the owner ruled
+ * ## What left behind, and what the owner ruled
  *
  * Retiring `DepartmentAgent` removed the pre-summary chain's tier-1a outright:
  * the tier used to read the department default agent's `preSummaryTemplateId`,
  * and its successor — a pre-summarization NODE — did not exist. The service says
  * so in its own words at the tier's grave marker: *"that node type does not exist
- * yet — it is in TASK-809's TARGET catalogue, not in `WORKFLOW_NODE_REGISTRY`"*.
+ * yet — it is in TARGET catalogue, not in `WORKFLOW_NODE_REGISTRY`"*.
  *
- * It exists now (DD-6). The owner's ruling on the delta was explicit: the loss is
+ * It exists now. The owner's ruling on the delta was explicit: the loss is
  * **"not accepted as a silent fallback"**, pre-summary **must be tenant tier**,
  * and a tenant **must configure an active pre-summarization agent node**.
  *
@@ -144,7 +144,7 @@ describe('pre-summary tier-1a — the agent.presummarization node', () => {
  * Lane R (R2) — the owner's ruling made ENFORCEABLE, on the only population where enforcing it
  * cannot break anyone.
  *
- * §11 says an absent/inactive pre-summarization node is "a configuration error to surface, not a
+ * says an absent/inactive pre-summarization node is "a configuration error to surface, not a
  * silent drop to a platform default". Making that FATAL for every tenant is still not safe, and
  * seeding the node did not make it safe: `WorkflowDefinition` is deliberately excluded from
  * `SYSTEM_SHARED_READ_MODELS` and the assignment cascade is department -> tenant -> null, so a
@@ -158,7 +158,7 @@ describe('pre-summary tier-1a — the agent.presummarization node', () => {
  *    opinion, so the platform default applies. That is tenant -> SYSTEM working correctly.
  *  - a tenant WITH a governing consultation graph that omits or disables the node has expressed
  *    an INCOMPLETE opinion. That is a misconfiguration its own admin created, and serving the
- *    platform default there is exactly the silent drop §11 refuses.
+ * platform default there is exactly the silent drop refuses.
  */
 describe('Lane R (R2) — an incomplete GOVERNING graph fails closed; an absent one does not', () => {
   beforeEach(() => {

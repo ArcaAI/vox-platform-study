@@ -55,7 +55,7 @@ export class TranscribeFileRequest {
   @IsString()
   @IsOptional()
   @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
   })
   pipelineId?: string;
 
@@ -75,7 +75,7 @@ export class CreateStreamSessionRequest {
   @IsString()
   @IsNotEmpty()
   @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
   })
   pipelineId!: string;
 
@@ -96,7 +96,7 @@ export class CreateStreamSessionRequest {
 
   @ApiPropertyOptional({
     description:
-      "End-user language mode id (TASK-587), e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. " +
+      "End-user language mode id , e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. " +
       'Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.',
   })
   @IsString()
@@ -105,7 +105,7 @@ export class CreateStreamSessionRequest {
 
   @ApiPropertyOptional({
     description:
-      "Pre-start default-provider selection (TASK-586 C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; " +
+      "Pre-start default-provider selection (C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; " +
       "'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
     enum: ['primary', 'fallback'],
   })
@@ -115,7 +115,7 @@ export class CreateStreamSessionRequest {
 
   @ApiPropertyOptional({
     description:
-      'Number of distinct microphone SOURCES mixed into the session (TASK-615 #12): 1 for a single mic, 2+ for dual-/multi-mic. ' +
+      'Number of distinct microphone SOURCES mixed into the session (#12): 1 for a single mic, 2+ for dual-/multi-mic. ' +
       'A usage-repricing metadata signal (bills 1×, OQ2), NOT a PCM channel count — the uplink is always mono. Forwarded to STT and echoed on teardown. Default 1.',
     minimum: 1,
     maximum: 8,

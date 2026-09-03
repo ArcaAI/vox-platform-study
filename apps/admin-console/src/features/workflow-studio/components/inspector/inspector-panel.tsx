@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `InspectorPanel` (TASK-719 Task 9) — the node config editor. Descriptors compiled by
+ * `InspectorPanel` — the node config editor. Descriptors compiled by
  * `toFieldDescriptors` (Task 8, `lib/schema-form.ts`) render through the `Field` family
  * (`field-renderers.tsx`); a node type with NO delivered config schema — the REAL registry
  * state today, see `contracts/registry.contract.md` — falls back whole-panel to the raw
@@ -14,7 +14,7 @@
  * Task 8's own discipline: the compiler only decides how to RENDER, never whether a value is
  * valid).
  *
- * TASK-810 §7b item 2 does the mirror-image swap for DD-2's DOCUMENT binding: where the schema
+ * item 2 does the mirror-image swap for DD-2's DOCUMENT binding: where the schema
  * DOES declare `documentTemplateId`, its two generated fields (a free-text UUID box and a bare
  * number box) are withheld and one `DocumentBindingField` renders in their place — a picker over
  * the tenant's servable templates plus a version pin that reports its own staleness. It is keyed

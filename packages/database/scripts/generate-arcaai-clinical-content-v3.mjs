@@ -5,7 +5,7 @@ const dept = readFileSync(`${SRC}/DEPARTMENT_PROMPTS_v3.md`, 'utf8');
 const pre = readFileSync(`${SRC}/PRE_SUMMARY_PROMPT_v3.md`, 'utf8');
 
 // md section number -> export base name (file order != section order; v3 also
-// lists §2/§3 last, same as v2).
+// lists last, same as v2).
 const BY_SECTION = {
   0: 'SURGERY_NEW_REFERRAL',
   1: 'SURGERY_FOLLOWUP',
@@ -52,7 +52,7 @@ const missing = Object.keys(BY_SECTION).filter((n) => !bodies.has(Number(n)));
 if (missing.length) throw new Error(`missing sections: ${missing.join(',')}`);
 if (bodies.size !== 22) throw new Error(`expected 22 bodies, got ${bodies.size}`);
 
-// Block A must be byte-identical across all 22 (INTEGRATION_NOTES_v3.md §3.1 —
+// Block A must be byte-identical across all 22 (INTEGRATION_NOTES_v3.md
 // it is duplicated into every prompt, not referenced).
 const blockA = new Set();
 for (const body of bodies.values()) {
@@ -63,7 +63,7 @@ for (const body of bodies.values()) {
 if (blockA.size !== 1) throw new Error(`Block A has ${blockA.size} variants, expected 1`);
 
 // RULE 6 in v3 REQUIRES annotated ASR name repair; the annotation forms are the
-// safety argument for permitting repair at all (INTEGRATION_NOTES_v3.md §3.2).
+// safety argument for permitting repair at all (INTEGRATION_NOTES_v3.md
 for (const [n, name] of Object.entries(BY_SECTION)) {
   const body = bodies.get(Number(n));
   if (!body.includes('transcribed as')) throw new Error(`${name}: lost the ASR repair annotation form`);
@@ -71,7 +71,7 @@ for (const [n, name] of Object.entries(BY_SECTION)) {
 
 // Author-only HTML comment in PRE_SUMMARY_PROMPT_v3.md
 // (`<!-- FILE METADATA — DO NOT PASTE INTO HOPE ... -->`). INTEGRATION_NOTES_v3.md
-// §2: that comment is not part of the prompt; the prompt starts at
+// that comment is not part of the prompt; the prompt starts at
 // `## Medical AI Pre-Summary Prompt`. Strip it (and the blank lines it leaves)
 // so the seeded body is the prompt only. Department fences never contain it.
 function stripAuthorFileMetadata(text) {
@@ -121,8 +121,8 @@ const header = `/**
  * VERBATIM v3 clinical prompt content.
  *
  * GENERATED, DO NOT HAND-EDIT. Source of truth: the client-supplied v3 corpus
- *   DEPARTMENT_PROMPTS_v3.md   (22 fenced \`\`\`text blocks, one per department x visit type)
- *   PRE_SUMMARY_PROMPT_v3.md   (the prompt body; the author-only HTML comment
+ *   DEPARTMENT_PROMPTS_v3.md (22 fenced \`\`\`text blocks, one per department x visit type)
+ *   PRE_SUMMARY_PROMPT_v3.md (the prompt body; the author-only HTML comment
  *     at the top of the source file is stripped and is never seeded)
  * plus INTEGRATION_NOTES_v3.md and PROMPT_REVIEW_FINDINGS.md, which explain what
  * each change fixes and what was deliberately left alone.

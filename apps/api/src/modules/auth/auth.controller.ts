@@ -11,7 +11,7 @@ import {
   PolicyEngine,
   SecretsService,
   createJwt,
-  // Password rotation surfaced at login (warning-only).
+  // Password rotation surfaced at login() (warning-only).
   isPasswordExpired,
   resolvePasswordPolicy,
 } from '@arcaai/applications';
@@ -72,16 +72,16 @@ import {
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 import { StreamTicketService } from './stream-ticket.service';
 
-// SUPER_ADMIN (formerly SUPER_ADMIN, renamed ) is the single
-// elevated role; the earlier, unrelated retired SUPER_ADMIN role ()
+// SUPER_ADMIN (formerly SUPER_ADMIN, renamed) is the single
+// elevated role; the earlier, unrelated retired SUPER_ADMIN role 
 // stays retired under its own reserved id.
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 // A previous class-wide `@Throttle({ default: { limit: 10,
-// ttl: 60000 } })` lumped `/login`, `/refresh`, `/me`, `/logout`,
-// `/stream-ticket`, `/impersonate`, and `/revoke-impersonation` into a single
+// ttl: 60000 } })` lumped `/login()`, `/refresh`, `/me`, `/logout`,
+// `/stream-ticket`, `/impersonate()`, and `/revoke-impersonation` into a single
 // 10 req/min counter. The SDK polls `/me` + rotates `/refresh` more
-// aggressively than that envelope allows, while `/login` needs a tighter
+// aggressively than that envelope allows, while `/login()` needs a tighter
 // bound to defend against credential stuffing. The decorator now lives on
 // each handler that needs a non-default limit; `/me`, `/logout`,
 // `/stream-ticket`, and `/revoke-impersonation` ride the app-wide default
@@ -89,10 +89,10 @@ const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 @ApiTags('auth')
 @Controller('auth')
 // API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
-// business plane), recorded by TASK-758 and policed by
+// business plane), recorded and policed by the boot audit
 // `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
 // This is the credential-ISSUING plane: session lifecycle for interactive
-// humans (login/logout/me/refresh/impersonate/stream-ticket). A credential
+// humans (login()/logout/me/refresh/impersonate()/stream-ticket). A credential
 // that IS the authentication authenticating itself here is circular, and
 // `/auth/stream-ticket` mints the single-use SSE/WS tickets the entire
 // streaming posture rests on. JWT only.
@@ -130,7 +130,7 @@ export class AuthController {
     // consult). Both halves are asserted: a live session belongs to one USER,
     // not to the tenant at large.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
-    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7).
+    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets.
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     // Finding H-02 — mint-time ownership check for `dna_job:<jobId>` tickets.
     // The DNA job payload is the only record of who a generation belongs to
@@ -147,7 +147,7 @@ export class AuthController {
   ) {}
 
   /**
-   * Resolve the JWT signing secret for the mint paths (login / impersonate
+   * Resolve the JWT signing secret for the mint paths (login() / impersonate()
    * / refresh). Reads the boot-warmed sync cache first (the common case),
    * then falls back to an async provider fetch when that entry has aged out.
    *
@@ -238,7 +238,7 @@ export class AuthController {
       }
 
       // Service accounts are API-only principals (they authenticate
-      // with API keys). Interactive login is refused AFTER the password check
+      // with API keys). Interactive login() is refused AFTER the password check
       // so the response cannot be used as an account-type oracle for guessed
       // credentials, and no lastLoginAt/lastActiveAt stamp is written.
       if (user.isServiceAccount) {
@@ -359,7 +359,7 @@ export class AuthController {
         user.lastActiveAt = new Date();
         await this.userRepository.update(user.id, user);
       } catch {
-        // Non-fatal: proceed with login even if timestamp update fails
+        // Non-fatal: proceed with login() even if timestamp update fails
       }
 
       const userResponse = new LoginUserResponse({
@@ -480,7 +480,7 @@ export class AuthController {
     }
 
     // Revoke the ENTIRE refresh-token family so the
-    // chain of rotated refresh tokens (login → refresh → refresh → …) is
+    // chain of rotated refresh tokens (login() → refresh → refresh → …) is
     // dead. Without this, an attacker who exfiltrated any token earlier
     // in the chain could still rotate forward.
     if (user?.refreshFamily) {
@@ -594,9 +594,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiBearerAuth()
-  // A SUPER_ADMIN MAY impersonate a TENANT_ADMIN (and any
+  // A SUPER_ADMIN MAY impersonate() a TENANT_ADMIN (and any
   // non-super-admin) cross-tenant; only SUPER_ADMIN TARGETS can never be
-  // impersonated. A TENANT_ADMIN may impersonate only non-admin users within
+  // impersonated. A TENANT_ADMIN may impersonate() only non-admin users within
   // its OWN tenant.
   @ApiOperation({
     summary: 'Impersonate another user (admin only)',
@@ -706,7 +706,7 @@ export class AuthController {
       throw new BadRequestException('Target user has no tenant assignment. Assign the user to a tenant before impersonating.');
     }
 
-    // Tenant admins must not impersonate users outside their
+    // Tenant admins must not impersonate() users outside their
     // own tenant. SUPER_ADMIN remains unrestricted (cross-tenant impersonation
     // is part of the business requirement for super admins).
     if (!isSuperAdmin) {
@@ -736,7 +736,7 @@ export class AuthController {
       tenantId: resolvedTenantId,
       impersonatedBy: adminUser.id,
       // Unpredictable jti (randomBytes(16).hex), same hygiene as
-      // login/refresh. The stable `impersonate-` prefix is retained so audit /
+      // login()/refresh. The stable `impersonate()-` prefix is retained so audit /
       // log filtering on impersonation tokens still works; no admin/target id
       // or timestamp is leaked into the claim anymore.
       jti: `impersonate-${randomBytes(16).toString('hex')}`,
@@ -957,12 +957,12 @@ export class AuthController {
     // binding, an ownerless binding, and a colleague's session all 404.
     await this.assertSttSessionScopeOwnership(body.scope, tenantId, user.id);
 
-    // Same posture for `workflow_run:<runId>` (TASK-722's exposure-plane SSE
+    // Same posture for `workflow_run:<runId>` ( exposure-plane SSE
     // route): the run must belong to the caller's (active) tenant.
     // Fail-closed: a missing/foreign run 404s too.
     await this.assertWorkflowRunScopeOwnership(body.scope, tenantId);
 
-    // TASK-755 G-2 — `tts_session:<sessionId>` was the only stream-ticket
+    // `tts_session:<sessionId>` was the only stream-ticket
     // scope prefix with NO branch here. This is deliberately NOT an ownership
     // check; read `assertTtsSessionScopeShape` for why one is impossible today
     // and what would make it possible.
@@ -1079,8 +1079,10 @@ export class AuthController {
     }
   }
 
-  /** Scope prefix for `workflow_run:<runId>` tickets consumed by the exposure-plane SSE route
-   *  (`WorkflowsController.streamRunStatus`, TASK-722). */
+  /**
+   * Scope prefix for `workflow_run:<runId>` tickets consumed by the exposure-plane SSE route
+   * (`WorkflowsController.streamRunStatus`).
+   */
   private static readonly WORKFLOW_RUN_SCOPE_PREFIX = 'workflow_run:';
 
   /**
@@ -1241,8 +1243,8 @@ export class AuthController {
   private static readonly TTS_SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
   /**
-   * TASK-755 G-2, **Option A ("document-and-assert")** — the recommendation
-   * recorded in `docs/implementation/TASK-755-Tts-Ws-Hardening/README.md`.
+   * **Option A ("document-and-assert")** — the recommendation
+   * recorded in.
    *
    * WHAT THIS CHECKS: the scope is well-formed (`tts_session:` + a non-empty,
    * ≤128-char, `[A-Za-z0-9._-]` id) and the caller has an active tenant.
@@ -1261,7 +1263,7 @@ export class AuthController {
    * minting caller's own socket — the ticket already carries their
    * userId/tenantId, is single-use, and expires in 30 seconds.
    *
-   * THE TRIGGER THAT WOULD MAKE THIS INSUFFICIENT (ticket §Design decision,
+   * THE TRIGGER THAT WOULD MAKE THIS INSUFFICIENT ( decision,
    * Option B): the moment TTS gains a server-side session resource — a route
    * that mints a sessionId and records a binding — this MUST become a real
    * ownership assertion mirroring `assertSttSessionScopeOwnership`, because at

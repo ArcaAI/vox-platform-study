@@ -13,7 +13,7 @@ import { ResourceStatusType } from '../../enums';
 /** Properties required to seed a new `Role` row. */
 export interface RbacRoleCreateProps {
   /**
-   * TASK-766 OD-1 — REQUIRED, no default. `Role` is tenant-scoped: a role
+   * REQUIRED, no default. `Role` is tenant-scoped: a role
    * created by a tenant admin belongs to that tenant, and one created by a
    * super admin with no working tenant belongs to SYSTEM. The service resolves
    * which; the factory never guesses, because a wrong guess silently mints a

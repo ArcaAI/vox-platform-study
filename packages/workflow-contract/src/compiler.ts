@@ -1,5 +1,5 @@
 /**
- * The deterministic graph → `compiledConfig` compiler (TASK-716 Task 5). This ticket DEFINES
+ * The deterministic graph → `compiledConfig` compiler. This ticket DEFINES
  * the compiled-config format — see
  * `packages/workflow-contract/schemas/compiled-config.schema.json`
  * for the normative shape and its binding rules (no SIGNED node, `onTimeout` never means
@@ -8,7 +8,7 @@
  * `compile()` assumes the graph has already passed `validate()` — it does not re-run the rule
  * catalogue — but it is still TOTAL: a structurally broken graph (a cycle, a dangling
  * reference) yields `{ findings }` rather than throwing, because a compiler that can be handed
- * an unsafe graph and silently produce SOMETHING is the exact failure mode §3.5 warns about.
+ * an unsafe graph and silently produce SOMETHING is the exact failure mode warns about.
  */
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
@@ -61,7 +61,7 @@ export interface CompiledPolicyBindings {
   redactionRuleSetId: string | null;
   promptTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
   /**
-   * TASK-810 DD-2 — WHICH `DocumentTemplate` version each generation node decodes its output
+   * WHICH `DocumentTemplate` version each generation node decodes its output
    * into, pinned at publish. Structurally identical to `promptTemplateRefs` and a DIFFERENT
    * guarantee: that one pins what the model is TOLD, this one pins the SHAPE it is decoded
    * into, so a tenant publishing a new template version cannot restructure a document a

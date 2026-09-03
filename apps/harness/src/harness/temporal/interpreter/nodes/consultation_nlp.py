@@ -1,6 +1,6 @@
 """N-3 ``consultation.extractEntities`` and N-4 ``consultation.bindTerminology``.
 
-Compile targets per ``contracts/palette-contract.md`` §1 rows 6a/6b: ``extract_entities`` plus
+Compile targets per contracts/palette-contract.md rows 6a/6b: extract_entities plus
 ``persist_entities`` as the persist leg, and ``call_mcp_tool`` bound to the READ-ONLY
 ``validate_codes`` terminology tool.
 

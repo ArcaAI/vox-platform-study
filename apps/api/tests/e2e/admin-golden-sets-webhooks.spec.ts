@@ -9,10 +9,10 @@
  *
  * Item 2 · Webhooks / notifications / resource subscriptions
  *   - CASL matrix on the three list routes.
- *   - Webhook lifecycle: create (server-generated secret, TASK-727) → read →
+ * Webhook lifecycle: create (server-generated secret) → read →
  *     OCC PATCH (428 without If-Match, 200 with) → delivery log (still empty
  *     here — nothing in this test mutates a `Consultation`, the subscribed
- *     resourceType; TASK-727's real end-to-end delivery is covered by
+ * resourceType; real end-to-end delivery is covered by
  *     `task-727-webhook-delivery.spec.ts`) → soft delete.
  *
  * Item 3 · Guardrail/NLP proxy plane (`/admin/ai-services/*`)
@@ -94,7 +94,7 @@ test.describe('Golden sets — create → read round-trip (PHI-safe)', () => {
     const setName = `e2e-419-golden-set-${Date.now()}`;
     const created = await request.post('/api/v1/admin/harness/golden-sets', {
       headers: bearer(tenantAdminToken),
-      data: { name: setName, description: 'TASK-419 e2e round-trip' },
+      data: { name: setName, description: ' e2e round-trip' },
     });
     expect(created.status(), 'golden-set create').toBe(201);
     const set = await created.json();
@@ -197,7 +197,7 @@ test.describe('webhook lifecycle (OCC + delivery log + soft delete)', () => {
       data: { name, url: 'https://example.invalid/hook', resourceTypeName: 'Consultation' },
     });
     expect(created.status(), 'webhook create').toBe(201);
-    // TASK-727: the signing secret is server-generated and returned exactly
+    // the signing secret is server-generated and returned exactly
     // once, alongside the created webhook (mirrors POST admin/api-keys).
     const createBody = await created.json();
     const webhook = createBody.webhook;

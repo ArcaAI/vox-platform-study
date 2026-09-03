@@ -1,5 +1,5 @@
 /**
- * TASK-846 D-3 — SSRF egress guard at MCP connector WRITE time.
+ * SSRF egress guard at MCP connector WRITE time.
  *
  * OD-7 let tenant admins author `McpServer.baseUrl`, and the harness worker connects to
  * whatever that field says. Inside a k3s cluster that reaches the Kubernetes API, Vault on

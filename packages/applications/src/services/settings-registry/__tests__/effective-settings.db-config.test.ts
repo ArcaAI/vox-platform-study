@@ -1,4 +1,4 @@
-// TASK-799 lane A.1 — `db-config` on the READ path.
+// lane A.1 — `db-config` on the READ path.
 //
 // Before this, `resolveEffective` served `pipeline.*`, `models.*` and
 // `global-kv` and threw "No effective resolver is registered" for everything

@@ -4,7 +4,7 @@ import { AiPlatformScreen } from '@/features/ai-platform/components/ai-platform-
 export const metadata: Metadata = { title: 'AI Platform' };
 
 /**
- * The unified AI provider console (TASK-845).
+ * The unified AI provider console.
  *
  * TIER 20-29 (shared audience): it renders cross-tenant for a super admin and
  * tenant-scoped for a tenant admin, which is exactly what the `(shared)` group

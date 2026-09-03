@@ -1,5 +1,5 @@
 /**
- * Types for the WORKFLOW INVOCATION plane (TASK-850 lane B).
+ * Types for the WORKFLOW INVOCATION plane.
  *
  * Every shape here is transcribed from the gateway artifacts that actually
  * ship it, not from the ticket prose:
@@ -115,7 +115,7 @@ export interface WorkflowClaimCheckRef {
  *
  * `resumeToken` is the SSE `id:` line. It is present on every pushed frame and
  * ABSENT on a snapshot frame — a snapshot is not a stream position, and
- * async-contract §3.6 forbids minting a token the transport cannot resume
+ * async-contract forbids minting a token the transport cannot resume
  * from. Never parse it; echo it back as `Last-Event-ID`, which
  * {@link WorkflowsResource.streamRun} does for you.
  */

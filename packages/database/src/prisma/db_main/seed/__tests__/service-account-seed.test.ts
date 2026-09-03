@@ -16,7 +16,7 @@ import { DEFAULT_ROLES } from '../03-role';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_DEV_SECRETS, SYSTEM_TENANT_ID, SEED_TENANT_ID } from '../00-constants';
 
 /**
- * TASK-766 — the ArcaAI machine identity.
+ * the ArcaAI machine identity.
  *
  * The load-bearing assertion here is the SCOPE DERIVATION. A service account's
  * authority IS its scope set (`serviceAccountPolicyRules` builds its CASL
@@ -38,7 +38,7 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_DEV_SECRETS, SYSTEM_TENA
 
 /** `svc:admin:<area>` → the CASL pairs it implies, mirroring `API_KEY_SCOPE_REGISTRY`. */
 const SVC_SCOPE_IMPLICATIONS: Readonly<Record<string, ReadonlyArray<readonly [action: string, subject: string]>>> = {
-  // TASK-767 standalone-feature scopes — all three renamespace an API-key scope
+  // standalone-feature scopes — all three renamespace an API-key scope
   // whose `implies` is `create:Consultation`.
   'svc:stt:transcription:write': [['create', 'Consultation']],
   'svc:stt:stream:write': [['create', 'Consultation']],
@@ -289,7 +289,7 @@ describe('credential posture — no recoverable secret on a production path', ()
     const src = readFileSync(join(__dirname, '../94-service-account.ts'), 'utf8');
     // Without this, an environment provisioned before a scope was added stays
     // stuck on the set the account was created with — which is exactly how the
-    // seeded account missed the TASK-767 standalone-feature scopes.
+    // seeded account missed the standalone-feature scopes.
     expect(src).toContain('reconciled scopes');
   });
 });

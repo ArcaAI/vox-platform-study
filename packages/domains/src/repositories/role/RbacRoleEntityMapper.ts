@@ -26,7 +26,7 @@ export interface RbacRolePolicyRow {
 
 export interface RbacRoleRecord {
   id: string;
-  /** TASK-766 OD-1 — SYSTEM tenant for a platform built-in, else the owning customer tenant. */
+  /** SYSTEM tenant for a platform built-in, else the owning customer tenant. */
   tenantId: string;
   name: string;
   description: string | null;

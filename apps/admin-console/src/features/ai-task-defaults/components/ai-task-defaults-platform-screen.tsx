@@ -20,7 +20,7 @@ import { TaskDefaultCard } from './task-default-card';
  * gateway 403s a tenant admin's write to either. Tenants only CONSUME the
  * platform default for those keys.
  *
- * `guardrail.*` left that set in TASK-735 Phase 0 (owner decision
+ * `guardrail.*` left that set in (owner decision
  * 2026-08-16, reversing the 2026-07-17 directive): a tenant admin MAY now
  * select their own guardrail model via the API, subject to the D2
  * platform-approved-list floor (the slug must be a SYSTEM-tenant AiModel

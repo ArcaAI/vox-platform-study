@@ -6,7 +6,7 @@ only Python + Node. Reads the packaged synthetic fixture by path; override with
 
 .. note::
    The shipped fixture is SYNTHETIC. The real clinician-authored golden set
-   (HLD §7.5 #1/#3) must replace it before this gate backs any clinical claim.
+   (HLD #1/#3) must replace it before this gate backs any clinical claim.
 """
 
 from __future__ import annotations

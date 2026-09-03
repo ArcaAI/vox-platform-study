@@ -19,7 +19,7 @@ test.describe('WorkflowCanvas (real browser)', () => {
   // specific interaction being provable in this harness. Left as `fixme` rather than deleted
   // so a future session with a working repro can re-enable it.
   test.fixme('a pointer drag from one node handle to another calls onConnect with the two node ids', async ({ mount, page }) => {
-    // The composite is props-in/callbacks-out (it owns no graph state — TASK-719 Task 5): a
+    // The composite is props-in/callbacks-out (it owns no graph state —): a
     // successful drag-connect calls `onConnect`, it does not render a permanent edge on its
     // own (the consumer's store, Task 11, decides whether/how to add it). Route the callback
     // through `window` since a locally-defined stateful wrapper cannot be mounted by CT.

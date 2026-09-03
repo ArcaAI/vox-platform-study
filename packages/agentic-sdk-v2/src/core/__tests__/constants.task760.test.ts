@@ -1,5 +1,5 @@
 /**
- * TASK-760 — the business-plane URI normalization, locked at the SDK's
+ * the business-plane URI normalization, locked at the SDK's
  * contract surface.
  *
  * `packages/agentic-sdk-v2/src/core/constants.ts` is the ONLY place the SDK
@@ -25,7 +25,7 @@ import {
   VOICE_EMBEDDING_ENDPOINTS,
 } from '../constants';
 
-describe('TASK-760 — user self plane moved into the plural `users` collection', () => {
+describe('user self plane moved into the plural `users` collection', () => {
   it('PERSONALIZATION_ENDPOINTS point at /users/me/preferences', () => {
     expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/users/me/preferences');
     expect(PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES).toBe('/users/me/preferences');
@@ -41,7 +41,7 @@ describe('TASK-760 — user self plane moved into the plural `users` collection'
   });
 });
 
-describe('TASK-760 — tenant self plane is `tenants/me/**`, NOT `users/me/**` (decision D-1)', () => {
+describe('tenant self plane is `tenants/me/**`, NOT `users/me/**` (decision D-1)', () => {
   it('MY_TENANT_ENDPOINTS point at /tenants/me', () => {
     expect(MY_TENANT_ENDPOINTS.INFO).toBe('/tenants/me');
     expect(MY_TENANT_ENDPOINTS.CONFIG).toBe('/tenants/me/config');
@@ -54,7 +54,7 @@ describe('TASK-760 — tenant self plane is `tenants/me/**`, NOT `users/me/**` (
   });
 });
 
-describe('TASK-760 — capability prefixes replace service names (decision D-2)', () => {
+describe('capability prefixes replace service names (decision D-2)', () => {
   it('TEXT_ENDPOINTS sit under text-generations, not the `text` service name', () => {
     expect(TEXT_ENDPOINTS.GENERATE).toBe('/text-generations/generate');
     expect(TEXT_ENDPOINTS.GENERATE_ASSEMBLED).toBe('/text-generations/generate/assembled');
@@ -69,7 +69,7 @@ describe('TASK-760 — capability prefixes replace service names (decision D-2)'
   });
 });
 
-describe('TASK-760 — voice-profile is pluralized', () => {
+describe('voice-profile is pluralized', () => {
   it('VOICE_EMBEDDING_ENDPOINTS point at /voice-profiles', () => {
     expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profiles/enroll');
     expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profiles');
@@ -79,7 +79,7 @@ describe('TASK-760 — voice-profile is pluralized', () => {
   });
 });
 
-describe('TASK-760 — no exported constant still carries a retired path', () => {
+describe('no exported constant still carries a retired path', () => {
   const source = readFileSync(resolve(__dirname, '../constants.ts'), 'utf-8');
   const codeLines = source.split('\n').filter((line) => {
     const trimmed = line.trimStart();

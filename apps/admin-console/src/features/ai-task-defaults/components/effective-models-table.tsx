@@ -76,7 +76,7 @@ function TableSkeleton() {
  * selection is tenant-editable and lives in the "Text models" section, so it
  * is excluded from this table.
  *
- * Governance note (TASK-735 Phase 0, 2026-08-16): nlp/harness selection is
+ * Governance note (2026-08-16): nlp/harness selection is
  * still a SUPER_ADMIN-only write. guardrail selection is now tenant-admin
  * configurable at the API layer (subject to the platform-approved-list
  * floor), but this table has no edit control for it yet — see

@@ -22,8 +22,8 @@ const SWAGGER_API_OPERATION = 'swagger/apiOperation';
 // rights. Distinct from the live 'SUPER_ADMIN' role below ( renamed
 // SUPER_ADMIN to SUPER_ADMIN, which now collides in name — but not in id —
 // with this pre-existing retired role; see the seed placeholder
-// 'SUPER_ADMIN__RETIRED_TASK_417' used by the  data migration).
-const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED_TASK_417';
+// 'SUPER_ADMIN__RETIRED' used by the data migration).
+const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED';
 const SUPER_ADMIN = 'SUPER_ADMIN';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'doctor';
@@ -169,7 +169,7 @@ function buildController(opts: {
     eventEmitter as never,
     {} as never,
     { lookup: vi.fn().mockResolvedValue(null) } as never,
-    {} as never, // workflowRunService (TASK-722)
+    {} as never, // workflowRunService
   );
   return {
     controller,

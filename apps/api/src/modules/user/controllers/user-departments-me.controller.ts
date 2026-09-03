@@ -12,7 +12,7 @@ import { Authorize, RequiredScopes } from '../../../decorators';
  * own department(s). The admin route stays `@CanManage('User')`-gated.
  */
 /**
- * TASK-758 — the `me` semantics an integrator cannot infer from the path.
+ * the `me` semantics an integrator cannot infer from the path.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from
  * `apiKeyEntity.userId`, so under a key `me` is the BOUND USER — not the key's

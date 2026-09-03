@@ -8,7 +8,7 @@
  * catalogs together (Global generic + ArcaAI clinical + SYSTEM golden) and
  * proves every cross-reference in the graph resolves.
  *
- * Added with TASK-763 OD-8, which retired 18 departments and 22 templates and
+ * Added with, which retired 18 departments and 22 templates and
  * re-homed three more — exactly the change shape that leaves dangling FKs
  * behind, and the one where four hardcoded literals slipped past both `tsc` and
  * the per-file tests because they carried the id as a raw string.

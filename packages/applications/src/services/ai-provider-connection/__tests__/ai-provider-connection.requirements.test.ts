@@ -1,5 +1,5 @@
 /**
- * TASK-799 — the requirement check on the WRITE path.
+ * the requirement check on the WRITE path.
  *
  * `provider-requirements.test.ts` pins the table and the predicate. This pins
  * that `upsertRow` actually consults it, on BOTH branches (create and update),

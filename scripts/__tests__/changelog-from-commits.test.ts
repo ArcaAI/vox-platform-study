@@ -2,7 +2,6 @@
  * Tests for `scripts/changelog-from-commits.ts`.
  *
  * Parses Conventional Commits into the shape frozen by
- * `docs/implementation/TASK-648-.../contracts/changelog-entry.schema.json`,
  * and enforces the SemVer policy: a release with a breaking
  * commit must be a MAJOR bump.
  *

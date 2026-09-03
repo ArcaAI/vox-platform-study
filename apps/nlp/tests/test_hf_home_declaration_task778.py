@@ -1,6 +1,6 @@
-"""TASK-778 — `HF_HOME` is DECLARED service configuration, not shell inheritance.
+"""`HF_HOME` is DECLARED service configuration, not shell inheritance.
 
-The failure this pins is not hypothetical. TASK-778's original "validated
+The failure this pins is not hypothetical. original "validated
 against real downloaded weights" claim was unsubstantiated because `HF_HOME`
 was exported only in the operator's `~/.zshrc`. That file is sourced by
 INTERACTIVE shells; the non-interactive shells services, CI jobs and coding

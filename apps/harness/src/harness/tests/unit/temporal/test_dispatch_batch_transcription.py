@@ -1,4 +1,4 @@
-"""TASK-724 Task 5 — the STT palette's harness batch-trigger activity.
+"""the STT palette's harness batch-trigger activity.
 
 Hermetic: `_api_client` is monkeypatched to an in-process fake (no network I/O,
 no live apps/api). Polling loops use tiny intervals so the test stays fast while

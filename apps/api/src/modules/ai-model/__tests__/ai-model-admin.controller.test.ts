@@ -119,7 +119,7 @@ describe('AiModelAdminController update — OCC If-Match fold', () => {
 });
 
 // =============================================================================
-// Download action (TASK-855 lane L3) — route metadata + delegation
+// Download action — route metadata + delegation
 // =============================================================================
 describe('AiModelAdminController download route metadata', () => {
   it('triggerDownload is bound to POST :id/download, HttpCode 202', () => {

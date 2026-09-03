@@ -189,10 +189,10 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
   /**
    * The authoritative per-window aggregate. Mirrors `TenantService.getUsageStats`
    * roll-ups but bounded to the window and read off the unscoped base client:
-   *   - CONSULTATIONS         = COUNT(Consultation WHERE createdAt ∈ window)
+   *   - CONSULTATIONS = COUNT(Consultation WHERE createdAt ∈ window)
    *   - TRANSCRIPTION_MINUTES = round(SUM(AudioRecording.duration ms ∈ window)/60000)
-   *   - SUMMARIES             = COUNT(SummaryMeta WHERE generatedAt ∈ window)
-   *   - WORKFLOW_INVOCATIONS  = COUNT(WorkflowRun WHERE startedAt ∈ window) (TASK-722)
+   *   - SUMMARIES = COUNT(SummaryMeta WHERE generatedAt ∈ window)
+   * WORKFLOW_INVOCATIONS = COUNT(WorkflowRun WHERE startedAt ∈ window)
    *
    * Six more, all read from `AiUsageRollupDaily` (D5) EXCEPT
    * `guardrailCalls` (raw ledger — see `MeterUsage`'s doc comment for why).
@@ -222,7 +222,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
       client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
       // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window),
-      // the same business-object shape as consultations/summaries (TASK-722).
+      // the same business-object shape as consultations/summaries.
       client.workflowRun.count({ where: { tenantId, startedAt: window } }),
       this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
       // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and

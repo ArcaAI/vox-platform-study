@@ -1,5 +1,5 @@
 /**
- * Port-type compatibility for the Studio canvas (TASK-809 Task 12).
+ * Port-type compatibility for the Studio canvas.
  *
  * `WorkflowCanvasProps.isValidConnection` (`@arcaai/ui`'s `workflow-canvas/types.ts:64-69`)
  * already wires drag-time refusal into React Flow, and the graph store's `connect` already

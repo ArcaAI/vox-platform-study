@@ -1,13 +1,13 @@
 // ============================================================================
-// Rate-Limit Rules (TASK-785)
+// Rate-Limit Rules
 //
 // The config plane for ranks 1, 2 and 4 of the rate-limit precedence chain:
 //
-//   1. tenant × route   RateLimitRule, tenantId = <customer>, routeMatch names a route
-//   2. tenant           RateLimitRule, tenantId = <customer>, routeMatch = '*'
-//   3. plan             PlanEntitlement / TenantEntitlement  (entitlement.prisma)
-//   4. platform route   RateLimitRule, tenantId = SYSTEM,     routeMatch names a route
-//   5. platform base    `rate-limit.tier.<t>.*` GlobalSetting (globalSetting.prisma)
+//   1. tenant × route RateLimitRule, tenantId = <customer>, routeMatch names a route
+//   2. tenant RateLimitRule, tenantId = <customer>, routeMatch = '*'
+//   3. plan PlanEntitlement / TenantEntitlement (entitlement.prisma)
+//   4. platform route RateLimitRule, tenantId = SYSTEM, routeMatch names a route
+//   5. platform base `rate-limit.tier.<t>.*` GlobalSetting (globalSetting.prisma)
 //
 // Ranks 1, 2 and 4 are ONE table distinguished by `tenantId` (SYSTEM vs a
 // customer) and by how specific `routeMatch` is. That is deliberate: it makes
@@ -41,8 +41,8 @@ model RateLimitRule {
   // the pattern exactly as the router registered it (`/api/v1/tenants/:id`).
   // Matching on the pattern — not the resolved path — is what keeps the bucket
   // key cardinality bounded; see `tiered-throttler.guard.ts`.
-  //   EXACT  : `POST:/api/v1/auth/login`
-  //   PREFIX : `*:/api/v1/admin/*`, or the reserved `*` for every route.
+  //   EXACT: `POST:/api/v1/auth/login`
+  //   PREFIX: `*:/api/v1/admin/*`, or the reserved `*` for every route.
   routeMatch String
   matchKind  RateLimitMatchKind @default(EXACT)
 

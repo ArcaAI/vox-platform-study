@@ -1,4 +1,4 @@
-"""TASK-846 D-3 — the httpx2 transport that PINS a validated MCP egress target.
+"""the httpx2 transport that PINS a validated MCP egress target.
 
 WHY A TRANSPORT AND NOT A ONE-OFF CHECK. Validating a URL and then handing the name to
 the socket layer is the classic DNS-rebinding TOCTOU: the attacker's resolver answers the

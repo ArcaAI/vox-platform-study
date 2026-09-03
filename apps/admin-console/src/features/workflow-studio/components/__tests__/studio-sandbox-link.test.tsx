@@ -1,7 +1,7 @@
 /**
- * TASK-797 W1 (R2) — the Studio must offer a way to TEST the definition being
+ * (R2) — the Studio must offer a way to TEST the definition being
  * edited. The sandbox plane already exists end-to-end at `/playground/workbench`
- * (TASK-721: fixture picker, start/status/cancel, per-node rollup inspector,
+ * (fixture picker, start/status/cancel, per-node rollup inspector,
  * sandbox badge + banner) and accepts `?definitionId=`; what was missing was
  * reachability from the editor.
  *
@@ -28,7 +28,7 @@ const base = {
   onRedo: vi.fn(),
 };
 
-describe('StudioToolbar — sandbox test affordance (TASK-797 W1)', () => {
+describe('StudioToolbar — sandbox test affordance (W1)', () => {
   it('links to the Workbench for the definition being edited once autosave is settled', () => {
     render(<StudioToolbar {...base} autosaveState="saved" sandboxDefinitionId="def-123" />);
 

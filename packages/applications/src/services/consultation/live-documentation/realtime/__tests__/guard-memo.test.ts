@@ -1,5 +1,5 @@
 /**
- * TASK-811 task 11 (DD-7) — guard memoization on `(guard, config, inputHash)`.
+ * task 11 — guard memoization on `(guard, config, inputHash)`.
  *
  * The headline case is the one the key exists for: two thresholds over identical
  * input must produce TWO verdicts. Keying on input alone would serve one

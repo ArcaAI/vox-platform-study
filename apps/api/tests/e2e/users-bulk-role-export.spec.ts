@@ -175,7 +175,7 @@ test.describe('P1-7 — export email + department-name enrichment', () => {
   // platform-generic CARE-SETTING roster (`DEFAULT_DEPARTMENTS` in
   // packages/database/src/prisma/db_main/seed/04-department.ts), not the
   // specialty roster that owner ruling OD-8 confined to ArcaAI. Was
-  // 'General Practice' (the retired GEN row) before TASK-763.
+  // 'General Practice' (the retired GEN row) before.
   const DOCTOR_DEPT = 'General Outpatient';
 
   test('P1-7 csv carries a real email and department NAME (not ids)', async ({ request }) => {

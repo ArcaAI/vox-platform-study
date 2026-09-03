@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Click-error → focus-node (TASK-719 Task 14). Selects the node in the store AND moves DOM
+ * Click-error → focus-node. Selects the node in the store AND moves DOM
  * focus to it — in the canvas that is the xyflow node element (React Flow stamps
  * `data-id="<nodeId>"` on its `.react-flow__node` wrapper by default — this hook does not
  * touch `packages/ui` to add that, it relies on the library's own convention); in the list
@@ -32,7 +32,7 @@ export function useFocusNode({ viewMode, onSelect, root }: UseFocusNodeOptions) 
       const scope = root ?? document;
       // The target mounts synchronously with `onSelect`'s re-render in real usage; a microtask
       // gives React a paint before we query the DOM, mirroring the canvas's own `queueMicrotask`
-      // discipline for post-render DOM measurement (README §7 Task 5 finding).
+      // discipline for post-render DOM measurement ( Task 5 finding).
       queueMicrotask(() => {
         const element = scope.querySelector<HTMLElement>(selectorFor(viewMode, nodeId));
         if (!element) return;

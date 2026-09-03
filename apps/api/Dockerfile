@@ -159,7 +159,7 @@ COPY --from=builder --chown=api:hope /app/apps/api/dist ./apps/api/dist
 # Copy only packages that have built dist folders (TypeScript compiled packages)
 COPY --from=builder --chown=api:hope /app/packages/applications/dist ./packages/applications/dist
 COPY --from=builder --chown=api:hope /app/packages/applications/package.json ./packages/applications/package.json
-# @arcaai/json-schema-subset is require()d at runtime by @arcaai/applications
+# @arcaai/json-schema-subset is required at runtime by @arcaai/applications
 # (consultation-context-schema validation).
 COPY --from=builder --chown=api:hope /app/packages/json-schema-subset/dist ./packages/json-schema-subset/dist
 COPY --from=builder --chown=api:hope /app/packages/json-schema-subset/package.json ./packages/json-schema-subset/package.json
@@ -173,7 +173,7 @@ COPY --from=builder --chown=api:hope /app/packages/logger/package.json ./package
 # providers require() at boot, so its dist must be present like the other deps.
 COPY --from=builder --chown=api:hope /app/packages/types/dist ./packages/types/dist
 COPY --from=builder --chown=api:hope /app/packages/types/package.json ./packages/types/package.json
-# @arcaai/utils is require()d at runtime by @arcaai/applications (build-info service).
+# @arcaai/utils is required at runtime by @arcaai/applications (build-info service).
 COPY --from=builder --chown=api:hope /app/packages/utils/dist ./packages/utils/dist
 COPY --from=builder --chown=api:hope /app/packages/utils/package.json ./packages/utils/package.json
 # @arcaai/async-contract (direct dep of apps/api) and @arcaai/workflow-contract
@@ -210,7 +210,6 @@ RUN mkdir -p /app/logs && chown -R api:hope /app/logs
 # ── bake build identity, LAST layer ──
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG

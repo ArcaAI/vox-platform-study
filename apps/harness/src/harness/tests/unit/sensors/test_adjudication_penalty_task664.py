@@ -307,7 +307,7 @@ class TestPenaltyMagnitude:
         cov_pass = sum(1 for r in rows if r[4] >= COVERAGE_THRESHOLD)
 
         print("\n" + "=" * 92)
-        print("TASK-664 — lexical-sensor penalty on clinically-correct adjudication")
+        print("lexical-sensor penalty on clinically-correct adjudication")
         print("=" * 92)
         print(
             f"entity_faithfulness threshold = {FAITHFULNESS_THRESHOLD:.2f}   "

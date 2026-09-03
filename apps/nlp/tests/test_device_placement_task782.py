@@ -1,4 +1,4 @@
-"""TASK-782 — device placement contract.
+"""device placement contract.
 
 The measured fact this file protects: an unsupported op on MPS aborts the
 PROCESS (SIGABRT from an MPSNDArray assertion) rather than raising. So placement

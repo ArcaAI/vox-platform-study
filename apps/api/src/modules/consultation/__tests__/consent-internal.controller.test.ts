@@ -1,5 +1,5 @@
 /**
- * ConsentInternalController Unit Tests (TASK-712, consent-abac Phase 4).
+ * ConsentInternalController Unit Tests (consent-abac Phase 4).
  *
  * The inbound `/internal/consent/assert` surface — the gateway-internal front
  * door of the non-HTTP consent choke point. Thin controller: it delegates to
@@ -32,7 +32,7 @@ describe('ConsentInternalController', () => {
     controller = new ConsentInternalController(mockConsentService as any, mockCls as any);
   });
 
-  it('re-establishes the CLS tenant from the body BEFORE the grant lookup (TASK-858)', async () => {
+  it('re-establishes the CLS tenant from the body BEFORE the grant lookup ', async () => {
     // Service-token routes arrive with an EMPTY CLS (the harness calls out-of-band of the
     // API-edge ClsModule middleware) and `ConsentGrant` is tenant-scoped: without
     // `cls.set('tenantId')` before the lookup the tenant-scope extension throws

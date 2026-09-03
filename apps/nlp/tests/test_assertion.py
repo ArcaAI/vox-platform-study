@@ -13,7 +13,7 @@ claim its mention makes about the patient:
 It is a deterministic, offline rule engine over a trigger lexicon (no model
 download, no network) with a documented seam to swap in a learned model.
 
-TASK-799 lane G: the lexicon is CONFIGURATION and arrives per request on the
+lane G: the lexicon is CONFIGURATION and arrives per request on the
 gateway-resolved `clinicalTaxonomy.assertion.triggers`, so these cases build the
 classifier from the seeded platform baseline. The behaviour they pin is
 unchanged; where the phrases come from is not.

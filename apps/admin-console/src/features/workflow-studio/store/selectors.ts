@@ -1,5 +1,5 @@
 /**
- * Atomic selectors over `GraphStore` (TASK-719 Task 11) — kept out of the components that use
+ * Atomic selectors over `GraphStore` — kept out of the components that use
  * them so canvas, list editor, palette rail and validation rail all read the same derivations.
  */
 import type { WorkflowFinding } from '../api/types';
@@ -25,7 +25,7 @@ export function selectIsMandatory(nodeId: string) {
 }
 
 /** Groups a server `ValidationReport`'s findings by `nodeId` — `null` (graph-level) findings
- *  are kept under the `null` key so the validation rail (Task 14) can render a graph-level
+ *  are kept under the `null` key so the validation rail can render a graph-level
  *  bucket distinct from per-node groups. */
 export function findingsByNodeId(findings: readonly WorkflowFinding[]): Map<string | null, WorkflowFinding[]> {
   const map = new Map<string | null, WorkflowFinding[]>();

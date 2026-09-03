@@ -103,7 +103,7 @@ class StartDocumentRequest(BaseModel):
     job_id: str | None = Field(default=None, alias="jobId")
     correlation_id: str | None = Field(default=None, alias="correlationId")
     context_item_id: str | None = Field(default=None, alias="contextItemId")
-    # TASK-712 (consent-abac Phase 4) — Consultation.patientId, so
+    # (consent-abac Phase 4) — Consultation.patientId, so
     # call_mcp_tool/retrieve_context can key a consent-gate lookup. Optional
     # (extra="ignore" + default None): an un-upgraded gateway caller omits it
     # and those activities degrade to UNAVAILABLE rather than crash.
@@ -214,9 +214,9 @@ class LoopEndingRequest(BaseModel):
     template: str | None = Field(default=None)
     text_provider: str | None = Field(default=None, alias="textProvider")
     text_model: str | None = Field(default=None, alias="textModel")
-    #: TASK-814 §2b — advisory transcript corrections the clinician accepted
+    # — advisory transcript corrections the clinician accepted
     #: (`StopRecordingRequest.acceptedProposals`), forwarded verbatim onto the
-    #: `ConsultationEndingSignal` so `feedback.capture` (TASK-812 DD-8) has something to
+    # `ConsultationEndingSignal` so `feedback.capture` has something to
     #: promote over the raw transcript.
     accepted_proposals: list[dict[str, Any]] = Field(default_factory=list, alias="acceptedProposals")
 

@@ -14,7 +14,7 @@ short TTL cache (~60s).
     3. the provider-level ``AiRuntimeProfile`` row, for TUNING only — resolved
        by the SAME two tiers, so a tenant that brought its own connection can
        tune it; provider and model SELECTION stays fail-closed (there is no env
-       engine left to fall back to — guardrail hosts no LLM, TASK-735 Phase 2b)
+       engine left to fall back to — guardrail hosts no LLM )
 
 A request with **no** ``X-Tenant-Id`` has no tenant context and therefore
 resolves SYSTEM only. It must never act as some customer tenant.
@@ -25,9 +25,9 @@ tenant — the playground platform admins use to trial configuration before
 promoting it into SYSTEM (``seed/00-constants.ts``). Promotion is an explicit
 administrative action, never a resolution step: a runtime that falls back to
 ``50000000-…`` serves one customer's configuration to every other tenant. This
-resolver did exactly that until TASK-735/736 (``GUARDRAIL_DEFAULT_TENANT_ID``,
+resolver did exactly that until /736 (GUARDRAIL_DEFAULT_TENANT_ID,
 defaulting to the Global tenant) — see ``.claude/rules/00-project-context.md``
-§Configuration Principles, owner clarification 2026-08-16.
+Principles, owner clarification 2026-08-16.
 
 Tenant/SYSTEM precedence follows ``AiProviderConnection``'s three-state
 semantics (``packages/applications/.../ai-provider-connection/constants.ts``):
@@ -116,14 +116,14 @@ logger = get_logger(__name__)
 TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 
 # aux-model selection keys (SYSTEM AiTaskDefault ⋈ AiModel):
-#   guardrail.safety       → LLM-safety moderation model (six tasks)
-#   guardrail.pii          → PII span model (English only)
+#   guardrail.safety → LLM-safety moderation model (six tasks)
+#   guardrail.pii → PII span model (English only)
 #   guardrail.groundedness → NLI entailment scorer
 # The runtime model id is the joined AiModel row's sourceUri (never the slug), and
 # the model's LABEL TAXONOMY rides along in `AiModel._metadata.labelTaxonomy` — so a
 # taxonomy is resolved through the SAME tenant → SYSTEM cascade as the selection it
 # belongs to, which is what makes it configuration rather than a Python literal.
-# The models themselves run in `apps/nlp` (TASK-735 Phases 3 & 6).
+# The models themselves run in `apps/nlp` ( Phases 3 & 6).
 TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
 TASK_KEY_GUARDRAIL_PII = "guardrail.pii"
 TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
@@ -131,7 +131,7 @@ TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
 # Platform-wide rows live on the SYSTEM tenant (house rule: NULL-tenant is banned).
 SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
-# TASK-737 — a DECLARED tenant-less internal call.
+# a DECLARED tenant-less internal call.
 #
 # Some internal work genuinely has no tenant (the platform-wide async
 # `job_processor`, whose Redis job envelope has no tenant column at all; a by-slug
@@ -160,7 +160,7 @@ KEY_MODEL = "model"
 KEY_AZURE_DEPLOYMENT = "azure-deployment"
 # The selected model's declared label taxonomy, JSON-encoded (the cache holds strings).
 KEY_LABEL_TAXONOMY = "label-taxonomy"
-# The selected model's declared POLICY blob, JSON-encoded (TASK-777 A-3/A-5).
+# The selected model's declared POLICY blob, JSON-encoded (/A-5).
 # Thresholds and verdict-deciding criteria are configuration, and they ride the
 # registry row for the same reason the taxonomy does: it is the one plane already
 # resolved through the two-tier `request tenant → SYSTEM` cascade. See
@@ -414,7 +414,7 @@ class TenantConfigResolver:
         self._cache_ttl_s = cache_ttl_s
         self._time = time_func
         self._cache: dict[str, _CacheEntry] = {}
-        # Single-flight (TASK-777 A-1). One in-flight load per `task_key::tenant_id`;
+        # Single-flight. One in-flight load per `task_key::tenant_id`;
         # every other coroutine that misses the same key AWAITS that load instead of
         # issuing its own. Without it, the opening burst of N consultation sessions is
         # N identical `AiTaskDefault ⋈ AiModel` queries against a pool_size=5 engine.
@@ -442,7 +442,7 @@ class TenantConfigResolver:
         raw = (tenant_id or "").strip()
         # A DECLARED tenant-less call routes to SYSTEM explicitly, and is NOT an
         # anomaly. Recognising it here — before the `or None` coercion — is what
-        # keeps "absent" available as an unambiguous defect signal: after TASK-737
+        # keeps "absent" available as an unambiguous defect signal: after
         # every legitimate caller either names a tenant or names its reason.
         if is_tenantless_marker(raw):
             logger.debug(
@@ -477,7 +477,7 @@ class TenantConfigResolver:
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
         )
 
-    # `resolve_model_source` / `resolve_model_source_by_slug` are GONE (TASK-735
+    # `resolve_model_source` / `resolve_model_source_by_slug` are GONE
     # Phase 6): weight STAGING moved to `apps/nlp` with the weights. Guardrail
     # forwards the registry's `localPath` verbatim and never materialises a file.
 
@@ -512,7 +512,7 @@ class TenantConfigResolver:
                 raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
             return entry.keys
 
-        # SINGLE-FLIGHT (TASK-777 A-1). A load is already running for this exact
+        # SINGLE-FLIGHT. A load is already running for this exact
         # key — await it rather than starting a second one. `shield` is deliberately
         # NOT used: if the leader is cancelled the followers see the cancellation and
         # retry, which is correct for a request-scoped read.
@@ -819,7 +819,7 @@ class TenantConfigResolver:
         """Preference rank for a joined row.
 
         First: the tenant's OWN ``AiTaskDefault`` row over the SYSTEM row
-        (tenant-first resolution, TASK-735 Phase 1). Second, as a tie-break
+        (tenant-first resolution ). Second, as a tie-break
         within the winning owner: the same tenant-first order over the joined
         ``AiModel`` catalog row (``_model_rank``).
         """
@@ -836,7 +836,7 @@ class TenantConfigResolver:
         """Drop cached entries; return how many were dropped.
 
         **Invalidation is the propagation path; the TTL is a bounded-staleness
-        safety net** (rule 09 §Config caches). Before TASK-777 guardrail had no
+        safety net** (rule 09 §Config caches). Before guardrail had no
         invalidation at all, so a platform admin tightening a safety threshold
         waited out the full TTL window on every node — with the loosest admissible
         posture still being served meanwhile.
@@ -875,7 +875,7 @@ def build_judge_client(
 ) -> Any:
     """Build the delegated guardian for a resolved per-tenant selection.
 
-    Guardrail hosts no engine (TASK-735 Phase 2b): this returns a
+    Guardrail hosts no engine : this returns a
     :class:`~guardrail.services.external_text_client.TextJudgeClient` pointed at
     ``apps/text``'s isolated judge lane. The DB supplies the provider/model pair
     — the ONLY selection input — and the provider-level runtime profile supplies
@@ -889,7 +889,7 @@ def build_judge_client(
     from guardrail.services.external_text_client import TextJudgeClient
 
     # POLICY, resolved through the same two-tier cascade as the selection above
-    # (TASK-777 A-3/A-5). `require_criteria` is fail-CLOSED: an unseeded criteria
+    # (/A-5). `require_criteria` is fail-CLOSED: an unseeded criteria
     # string raises `GuardrailUndeterminedError`, which the route maps to 503.
     policy = GuardrailPolicy.from_blob(
         tenant_cfg.policy, source_tenant_id=tenant_cfg.source_tenant_id

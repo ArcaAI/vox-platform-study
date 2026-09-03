@@ -6,7 +6,7 @@ import { AI_TASK_KEYS } from '../types';
 
 /**
  * The console mirror of `AI_TASK_KEYS` has drifted from the backend registry
- * three times (3-vs-9, then TASK-740 D-2's four keys, then TASK-799 R6's two
+ * three times (3-vs-9, then 's four keys, then 's two
  * PII keys). Each time the doc comment in `types.ts` already said "keep the two
  * lists in lockstep" — a comment is not a guard, so this is one.
  *

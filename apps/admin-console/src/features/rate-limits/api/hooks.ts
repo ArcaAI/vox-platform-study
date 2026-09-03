@@ -58,7 +58,7 @@ export function useSetRouteOverride() {
 }
 
 // ---------------------------------------------------------------------------
-// Rules, route catalog, explain (TASK-785)
+// Rules, route catalog, explain
 // ---------------------------------------------------------------------------
 
 export function useRateLimitRules(params: { scope?: 'platform' | 'tenant'; tenantId?: string } = {}) {
@@ -109,7 +109,7 @@ export function useExplainRateLimit(args: { method: string; path: string; tenant
 }
 
 // ---------------------------------------------------------------------------
-// Subscription plans — rank 3 (TASK-785 US-3)
+// Subscription plans — rank 3 
 // ---------------------------------------------------------------------------
 
 export function useRateLimitPlans() {

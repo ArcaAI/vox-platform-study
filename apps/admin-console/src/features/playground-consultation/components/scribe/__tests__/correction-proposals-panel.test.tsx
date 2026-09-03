@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — the correction review surface, against TASK-796's brokered shape.
+ * the correction review surface, against brokered shape.
  *
  * Hard product constraint: a correction is a PROPOSAL. Explicit clinician action to accept,
  * never rendered as already applied, and rejecting as easy as accepting.
@@ -40,7 +40,7 @@ function envelope(proposals: CorrectionProposal[]): CorrectionsEnvelope {
   return { proposals, applied: false, appliedCount: 0, rejectedProposals: 0, textSha256: '0'.repeat(64) };
 }
 
-describe('CorrectionProposalsPanel (TASK-797 W2)', () => {
+describe('CorrectionProposalsPanel (W2)', () => {
   it('shows the original and the proposed replacement for each proposal', () => {
     render(<CorrectionProposalsPanel corrections={envelope([proposal()])} text={TEXT} onAccept={vi.fn()} />);
     expect(screen.getByText('metfromin')).toBeTruthy();

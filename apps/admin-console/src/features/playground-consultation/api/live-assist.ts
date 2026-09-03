@@ -1,5 +1,5 @@
 /**
- * TASK-796's brokered wire contract for the two realtime clinician planes.
+ * brokered wire contract for the two realtime clinician planes.
  *
  * Source of truth: `apps/harness/src/harness/tests/unit/services/test_live_delivery_client.py`
  * on `feat/task-796-realtime-summary-text` — the executable copy of both publish bodies. These
@@ -7,7 +7,7 @@
  *
  * TRANSPORT STATUS: the gateway routes that carry this (`POST .../live-summary`,
  * `POST .../live-assist`, and the `GET /consultations/:id/live-assist/stream` SSE the console
- * consumes) DO NOT EXIST YET — they are assigned to TASK-795. The surfaces below are built and
+ * consumes) DO NOT EXIST YET — they are assigned to. The surfaces below are built and
  * unit-tested against these shapes; they will not receive live data until 795 lands.
  *
  * Interim SUMMARIES need nothing here: they arrive on the EXISTING live-summary plane
@@ -88,5 +88,5 @@ export interface LiveAssistEnvelope {
 /** Ticket scope for the live-assist SSE, following the `consultation_*` namespace convention. */
 export const liveAssistScopeFor = (consultationId: string) => `consultation_live_assist:${consultationId}`;
 
-/** Gateway-relative SSE path (TASK-795 will mount it). */
+/** Gateway-relative SSE path ( will mount it). */
 export const liveAssistStreamPath = (consultationId: string) => `consultations/${encodeURIComponent(consultationId)}/live-assist/stream`;
