@@ -57,10 +57,82 @@ function buildService(withConnections = true) {
   );
 }
 
+
+/**
+ * TASK-858 — the resolve runs INSIDE a CLS tenant context.
+ *
+ * `resolveTenantCloudOverrides` reads tenant-scoped `AiProviderConnection` rows,
+ * and the tenant-scope extension refuses a read with no CLS tenant
+ * ("tenant context required"). The harness route is a service-token request
+ * with NO user and NO tenant on the CLS store (the same shape as `assemble`,
+ * `getEffectivePolicy` and the consent gate), so the service must re-establish
+ * the tenant from the query itself — otherwise every self-host credential
+ * resolve faults into `unavailable` and the harness fails closed on a row that
+ * exists. Measured on hope-v2-dev 2026-09-03: the gateway's own text proxy
+ * (inside an HTTP tenant context) resolved the SYSTEM LM Studio row while this
+ * route answered `unavailable: credential resolution failed` for the same row.
+ */
+function buildServiceWithCls(cls: { run: unknown; set: unknown; get: unknown }) {
+  return new HarnessInternalService(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    cls as never,
+    undefined as never,
+    undefined as never,
+    { get: vi.fn() } as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    providerConnectionService as never,
+  );
+}
+
 describe('HarnessInternalService.resolveProviderCredential', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({ overrides: {} });
+  });
+
+  it('re-establishes the CLS tenant before touching the tenant-scoped connection rows (TASK-858)', async () => {
+    const order: string[] = [];
+    const cls = {
+      run: vi.fn(async (cb: () => unknown) => {
+        order.push('run');
+        return cb();
+      }),
+      set: vi.fn((key: string, value: unknown) => {
+        order.push(`set:${key}=${typeof value === 'string' ? value : typeof value}`);
+      }),
+      get: vi.fn(),
+    };
+    providerConnectionService.resolveTenantCloudOverrides.mockImplementation(async () => {
+      order.push('resolve');
+      return { overrides: { 'lm-studio': { api_key: '', base_url: 'http://hope-lmstudio:1234/v1', funding: 'platform' } } };
+    });
+
+    const out = await buildServiceWithCls(cls).resolveProviderCredential('llm', 'lm-studio', TENANT);
+
+    expect(out.outcome).toBe('resolved');
+    expect(out.baseUrl).toBe('http://hope-lmstudio:1234/v1');
+    // Inside `cls.run`, tenant set FIRST, then the read — the same ordering the
+    // consent gate and `assemble` pin.
+    expect(order.indexOf('run')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf(`set:tenantId=${TENANT}`)).toBeGreaterThan(order.indexOf('run'));
+    expect(order.indexOf('resolve')).toBeGreaterThan(order.indexOf(`set:tenantId=${TENANT}`));
+    expect(cls.set).toHaveBeenCalledWith('user', expect.objectContaining({ tenantId: TENANT }));
   });
 
   it('serves a keyed row and reports the tier that supplied it', async () => {
