@@ -115,6 +115,53 @@ async def test_local_path_wins_without_network(
     assert resolved == staged
 
 
+async def test_resolve_for_model_config_honours_local_path_before_credentials(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """TASK-858 — Mode M must not depend on the credential plane.
+
+    `resolve_for_model_config` (the whisper.cpp / parakeet.cpp seam) resolved the
+    HuggingFace + S3 credentials EAGERLY, before honouring `local_path`, so a model
+    whose weights are read in place (a bucket mount, an admin-staged directory)
+    failed to load whenever the gateway could not answer the credential call —
+    observed live: the ArcaAI default ASR pipeline 500ed on session create with
+    "no usable model-registry credential for 'huggingface'". A local path needs no
+    credential; the lookup must not even be attempted.
+    """
+    from types import SimpleNamespace
+
+    from stt.core.model_credentials import CredentialUnavailable
+    from stt.models.source_resolver import resolve_for_model_config
+
+    staged = tmp_path / "staged"
+    staged.mkdir()
+
+    async def _refuse(*_args, **_kwargs):
+        raise CredentialUnavailable("gateway said 401")
+
+    monkeypatch.setattr("stt.core.model_credentials.resolve_hf_token", _refuse)
+    monkeypatch.setattr("stt.core.model_credentials.resolve_s3_credentials", _refuse)
+
+    model_config = SimpleNamespace(
+        slug="whisper-large-en-medical-260726-merged-gguf-q8_0",
+        source_uri="taphuynh/whisper-large-en-medical-2607.26-merged-gguf",
+        source="LOCAL",
+        source_revision="main",
+        local_path=str(staged),
+        checksum=None,
+        tenant_id="50000000-0000-0000-0000-000000000001",
+    )
+    settings = SimpleNamespace(
+        huggingface_cache_dir=str(tmp_path / "hf"),
+        model_s3_secure=False,
+        minio_cert_check=False,
+    )
+
+    resolved = await resolve_for_model_config(model_config, settings)
+
+    assert Path(resolved) == staged
+
+
 async def test_local_path_missing_falls_through_with_warning(
     tmp_path: Path, config: ModelSourceConfig, stub_s3: StubS3Client
 ) -> None:
@@ -252,7 +299,9 @@ async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, mon
     assert "HF_HUB_OFFLINE" in str(exc.value)
 
 
-async def test_hf_offline_cached_is_served_from_cache(config: ModelSourceConfig, monkeypatch) -> None:
+async def test_hf_offline_cached_is_served_from_cache(
+    config: ModelSourceConfig, monkeypatch
+) -> None:
     """Offline + ALREADY CACHED must resolve, not raise.
 
     The sibling test above is named `..._offline_uncached_raises_cleanly`, and
