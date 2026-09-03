@@ -109,6 +109,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     plane: 'business',
     description: 'Direct inference surfaces — medical NER, classification, diagnosis suggestion, and guardrail analysis.',
   },
+  {
+    name: 'agents',
+    displayName: 'Agents',
+    plane: 'business',
+    description:
+      'Published, task-typed agents (speech-to-text, text generation, text-to-speech): list them, read their I/O contracts, and invoke them directly.',
+  },
   { name: 'workflows', displayName: 'Workflows', plane: 'business', description: 'Trigger and observe agentic workflow runs.' },
   {
     name: 'prompt-templates',
@@ -175,6 +182,18 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     displayName: 'Agent Trajectory',
     plane: 'admin',
     description: 'Inspect the step-by-step trajectory of an agent run.',
+  },
+  {
+    name: 'admin-agent-assignments',
+    displayName: 'Agent Assignments',
+    plane: 'admin',
+    description: 'Which agent serves a task for a tenant or department (department → tenant → platform default).',
+  },
+  {
+    name: 'admin-agents',
+    displayName: 'Agents',
+    plane: 'admin',
+    description: 'Author, validate, publish, version and deprecate task-typed agents backed by registry models.',
   },
   {
     name: 'admin-agentic',
@@ -427,6 +446,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
   // scans SOURCES: an excluded controller still names a group, and leaving it
   // undeclared would mean the test could not tell "deliberately excluded" from
   // "forgot to declare".
+  {
+    name: 'internal-agents',
+    displayName: 'Internal — Agents',
+    plane: 'platform',
+    description:
+      'Service-to-service agent resolution for the harness `core.agent` activity. Excluded from the public reference; reachable only with an internal service token.',
+  },
   {
     name: 'internal-stt',
     displayName: 'Internal — Speech-to-Text',
