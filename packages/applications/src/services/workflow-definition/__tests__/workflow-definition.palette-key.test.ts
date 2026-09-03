@@ -1,7 +1,7 @@
 /**
- * TASK-790 W1 (second half) — `paletteKey` is validated server-side on create.
+ * (second half) — `paletteKey` is validated server-side on create.
  *
- * TASK-789 C-5/D-5: `CreateWorkflowDefinitionRequest.paletteKey` is `@IsString() @MaxLength(80)`
+ * /D-5: `CreateWorkflowDefinitionRequest.paletteKey` is `@IsString() @MaxLength(80)`
  * and nothing more, while Workflow Studio's palette field is a free-text `<Input>`. A typo
  * ('summarisation', 'Consultation', 'stt ') silently produces a definition that no palette rule
  * set will ever match and that the Assignment Matrix can never offer — an orphaned row that
@@ -67,7 +67,7 @@ const savedEntity = {
   changes: {},
 };
 
-describe('TASK-790 W1 — server-side paletteKey validation (C-5/D-5)', () => {
+describe(' W1 — server-side paletteKey validation (C-5/D-5)', () => {
   let service: WorkflowDefinitionService;
 
   beforeEach(() => {
@@ -92,7 +92,7 @@ describe('TASK-790 W1 — server-side paletteKey validation (C-5/D-5)', () => {
   });
 
   it('the known set is derived from the registry and carries the four real palettes', () => {
-    // TASK-847 added `agentic` — the eight GENERIC node types. It arrives here for free, which is
+    // added `agentic` — the eight GENERIC node types. It arrives here for free, which is
     // the property this test is really about: `KNOWN_PALETTE_KEYS` is DERIVED from
     // `WORKFLOW_NODE_REGISTRY.paletteKey`, so a new palette needs no edit to the service.
     //

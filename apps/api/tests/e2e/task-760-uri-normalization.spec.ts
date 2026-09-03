@@ -1,5 +1,5 @@
 /**
- * TASK-760 — business-plane URI normalization, verified over real HTTP.
+ * business-plane URI normalization, verified over real HTTP.
  *
  * Two things are under test and they pull in opposite directions:
  *
@@ -43,7 +43,7 @@ test.beforeAll(async ({ request }) => {
 
 // ─── The new URIs resolve ────────────────────────────────────────────────
 
-test.describe('TASK-760 — the normalized URIs answer', () => {
+test.describe('the normalized URIs answer', () => {
   const reads: [string, string][] = [
     ['user self plane — preferences', `${V1}/users/me/preferences`],
     ['user self plane — settings', `${V1}/users/me/settings`],
@@ -135,7 +135,7 @@ const SHIMS: Shim[] = [
   { method: 'get', from: `${V1}/text/tasks/t-1/stream`, to: `${V1}/text-generations/tasks/t-1/stream` },
 ];
 
-test.describe('TASK-760 — every retired URI answers 308 with a Location', () => {
+test.describe('every retired URI answers 308 with a Location', () => {
   for (const shim of SHIMS) {
     test(`${shim.method.toUpperCase()} ${shim.from} → 308 ${shim.to}`, async ({ request }) => {
       // A shim copies its target's auth posture verbatim, INCLUDING the CASL
@@ -188,13 +188,13 @@ test.describe('TASK-760 — every retired URI answers 308 with a Location', () =
 
 // ─── Scope fence — must never turn red ───────────────────────────────────
 
-test.describe('TASK-760 scope fence — the frozen v1 compat surfaces are untouched', () => {
+test.describe(' scope fence — the frozen v1 compat surfaces are untouched', () => {
   test('POST /api/smr/api/v1/presummary still resolves at its exact path and is NOT redirected', async ({ request }) => {
     // This fence only proves ROUTING (not 404, not redirected), but the compat
     // route accepts `{}` and performs a REAL summarization behind it — ~6.5s
     // idle, and well past the 30s global timeout once the whole suite is
     // hammering apps/text in parallel. Raised per the house pattern
-    // (`task-709-note-occ.spec.ts:189`, added by TASK-772 for the same cause:
+    // (`task-709-note-occ.spec.ts:189`, added by for the same cause:
     // a genuine summarization measured at 34.6s against the 30s default).
     test.setTimeout(180_000);
 

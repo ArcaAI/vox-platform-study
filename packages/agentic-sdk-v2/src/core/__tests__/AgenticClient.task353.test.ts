@@ -11,7 +11,7 @@
  * Other `/health/*` probes (`/health`, `/health/live`, `/health/ready`) are
  * unrestricted and stay on the user-plane path.
  *
- * TASK-759 filed both surfaces under `admin/` (`/admin/monitoring/*`,
+ * filed both surfaces under `admin/` (`/admin/monitoring/*`,
  * `/admin/health/services*`), so the generic `admin/` branch now carries them
  * and the SDK's own endpoint constants emit the new paths. The legacy branches
  * are retained and still asserted below: a caller passing a hard-coded
@@ -36,7 +36,7 @@ function authHeaderOf(callIndex = 0): string | undefined {
 }
 
 describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
-  it('still matches the LEGACY /monitoring/* paths (pre-TASK-759 hard-coded callers)', () => {
+  it('still matches the LEGACY /monitoring/* paths (pre-hard-coded callers)', () => {
     expect(isAdminPlanePath('/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/monitoring/sessions')).toBe(true);
     expect(isAdminPlanePath('/monitoring/uptime/text')).toBe(true);
@@ -45,14 +45,14 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
     expect(isAdminPlanePath('/api/v1/monitoring/uptime')).toBe(true); // fully-qualified
   });
 
-  it('still matches the LEGACY /health/services[/:serviceKey] paths (pre-TASK-759 hard-coded callers)', () => {
+  it('still matches the LEGACY /health/services[/:serviceKey] paths (pre-hard-coded callers)', () => {
     expect(isAdminPlanePath('/health/services')).toBe(true);
     expect(isAdminPlanePath('/health/services/text')).toBe(true);
     expect(isAdminPlanePath('/health/services?verbose=1')).toBe(true); // query string
     expect(isAdminPlanePath('/api/v1/health/services')).toBe(true); // fully-qualified
   });
 
-  it('matches the TASK-759 admin-plane paths through the generic admin/ branch', () => {
+  it('matches the  admin-plane paths through the generic admin/ branch', () => {
     expect(isAdminPlanePath('/admin/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/admin/monitoring/sessions')).toBe(true);
     expect(isAdminPlanePath('/admin/health/services')).toBe(true);

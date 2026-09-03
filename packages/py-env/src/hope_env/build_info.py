@@ -2,7 +2,6 @@
 
 Uniform contract shared with the TypeScript reader
 (``packages/applications/src/common/build-info/build-info.service.ts``):
-``docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json``.
 
 This is immutable artifact data written once by the Dockerfile at build time —
 read once here, never re-read per request.
@@ -14,7 +13,7 @@ startup dependency.
 
 The path is overridable via the ``path`` constructor argument for tests — NOT
 via an environment variable. Build identity is not configuration
-(``.claude/rules/09-infrastructure-devops.md`` §Configuration Tiers).
+(.claude/rules/09-infrastructure-devops.md Tiers).
 
 ``format_untagged_version`` re-implements the pure function of the same name
 in ``@arcaai/utils`` (``packages/utils/src/version-grammar.ts``) rather than

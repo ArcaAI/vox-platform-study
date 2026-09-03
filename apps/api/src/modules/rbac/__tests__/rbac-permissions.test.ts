@@ -36,7 +36,7 @@ describe('RBAC controller route permissions (AC-03)', () => {
     });
 
     /**
-     * TASK-766 OD-1 (owner decision, 2026-08-20). `update`/`patch`/`remove`
+     * (owner decision, 2026-08-20). `update`/`patch`/`remove`
      * used to be `manage`-only, which is exactly the gap OD-1 records: a tenant
      * admin holds the DECOMPOSED `update`/`delete:Role` from the seeded
      * `rbac-tenant-manage` policy but NOT the `manage:Role` alias, so it could
@@ -47,7 +47,7 @@ describe('RBAC controller route permissions (AC-03)', () => {
      * by `RbacRoleService.assertMutable` plus the tenant-scope Prisma extension
      * (own tenant → allowed, SYSTEM → 403, another tenant → 404). Those are
      * covered in `role.service.task766.test.ts`.
-     */
+ */
     it('accepts update OR manage on the two update routes (OD-1)', () => {
       for (const handler of [RolesController.prototype.update, RolesController.prototype.patch]) {
         expect(required(handler)).toEqual([
@@ -97,14 +97,14 @@ describe('RBAC controller route permissions (AC-03)', () => {
 });
 
 /**
- * TASK-781 — every `@ResolveSubjectInstance` on this controller must DECLARE
+ * every `@ResolveSubjectInstance` on this controller must DECLARE
  * the subject it resolves an instance for.
  *
  * Without the declaration one route-level resolver is compared against EVERY
  * required permission on the route, so an instance shaped for subject X is
  * evaluated against subject Y's conditions — where a spurious `false` becomes
  * a wrongful 403 the moment any pair on that route is enforced. The `Role`
- * resolvers carried the declaration on the TASK-781 branch; the TASK-766
+ * resolvers carried the declaration on the branch; the
  * revert (`f69e3598f`) stripped it as collateral while backing out an
  * unrelated `Role.tenantId` change. This pins it back.
  *
@@ -117,7 +117,7 @@ describe('RBAC controller route permissions (AC-03)', () => {
 const resolverDescriptor = (target: object) =>
   Reflect.getMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, target) as { subject?: string; enforceGrade: boolean } | undefined;
 
-describe('CASL subject-instance resolver attestation (TASK-781)', () => {
+describe('CASL subject-instance resolver attestation ', () => {
   for (const method of ['findOne', 'update', 'patch', 'remove'] as const) {
     it(`RolesController.${method} declares subject 'Role' and does not claim enforce grade`, () => {
       const descriptor = resolverDescriptor(RolesController.prototype[method]);

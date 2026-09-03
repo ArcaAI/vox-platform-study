@@ -52,7 +52,7 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /**
- * Bar / line / area chart (PHASE-2-PLAN §3.2). Wraps the shadcn `chart` shell
+ * Bar / line / area chart (PHASE-2-PLAN Wraps the shadcn `chart` shell
  * (`ChartContainer` + tooltip/legend) over `recharts`; series default to the
  * `--chart-1..5` tokens. The visual is `role="img"` with a descriptive label and is
  * paired with an offscreen data-table fallback for screen readers. Honors the

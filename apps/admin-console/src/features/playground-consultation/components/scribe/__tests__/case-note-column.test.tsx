@@ -148,14 +148,14 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText('Subjective')).toBeTruthy();
     expect(screen.getByText(/reports headache/i)).toBeTruthy();
     expect(screen.getByText('headache')).toBeTruthy();
-    // ICD-10 code chip renders when the entity carries one (Phase C).
+    // ICD-10 code chip renders when the entity carries one.
     expect(screen.getByText('I10')).toBeTruthy();
-    // Vitals grid renders present values (Phase D).
+    // Vitals grid renders present values.
     expect(screen.getByText('138/88')).toBeTruthy();
     expect(screen.getByText('98%')).toBeTruthy();
   });
 
-  it('shows a degraded indicator and freezes the prior content when textFailed is true (TASK-703)', () => {
+  it('shows a degraded indicator and freezes the prior content when textFailed is true ', () => {
     render(
       <CaseNoteColumn
         {...baseProps({
@@ -297,7 +297,7 @@ describe('CaseNoteColumn', () => {
       expect(screen.getByText(/^locked$/i)).toBeTruthy();
     });
 
-    it('renders an empty section as a skeleton, never an error (TASK-811 §2d)', () => {
+    it('renders an empty section as a skeleton, never an error', () => {
       render(
         <CaseNoteColumn
           {...baseProps({
@@ -426,7 +426,7 @@ describe('CaseNoteColumn — async generation progress', () => {
 });
 
 /**
- * W4 / R3 — the realtime-summary feed. TASK-791's event carries progress
+ * W4 / R3 — the realtime-summary feed. event carries progress
  * metadata and NO text, so the UI must show progress and must not imply a
  * body it does not have.
  */
@@ -449,7 +449,7 @@ describe('CaseNoteColumn — loop activity (realtime summaries)', () => {
   });
 });
 
-describe('TASK-814 accessibility — 0 axe violations on every new/changed state', () => {
+describe(' accessibility — 0 axe violations on every new/changed state', () => {
   it('empty-first-flush failure state', async () => {
     const { container } = render(
       <CaseNoteColumn

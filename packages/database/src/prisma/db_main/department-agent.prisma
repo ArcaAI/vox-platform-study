@@ -1,7 +1,7 @@
 // Cross-tenant promotion records.
 //
 // This file used to declare `DepartmentAgent` and `DepartmentAgentVersion`
-// alongside `AgentPromotion`. Both were dropped by TASK-815: a prompt
+// alongside `AgentPromotion`. Both were dropped by: a prompt
 // template's binding to a workflow lives on the NODE that references it
 // (`WorkflowDefinition.graph`), so there is no per-department agent row left to
 // version. `AgentPromotion` survives — the thing being promoted between tenants

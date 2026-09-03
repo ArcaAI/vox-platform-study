@@ -38,14 +38,14 @@ describe('sessionUtils', () => {
 
   describe('openSessionOperation', () => {
     /**
-     * TASK-793 W2 / TASK-789 H-4 — department scoping.
+     * / — department scoping.
      *
      * `OpenConsultationRequest` accepts `departmentId`, and `SummaryService`
      * resolves the department prompt tier off `consultation.departmentId`. The
      * SDK type previously exposed only a `department` name field, which the
      * gateway's `forbidNonWhitelisted` validation pipe REJECTS — so the tier
      * was structurally unreachable through this SDK.
-     */
+ */
     it('forwards departmentId to the gateway so department scoping can resolve', async () => {
       mockApiClient.post.mockResolvedValue({ id: 'c-9', patientId: 'p-1', doctorId: 'd-1' });
 

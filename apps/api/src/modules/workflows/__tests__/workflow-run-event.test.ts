@@ -1,5 +1,5 @@
 /**
- * `workflow-run-event.ts` unit tests (TASK-722 Task 8).
+ * `workflow-run-event.ts` unit tests.
  *
  * Proves the envelope this gateway synthesizes from a polled status snapshot
  * conforms to `@arcaai/async-contract`'s envelope shape (so a real consumer
@@ -89,7 +89,7 @@ describe('buildWorkflowRunEventEnvelope', () => {
 
 describe('formatSseFrame', () => {
   it('writes an event/data frame with NO id line when there is no resume token', () => {
-    // async-contract §3.6: a token is transport-ASSIGNED, and a snapshot has no stream
+    // async-contract: a token is transport-ASSIGNED, and a snapshot has no stream
     // position. Emitting the envelope's own `id` here would look like a cursor to a browser
     // (which echoes it as `Last-Event-ID`) and resume nothing — which is exactly what this
     // function used to do, back when there was no producer and therefore no cursor to have.

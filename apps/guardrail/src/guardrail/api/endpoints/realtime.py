@@ -1,4 +1,4 @@
-"""The realtime consultation plane's HTTP surface (TASK-829).
+"""The realtime consultation plane's HTTP surface.
 
 Three routes on two clocks, and one of them is the only one that authorises
 anything:
@@ -111,7 +111,7 @@ def _unavailable(what: str, exc: Exception) -> HTTPException:
 
 @router.post("/guardrail/realtime/segments")
 async def validate_segment(request: SegmentRequest, http_request: Request) -> dict[str, Any]:
-    """Streaming tier — validate one finalized segment (§5.1)."""
+    """Streaming tier — validate one finalized segment."""
     tenant_id = require_tenant_id(http_request)
     try:
         async with admitted(http_request):

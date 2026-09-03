@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "PgBouncer pool stats for HOPE HA cluster. TASK-302 Stream C Phase 2A.",
+  "description": "PgBouncer pool stats for HOPE HA cluster.  Stream C Phase 2A.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,

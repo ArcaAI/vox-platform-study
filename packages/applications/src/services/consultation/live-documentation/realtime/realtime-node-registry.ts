@@ -1,5 +1,5 @@
 /**
- * TASK-811 — the REALTIME node registry: which node types this runtime can run,
+ * the REALTIME node registry: which node types this runtime can run,
  * and what each one does.
  *
  * ## Task 7 — `LIVE_TOOL_KEYS` becomes node dispatch
@@ -39,7 +39,7 @@ type LiveAssistProposal = HarnessLiveAssistProposalDto;
 
 /**
  * Node types the realtime runtime implements — DERIVED from the contract, not listed here
- * (TASK-806 lane A, item 7).
+ * (lane A, item 7).
  *
  * This used to be a hand-kept set of three keys, and `realtime-lane.ts` explained at length why it
  * had to be: `WorkflowNodeDescriptor.lane` said `durable` on every node type, the contract package
@@ -84,7 +84,7 @@ export interface GenerateDocumentInput {
    * The node's OWN authored config, exactly as `ProposeCorrectionsInput` and
    * `ExtractFindingsInput` already carry it.
    *
-   * TASK-816 (DD-10): it carries this node's `llmBinding`, and `config` is the ONLY thing that
+   * It carries this node's `llmBinding`, and `config` is the ONLY thing that
    * distinguishes one instance of a node type from another — so without it a model binding
    * authored on THIS `consultation.realtimeSummary` had no route to the call it governs.
    * Optional so non-graph callers of the capability keep their arity; absent reads as "no
@@ -249,8 +249,7 @@ function boundText(ctx: RealtimeNodeRunContext, port: string): string {
 }
 
 /**
- * `consultation.captureBinding` — TASK-811 task 14, and the answer to
- * TASK-809 §2y1.
+ * `consultation.captureBinding` — task 14, and the answer to
  *
  * The node's declared output is `out: transcript { outputKey: 'transcript' }`,
  * and until now that was DESIGN INTENT: the durable activity starts/stops the
@@ -347,10 +346,7 @@ class GrammarHandler implements RealtimeNodeHandler {
     const bound = ctx.bound.entities;
     const entities = Array.isArray(bound) ? (bound as LiveSummaryEntityDto[]) : [];
 
-    const result = await ctx.capabilities.proposeCorrections(
-      { sourceText, entities, tenantId: ctx.tenantId, config: ctx.config },
-      ctx.signal,
-    );
+    const result = await ctx.capabilities.proposeCorrections({ sourceText, entities, tenantId: ctx.tenantId, config: ctx.config }, ctx.signal);
     return {
       proposals: result.proposals,
       applied: false,
@@ -361,7 +357,7 @@ class GrammarHandler implements RealtimeNodeHandler {
 }
 
 /**
- * `agent.important_findings` — Lane N. The capability TASK-815 §14a recorded as missing.
+ * `agent.important_findings` — Lane N. The capability recorded as missing.
  *
  * ## What makes it "important" is CONFIGURATION, and it lives nowhere in this file
  *
@@ -381,7 +377,7 @@ class GrammarHandler implements RealtimeNodeHandler {
  *
  * ## Its output is `entities`, under the key `findings`
  *
- * The PRIMITIVE is `entities` so a finding rides the highlight path TASK-811 already built —
+ * The PRIMITIVE is `entities` so a finding rides the highlight path already built
  * `groundEntitiesToNote` re-anchors it into the rendered note, `reanchorAnnotations` puts it on a
  * section. The KEY is distinct so a consumer can tell "the tenant said this matters" apart from
  * "the detector saw a drug name", which are two different claims and must not merge into one
@@ -416,7 +412,7 @@ class ImportantFindingsHandler implements RealtimeNodeHandler {
 
 /**
  * `agent.transcription` and `agent.ner` are the TARGET CATALOGUE's names for capture and NER
- * (TASK-809 DD-9), and they run the SAME handler rather than a second implementation of the same
+ * and they run the SAME handler rather than a second implementation of the same
  * behaviour — `nodes/agent_catalogue.py` does exactly this on the durable side. What an alias does
  * NOT share is its port declaration: those are read from `@arcaai/workflow-contract` under the
  * alias's own key, so each node type is still validated against what it itself declares.
@@ -451,7 +447,7 @@ export function realtimeHandlerFor(type: string): RealtimeNodeHandler | undefine
  * Which PIPELINE node type an alias stands for.
  *
  * `agent.transcription` and `agent.ner` are the target catalogue's names for capture and NER and
- * run the same handlers (DD-9). A caller reading a lane's outcomes back — the flush projection in
+ * run the same handlers. A caller reading a lane's outcomes back — the flush projection in
  * `LiveDocumentationService`, a trajectory reader, anything keyed by node type — must treat the
  * two names as ONE capability, or a graph authored against the catalogue silently produces
  * nothing: the node runs, the model is paid for, and `outcomes.find(o => o.type ===
@@ -471,7 +467,7 @@ export function canonicalRealtimeNodeType(type: string): string {
 }
 
 /**
- * TASK-852 item 6 — whether a node type offers the `enabled` switch at all.
+ * item 6 — whether a node type offers the `enabled` switch at all.
  *
  * DERIVED from the shipped config schema, never from a list of names. `node-config-schemas.ts`
  * folds `enabled` into every node type EXCEPT the registry-class `mandatory` ones (items 3-4), so

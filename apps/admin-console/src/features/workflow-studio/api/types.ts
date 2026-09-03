@@ -1,13 +1,13 @@
 /**
  * Types for the `WorkflowDefinition` / node-registry surface, mirrored field-for-field off the
- * DELIVERED (TASK-734) DTOs — not an assumption. Sources:
+ * DELIVERED DTOs — not an assumption. Sources:
  *   - `packages/applications/src/services/workflow-definition/dto/workflow-definition.response.ts`
  *   - `packages/applications/src/services/workflow-definition/dto/create-workflow-definition.request.ts`
  *   - `packages/applications/src/services/workflow-definition/dto/update-workflow-definition.request.ts`
  *   - `packages/applications/src/services/workflow-definition/dto/publish-workflow-definition.request.ts`
  *   - `packages/applications/src/services/workflow-definition/dto/workflow-node.response.ts`
- * See `docs/implementation/TASK-719-Workflow-Studio-V1/contracts/{registry,definition-api}.contract.md`
- * for the re-derivation notes (`file:line` citations, what changed vs. the pre-TASK-734 plan).
+ * See the registry and definition-api contracts
+ * for the re-derivation notes (`file:line` citations, what changed vs. the earlier plan).
  *
  * The console never imports `@arcaai/workflow-contract` at runtime (it is the server
  * validator's engine, not a browser artifact — validation-report.contract.md) — these types are
@@ -108,9 +108,11 @@ export interface CreateWorkflowDefinitionRequest {
   parentVersionId?: string;
 }
 
-/** TASK-856 — `POST admin/workflow-definitions/:id/clone`. Deliberately carries NO `graph` or
+/**
+* `POST admin/workflow-definitions/:id/clone`. Deliberately carries NO `graph` or
  *  `paletteKey`: both are derived server-side from the source row, so a caller can never pair
- *  one definition's provenance with another definition's bytes. */
+ *  one definition's provenance with another definition's bytes. 
+ */
 export interface CloneWorkflowDefinitionRequest {
   targetSlug: string;
   name?: string;
@@ -130,7 +132,7 @@ export interface PublishWorkflowDefinitionRequest {
 }
 
 /**
- * The closed workflow port type vocabulary (TASK-809 §2b) — mirrored, not imported, for the
+ * The closed workflow port type vocabulary — mirrored, not imported, for the
  * same reason the rest of this file mirrors `@arcaai/workflow-contract` (see the module
  * comment above): the console never bundles that package at runtime. Source of truth:
  * `packages/workflow-contract/src/port-model.ts`'s `WORKFLOW_PORT_PRIMITIVES`.
@@ -157,18 +159,20 @@ export interface WorkflowNodePort {
   multiple: boolean;
 }
 
-/** `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
+/**
+* `WorkflowNodeDescriptor`'s wire projection (`WorkflowNodeResponse`). No `label` field yet
  *  (registry.contract.md) — the Studio still derives a display label from `type`
  *  (`humanizeKey`). `configSchema` IS now on the delivered DTO (registry.contract.md's
- *  resolution path #1: "TASK-720 adds a `configSchema` field… when it adds real palette node
+ * resolution path #1: " adds a `configSchema` field… when it adds real palette node
  *  types") — `null` for a node type with no authored schema yet, a real, structural state the
  *  inspector's raw-JSON fallback already handles as `undefined` (see
  *  `components/workflow-studio-editor.tsx`).
  *
- *  `inputs`/`outputs` (TASK-809 Task 12) are the only other newly-delivered fields mirrored
+ * `inputs`/`outputs` are the only other newly-delivered fields mirrored
  *  here — `trigger`/`lane`/`requires`/`idempotent`/`schemaVersion`/`evalGate` also landed on
  *  the wire DTO but have no Studio consumer yet, so they are left unmirrored rather than added
- *  speculatively; add them, hand-mirrored the same way, when a task actually reads them. */
+ *  speculatively; add them, hand-mirrored the same way, when a task actually reads them. 
+ */
 export interface WorkflowNodeDescriptor {
   type: string;
   implemented: boolean;
@@ -201,12 +205,11 @@ export interface PromptTemplateOption {
 }
 
 /**
- * TASK-733 half (a) — WHICH workflow definition governs a tenant or department for a palette.
+ * half (a) — WHICH workflow definition governs a tenant or department for a palette.
  * Mirrors `WorkflowAssignmentResponse`
  * (`packages/applications/src/services/workflow-assignment/dto/workflow-assignment.response.ts`)
  * field-for-field. Only `TENANT` and `DEPARTMENT` scope are writable from this admin surface —
  * `DOCTOR` is structurally supported by the cascade but is not a product decision anyone has made
- * (ticket §1.4).
  */
 export type WorkflowAssignmentScope = 'TENANT' | 'DEPARTMENT';
 
@@ -246,13 +249,13 @@ export interface DepartmentOption {
 }
 
 // ---------------------------------------------------------------------------
-// DD-11 (TASK-810) — prompt binding.
+// DD-11 — prompt binding.
 //
 // A node references a prompt TEMPLATE (`promptTemplateId`) and, optionally,
 // pins one immutable VERSION of it (`promptVersionNumber`). Two update paths
 // exist and they behave differently ON PURPOSE:
 //
-//   in-node edit  -> mint a new PromptVersion AND move THIS node's pin, atomically
+//   in-node edit -> mint a new PromptVersion AND move THIS node's pin, atomically
 //   Prompt screen -> mint a new PromptVersion and move NO node's pin
 //
 // The second is what stops one shared template silently re-prompting every
@@ -301,7 +304,7 @@ export interface UpdateNodePromptRequest {
  * (`NodePromptUpdateResponse` in `@arcaai/applications`), so the definition is still read
  * straight off the body.
  *
- * The three extra fields exist because the call is no longer always a mint (§7b item 1).
+ * The three extra fields exist because the call is no longer always a mint.
  * Content byte-identical to the template's LATEST version moves the pin and creates nothing;
  * a node already pinned there is a true no-op — no graph write, no `_version` bump, no
  * sys-event. Since DD-11 PATH 2 deliberately leaves node pins alone when a template is edited

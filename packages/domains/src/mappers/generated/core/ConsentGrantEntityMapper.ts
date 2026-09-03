@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
 // HAND-AUTHORED (the `gen:mapper` generator crashes pre-existingly; see
-// AiProviderConnectionEntityMapper / AiTaskDefaultEntityMapper). TASK-712
+// AiProviderConnectionEntityMapper / AiTaskDefaultEntityMapper).
 // (consent-abac).
 //
 // `_version` is owned by the database and the only legitimate writer is

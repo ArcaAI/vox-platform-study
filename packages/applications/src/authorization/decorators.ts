@@ -136,7 +136,7 @@ export function RequiredScopes(...scopes: string[]) {
 }
 
 /**
- * Deny ANY API-key-authenticated caller (TASK-708 Task 3 bucket (c)):
+ * Deny ANY API-key-authenticated caller ( bucket (c)):
  * interactive-human-only flows on the `/admin/*` surface (e.g.
  * impersonation) that should never be reachable by a credential, however
  * broadly scoped. Independent of, and checked before, `@RequiredScopes` —
@@ -157,14 +157,14 @@ export function RequiredScopes(...scopes: string[]) {
 export const ForbidApiKey = () => SetMetadata(API_KEY_FORBIDDEN, true);
 
 /**
- * Declare which `svc:*` scopes reach this route (TASK-762) — the
+ * Declare which `svc:*` scopes reach this route — the
  * service-account counterpart of `@RequiredScopes`.
  *
  * DELIBERATELY a separate decorator with a separate metadata key. `svc:*` and
  * `admin:*` are different vocabularies belonging to different credential
  * classes; one decorator carrying both would put a tenant API key and a
  * platform machine identity in the same scope space, which is precisely the
- * mixing the TASK-708 §6 owner ruling forbids.
+ * mixing the owner ruling forbids.
  *
  * Deny-by-default: a route with no declaration is not a service-account surface
  * and refuses every machine token (`enforceServiceAccountScopes`). ANY one of
@@ -195,7 +195,7 @@ export function RequiredSvcScopes(...scopes: string[]) {
 }
 
 /**
- * Deny ANY service-account-authenticated caller (TASK-762 §5.5).
+ * Deny ANY service-account-authenticated caller
  *
  * INDEPENDENT of `@ForbidApiKey()`, which is about TENANT API KEYS. A route
  * that must exclude machines but still admit keys declares only this one; a
@@ -347,7 +347,7 @@ export const CanAny = (...permissions: [string, string][]) => AuthorizeAny(...pe
  */
 export const CanAll = (...permissions: [string, string][]) => Authorize(...permissions);
 
-// ─── Consent (TASK-712, consent-abac) ─────────────────────────────────────
+// ─── Consent (consent-abac) ─────────────────────────────────────
 //
 // Metadata-only, same shape as `SetPermissions` above: the decorator sets
 // metadata, `PatientConsentGuard` (`apps/api/src/guards/patient-consent.guard.ts`,

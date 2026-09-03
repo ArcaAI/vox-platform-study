@@ -11,13 +11,13 @@
 // read that misses the DB resolves to exactly the value in force today.
 //
 // Sources of truth for the defaults (verified 2026-07-20):
-//   stt.modelCache.maxModels     `settings.model_cache_max_models`      = 5
-//   stt.modelCache.ttlSeconds    `settings.model_cache_ttl_seconds`     = 3600  (clamp ge=60 le=3600)
-//   stt.modelCache.maxMemoryMb   `models/cache.py` ctor fallback        = 10000
-//   stt.workers.concurrency      `settings.worker_concurrency`          = 4
-//   stt.streaming.maxConcurrent  `settings.streaming_max_concurrent`    = 0 (0 = hardware auto-detect)
-//   nlp.inference.maxConcurrent  NEW — nlp had NO bound at all
-//   nlp.peerCall.maxConcurrent   `settings.service.peer_call_max_concurrent` = 8 (TASK-729 §6,
+//   stt.modelCache.maxModels `settings.model_cache_max_models` = 5
+//   stt.modelCache.ttlSeconds `settings.model_cache_ttl_seconds` = 3600 (clamp ge=60 le=3600)
+//   stt.modelCache.maxMemoryMb `models/cache.py` ctor fallback = 10000
+//   stt.workers.concurrency `settings.worker_concurrency` = 4
+//   stt.streaming.maxConcurrent `settings.streaming_max_concurrent` = 0 (0 = hardware auto-detect)
+//   nlp.inference.maxConcurrent NEW — nlp had NO bound at all
+// nlp.peerCall.maxConcurrent `settings.service.peer_call_max_concurrent` = 8
 //                                owner decision 2026-08-20 — a SEPARATE bound from
 //                                nlp.inference.maxConcurrent for outbound calls to `text`)
 //
@@ -46,7 +46,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.inference.maxConcurrent': 4,
   'nlp.peerCall.maxConcurrent': 8,
 
-  // ── nlp queue + batch geometry (TASK-799 lane D) ─────────────────────────
+  // ── nlp queue + batch geometry ─────────────────────────
   // Nine `NLP_INFERENCE_*` env vars become one control-plane group. Platform-
   // scope service geometry with no tenant opinion — D-1's cardinality rule puts
   // exactly this class on the PULL route.
@@ -77,7 +77,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.interactiveInference.queueMaxDepth': 64,
   'nlp.interactiveInference.queueMaxWaitSeconds': 2,
 
-  // ── nlp log sinks (TASK-799 lane D) ──────────────────────────────────────
+  // ── nlp log sinks ──────────────────────────────────────
   // Nine file/rotation knobs that were bare `os.getenv` reads scattered through
   // `nlp/core/logging.py`. `LOG_LEVEL` and `LOG_FILE_PATH` stay in env: the
   // level is what an operator reaches for FIRST during an incident (no
@@ -133,7 +133,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // per environment.
   'guardrail.redact.chunkChars': 4000,
 
-  // ── guardrail output-side groundedness gate (TASK-799 lane D) ────────────
+  // ── guardrail output-side groundedness gate ────────────
   // The last guardrail policy plane that lived in environment variables
   // (`GUARDRAIL_V2_GROUNDEDNESS_*`), so a platform admin could not switch the
   // clinical gate on, or retune its throughput, without a redeploy.
@@ -239,7 +239,7 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
     label: 'NLP peer-call concurrency (to text)',
     description:
       'Ceiling on concurrent outbound HTTP calls nlp makes to text for /classify/topic and ' +
-      '/classify/intent (TASK-729). A SEPARATE bound from nlp.inference.maxConcurrent (owner decision ' +
+      '/classify/intent. A SEPARATE bound from nlp.inference.maxConcurrent (owner decision ' +
       '2026-08-20): that ceiling protects local GPU/CPU inference slots, while this one protects ' +
       "nlp's own outbound connection/concurrency budget to a peer service — sharing one bound between " +
       'the two would let a slow peer round-trip starve local inference, or vice versa.',
@@ -410,7 +410,7 @@ const META: Record<ServiceRuntimeKey, KeyMeta> = {
 /**
  * The declared `dataType`, DERIVED from the default rather than asserted.
  *
- * This family was number-only until TASK-799 lane D added the groundedness
+ * This family was number-only until lane D added the groundedness
  * gate's boolean switch and nlp's log-sink strings. Getting it wrong is not
  * cosmetic: `EffectiveConfigService` validates every served value against this
  * field and degrades a mismatch to `null`, so a boolean declared as a number

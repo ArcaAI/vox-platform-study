@@ -46,7 +46,7 @@ class TestDefaults:
         assert "70b" not in JudgeConfig().model.lower()
 
     def test_default_model_is_the_canonical_lm_studio_id(self, monkeypatch):
-        # TASK-736 R2: gemma-4-e2b-it-qat is the owner-standardized single model
+        # gemma-4-e2b-it-qat is the owner-standardized single model
         # resident in LM Studio (verified served by the live dev instance,
         # 2026-08-16) — applied everywhere including harness.judge.
         monkeypatch.delenv("HARNESS_JUDGE_MODEL", raising=False)
@@ -79,7 +79,7 @@ class TestProviderSelection:
             build_judge_client(JudgeConfig(provider="totally-not-a-provider"))  # type: ignore[arg-type]
 
     def test_ollama_provider_is_accepted_via_openai_compat_client(self):
-        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
+        # Owner decision 2026-08-20 (/-3): Ollama provider
         # logic stays available platform-wide, including for harness judge
         # selection. Ollama speaks the OpenAI wire over its own ``/v1`` endpoint,
         # so it reuses the shared OpenAICompatJudgeClient — harness gains no

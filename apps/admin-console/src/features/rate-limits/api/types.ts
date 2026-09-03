@@ -44,7 +44,7 @@ export interface SetRouteOverrideRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Rules, route catalog, explain (TASK-785)
+// Rules, route catalog, explain
 // ---------------------------------------------------------------------------
 
 export type RateLimitMatchKind = 'EXACT' | 'PREFIX';

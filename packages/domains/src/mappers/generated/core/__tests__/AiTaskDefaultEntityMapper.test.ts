@@ -19,7 +19,7 @@ const sampleRow = (overrides: Partial<AiTaskDefault> = {}): AiTaskDefault =>
     taskKey: 'guardrail.validate',
     modelSlug: 'granite-guardian-4.1-8b',
     configJson: { threshold: 0.8, nested: { list: [1, 2, 3] } },
-    // TASK-843. NULL is the realistic Phase 1 read: the column is backfilled by
+    // NULL is the realistic Phase 1 read: the column is backfilled by
     // the migration but no writer sets it yet, so a freshly created row arrives
     // unclassified — exactly what the mapper must carry through untouched.
     taskKind: null,

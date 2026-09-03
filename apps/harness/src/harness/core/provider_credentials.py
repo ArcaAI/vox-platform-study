@@ -1,4 +1,4 @@
-"""TASK-799 lane B — BYO provider credentials for the harness worker.
+"""lane B — BYO provider credentials for the harness worker.
 
 WHY THIS MODULE EXISTS (the delivery design, in one place).
 
@@ -210,7 +210,7 @@ def to_provider_overrides(
 ) -> dict[str, dict[str, Any]] | None:
     """The ``provider_overrides`` envelope ``apps/text`` receives, or ``None``.
 
-    TASK-858 — Text holds no endpoint or credential of its own: every adapter,
+    Text holds no endpoint or credential of its own: every adapter,
     the self-hosted LM Studio one included, reads ``provider_overrides[provider]``
     (``text/core/connection.py::require_connection``) and answers a typed 503
     without it. The gateway injects that envelope on its own proxied calls; a

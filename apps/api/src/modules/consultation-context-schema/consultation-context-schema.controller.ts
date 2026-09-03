@@ -170,7 +170,7 @@ export class ConsultationContextSchemaAdminController {
  * consumer.
  */
 /**
- * TASK-758 — `tenants/me/*` resolves to the key's TENANT (the CLS `tenantId`
+ * `tenants/me/*` resolves to the key's TENANT (the CLS `tenantId`
  * `UnifiedAuthGuard` sets from `apiKeyEntity.tenantId`), NOT to the key's bound
  * user the way `/users/me/*` does. Two different resolutions behind the same
  * `me` segment, so each says which one it is.

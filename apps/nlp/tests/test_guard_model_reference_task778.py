@@ -1,10 +1,10 @@
-"""TASK-778 (owner addition) — a model reference is a HUB ID **or** a LOCAL PATH.
+"""(owner addition) — a model reference is a HUB ID **or** a LOCAL PATH.
 
 The gliner2 loader takes either form. The catalog must therefore let a super
 admin (SYSTEM tier) and a tenant admin (tenant tier) store either, and nlp must
 resolve both — WITHOUT constraining the stored value to a hub-id pattern.
 
-The load-bearing rule is the failure posture. TASK-735's resolver treated a
+The load-bearing rule is the failure posture. resolver treated a
 set-but-missing local path as a WARNING and fell through to the hub id. For the
 guard plane that is wrong twice over:
 

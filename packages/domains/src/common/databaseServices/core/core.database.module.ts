@@ -132,7 +132,7 @@ const repositories = [
   // head and its immutable published version snapshots.
   ConsultationContextSchemaRepository,
   ConsultationContextSchemaVersionRepository,
-  // Clinical-document SHAPE catalog (TASK-810): the mutable head and its
+  // Clinical-document SHAPE catalog: the mutable head and its
   // immutable published version snapshots (shape + compiled artifacts).
   DocumentTemplateRepository,
   DocumentTemplateVersionRepository,
@@ -141,7 +141,7 @@ const repositories = [
   AudioRecordingRepository,
   SummaryMetaRepository,
   NamedEntityRepository,
-  // TASK-811 — per-section rows of a live-generated clinical document
+  // per-section rows of a live-generated clinical document
   DocumentSectionRepository,
   // segment-level transcript structure (per-transcript annotation)
   TranscriptSegmentRepository,
@@ -179,7 +179,7 @@ const repositories = [
   AiModelRepository,
   // Per-tenant AI task-model defaults
   AiTaskDefaultRepository,
-  // Tenant-writable nlp.topic/nlp.intent instruction content (TASK-729) —
+  // Tenant-writable nlp.topic/nlp.intent instruction content
   // deliberately separate from AiTaskDefault's model-selection governance.
   TenantNlpTaskInstructionsRepository,
   GateEditExemplarRepository,
@@ -188,7 +188,7 @@ const repositories = [
   AiProviderConnectionRepository,
   AiRuntimeProfileRepository,
   // The ordered N-way candidate chain per (tenant, taskKey, policyVersion)
-  // (TASK-818). Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
+  // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
   // platform default every tenant without its own policy must read.
   AiRoutingPolicyRepository,
   TranscriptionJobRepository,
@@ -196,7 +196,7 @@ const repositories = [
   AuditLogRepository,
   // API & Organization domain
   ApiKeyRepository,
-  // Platform-issued machine identity for administration (TASK-762) — the
+  // Platform-issued machine identity for administration — the
   // THIRD credential class, sharing no mechanism with ApiKey or the shared
   // peer-service token.
   ServiceAccountRepository,
@@ -278,23 +278,23 @@ const repositories = [
   ServiceInstanceRepository,
   ChangelogEntryRepository,
   UserChangelogAcknowledgementRepository,
-  // Consent & ABAC (TASK-712). No enforcement wired anywhere this phase —
-  // see docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+  // Consent & ABAC. No enforcement wired anywhere this phase
+
   ConsentGrantRepository,
-  // Runs/observability read model (TASK-723) — one row per workflow-substrate run.
+  // Runs/observability read model — one row per workflow-substrate run.
   WorkflowRunRepository,
-  // Per-tenant saved synthetic Workbench test input (TASK-721).
+  // Per-tenant saved synthetic Workbench test input.
   WorkflowTestFixtureRepository,
-  // The workflow-definition/version rows themselves (TASK-715 domain trio,
-  // completed under TASK-722 — see that ticket's README §7 for why).
+  // The workflow-definition/version rows themselves ( domain trio,
+  // completed under — see that for why).
   WorkflowDefinitionRepository,
-  // Per-scope workflow assignment + its append-only WORM change log (TASK-733).
+  // Per-scope workflow assignment + its append-only WORM change log.
   WorkflowAssignmentRepository,
   WorkflowAssignmentChangeRepository,
-  // Workflow-graph safety rule rows (TASK-716) — a SYSTEM_SHARED_READ_MODEL,
+  // Workflow-graph safety rule rows — a SYSTEM_SHARED_READ_MODEL,
   // see tenant-scope.ts for why.
   WorkflowInvariantRuleRepository,
-  // Rate-limit rule rows (TASK-785) — ranks 1, 2 and 4 of the rate-limit
+  // Rate-limit rule rows — ranks 1, 2 and 4 of the rate-limit
   // precedence chain. Tenant-scoped but NOT a SYSTEM_SHARED_READ_MODEL; see
   // tenant-scope.ts and RateLimitRuleRepository for why.
   RateLimitRuleRepository,

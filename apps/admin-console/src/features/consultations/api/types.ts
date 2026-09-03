@@ -4,9 +4,9 @@ import type { Paginated } from '@/shared/api';
  * ConsultationStatus gateway enum (packages/domains) — GET /admin/consultations
  * validates `?status` against exactly these and 400s on anything else.
  *
- * TASK-711 — session state machine. `CLOSED` is SUPERSEDED (never written by
- * any live path — see docs/implementation/TASK-711-Session-State-Machine/
- * state-machine.md §1) and split into `CLOSED_COMPLETE` (a human gave
+ * session state machine. `CLOSED` is SUPERSEDED (never written by
+ * any live path — see
+ * and split into `CLOSED_COMPLETE` (a human gave
  * clinical feedback) / `CLOSED_INCOMPLETE` (timeout or manual close with no
  * sign-off). Kept in this list only because the gateway's `Object.values(
  * ConsultationStatus)` validation (admin-consultation.controller.ts

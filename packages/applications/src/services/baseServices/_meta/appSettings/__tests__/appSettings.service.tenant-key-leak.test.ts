@@ -17,14 +17,14 @@
  * `global-kv` lane).
  *
  * Two reachable failure shapes are pinned here:
- *   1. READ  — the platform row is soft-deleted (or never existed) and a tenant
+ *   1. READ — the platform row is soft-deleted (or never existed) and a tenant
  *              clone survives ⇒ tenant A's value governs the platform.
  *   2. WRITE — `EntitlementsService.writeSetting` / `RateLimitAdminService`
  *              resolve the row to UPDATE via `getFromCache(key)`; a tenant row in
  *              that slot means a platform admin write mutates a TENANT's row.
  *
  * Fix: the cache admits ONLY the reserved SYSTEM tenant (`00000000-…`) — the
- * SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1).
+ * SOLE platform-configuration tier (owner ruling 2026-08-20).
  * GLOBAL/default (`50000000-…`) is a CUSTOMER tenant, never a runtime tier, and
  * its rows are treated exactly like any other customer tenant's — never
  * admitted into this key-only cache. Customer-tenant rows never enter it.
@@ -114,7 +114,7 @@ describe('AppSettingsService — M4 tenant-keyed cache', () => {
   it('keeps the reserved SYSTEM tenant cacheable as the sole platform tier', async () => {
     // Platform rows are seeded under exactly one reserved id: SYSTEM (seed 11
     // `PLATFORM_SETTINGS`, 11a platform knobs, 11c consultation gates, 12
-    // rate-limit, 15 entitlements — TASK-763 OD-1 migrated all of these off
+    // rate-limit, 15 entitlements — migrated all of these off
     // GLOBAL/default). Scoping the cache must not drop it.
     repo.findAll.mockResolvedValue([
       buildSetting('enable-local-raw-capture', SYSTEM_TENANT_ID, 'true'),
@@ -129,7 +129,7 @@ describe('AppSettingsService — M4 tenant-keyed cache', () => {
   });
 
   it('never treats GLOBAL (the customer playground tenant) as platform-reserved, even for a key that is genuinely platform-wide elsewhere', async () => {
-    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // Owner ruling 2026-08-20: the runtime cascade is request
     // tenant → SYSTEM, full stop. GLOBAL (`50000000-…`) is an ordinary CUSTOMER
     // tenant and must never outrank — or substitute for — the SYSTEM row.
     repo.findAll.mockResolvedValue([buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID, '12')]);

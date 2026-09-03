@@ -41,7 +41,7 @@ type CompatRequest = {
   apiKey?: { tenantId?: string; userId?: string };
   user?: { id?: string; tenantId?: string };
   /**
-   * TASK-767 — the third credential class, attached to the Express request by
+   * the third credential class, attached to the Express request by
    * `UnifiedAuthGuard`'s service-account branch. Read here for the same reason
    * `apiKey` is: these routes are EXCLUDED from the `api/v1` global prefix, and
    * a CLS write made in the guard is not visible from a prefix-excluded route
@@ -70,10 +70,10 @@ const DEFAULT_AUDIO_CONFIG: AudioConfig = {
 @ApiTags('stt-compat')
 @ApiBearerAuth()
 @Controller('api/stt')
-// TASK-742: v1-compat STT session surface (start/switch/stop) — streaming
+// v1-compat STT session surface (start/switch/stop) — streaming
 // control, so the stream scope rather than the transcription-record one.
 @RequiredScopes('stt:stream:write')
-// TASK-767 — the standalone speech-to-text feature over the FROZEN v1 wire
+// the standalone speech-to-text feature over the FROZEN v1 wire
 // contract, reachable by the third credential class. Renamespaced from the
 // `stt:stream:write` above, so a machine identity reaches exactly the three
 // routes a scoped tenant key does — `start_session`, `switch`, `stop_session`
@@ -84,8 +84,8 @@ const DEFAULT_AUDIO_CONFIG: AudioConfig = {
 // SVC-NOTE: the compat WebSocket (`stt-compat.gateway.ts`, path `/stt`)
 // authenticates by API KEY ONLY — it calls `extractApiKeyFromWebSocket` and
 // knows nothing of a machine token. A service account can therefore drive the
-// compat session LIFECYCLE but not the compat audio socket. See the TASK-767
-// README §Unreachable.
+// compat session LIFECYCLE but not the compat audio socket. See the
+
 @RequiredSvcScopes('svc:stt:stream:write')
 export class SttCompatController {
   private readonly logger = new Logger(SttCompatController.name);
@@ -337,7 +337,7 @@ export class SttCompatController {
   @UseInterceptors(FileInterceptor('audio_file'))
   async stopSession(@UploadedFile() audioFile: Express.Multer.File | undefined, @Body() body: StopSessionRequest): Promise<StopSessionResponse> {
     if (this.sessionService && this.sessionBinding) {
-      // TASK-737: this compat route is API-key authenticated, so CLS is not a
+      // this compat route is API-key authenticated, so CLS is not a
       // reliable tenant source here (the text-compat trap). The session's own
       // binding — written by `start_session` and cleared one line below — is.
       const boundTenant = await this.sessionBinding.lookup(body.session_id).catch(() => null);

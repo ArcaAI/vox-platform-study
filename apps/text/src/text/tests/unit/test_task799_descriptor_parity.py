@@ -1,4 +1,4 @@
-"""TASK-799 A.3 — the TS producer and the Python consumer agree, mechanically.
+"""A.3 — the TS producer and the Python consumer agree, mechanically.
 
 Two things landed in `packages/applications` that `apps/text` was already
 written against: the `externalGuardrail` and `generation` views on

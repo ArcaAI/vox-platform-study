@@ -1,10 +1,9 @@
 /**
- * ConsultationEntity — session state machine (TASK-711)
+ * ConsultationEntity — session state machine
  *
  * Table-driven over the FULL Cartesian product of the 12 adopted
  * `ConsultationStatus` members (144 pairs), reproducing the legality matrix
- * from `docs/implementation/TASK-711-Session-State-Machine/state-machine.md`
- * §2 verbatim as test data (NOT imported from the implementation — this test
+ * verbatim as test data (NOT imported from the implementation — this test
  * is the independent source of truth the implementation must satisfy).
  *
  * Revised 2026-08-16 for the owner's Q1 decision: `CLOSED` is SUPERSEDED
@@ -13,7 +12,7 @@
  * / `CLOSED_INCOMPLETE`.
  *
  * `PAUSED` is deliberately absent from `ConsultationStatus` (see
- * state-machine.md §1) so it is out of the Cartesian product entirely.
+ * so it is out of the Cartesian product entirely.
  */
 import { describe, it, expect } from 'vitest';
 import { ConsultationEntity, IConsultationEntity } from '../generated/core/ConsultationEntity';
@@ -34,7 +33,7 @@ const ALL_STATUSES: ConsultationStatus[] = [
   ConsultationStatus.CLOSED_INCOMPLETE,
 ];
 
-// state-machine.md §2 — one row per legal, non-reflexive transition.
+// one row per legal, non-reflexive transition.
 const LEGAL_TRANSITIONS: Array<[ConsultationStatus, ConsultationStatus]> = [
   [ConsultationStatus.OPEN, ConsultationStatus.PRIMED],
   [ConsultationStatus.PRIMED, ConsultationStatus.RECORDING],

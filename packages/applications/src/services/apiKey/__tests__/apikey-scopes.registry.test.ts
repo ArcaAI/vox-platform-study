@@ -47,10 +47,10 @@ describe('API Key Scope Registry', () => {
       expect(API_KEY_SCOPE_REGISTRY['*']).toBeDefined();
     });
 
-    // TASK-722 Task 1 — the exposure plane's own scope family. Registered
+    // the exposure plane's own scope family. Registered
     // here so `@RequiredScopes(...)` (which validates at decoration time
     // against this registry) can reference them once the gateway controller
-    // lands. See docs/implementation/TASK-722-Exposure-V1/README.md §4 Task 1.
+    // lands. See Task 1.
     it('should contain workflow exposure scopes', () => {
       expect(API_KEY_SCOPE_REGISTRY['workflow:definition:read']).toBeDefined();
       expect(API_KEY_SCOPE_REGISTRY['workflow:run:write']).toBeDefined();
@@ -58,8 +58,8 @@ describe('API Key Scope Registry', () => {
       expect(API_KEY_SCOPE_REGISTRY['workflow:*']).toBeDefined();
     });
 
-    // TASK-758 — the business-plane (policy A1) scope family. 13 controllers
-    // that carried TASK-742's conservative `@ForbidApiKey()` default now
+    // the business-plane (policy A1) scope family. 13 controllers
+    // that carried conservative `@ForbidApiKey()` default now
     // declare a real scope, so the vocabulary has to exist before the
     // decorators can reference it (`@RequiredScopes` validates at DECORATION
     // time). Reuse was preferred wherever a scope already fitted:
@@ -100,7 +100,7 @@ describe('API Key Scope Registry', () => {
       expect(API_KEY_SCOPE_REGISTRY['user:settings:write'].implies.map(key)).toEqual(['update:UserSettings']);
     });
 
-    // TASK-756 T1 — the minting privilege ceiling reads `implies` for EVERY
+    // the minting privilege ceiling reads `implies` for EVERY
     // scope. A scope with no declared implication would sail through the
     // ceiling unchecked, so an undeclared/empty `implies` is a fail-OPEN hole,
     // not an omission. This test is the guard.
@@ -176,13 +176,13 @@ describe('API Key Scope Registry', () => {
       const scopeNames = scopes.map((s) => s.scope);
       expect(scopeNames).toContain('stt:transcription:read');
       expect(scopeNames).toContain('*');
-      // TASK-757: `admin:*` is RESERVED and therefore no longer advertised —
+      // `admin:*` is RESERVED and therefore no longer advertised
       // pinned in the reserved-scopes block below.
       expect(scopeNames).not.toContain('admin:*');
     });
   });
 
-  // TASK-756 T2 — wildcards resolve by EXPANSION, not by a literal permission
+  // wildcards resolve by EXPANSION, not by a literal permission
   // of their own. `'*'` and `'<ns>:*'` are registry members that grant every
   // scope beneath them at request time (`ApiKeyService.hasScope`), so the
   // ceiling must charge the minter for everything they unlock.
@@ -231,24 +231,24 @@ describe('API Key Scope Registry', () => {
   });
 
   /**
-   * TASK-757 (policy A2) — the `admin:*` and `webhook:*` families are RESERVED,
+   * (policy A2) — the `admin:*` and `webhook:*` families are RESERVED,
    * not deleted.
    *
    * `@ForbidApiKey()` on all 65 admin controllers makes every one of these
    * strings inert at request time, but the strings themselves stay in the
-   * registry: they are the vocabulary TASK-762's service-account plane reuses,
+   * registry: they are the vocabulary service-account plane reuses,
    * and deleting them would make every already-stored key carrying one fail
    * `isValidScope` and become unreadable. `reserved` marks them un-GRANTABLE
    * while keeping them KNOWN.
-   */
-  describe('reserved scopes (TASK-757, policy A2)', () => {
+ */
+  describe('reserved scopes (policy A2)', () => {
     const reservedKeys = () => Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => API_KEY_SCOPE_REGISTRY[s].reserved === true);
 
-    // 56 -> 57: TASK-810 adds `admin:document-template:manage` (the
+    // 56 -> 57: adds `admin:document-template:manage` (the
     // clinical-document SHAPE catalog). Reserved like every other `admin:*`
     // scope; the vocabulary exists here only so
     // SERVICE_ACCOUNT_SCOPE_REGISTRY can DERIVE its `svc:admin:` twin.
-    // 57 -> 56: TASK-815 removes `admin:department-agent:manage` with the
+    // 57 -> 56: removes `admin:department-agent:manage` with the
     // routes it gated. `admin:agent-promotion:manage` STAYS — the promotion
     // surface survives, now over workflow definitions, so only its `implies`
     // moved (to `manage:WorkflowDefinition`).
@@ -282,7 +282,7 @@ describe('API Key Scope Registry', () => {
         .filter((s) => s.startsWith('admin:') || s.startsWith('webhook:'))
         .sort();
       expect(reservedKeys().sort()).toEqual(derived);
-      // 60 -> 59: TASK-815 removes one admin scope (56 admin + 3 webhook).
+      // 60 -> 59: removes one admin scope (56 admin + 3 webhook).
       expect(reservedKeys().length).toBe(59);
     });
 
@@ -337,7 +337,7 @@ describe('API Key Scope Registry', () => {
       expect(grouped).toHaveProperty('Consultation');
       expect(grouped).toHaveProperty('Wildcard');
       expect(grouped).toHaveProperty('Workflow');
-      // TASK-757: 'Admin' is gone — every entry in it is reserved.
+      // 'Admin' is gone — every entry in it is reserved.
       expect(grouped).not.toHaveProperty('Admin');
     });
 

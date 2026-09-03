@@ -1,5 +1,5 @@
 /**
- * WorkflowExposureService unit tests (TASK-722 Task 5).
+ * WorkflowExposureService unit tests.
  *
  * Mocks the repository, harness gateway, workflow-run read-model service, config service,
  * S3 (claim-check) service, Redis cache (idempotency), entitlements, EventEmitter2 and
@@ -7,7 +7,7 @@
  * foreign-tenant/unpublished slug and for a foreign-tenant/mismatched-slug run; the
  * `WORKFLOW_EXPOSURE_ENABLED` kill-switch (R-1) hides the surface with a 404 when off;
  * `assertMeterQuota` runs before a run is started; a compiled config selecting a cloud provider
- * is allowed through (TASK-720 R-4, owner ruling 2026-08-20 — the former decision #6/R-8 gate is
+ * is allowed through (owner ruling 2026-08-20 — the former decision #6/R-8 gate is
  * removed, not defaulted on); the ownership-anchor `WorkflowRun` row is written BEFORE the
  * harness dispatcher is called; `Idempotency-Key` replay returns the prior response and
  * starts no second run; `broadcastSysEvent` fires on invoke/cancel.
@@ -179,7 +179,7 @@ describe('WorkflowExposureService', () => {
       expect(mockHarnessGateway.startWorkflowRun).not.toHaveBeenCalled();
     });
 
-    it('allows a compiled config selecting a cloud provider (TASK-720 R-4: the tenant carries the risk, BYOK)', async () => {
+    it('allows a compiled config selecting a cloud provider (R-4: the tenant carries the risk, BYOK)', async () => {
       mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(createMockDefinition({ compiledConfig: CLOUD_COMPILED_CONFIG }));
       const service = build('tenant-1');
 
@@ -311,7 +311,7 @@ describe('WorkflowExposureService', () => {
         stages: [{ stageIndex: 0 }],
         startedAt: '2026-08-16T00:00:00Z',
         endedAt: null,
-        // TASK-790 (M-2): the delivered-output read-back. Null here because this run's
+        // (M-2): the delivered-output read-back. Null here because this run's
         // read-model fixture carries none — an in-flight run has delivered nothing.
         resultRef: null,
       });

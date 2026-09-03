@@ -4,7 +4,7 @@ import type { GlobalPrefixOptions } from '@nestjs/common/interfaces';
 /**
  * The gateway's global HTTP prefix, extracted from `main.ts` so it can be
  * reused by anything that needs to mirror the LIVE route surface without
- * booting an HTTP listener (e.g. `scripts/emit-openapi.ts`, TASK-773 B1).
+ * booting an HTTP listener (e.g. `scripts/emit-openapi.ts`).
  *
  * `main.ts` calls `app.setGlobalPrefix(API_GLOBAL_PREFIX, API_GLOBAL_PREFIX_OPTIONS)`
  * with these exact values — keep this file and `main.ts` in sync by import,

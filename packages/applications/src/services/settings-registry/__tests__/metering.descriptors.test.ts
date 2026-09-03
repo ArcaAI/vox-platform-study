@@ -1,6 +1,6 @@
 // Metering descriptor contract tests.
 //
-// Handoff (ws-b-contract.md §11): the outbox-drainer schedule
+// Handoff: the outbox-drainer schedule
 // (`metering.outbox.drain.enabled` / `.intervalSeconds`) was live and
 // consumed (`usage-outbox.processor.ts#UsageOutboxScheduler.getConfig`)
 // but never cataloged. `metering.reconcile.enabled` mirrors

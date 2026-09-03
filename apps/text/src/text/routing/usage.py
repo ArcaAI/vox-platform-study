@@ -1,6 +1,6 @@
 """Token-usage and stats coercion for a provider result.
 
-Moved verbatim from `api/endpoints/generate.py` (TASK-818 Wave 0.4). These are
+Moved verbatim from `api/endpoints/generate.py` ( Wave 0.4). These are
 pure functions over a provider's return value: nothing here performs I/O, reads
 configuration or touches request state.
 """

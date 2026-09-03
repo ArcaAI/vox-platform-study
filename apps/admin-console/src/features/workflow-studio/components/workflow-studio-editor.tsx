@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `WorkflowStudioEditor` (TASK-719 Task 16) — the inner, store-bound editor body. Mounted
+ * `WorkflowStudioEditor` — the inner, store-bound editor body. Mounted
  * ONLY once the definition + registry queries have resolved (the outer screen gates on
  * loading/error), so `GraphStoreProvider` hydrates from real data at creation, not empty state.
  *
@@ -138,7 +138,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   useEffect(() => {
     if (readOnly || !dirty) return;
     autosave.schedule({ graph: toWorkflowGraph(nodes, edges) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `autosave.schedule` is a stable useCallback; including it would not change behavior
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `autosave.schedule()` is a stable useCallback; including it would not change behavior
   }, [nodes, edges, dirty, readOnly]);
 
   // Name/description autosave — same debounced `schedule()` the graph uses (merges into the
@@ -154,7 +154,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     if (!readOnly) autosave.schedule({ description: next });
   }
 
-  // Unsaved-changes guard (design.md §Data flow) — combines the store's graph-shape `dirty` with
+  // Unsaved-changes guard ( flow) — combines the store's graph-shape `dirty` with
   // the local metadata-form `dirty` flag; a read-only (published) row is never dirty.
   useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty));
 
@@ -171,7 +171,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     void setUrlView(mode);
   }
 
-  // "Create new version from this" (design.md §Plane 1: "published rows immutable — edits create
+  // "Create new version from this" ( 1: "published rows immutable — edits create
   // versions") — a PUBLISHED/DEPRECATED row offers no edit affordance; this is the branch action
   // instead. Clones the frozen graph into a fresh DRAFT in the same (tenantId, slug) lineage.
   async function handleCreateNewVersion() {
@@ -441,10 +441,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             readOnly={readOnly}
           />
           <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
-          {/* DD-11 (TASK-810) — the "new version available" affordance, in the
+          {/*
+ DD-11 — the "new version available" affordance, in the
               editor an admin already has open. An out-of-band prompt edit moves
               no node's pin by design; without this rail that guarantee is
-              invisible and the two-path design decays into "nothing updates". */}
+              invisible and the two-path design decays into "nothing updates". 
+*/}
           <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
         </aside>
       </div>

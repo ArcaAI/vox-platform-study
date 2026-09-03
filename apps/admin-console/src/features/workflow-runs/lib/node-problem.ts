@@ -8,7 +8,7 @@ import type { RunNodeRollup, TrajectoryStepStatus, WorkflowNodeEventPayload } fr
  * findings), so there is no colored border for a successful node without a
  * `packages/ui` change; an OK/STARTED/SKIPPED node keeps the canvas's neutral
  * border and relies on `NodeRunBadge`'s colored, icon+text status pill instead
- * (rule 11 §7: never color alone — see the README's note on this tradeoff).
+ * (rule 11 §7: never color alone — 's note on this tradeoff).
  */
 export function problemForStatus(status: TrajectoryStepStatus, errorCode: string | null, reason?: string): WorkflowCanvasNodeProblem | undefined {
   const upper = status.toUpperCase();

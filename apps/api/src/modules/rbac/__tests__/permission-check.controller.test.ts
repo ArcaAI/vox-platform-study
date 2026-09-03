@@ -1,7 +1,7 @@
 /**
  * PermissionCheckController + UserPermissionCheckController unit tests.
  *
- * These two are the TASK-760 split of the retired `rbac/check` RPC. Route
+ * These two are the split of the retired `rbac/check` RPC. Route
  * ORDER is load-bearing (pinned separately by
  * `user/controllers/__tests__/users-me-route-precedence.test.ts`); this file
  * covers the controllers' own authorization logic: a caller may always check

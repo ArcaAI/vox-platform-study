@@ -205,7 +205,7 @@ async def test_mismatched_scorer_output_fails_closed() -> None:
 
 
 def test_no_default_scorer_factory_exists() -> None:
-    """TASK-735 Phase 6 — guardrail loads nothing; `apps/nlp` hosts the weights."""
+    """guardrail loads nothing; `apps/nlp` hosts the weights."""
     import guardrail.services.groundedness_nli as module
 
     assert not hasattr(module, "load_default_scorer")

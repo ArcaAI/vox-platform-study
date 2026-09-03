@@ -174,7 +174,7 @@ class TestReadChunksBlocking:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# The replay buffer — TASK-818 Lane B
+# The replay buffer
 # ═══════════════════════════════════════════════════════════════════════
 #
 # The SSE endpoint no longer polls `read_chunks_blocking`: it subscribes to a

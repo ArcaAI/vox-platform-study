@@ -1,4 +1,4 @@
--- TASK-815 — retire `DepartmentAgent`.
+-- retire `DepartmentAgent`.
 --
 -- A prompt template's binding to a workflow now lives on the NODE that
 -- references it (`WorkflowDefinition.graph`), so there is no per-department

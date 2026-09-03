@@ -36,7 +36,7 @@ export class WorkflowDefinitionDtoMapper {
     dto.registryChecksum = entity.registryChecksum ?? null;
     dto.validationReport = (entity.validationReport as Record<string, unknown> | null) ?? null;
 
-    // TASK-790 W2 (TASK-789 H-2). `node-registry.ts` documents that a stamped `registryChecksum`
+    // `node-registry.ts` documents that a stamped `registryChecksum`
     // "is compared against this at read time to trigger NEEDS_REVIEW re-validation" — the
     // comparison was never implemented, so `needsReview` was never assigned `true` anywhere, and
     // the seeded platform-default row (stamped over a 7-entry registry, now 30) has been silently
@@ -85,7 +85,7 @@ export class WorkflowDefinitionDtoMapper {
     dto.entitlementKey = descriptor.entitlementKey;
     dto.configSchema = descriptor.configSchema ?? null;
 
-    // TASK-809 task 11. The contract package grew eight fields describing what a node may be
+    // task 11. The contract package grew eight fields describing what a node may be
     // WIRED TO, when it runs, and what must hold before a graph containing it publishes — and
     // this field-by-field projection dropped every one of them silently. `inputs`/`outputs` are
     // the ones with teeth: without them the canvas cannot implement `isValidConnection` at all,
@@ -112,7 +112,7 @@ function toPortResponse(port: WorkflowPortDescriptor): WorkflowNodePortResponse 
   dto.primitive = port.primitive;
   dto.required = port.required;
   dto.multiple = port.multiple;
-  // TASK-809 OD-15. Undefined on a `control` port — ordering carries no payload, so it names no
+  // Undefined on a `control` port — ordering carries no payload, so it names no
   // runtime output key — and on every INPUT port, which is bound by its own `toPort`.
   dto.outputKey = port.outputKey;
   return dto;

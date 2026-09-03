@@ -4,7 +4,7 @@ import { ConsentPurpose } from '@arcaai/domains';
 import { PaginatedQuery } from '../../../common';
 
 /**
- * Lifecycle filter for the consent register (TASK-805).
+ * Lifecycle filter for the consent register.
  *
  * Deliberately NOT `resourceStatus` — a consent grant's meaningful lifecycle
  * lives in `revokedAt`/`expiresAt`, not in the soft-delete column. `ACTIVE`

@@ -83,14 +83,14 @@ describe('ClsTenantContextProvider', () => {
 
   // The pre- SUPER_ADMIN role is retired: its literal must NOT
   // elevate at the DB-extension layer. Uses the seed placeholder name
-  // ('SUPER_ADMIN__RETIRED_TASK_417') since  renamed the live
+  // ('SUPER_ADMIN__RETIRED') since  renamed the live
   // SUPER_ADMIN role to SUPER_ADMIN, which would otherwise collide in name
   // (not id) with this unrelated retired role.
   it('isSuperAdmin is FALSE for the retired SUPER_ADMIN role literal', () => {
     const provider = new ClsTenantContextProvider(
       makeCls({
         active: true,
-        store: { tenantId: 't', user: { roles: ['SUPER_ADMIN__RETIRED_TASK_417', 'User'] } },
+        store: { tenantId: 't', user: { roles: ['SUPER_ADMIN__RETIRED', 'User'] } },
       }),
     );
     expect(provider.isSuperAdmin()).toBe(false);

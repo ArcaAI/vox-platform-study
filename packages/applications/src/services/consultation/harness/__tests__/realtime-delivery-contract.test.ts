@@ -1,7 +1,7 @@
 /**
- * TASK-795 RC-1 / RC-2 — the realtime-delivery wire contract, gateway side.
+ * / RC-2 — the realtime-delivery wire contract, gateway side.
  *
- * TASK-796 found that the harness cannot deliver clinical summary text to the
+ * found that the harness cannot deliver clinical summary text to the
  * gateway at all: of the 18 `/internal/harness/*` routes, none accepts summary
  * text. The only text-accepting write is `.../draft`, which creates a
  * `RAW_SUMMARY` ContextItem — the FINAL note, the wrong kind, and precisely the

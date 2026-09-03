@@ -1,5 +1,5 @@
 /**
- * TASK-810 / OD-13 — `DocumentTemplateVersion` immutability guard, proven
+ * / OD-13 — `DocumentTemplateVersion` immutability guard, proven
  * against live Postgres.
  *
  * The migration `…_task_810_document_template_catalog` installs
@@ -8,7 +8,7 @@
  * template shape cannot be rewritten underneath the consultations pinned to it.
  * The `ConsultationContextSchemaVersion` precedent this catalog copies has NO
  * such guard — its version rows are immutable by CONVENTION only (the
- * repository exposes `.create()`/`.find*()` and nothing else). OD-13 says
+ * repository exposes `.create()`/`.find*` and nothing else). OD-13 says
  * convention is not enough here, so this suite proves the DB half actually
  * fires rather than merely existing in a migration file.
  *
@@ -54,11 +54,11 @@ let available = false;
  */
 function guardDdlFromMigration(): string {
   const dir = readdirSync(MIGRATIONS_DIR).find((name) => name.endsWith('_task_810_document_template_catalog'));
-  if (!dir) throw new Error('TASK-810 migration folder not found — was the migration renamed or deleted?');
+  if (!dir) throw new Error('migration folder not found — was the migration renamed or deleted?');
   const sql = readFileSync(join(MIGRATIONS_DIR, dir, 'migration.sql'), 'utf-8');
   const start = sql.indexOf('CREATE OR REPLACE FUNCTION "core"."document_template_version_immutability_guard"');
   if (start < 0) {
-    throw new Error('The OD-13 immutability guard is missing from the TASK-810 migration.');
+    throw new Error('The OD-13 immutability guard is missing from the migration.');
   }
   return sql.slice(start);
 }
@@ -114,7 +114,7 @@ afterAll(async () => {
   }
 });
 
-describe('TASK-810 OD-13 — DocumentTemplateVersion immutability guard', () => {
+describe(' OD-13 — DocumentTemplateVersion immutability guard', () => {
   it('permits INSERT of a new version row (publishing mints, it does not edit)', (ctx) => {
     if (!available) return ctx.skip();
     return (async () => {

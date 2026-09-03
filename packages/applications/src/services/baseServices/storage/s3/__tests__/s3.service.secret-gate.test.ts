@@ -56,7 +56,7 @@ const appSettingsWithoutCredentials = (): IAppSettingsService => {
 
 const secretsMock = (values: Record<string, string | undefined>) => ({
   getSecretSync: vi.fn((key: string) => values[key]),
-  // The readiness gate resolves through the ASYNC `getSecretOptional` (TASK-772
+  // The readiness gate resolves through the ASYNC `getSecretOptional`
   // change A) — `getSecretSync` is cache-only and returns undefined on any miss,
   // which left the gate permanently false. This mock stubbed only the sync form,
   // so after that change the gate resolved no credentials and init failed with

@@ -2,7 +2,7 @@
  * JSON-schema lock for the v1-compatible TEXT summary shim contracts.
  *
  * Zod schemas mirroring the FROZEN v1 shapes
- * (TEXT_Summary_Endpoints.md §3.2/§3.3/§4.2). They are the drift guard for the
+ * (TEXT_Summary_Endpoints.md They are the drift guard for the
  * gateway compat endpoints:
  *   - `tests/contracts/text-compat.contract.test.ts` validates the golden
  *     fixtures against them (hermetic);

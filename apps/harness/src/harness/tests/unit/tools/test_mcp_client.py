@@ -126,7 +126,7 @@ class TestEnsureMcpArgsSafe:
 # ---------------------------------------------------------------------------
 
 
-# TASK-846 D-3 — `base_url` is now subject to the SSRF egress guard, which fails CLOSED.
+# `base_url` is now subject to the SSRF egress guard, which fails CLOSED.
 # These retry cases therefore have to name an allowed host and a stub resolver; without
 # them every call is (correctly) refused before the retry loop is ever reached. The guard
 # itself is pinned by `test_egress_guard.py` and `test_mcp_client_egress.py`.

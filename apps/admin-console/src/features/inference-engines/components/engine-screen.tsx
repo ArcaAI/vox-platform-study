@@ -90,10 +90,10 @@ function EngineStats({ probe, entries, isLoading }: { probe: DiscoveryProbe | un
       <StatCard label="Probe latency" value={isLoading ? null : typeof probe?.latencyMs === 'number' ? `${probe.latencyMs} ms` : '—'} isLoading={isLoading} />
       <StatCard label="Models reported" value={isLoading ? null : reachable ? `${loaded}/${entries.length} loaded` : '—'} isLoading={isLoading} />
       {/*
-        §8.4's CPU-fallback tell. There is NO honest value to put here — the
+        's CPU-fallback tell. There is NO honest value to put here — the
         accelerator in use is not on any HTTP surface — so the tile says so
         rather than showing a weights format and letting it be misread as one.
-      */}
+*/}
       <StatCard label="Active runtime" value={isLoading ? null : 'Not determinable'} hint="Not exposed over HTTP" isLoading={isLoading} />
     </div>
   );

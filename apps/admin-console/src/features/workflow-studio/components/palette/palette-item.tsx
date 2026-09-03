@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * One registry node type in the palette rail (TASK-719 Task 12). A real `<button>` — adding a
+ * One registry node type in the palette rail. A real `<button>` — adding a
  * node must work without dragging (WCAG 2.5.7); drag-from-palette is an enhancement layered on
  * top by the canvas composite, never the only path.
  */

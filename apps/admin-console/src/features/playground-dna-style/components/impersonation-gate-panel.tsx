@@ -67,7 +67,7 @@ export function ImpersonationGatePanel({ session, gated }: { session: SafeSessio
         <Alert>
           <IconAlertTriangle aria-hidden />
           <AlertTitle>Generate &amp; DNA toggle return 403 unless acting as a doctor</AlertTitle>
-          <AlertDescription>This gate is a designed state (assertActingAsDoctor, TASK-331 doc-07 F1) — not a failure.</AlertDescription>
+          <AlertDescription>This gate is a designed state (assertActingAsDoctor, doc-07 F1) — not a failure.</AlertDescription>
         </Alert>
       </CardContent>
     </Card>

@@ -1,13 +1,13 @@
 /**
- * ServiceAccountEntity + ServiceAccountFactory unit tests (TASK-762 §5.1).
+ * ServiceAccountEntity + ServiceAccountFactory unit tests
  *
  * The invariants that earn their own suite are the two that make this a
  * SEPARATE credential class rather than a second API key:
  *
  *  1. Every scope must live in the `svc:*` namespace. The `admin:*` vocabulary
- *     TASK-757 puts in reserve belongs to TENANT API KEYS; if a service account
+ * puts in reserve belongs to TENANT API KEYS; if a service account
  *     could carry it, the two classes would share a scope space and the
- *     TASK-708 §6 non-mixing ruling would be satisfied only by convention.
+ * non-mixing ruling would be satisfied only by convention.
  *  2. No secret material may ever reach the entity. `credentialsRef` is a VAULT
  *     PATH and `secretVerifier` is a one-way HMAC — a plaintext secret on this
  *     row would be exactly the "credential in a DB column" that

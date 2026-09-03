@@ -185,13 +185,13 @@ export class LiveSummaryStatsDto {
 
   @ApiPropertyOptional({
     description:
-      "The AiTaskDefault routing key this flush's TEXT call resolved through (TASK-552 Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
+      "The AiTaskDefault routing key this flush's TEXT call resolved through (Lane B) — 'text.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
   })
   task_key?: string | null;
 
   @ApiPropertyOptional({
     description:
-      "TASK-635 — whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `text.live` AiTaskDefault ('task-default').",
+      "whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `text.live` AiTaskDefault ('task-default').",
   })
   selection_source?: string | null;
 }
@@ -237,7 +237,7 @@ export class LiveSummaryMetadataDto {
   stats?: LiveSummaryStatsDto | null;
 
   @ApiPropertyOptional({
-    description: 'TASK-635 — the agent identity frozen for this session. Additive: absent on the code-default tier and on every pre-TASK-635 client.',
+    description: 'the agent identity frozen for this session. Additive: absent on the code-default tier and on every pre-existing client.',
     type: LiveSummaryAgentDto,
   })
   agent?: LiveSummaryAgentDto;
@@ -265,7 +265,7 @@ export class LiveSummaryEventDto {
   entities: LiveSummaryEntityDto[];
 
   /**
-   * Lane N (TASK-815 §14a) — the IMPORTANT FINDINGS a tenant's own instruction picked out of this
+   * Lane N — the IMPORTANT FINDINGS a tenant's own instruction picked out of this
    * consultation, grounded to `runningSummary` exactly as `entities` are.
    *
    * A SEPARATE array rather than a flag on `entities`, because the two are different claims. An
@@ -315,7 +315,7 @@ export class LiveSummaryEventDto {
   textFailed?: boolean;
 
   /**
-   * TASK-795 RC-1 — WHICH engine produced this snapshot.
+   * WHICH engine produced this snapshot.
    *
    * The plane now has two possible publishers: this service's own flush loop
    * (Substrate A's live documentation layer) and a tenant-authored interpreter
@@ -333,13 +333,13 @@ export class LiveSummaryEventDto {
   })
   source?: string;
 
-  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — the interpreter node that produced this snapshot, e.g. `consultation.realtimeSummary`' })
+  @ApiPropertyOptional({ description: 'RC-1 — the interpreter node that produced this snapshot, e.g. `consultation.realtimeSummary`' })
   nodeType?: string;
 
-  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — 1-based position of this flush within the interpreter run' })
+  @ApiPropertyOptional({ description: 'RC-1 — 1-based position of this flush within the interpreter run' })
   ordinal?: number;
 
-  @ApiPropertyOptional({ description: 'TASK-795 RC-1 — total flushes expected in the interpreter run, when known' })
+  @ApiPropertyOptional({ description: 'RC-1 — total flushes expected in the interpreter run, when known' })
   total?: number;
 
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })

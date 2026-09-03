@@ -44,14 +44,14 @@ class NlpClient:
     ) -> list[NEREntity]:
         """Extract medical entities from ``text`` and map them to ``NEREntity``.
 
-        ``tenant_id`` is MANDATORY (TASK-737): NER model selection is per-tenant
+        tenant_id is MANDATORY : NER model selection is per-tenant
         (`nlp.ner` `AiTaskDefault`), so a dropped tenant silently runs someone
         else's model choice. Tenant-less internal work must declare itself with a
         ``tenantless:<reason>`` marker instead of omitting the header.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
-                "nlp classify_tokens requires a tenant_id (TASK-737): pass the "
+                "nlp classify_tokens requires a tenant_id : pass the "
                 "consultation's tenant, or an explicit 'tenantless:<reason>' marker."
             )
         url = f"{self._base_url}/api/v1/classify/tokens"

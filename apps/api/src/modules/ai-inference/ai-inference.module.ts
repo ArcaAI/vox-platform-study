@@ -23,7 +23,7 @@ import { SafetyCheckController } from './safety-check.controller';
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
  * `UsageLedgerServiceModule` supplies `IUsageLedgerService` for the
  * Playground `ner.extract` usage-ledger emission.
- * `TenantNlpTaskInstructionsServiceModule` (TASK-729) supplies
+ * `TenantNlpTaskInstructionsServiceModule` supplies
  * `ITenantNlpTaskInstructionsService` so `/ai/nlp/topic`/`/ai/nlp/intent` can
  * resolve the tenant's topic/intent instruction content before proxying.
  */

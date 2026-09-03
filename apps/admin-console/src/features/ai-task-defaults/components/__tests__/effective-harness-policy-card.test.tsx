@@ -63,7 +63,7 @@ describe('EffectiveHarnessPolicyCard', () => {
     expect(screen.getByText('Safety guardrail')).toBeDefined();
     expect(screen.getAllByText('tenant').length).toBeGreaterThan(0);
     // TENANT_LOCKED_POLICY_KEYS count: 3 safety/PHI toggles + textProvider/textModel
-    // (TASK-740 D-3). Safety provider/model left with their columns in TASK-816 Phase 4.
+    // Safety provider/model left with their columns in
     expect(screen.getAllByText('super admin').length).toBe(5);
   });
 

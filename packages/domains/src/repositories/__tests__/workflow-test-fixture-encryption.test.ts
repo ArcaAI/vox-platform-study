@@ -1,4 +1,4 @@
-// TASK-721 R4 — `WorkflowTestFixture.input` is Vault-Transit encrypted, mirroring
+// `WorkflowTestFixture.input` is Vault-Transit encrypted, mirroring
 // the GoldenCase treatment of `transcript`/`referenceNote`.
 //
 // Same three guarantees the GoldenCase pattern gives (see
@@ -48,7 +48,7 @@ function repoOf<T>(proto: T): T {
 
 const SYNTHETIC_INPUT = { transcript: 'Clinician: how have you been?', speakerCount: 2 };
 
-describe('WorkflowTestFixtureRepository encryption (TASK-721 R4)', () => {
+describe('WorkflowTestFixtureRepository encryption (R4)', () => {
   it('encrypts the JSON input, round-trips it, and stamps the Transit key version', async () => {
     const secrets = fakeSecrets();
     const repo = repoOf(WorkflowTestFixtureRepository.prototype);
@@ -105,7 +105,7 @@ describe('WorkflowTestFixtureRepository encryption (TASK-721 R4)', () => {
   });
 });
 
-describe('WorkflowTestFixture decrypt-on-read wiring (TASK-721 R4)', () => {
+describe('WorkflowTestFixture decrypt-on-read wiring (R4)', () => {
   it('is registered in the global PHI ciphertext registry as a JSON field', () => {
     expect(PHI_CIPHERTEXT_FIELDS.encryptedInput).toEqual({ plaintext: 'input', json: true });
     expect(PHI_MODEL_CIPHERTEXT.workflowTestFixture).toEqual(['encryptedInput']);

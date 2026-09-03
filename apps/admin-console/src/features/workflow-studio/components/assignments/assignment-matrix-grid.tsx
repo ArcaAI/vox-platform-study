@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Assignment matrix table (TASK-733 half (a) Task 6). Rows = a synthetic
+ * Assignment matrix table ( half (a) Task 6). Rows = a synthetic
  * "Tenant default" row + the tenant's departments; columns = the code-owned
  * palettes (never hard-coded — derived from the node registry by the screen).
  * Follows `features/rbac/components/permission-matrix.tsx`'s shape for a

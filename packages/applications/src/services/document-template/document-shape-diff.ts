@@ -2,7 +2,7 @@ import { canonicalJson, computeDefinitionChecksum } from '../consultation-contex
 
 /**
  * Classify a candidate document SHAPE against the currently published one
- * (TASK-810 Task 6), and compute the checksum that drives idempotent republish.
+ * and compute the checksum that drives idempotent republish.
  *
  * Deliberately a thin sibling of `definition-diff.ts` rather than a copy of it:
  * the CANONICALISATION and the CHECKSUM come from that module unchanged, so
@@ -13,8 +13,8 @@ import { canonicalJson, computeDefinitionChecksum } from '../consultation-contex
  * | Classification | Meaning | Publish behaviour |
  * |---|---|---|
  * | `IDENTICAL` | same canonical bytes | no version row, pin unmoved |
- * | `ADDITIVE`  | anything already reading this document keeps working | publishes with no acknowledgement |
- * | `BREAKING`  | a section it relied on is gone, renamed, re-formed, or newly mandatory | refused unless the admin passes `allowBreakingChange` |
+ * | `ADDITIVE` | anything already reading this document keeps working | publishes with no acknowledgement |
+ * | `BREAKING` | a section it relied on is gone, renamed, re-formed, or newly mandatory | refused unless the admin passes `allowBreakingChange` |
  *
  * ## What counts as breaking for a DOCUMENT, and why
  *

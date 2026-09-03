@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * `DefinitionMetadataForm` (TASK-719 Task 15 remainder — README §7 "Honesty gap: only the
+ * `DefinitionMetadataForm` — "Honesty gap: only the
  * `graph` field autosaves in this pass"). A SHORT Dialog (rule 11 §1: dialogs stay for short
  * confirmations — two fields qualifies) over the definition's `name`/`description`. Controlled
- * state only, no `react-hook-form` (README §2.5). Deliberately fires `onNameChange`/
+ * state only, no `react-hook-form` ( Deliberately fires `onNameChange`/
  * `onDescriptionChange` on every keystroke rather than gating behind a Save button — the caller
  * (`WorkflowStudioEditor`) feeds those straight into the SAME debounced `useAutosave.schedule`
  * the graph uses, so name/description edits autosave exactly like graph edits do.

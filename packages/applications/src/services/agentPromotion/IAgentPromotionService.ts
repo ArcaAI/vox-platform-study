@@ -4,7 +4,7 @@ import { AgentPromotionResponse, PaginatedAgentPromotionResponse, PromoteWorkflo
 export const IAgentPromotionService = Symbol('IAgentPromotionService');
 
 /**
- * Workflow promotion between tenants (TASK-815 renamed the promotable; the
+ * Workflow promotion between tenants ( renamed the promotable; the
  * service and its records keep their names because the `AgentPromotion` table
  * is WORM and pre-dates the change).
  *

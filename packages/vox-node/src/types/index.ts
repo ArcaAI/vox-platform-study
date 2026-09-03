@@ -52,7 +52,7 @@ export type {
   ContextPrimitive,
 } from './consultation-context-schema';
 
-/** Workflow invocation plane (TASK-850) — `hope.workflows.*` and `hope.consultations.workflows.*`. */
+/** Workflow invocation plane — `hope.workflows.*` and `hope.consultations.workflows.*`. */
 export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './workflow';
 
 export type {

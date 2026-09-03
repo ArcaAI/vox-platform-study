@@ -43,7 +43,7 @@ function buildController(overrides: { userId?: string | null; consultation?: unk
     empty, // summaryService
     empty, // chainSummaryService
     empty, // consultationJobService
-    empty, // noteGenerationService — TASK-732
+    empty, // noteGenerationService
     empty, // timelineService
     cls as never, // cls
     policyEngine as never, // policyEngine

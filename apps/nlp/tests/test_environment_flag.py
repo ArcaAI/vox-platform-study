@@ -4,7 +4,6 @@ Prior to this fix, ``is_production()`` read the bare ``ENVIRONMENT`` env var
 while ``NLPServiceConfig.environment`` (used by observability) read the typed
 ``NLP_ENVIRONMENT`` var. An operator who set only ``NLP_ENVIRONMENT=production``
 (per docs/05-configuration.md) would not get ``/docs``/``/redoc`` disabled.
-See docs/implementation/TASK-582-Python-Service-Env-Template-Hygiene/README.md
 for how this was found.
 """
 

@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Studio assignment-matrix screen (TASK-733 half (a) Task 6, tier 30-49). WHICH
+ * Studio assignment-matrix screen ( half (a) Task 6, tier 30-49). WHICH
  * workflow definition governs a tenant/department for a palette — rows are
  * departments (+ a synthetic tenant-default row), columns are the code-owned
  * palettes, and each cell shows the resolved definition plus its source
  * (explicit / inherited-from-tenant / inherited-from-platform-default — never
  * by color alone). The Figma design gate is waived for this screen (owner
- * decision, TASK-733 Task 6) — built directly against the existing design
+ * decision) — built directly against the existing design
  * system, per rule 12's "component-first" latitude for non-visual/backend-first
  * work generalized to this backend-first screen.
  *

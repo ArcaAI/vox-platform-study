@@ -8,23 +8,23 @@
 #   postgres, redis, minio, qdrant, vault (+init), temporal (+ui), hope-reranker
 #
 # USAGE:
-#   pnpm infra:dev:up                # base tier (vault+temporal+rag)
-#   pnpm infra:dev:up -- -o          # base + Prometheus/Grafana
-#   pnpm infra:dev:up -- -e          # base + inference (vLLM, llama.cpp, TEI embed)
-#   pnpm infra:dev:up -- -o -e       # combine flags
-#   pnpm infra:dev:down              # tear down ALL known profiles (nothing lingers)
-#   pnpm infra:dev:restart           # down then up, keeping volumes
-#   pnpm infra:dev:status            # compose ps (all profiles)
-#   pnpm infra:dev:logs              # compose logs -f
-#   pnpm infra:dev:validate          # container + health probe
+#   pnpm infra:dev:up # base tier (vault+temporal+rag)
+#   pnpm infra:dev:up -- -o # base + Prometheus/Grafana
+#   pnpm infra:dev:up -- -e # base + inference (vLLM, llama.cpp, TEI embed)
+#   pnpm infra:dev:up -- -o -e # combine flags
+#   pnpm infra:dev:down # tear down ALL known profiles (nothing lingers)
+#   pnpm infra:dev:restart # down then up, keeping volumes
+#   pnpm infra:dev:status # compose ps (all profiles)
+#   pnpm infra:dev:logs # compose logs -f
+#   pnpm infra:dev:validate # container + health probe
 #   ./scripts/dev-infra.sh up --print
 #
 # Flags:
-#   -o / --observability   add prometheus profile
-#   -e / --inference       add inference profile
-#   -m / --mlflow          add mlflow profile (model registry, TASK-822)
-#   --rag                  no-op (rag is default; kept for compat)
-#   --print                print the compose command only
+#   -o / --observability add prometheus profile
+#   -e / --inference add inference profile
+# m / --mlflow add mlflow profile (model registry)
+#   --rag no-op (rag is default; kept for compat)
+#   --print print the compose command only
 #
 # This script is now the ONLY dev-infra entrypoint. The former
 # start-infra.sh (pnpm docker:dev:*) started core services only — no Temporal,
@@ -169,7 +169,7 @@ ALL_PROFILES=(
     --profile prometheus
     --profile observability
     --profile inference
-    # TASK-822. Opt-in on `up` (-m), but ALWAYS in the down/status/logs set —
+    # Opt-in on `up` (-m), but ALWAYS in the down/status/logs set
     # omit it here and `infra:dev:down` silently leaves hope-mlflow and its
     # migrate one-shot running, which is exactly the orphan class this array exists to prevent.
     --profile mlflow
@@ -276,7 +276,7 @@ case "$ACTION" in
         # Tear down EVERY declared local-dev service.
         # Two compose project names exist:
         #   hope-infra-dev — combined core+dev files (this script; setup:dev, stack:dev)
-        #   hope-infra     — core file alone, created by the removed start-infra.sh
+        #   hope-infra — core file alone, created by the removed start-infra.sh
         # Both must be stopped or containers linger under the other project.
         if [ "$PRINT" = "1" ]; then
             echo "docker compose --env-file $ENV_FILE ${ALL_PROFILES[*]} -f $COMPOSE_CORE -f $COMPOSE_DEV down --remove-orphans"

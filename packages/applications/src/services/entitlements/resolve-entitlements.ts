@@ -69,12 +69,12 @@ export interface ResolvedFeatures {
    */
   platformDefaultCredential: boolean;
   /**
-   * May this tenant publish an `stt`-palette `WorkflowDefinition` (TASK-724)? Display-only like
+   * May this tenant publish an `stt`-palette `WorkflowDefinition` ? Display-only like
    * `dnaReports`/`voiceEnrollment`/`monitoringAccess` — checked once, at
    * `WorkflowDefinitionService.publish()`, never at runtime (an already-published workflow keeps
    * running its compiled `AsrPipeline` even if this flips off later — "in-flight runs pin their
    * version" per design.md's Data Flow section). Deliberately `true` on every seeded plan
-   * (TASK-724 decision, `contracts/palette.md` §Entitlement gate): STT pipeline authoring is a
+   * ( decision, `contracts/palette.md` gate): STT pipeline authoring is a
    * core platform capability, not a premium add-on — every plan already gets
    * `maxAsrPipelines > 0`. No DB column backs this yet (`PlanEntitlementInput`/
    * `TenantEntitlementOverrideInput` below simply lack the field) — a follow-up ticket adds one
@@ -83,7 +83,7 @@ export interface ResolvedFeatures {
    */
   paletteStt: boolean;
   /**
-   * TASK-705 — may this tenant run the HARNESS AGENTIC LOOP
+   * may this tenant run the HARNESS AGENTIC LOOP
    * (`ConsultationLoopWorkflow`: the multi-agent drain, per-agent timeout
    * isolation and adjudication layer that sits above live documentation)?
    *
@@ -110,7 +110,7 @@ export interface ResolvedEntitlements {
   rateLimitTier: string;
   /** Per-tenant absolute rate override (Q7); `null` = use the tier. */
   rateLimitPerMinute: number | null;
-  /** TASK-785 — the window paired with an absolute count; `null` = use the tier's. */
+  /** the window paired with an absolute count; `null` = use the tier's. */
   rateLimitWindowMs: number | null;
 }
 
@@ -141,14 +141,16 @@ export interface PlanEntitlementInput {
   featureVoiceEnrollment?: boolean;
   featureMonitoringAccess?: boolean;
   featurePlatformDefaultCredential?: boolean;
-  /** No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment (TASK-724). Always
-   *  `undefined` on a real Prisma row today; kept optional so a future column is a pure addition. */
+  /**
+   * No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment. Always
+   *  `undefined` on a real Prisma row today; kept optional so a future column is a pure addition.
+   */
   featurePaletteStt?: boolean;
-  /** TASK-705 — does this plan include the harness agentic loop? */
+  /** does this plan include the harness agentic loop? */
   featureAgenticLoop?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
-  /** TASK-785 — an ABSOLUTE per-plan limit; `null` = express the limit via `rateLimitTier`. */
+  /** an ABSOLUTE per-plan limit; `null` = express the limit via `rateLimitTier`. */
   rateLimitPerMinute?: number | null;
   rateLimitWindowMs?: number | null;
 }
@@ -182,7 +184,7 @@ export interface TenantEntitlementOverrideInput {
   featurePlatformDefaultCredential?: boolean | null;
   /** No DB column yet — see `PlanEntitlementInput.featurePaletteStt`. */
   featurePaletteStt?: boolean | null;
-  /** TASK-705 — tri-state: `true` grant / `false` deny / `null` inherit the plan. */
+  /** tri-state: `true` grant / `false` deny / `null` inherit the plan. */
   featureAgenticLoop?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
@@ -228,7 +230,7 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
    * `__tests__/resolve-entitlements.test.ts`.
    */
   /*
-   * TASK-705 — `agenticLoop` is `true` here, on the DISPLAY-flag side of the
+   * `agenticLoop` is `true` here, on the DISPLAY-flag side of the
    * asymmetry above, and deliberately so despite being enforced. A null-plan
    * tenant has no subscription to read an answer out of, and D-A (owner
    * decisions, 2026-08-17) requires the loop ENABLED for day-1 rather than
@@ -251,7 +253,7 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
 };
 
 /**
- * The plan a tenant actually resolves against (TASK-785 OD-5).
+ * The plan a tenant actually resolves against.
  *
  * Three rules, in order:
  *   1. An explicitly stamped `Tenant.plan` always wins — on every tenant,
@@ -363,7 +365,7 @@ export function resolveEntitlements(
     },
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),
-    // TASK-785: a per-tenant absolute override still wins, but the PLAN may now
+    // a per-tenant absolute override still wins, but the PLAN may now
     // carry one of its own, so absence of an override falls back to the plan's
     // value rather than straight to null.
     rateLimitPerMinute: pick(toNum(override?.rateLimitPerMinute), toNum(base.rateLimitPerMinute) ?? null),

@@ -39,12 +39,12 @@ describe('ApiKeyController', () => {
     });
 
     /**
-     * TASK-757 (policy A2) — the admin plane is JWT-only, so every `admin:*`
+     * (policy A2) — the admin plane is JWT-only, so every `admin:*`
      * and `webhook:*` scope is RESERVED: refused at grant time and dropped from
      * this catalog. Both categories vanish entirely rather than appearing
      * empty, because advertising a scope the platform will always refuse to
      * mint is worse than not listing it.
-     */
+ */
     it('does not advertise the reserved Admin / Webhook families', () => {
       const result = controller.getAvailableScopes();
 
@@ -183,7 +183,7 @@ describe('ApiKeyController', () => {
   });
 
   /**
-   * TASK-781 — WHY `read`/`update`/`delete:ApiKey` were removed from
+   * WHY `read`/`update`/`delete:ApiKey` were removed from
    * `CASL_ENFORCED_PAIRS`, proven at the resolver rather than argued in prose.
    *
    * An enforced pair only ever exists to deny ONE request: the caller
@@ -191,7 +191,7 @@ describe('ApiKeyController', () => {
    * for that request, because it loads the row through
    * `IApiKeyService.fetchById`, which runs `assertKeyAccess` and throws 404.
    * `runCaslInstanceChecks` swallows resolver throws by design, so the pair
-   * was structurally unable to move `casl_enforce_denial_total` (TASK-779
+   * was structurally unable to move `casl_enforce_denial_total`
    * F-1). The other half of the removal — that "fixing" it by dropping the
    * assertion would replace a deliberate 404 with an existence-leaking 403 —
    * is a property of that same delegation.
@@ -199,8 +199,8 @@ describe('ApiKeyController', () => {
    * The guard-side half of this proof (identical outcomes with and without the
    * pairs listed) lives in
    * `packages/applications/src/authorization/__tests__/casl-conditions.enforce-apikey.test.ts`.
-   */
-  describe('subject-instance resolver (TASK-781 — why the ApiKey pairs are unreachable)', () => {
+ */
+  describe('subject-instance resolver (why the ApiKey pairs are unreachable)', () => {
     const descriptorFor = (method: keyof ApiKeyController) =>
       Reflect.getMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, ApiKeyController.prototype[method] as object) as
         | { resolver: (req: unknown, ctx: { get: (t: unknown) => unknown }) => Promise<Record<string, unknown> | undefined>; subject?: string; enforceGrade: boolean }

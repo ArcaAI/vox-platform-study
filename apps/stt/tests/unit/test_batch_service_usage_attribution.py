@@ -6,7 +6,6 @@ usage-ledger `(engine, deployment)` pair `transcribe_file.py` forwards to
 `APIGatewayClient.complete_job`.
 
 Pure function, no I/O — exercises the exact spelling traps called out in
-`docs/implementation/TASK-615-Usage-Metering-And-Billing/ws-b-contract.md`
 (provider vocabulary): self-hosted engine ids are snake_case
 (`whisper_cpp`, `faster_whisper` — already the lowercased `AiModelFormat`
 value, no remapping needed) and `AZURE_SPEECH` is the one format whose

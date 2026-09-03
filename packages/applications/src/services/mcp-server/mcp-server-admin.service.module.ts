@@ -13,7 +13,7 @@ import { McpServerAdminService } from './mcp-server-admin.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
-    // The SSRF egress guard for tenant-authored `baseUrl` (TASK-846 D-3). Provided
+    // The SSRF egress guard for tenant-authored `baseUrl`. Provided
     // here rather than in CommonServiceModule because this is currently its only
     // consumer; it needs IAppSettingsService, which CommonServiceModule exports.
     EgressPolicyService,

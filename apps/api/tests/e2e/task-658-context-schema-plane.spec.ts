@@ -16,8 +16,8 @@
  *      two states that matter — a tenant with NO schema at all, and a tenant
  *      that HAS a published schema but whose write simply does not name a kind.
  *
- * The "no schema configured" arm self-provisions a throwaway tenant (TASK-764).
- * It used to rely on `__GLOBAL__` never being given one, which TASK-686 ended:
+ * The "no schema configured" arm self-provisions a throwaway tenant.
+ * It used to rely on `__GLOBAL__` never being given one, which ended:
  * the day-1 seed now publishes a `consultation_default` schema for every seeded
  * tenant, `__GLOBAL__` included. The plane's own schema is created in ARCAAI
  * under a run-unique slug and soft-deleted at the end, so the spec is
@@ -92,8 +92,8 @@ test.describe('A tenant with no context schema is untouched by the programme', (
     expect(doctor, 'doctor login (__GLOBAL__) failed — is the stack seeded?').toBeTruthy();
     doctorToken = doctor!.token;
 
-    // TASK-764 — this block used to read discovery as `doctor` on `__GLOBAL__`
-    // because that tenant was "deliberately never given a schema". TASK-686
+    // this block used to read discovery as `doctor` on `__GLOBAL__`
+    // because that tenant was "deliberately never given a schema".
     // then made the day-1 context schema part of the SEED
     // (`07e-consultation-loop-defaults.ts` creates a PUBLISHED
     // `consultation_default` for the SYSTEM tenant, `__GLOBAL__` AND `ARCAAI`),
@@ -114,7 +114,7 @@ test.describe('A tenant with no context schema is untouched by the programme', (
 
     const created = await request.post('/api/v1/admin/tenants', {
       headers: auth(superAdminToken),
-      data: { name: 'TASK-764 unconfigured-tenant probe', key: `TASK764_E2E_${Date.now()}` },
+      data: { name: ' unconfigured-tenant probe', key: `TASK764_E2E_${Date.now()}` },
     });
     expect(created.status(), `provision throwaway tenant — body: ${await created.text()}`).toBe(201);
     unconfiguredTenantId = ((await created.json()) as { id: string }).id;
@@ -141,7 +141,7 @@ test.describe('A tenant with no context schema is untouched by the programme', (
     expect(bundle.contextSchemaVersionId).toBeNull();
   });
 
-  // TASK-764 — the other half of the same guarantee, and the half the seed
+  // the other half of the same guarantee, and the half the seed
   // change actually put at risk: a SEEDED tenant now DOES resolve a bundle, and
   // discovery must serve it whole rather than half-populated. Pinning it here
   // means a future seed change that drops (or fails to publish) the day-1
@@ -199,7 +199,7 @@ test.describe.serial('Context-schema plane end to end', () => {
    * A consultation with NO department, opened by this spec.
    *
    * It used to be the seeded ARCAAI consultation `90000000-…-0001-000000000001`, which sits in
-   * General Medicine. TASK-798 W3 then seeded DEPARTMENT-scoped default context schemas for
+   * General Medicine. then seeded DEPARTMENT-scoped default context schemas for
    * ArcaAI's General Medicine and Rheumatology, and a DEPARTMENT default SHADOWS the tenant
    * default wholesale (`resolveServableVersion`: department candidate first, tenant second) —
    * which is the documented model, not a defect. A write on that consultation therefore resolves
@@ -247,7 +247,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   test('a schema is born DRAFT with no pinned version', async ({ request }) => {
     const response = await request.post(ADMIN_SCHEMAS, {
       headers: auth(adminToken),
-      data: { slug, name: 'TASK-675 probe schema', scope: 'TENANT', isDefault: true },
+      data: { slug, name: ' probe schema', scope: 'TENANT', isDefault: true },
     });
 
     expect(response.status()).toBe(201);
@@ -263,7 +263,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   test('publishing validates the definition, writes version 1, and pins it', async ({ request }) => {
     const response = await request.post(`${ADMIN_SCHEMAS}/${schemaId}/publish`, {
       headers: auth(adminToken),
-      data: { definition: DEFINITION, changeReason: 'TASK-675 live verification' },
+      data: { definition: DEFINITION, changeReason: ' live verification' },
     });
 
     expect(response.status()).toBe(201);
@@ -310,7 +310,7 @@ test.describe.serial('Context-schema plane end to end', () => {
   test('re-publishing an IDENTICAL definition is a no-op — no new version, unchanged ETag', async ({ request }) => {
     const republish = await request.post(`${ADMIN_SCHEMAS}/${schemaId}/publish`, {
       headers: auth(adminToken),
-      data: { definition: DEFINITION, changeReason: 'TASK-675 identical re-publish' },
+      data: { definition: DEFINITION, changeReason: ' identical re-publish' },
     });
     expect(republish.status()).toBe(201);
     expect((await republish.json()).pinnedVersionNumber).toBe(1);

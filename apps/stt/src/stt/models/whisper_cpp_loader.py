@@ -127,7 +127,7 @@ class WhisperCppLoader(BaseModelLoader):
         ``ggml-whisper-turbo-…-q8_0.bin``) — pywhispercpp loads either by path.
         Requires a filename containing the configured quantization (e.g.
         ``q8_0``) when one is set — selection is ``failMode: closed`` (see
-        ``.claude/rules/09-infrastructure-devops.md`` §Configuration Tiers): a
+        claude/rules/09-infrastructure-devops.md Tiers): a
         registry row declaring ``q8_0`` must never silently load an ``f16`` (or
         any other) file just because it happened to be first alphabetically.
         Fetching is the resolver's job; this is only the selection tail.

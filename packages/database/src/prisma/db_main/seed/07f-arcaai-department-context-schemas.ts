@@ -1,5 +1,5 @@
 /**
- * TASK-798 W3 — per-department consultation context vocabularies for ArcaAI.
+ * per-department consultation context vocabularies for ArcaAI.
  *
  * ## What was missing, and why it mattered
  *
@@ -187,7 +187,7 @@ const DEPARTMENT_SCHEMAS: DepartmentSchemaSeed[] = [
     description: 'General Medicine consultation vocabulary: audio, working notes, attachments and pre-visit vitals, producing a SOAP note and a problem list.',
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     definition: GEN_DEFINITION,
-    changeReason: 'Department-scoped consultation context vocabulary for General Medicine (TASK-798).',
+    changeReason: 'Department-scoped consultation context vocabulary for General Medicine .',
   },
   {
     id: '79000000-0000-0000-0001-000000000011',
@@ -198,7 +198,7 @@ const DEPARTMENT_SCHEMAS: DepartmentSchemaSeed[] = [
       'Rheumatology consultation vocabulary: audio, working notes, attachments, joint counts and inflammatory markers, producing a SOAP note and a disease-activity assessment.',
     departmentId: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
     definition: RHEUM_DEFINITION,
-    changeReason: 'Department-scoped consultation context vocabulary for Rheumatology (TASK-798).',
+    changeReason: 'Department-scoped consultation context vocabulary for Rheumatology .',
   },
 ];
 
@@ -232,7 +232,7 @@ export const ARCAAI_DEPARTMENT_CONTEXT_SCHEMA_VERSIONS = DEPARTMENT_SCHEMAS.map(
 }));
 
 export const seedArcaaiDepartmentContextSchemas = async (client: CorePrismaClient) => {
-  console.log('Seeding ArcaAI department consultation context schemas (TASK-798)...');
+  console.log('Seeding ArcaAI department consultation context schemas ...');
 
   let created = 0;
   let skipped = 0;

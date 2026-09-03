@@ -3,14 +3,14 @@
  *
  * Pins the contract at the HTTP layer:
  *
- *   - `/auth/login`   is throttled at 5/min  → 6+ rapid attempts produce
+ *   - `/auth/login` is throttled at 5/min → 6+ rapid attempts produce
  *                                              at least one 429 within the
  *                                              first six.
  *   - `/auth/refresh` is throttled at 60/min → 11 rapid attempts produce
  *                                              zero 429s (the previous
  *                                              class-wide 10/min would
  *                                              have tripped at the 11th).
- *   - `/auth/me`      rides the app-wide default (100/min) → 8 rapid
+ *   - `/auth/me` rides the app-wide default (100/min) → 8 rapid
  *                                              authenticated reads produce
  *                                              zero 429s.
  *
@@ -64,7 +64,7 @@ test.describe('AC-6 — Auth throttle granularity', () => {
   //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
   //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
   //
-  // TASK-764: the guard is OPT-IN (`!== 'true'`), not opt-out (`=== 'false'`).
+  // the guard is OPT-IN (`!== 'true'`), not opt-out (`=== 'false'`).
   // The old form only skipped when the variable was EXPLICITLY 'false', so any
   // invocation that did not load `.env.test` — e.g. a bare
   // `pnpm exec playwright test <spec>` rather than `pnpm test:e2e`, which is

@@ -220,14 +220,14 @@ def _working_redactor() -> PhiRedactor:
 
 
 class TestUnknownProviderDefaultsToRedact:
-    """TASK-706: an unlisted/unrecognized provider must route through the
+    """an unlisted/unrecognized provider must route through the
     redact-and-confirm branch, never the local pass-through — the structural,
     forward-looking fix (not just today's three known gaps: openai/anthropic/
     vertex). These target the POST-FIX (default-deny) behavior directly, with
     injected fakes so nothing loads a spaCy model."""
 
     @pytest.mark.parametrize(
-        # "ollama" (TASK-736 R1): Ollama is removed entirely, so it is no longer
+        # "ollama": Ollama is removed entirely, so it is no longer
         # a known-local provider — it must fail closed into redaction like any
         # other unrecognized provider string.
         "provider",

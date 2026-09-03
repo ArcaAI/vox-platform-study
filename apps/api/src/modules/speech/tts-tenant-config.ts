@@ -5,7 +5,7 @@ import type { ProviderOverrides } from '@arcaai/applications';
  * The tenant's resolved TTS request configuration — routing chains, allowed providers, BYO
  * credentials, voice bindings and format/speed defaults.
  *
- * Extracted from `SpeechProxyController.applyTenantConfig` by TASK-849 lane B so the harness's
+ * Extracted from `SpeechProxyController.applyTenantConfig` by lane B so the harness's
  * internal synthesis route resolves through the SAME cascade the user-facing proxy does. Two
  * spellings of "which provider serves this tenant's speech, on whose key" is exactly how the two
  * drift apart, and the drift would be invisible: both would still synthesize, just not

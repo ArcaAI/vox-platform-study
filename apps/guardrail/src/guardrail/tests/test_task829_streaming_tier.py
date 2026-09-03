@@ -1,4 +1,4 @@
-"""TASK-829 §5.1 — the streaming tier: chunking invariance and session aggregation.
+"""the streaming tier: chunking invariance and session aggregation.
 
 Two mechanisms, one purpose: make the verdict independent of *where the stream
 happened to be chopped*.
@@ -10,7 +10,7 @@ for one input, EVERY finite chunking yields the identical match set at identical
 absolute offsets.
 
 **The session aggregator is the actual defence against dispersed evidence.**
-Overlap is not (§2.2) — Prompt Overflow tested overlapping sliding windows
+Overlap is not — Prompt Overflow tested overlapping sliding windows
 directly and found only marginal improvement, because overlap addresses
 *contiguous* evidence straddling a boundary and does nothing about *dispersed*
 evidence, which is the attack. What recovers a bypass is stateful global

@@ -78,7 +78,7 @@ export class PlanEntitlementFactory {
       // Fail-CLOSED default — a plan never grants the platform-default
       // credential unless someone says so explicitly.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,
-      // TASK-724: `true` by default — STT palette authoring is a core platform
+      // `true` by default — STT palette authoring is a core platform
       // capability, mirrors the Prisma column's own @default(true).
       featurePaletteStt: props.featurePaletteStt ?? true,
       featureAgenticLoop: props.featureAgenticLoop ?? true,

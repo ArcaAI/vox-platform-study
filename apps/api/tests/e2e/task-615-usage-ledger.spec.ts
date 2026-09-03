@@ -1,7 +1,7 @@
 /**
  * Synthetic usage flow through the LIVE outbox drainer.
  *
- * No internal/test HTTP route writes to the ledger ('s contract is a
+ * No internal/test HTTP route writes to the ledger (contract is a
  * TypeScript service method, `IUsageLedgerService.recordUsage`, not an HTTP
  * endpoint), so this seeds a `PENDING` `AiUsageOutbox` row directly against
  * the database — the documented fallback ("an internal/test route if one
@@ -168,7 +168,7 @@ test.describe('Usage ledger — synthetic drain-and-rollup flow', () => {
 
     const events = await db.aiUsageEvent.findMany({ where: { idempotencyKey: IDEMPOTENCY_KEY } });
     expect(events).toHaveLength(1);
-    // A resolved price of 0 IS a valid rate (ws-b-contract.md §8) — the only
+    // A resolved price of 0 IS a valid rate (ws-b-contract.md — the only
     // thing this asserts is that RATING RAN (fields are not both null/undefined
     // from an unrated event), not that the specific price is non-zero.
     expect(events[0].unitPriceMicros !== undefined).toBe(true);

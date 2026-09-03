@@ -50,7 +50,7 @@ _ALLOWED_SECRETS: dict[str, str] = {
         "on peer calls to apps/text and the gateway. Platform identity, not vendor."
     ),
     "service.api_gateway_key": (
-        "TASK-855 L6 follow-on. A DIFFERENT internal credential class than D-D's shared "
+        " L6 follow-on. A DIFFERENT internal credential class than D-D's shared "
         "peer token above — the gateway's `/internal/*` surface (here: "
         "`GET /internal/model-registry-credential`) is guarded by API-key auth, not the "
         "`X-Service-Token` middleware `internal_access_token` satisfies, so reaching it "

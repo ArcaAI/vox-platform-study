@@ -331,7 +331,7 @@ export interface UseArcaReturn {
  *     await audio.start();
  *   };
  *
- *   return (
+ *   return
  *     <div>
  *       <button onClick={handleStart}>Start</button>
  *       <div>Level: {audio.level}%</div>
@@ -678,7 +678,7 @@ export function useArca(): UseArcaReturn {
       store.setContextLoading(true);
       store.setContextError(null);
 
-      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // the route is `@RequiresIfMatch()` — send the strong
       // validator AND the body-field fallback, and surface 412 distinctly.
       const expectedVersion = requireExpectedVersion(id, options?.expectedVersion, store.contextItems.find((i) => i.id === id)?.version);
 
@@ -1044,7 +1044,7 @@ export function useArca(): UseArcaReturn {
       store.setSummaryGenerating(true);
       store.setSummaryError(null);
 
-      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // the route is `@RequiresIfMatch()` — send the strong
       // validator AND the body-field fallback, and surface 412 distinctly.
       const { expectedVersion: explicitVersion, ...changeOptions } = options ?? {};
       const expectedVersion = requireExpectedVersion(id, explicitVersion, findSummaryVersion(store.summaries, id));

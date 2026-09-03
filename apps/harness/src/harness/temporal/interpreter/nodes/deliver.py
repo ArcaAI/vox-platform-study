@@ -1,4 +1,4 @@
-"""N-5 — ``output.deliver`` (TASK-720 Task 5, safety class: mandatory, the palette's ONLY
+"""N-5 — output.deliver (safety class: mandatory, the palette's ONLY
 ``external_write=True`` node — suppressed by the interpreter in sandbox mode).
 
 Shapes the bound upstream content (`guardrail.check`'s output — see `_extract_text`) into the
@@ -15,10 +15,10 @@ signals this node exists to prevent.
 
 **Known, disclosed gap (not invented here)**: there is no established callback endpoint or
 `WorkflowRun` column recording a `resultRef` for a run-status caller to read this blob back from
-— `WorkflowExposureService.getRunStatus()` (TASK-722) reads Temporal state only. This activity
+`WorkflowExposureService.getRunStatus` reads Temporal state only. This activity
 performs the write regardless (a genuine, real external write — the registry classification is
 honoured), but END-TO-END retrieval of the delivered result by an invoker is NOT wired by this
-ticket; recorded in this ticket's README §7 as a gap for TASK-722/723 (runs observability) to
+ticket; recorded in as a gap for /723 (runs observability) to
 close, not silently invented here.
 """
 

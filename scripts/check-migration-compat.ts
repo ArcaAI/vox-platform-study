@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Migration backwards-compatibility gate (TASK-693 §4.4).
+ * Migration backwards-compatibility gate
  *
  * ── Why this exists ─────────────────────────────────────────────────────────
  *
@@ -39,7 +39,7 @@
  * are deliberately narrowed. Both narrowings are load-bearing:
  *
  *   * `RENAME` — every RENAME in the existing history is `ALTER INDEX … RENAME`
- *     inside the TASK-648 index-alignment migration. Renaming an INDEX is safe
+ * inside the index-alignment migration. Renaming an INDEX is safe
  *     (no application code names an index). A blanket RENAME rule would have
  *     been 100% false positives, so the rule requires `ALTER TABLE`.
  *

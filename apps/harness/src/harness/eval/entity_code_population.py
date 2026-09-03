@@ -131,7 +131,7 @@ def measure() -> CodePopulation:
 def _run() -> int:
     result = measure()
     print("=" * 88)
-    print("TASK-671 P0 — ontology-code population + code-identity bridge rate")
+    print("P0 — ontology-code population + code-identity bridge rate")
     print("=" * 88)
     print(f"  vocabulary                 : {result.vocabulary_aliases} normalized aliases")
     print(

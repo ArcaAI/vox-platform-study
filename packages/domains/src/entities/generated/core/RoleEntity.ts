@@ -9,7 +9,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * TASK-766 OD-1: `Role` gained a real `tenantId` column, so this interface
+ * `Role` gained a real `tenantId` column, so this interface
  * extends `IBaseTenantEntity` instead of the former
  * `Omit<IBaseEntity, 'tenantId'>` — the `Omit` was there precisely because
  * `Role` used to be a global table. SYSTEM-tenant rows are the platform's

@@ -11,7 +11,7 @@ export interface SysEventProps {
   resourceType: ResourceType;
   responsibleEntityId: EntityId;
   /**
-   * TASK-762 — the MACHINE actor. Mutually exclusive with
+   * the MACHINE actor. Mutually exclusive with
    * `responsibleEntityId`; `BaseService.broadcastSysEvent` sets exactly one.
    * Carried to `AuditLog.responsibleServiceAccountId` by `SysEventService`.
    */

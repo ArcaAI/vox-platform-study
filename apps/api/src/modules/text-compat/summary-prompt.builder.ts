@@ -33,7 +33,7 @@ export interface SummaryPromptOptions {
   language?: string;
   /**
    * Whether pre-summary enrichment is enabled. Decided by the controller per
-   * the documented enrichment logic (TEXT_Summary_Endpoints.md §3.1); the
+   * the documented enrichment logic (TEXT_Summary_Endpoints.md; the
    * builder folds `session_data.pre_summary_text` in ONLY when this is true.
    */
   includePreSummary?: boolean;

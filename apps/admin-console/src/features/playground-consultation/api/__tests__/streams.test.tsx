@@ -261,7 +261,7 @@ describe('useSummaryJobProgress', () => {
 });
 
 describe('useLiveAssistStream', () => {
-  it('mints a consultation_live_assist ticket and keeps suggestions/corrections in separate branches (TASK-795 RC-2)', async () => {
+  it('mints a consultation_live_assist ticket and keeps suggestions/corrections in separate branches (RC-2)', async () => {
     const calls = stubNetwork();
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useLiveAssistStream('c-1', true), { wrapper: Wrapper });
@@ -343,7 +343,7 @@ describe('useLiveAssistStream', () => {
   });
 });
 
-describe('useDocumentSectionsStream (TASK-811 DD-3 / TASK-814 DD-3 — N documents)', () => {
+describe('useDocumentSectionsStream (DD-3 / DD-3 — N documents)', () => {
   it('groups section.patch events by documentKey, in idx order within each document', async () => {
     const calls = stubNetwork();
     const { Wrapper } = createWrapper();

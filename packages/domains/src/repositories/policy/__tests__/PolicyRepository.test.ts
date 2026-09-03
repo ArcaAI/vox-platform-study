@@ -18,7 +18,7 @@
  *   • `softDelete(id, updatedBy?)` encapsulates the
  *     `update({ data: { resourceStatus: DELETED, … } })` pattern. The
  *     three legacy `.softDelete` paths (policy/role/rolePolicy)
- *     were already soft via this exact pattern — see README §4.2 audit.
+ * were already soft via this exact pattern — audit.
  */
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { ResourceStatusType } from '../../../enums';

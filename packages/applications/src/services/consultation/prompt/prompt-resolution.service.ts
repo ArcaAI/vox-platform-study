@@ -7,13 +7,13 @@
  *
  *   promptType ∈ { 'new-visit', 'revisit' } — the SUMMARY (clinical note)
  *   chain (highest priority first):
- *     Tier-0  (preferred)  — the consulting doctor's preferred prompt template,
+ *     Tier-0 (preferred) — the consulting doctor's preferred prompt template,
  *       from `UserProfile.preferredPromptTemplateId`.
  *     Tier-0b (visit type) — the tenant's `(task, visitType)` PROMPT BINDING,
  *       from its `consultation.visitTypes` catalogue (tenant -> SYSTEM). See
  *       `resolveVisitTypeBinding` for the axis and `serveVisitTypeBinding` for
  *       the tier; it runs on ALL THREE chains, not just this one.
- *     Tier-1a (node)       — the GOVERNING WORKFLOW DEFINITION's finalize
+ *     Tier-1a (node) — the GOVERNING WORKFLOW DEFINITION's finalize
  *       generation node (`taskKey: 'text.finalize'`), serving that node's
  *       `promptTemplateId` at its own `promptVersionNumber` pin. The definition
  *       is resolved through the `department -> tenant -> platform default`
@@ -24,7 +24,7 @@
  *       WHICH column is a tenant-configured question now, not a literal: the
  *       tenant's `consultation.visitTypes` catalogue (tenant → SYSTEM) maps the
  *       `promptType` value onto one of the department's two prompt slots.
- *     Tier-2  (default)    — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
+ *     Tier-2 (default) — `SYSTEM_DEFAULTS.promptId` (CATCHALL_SOAP).
  *
  *   promptType === 'pre-summary' — the PRE-SUMMARY chain:
  *     Tier-0b (visit type) — as above. This chain had NO visit-type axis at all
@@ -34,14 +34,14 @@
  *     (no node tier — the pre-summarisation node type does not exist yet; see
  *      `resolvePreSummaryPromptId` for why the tier is absent rather than
  *      pointed at some other node's prompt.)
- *     Tier-1t (tenant)     — the tenant's TENANT_DEFAULT pre-summary template
+ *     Tier-1t (tenant) — the tenant's TENANT_DEFAULT pre-summary template
  *       for the requested SURFACE (RF-2, refined by OD-7(b)): the `'v1'`
  *       surface matches any `pre-summary`-tagged row EXCEPT one also tagged
  *       `dept-free`, so a legacy/untagged tenant row keeps resolving; the
  *       `'dept-free'` surface still requires the explicit opt-in
  *       `hasEvery(['pre-summary', 'dept-free'])` — a row must OPT IN to being
  *       dept-free, never be inferred into it.
- *     Tier-2  (default)    — the SYSTEM default for that surface.
+ *     Tier-2 (default) — the SYSTEM default for that surface.
  *     …otherwise it FAILS CLOSED (503).
  *
  * Why the split: pre-summary has NO department axis, and had no visit-type axis
@@ -61,7 +61,7 @@
  * a FROZEN v1-compat wire route (`TextCompatController` ->
  * `TextCompatTemplateService.resolveGovernedInstruction()`), so its field set —
  * `resolvedFrom`, `resolvedAgentId`, `content`, `resolvedVersionNumber` — and
- * the values `resolvedFrom` may take are a published contract. TASK-815 moved
+ * the values `resolvedFrom` may take are a published contract. moved
  * the tier's SOURCE from `DepartmentAgent` onto workflow node config and left
  * the contract exactly where it was; `resolvedAgentId` now carries the
  * WORKFLOW NODE ID that supplied the prompt. Renaming either would break a
@@ -116,7 +116,7 @@ export type PromptPhase = 'pre-summary' | 'live';
 
 /**
  * What `promptType` accepts. It carries BOTH axes, and that is a frozen wire
- * contract (TASK-815 §2), so the phase selectors keep travelling here rather
+ * contract (so the phase selectors keep travelling here rather
  * than moving to a parameter of their own.
  *
  * Anything that is not a phase is a VISIT-TYPE KEY from the tenant's
@@ -170,7 +170,7 @@ export interface ResolvedPromptConfig {
   /**
    * The identifier of whatever supplied tier-1a, when tier-1a resolved.
    *
-   * Since TASK-815 that is the WORKFLOW NODE ID of the generation node whose
+   * Since that is the WORKFLOW NODE ID of the generation node whose
    * config carried the prompt binding (it was the `DepartmentAgent` row id
    * before). The FIELD is part of the frozen v1-compat contract and does not
    * move; only what it names does. Consumers treat it as an opaque lineage
@@ -237,7 +237,7 @@ export interface PromptResolutionTrace {
    * CONFIGURATION errors surfaced during resolution — a tenant setup problem the caller should
    * see, distinct from `usedDefaults`, which records a legitimate tier miss.
    *
-   * Added by TASK-806 lane A item 1 for the owner's ruling that the pre-summary tier's loss is
+   * Added by lane A item 1 for the owner's ruling that the pre-summary tier's loss is
    * "not accepted as a silent fallback": a tenant with no ACTIVE `agent.presummarization` node
    * still gets a prompt, but the absence is NAMED here and logged at error level rather than
    * disappearing into `usedDefaults`. Additive and optional — no existing consumer branches on it.
@@ -276,7 +276,7 @@ export interface PromptResolutionParams {
    * tenant's `consultation.visitTypes` catalogue.
    *
    * WHY IT EXISTS. `promptType` carries both the phase and the visit type
-   * because it is a frozen wire contract (TASK-815 §2), and that conflation is
+   * because it is a frozen wire contract (and that conflation is
    * exactly what stopped visit type being the general prompt-composition
    * identifier the owner specified: a request that says `'pre-summary'` cannot
    * ALSO say `'revisit'`, so the pre-summary chain could never see a visit type
@@ -435,7 +435,7 @@ interface ResolvedVisitTypeBinding {
 }
 
 // ============================================================================
-// Tier-1a source: the governing workflow definition's node config (TASK-815)
+// Tier-1a source: the governing workflow definition's node config
 // ============================================================================
 
 /** The palette whose assigned definition governs a consultation. */
@@ -505,8 +505,10 @@ function promptBearingNodesForTask(graph: WorkflowGraph | null | undefined, task
   return graph.nodes.filter((node) => readPromptTemplateId(node) !== null && effectiveTaskKey(node) === taskKey);
 }
 
-/** DD-6's pre-summarization node type — the successor to the department default agent's
- *  `preSummaryTemplateId` column (TASK-815 §11, owner ruling). */
+/**
+ * DD-6's pre-summarization node type — the successor to the department default agent's
+ * `preSummaryTemplateId` column (owner ruling).
+ */
 const PRESUMMARIZATION_NODE_TYPE = 'agent.presummarization';
 
 /**
@@ -551,12 +553,12 @@ export class PromptResolutionService {
     // this service is constructed in background job processors and in a long
     // tail of unit tests with a positional argument list, and an unwired
     // resolver must degrade to "no tier-1a" — exactly the shape a department
-    // with no configured agent had before TASK-815 — never to a throw on a
+    // with no configured agent had before — never to a throw on a
     // clinical generation path.
     @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
     // Tier-1b's VISIT-TYPE axis, which is tenant-configured data now
-    // (TASK-815 §11 row 3) rather than the `promptType === 'revisit'` literal
+    //  rather than the `promptType === 'revisit'` literal
     // this replaces. `@Optional()` for the same reason as the two above; an
     // unwired resolver serves the two shipped visit types, which maps the two
     // legacy `promptType` values onto exactly the columns they always read.
@@ -724,7 +726,7 @@ export class PromptResolutionService {
     // node's template is not APPROVED (or has no snapshot) at the resolved
     // version, it falls through to the legacy chain. No governing definition,
     // or none carrying a finalize node, ⇒ the whole branch is skipped and
-    // resolution is byte-identical to a department with no agent before TASK-815.
+    // resolution is byte-identical to a department with no agent before.
     //
     // VISIT-TYPE AXIS: the node substrate deliberately has none (DD-2, "no
     // runtime shape switching" — a generation node binds its prompt and its
@@ -810,12 +812,12 @@ export class PromptResolutionService {
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
     const variant = params.preSummaryVariant ?? 'v1';
 
-    // TIER-1a' — RESTORED (TASK-806 lane A item 1) onto the node the owner ruled
+    // TIER-1a' — RESTORED (lane A item 1) onto the node the owner ruled
     // a tenant must configure.
     //
     // The tier used to read the department default `DepartmentAgent`'s
-    // `preSummaryTemplateId`; TASK-815 retired it with nothing in its place,
-    // because `agent.presummarization` (DD-6) did not exist. It does now, and the
+    // `preSummaryTemplateId`; retired it with nothing in its place,
+    // because `agent.presummarization` did not exist. It does now, and the
     // owner's ruling on the delta was that the loss is NOT accepted as a silent
     // fallback: pre-summary must be TENANT TIER, and a tenant must configure an
     // ACTIVE pre-summarization node.
@@ -855,7 +857,7 @@ export class PromptResolutionService {
       }
 
       // NOT SILENT — and, for a tenant that actually governs consultations, NOT SURVIVABLE
-      // either (Lane R, R2; owner ruling TASK-815 §11).
+      // either (Lane R, R2; owner ruling
       //
       // The ruling is that absence is "a configuration error to surface, not a silent drop to a
       // platform default". Enforcing that for EVERY tenant is still unsafe, and seeding the node
@@ -868,12 +870,12 @@ export class PromptResolutionService {
       //
       // The line the ruling actually draws is between an absent opinion and an INCOMPLETE one:
       //
-      //  * no governing consultation graph  -> the tenant has not adopted the substrate. It
+      //  * no governing consultation graph -> the tenant has not adopted the substrate. It
       //    expressed nothing, so the platform default applies. That is tenant -> SYSTEM working
       //    as designed, and it stays loud-but-not-lethal.
       //  * a governing graph WITHOUT an active, prompt-bound pre-summarization node -> the tenant
       //    IS configuring, and configured this incompletely. Serving the platform default there
-      //    is precisely the silent drop §11 refuses, so it fails closed with the misconfiguration
+      // is precisely the silent drop refuses, so it fails closed with the misconfiguration
       //    named.
       const configurationError =
         `no ACTIVE ${PRESUMMARIZATION_NODE_TYPE} node with a bound prompt template is configured in this tenant's ` +
@@ -962,7 +964,7 @@ export class PromptResolutionService {
     // Neither the doctor-preferred tier nor the legacy department columns are
     // consulted: live is a department/tenant-GOVERNED surface, and a per-doctor
     // live prompt is not a v1 concept (it would also add a read to the
-    // session-start path for no requirement). Recorded as "not consulted".
+    // session-start() path for no requirement). Recorded as "not consulted".
     trace.preferredPromptId = null;
     if (department) trace.departmentPromptId = null;
 
@@ -1149,7 +1151,7 @@ export class PromptResolutionService {
   }
 
   /**
-   * Tier-1a resolution, sourced from WORKFLOW NODE CONFIG (TASK-815).
+   * Tier-1a resolution, sourced from WORKFLOW NODE CONFIG.
    *
    * The tenant's governing `consultation` definition is resolved through the
    * SAME `department -> tenant -> platform default` assignment cascade the
@@ -1191,7 +1193,7 @@ export class PromptResolutionService {
    * supplied node SELECTION -> that node's DD-11 prompt binding, under the approval + snapshot
    * discipline described on `resolveNodePrompt`.
    *
-   * Extracted (TASK-806 lane A) so the PRE-SUMMARY tier can select by node TYPE while the
+   * Extracted so the PRE-SUMMARY tier can select by node TYPE while the
    * summary/live tiers keep selecting by `taskKey`, without a second copy of the template
    * approval, pin resolution and degrade-never-throw logic — which is the half that actually
    * carries the safety properties.
@@ -1238,7 +1240,7 @@ export class PromptResolutionService {
       // WHICH node, before WHICH template. A pinned session node replaces the
       // first-node selection entirely, but only when it is still present in the
       // governing graph and still serves this task; otherwise the graph's own
-      // first node answers, exactly as an unpinned resolve would. A finalize
+      // first node answers, exactly as an unpinned resolve() would. A finalize
       // must never fail because the graph was re-authored mid-visit.
       const node = (pinnedNodeId ? candidates.find((candidate) => candidate.id === pinnedNodeId) : undefined) ?? candidates[0];
       const selectedTemplateId = readPromptTemplateId(node);
@@ -1398,7 +1400,7 @@ export class PromptResolutionService {
    *
    * `resolvedFrom` is `'tenant'`, an EXISTING member of the tier vocabulary,
    * and no new one is added. `ResolvedPromptConfig` is reached by a frozen
-   * v1-compat wire route (TASK-815 §2), so its value set is a published
+   * v1-compat wire route (so its value set is a published
    * contract; `'tenant'` already means precisely "a tenant-configured template,
    * not the department column and not the SYSTEM default", which is what this
    * tier is. The pairing that produced it is recorded in `resolutionTrace`,

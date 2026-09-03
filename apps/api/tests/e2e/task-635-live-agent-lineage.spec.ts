@@ -3,14 +3,14 @@
  *
  * Proves the whole chain over real HTTP against a running stack:
  *
- *   POST :id/recording/start          → the live loop resolves and FREEZES the
+ *   POST :id/recording/start() → the live loop resolves and FREEZES the
  *                                       session's governing node (R-N1)
- *   GET  :id/live-summary/stream      → every SSE event carries
+ *   GET :id/live-summary/stream → every SSE event carries
  *                                       `metadata.agent` = { id, promptTemplateId,
  *                                       promptVersionNumber, resolvedFrom:'agent' }
- *   POST :id/recording/stop           → persists the durable LIVE_SOAP_SNAPSHOT
+ *   POST :id/recording/stop → persists the durable LIVE_SOAP_SNAPSHOT
  *                                       ContextItem carrying `metaData.agent`
- *   POST :id/summary                  → finalize reads that lineage
+ *   POST :id/summary → finalize reads that lineage
  *                                       (`readLiveAgentLineage`), pins the resolver
  *                                       to the SAME agent and stamps it on SummaryMeta (R-N2)
  *
@@ -61,7 +61,6 @@
  * RUN: `pnpm test:up:api` (terminal 1), then
  *      `pnpm test:e2e -- task-635-live-agent-lineage.spec.ts`
  *
- * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/c1-live-agent-architecture.md
  */
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'crypto';
@@ -276,7 +275,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect(deptList.length, 'the tenant must have at least one seeded department').toBeGreaterThan(0);
     departmentId = deptList[0].id;
 
-    // The live tier's source is a WORKFLOW NODE (TASK-815), not a
+    // The live tier's source is a WORKFLOW NODE, not a
     // `DepartmentAgent`. This block used to CREATE a dedicated default agent
     // carrying a `livePromptTemplateId`, because the seeded agents bound
     // summary templates only and the Global tenant's were `templateLocked`
@@ -311,7 +310,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     }
     if (!liveBindingApplied) {
       console.warn(
-        '[TASK-635 C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.',
+        '[ C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.',
       );
     }
 
@@ -323,11 +322,11 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     expect([200, 201], 'POST /consultations/open').toContain(opened.status());
     consultationId = ((await opened.json()) as { id: string }).id;
 
-    // TASK-712 (consent-abac): `POST :id/recording/start` below is now gated
+    // (consent-abac): `POST :id/recording/start()` below is now gated
     // by `@RequiresConsent(AI_DOCUMENTATION)` — a fresh consultation carries
     // no legacy-backfilled grant (the backfill only covers consultations
     // that existed before the migration), so this test must record one
-    // itself or recording/start 403s.
+    // itself or recording/start() 403s.
     const granted = await request.post('/api/v1/admin/consent-grants', {
       headers: bearer(token),
       data: { externalPatientId: patientId, purpose: 'AI_DOCUMENTATION', grantMethod: 'VERBAL_ATTESTED' },
@@ -366,7 +365,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
 
     // Feed the loop the way STT would. Three finals ≥ the default segment
     // threshold, so a flush fires on the count rather than waiting out the idle
-    // debounce. XADD happens AFTER recording/start so the subscriber's consumer
+    // debounce. XADD happens AFTER recording/start() so the subscriber's consumer
     // group already exists.
     await xaddFinalSegments(redisUrl!, sttSessionId, [
       'Doctor: What brings you in today?',
@@ -399,7 +398,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       // the LLM behind it) or NLP unreachable, or generation slower than the
       // budget above. Skip rather than assert against an engine that never ran.
       console.warn(
-        '[TASK-635 C6] No live-summary SSE event with metadata.agent arrived even though the STT result stream was fed — ' +
+        '[ C6] No live-summary SSE event with metadata.agent arrived even though the STT result stream was fed — ' +
           'TEXT/NLP likely unreachable or generation exceeded the budget. R-N1 assertions skipped.',
       );
       test.skip();
@@ -418,7 +417,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     ).toBe(liveBindingApplied ? 'agent' : 'default');
 
     // `id` identifies whatever supplied tier-1a — the workflow NODE id since
-    // TASK-815 — so it exists only on that tier; on the SYSTEM-default tier it
+    // so it exists only on that tier; on the SYSTEM-default tier it
     // is legitimately null. The governed template and its pinned version must be
     // present either way — that is what makes the live prompt version-pinned
     // rather than "whatever the row says today".
@@ -448,7 +447,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
 
     const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
     if (![200, 201].includes(summary.status())) {
-      console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — TEXT unavailable. R-N2 assertions skipped.`);
+      console.warn(`[ C6] finalize returned ${summary.status()} — TEXT unavailable. R-N2 assertions skipped.`);
       test.skip();
       return;
     }
@@ -498,7 +497,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
     try {
       const summary = await request.post(`/api/v1/consultations/${consultationId}/summary`, { headers: bearer(token), data: {} });
       if (![200, 201].includes(summary.status())) {
-        console.warn(`[TASK-635 C6] finalize returned ${summary.status()} — TEXT unavailable. tier-0 assertions skipped.`);
+        console.warn(`[ C6] finalize returned ${summary.status()} — TEXT unavailable. tier-0 assertions skipped.`);
         test.skip();
         return;
       }

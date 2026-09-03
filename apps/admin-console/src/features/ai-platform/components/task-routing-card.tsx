@@ -61,7 +61,7 @@ function RejectedLine({ candidate }: { candidate: RejectedRoutingCandidate }) {
  * The chain rendered here is the resolver's own answer, not a re-derivation
  * from the rows: a hop that would cross residency class, BAA coverage or
  * funding tier arrives under `rejectedCandidates`, so the screen cannot show a
- * fallback the runtime would never take. Before TASK-844 this was a string join
+ * fallback the runtime would never take. Before this was a string join
  * and there was nothing to render at all (program finding F-6).
  */
 export function TaskRoutingCard({

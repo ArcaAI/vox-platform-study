@@ -1,4 +1,4 @@
--- TASK-789 (finding C-10, the twin of C-9): the interpreter computes a four-valued
+-- (finding C-10, the twin of C-9): the interpreter computes a four-valued
 -- per-node outcome (`NodeStatus = Literal["SUCCEEDED","DEGRADED","SKIPPED","FAILED"]`)
 -- and nodes RETURN `status="DEGRADED"` — but `AgentStepStatus` had no DEGRADED member,
 -- so every one of those nodes recorded its trajectory step as ERROR instead. A graph

@@ -1,4 +1,4 @@
-"""N-1 — ``input.context_binding`` (TASK-720 Task 5).
+"""N-1 — input.context_binding.
 
 Declares the run's input shape (``config.contextSchema``) and binds the run's invocation payload
 (``NodeActivityInput.run_payload``) to it (``config.bindings``). Config shape:
@@ -93,7 +93,7 @@ async def interpreter_context_binding(payload: NodeActivityInput) -> NodeActivit
         return NodeActivityResult(status="DEGRADED", reason="; ".join(problems))
 
     await record_and_flush(payload, status=STATUS_OK, started=started)
-    # TASK-809 OD-15 — the bound kinds are published UNDER `context`, not as the whole output
+    # the bound kinds are published UNDER `context`, not as the whole output
     # dict. This node's `out` socket is typed `context<schemaRef>`, and every data socket must
     # name the output key it carries so `_resolve_bound_inputs` can thread it: `{kindKey: value}`
     # at the top level offered no such key, which left only the whole-object fallback — the

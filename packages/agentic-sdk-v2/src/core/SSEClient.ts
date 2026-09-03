@@ -66,7 +66,7 @@ export interface SSEConnectOptions {
   maxDelayMs?: number;
   /**
    * Replay the last seen event id on every RECONNECT, as `?lastEventId=`
-   * (default: `false`) — TASK-850.
+   * (default: `false`) —.
    *
    * ## Why this is not automatic
    *

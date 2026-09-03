@@ -63,7 +63,7 @@ class NliScorer(Protocol):
         """Return one entailment score per ``(source, claim)`` pair, in order.
 
         May be sync (an in-process scorer, as in tests) or async (the delegated
-        `apps/nlp` client, TASK-735 Phase 6) — the verifier awaits when needed.
+        `apps/nlp` client ) — the verifier awaits when needed.
         """
         ...
 
@@ -121,7 +121,7 @@ def split_segments(summary: str) -> list[tuple[str, int, int]]:
     return segments
 
 
-# There is deliberately NO default scorer factory. TASK-735 Phase 6 moved the
+# There is deliberately NO default scorer factory. moved the
 # MiniCheck GGUF into `apps/nlp`; guardrail loads nothing and is HANDED a scorer
 # (the `apps/nlp` client) by `core/dependencies.acquire_groundedness_verifier`.
 # A verifier constructed without one degrades honestly to `unverified`.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""TASK-823 — GPU-free build verification + provenance for the HOPE vLLM image.
+"""GPU-free build verification + provenance for the HOPE vLLM image.
 
 Two subcommands, run as two separate Dockerfile layers so the assertion never
 reads its own output as the source of truth:
@@ -31,7 +31,7 @@ It deliberately does NOT prove: that a GPU exists, that the CUDA kernels can
 execute, that any weights load, or that `vllm serve` comes up. Those need a
 device and belong at pod start, not here.
 
-This is the lesson from the sibling lmstudio image (TASK-824): its build
+This is the lesson from the sibling lmstudio image : its build
 asserted with `lms runtime ls`, which is HARDWARE-FILTERED, so it reported "no
 runtimes" on a GPU-less runner while the CUDA engine sat on disk. Never assert
 a host capability to verify an image's contents.
@@ -169,7 +169,7 @@ def cmd_assert(args: argparse.Namespace) -> int:
 
     # ── 4. that entry point LOADS ───────────────────────────────────────────
     # The same call vLLM makes (`plugin.load()`). It imports vllm_gguf_plugin
-    # and resolves `register`; it does NOT call register() and touches no
+    # and resolves `register()`; it does NOT call register and touches no
     # device. If this ever fails for a GPU-absence reason rather than a real
     # one, narrow it to stages 2+3 and say so here — do not delete it silently.
     fn = ep.load()

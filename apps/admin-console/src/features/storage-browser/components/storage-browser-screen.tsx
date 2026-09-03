@@ -201,7 +201,7 @@ function ScreenBody() {
  * Frame 31 — tenant Storage browser (tier 30–49 DATA plane, /storage/*):
  * physical buckets by name, prefix object browsing, presigned downloads,
  * multipart uploads. Distinct from the tier-14 admin plane at
- * /tenants/storage (frame 14). Redesign (build spec §3/§7): fill-height object
+ * /tenants/storage (frame 14). Redesign (build spec: fill-height object
  * grid + breadcrumb path bar, bucket select in the toolbar, object actions in
  * the console-wide detail slide-over.
  */

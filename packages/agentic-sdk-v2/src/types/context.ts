@@ -61,7 +61,7 @@ export interface ContextItem {
   /** Last update timestamp */
   updatedAt: string;
   /**
-   * Row version for optimistic concurrency control (TASK-709). Echoed back
+   * Row version for optimistic concurrency control. Echoed back
    * as `If-Match: "<version>"` (plus the body-field `expectedVersion`) by
    * `useArcaContext.updateItem`. Optional because older server builds omit it.
    */

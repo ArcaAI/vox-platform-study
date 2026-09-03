@@ -25,7 +25,7 @@ const SELECTED_PIPELINE_KEY = 'selectedPipelineId';
  * Controller for current user's raw settings (key-value by namespace).
  */
 /**
- * TASK-758 — the `me` semantics an integrator cannot infer from the path.
+ * the `me` semantics an integrator cannot infer from the path.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from
  * `apiKeyEntity.userId`, so under a key `me` is the BOUND USER — not the key's

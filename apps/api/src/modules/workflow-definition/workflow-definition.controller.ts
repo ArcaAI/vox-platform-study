@@ -17,7 +17,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcS
 
 /**
  * WorkflowDefinitionController — admin CRUD + compile/validate/publish for the
- * agentic-workflow-platform substrate (TASK-734), mounted at `/admin/workflow-definitions`
+ * agentic-workflow-platform substrate, mounted at `/admin/workflow-definitions`
  * (global prefix -> `/api/v1/admin/workflow-definitions`). Mirrors
  * `WorkflowTestFixtureController` (mapper-in-service, If-Match OCC fold on PATCH).
  *
@@ -165,7 +165,7 @@ export class WorkflowDefinitionController {
     summary: 'Re-run shape + engine + DRAFT rule-catalogue validation and persist the report',
     description:
       'Advances DRAFT -> VALIDATED when the engine gate (shape + compile()) is clean. DRAFT rule-catalogue ' +
-      'findings (TASK-716’s not-yet-clinically-reviewed rules) are recorded on the report but never block this.',
+      'findings (’s not-yet-clinically-reviewed rules) are recorded on the report but never block this.',
   })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
   @ApiResponse({ status: 200, type: WorkflowDefinitionResponse })
@@ -186,7 +186,7 @@ export class WorkflowDefinitionController {
       'active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through ' +
       'the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. ' +
       '`smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this ' +
-      "tenant's data to that vendor. Public exposure does NOT restrict provider choice (TASK-720 R-4 owner " +
+      "tenant's data to that vendor. Public exposure does NOT restrict provider choice ( R-4 owner " +
       'ruling, 2026-08-20): the tenant carries that risk.',
   })
   @ApiParam({ name: 'id', description: 'WorkflowDefinition id' })
@@ -198,7 +198,7 @@ export class WorkflowDefinitionController {
   }
 
   // ============================================================
-  // DD-11 (TASK-810) — prompt binding
+  // DD-11 — prompt binding
   // ============================================================
 
   @Get(':id/prompt-bindings')

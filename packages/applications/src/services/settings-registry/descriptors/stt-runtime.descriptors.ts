@@ -1,6 +1,6 @@
 // stt tuning knobs — the ~68 keys that used to be environment variables.
 //
-// TASK-799 lane C. `service-runtime.descriptors.ts` already carries stt's four
+// lane C. `service-runtime.descriptors.ts` already carries stt's four
 // CAPACITY knobs (`stt.modelCache.*`, `stt.workers.concurrency`,
 // `stt.streaming.maxConcurrent`); this file carries everything else the service
 // tunes at runtime — VAD, streaming geometry and timeouts, transcription
@@ -50,7 +50,7 @@
 //    PUSH channel (per-request gateway injection) instead.
 //  • `STORAGE_PROVIDER` and the `AZURE_STORAGE_*` companions. Their home is the
 //    `storage.platformDefault.*` cascade (`tier: 'db-config'`, backed by the
-//    SYSTEM `TenantStorageConfig` row), and as of TASK-799 A.1 that tier IS
+// SYSTEM `TenantStorageConfig` row), and as of A.1 that tier IS
 //    resolvable on the pull route — `storage.platformDefault.provider` now
 //    declares `consumedBy: ['stt']` and `stt`'s `storage_provider` env path is
 //    closed. Duplicating it as an `stt.storage.provider` key here would be the

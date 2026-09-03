@@ -4,10 +4,10 @@
 # This Docker Compose file provides core infrastructure for local development.
 #
 # USAGE (from monorepo root):
-#   Start:    docker compose -f infrastructure/docker/docker-compose.yml up -d
-#   Stop:     docker compose -f infrastructure/docker/docker-compose.yml down
-#   Logs:     docker compose -f infrastructure/docker/docker-compose.yml logs -f
-#   Status:   docker compose -f infrastructure/docker/docker-compose.yml ps
+#   Start: docker compose -f infrastructure/docker/docker-compose.yml up -d
+#   Stop: docker compose -f infrastructure/docker/docker-compose.yml down
+#   Logs: docker compose -f infrastructure/docker/docker-compose.yml logs -f
+#   Status: docker compose -f infrastructure/docker/docker-compose.yml ps
 #
 # ENVIRONMENT:
 #   Compose interpolation reads infrastructure/docker/.env — a GENERATED file
@@ -104,7 +104,7 @@ services:
             # Dev can use MinIO's built-in single-key KMS (DEV ONLY); production
             # uses KES backed by a real KMS/Vault. Uncomment, then enable SSE per
             # bucket in minio-setup below. Generate a dev key:
-            #   openssl rand -base64 32   -> MINIO_KMS_SECRET_KEY=hope-dev-key:<base64>
+            #   openssl rand -base64 32 -> MINIO_KMS_SECRET_KEY=hope-dev-key:<base64>
             # MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:-}
         command: server /data --console-address ":9001"
         healthcheck:
@@ -139,13 +139,13 @@ services:
             # scalar is unreviewable. See ../minio/README.md.
             - ./minio/policies:/policies:ro
         # ⚠️ `|` (LITERAL), never `>` (FOLDED). This block was a folded scalar
-        # until TASK-832 and it was silently broken: `>` joins every line into
+        # until and it was silently broken: `>` joins every line into
         # ONE line, so the first `#` comment turned the entire remainder of the
         # script into a shell comment. Effects, in order of when they landed:
-        #   2026-08-23 (TASK-789) — the comment above `mc mb harness-claim-check`
+        # 2026-08-23 — the comment above `mc mb harness-claim-check`
         #     meant that bucket was never created. The comment itself warned the
         #     missing bucket fails SILENTLY; the fix disabled its own fix.
-        #   2026-08-30 (TASK-822) — a comment moved above `mc mb mlflow`, so from
+        # 2026-08-30 — a comment moved above `mc mb mlflow`, so from
         #     that commit NO bucket was created at all, on any dev machine.
         # A literal block keeps one command per line and comments stay comments.
         # If you ever change this back to `>`, every comment below becomes a
@@ -158,7 +158,7 @@ services:
               sleep 5;
             done;
             echo 'MinIO is ready, creating buckets...';
-            # TASK-822: MLflow's PROXIED artifact store. Only the MLflow server
+            # MLflow's PROXIED artifact store. Only the MLflow server
             # ever holds credentials for it — clients reach artifacts over HTTP
             # through the tracking server and never see this bucket.
             #
@@ -170,14 +170,14 @@ services:
             # 2026-08-30. Versioning + object lock belong on the SEPARATE
             # `hope-models` weights bucket, where immutability is the goal.
             /usr/bin/mc mb minio/mlflow --ignore-existing;
-            # TASK-822 R-2: served model weights live HERE, in a plain bucket,
+            # served model weights live HERE, in a plain bucket,
             # NOT in MLflow's artifact store. MLflow records the s3:// URI and a
             # checksum as model-version tags and nothing more. This is load-bearing:
             # in proxied mode MLflow can only ever hand a client an HTTP URL, and
             # vLLM's runai_streamer needs a real s3:// URI. Move weights into
             # MLflow artifacts and vLLM breaks with no error at the MLflow layer.
             #
-            # TASK-832: created WITH OBJECT LOCK. Note the asymmetry with mlflow
+            # created WITH OBJECT LOCK. Note the asymmetry with mlflow
             # directly above — mlflow must NOT be versioned (versioning turns
             # `mlflow gc` into a delete marker and erasure silently becomes
             # retention); hope-models must be, because a published weight prefix
@@ -207,10 +207,10 @@ services:
             /usr/bin/mc mb minio/generated-audio --ignore-existing;
             /usr/bin/mc mb minio/documents --ignore-existing;
             /usr/bin/mc mb minio/backups --ignore-existing;
-            # TASK-789: the compiled-config claim check every workflow dispatch mints into.
+            # the compiled-config claim check every workflow dispatch mints into.
             # Without it a consultation-open dispatch fails with 'The specified bucket does
             # not exist' — and because dispatch is best-effort, it fails SILENTLY.
-            # (TASK-832: those quotes were DOUBLE quotes until now. This whole script is
+            # (those quotes were DOUBLE quotes until now. This whole script is
             # one double-quoted argument to /bin/sh -c, so a literal double-quote inside
             # it closed the argument early and everything after became stray argv. Never
             # put a double-quote character anywhere in this block — comments included.
@@ -219,7 +219,7 @@ services:
             echo 'Setting bucket policies...';
             /usr/bin/mc policy set public minio/recordings;
             /usr/bin/mc policy set public minio/generated-audio;
-            echo 'Configuring at-rest SSE (TASK-369 Phase 1)...';
+            echo 'Configuring at-rest SSE (Phase 1)...';
             # Requires MINIO_KMS_SECRET_KEY on the minio service (see above).
             # Uncomment to auto-encrypt new objects in the PHI/media + backup
             # buckets. Production enables SSE-KMS via KES (see the at-rest runbook).
@@ -227,13 +227,13 @@ services:
             # /usr/bin/mc encrypt set sse-s3 minio/generated-audio;
             # /usr/bin/mc encrypt set sse-s3 minio/documents;
             # /usr/bin/mc encrypt set sse-s3 minio/backups;
-            echo 'Provisioning least-privilege hope-models identities (TASK-832)...';
+            echo 'Provisioning least-privilege hope-models identities ...';
             # Weight consumers must NOT hold the root key, and must not hold the
             # MINIO_ACCESS_KEY pair either: that pair carries read/write over the
             # PHI buckets, and a weight fetch has no business being able to write
             # `recordings`. Two scoped identities instead:
-            #   hope-models-reader    -> Get/List on hope-models only  (services)
-            #   hope-models-publisher -> the above + Put/retention     (humans/CI)
+            #   hope-models-reader -> Get/List on hope-models only (services)
+            #   hope-models-publisher -> the above + Put/retention (humans/CI)
             # Neither can DeleteObject. Retiring a published prefix is a root
             # action taken knowingly, not something a compromised inference pod
             # or a mistyped `mc rm --recursive` can do.
@@ -246,7 +246,7 @@ services:
             # placeholder in a comment here; compose tries to interpolate that too
             # and fails the whole file. Learned the hard way, twice.)
             # The defaults are obvious dev placeholders; the cluster host gets real
-            # keys from the operator procedure (TASK-832), never these.
+            # keys from the operator procedure, never these.
             /usr/bin/mc admin policy create minio hope-models-reader /policies/hope-models-reader.json;
             /usr/bin/mc admin policy create minio hope-models-publisher /policies/hope-models-publisher.json;
             /usr/bin/mc admin user add minio ${MINIO_MODELS_READER_KEY:-hope-models-reader} ${MINIO_MODELS_READER_SECRET:-dev_placeholder_reader_secret};

@@ -1,4 +1,4 @@
-"""TASK-846 D-3 — the ``call_mcp_tool`` activity's SSRF egress gate (hermetic).
+"""the call_mcp_tool activity's SSRF egress gate (hermetic).
 
 ``McpServer.baseUrl`` is TENANT-AUTHORED (OD-7). Inside a k3s cluster an unconstrained
 value reaches the Kubernetes API, Vault on loopback, and the cloud metadata endpoint.

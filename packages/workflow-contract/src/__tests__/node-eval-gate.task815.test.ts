@@ -1,10 +1,10 @@
 /**
- * TASK-815 / OD-11 — the eval gate binds to the NODE, and the binding is
+ * / OD-11 — the eval gate binds to the NODE, and the binding is
  * TENANT DATA, so it lives in node CONFIG.
  *
  * ## Two `evalGate`s, and why there are two
  *
- * TASK-809 added `evalGate?: { goldenSetId, enabled }` to
+ * added `evalGate?: { goldenSetId, enabled }` to
  * `WorkflowNodeDescriptor`. A descriptor is a CODE-OWNED, per-node-TYPE
  * constant — the same object for every tenant — so it can express "this node
  * type ships with a platform default gate" and nothing else. It cannot hold a
@@ -31,11 +31,11 @@ import { NODE_CONFIG_SCHEMAS, type NodeConfigSchema } from '../node-config-schem
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
 
 const PROMPT_CARRYING_KEYS = [
-  // TASK-847 — the GENERIC agent. It is `generation`-classed, so it carries the SAME two
+  // the GENERIC agent. It is `generation`-classed, so it carries the SAME two
   // binding groups every other generation node does; that set-equality is what stops a new
   // generation node shipping without an approved, version-pinned prompt.
   'agentic.agent',
-  // TASK-806 lane A — DD-9's three generation entries reuse `consultation.synthesize`'s schema.
+  // lane A — DD-9's three generation entries reuse `consultation.synthesize`'s schema.
   'agent.presummarization',
   'agent.summarization',
   'agent.discharge_summary',

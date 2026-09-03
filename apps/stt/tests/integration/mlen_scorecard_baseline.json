@@ -1,5 +1,5 @@
 {
-  "_comment": "TASK-594 Malayalam-English code-switch STT regression baseline. METRICS ONLY (no transcript text) — the clinical audio + reference transcripts are PHI/PII and live OUTSIDE git (STT_MLEN_EVAL_DIR). Per-clip CER from the shipped adapter path (greedy + language auto + clean decode + deepest-silence chunker, single-utterance). Regenerate with: python apps/stt/scripts/mlen_scorecard.py --clips-dir $STT_MLEN_EVAL_DIR --gguf $WHISPER_MLEN_GGUF --out <this file>. Model is deterministic so re-runs are stable.",
+  "_comment": " Malayalam-English code-switch STT regression baseline. METRICS ONLY (no transcript text) — the clinical audio + reference transcripts are PHI/PII and live OUTSIDE git (STT_MLEN_EVAL_DIR). Per-clip CER from the shipped adapter path (greedy + language auto + clean decode + deepest-silence chunker, single-utterance). Regenerate with: python apps/stt/scripts/mlen_scorecard.py --clips-dir $STT_MLEN_EVAL_DIR --gguf $WHISPER_MLEN_GGUF --out <this file>. Model is deterministic so re-runs are stable.",
   "model": "arcaai-whisper-large-ml-en-gguf (f16)",
   "language": "ml-en",
   "mean_cer": 0.325,

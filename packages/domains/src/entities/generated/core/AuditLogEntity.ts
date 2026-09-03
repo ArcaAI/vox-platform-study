@@ -11,11 +11,11 @@ import * as Entities from '../../../entities';
 export interface IAuditLogEntity extends IBaseTenantEntity {
   responsibleUserId?: string | null;
   /**
-   * TASK-762 — the MACHINE half of the actor pair. Mutually exclusive with
+   * the MACHINE half of the actor pair. Mutually exclusive with
    * `responsibleUserId`: a service-account action leaves the user column NULL
    * rather than borrowing the identity of whichever human issued the
    * credential, which would be wrong in a way a reviewer cannot detect.
-   */
+ */
   responsibleServiceAccountId?: string | null;
   responsibleIp?: string | null;
   resourceType: Enums.ResourceType;
@@ -250,7 +250,7 @@ export class AuditLogEntity extends BaseTenantEntity {
     if (!Object.values(Enums.ResourceType).includes(this._resourceType)) {
       throw new BusinessException(`AuditLog resourceType is invalid: ${String(this._resourceType)}.`);
     }
-    // TASK-762 — an audited action has exactly ONE actor: a human
+    // an audited action has exactly ONE actor: a human
     // (`responsibleUserId`) or a machine (`responsibleServiceAccountId`).
     // A row naming both is unattributable — a reader cannot tell which one
     // actually performed the action.

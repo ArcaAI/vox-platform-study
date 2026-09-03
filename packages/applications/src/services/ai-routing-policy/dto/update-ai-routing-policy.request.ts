@@ -7,7 +7,7 @@ import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
  *
  * ## Only a DRAFT may change its routing semantics
  *
- * §3A.8 keeps every revision addressable for rollback. Editing an ACTIVE
+ * keeps every revision addressable for rollback. Editing an ACTIVE
  * revision in place destroys that: the row a rollback would return to no
  * longer contains what it contained when it was serving, and the audit trail's
  * "before" becomes the only record of a configuration that once decided where
@@ -22,7 +22,7 @@ import { AiExplicitProviderMode, AiRoutingStrategy } from '@arcaai/domains';
  * `status` is absent by design — see `CreateAiRoutingPolicyRequest`.
  */
 export class UpdateAiRoutingPolicyRequest {
-  // ─────────── TASK-844 — the provider-configuration binding ───────────
+  // ─────────── — the provider-configuration binding ───────────
   // All SEMANTIC, so all refused on a revision that is not a DRAFT: changing
   // which model or connection serves redirects PHI to a different vendor while
   // keeping a revision id an auditor already signed off.

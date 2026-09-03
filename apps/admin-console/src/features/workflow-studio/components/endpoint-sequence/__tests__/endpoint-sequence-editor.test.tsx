@@ -1,5 +1,5 @@
 /**
- * TASK-812 (D-10) — the endpoint-sequence ordering editor.
+ * (D-10) — the endpoint-sequence ordering editor.
  *
  * What these tests pin is the thing the defect was ABOUT: an admin can ORDER the stage and ADD
  * to it. Before this ticket the sequence was a code literal and the only tenant-facing control
@@ -178,7 +178,7 @@ describe('EndpointSequenceEditor', () => {
     expect(screen.getByText(/without finalizing or locking any document/)).toBeDefined();
   });
 
-  // The ORDERING invariant (§7a owner note 1). `harness.finalize` writes the note;
+  // The ORDERING invariant ( owner note 1). `harness.finalize` writes the note;
   // `summary.finalize` locks every document of the consultation. Inverted, a consultation closes
   // on an empty record — so the server refuses that write and this warning says so first. The
   // warning is ADVISORY; the enforcement is `endpointOrderProblem` on the descriptor.

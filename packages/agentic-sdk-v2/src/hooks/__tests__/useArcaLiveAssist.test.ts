@@ -1,5 +1,5 @@
 /**
- * useArcaLiveAssist Hook Tests (TASK-858 G2)
+ * useArcaLiveAssist Hook Tests
  *
  * The `agent.grammar` node publishes correction proposals and interpreter
  * suggestions to `GET /consultations/:id/live-assist/stream` — a FOURTH

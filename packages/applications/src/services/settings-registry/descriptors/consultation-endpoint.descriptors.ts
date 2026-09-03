@@ -1,4 +1,4 @@
-// TASK-812 — the CONSULTATION ENDPOINT SEQUENCE (`global-kv`).
+// the CONSULTATION ENDPOINT SEQUENCE (`global-kv`).
 //
 // One key: the ORDERED list of actions that runs before a consultation session
 // closes. It exists because the list used to be a code literal
@@ -16,7 +16,7 @@
 //
 // WHY `global-kv` AND NOT A COLUMN. Registering a descriptor is the ONLY step
 // needed to make a key governed, readable and writable — there is no per-key
-// allow-list (09 §Configuration Tiers). So the platform order, the per-tenant
+// allow-list (09 Tiers). So the platform order, the per-tenant
 // override, the admin write lane, cache invalidation and the settings-catalog
 // surface all arrive with the descriptor, and no migration is involved. A
 // `DepartmentAgent.endpointActions` column would have bought a third cascade

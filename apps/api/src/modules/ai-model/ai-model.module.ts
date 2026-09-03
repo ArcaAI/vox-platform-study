@@ -16,7 +16,7 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  * `AiProviderConnectionServiceModule` so discovery can ask the ONE cascade which
  * engine each provider means for the calling tenant (see the service header).
  *
- * `AiModelDownloadServiceModule` wires the download/publish action (TASK-855
+ * `AiModelDownloadServiceModule` wires the download/publish action
  * lane L3): the `DownloadAiModel` BullMQ queue, the trigger/status-poll
  * service `AiModelAdminController` injects, and the fetch/verify/publish
  * worker.

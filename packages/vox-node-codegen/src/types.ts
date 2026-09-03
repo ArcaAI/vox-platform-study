@@ -102,7 +102,7 @@ export interface AdminMethod {
   /**
    * Every `svc:*` scope THIS route declares, sorted. Usually one — the area's
    * own scope — but a read route may also accept the area's `:read` sibling
-   * (TASK-773 decision O-3), and `enforceServiceAccountScopes` is OR, so any
+   * ( decision O-3), and `enforceServiceAccountScopes` is OR, so any
    * one of them is sufficient. Emitted into the 403 message so it names what
    * this route actually needs rather than what the area as a whole needs.
    */

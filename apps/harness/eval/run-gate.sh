@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 #
-# TASK-713 — the SUPPORTED way to run the harness clinical-quality release gate.
+# the SUPPORTED way to run the harness clinical-quality release gate.
 #
 #   apps/harness/eval/run-gate.sh
 #
-# Owner decision (2026-08-17, docs/implementation/TASK-713-Harness-Eval-Gate/README.md
-# §7): this gate is a LOCAL / scheduled quality check, not a per-MR blocking shared-CI
+# Owner decision (2026-08-17,
+# this gate is a LOCAL / scheduled quality check, not a per-MR blocking shared-CI
 # job — LM Studio is a desktop app with no CI-runnable image. This script is that local
 # path, in one command.
 #
 # It does four things a bare `python -m harness.eval.ci` invocation does not:
 #
-#   1. PREFLIGHT   — fails fast with an actionable message if LM Studio is unreachable
+#   1. PREFLIGHT — fails fast with an actionable message if LM Studio is unreachable
 #                    or the judge model is not served, instead of dying mid-run on a
 #                    connection error 10 minutes in.
-#   2. WARM-LOAD   — the trap that cost three prior sessions a completed run. LM Studio
+#   2. WARM-LOAD — the trap that cost three prior sessions a completed run. LM Studio
 #                    JIT-loads a model on first use; a cold call costs ~20 s while a warm
 #                    one costs ~0.1 s. Measuring the COLD call and extrapolating makes the
 #                    run look like it needs 20-45 minutes when it actually needs minutes.
 #                    This script loads the model first and reports both numbers, so the
 #                    per-call cost you see is the real one.
-#   3. CTX CHECK   — warns when HARNESS_JUDGE_MAX_TOKENS exceeds the model's LOADED
+#   3. CTX CHECK — warns when HARNESS_JUDGE_MAX_TOKENS exceeds the model's LOADED
 #                    context window (LM Studio answers `400 {'error':'terminated'}`).
 #   4. TIMED VERDICT — prints wall-clock and the PASS/FAIL verdict, and exits with the
 #                    gate's own exit code so any scheduler/cron surfaces a FAIL loudly.

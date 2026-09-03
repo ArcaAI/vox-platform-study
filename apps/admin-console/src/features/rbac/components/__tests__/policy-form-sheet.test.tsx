@@ -1,5 +1,5 @@
 /**
- * TASK-769: `PolicyFormSheet` was a hand-rolled `SheetContent`; it now composes
+ * `PolicyFormSheet` was a hand-rolled `SheetContent`; it now composes
  * the console-wide `DetailDrawer` with its actions in the PINNED footer
  * (submit reaches the form through `form={formId}`). Covered here: open/close
  * wiring, the accessible name, that the loaded row still seeds the editor

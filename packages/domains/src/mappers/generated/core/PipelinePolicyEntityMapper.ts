@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 import * as Mappers from '../../../mappers';
 
-// TASK-816 D-23 — `PipelinePolicy` is OCC-WRITTEN (`pipeline-policy.service.ts:206,338` call
+// `PipelinePolicy` is OCC-WRITTEN (`pipeline-policy.service.ts:206,338` call
 // `repository.updateWithVersion`), so `03-domain-layer.md` makes this strip mandatory: `_version`
 // is owned by the database and its only legitimate writer is `Repository.updateWithVersion`.
 // `updateWithVersion` also destructures `version` out defensively, but its own comment calls that

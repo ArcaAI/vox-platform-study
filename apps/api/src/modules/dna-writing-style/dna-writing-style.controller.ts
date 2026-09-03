@@ -33,7 +33,7 @@ import {
 // user and is NOT impersonating one must not generate a DNA style (which would
 // be owned by their own account — a per-doctor isolation break).
 // The pre- SUPER_ADMIN role is retired; SUPER_ADMIN (formerly
-// SUPER_ADMIN, renamed ) is the sole elevated role.
+// SUPER_ADMIN, renamed) is the sole elevated role.
 const DNA_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
 const DNA_DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
@@ -52,7 +52,7 @@ import { getDnaJobStatus, streamDnaJobStatus, type DnaJobAccess } from './dna-wr
 @Controller('dna-writing-styles')
 @Authorize()
 // API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
-// business plane), recorded by TASK-758 and policed by
+// business plane), recorded and policed by the boot audit
 // `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
 // A clinician's PERSONAL writing model. The owner/doctor checks live in the
 // service (see the AUTH-NOTEs there) — and, for the two `jobs/:jobId` routes
@@ -359,7 +359,7 @@ export class DnaWritingStyleController {
   /**
    * The caller's identity as the DNA job routes see it: active (CLS) tenant +
    * own user id. Both are compared against the owner fields stamped on the job
-   * payload at enqueue time (finding C-01).
+   * payload at enqueue time.
    */
   private jobAccess(): DnaJobAccess {
     return { tenantId: this.cls.get('tenantId') ?? null, doctorId: this.getDoctorId() };
@@ -375,7 +375,7 @@ export class DnaWritingStyleController {
   // self-service shape as `my-style` / `settings` (rule 05 §Imperative
   // Privilege Checks). Before this check existed, the bare `@Authorize()` was
   // the WHOLE gate and any authenticated user could read any doctor's
-  // writing-style model by guessing a sequential BullMQ job id (finding C-01).
+  // writing-style model by guessing a sequential BullMQ job id.
   @Get('jobs/:jobId')
   @ApiOperation({ summary: 'Get current user DNA generation job status' })
   @ApiParam({ name: 'jobId', description: 'BullMQ job ID', type: String })

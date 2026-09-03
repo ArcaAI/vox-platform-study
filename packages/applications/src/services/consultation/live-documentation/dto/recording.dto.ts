@@ -33,13 +33,16 @@ export class StopRecordingRequest {
   persistSnapshot?: boolean;
 
   /**
-   * TASK-814 §2b — advisory transcript corrections the CLINICIAN accepted during the session
-   * (`live-assist` stream, TASK-796). Forwarded to `LoopContextSignalService.signalConsultationEnding`
-   * so the endpoint stage's `feedback.capture` node (TASK-812 DD-8) has something to promote
+   * advisory transcript corrections the CLINICIAN accepted during the session
+   * (`live-assist` stream). Forwarded to `LoopContextSignalService.signalConsultationEnding`
+   * so the endpoint stage's `feedback.capture` node has something to promote
    * over the raw transcript. Reuses `AcceptedCorrectionProposal` — the exact shape
    * `CaptureFeedbackRequest` re-verifies server-side — rather than a second, drifting copy.
    */
-  @ApiPropertyOptional({ description: 'Advisory corrections the clinician accepted, to promote over the raw transcript at endpoint time.', type: [AcceptedCorrectionProposal] })
+  @ApiPropertyOptional({
+    description: 'Advisory corrections the clinician accepted, to promote over the raw transcript at endpoint time.',
+    type: [AcceptedCorrectionProposal],
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(200)

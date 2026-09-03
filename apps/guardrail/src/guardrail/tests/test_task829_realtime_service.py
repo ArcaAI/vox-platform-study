@@ -1,4 +1,4 @@
-"""TASK-829 — the composed plane: fan-out, no truncation, and the adversarial case.
+"""the composed plane: fan-out, no truncation, and the adversarial case.
 
 The three properties that only show up once T0, T1 and the session state are
 composed:
@@ -99,7 +99,7 @@ def _validator(analyzer: object, policy: RealtimePolicy, store: object) -> Realt
 
 
 async def test_three_consumers_read_one_verdict_and_cause_no_extra_classification() -> None:
-    """§12: guardrail invoked exactly once per finalized segment under fan-out 3+."""
+    """guardrail invoked exactly once per finalized segment under fan-out 3+."""
     analyzer = DensityAnalyzer()
     store = InMemoryRealtimeStore()
     validator = _validator(analyzer, _policy(), store)
@@ -268,7 +268,7 @@ async def test_session_state_survives_a_move_to_another_replica() -> None:
 
 
 async def test_a_self_harm_disclosure_is_recorded_and_still_processes_end_to_end() -> None:
-    """§12: contentHarm none WITH a clinical signal must reach the summary."""
+    """contentHarm none WITH a clinical signal must reach the summary."""
     validator = _validator(DensityAnalyzer(), _policy(), InMemoryRealtimeStore())
     verdict = await validator.validate_cumulative(
         session_id="s1",

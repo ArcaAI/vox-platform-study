@@ -68,7 +68,7 @@ const MAX_TTL_SECONDS = 1800;
 @ApiTags('admin-users')
 @ForbidApiKey()
 @Controller('admin/users')
-// SVC-NOTE (TASK-773, owner decision D-3) — CLOSED to the machine class.
+// SVC-NOTE (owner decision D-3) — CLOSED to the machine class.
 // Not a conservative default awaiting classification: impersonation is a
 // machine assuming a HUMAN identity, which defeats the actor attribution the
 // audit trail is built on. `AuditLog` records exactly one responsible actor —

@@ -121,7 +121,7 @@ TYPES_JS="${REPO_ROOT}/packages/applications/dist/services/settings-registry/reg
 if [ ! -f "${DESCRIPTORS_JS}" ] || [ ! -f "${TYPES_JS}" ]; then
   red "ERROR: the settings registry is not built, so the secret list cannot be derived."
   echo "This script deliberately has NO hardcoded fallback list — a stale copy is the"
-  echo "drift TASK-558 exists to remove. Build it first:"
+  echo "drift  exists to remove. Build it first:"
   echo "  pnpm --filter @arcaai/applications build"
   exit 1
 fi

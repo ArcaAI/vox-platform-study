@@ -290,11 +290,11 @@ describe('WebhookService', () => {
   });
 
   // =========================================================================
-  // TASK-727: server-generated, peppered-HMAC webhook secrets.
+  // server-generated, peppered-HMAC webhook secrets.
   // `CreateWebhookRequest` no longer accepts a caller-supplied `hashedSecret`
   // — the raw secret is always minted server-side and returned exactly once.
   // =========================================================================
-  describe('create — server-generated signing secret (TASK-727)', () => {
+  describe('create — server-generated signing secret ', () => {
     it('returns a raw secret matching the expected shape, distinct from the stored hash', async () => {
       // No SecretsService wired ⇒ un-peppered SHA-256 fallback (legacy-fixture
       // shape, same as ApiKeyService's own fallback when secretsService is
@@ -395,7 +395,7 @@ describe('WebhookService', () => {
     });
   });
 
-  describe('fetchById / fetchAll never re-expose hashedSecret (TASK-727)', () => {
+  describe('fetchById / fetchAll never re-expose hashedSecret ', () => {
     it('fetchById result carries the peppered hash internally but WebhookDtoMapper never surfaces it', async () => {
       // WebhookDtoMapper is exercised in its own dto-mapper suite; here we
       // pin the entity-level contract the mapper relies on: hashedSecret is
@@ -1109,7 +1109,7 @@ describe('WebhookService', () => {
       expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
     });
 
-    // TASK-727: `hashedSecret` is no longer settable via the general PATCH —
+    // `hashedSecret` is no longer settable via the general PATCH
     // secrets rotate ONLY through `rotateSecret`. `UpdateWebhookRequest` no
     // longer declares the field (enforced at the HTTP edge by
     // forbidNonWhitelisted); this pins the service-level defense-in-depth
@@ -1151,7 +1151,7 @@ describe('WebhookService', () => {
   });
 
   // =========================================================================
-  // rotateSecret (TASK-727): the ONLY write path that may set `hashedSecret`.
+  // rotateSecret: the ONLY write path that may set `hashedSecret`.
   // Same OCC/tenant-guard shape as `update`, but always mints a fresh raw
   // secret and returns it exactly once.
   // =========================================================================

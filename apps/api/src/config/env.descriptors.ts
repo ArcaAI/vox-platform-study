@@ -394,7 +394,7 @@ const OBSERVABILITY: SettingDescriptor[] = [
   ),
   // Read by `logging.service.ts:61` to LABEL log records. It is NOT the release
   // version: build identity is baked into the image as `/app/build-info.json`
-  // (TASK-648) and is deliberately not settable from configuration. Declared
+  // and is deliberately not settable from configuration. Declared
   // because the read is real and an undeclared read is invisible to operators —
   // not as an invitation to set it.
   envKnob(

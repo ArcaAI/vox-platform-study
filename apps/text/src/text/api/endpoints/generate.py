@@ -115,10 +115,10 @@ _DEFAULT_TIMEOUT_S = 120.0
 _IDEMPOTENCY_TTL_S = 86_400  # 24h
 
 # Re-exported for import compatibility: these moved to `text.routing.usage`
-# (TASK-818 Wave 0.4) and are imported here by name so existing call sites and
+# ( Wave 0.4) and are imported here by name so existing call sites and
 # `from text.api.endpoints.generate import _x` keep resolving.
 # Re-exported for import compatibility: the streaming path moved to
-# `text.routing.streaming` (TASK-818 Wave 0.4).
+# `text.routing.streaming` ( Wave 0.4).
 from text.api.endpoints.stream import (  # noqa: E402
     _PING_SECONDS as SSE_PING_SECONDS,
 )
@@ -163,8 +163,8 @@ async def _apply_guardrail_gate(
     case fails closed too. The dev/CI bypass (client absent or disabled) is
     preserved.
 
-    The ``assert_not_in_judge_scope`` call is the cycle tripwire (TASK-735
-    §2.5): ``apps/guardrail`` delegates its LLM judgement to this service, so
+    The assert_not_in_judge_scope call is the cycle tripwire
+    apps/guardrail delegates its LLM judgement to this service, so
     gating a JUDGE call on guardrail would close an unbounded
     ``text -> guardrail -> text`` cycle and deadlock the safety plane behind the
     pool it protects. If a future edit routes this helper onto the judge path it
@@ -233,7 +233,7 @@ async def _resolve_stream_idempotency(
     request_body: GenerateRequest,
     generation_id: str,
 ) -> str | None:
-    """Map an ``Idempotency-Key`` to a generation id (§3C.6).
+    """Map an Idempotency-Key to a generation id.
 
     Returns the id of an EXISTING generation when this key has been seen before,
     or ``None`` when this request should proceed as new. Raises **409
@@ -314,7 +314,7 @@ def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) 
     return float(served) if served else float(PROVIDER_TIMEOUT_FLOOR_S)
 
 
-# NOTE — TASK-818 C-4 ("`ORJSONResponse` as `default_response_class`") was tried
+# NOTE — ("`ORJSONResponse` as `default_response_class`") was tried
 # here and DELIBERATELY NOT KEPT. Two measurements killed it:
 #
 #   * the win is 3 microseconds. Rendering a real `GenerateResponse` (770 bytes):
@@ -385,7 +385,7 @@ async def generate(
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
 
-    # Degrade-away-from-unhealthy routing (TASK-725 Task 2, design.md Services
+    # Degrade-away-from-unhealthy routing (design.md Services
     # program): a provider the LAST `/health` check marked unhealthy is never
     # blindly dispatched into. Reroutes to `fallback_provider` when the
     # caller declared one AND it's actually registered; otherwise fails fast
@@ -518,7 +518,7 @@ async def generate(
         shutdown_manager.register_task(task.task_id)
 
     if request_body.stream:
-        # 200 + SSE, immediately. The 202-and-poll indirection is gone (§3C.3(1)):
+        # 200 + SSE, immediately. The 202-and-poll indirection is gone :
         # it cost every stream a second HTTP round trip before its first token,
         # and it made the generation a `BackgroundTasks` callback — which runs
         # AFTER the response completes and is owned by it. A producer owned by a
@@ -536,7 +536,7 @@ async def generate(
         if replayed is not None:
             # A retry of a delivered request. Same id, no second provider call —
             # the terminal write is keyed by generation id, so replaying it is a
-            # no-op (§3C.6). We simply subscribe to what already exists.
+            # no-op ( We simply subscribe to what already exists.
             generation_id = replayed
             if shutdown_manager:
                 shutdown_manager.complete_task(task.task_id)

@@ -1,6 +1,6 @@
 /**
  * v1 response shapes for the compat summary endpoints
- * (TEXT_Summary_Endpoints.md §3.2/§3.3/§4.2; frozen).
+ * (TEXT_Summary_Endpoints.md; frozen).
  *
  * These are response types only — they never pass through the request
  * `ValidationPipe`, so plain TypeScript interfaces (not class-validator DTOs)

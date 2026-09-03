@@ -28,7 +28,7 @@ import { Prisma } from '../../../generated/core-prisma-client/client';
  * invariant, and so a future ticket that DOES need a shipped default has an
  * obvious, reviewed place to add it.
  *
- * ## TASK-799 Round 5 lane B — re-examined, and the emptiness CONFIRMED
+ * ## Round 5 lane B — re-examined, and the emptiness CONFIRMED
  *
  * The proposal was to seed SYSTEM rows here by transcribing each consuming
  * service's in-code floor verbatim, on the theory that Phase 2 migrated
@@ -93,7 +93,7 @@ export interface AiRuntimeProfileSeed {
  * Still NO limits — every numeric knob below is null, so `hasOpinion` stays false
  * and nothing here claims a measured quota (see the file header).
  *
- * TASK-858 — the one row that ships is an ENGINE EXTRA paired with a seeded
+ * the one row that ships is an ENGINE EXTRA paired with a seeded
  * catalog row, not a limit: gemma-4 runs with LM Studio's thinking mode ON by
  * default, which costs every realtime node 400–1300 reasoning tokens and blows
  * its budget on any GPU this platform targets. `reasoning_effort: "none"` is the
@@ -122,7 +122,7 @@ export const SYSTEM_AI_RUNTIME_PROFILES: AiRuntimeProfileSeed[] = [
 ];
 
 export const seedAiRuntimeProfile = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
-  console.log('Seeding SYSTEM AiRuntimeProfile rows (TASK-524)...');
+  console.log('Seeding SYSTEM AiRuntimeProfile rows ...');
 
   let created = 0;
   let skipped = 0;

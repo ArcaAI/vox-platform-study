@@ -1,5 +1,5 @@
 /**
- * TASK-858 D2 — the REALTIME TRANSCRIPTION AGENT, as an `stt`-palette
+ * the REALTIME TRANSCRIPTION AGENT, as an `stt`-palette
  * `WorkflowDefinition`, twice: a SYSTEM template and the ArcaAI tenant's own
  * published copy, plus the `AsrPipeline` that copy's publish would have
  * produced.
@@ -38,7 +38,7 @@
  *
  * The SYSTEM row is a TEMPLATE: `findSystemTemplates` serves every SYSTEM,
  * PUBLISHED, active definition to the Studio's clone-from-template flow
- * (TASK-856), so a tenant admin gets this agent as a starting point without
+ * so a tenant admin gets this agent as a starting point without
  * anyone copying JSON. It compiles to no `AsrPipeline`, and must not: an
  * `AsrPipeline` is what a TENANT publish produces for that tenant's own
  * sessions, and a SYSTEM pipeline row would be a template nothing ever cloned.
@@ -73,7 +73,7 @@ const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 /** Pinned so every derived blob is reproducible; a wall-clock value would make them un-diffable. */
 export const COMPILED_AT = '2026-09-03T00:00:00.000Z';
 
-/** The q8_0 medical GGUF row added by TASK-858 D1 (`seed/ai-models/audio.ts`). */
+/** The q8_0 medical GGUF row added by (`seed/ai-models/audio.ts`). */
 export const TRANSCRIPTION_ASR_MODEL_SLUG = 'whisper-large-en-medical-260726-merged-gguf-q8_0';
 
 export const PLATFORM_TRANSCRIPTION_AGENT_ID = '99000000-0000-0000-0002-000000000001';
@@ -296,7 +296,7 @@ export const ARCAAI_TRANSCRIPTION_PIPELINE = {
   tenantId: ARCAAI,
   name: 'Realtime Transcription Agent — whisper.cpp EN-Medical q8_0',
   slug: ARCAAI_TRANSCRIPTION_PIPELINE_SLUG,
-  description: `Compiled from stt-palette WorkflowDefinition '${ARCAAI_TRANSCRIPTION_AGENT_SLUG}' (TASK-858).`,
+  description: `Compiled from stt-palette WorkflowDefinition '${ARCAAI_TRANSCRIPTION_AGENT_SLUG}' .`,
   configYaml: PIPELINE_CONFIG_YAML,
   isDefault: true,
   tags: [`${STT_WORKFLOW_TAG_PREFIX}${ARCAAI_TRANSCRIPTION_AGENT_ID}`, 'medical', 'whisper.cpp'],
@@ -312,7 +312,7 @@ export const ARCAAI_TRANSCRIPTION_PIPELINE = {
 
 /** The SYSTEM template. Platform configuration — runs in `safe` mode too. */
 export const seedPlatformTranscriptionAgentTemplate = async (client: CorePrismaClient): Promise<{ created: boolean }> => {
-  console.log('Seeding the platform realtime-transcription agent template (TASK-858)...');
+  console.log('Seeding the platform realtime-transcription agent template ...');
 
   // CREATE-ONLY. A PUBLISHED WorkflowDefinition is immutable at three
   // application layers AND at a database trigger — an upsert with an `update`
@@ -355,7 +355,7 @@ export const seedPlatformTranscriptionAgentTemplate = async (client: CorePrismaC
  * `adminPicked` branch. Neither function fights the other.
  */
 export const seedArcaaiTranscriptionAgent = async (client: CorePrismaClient): Promise<{ created: boolean; pipelineDemoted: number }> => {
-  console.log('Seeding the ArcaAI realtime-transcription agent + its compiled AsrPipeline (TASK-858)...');
+  console.log('Seeding the ArcaAI realtime-transcription agent + its compiled AsrPipeline ...');
 
   let created = false;
   const existing = await client.workflowDefinition.findUnique({ where: { id: ARCAAI_TRANSCRIPTION_AGENT_ID }, select: { id: true } });

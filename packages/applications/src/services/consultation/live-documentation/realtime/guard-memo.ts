@@ -1,5 +1,5 @@
 /**
- * TASK-811 (DD-7) — guard memoization keyed on `(guard, config, inputHash)`.
+ *  — guard memoization keyed on `(guard, config, inputHash)`.
  *
  * ## Why config is IN the key
  *

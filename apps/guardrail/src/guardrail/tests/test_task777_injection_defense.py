@@ -1,6 +1,6 @@
-"""TASK-777 Lane C — prompt-injection and harmful request/response prevention.
+"""prompt-injection and harmful request/response prevention.
 
-Threat model in the ticket README §3. This suite pins the two halves of it:
+Threat model in This suite pins the two halves of it:
 
 **Inbound.** Untrusted content (T2/T3: transcribed speech, retrieved documents,
 uploaded referrals) must be *sanitized* before anything reads it (T3 invisible

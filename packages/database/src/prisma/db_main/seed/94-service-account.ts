@@ -5,14 +5,14 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_SERVICE_ACCOUNT_CLIENT_IDS, SEED_SERVICE
 import { resolveApiKeyPepper } from './api-key-pepper';
 
 /**
- * TASK-766 — the day-1 machine identity for the ArcaAI tenant.
+ * the day-1 machine identity for the ArcaAI tenant.
  *
  * ## What the owner asked for, and the constraint it collides with
  *
  * *"make sure we have seed data to create service account for ArcaAI tenant"*.
- * TASK-762's definition of done says the client secret is shown ONCE and never
+ * definition of done says the client secret is shown ONCE and never
  * persisted recoverably — **"no secret value in any migration, seed, or
- * fixture"** — and TASK-763 §OD-2 therefore decided not to seed one at all,
+ * fixture"** — and therefore decided not to seed one at all,
  * leaving a fresh deploy with no machine path to administration until a human
  * super admin issues an account by hand.
  *
@@ -34,7 +34,7 @@ import { resolveApiKeyPepper } from './api-key-pepper';
  *
  * Choosing the other option (a deterministic secret gated to dev/test only, and
  * no row at all in production) was rejected because it leaves the production
- * gap exactly where TASK-763 §OD-2 found it, which is the thing this ticket was
+ * gap exactly where found it, which is the thing was
  * asked to close.
  *
  * ## Why the scope set is DERIVED from the tenant admin's authority
@@ -62,13 +62,13 @@ import { resolveApiKeyPepper } from './api-key-pepper';
  *
  * ## OD-2 revisited, 2026-08-20 — CI/automation needs a working secret on day 1
  *
- * TASK-763 §OD-2 decided not to seed a secret, and the resolution above (seed
+ * decided not to seed a secret, and the resolution above (seed
  * the ACCOUNT, not the SECRET) closed only half the gap: a fresh deploy still
  * had no MACHINE path to administration, because the inert verifier requires a
  * human SUPER_ADMIN to log in and call `rotate` before any automation can
  * authenticate. The owner ruling that day names that residual gap
  * unacceptable — CI/automation needs machine access from day one — while
- * reaffirming the hard constraint that produced the original posture: TASK-762's
+ * reaffirming the hard constraint that produced the original posture:
  * DoD forbids a recoverable secret in seed data, full stop.
  *
  * Both hold together because they are not in tension: `BOOTSTRAP_SUPER_ADMIN_
@@ -84,7 +84,7 @@ import { resolveApiKeyPepper } from './api-key-pepper';
  * | Unset, development/test | Unchanged: the deterministic `SEED_SERVICE_ACCOUNT_DEV_SECRETS` fixture. |
  * | Unset, everywhere else | Unchanged: the inert random verifier — no credential is invented. The log says so and names the `rotate` endpoint. |
  *
- * This satisfies TASK-762's constraint for the same reason the bootstrap admin
+ * This satisfies constraint for the same reason the bootstrap admin
  * does: what lands in the database is a peppered HMAC-SHA256 digest with no
  * recoverable preimage anywhere in the seed, migration, or fixture tree — the
  * plaintext lives only in the operator's env/Vault delivery mechanism, which is
@@ -99,7 +99,7 @@ import { resolveApiKeyPepper } from './api-key-pepper';
  * administrator's authority (derivation proven in
  * `__tests__/service-account-seed.test.ts`), because "CI/automation needs
  * machine access" was never a request for platform-plane reach — it is a
- * request that the tenant-scoped reach TASK-766 already designed should not
+ * request that the tenant-scoped reach already designed should not
  * require a human in the loop to activate.
  *
  * The CREATE-ONLY guarantee applies here too: this path only produces a
@@ -133,9 +133,9 @@ export function credentialsRefFor(clientId: string): string {
  * every one of those is held by the seeded `TENANT_ADMIN` role (proven, not
  * asserted, in `__tests__/service-account-seed.test.ts`).
  *
- * ─── Coordination note for TASK-767 (standalone STT + summarization) ────────
+ * ─── Coordination note for (standalone STT + summarization) ────────
  *
- * TASK-767 adds `@RequiredSvcScopes` to the speech-to-text and summarization
+ * adds `@RequiredSvcScopes` to the speech-to-text and summarization
  * surfaces. Two facts constrain what this seed could do about that today:
  *
  *  1. `SERVICE_ACCOUNT_SCOPE_REGISTRY` is DERIVED — it contains the 56
@@ -148,9 +148,9 @@ export function credentialsRefFor(clientId: string): string {
  *     be refused by CASL. A credential that passes the scope gate and fails the
  *     ability gate is the worst of both worlds to debug.
  *
- * The four scopes marked `[TASK-767]` below are the admin-plane STT and
+ * The four scopes marked below are the admin-plane STT and
  * summarization areas that exist TODAY, and they are what this account holds.
- * If TASK-767 declares NEW business-plane `svc:` scopes, add them to this array
+ * If declares NEW business-plane `svc:` scopes, add them to this array
  * (and to `SVC_SCOPE_IMPLICATIONS` in the test) — that is the one-line
  * insertion point, and the test will fail until the registry actually contains
  * them.
@@ -161,7 +161,7 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:user:write', // → manage:User
   'svc:admin:apikey:read', // → read:ApiKey
   'svc:admin:apikey:write', // → manage:ApiKey
-  'svc:admin:role:read', // → read:Role   (READ only: Role/Policy are GLOBAL tables)
+  'svc:admin:role:read', // → read:Role (READ only: Role/Policy are GLOBAL tables)
   'svc:admin:tenant:read', // → read:Tenant
   'svc:admin:audit:read', // → read:AuditLog
   // Clinical configuration
@@ -172,22 +172,22 @@ export const ARCAAI_TENANT_ADMIN_SVC_SCOPES = [
   'svc:admin:document-template:manage', // → manage:DocumentTemplate
   'svc:admin:dna-writing-style:manage', // → manage:DnaWritingStyleReport
   'svc:admin:knowledge:manage', // → manage:KnowledgeDocument
-  // Summarization / documentation plane  [TASK-767]
+  // Summarization / documentation plane
   'svc:admin:consultation-admin:manage', // → manage:Consultation
   'svc:admin:harness:manage', // → manage:HarnessPolicy, manage:HarnessEval, manage:HarnessWorkflow, read:HarnessAudit
   'svc:admin:agentic:manage', // → manage:HarnessPolicy
   'svc:admin:agent-trajectory:read', // → read:AgentTrajectory
 
-  // Standalone-feature (business-plane) scopes — TASK-767. These are what let the
+  // Standalone-feature (business-plane) scopes —. These are what let the
   // account actually EXERCISE speech-to-text and summarization, as opposed to
   // administering their configuration. All three imply `create:Consultation`,
   // which TENANT_ADMIN holds, so they satisfy this file's derivation rule.
   // Renamespaced from the API-key scopes of the same name; the registry owns the
   // mapping (`STANDALONE_FEATURE_SCOPE_SOURCES`) and the test pins agreement.
-  'svc:stt:transcription:write', // → create:Consultation  (native STT jobs)
-  'svc:stt:stream:write', // → create:Consultation  (compat /api/stt sessions)
-  'svc:consultation:report:write', // → create:Consultation  (summarization, native + compat)
-  // Speech-to-text plane  [TASK-767]
+  'svc:stt:transcription:write', // → create:Consultation (native STT jobs)
+  'svc:stt:stream:write', // → create:Consultation (compat /api/stt sessions)
+  'svc:consultation:report:write', // → create:Consultation (summarization, native + compat)
+  // Speech-to-text plane
   'svc:admin:audio-pipeline:manage', // → manage:AsrPipeline
   'svc:admin:transcription-job:read', // → read:AsrPipeline
   'svc:admin:tenant-stt-config:manage', // → manage:TenantSttConfig
@@ -350,7 +350,7 @@ export const seedServiceAccount = async (client: CorePrismaClient) => {
       // is (a rotated credential must survive a re-seed), but `scopes` are
       // configuration, and a seed that could never widen them would leave every
       // already-provisioned environment stuck on whatever the account was created
-      // with. That is how this account ended up without the TASK-767
+      // with. That is how this account ended up without the
       // standalone-feature scopes after they were added.
       const current = Array.isArray(existing.scopes) ? (existing.scopes as string[]) : [];
       const desired = [...account.scopes];

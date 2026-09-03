@@ -1,9 +1,9 @@
 /**
- * TASK-789 C-1 — consultation-open dispatch of a tenant-authored workflow.
+ * consultation-open dispatch of a tenant-authored workflow.
  *
  * These tests pin the two behaviours that make the fix safe:
- *   1. no assignment  -> NOTHING is dispatched (Substrate A keeps the consultation, unchanged);
- *   2. an assignment  -> a run is started, stamped `trigger: 'consultation open'`, and carries a
+ *   1. no assignment -> NOTHING is dispatched (Substrate A keeps the consultation, unchanged);
+ *   2. an assignment -> a run is started, stamped `trigger: 'consultation open'`, and carries a
  *      real identity payload (without which every consultation node fails its binding).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -18,7 +18,7 @@ function makeDeps(overrides: Record<string, unknown> = {}) {
   return {
     assignments: { resolve: vi.fn().mockResolvedValue({ workflowDefinitionSlug: null, source: 'platform-default' }) },
     definitionRepository: { findPublishedBySlug: vi.fn().mockResolvedValue(null) },
-    // TASK-795 W1 — the dispatcher now records which engine governs.
+    // the dispatcher now records which engine governs.
     consultationRepository: { findById: vi.fn().mockResolvedValue({ id: CONSULTATION, metadata: null }), update: vi.fn().mockResolvedValue({}) },
     workflowRunService: { recordRunStarted: vi.fn().mockResolvedValue({}) },
     harnessGateway: { startWorkflowRun: vi.fn().mockResolvedValue({ status: 'RUNNING' }) },
@@ -101,7 +101,7 @@ describe('ConsultationWorkflowDispatchService', () => {
     );
   });
 
-  // TASK-850 lane A moved run identity from `payload` to `subject`. The INTENT of this test is
+  // lane A moved run identity from `payload` to `subject`. The INTENT of this test is
   // unchanged and is the reason it must keep passing: the three identity values still reach the
   // same `run_identity(...)` readers (the dispatcher re-stamps them into `run_payload`), and
   // without them `input.context_binding` — `critical=True` — fails at the first node. Only the

@@ -305,7 +305,7 @@ export class ContextItemResponse {
   updatedAt: string;
 
   /**
-   * TASK-709: Surface `_version` (the OCC compare-and-set counter, DISTINCT
+   * Surface `_version` (the OCC compare-and-set counter, DISTINCT
    * from `currentVersionNumber` — the content-revision pointer above) so SDK
    * clients can echo it back via `If-Match: "<version>"` (or the body-field
    * `expectedVersion`) on the next PATCH. Mirrors

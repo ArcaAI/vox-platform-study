@@ -7,11 +7,11 @@
 # point at a real OpenAI-compatible endpoint with HARNESS_PROMPTFOO_BASE_URL +
 # HARNESS_PROMPTFOO_API_KEY for nightly/full runs.
 description: >-
-  TASK-330 PDSQI-9 judge output-contract gate (pinned golden set synthetic-v0.1.0).
+   PDSQI-9 judge output-contract gate (pinned golden set synthetic-v0.1.0).
   Validates that the judge emits schema-valid PDSQI-9 JSON for every pinned case.
 
 metadata:
-  ticket: TASK-330
+  ticket: 
   goldenSetVersion: synthetic-v0.1.0
 
 prompts:

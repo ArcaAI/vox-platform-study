@@ -1,5 +1,5 @@
 /**
- * The three §3A.4 hard gates — one describe block each.
+ * The three hard gates — one describe block each.
  *
  * They are tested separately on purpose. "The gates work" is not coverage of
  * three independent PHI boundaries: a single composed assertion passes just as

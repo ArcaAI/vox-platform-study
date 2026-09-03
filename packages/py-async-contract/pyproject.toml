@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hope-async-contract"
 version = "0.1.0"
-description = "TASK-717: the normative async task/event envelope (identity, tenancy, type, payload-or-claim-check, correlation, causation, idempotency key, schema version) plus the idempotency-key and resume-token conventions, for the HOPE Python services"
+description = "the normative async task/event envelope (identity, tenancy, type, payload-or-claim-check, correlation, causation, idempotency key, schema version) plus the idempotency-key and resume-token conventions, for the HOPE Python services"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11,<3.12"

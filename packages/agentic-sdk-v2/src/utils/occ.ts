@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Optimistic-concurrency helpers (TASK-709)
+ * @arcaai/vox - Optimistic-concurrency helpers
  *
  * The note-content write routes (`PATCH :id/context/:contextId`,
  * `PATCH :id/summary/:summaryId`, `POST :id/summary/:contextItemId/approve`)

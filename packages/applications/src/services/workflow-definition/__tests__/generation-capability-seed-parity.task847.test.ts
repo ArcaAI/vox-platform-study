@@ -1,5 +1,5 @@
 /**
- * TASK-847 finding F-32 — the seeded capability declarations must speak the CONTRACT's vocabulary.
+ * finding F-32 — the seeded capability declarations must speak the CONTRACT's vocabulary.
  *
  * `AiModel._metadata.supportedGenerationParams` is data, and the gate compares it by string
  * equality against the keys a node authored under `generation`. So a seeded row that says

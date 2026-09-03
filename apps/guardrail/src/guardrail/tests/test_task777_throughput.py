@@ -1,4 +1,4 @@
-"""TASK-777 Lane B — throughput at >= 100 concurrent consultation sessions.
+"""throughput at >= 100 concurrent consultation sessions.
 
 Guardrail is on the critical path of every generation and fails CLOSED, so
 saturating guardrail is a denial of *generation* for every tenant (threat T9).

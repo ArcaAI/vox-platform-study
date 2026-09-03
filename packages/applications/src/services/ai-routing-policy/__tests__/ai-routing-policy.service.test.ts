@@ -7,22 +7,22 @@
  *
  *   * the two-tier cascade and the proof that the Global CUSTOMER tenant
  *     `50000000-…` cannot enter it — at any point, in any response;
- *   * TASK-844's default ELECTION: `isDefault` outranks ordering, the unset and
+ * * default ELECTION: `isDefault` outranks ordering, the unset and
  *     the set happen in ONE transaction, and the operation is idempotent;
  *   * funding is DERIVED from the connection cascade, never stamped from the row;
  *   * PROMOTION copies a configuration WITHOUT its credential and never lands
  *     elected;
  *   * EXPORT carries no recoverable secret — asserted structurally, not by
  *     reading the builder;
- *   * most-specific-match selection, the §3A.4 STRICT ruling, the super-admin
+ * * most-specific-match selection, the STRICT ruling, the super-admin
  *     privilege boundary (403) versus the cross-tenant posture (404), factory
  *     use on create, and a sys-event on every mutation.
  *
  * ## The grain these tests describe
  *
- * TASK-844 re-grained the table: ONE ROW IS ONE PROVIDER CONFIGURATION, and the
+ * re-grained the table: ONE ROW IS ONE PROVIDER CONFIGURATION, and the
  * ordered chain is the SET of rows sharing `(tenantId, taskKey)`. Where the
- * TASK-818 suite built one row carrying a `candidatesJson` array, these helpers
+ * suite built one row carrying a `candidatesJson` array, these helpers
  * build N rows — which is why `makeChain` exists.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -75,7 +75,7 @@ function makeConfig(overrides: Record<string, any> = {}) {
 }
 
 /**
- * Build an ordered CHAIN for one selection — the TASK-844 replacement for a
+ * Build an ordered CHAIN for one selection — the replacement for a
  * single row carrying a `candidatesJson` array.
  *
  * The first entry is elected (`isDefault`) and carries the shared policy-level
@@ -111,7 +111,7 @@ function makeService(
   const rows = opts.rows ?? [];
   const repo = {
     findAll: vi.fn().mockResolvedValue(rows),
-    // TASK-844 — `getEffective` reads the chain through this. The mock honours
+    // `getEffective` reads the chain through this. The mock honours
     // the tenant-id SET it is handed, which is what makes the cascade tests
     // meaningful: a resolver that quietly added a third tier would still be
     // handed only the two ids the service built.
@@ -261,7 +261,7 @@ describe('getEffective — the cascade is request tenant → SYSTEM, and nothing
   });
 });
 
-describe('getEffective — the ELECTED default outranks ordering (TASK-844)', () => {
+describe('getEffective — the ELECTED default outranks ordering ', () => {
   it('serves the row carrying isDefault even when another row sorts first', async () => {
     // The whole point of the election: an administrator's explicit choice is
     // not a tie-break, it is the answer.
@@ -314,9 +314,9 @@ describe('getEffective — most-specific match wins', () => {
   });
 
   it('breaks an equal-specificity tie with the priority column — LOWER first', async () => {
-    // ⚠ SEMANTIC REDEFINITION, deliberate and recorded in the ticket README.
-    // TASK-818 used `priority` as a policy-level tie-break where HIGHER won.
-    // TASK-844 makes it the CHAIN POSITION, replacing the old candidate `rank`,
+    // ⚠ SEMANTIC REDEFINITION, deliberate and recorded .
+    // used `priority` as a policy-level tie-break where HIGHER won.
+    // makes it the CHAIN POSITION, replacing the old candidate `rank`,
     // so LOWER serves first. Safe to redefine because `AiRoutingPolicy` had zero
     // runtime readers and zero rows when the grain changed.
     const { svc } = makeService({
@@ -424,7 +424,7 @@ describe('getEffective — funding is DERIVED, and the chain is gated', () => {
   });
 });
 
-describe('getEffective — §3A.4 explicit provider is honoured, STRICT by default', () => {
+describe('getEffective — explicit provider is honoured, STRICT by default', () => {
   const two = [{ connectionRef: 'azure' }, { connectionRef: 'bedrock', model: 'claude-sonnet-4' }];
 
   it('serves the provider the caller named', async () => {
@@ -482,7 +482,7 @@ describe('getEffective — §3A.4 explicit provider is honoured, STRICT by defau
   });
 });
 
-describe('setDefault — the ELECTION is atomic (TASK-844)', () => {
+describe('setDefault — the ELECTION is atomic ', () => {
   it('unsets the incumbent and sets the successor INSIDE ONE transaction', async () => {
     // The invariant that matters: a fail-closed selection must never be
     // observable with no default. Two writes could leave that window open; one
@@ -538,7 +538,7 @@ describe('setDefault — the ELECTION is atomic (TASK-844)', () => {
   });
 });
 
-describe('promote — a configuration crosses tenants, a credential never does (TASK-844)', () => {
+describe('promote — a configuration crosses tenants, a credential never does ', () => {
   it('copies the binding but NOT the source connection, and lands NOT elected', async () => {
     const source = makeConfig({ tenantId: OTHER_TENANT, connectionRef: 'azure', model: 'gpt-4o', isDefault: true });
     const { svc, repo, connections, db } = makeService({ rows: [source] });
@@ -584,7 +584,7 @@ describe('promote — a configuration crosses tenants, a credential never does (
   });
 });
 
-describe('export / import — no secret is recoverable from the artifact (TASK-844)', () => {
+describe('export / import — no secret is recoverable from the artifact ', () => {
   it('emits a credentialRef LOCATOR and no key material whatsoever', async () => {
     const { svc } = makeService({ rows: [makeConfig({ tenantId: TENANT, connectionRef: 'azure', model: 'gpt-4o', isDefault: true })] });
     const artifact = await svc.exportConfigurations(TENANT);
@@ -780,7 +780,7 @@ describe('create', () => {
     expect(saved.policyVersion).toBe(8);
   });
 
-  it('broadcasts ResourceCreated with a before/after audit pair (§3A.8)', async () => {
+  it('broadcasts ResourceCreated with a before/after audit pair', async () => {
     const { svc, emitter } = makeService({ rows: [] });
     await svc.create(TENANT, body as any);
     const [type, payload] = emitter.emit.mock.calls[0];
@@ -796,7 +796,7 @@ describe('create', () => {
 
   it('still refuses a legacy candidate list where nothing survives parsing', async () => {
     const { svc } = makeService({ rows: [] });
-    // `baaCovered` missing — the §3A.4 BAA gate reads it, so it is never defaulted.
+    // `baaCovered` missing — the BAA gate reads it, so it is never defaulted.
     await expect(
       svc.create(TENANT, { taskKey: 'text.finalize', candidates: [{ connectionRef: 'azure', model: 'gpt-4o', residency: 'AZURE_US' }] } as any),
     ).rejects.toBeInstanceOf(ArgumentInvalidException);
@@ -848,7 +848,7 @@ describe('update — a served revision is a rollback target, not a scratchpad', 
   });
 });
 
-describe('activate — supersede-only promotion (§3A.8)', () => {
+describe('activate — supersede-only promotion', () => {
   it('promotes the DRAFT, archives its predecessor and records the lineage', async () => {
     const draft = makeConfig({ tenantId: TENANT, status: AiRoutingPolicyStatus.DRAFT, policyVersion: 2 });
     const previous = makeConfig({ tenantId: TENANT, status: AiRoutingPolicyStatus.ACTIVE, policyVersion: 1 });

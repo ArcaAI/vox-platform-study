@@ -1,6 +1,5 @@
 /**
  * VISIT TYPE AS THE PROMPT-COMPOSITION IDENTIFIER (owner directive, quoted in
- * TASK-815 §15e).
  *
  * > "Visit type is an identifier where the hope platform configure and compose
  * > the instructions and consultation context as prompt for agent to work on:

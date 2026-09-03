@@ -323,7 +323,7 @@ class EffectiveConfigClient:
     def handle_invalidation_message(self, payload: Any) -> bool:
         """Drop the cached snapshot in response to ONE pub/sub message.
 
-        Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+        Rule 09 : *invalidation is the propagation path; the TTL
         is a bounded-staleness safety net*. This method is that path — before it,
         this service converged on a control-plane write only by 60s poll, which
         removes the property that justifies moving a value out of env at all.

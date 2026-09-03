@@ -1,4 +1,4 @@
-"""Internal judge endpoint — LLM judgement for the safety plane (TASK-735 Phase 2).
+"""Internal judge endpoint — LLM judgement for the safety plane.
 
 ``apps/guardrail`` owns policy (thresholds, criteria, taxonomy, verdict shape,
 fail-closed posture) and delegates the actual LLM call here. That delegation must

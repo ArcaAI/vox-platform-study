@@ -1,6 +1,6 @@
 """Tests for the shared self-registration + heartbeat helper.
 
-Contract: `docs/implementation/TASK-648-Service-Version-And-Release-Registry/
+Contract:
 contracts/service-release.api.yaml` `POST /internal/service-releases`
 idempotent upsert; a repeat call (heartbeat) is the SAME endpoint.
 

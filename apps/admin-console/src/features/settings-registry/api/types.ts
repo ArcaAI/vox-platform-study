@@ -1,5 +1,5 @@
 /**
- * Wire types for the settings REGISTRY lane (TASK-799 Phase 4, E.1).
+ * Wire types for the settings REGISTRY lane.
  *
  * Shapes mirror the gateway DTOs (`SettingCatalogResponse` /
  * `EffectiveSettingResponse` / `WriteRegistrySettingResponse`) — the console

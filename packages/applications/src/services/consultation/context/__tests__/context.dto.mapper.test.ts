@@ -66,7 +66,7 @@ const createMockContextItemEntity = (
   content: 'content' in overrides ? overrides.content : 'Test content',
   dnaWritingStyleId: 'dnaWritingStyleId' in overrides ? overrides.dnaWritingStyleId : null,
   currentVersionNumber: overrides.currentVersionNumber ?? 1,
-  // TASK-709: the OCC counter (`_version`) — DISTINCT from
+  // the OCC counter (`_version`) — DISTINCT from
   // `currentVersionNumber` above (the content-revision pointer).
   version: overrides.version ?? 1,
   qdrantSynced: overrides.qdrantSynced ?? false,
@@ -247,7 +247,7 @@ describe('ContextDtoMapper', () => {
       expect(result.updatedAt).toBe('2026-01-29T10:30:00.000Z');
     });
 
-    // TASK-709: `version` (the OCC compare-and-set counter) must be surfaced
+    // `version` (the OCC compare-and-set counter) must be surfaced
     // so SDK clients can echo it back via `If-Match`/`expectedVersion`. It
     // is DISTINCT from `currentVersionNumber` (the content-revision pointer).
     it('should map version (OCC counter) distinctly from currentVersionNumber', () => {

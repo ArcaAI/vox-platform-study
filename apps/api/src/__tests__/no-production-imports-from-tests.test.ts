@@ -7,7 +7,7 @@
  * on a release-line branch, with a bare `TS2307: Cannot find module`.
  *
  * That is exactly how `build-api` failed: `src/bootstrap/service-account-surface-audit.ts`
- * imported the TASK-773 evidence fixture from `./__tests__/fixtures/…`. The
+ * imported the evidence fixture from `./__tests__/fixtures/…`. The
  * reasoning in the comment there was sound about `tsconfig.build.json` (whose
  * `__tests__` exclude only filters the ENTRY glob, so tsc did compile it) and
  * missed that the file never reaches the container at all.

@@ -35,7 +35,7 @@ export class SettingCatalogItemResponse {
   @ApiPropertyOptional()
   description?: string;
 
-  // TASK-799 Phase 4 — the GOVERNANCE half of a descriptor. Without these the
+  // the GOVERNANCE half of a descriptor. Without these the
   // console can render a control but cannot explain the rule behind it, so an
   // admin learns `floorDirection` by being refused (403 on a loosening write,
   // `settings-registry-write.service.ts`). Projecting them is what lets the

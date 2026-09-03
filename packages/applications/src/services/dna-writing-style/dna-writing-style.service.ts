@@ -572,7 +572,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * are therefore only COUNTED here, never mutated: they become unreachable
    * the instant their parent report is soft-deleted (`getVersions` /
    * `getVersionsForDoctor` load the parent report first and 404 once it is
-   * gone), and TASK-733 Task 10 (owner ruling, 2026-08-20) hard-deletes them
+   * gone), and (owner ruling, 2026-08-20) hard-deletes them
    * together with their report once `DnaProfileRetentionService`'s retention
    * window elapses — the "purge later" half of "soft delete now, purge
    * later". Erasing them here, ahead of that window, would erase their

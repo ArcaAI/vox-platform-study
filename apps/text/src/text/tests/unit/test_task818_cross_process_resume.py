@@ -1,4 +1,4 @@
-"""Cross-process resume — TASK-818 §3C.3(5), Lane G-R1.
+"""Cross-process resume —, Lane G-R1.
 
 The defect these pin: :class:`GenerationHub` is process-local, so a reconnect
 served by a worker that never held the producer found ``producer is None``. That

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Unsaved-changes guard (TASK-719 Task 15 remainder — design.md §Data flow: "Unsaved-changes
+ * Unsaved-changes guard — flow: "Unsaved-changes
  * guard when `dirty`: `beforeunload` + a Next.js route-change confirm"). Two layers:
  *
  *  1. `beforeunload` — the standard, reliable guard for a tab close/reload/external navigation.

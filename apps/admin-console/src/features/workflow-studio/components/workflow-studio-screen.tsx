@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `WorkflowStudioScreen` (TASK-719 Task 16) — the `/workflow-studio/[definitionId]` route body.
+ * `WorkflowStudioScreen` — the `/workflow-studio/[definitionId]` route body.
  * `definitionId === 'new'` renders the create form (README/Task 16 approach: a definition must
  * exist server-side, with a `paletteKey`, before the graph editor can open — there is no local
  * "unsaved new definition" editing mode). Otherwise fetches the definition + node registry and
@@ -28,8 +28,10 @@ function EditorLoadingSkeleton() {
   return (
     <div aria-hidden="true">
       <ScreenTemplate header={<Skeleton className="h-8 w-64" />}>
-        {/* Mirrors the editor's own reflow gate so the skeleton has the loaded shape at every
-            zoom level, not just on a wide desktop (rule 10 §3). */}
+        {/*
+ Mirrors the editor's own reflow gate so the skeleton has the loaded shape at every
+            zoom level, not just on a wide desktop (rule 10 §3).
+*/}
         <div className="grid min-h-0 grid-cols-1 gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:h-full [@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[240px_1fr_320px]">
           <Skeleton className="h-40 w-full [@media(min-width:64rem)_and_(min-height:32rem)]:h-full" />
           <Skeleton className="h-[26rem] w-full [@media(min-width:64rem)_and_(min-height:32rem)]:h-full" />

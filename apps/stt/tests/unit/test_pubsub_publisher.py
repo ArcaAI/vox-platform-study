@@ -468,7 +468,7 @@ class TestPubSubSettings:
             assert settings.pubsub_enabled is True
 
     def test_pubsub_is_no_longer_settable_from_env(self):
-        """TASK-799: both pub/sub knobs are control-plane owned.
+        """both pub/sub knobs are control-plane owned.
 
         `PUBSUB_ENABLED` / `PUBSUB_CHANNEL_PREFIX` used to be environment
         variables, which meant retuning the relay channel — or turning the

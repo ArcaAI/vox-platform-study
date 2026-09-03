@@ -210,7 +210,7 @@ function UploadCard({ pipelineId, onEnqueue }: { pipelineId: string | null; onEn
           Upload &amp; transcribe
           {files.length > 1 ? ` (${files.length})` : ''}
         </Button>
-        {/* Rule 11 §5: a disabled control must state its reason. */}
+        {/* Rule 11 : a disabled control must state its reason. */}
         {disabledReason ? (
           <p id="batch-upload-reason" className="text-muted-foreground text-xs">
             {disabledReason}
@@ -585,7 +585,7 @@ function MyJobsStrip({ selection, onSelectJob }: { selection: Selection; onSelec
   let body;
   // BUG-014: `isPending` alone also covers "never started" and
   // "offline-paused", neither of which ever resolves — checked FIRST because a
-  // stalled query satisfies both branches (rules 10 and 11 §4).
+  // stalled query satisfies both branches (rules 10 and 11
   if (isStalledQuery(jobsQuery)) {
     body = (
       <EmptyState

@@ -697,7 +697,7 @@ describe('TextCompatController', () => {
       expect(res.summary.summary).toBe('y');
     });
 
-    // TASK-768: was 500. TEXT never answered — a transport failure — so the
+    // was 500. TEXT never answered — a transport failure — so the
     // status is 503. The v1-compat body SHAPE (`{ error, requestId, timestamp }`,
     // parsed by `@arcaai/vox-node`) is deliberately unchanged.
     it('maps an TEXT connection failure to 503 { error: "TEXT service unavailable" }', async () => {
@@ -956,7 +956,7 @@ describe('TextCompatController', () => {
   });
 
   describe('Streaming (stream:true)', () => {
-    // Drive a summary stream. TASK-818 §3C.3(1): the POST *is* the stream —
+    // Drive a summary stream.: the POST *is* the stream
     // there is no `202 {task_id}` ack and no second `GET /tasks/:id/stream`
     // hop, so the POST resolves with the SSE body and the frames are fed to it.
     const runSummaryStream = async (frames: string[]) => {

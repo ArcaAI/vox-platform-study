@@ -23,10 +23,12 @@ import {
 import { IWorkflowRunService } from './IWorkflowRunService';
 import { WorkflowRunDtoMapper } from './workflow-run.dto.mapper';
 
-/** Mirrors `interpreter_workflow_id()` (apps/harness/.../interpreter/workflow.py:52-58) — see the
- * Task 1 contract (`docs/implementation/TASK-723-Runs-Observability/contracts/run-read-model.contract.md`
- * §2) for exactly why `sessionId` — not the trajectory row's own `runId` column — is the correct
- * join key onto `AgentTrajectoryStep`. */
+/**
+ * Mirrors `interpreter_workflow_id()` (apps/harness/.../interpreter/workflow.py:52-58) — see the
+ * Task 1 contract
+ * for exactly why `sessionId` — not the trajectory row's own `runId` column — is the correct
+ * join key onto `AgentTrajectoryStep`.
+ */
 export const INTERPRETER_WORKFLOW_ID_PREFIX = 'workflow-interpreter-';
 export function interpreterSessionId(runId: string): string {
   return `${INTERPRETER_WORKFLOW_ID_PREFIX}${runId}`;
@@ -57,7 +59,7 @@ function buildDateRange(from?: string, to?: string): { gte?: Date; lte?: Date } 
  * A consecutive run of steps sharing the same `name` (the node TYPE — see
  * `RunNodeRollupResponse`'s class doc for why this is not a per-node id) is
  * folded into ONE group, labelled a DERIVED retry grouping (README pitfall 4
- * / Task 1 contract §3 — no attempt column exists anywhere). A non-consecutive
+ * / Task 1 contract — no attempt column exists anywhere). A non-consecutive
  * repeat of the same `name` (a different node instance of the same type,
  * elsewhere in the run) starts a NEW group instead of merging — the closest
  * approximation of node identity available without a stamped node id.
@@ -92,7 +94,7 @@ export function foldStepsIntoNodeRollups(steps: AgentTrajectoryStepResponse[]): 
 }
 
 /**
- * WorkflowRunService — the runs/observability read model (TASK-723). D6's
+ * WorkflowRunService — the runs/observability read model. D6's
  * "CQRS-lite ... read models for runs/observability".
  *
  * INTENTIONAL posture (mirrors AgentTrajectoryService, its sibling telemetry
@@ -100,9 +102,9 @@ export function foldStepsIntoNodeRollups(steps: AgentTrajectoryStepResponse[]): 
  *   - NO sys-event on write — a run row is a telemetry fact, same exemption
  *     as AgentTrajectoryStep (see WorkflowRunEntity header).
  *   - `recordRunStarted`/`recordRunFinished` are IDEMPOTENT on
- *     `(tenantId, sessionId, runId)` — the write contract TASK-718's
+ * `(tenantId, sessionId, runId)` — the write contract
  *     dispatcher (or a future gateway controller) calls. As of this ticket
- *     nothing calls them yet (Task 1 contract §7 / README R2).
+ * nothing calls them yet (Task 1 contract / README R2).
  *   - `getRunTrace` issues exactly ONE bounded `IAgentTrajectoryService.listSteps`
  *     read per run — never a per-node query — reusing the trajectory
  *     service so PHI/`payloadRef` handling stays in one place (README Task 5).
@@ -148,7 +150,7 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     if (filters.workflowVersionId) where.workflowVersionId = filters.workflowVersionId;
     if (filters.status) where.status = filters.status;
     if (filters.trigger) where.trigger = filters.trigger;
-    // Single query-level filter point (Task 1 contract §4) — sandbox runs are
+    // Single query-level filter point (Task 1 contract — sandbox runs are
     // excluded unless explicitly requested.
     if (!filters.includeSandbox) where.isSandbox = false;
     const startedAt = buildDateRange(filters.from, filters.to);
@@ -330,7 +332,7 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     if (input.failedNodeCount !== undefined) entity.failedNodeCount = input.failedNodeCount;
     if (input.degradedNodeCount !== undefined) entity.degradedNodeCount = input.degradedNodeCount;
     if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
-    // TASK-790 (M-2). `undefined` means the caller reported no delivered output (a graph with no
+    // (M-2). `undefined` means the caller reported no delivered output (a graph with no
     // `output.deliver` node) and must leave any existing value alone; an explicit `null` clears it.
     if (input.resultRef !== undefined) entity.resultRef = input.resultRef as never;
 

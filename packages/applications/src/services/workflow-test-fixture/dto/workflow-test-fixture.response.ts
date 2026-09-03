@@ -18,7 +18,7 @@ export class WorkflowTestFixtureResponse {
   workflowDefinitionId?: string | null;
 
   /**
-   * Encrypted at rest with Vault Transit (TASK-721 R4) and therefore projected
+   * Encrypted at rest with Vault Transit and therefore projected
    * ONLY on the id-scoped reads (GET /:id, and the create/update echo). List
    * pages and the delete acknowledgement omit it entirely — treat an absent
    * `input` as "not disclosed on this surface", never as "empty fixture".

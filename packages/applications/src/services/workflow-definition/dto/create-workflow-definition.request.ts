@@ -4,7 +4,7 @@ import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
 
 /**
  * `slug` follows `WORKFLOW_DEFINITION_SLUG_PATTERN` from `@arcaai/workflow-contract` —
- * lowercase alphanumerics, `-` and `_`, 2–80 chars. AMENDED (TASK-858): it used to reuse the
+ * lowercase alphanumerics, `-` and `_`, 2–80 chars. AMENDED: it used to reuse the
  * node-id grammar (`WORKFLOW_NODE_ID_PATTERN`, no hyphen), which rejected every seeded,
  * hyphenated lineage key (`platform-default-summarization`, `arcaai-consultation-soap`, …).
  *
@@ -12,7 +12,7 @@ import { WORKFLOW_DEFINITION_SLUG_PATTERN } from '@arcaai/workflow-contract';
  * `forbidNonWhitelisted` rejects a forged one. Server-owned columns
  * (`compiledConfig`/`compiledConfigChecksum`/`registryChecksum`/`status`/`publishedAt`/
  * `versionNumber`/`validationReport`/`isActive`) are likewise declared on NO request DTO here
- * (`workflow-definition.prisma`'s file header §3.4 Layer 2 — the DTO whitelist is what makes
+ * (`workflow-definition.prisma`'s file header Layer 2 — the DTO whitelist is what makes
  * the immutability guard real).
  */
 export class CreateWorkflowDefinitionRequest {

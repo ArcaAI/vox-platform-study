@@ -132,7 +132,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // AudioRecording it has NO `resourceStatus` column — segments live and die
   // with their parent transcript rather than being independently soft-deleted.
   'TranscriptSegment',
-  // TASK-811 — DocumentSection is the per-section child table of a
+  // DocumentSection is the per-section child table of a
   // live-generated clinical document. Same posture as TranscriptSegment above:
   // no `resourceStatus` column, because sections live and die with their
   // consultation's document. Emptying a section is a CONTENT update under the
@@ -184,7 +184,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `ConsultationContextSchema` is deliberately NOT here — it keeps the
   // standard ENABLED/DELETED lifecycle.
   'ConsultationContextSchemaVersion',
-  // DocumentTemplateVersion (TASK-810) is an immutable published snapshot of a
+  // DocumentTemplateVersion is an immutable published snapshot of a
   // clinical-document shape plus the artifacts compiled from it — the exact
   // shape of ConsultationContextSchemaVersion above, and with no
   // `resourceStatus` column for the same reason. A consultation generated
@@ -198,17 +198,17 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // row), so the table is an audit history: retraction would defeat its whole
   // purpose, and it carries no `resourceStatus` column.
   'AgentPromotion',
-  // WorkflowRun (TASK-723) is the runs/observability read model — one row
+  // WorkflowRun is the runs/observability read model — one row
   // per workflow-substrate run, the same operational-telemetry posture as
   // AgentTrajectoryStep above (hard-retention history, no `resourceStatus`
   // column, no soft delete).
   'WorkflowRun',
-  // WorkflowAssignmentChange (TASK-733) is the append-only WORM change log
+  // WorkflowAssignmentChange is the append-only WORM change log
   // for workflow assignments — no `resourceStatus` column and no soft delete
   // (rows are immutable; the migration REVOKEs UPDATE/DELETE from the app
   // role), the same shape as HarnessAuditEvent above.
   'WorkflowAssignmentChange',
-  // TASK-816 D-24 — the two POLICY change logs are the same identity-only WORM
+  // the two POLICY change logs are the same identity-only WORM
   // shape as WorkflowAssignmentChange directly above (their Prisma models say
   // "Identity only — NO _version / _metadata / updatedAt / resourceStatus", and
   // each migration REVOKEs UPDATE/DELETE from the app role), but they were never

@@ -14,7 +14,7 @@ import { EvalRunService } from './eval-run.service';
  *
  * Kept module-local rather than exported: this is the only consumer, and a
  * shared helper would invite a second discovery path, which is exactly how the
- * pre-TASK-815 gate ended up with capability columns it did not know about.
+ * earlier gate ended up with capability columns it did not know about.
  */
 function graphNodes(graph: unknown): WorkflowGraphNode[] {
   const nodes = (graph as WorkflowGraph | null | undefined)?.nodes;
@@ -35,9 +35,9 @@ function readBoundTemplateId(node: WorkflowGraphNode): string | null {
  * The gate governing this node: the INSTANCE binding it carries, or — when it
  * carries none — the node TYPE's declared default from the registry.
  *
- * Both layers exist deliberately. The descriptor (TASK-809) is a code-owned
+ * Both layers exist deliberately. The descriptor is a code-owned
  * constant shared by every tenant, so it can only express a platform default;
- * the instance config (TASK-815) is where a tenant's own `goldenSetId` and its
+ * the instance config is where a tenant's own `goldenSetId` and its
  * enable/disable toggle live. Instance wins, because a tenant that has said
  * something has said it about their own data.
  */
@@ -64,7 +64,7 @@ export interface EvaluatePromotionInput {
    *
    * Named `agentId` because `PromptManagementService` passes through what
    * `ResolvedPromptConfig.resolvedAgentId` gave it, and that field is part of a
-   * frozen v1-compat contract. Since TASK-815 the value it carries is a
+   * frozen v1-compat contract. Since the value it carries is a
    * workflow node id.
    */
   agentId?: string;
@@ -99,7 +99,7 @@ export interface PromotionGateVerdict {
  * recorded warning (never blocked). The mode comes from the super-admin-only
  * `agentic.eval.promotionGate` registry setting.
  *
- * ## What TASK-815 / OD-11 changed, and what it did not
+ * ## What / OD-11 changed, and what it did not
  *
  * ONLY DISCOVERY. The gate used to find golden sets through
  * `DepartmentAgentRepository.findByBoundTemplate`, which was the only path that

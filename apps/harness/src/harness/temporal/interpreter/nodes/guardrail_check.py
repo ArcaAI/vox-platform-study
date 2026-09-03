@@ -1,7 +1,7 @@
-"""N-4 — ``guardrail.check`` (TASK-720 Task 5, safety class: mandatory, non-removable).
+"""N-4 — guardrail.check (safety class: mandatory, non-removable).
 
 Calls ``apps/guardrail`` directly via :class:`~harness.services.guardrail_client.GuardrailClient`
-(``POST /guardrail/analyze``). Fail-CLOSED per README §2/§4 Task 5: a ``GuardrailResponse``
+(POST /guardrail/analyze). Fail-CLOSED per Task 5: a GuardrailResponse
 carrying a non-null ``error`` (guardrail's OWN fail-open branch,
 ``apps/guardrail/.../guardrails.py:96-105``), a transport failure, or a timeout is treated as
 **NO VERDICT** — this activity NEVER returns ``SUCCEEDED``/"safe" for any of those three cases,
@@ -10,11 +10,11 @@ single v1-permitted value ``'unsafe_or_unknown'`` (an "unsafe-only" gate is exac
 posture that would let a guardrail outage launder into a silent pass — see the schema's own
 description).
 
-**``config.onFail: 'abort'`` is now REJECTED AT AUTHORING TIME** (TASK-791 W4, closing
-TASK-789's M-1). palette.md's rationale read "`onFail: 'abort'` in the node's own config is how a
+**config.onFail: 'abort' is now REJECTED AT AUTHORING TIME** (closing
+). palette.md's rationale read "`onFail: 'abort'` in the node's own config is how a
 tenant makes a specific run's guardrail failure fatal" — but `critical` is a CODE-OWNED registry
 property (`NODE_REGISTRY['guardrail.check']` is `critical=False`, never tenant-configurable —
-execution-semantics.md §5/§9), and `NodeActivityResult.status` has no `FAILED` member (only the
+and `NodeActivityResult.status` has no `FAILED` member (only the
 workflow body promotes a `DEGRADED` critical node to run-level `FAILED`). There is therefore NO
 mechanism in the shipped v1 interpreter for a per-node CONFIG value to override a code-owned
 registry property.

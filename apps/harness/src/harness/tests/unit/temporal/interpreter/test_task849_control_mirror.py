@@ -1,4 +1,4 @@
-"""TASK-849 lane A step 2 — the CONTROL lane, mirrored out of Temporal.
+"""lane A step 2 — the CONTROL lane, mirrored out of Temporal.
 
 Runs the real ``WorkflowInterpreter`` in Temporal's time-skipping environment with the real
 ``INTERPRETER_ACTIVITIES``, and swaps only the Redis client the emit activity would open.

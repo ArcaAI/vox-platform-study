@@ -352,7 +352,7 @@ describe('ServiceReleaseService', () => {
   });
 
   /**
-   * TASK-804 — the registration path carries NO tenant CLS, and every row it
+   * the registration path carries NO tenant CLS, and every row it
    * touches is tenant-scoped.
    *
    * `ServiceRelease`/`ServiceInstance` are in `TENANT_SCOPED_MODELS`, whose
@@ -378,7 +378,7 @@ describe('ServiceReleaseService', () => {
    * (`listReleases`/`listCurrent`/`getHistory`) are deliberately NOT pinned:
    * they run under the caller's own CLS and see these rows through
    * `SYSTEM_SHARED_READ_MODELS` widening.
-   */
+ */
   describe('SYSTEM tenant pinning on the write paths', () => {
     it('registerInstance pins the tenant BEFORE any tenant-scoped query', async () => {
       const order: string[] = [];

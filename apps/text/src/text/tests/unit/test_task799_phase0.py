@@ -1,4 +1,4 @@
-"""TASK-799 Phase 0 (lane A, apps/text) — the three fixes that are not F-01.
+"""(lane A, apps/text) — the three fixes that are not F-01.
 
 * **F-07** — Vertex's tenant-credential path used to fail OPEN: any exception while
   building a tenant's client returned ``self._client``, the PLATFORM client, while

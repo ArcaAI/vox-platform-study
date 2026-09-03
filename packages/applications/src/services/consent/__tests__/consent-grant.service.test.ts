@@ -1,5 +1,5 @@
 /**
- * ConsentGrantService unit tests (TASK-712, consent-abac).
+ * ConsentGrantService unit tests (consent-abac).
  *
  * Mirrors the WebhookService/DepartmentService test convention: mock
  * repositories, EventEmitter2, and ClsService; assert factory usage on
@@ -233,7 +233,7 @@ describe('ConsentGrantService', () => {
     });
   });
 
-  // TASK-805 owner directive (2026-08-25) — a doctor opening a consultation IS
+  // owner directive (2026-08-25) — a doctor opening a consultation IS
   // the consent event, so every purpose is granted at that moment.
   describe('ensureConsultationConsent', () => {
     beforeEach(() => {
@@ -309,7 +309,7 @@ describe('ConsentGrantService', () => {
     });
   });
 
-  // TASK-805 — the consent register. `getByPatient` (patient id REQUIRED, bare
+  // the consent register. `getByPatient` (patient id REQUIRED, bare
   // array) is gone; `list` is tenant-wide, paginated and filterable.
   describe('list', () => {
     /** The `where` clause the service handed to findAll (both calls share one). */

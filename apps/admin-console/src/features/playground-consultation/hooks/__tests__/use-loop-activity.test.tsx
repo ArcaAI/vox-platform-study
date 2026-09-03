@@ -1,7 +1,7 @@
 /**
  * W4 / R3 — the clinician-facing view of the loop plane.
  *
- * Contract brokered from TASK-791: the loop event is
+ * Contract: the loop event is
  * `{ kind: 'summary.interim', data: { kindKey, ordinal, total, chars } }` and
  * it deliberately carries NO summary text — "a live UI feed, not a PHI
  * transport". These tests pin that: progress metadata is surfaced, and no

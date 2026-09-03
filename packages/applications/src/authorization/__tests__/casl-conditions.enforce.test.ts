@@ -1,5 +1,5 @@
 /**
- * TASK-712 Phase 5 Task 15 — CASL condition-evaluation ENFORCE mode.
+ * CASL condition-evaluation ENFORCE mode.
  *
  * Task 14 shipped shadow mode: an opted-in route resolves a subject instance,
  * the instance-aware verdict is COMPUTED and any divergence RECORDED, and the
@@ -41,16 +41,16 @@ describe('CASL_ENFORCED_PAIRS', () => {
     engine = new PolicyEngine(mockDatabaseService as any, undefined);
   });
 
-  it('contains ONLY pairs that are REACHABLE and whose evidence is in the ticket README', () => {
-    // TASK-781: the three `ApiKey` pairs were removed. They were unreachable —
+  it('contains ONLY pairs that are REACHABLE and whose evidence is ', () => {
+    // the three `ApiKey` pairs were removed. They were unreachable
     // the route resolver loads its row through a 404-throwing accessor, so on
-    // the deny case it threw and the guard failed open (TASK-779 F-1) — and
+    // the deny case it threw and the guard failed open — and
     // making them fire would have replaced a deliberate 404 with an
     // existence-leaking 403 (DEF-C3). The boundary is enforced by
     // `ApiKeyService.assertKeyAccess`, one layer down, with the safer status.
     //
     // Adding an entry here is an authorization-semantics change: it needs
-    // evidence in the ticket README AND an enforce-grade resolver, or
+    // evidence  AND an enforce-grade resolver, or
     // `auditCaslEnforcePairReachability` refuses to boot the gateway.
     expect([...CASL_ENFORCED_PAIRS].sort()).toEqual([]);
   });
@@ -163,7 +163,7 @@ describe('UnifiedAuthGuard — CASL enforce mode (Task 15)', () => {
   it('THE FLIP: an enforced pair whose instance verdict denies now returns 403, and the denial is recorded', async () => {
     // The seeded rule is `userId = ${user.id}`; the resolved row belongs to
     // ANOTHER user in the same tenant — today allowed (type-only), and the
-    // exact in-tenant privilege gap casl-blast-radius.md §4 names.
+    // exact in-tenant privilege gap casl-blast-radius.md names.
     metadata[SUBJECT_INSTANCE_RESOLVER_KEY] = vi.fn().mockReturnValue({ tenantId: 'tenant-1', userId: 'someone-else' });
     (policyEngine.evaluateShadowVerdict as ReturnType<typeof vi.fn>).mockReturnValue({
       typeVerdict: true,

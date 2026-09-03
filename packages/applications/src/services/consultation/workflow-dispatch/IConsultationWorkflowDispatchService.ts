@@ -1,5 +1,5 @@
 /**
- * Consultation-open workflow dispatch (TASK-789, finding C-1).
+ * Consultation-open workflow dispatch.
  *
  * ## Why this exists
  *
@@ -23,21 +23,21 @@
  *
  * Therefore dispatch is **opt-in and exclusive**:
  *
- *   - NO assignment resolves  -> `dispatched: false`, Substrate A keeps the consultation
+ *   - NO assignment resolves -> `dispatched: false`, Substrate A keeps the consultation
  *     (today's behaviour, unchanged — this is the default and must stay the default);
- *   - an assignment resolves  -> Substrate B is dispatched, and a DURABLE marker is written to
+ *   - an assignment resolves -> Substrate B is dispatched, and a DURABLE marker is written to
  *     `Consultation.metadata` so `LoopContextSignalService` stands Substrate A down.
  *
  * A tenant that has authored nothing sees exactly the behaviour it sees today.
  *
- * ## What "exclusive" meant before TASK-795, and what it means now
+ * ## What "exclusive" meant before, and what it means now
  *
  * This paragraph used to claim exclusivity that the code did not implement. Dispatch was
  * conditional — `dispatched: false` with no assignment — but NOTHING gated Substrate A on the
  * result, so with an assignment present both engines ran and both wrote one `ContextItem`. The
  * claim was latent-only because zero `WorkflowAssignment` rows existed.
  *
- * TASK-795 W1 makes it true. The decision is taken here, once, at open, and PERSISTED (see
+ * makes it true. The decision is taken here, once, at open, and PERSISTED (see
  * `../governing-engine.ts` for why a marker and not a `WorkflowRun` query: that table has no
  * consultation linkage to join on). `LoopContextSignalService.loopAllowedFor` reads it before
  * every signal, so the decision survives a later signal, a different process, and a restart.
@@ -57,7 +57,7 @@ export interface ConsultationWorkflowDispatchResult {
   /**
    * Which cascade tier supplied the definition, or `platform-default` when none did.
    *
-   * TASK-813 adds `caller-selected`: the cascade was not consulted at all because the caller
+   * adds `caller-selected`: the cascade was not consulted at all because the caller
    * named a definition at open and it was authorized. Kept as a distinct value rather than
    * folded into `tenant` so an observer reading a log line or the discovery route can tell a
    * deliberate selection from an assignment that happened to resolve to the same slug.
@@ -68,7 +68,7 @@ export interface ConsultationWorkflowDispatchResult {
   /** The started interpreter run id, when one was started. */
   readonly runId: string | null;
   /**
-   * TASK-795 W1 — whether the durable "Substrate B governs" marker was persisted on the
+   * whether the durable "Substrate B governs" marker was persisted on the
    * consultation.
    *
    * `dispatched: true` with `governanceRecorded: false` is the one residual this design leaves:
@@ -84,7 +84,7 @@ export interface ConsultationWorkflowDispatchResult {
    */
   readonly skippedReason?: string;
   /**
-   * TASK-790 W4 (TASK-789 H-5) — the `AsrPipeline` id the tenant's assigned `stt`-palette graph
+   * the `AsrPipeline` id the tenant's assigned `stt`-palette graph
    * compiled to, or `null` when no `stt` graph is assigned (or it has no compiled pipeline yet).
    *
    * INDEPENDENT of `dispatched`: the STT and consultation lanes are separate assignments, so a
@@ -102,7 +102,7 @@ export interface DispatchForConsultationInput {
   readonly userId: string;
   readonly externalPatientId?: string | null;
   /**
-   * TASK-813 OD-1 — the caller's workflow selection, taking precedence over the assignment
+   * the caller's workflow selection, taking precedence over the assignment
    * cascade for the `consultation` palette (the INDEPENDENT `stt`-palette assignment is
    * unaffected — the two lanes are separate).
    *
@@ -127,7 +127,7 @@ export interface IConsultationWorkflowDispatchService {
   dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult>;
 
   /**
-   * TASK-813 §8 — the tenant's SELECTABLE set: every definition that would pass
+   * the tenant's SELECTABLE set: every definition that would pass
    * {@link assertSelectableForConsultation} right now.
    *
    * The gate and this list are one predicate with two consumers
@@ -142,7 +142,7 @@ export interface IConsultationWorkflowDispatchService {
   listSelectableForConsultation(tenantId: string): Promise<SelectableConsultationWorkflowListResponse>;
 
   /**
-   * TASK-813 OD-1 point 6 — authorize a caller-supplied workflow selection BEFORE the
+   * point 6 — authorize a caller-supplied workflow selection BEFORE the
    * consultation is written. Resolves silently when the selection is allowed; otherwise throws.
    *
    * Two failure directions, and they must never be swapped:

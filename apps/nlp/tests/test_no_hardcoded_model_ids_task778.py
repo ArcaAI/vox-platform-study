@@ -1,4 +1,4 @@
-"""TASK-778 — model ids are CONFIG, never Python literals.
+"""model ids are CONFIG, never Python literals.
 
 `apps/nlp` is the EXECUTOR of the safety plane. Every weight identity arrives
 per request, resolved by the caller from `AiTaskDefault` ⋈ `AiModel`
@@ -21,12 +21,12 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 # The vendor/org prefixes of the SAFETY-PLANE roster this ticket governs:
 # `fastino/*` (the three GLiNER2 models), `nvhf/*` (the MiniCheck GGUF) and
-# `hivetrace/*` (the GLiNER detector guardrail used before TASK-735). Extend
+# `hivetrace/*` (the GLiNER detector guardrail used before). Extend
 # this tuple when a new vendor enters the roster — never the source.
 #
 # The NER and diagnosis planes were recorded here as a pre-existing finding
 # (`blaze999/*`, `shanover/*` as `pydantic-settings` defaults) rather than
-# silently widened into this ticket. They are CLOSED under TASK-799 lane C.2 and
+# silently widened into. They are CLOSED under lane C.2 and
 # are guarded by `test_task799_model_selection.py`, which owns those prefixes.
 FORBIDDEN_MODEL_ID = re.compile(r"(?<![\w/-])(?:fastino|nvhf|hivetrace)/[A-Za-z0-9._-]+")
 

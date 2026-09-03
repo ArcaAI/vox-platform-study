@@ -72,7 +72,7 @@ export class RoutingRejectionResponse {
 /**
  * The resolved routing decision for one (tenant, taskKey) request.
  *
- * `fallbackChain` is ALREADY GATED: every §3A.4 hard gate has run, so a hop
+ * `fallbackChain` is ALREADY GATED: every hard gate has run, so a hop
  * that appears here is one the router may legitimately take. Everything the
  * gates refused appears in `rejectedCandidates` with its reason, so a rejection
  * is never silent.

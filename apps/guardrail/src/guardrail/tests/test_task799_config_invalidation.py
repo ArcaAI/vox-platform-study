@@ -5,7 +5,7 @@ Before this, ``arca:guardrail-config:invalidate`` appeared exactly once repo-wid
 believed it had push invalidation and actually had a 60s TTL poll, and the other
 five Python services had no listener at all.
 
-Rule 09 §"Config caches": *"Invalidation is the propagation path; TTL is a
+Rule 09 : *"Invalidation is the propagation path; TTL is a
 bounded-staleness safety net."* These tests pin the SUBSCRIBE half of that
 ordering:
 

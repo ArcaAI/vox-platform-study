@@ -127,7 +127,7 @@ class TestSettings:
             assert not hasattr(settings, "azure_foundry_api_key")
             assert not hasattr(settings, "azure_foundry_model")
             assert settings.azure_foundry_enabled is False
-            # TASK-799: the ENDPOINT joined the enable flag in the control
+            # the ENDPOINT joined the enable flag in the control
             # plane (`stt.azureFoundry.endpoint`). It is not a credential, but
             # it IS the address a preview PHI-bearing engine is called at, and
             # changing it must not need a redeploy.
@@ -168,7 +168,7 @@ class TestSettings:
         `DEBUG` / `HOST` / `PORT` / `LOG_LEVEL` are the bootstrap floor — how the
         process is launched and where it listens — so they remain env vars.
         `APP_NAME` / `APP_VERSION` are BUILD identity and were removed from the
-        env surface by TASK-799: the authoritative version is the release tag in
+        env surface by : the authoritative version is the release tag in
         the image's `build-info.json`, and a service that reports whatever
         version an env var claims is the `apps/api` reported-`0.1.0` defect.
         """
@@ -245,14 +245,14 @@ class TestSettings:
 
             assert settings.api_gateway_url == "http://api:8868/api/v1"
             assert settings.api_gateway_key.get_secret_value() == "secret-key"
-            # TASK-799: the URL and KEY stay in env — they are BOOTSTRAP
+            # the URL and KEY stay in env — they are BOOTSTRAP
             # TRANSPORT, the means by which this process reaches the config
             # source, so they cannot themselves come from it. The TIMEOUT is
             # ordinary tuning and moved to `stt.gateway.timeoutSeconds`.
             assert settings.api_gateway_timeout == 30
 
     def test_huggingface_token_env_path_is_CLOSED(self):
-        """TASK-799 — ``HUGGINGFACE_TOKEN`` no longer reaches this process.
+        """HUGGINGFACE_TOKEN no longer reaches this process.
 
         The token is a BYO credential on ``AiProviderConnection``
         (``model-registry`` / ``huggingface``), resolved tenant -> SYSTEM for the
@@ -272,7 +272,7 @@ class TestSettings:
             assert settings.huggingface_token is None
 
     def test_model_s3_credential_env_paths_are_CLOSED(self):
-        """TASK-799 — the ``STT_MODEL_S3_*`` triple no longer reaches this process.
+        """the STT_MODEL_S3_* triple no longer reaches this process.
 
         Endpoint, access key id and secret key are ONE credential and moved
         together onto the ``model-registry`` / ``s3`` connection. The endpoint
@@ -335,7 +335,7 @@ class TestSettings:
         distinction matters: `AZURE_SPEECH_KEY` is BYOK-only, so it has no
         settings field at all and arrives per request from the
         provider-connection plane; `AZURE_SPEECH_REGION` is non-secret platform
-        config and still has a field — but no env path to it (TASK-799).
+        config and still has a field — but no env path to it.
         """
         env_vars = {
             "AZURE_SPEECH_KEY": "test-azure-key-123",  # ignored (no field)
@@ -382,7 +382,7 @@ class TestSettings:
             assert settings.vad_speech_pad_ms == 200
 
     def test_vad_is_control_plane_owned_not_env_owned(self):
-        """TASK-799: the five VAD knobs no longer have an env path.
+        """the five VAD knobs no longer have an env path.
 
         A VAD threshold is a clinical-accuracy tuning parameter — the archetypal
         value an operator must be able to move against a measured scorecard
@@ -523,7 +523,7 @@ class TestSecretRedaction:
         "API_GATEWAY_KEY": "leak-gateway",
         # AZURE_SPEECH_KEY and AZURE_FOUNDRY_API_KEY are no longer settings
         # fields (both BYOK-only), and HUGGINGFACE_TOKEN joined them in
-        # TASK-799 — its env path is closed, so it can no longer leak FROM env.
+        # its env path is closed, so it can no longer leak FROM env.
         # `test_huggingface_token_env_path_is_CLOSED` covers that directly.
     }
 

@@ -37,7 +37,7 @@ import { buildV1PreSummaryPrompt, buildV1SummaryPrompt } from './v1-summary-prom
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 // v1 `/presummary` defaults (`routes.py`: `request.temperature or 0.2`,
 // `request.max_tokens or 800`). The 800-token ceiling is what enforces the
-// prompt's "CRISP" instruction — raising it is what made v2 verbose (
+// prompt's "CRISP" instruction — raising it is what made v2 verbose
 // D-10). Caller-supplied values still win, exactly as in v1.
 const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.2;
 const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 800;
@@ -75,8 +75,8 @@ function firstNonEmptyMetadata(metadata: Record<string, unknown>, keys: readonly
  * Resolve the effective department + visit type for prompt selection, mirroring
  * v1 `extract_department_and_visit_type` (`prompt_selector.py:157-176`) and the
  * frozen wire contract:
- *   department  = body.department (non-empty) ELSE session_metadata[dept aliases]
- *   visit_type  = body.visit_type (non-empty) ELSE session_metadata[visit aliases]
+ *   department = body.department (non-empty) ELSE session_metadata[dept aliases]
+ *   visit_type = body.visit_type (non-empty) ELSE session_metadata[visit aliases]
  *                 ELSE session_data.session_type
  * (Normalization to the 7 v1 departments / new_referral|followup happens later,
  * in `selectDeptTemplate`.)
@@ -132,10 +132,10 @@ interface TextStreamFrame {
 
 /**
  * Terminal state of a single `pumpGenerationStream` run.
- * - `completed`         — a `done` frame resolved a result to the client.
+ * - `completed` — a `done` frame resolved a result to the client.
  * - `error_pre_content` — the task stream failed BEFORE any `delta` reached the
  *   client; `res` is left open so the caller may restart on a fallback provider.
- * - `error_final`       — a terminal `error` was written to the client; `res` is ended.
+ * - `error_final` — a terminal `error` was written to the client; `res` is ended.
  */
 type PumpOutcome = 'completed' | 'error_pre_content' | 'error_final';
 
@@ -309,7 +309,7 @@ export class TextCompatController {
   @Post('summary/sync')
   @Authorize()
   @RequiredScopes('consultation:report:write')
-  // TASK-767 — the standalone summarization feature over the FROZEN v1 wire
+  // the standalone summarization feature over the FROZEN v1 wire
   // contract. Declared per-route rather than at class level, mirroring the
   // `@RequiredScopes` placement above; adding it changes no path, no verb and
   // no payload (pinned by `src/modules/__tests__/task-767-compat-wire-contract.test.ts`).
@@ -347,7 +347,7 @@ export class TextCompatController {
     // when the caller omits it so `SummaryResponse.session_id` stays a valid id.
     const sessionId = sessionData.session_id?.trim() ? sessionData.session_id : `text-${randomUUID()}`;
     const language = this.resolveLanguage(sessionData.session_metadata);
-    // Enrichment logic (TEXT_Summary_Endpoints.md §3.1): enabled when the flag is
+    // Enrichment logic (TEXT_Summary_Endpoints.md: enabled when the flag is
     // set OR when pre_summary_text is present (the documented safety net).
     const includePreSummary = body.include_pre_summary_in_context === true || Boolean(sessionData.pre_summary_text?.trim());
     const useEnhanced = body.use_enhanced_format === true;
@@ -669,7 +669,7 @@ export class TextCompatController {
   }
 
   /**
-   * Streaming pre-summary path. : department-aware (governed template)
+   * Streaming pre-summary path.: department-aware (governed template)
    * AND, at parity with the summary stream, a pre-stream START failure may retry
    * ONCE on the tenant's configured fallback provider; a half-emitted stream
    * cannot restart, so mid-stream failures surface as a single `error` event.
@@ -848,7 +848,7 @@ export class TextCompatController {
   /**
    * Resolve the mandatory V2 Core tenant context: CLS-bound tenant → the
    * authenticated API key's tenant → the authenticated JWT user's own tenant →
-   * the service account's working tenant (TASK-767).
+   * the service account's working tenant.
    * The last fallback matters on these compat routes specifically: they are
    * EXCLUDED from the `api/v1` global prefix, so the JWT strategy's CLS
    * population (the "single source of truth" that normally sets CLS `tenantId`
@@ -858,7 +858,7 @@ export class TextCompatController {
    * the auth pipeline on every route, so we read the tenant off the request —
    * exactly as the `apiKey` branch already does.
    *
-   * TASK-767 added the `serviceAccount` branch, and it is not cosmetic: the
+   * added the `serviceAccount` branch, and it is not cosmetic: the
    * machine credential class carries NO `request.user` (deliberately — a machine's
    * actions must not be recorded against a person) and no `request.apiKey`, so
    * without it every service-account call to this frozen surface 401s here even
@@ -888,12 +888,12 @@ export class TextCompatController {
   /**
    * Headers for every gateway→Text hop out of this v1-compat controller
    * (`/generate` — streaming and not — and `/translate`. The streaming
-   * `GET /tasks/:id/stream` hop is gone: under TASK-818 §3C.3(1) the POST is
+   * `GET /tasks/:id/stream` hop is gone: under the POST is
    * the stream).
    *
-   * TASK-737: `X-Tenant-Id` was omitted UNCONDITIONALLY here, so Text resolved
+   * `X-Tenant-Id` was omitted UNCONDITIONALLY here, so Text resolved
    * `x_tenant_id=None` and fell back to the platform default — never applying the
-   * tenant's own BYOK provider/credential, and (because TASK-735 derives
+   * tenant's own BYOK provider/credential, and (because it derives
    * `funding`/`cost_basis` from whichever tier supplied that credential)
    * mis-attributing the spend, with nothing thrown or logged anywhere.
    *
@@ -941,7 +941,7 @@ export class TextCompatController {
   /**
    * Open a streaming TEXT generation and return the SSE body itself.
    *
-   * TASK-818 §3C.3(1) — the SINGLE-CALL contract. `POST /generate` with
+   * the SINGLE-CALL contract. `POST /generate` with
    * `stream:true` now answers **200 + `text/event-stream` immediately**; the
    * 202-and-poll indirection, and with it the `task_id` this method used to
    * read, are gone. There is no second `GET /tasks/{id}/stream` hop: the POST
@@ -1012,7 +1012,7 @@ export class TextCompatController {
     res: Response,
     textRequest: TextGenerateRequest,
     label: string,
-    // TASK-737 — the tenant every gateway→Text hop below must carry.
+    // the tenant every gateway→Text hop below must carry.
     tenantId: string,
     buildResult: (content: string, req: TextGenerateRequest) => object,
     resolveStartFallback?: (primaryError: unknown, primaryRequest: TextGenerateRequest) => Promise<TextGenerateRequest | null>,
@@ -1027,7 +1027,7 @@ export class TextCompatController {
       if (!res.writableEnded) res.write(':keepalive\n\n');
     }, SSE_HEARTBEAT_INTERVAL_MS);
 
-    // START phase: POST /generate (stream:true), which under TASK-818 §3C.3(1)
+    // START phase: POST /generate (stream:true), which under
     // returns the SSE stream itself rather than a `task_id` to go and fetch. A
     // pre-stream failure may retry once on the tenant fallback (summary only);
     // an exhausted START → error.
@@ -1110,13 +1110,13 @@ export class TextCompatController {
    * carrying `buildResult(accumulated)`; `error`/parse/mapping failure →
    * `event: error` (PHI-redacted — never echo upstream content).
    *
-   * TASK-818 §3C.3(1): the stream is handed in, because opening it and starting
+   * the stream is handed in, because opening it and starting
    * the generation are now the SAME call. There is no `GET /tasks/{id}/stream`
    * hop left to fail on its own.
    *
    * Tearing the upstream down here — on a client disconnect or on a
    * pre-content fallback — drops ONLY this subscription. It is never a cancel
-   * (§3C.4): the producer is owned by TEXT's generation hub and runs to its
+   *: the producer is owned by TEXT's generation hub and runs to its
    * terminal frame regardless.
    */
   private async pumpGenerationStream(
@@ -1286,7 +1286,7 @@ export class TextCompatController {
   }
 
   /**
-   * Map an TEXT transport failure to the v1 error shapes (/):
+   * Map an TEXT transport failure to the v1 error shapes :
    *   - no upstream response (unreachable) → `{ error, requestId, timestamp }`;
    *   - upstream responded with an error → `{ detail: "<label> failed: ..." }`.
    * The raw upstream body is NEVER forwarded or logged — it can echo the
@@ -1312,7 +1312,7 @@ export class TextCompatController {
       code: axiosError?.code,
       correlationId: this.clsService.getId(),
     });
-    // TASK-768: this branch is reached only when TEXT never answered — a
+    // this branch is reached only when TEXT never answered — a
     // transport failure — so the status is 503, not 500. The v1 body SHAPE
     // (`{ error, requestId, timestamp }`) is FROZEN: `@arcaai/vox-node` parses
     // it. Only the status changes, and `ExceptionInterceptor` adds `Retry-After`

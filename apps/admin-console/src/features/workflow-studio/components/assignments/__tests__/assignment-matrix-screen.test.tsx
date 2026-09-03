@@ -1,5 +1,5 @@
 /**
- * TDD screen tests for the assignment-matrix screen (TASK-733 half (a) Task 6):
+ * TDD screen tests for the assignment-matrix screen ( half (a) Task 6):
  * matrix render (tenant-default row + department rows x palette columns),
  * resolved-source display (explicit / inherits-tenant / platform-default —
  * never by color alone), the NoTenant gate, and the OCC create/update/delete

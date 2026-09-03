@@ -8,20 +8,20 @@ import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
-// TASK-711 — session state machine legality matrix. Source of truth:
-// docs/implementation/TASK-711-Session-State-Machine/state-machine.md §2.
+// session state machine legality matrix. Source of truth:
+
 // Every unlisted (from, to) pair is illegal and `transitionTo` throws.
 // Self-pairs are handled separately (idempotent no-op) and are NOT listed
 // here. Do not widen this map without updating the state-machine.md doc AND
 // the `ConsultationEntity.transitions.test.ts` Cartesian-product suite —
-// `consultationStatus.wired.test.ts` (Task 11) asserts every enum member is
+// `consultationStatus.wired.test.ts` asserts every enum member is
 // a `to` here at least once.
-// TASK-711 (continued, 2026-08-16) — revised per the owner's Q1 decision:
-// `CLOSED` is SUPERSEDED (never a `to` — see state-machine.md §1a/§1 row 9)
+// (continued, 2026-08-16) — revised per the owner's Q1 decision:
+// `CLOSED` is SUPERSEDED (never a `to` — see row 9)
 // and split into `CLOSED_COMPLETE` (human signed before closing) and
 // `CLOSED_INCOMPLETE` (timeout/manual close with no clinician sign-off,
 // including the settings-registry sweep's five eligible source states).
-// 22 legal, non-reflexive transitions — state-machine.md §2 is the source.
+// 22 legal, non-reflexive transitions — is the source.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
@@ -66,8 +66,8 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
     ]),
   ],
   // CLOSED: deliberately no outgoing edges — superseded, never live, never a
-  // `to` either. See state-machine.md §1 row 9 and the wiring-gate note in
-  // §2 ("must allow-list CLOSED explicitly as the one intentional exception").
+  // `to` either. See row 9 and the wiring-gate note in
+  // ("must allow-list CLOSED explicitly as the one intentional exception").
   [Enums.ConsultationStatus.CLOSED, new Set()],
   [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.REOPENED])],
   [
@@ -107,7 +107,7 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   metadata?: JsonValue | null;
   // Typed lifecycle state (defaults to OPEN)
   status?: Enums.ConsultationStatus;
-  // Health-flag projection on the active phase (TASK-711); not a state of its own
+  // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: string[];
   Doctor?: Entities.UserEntity | null;
   Department?: Entities.DepartmentEntity | null;
@@ -125,7 +125,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _metadata?: IConsultationEntity['metadata'];
   private _status: Enums.ConsultationStatus;
   private _degradedReasons: string[];
-  // TASK-711: not persisted — the last transition applied by `transitionTo`,
+  // not persisted — the last transition applied by `transitionTo`,
   // held only so the calling service can read `actor`/`reason` to build the
   // sys-event / WORM append without threading them through a second
   // parameter list.
@@ -206,17 +206,17 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   /**
-   * @deprecated TASK-711: bypasses the legality matrix. Use `transitionTo`
+   * @deprecated: bypasses the legality matrix. Use `transitionTo`
    * instead — it is the only guarded write path. Kept public (not `private`)
    * because `packages/applications` call sites (`consultation.service.ts`,
    * `harness-internal.service.ts`, `summary.service.ts`, `summary.processor.ts`)
-   * still assign this setter directly; TASK-711's own Task 6-8 migrate them,
+   * still assign this setter directly; Task 6-8 migrate them,
    * and Task 11 adds the source-scanning gate that makes a direct assignment
    * outside `transitionTo` a hard failure. Making the setter `private` now
    * would break `pnpm --filter @arcaai/applications build`, which is out of
    * this ticket's database/domain-layer scope for this execution pass — see
-   * the ticket's own documented fallback (README.md §4 Task 5).
-   */
+   * the ticket's own documented fallback (README.md Task 5).
+ */
   set status(value: Enums.ConsultationStatus) {
     this.setProperty('status', value);
   }
@@ -307,7 +307,7 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   /**
-   * TASK-711 — the single guarded write path for `status`. Every other
+   * the single guarded write path for `status`. Every other
    * writer (the bare `status` setter above) is `@deprecated` and migrating
    * off; this is the only place the legality matrix is consulted.
    *
@@ -319,11 +319,11 @@ export class ConsultationEntity extends BaseTenantEntity {
    *   that will enable it.
    * - Any other unlisted pair: throws `BusinessException` naming both states.
    * - Legal pair: writes through `setProperty` (change-tracked), records
-   *   `lastTransition`, and — per state-machine.md §3 — clears
+   * `lastTransition`, and — per — clears
    *   `degradedReasons` when the destination is `SIGNED`.
    *
    * @returns `true` if a transition was applied, `false` for a self-transition no-op.
-   */
+ */
   public transitionTo(next: Enums.ConsultationStatus, actor: string, reason: string): boolean {
     const from = this._status;
 
@@ -366,10 +366,10 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   /**
-   * Appends a health-flag reason to the active phase (state-machine.md §3).
+   * Appends a health-flag reason to the active phase
    * Append-only within a session; deduplicated — adding an already-present
    * reason is a no-op against `changes` tracking beyond the first add.
-   */
+ */
   public addDegradedReason(reason: string): void {
     if (this._degradedReasons.includes(reason)) {
       return;

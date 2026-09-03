@@ -16,7 +16,7 @@ const S3_URI_RE = /^s3:\/\/([^/]+)\/(.*)$/;
 /**
  * Fetch a model's source files given `AiModel.sourceUri`.
  *
- * Two schemes only, per the download contract (TASK-855 lane L3): a
+ * Two schemes only, per the download contract: a
  * HuggingFace repo id (`hf:<org>/<repo>` or a bare `org/repo`), or an
  * existing `s3://bucket/prefix` (e.g. re-publishing something already staged
  * outside `hope-models`). Anything else — `file://`, `azure-blob://`, a bare
@@ -98,7 +98,7 @@ const QUANTISABLE_WEIGHT_EXTENSIONS = ['.gguf', '.bin'] as const;
 /**
  * A quantised WEIGHT file matching the filter, OR any companion/projector file.
  *
- * TASK-855: this used to exempt everything that was not `.gguf`, which was
+ * this used to exempt everything that was not `.gguf`, which was
  * correct while GGUF was the only quantised format fetched. Now that
  * `isRelevantModelSourceFile` also accepts `.bin`/`.safetensors`, that
  * exemption would silently defeat the filter: `taphuynh/whisper-…-gguf` ships

@@ -103,7 +103,7 @@ export class BillingInvoiceResponse {
     description:
       'How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at ' +
       'computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). ' +
-      'TENANT_PLAN_HISTORY (TASK-615 #6): dated plan segments existed, so the fee is prorated per segment ' +
+      'TENANT_PLAN_HISTORY (#6): dated plan segments existed, so the fee is prorated per segment ' +
       '(fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is ' +
       'authoritative for how that draft was rated.',
   })

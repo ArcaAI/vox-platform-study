@@ -55,7 +55,7 @@ export class ResolvedFeaturesResponse {
   monitoringAccess: boolean;
 
   /**
-   * TASK-705 — whether the tenant's plan includes the harness agentic loop.
+   * whether the tenant's plan includes the harness agentic loop.
    * Declared here so the console and SDK can render the loop as what it is: a
    * subscription feature. Note this class still under-declares two older
    * booleans the runtime payload carries (`platformDefaultCredential`,

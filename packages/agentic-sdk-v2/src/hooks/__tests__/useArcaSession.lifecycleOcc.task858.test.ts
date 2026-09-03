@@ -1,5 +1,5 @@
 /**
- * TASK-858 G1 — optimistic concurrency on the session lifecycle POSTs.
+ * optimistic concurrency on the session lifecycle POSTs.
  *
  * `POST /consultations/:id/prime`, `/close` and `/reopen` all carry
  * `@RequiresIfMatch()` + `@ExpectedVersion()` on the gateway
@@ -56,7 +56,7 @@ const ENDPOINT: Record<Lifecycle, (id: string) => string> = {
   reopen: CONSULTATION_ENDPOINTS.REOPEN,
 };
 
-describe('TASK-858 G1 — useArcaSession lifecycle writes send If-Match', () => {
+describe(' G1 — useArcaSession lifecycle writes send If-Match', () => {
   let mockStore: any;
   const mockPost = vi.fn();
   const mockPostWithHeaders = vi.fn();

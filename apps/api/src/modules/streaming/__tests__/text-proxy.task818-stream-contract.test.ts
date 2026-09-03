@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextProxyController } from '../text-proxy.controller';
 
 /**
- * TASK-818 §3C.3(6) — the gateway is a STATELESS RELAY over a generation the
+ * the gateway is a STATELESS RELAY over a generation the
  * router owns.
  *
  * Four properties, and the third is the one that matters most: a browser that
@@ -114,7 +114,7 @@ function streamOf(frames: string[], { end = true } = {}) {
   return stream;
 }
 
-describe('TASK-818 §3C.3(6) — the gateway relays, it does not own', () => {
+describe('(6) — the gateway relays, it does not own', () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe('cursor forwarding (Last-Event-ID)', () => {
@@ -202,7 +202,7 @@ describe('TASK-818 §3C.3(6) — the gateway relays, it does not own', () => {
     });
   });
 
-  describe('a browser disconnect is NOT a cancel (§3C.4)', () => {
+  describe('a browser disconnect is NOT a cancel', () => {
     it('drops only the gateway subscription — it never calls the router cancel route', async () => {
       const { ctrl, upstream, http } = build();
       const res = makeResponse();

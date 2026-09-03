@@ -1,7 +1,7 @@
 /**
- * The write contract TASK-718's dispatcher (or a future gateway controller)
+ * The write contract dispatcher (or a future gateway controller)
  * calls at `POST /workflow-runs:start` time — see the ticket's R2 and the
- * Task 1 contract §7 for the current wiring gap (nothing calls this yet).
+ * Task 1 contract for the current wiring gap (nothing calls this yet).
  */
 export interface RecordRunStartedInput {
   tenantId: string;
@@ -9,7 +9,7 @@ export interface RecordRunStartedInput {
   workflowSlug: string;
   workflowVersionNumber: number;
   definitionName: string;
-  /** The derived join key — "workflow-interpreter-{runId}" (Task 1 contract §2). */
+  /** The derived join key — "workflow-interpreter-{runId}" (Task 1 contract */
   sessionId: string;
   runId: string;
   trigger: string;
@@ -29,7 +29,7 @@ export interface RecordRunFinishedInput {
   degradedNodeCount?: number;
   firstErrorCode?: string | null;
   /**
-   * TASK-790 (M-2) — the run's delivered output, the `output.deliver` node's `output` object
+   * (M-2) — the run's delivered output, the `output.deliver` node's `output` object
    * stored VERBATIM. A discriminated union (`deliver.py`): `{ resultRef: ClaimCheckRef }` when
    * claim-check is enabled and the blob was offloaded, or `{ outputs: {...} }` inline otherwise.
    *

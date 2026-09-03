@@ -3,7 +3,6 @@ import { IsNotEmpty, IsString } from 'class-validator';
 
 /**
  * Body for `POST /admin/harness/gate-edit-exemplars/:id/promote-to-golden-set`
- * (TASK-792 W3).
  *
  * Only the DESTINATION is caller-supplied. Every other field of the resulting
  * golden case is derived server-side — the transcript from the consultation, the

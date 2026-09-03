@@ -376,7 +376,7 @@ test.describe('RBAC Controllers', () => {
 
         const asSuperAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
-          data: { description: `TASK-501 e2e ${Date.now()}` },
+          data: { description: ` e2e ${Date.now()}` },
         });
         expect(asSuperAdmin.status()).toBe(200);
 
@@ -572,7 +572,7 @@ test.describe('RBAC Controllers', () => {
 
   // ============================================================================
   // Permission Check Controller Tests
-  // TASK-760 — the verb-as-resource `rbac/check` RPC became two resource
+  // the verb-as-resource `rbac/check` RPC became two resource
   // collections: `POST /users/me/permission-checks` (the caller's effective
   // permission set) and `POST /users/:id/permission-checks[/bulk]` (a check
   // against a named user; another user still needs `manage:User`). The retired

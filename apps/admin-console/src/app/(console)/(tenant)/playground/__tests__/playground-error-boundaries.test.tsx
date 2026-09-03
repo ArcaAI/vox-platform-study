@@ -1,5 +1,5 @@
 /**
- * TASK-814 — five of the six playground routes had no `error.tsx` (only `workbench` did),
+ * five of the six playground routes had no `error.tsx` (only `workbench` did),
  * so a render throw anywhere in consultation / dna-writing-style / live-transcription / llm /
  * voice-profiles took down the whole console shell instead of degrading to that one segment
  * (rule 13: segment-scoped `error.tsx`, same pattern `workbench/error.tsx` already ships).

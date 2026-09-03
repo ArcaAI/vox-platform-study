@@ -15,7 +15,7 @@ import {
   JobStatusType,
 } from './dto';
 
-// TASK-732 — `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
+// `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
 // async generator and its NER companion) were deleted here along with
 // `summary.processor.ts`/`ner.processor.ts`. `generateSummaryAsync` now calls
 // `NoteGenerationService.generate(GenerationTrigger.SUMMARY_REGENERATE, …)`
@@ -51,7 +51,7 @@ export interface IConsultationJobService {
    * methods above ever run for it. Without this record `GET
    * /consultations/jobs/:jobId` (and `/cancel`, `/stream`) resolve nothing:
    * `TenantOwnedResourceInterceptor` reads `getJobStatus` for its tenancy
-   * check and 404s first. TASK-732 removed the legacy queue path that used to
+   * check and 404s first. removed the legacy queue path that used to
    * write it; this restores the endpoint's contract that the returned jobId is
    * resolvable by its creator.
    */
@@ -276,7 +276,7 @@ export class ConsultationJobService implements IConsultationJobService {
       case 'COMPREHENSIVE_SUMMARY':
         queue = this.comprehensiveSummaryQueue;
         break;
-      // TASK-732 — 'SUMMARY'/'NER' job types can no longer be cancelled here:
+      // 'SUMMARY'/'NER' job types can no longer be cancelled here:
       // their queues (`GenerateSummary`/`ExtractNamedEntities`) and processors
       // were deleted along with `createSummaryJob`/`createNerJob`. A stale
       // status row of either type falls through to the default (not found).

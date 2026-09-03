@@ -1,12 +1,11 @@
 """Contract tests for the Python build-info reader.
 
 Mirrors `build-info.service.test.ts` on the TypeScript side — same contract:
-`docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json`.
 
 Read once at process boot, cached, NEVER throws (this runs on the boot path of
 PHI-serving services), path overridable per call/instance (not
 via env var — build identity is not configuration, `09-infrastructure-devops.md`
-§Configuration Tiers), and falls back to a best-effort git identity in local dev.
+Tiers), and falls back to a best-effort git identity in local dev.
 """
 
 from __future__ import annotations

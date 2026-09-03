@@ -31,15 +31,15 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     ObservabilityModule,
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
     PromptResolutionServiceModule, // Required for prompt fallback chain
-    NoteGenerationServiceModule, // TASK-704 seam — harnessEnabled routing for ConsultationEventHandler
+    NoteGenerationServiceModule, // seam — harnessEnabled routing for ConsultationEventHandler
     HarnessPolicyServiceModule, // TEXT-selection resolver for the pre-summary/comprehensive processors
-    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + pre-summary/comprehensive processors)
     UsageLedgerServiceModule, // usage emission for ComprehensiveSummaryProcessor
-    // TASK-795 W2 (finishing TASK-792's R7) — supplies `IGateEditExemplarRetriever` for the
+    // (finishing) — supplies `IGateEditExemplarRetriever` for the
     // `PromptAssemblyService` provided below. `PromptAssemblyService` injects it `@Optional()`,
     // so without this import it resolved to `undefined` and few-shot degraded to zero-shot with
     // no error, no log and every unit test green.
@@ -51,11 +51,11 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     GateEditMiningServiceModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
-    // TASK-732 — `GenerateSummary`/`ExtractNamedEntities` (the legacy
+    // `GenerateSummary`/`ExtractNamedEntities` (the legacy
     // signable-generator queues) were removed here along with
     // `SummaryProcessor`/`NerProcessor`. `GeneratePreSummary`/
     // `GenerateComprehensiveSummary` survive per the R-2 boundary (kept,
-    // non-signable helper generators — see deletion-manifest.md §5).
+    // non-signable helper generators — see
     BullModule.registerQueue({ name: JobQueue.GeneratePreSummary }, { name: JobQueue.GenerateComprehensiveSummary }),
   ],
   providers: [

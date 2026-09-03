@@ -1,6 +1,6 @@
-"""Inference device placement for the guard plane (TASK-782).
+"""Inference device placement for the guard plane.
 
-TASK-778 measured the safety plane against real weights on CPU and found the
+measured the safety plane against real weights on CPU and found the
 throughput target met and the LATENCY target missed: p95 ~1.7 s under a 100-way
 burst, fit for an asynchronous redaction pass and unfit for a synchronous inline
 gate. It named the bottleneck as encoder compute and the remedy as placement.

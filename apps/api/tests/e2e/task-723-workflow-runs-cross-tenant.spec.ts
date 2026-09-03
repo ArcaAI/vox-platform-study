@@ -1,13 +1,13 @@
 /**
- * TASK-723 — Runs Observability: e2e contract tests for `/api/v1/admin/workflow-runs/*`.
+ * Runs Observability: e2e contract tests for `/api/v1/admin/workflow-runs/*`.
  *
  * SCOPE OF WHAT THIS SPEC CAN PROVE IN THIS ENVIRONMENT (mirrors
  * `task-722-workflow-exposure.spec.ts`'s own disclosed boundary, for the same
  * reason): `WorkflowRun` rows are written ONLY by
  * `WorkflowRunService.recordRunStarted`/`recordRunFinished`, and — per the
- * Task 1 contract (`docs/implementation/TASK-723-Runs-Observability/
+ * Task 1 contract
  * contracts/run-read-model.contract.md`) and README R2 — NOTHING calls them
- * yet: TASK-718's dispatcher is entirely Temporal-native/ephemeral and does
+ * yet: dispatcher is entirely Temporal-native/ephemeral and does
  * not persist a run row. There is also no HTTP write route for this model
  * (by design — it is a telemetry read model, not an admin-authored
  * resource), so no e2e spec can create a real `WorkflowRun` fixture without
@@ -27,14 +27,14 @@
  *    here, since with zero rows in the table there is no cross-tenant ROW to
  *    leak in the first place; every id is equally "not found".
  *
- * The moment TASK-718 (or a follow-up) wires `recordRunStarted`, a companion
+ * The moment (or a follow-up) wires `recordRunStarted`, a companion
  * pass should extend this file with a REAL cross-tenant row check (tenant A
  * cannot read tenant B's run by id) — flagged here rather than silently
  * left incomplete.
  *
  * Prerequisites: API server running against the test DB (`pnpm test:up:api`),
  * seeded (`pnpm test:db:seed`). NOT EXECUTED in this session — see the
- * ticket README §7 for why (`pnpm test:e2e`'s globalSetup runs
+ * for why (`pnpm test:e2e`'s globalSetup runs
  * `prisma db push --force-reset`, refused by the Prisma CLI for an AI agent).
  */
 import { test, expect } from '@playwright/test';
@@ -45,7 +45,7 @@ const bearer = (token: string, tenantId?: string) => ({
   ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
 });
 
-test.describe('TASK-723 — /api/v1/admin/workflow-runs', () => {
+test.describe('/api/v1/admin/workflow-runs', () => {
   let tenantAdminToken: string;
   let superAdminToken: string;
   let defaultTenantId: string;

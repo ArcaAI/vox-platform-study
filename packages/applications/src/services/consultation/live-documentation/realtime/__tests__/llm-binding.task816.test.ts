@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 1 (DD-10) — the REALTIME lane carries per-node model selection.
+ *  — the REALTIME lane carries per-node model selection.
  *
  * The durable interpreter reads `config.llmBinding` straight off `payload.config`, because a
  * Temporal activity IS handed its node's config. The realtime lane's handlers are handed one too
@@ -31,7 +31,7 @@ const ctx = (bound: Record<string, unknown>, caps: RealtimeCapabilities, config:
 
 const BOUND = { llmBinding: { modelSlug: 'tenant-medgemma' }, taskKey: 'text.live' };
 
-describe('TASK-816 — every generation handler hands its node config to the capability', () => {
+describe('every generation handler hands its node config to the capability', () => {
   it('consultation.realtimeSummary passes its config to generateDocument', async () => {
     const caps = capabilities();
     await REALTIME_NODE_HANDLERS['consultation.realtimeSummary'].run(ctx({ in: 'patient said something' }, caps, BOUND));

@@ -1,12 +1,11 @@
 /**
  * The registry-lookup surface every predicate evaluator needs but this package never owns:
- * "any node whose descriptor declares `phiBearing`" (TASK-716 §4 Task 4) requires resolving a
+ * "any node whose descriptor declares `phiBearing`" requires resolving a
  * node TYPE to its registry-declared CLASSES, and the registry itself is code-owned
- * (TASK-715's `WORKFLOW_NODE_REGISTRY`, not yet built at the time this package was authored —
- * see the ticket README §2.3).
+ * ( `WORKFLOW_NODE_REGISTRY`, not yet built at the time this package was authored
  *
  * `WorkflowEvaluationContext` is therefore an INTERFACE this package depends on, not an
- * implementation. Tests supply a fake; the impure service (TASK-716 Task 8) supplies the real
+ * implementation. Tests supply a fake; the impure service supplies the real
  * one built from `WORKFLOW_NODE_REGISTRY`. This keeps the predicate evaluators pure — no I/O,
  * no import of `@arcaai/applications` — exactly the pure/impure split of
  * `departmentAgent/constants.ts`.

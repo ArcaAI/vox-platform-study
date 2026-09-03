@@ -1,5 +1,5 @@
 /**
- * TASK-809 Task 2 — the port type vocabulary and its compatibility lattice.
+ * the port type vocabulary and its compatibility lattice.
  *
  * The vocabulary is CLOSED and it REFINES `CONTEXT_PRIMITIVES`
  * (`packages/applications/src/services/consultation-context-schema/context-schema-definition.ts:35`
@@ -23,11 +23,11 @@ import {
 import type { WorkflowPortPrimitive } from '../port-model';
 
 describe('WORKFLOW_PORT_PRIMITIVES', () => {
-  // TASK-847 extended the vocabulary by TWO: `object` (the unrefined STRUCTURED type the generic
+  // extended the vocabulary by TWO: `object` (the unrefined STRUCTURED type the generic
   // agentic nodes' tenant-defined schemas need) and `audio` (a STORED artifact, sibling to the
   // live `stream<audio>`). See `port-model.ts`'s `WORKFLOW_PORT_KINDS` docstring and
   // `port-kinds.task847.test.ts` for why each addition cannot weaken the lattice.
-  it('is the closed vocabulary TASK-809 §2b settles, plus `control` for ordering edges', () => {
+  it('is the closed vocabulary settles, plus `control` for ordering edges', () => {
     expect([...WORKFLOW_PORT_PRIMITIVES].sort()).toEqual(
       ['audio', 'context<schemaRef>', 'control', 'document', 'edits', 'entities', 'object', 'stream<audio>', 'text', 'transcript', 'verdict'].sort(),
     );
@@ -39,7 +39,7 @@ describe('WORKFLOW_PORT_PRIMITIVES', () => {
     }
   });
 
-  // SIX widening pairs after TASK-847, and the split matters: TWO into `text` (a transcript and
+  // SIX widening pairs after, and the split matters: TWO into `text` (a transcript and
   // a generated document are both text) and FOUR into `object` (every STRUCTURED refinement is
   // an object). What has NOT changed is that widening only ever goes specific -> general, so no
   // pair here can launder provenance: nothing widens INTO `transcript`, `entities`, `document`
@@ -96,7 +96,7 @@ describe('portPrimitiveSatisfies (produced -> consumed)', () => {
     expect(portPrimitiveSatisfies('transcript', 'document')).toBe(false);
   });
 
-  // The four STRUCTURED refinements are no longer "unrelated to everything": TASK-847 widened
+  // The four STRUCTURED refinements are no longer "unrelated to everything": widened
   // each of them to `object`. They stay mutually incompatible with each OTHER and with every
   // member of the text and audio groups, which is the property this test is actually about — an
   // `entities` producer must still never satisfy an `edits` consumer. `object` is excluded from

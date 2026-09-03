@@ -9,7 +9,7 @@
  *
  * Previously declared in `services/departmentAgent/constants.ts` as
  * `AGENT_ACTION_KEYS`. It moved here with the retirement of `DepartmentAgent`
- * (TASK-815): the vocabulary describes the LOOP, not the agent row that used to
+ * the vocabulary describes the LOOP, not the agent row that used to
  * carry the two levers over it. Per the retirement's coupling table, the keys
  * and their validators travel with the endpoint sequence, which is the surface
  * that still consumes them (`endpoint-sequence.ts`).
@@ -26,7 +26,7 @@ export const LOOP_ACTION_KEYS = [
   'nlp.extract_entities',
   'harness.finalize',
   'client.emit',
-  // TASK-812 — the ENDPOINT STAGE. Part of this vocabulary, and not merely of the endpoint
+  // the ENDPOINT STAGE. Part of this vocabulary, and not merely of the endpoint
   // sequence setting, because the endpoint resolver's EXTEND/VETO levers are expressed in these
   // keys. The endpoint resolver only accepts endpoint-eligible keys, so widening the vocabulary
   // here never widens the endpoint stage on its own.

@@ -8,14 +8,14 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { resolveModelRegistryCredential } from './model-registry-credential.util';
 
 /**
- * ModelRegistryInternalController — TASK-855 lane L3 follow-on.
+ * ModelRegistryInternalController — lane L3 follow-on.
  *
  * The GENERIC route every backend service resolves an `AiProviderConnection`
  * `service='model-registry'` credential through (the HuggingFace token / S3
  * key pair a `s3://`-sourced `AiModel` download needs). `apps/stt` already
  * had a private route to this exact resolution
  * (`SttInternalController.getModelRegistryCredential`,
- * `/internal/stt/model-registry-credential`, TASK-799) — this is that same
+ * `/internal/stt/model-registry-credential`) — this is that same
  * resolution, exposed generically for `apps/nlp`, `apps/tts`, and (latently)
  * `apps/harness`, none of which had any route to it at all.
  *
@@ -29,7 +29,7 @@ import { resolveModelRegistryCredential } from './model-registry-credential.util
  * `auditInternalRoutesOffApiKeySurface`), justified ONLY by BUG-013 (the STT
  * worker historically presents an API key, not a service token).
  * `RESERVED_INTERNAL_SCOPE_CONTROLLERS` is explicitly "FROZEN AT ONE MEMBER"
- * by owner decision (TASK-761 gate G2, D-3) and pinned by
+ * by owner decision ( gate G2, D-3) and pinned by
  * `api-key-scope-audit.test.ts` — adding a second controller to it is a
  * deliberate, reviewed change, not something a new route should trigger as a
  * side effect.

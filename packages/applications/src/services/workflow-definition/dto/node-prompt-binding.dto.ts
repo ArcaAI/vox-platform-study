@@ -68,7 +68,7 @@ export class NodePromptBindingResponse {
  * while a caller that cares can now tell the two outcomes apart. Wrapping it
  * would have been a breaking change for a purely additive fact.
  *
- * The distinction is the whole point of §7b item 1: adopting a version
+ * The distinction is the whole point of item 1: adopting a version
  * unchanged moves the pin and mints NOTHING, so a client that reports
  * "minted v10" on every save would now be lying on the common path.
  */

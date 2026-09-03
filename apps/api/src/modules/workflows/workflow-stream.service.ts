@@ -28,9 +28,9 @@ const WORKFLOW_STREAM_READ_COUNT = 200;
 /**
  * `WorkflowStreamService` — the gateway-side half of `GET /workflows/:slug/runs/:runId/stream`.
  *
- * **This service used to POLL, and the poll is gone (TASK-849 lane A).** Its previous class doc
+ * **This service used to POLL, and the poll is gone.** Its previous class doc
  * explained why it had to: the interpreter dispatcher exposes no `text/event-stream` endpoint
- * (only `POST …:start`, `GET …/{runId}` and `POST …:cancel`, all plain JSON), and TASK-717
+ * (only `POST …:start`, `GET …/{runId}` and `POST …:cancel`, all plain JSON), and
  * shipped the async-contract envelope + resume-token package while explicitly deferring
  * "Phase C" — a reference PRODUCER wired into a service. There was nothing upstream to consume.
  *
@@ -45,7 +45,7 @@ const WORKFLOW_STREAM_READ_COUNT = 200;
  *    check, before any header is written — a 404 here is a normal HTTP response, never a leaked
  *    200 stream). It is written as a `workflow.run.progress` / `workflow.run.completed` envelope,
  *    exactly the shape the polling version emitted, so an existing client keeps working.
- *    It carries NO `id:` line: a snapshot is not a stream position, and async-contract §3.6
+ * It carries NO `id:` line: a snapshot is not a stream position, and async-contract
  *    forbids minting a resume token the transport did not assign.
  * 2. **Deltas.** Every subsequent frame is one producer envelope, and its `id:` IS the opaque
  *    resume token wrapping Redis' own message id. The browser echoes it back as `Last-Event-ID`
@@ -135,7 +135,7 @@ export class WorkflowStreamService implements OnModuleDestroy {
    * stream on a first connect. Starting at the BEGINNING (rather than at `$`) is deliberate:
    * a client that connects a moment after a node completed must still learn that it did, and
    * re-delivering an event the snapshot already reflected is harmless precisely because every
-   * envelope's `idempotencyKey` is derived from intent (async-contract §3.5) — which is what
+   * envelope's `idempotencyKey` is derived from intent (async-contract) — which is what
    * makes the duplicate collapsible rather than a second, contradictory fact.
    */
   private async consume(
@@ -183,7 +183,7 @@ export class WorkflowStreamService implements OnModuleDestroy {
         if (res.writableEnded) return;
         // The `id:` line is the RESUME TOKEN, not the envelope's own identity: it is what the
         // browser echoes back as `Last-Event-ID`, and only a transport-assigned cursor can
-        // actually resume (§3.6).
+        // actually resume.
         res.write(formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entryId)));
         if (envelope.type === WORKFLOW_RUN_COMPLETED) return;
       }
@@ -191,7 +191,7 @@ export class WorkflowStreamService implements OnModuleDestroy {
   }
 
   /**
-   * Wait for a run to reach a terminal status, or give up at `ceilingMs` (TASK-850 lane A
+   * Wait for a run to reach a terminal status, or give up at `ceilingMs`
    * step 7 — the BLOCKING response mode).
    *
    * Returns the terminal status, or `null` when the ceiling arrives first. `null` is not an
@@ -202,7 +202,7 @@ export class WorkflowStreamService implements OnModuleDestroy {
    * streaming mode with the frames thrown away — one `XREAD` loop, one producer, one terminal
    * definition (`WORKFLOW_RUN_COMPLETED`, cross-checked against the status snapshot). Polling
    * `getRunStatus` on a timer here would have been a second progress mechanism with its own
-   * latency and its own idea of "finished"; TASK-849 lane A deleted exactly that from the SSE
+   * latency and its own idea of "finished"; lane A deleted exactly that from the SSE
    * path and this must not reintroduce it (F-21).
    *
    * **A client disconnect does not reach this method.** It has no `Response` and registers no

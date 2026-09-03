@@ -17,7 +17,7 @@
 # runtime client agree on wire behavior against the same Qdrant server.
 #
 # Build (from repo root — the script it COPYs lives outside this directory):
-#   docker build -f infrastructure/docker/qdrant-init/Dockerfile -t hope-v2/qdrant-init:latest .
+#   docker build -f infrastructure/docker/qdrant-init/Dockerfile -t hope-v2/qdrant-init:latest.
 
 FROM python:3.11-slim-trixie
 
@@ -45,7 +45,6 @@ COPY --chown=hope:hope infrastructure/docker/scripts/init-qdrant-collections.py 
 # ── bake build identity, LAST layer ─────────────────────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG

@@ -29,12 +29,12 @@ export class WorkflowNodePortResponse {
 
   @ApiPropertyOptional({
     description:
-      'The key of the producing activity’s output object that this socket carries (TASK-809 OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort.',
+      'The key of the producing activity’s output object that this socket carries (OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort.',
   })
   outputKey?: string;
 }
 
-/** The golden-set binding, declared on the NODE rather than on a DepartmentAgent row (OD-11). */
+/** The golden-set binding, declared on the NODE rather than on a DepartmentAgent row. */
 export class WorkflowNodeEvalGateResponse {
   @ApiProperty()
   goldenSetId: string;
@@ -46,9 +46,9 @@ export class WorkflowNodeEvalGateResponse {
 /**
  * A read-only projection of one `WORKFLOW_NODE_REGISTRY` entry
  * (`@arcaai/workflow-contract`'s `WorkflowNodeDescriptor`) — the platform's whole node
- * vocabulary, tenant-visible by design (`admin:workflow-node:read`; see TASK-715 §6 risk #4:
+ * vocabulary, tenant-visible by design (`admin:workflow-node:read`; see risk #4:
  * "a node type's `description` is tenant-visible copy"). No table, no migration — this
- * package's zero-deps registry IS the source of truth (TASK-734 §6).
+ * package's zero-deps registry IS the source of truth
  */
 export class WorkflowNodeResponse {
   @ApiProperty({ description: 'The node type string authored on a graph node.' })
@@ -91,7 +91,7 @@ export class WorkflowNodeResponse {
   configSchema: Record<string, unknown> | null;
 
   // ---------------------------------------------------------------------------------------------
-  // TASK-809 — the node CONTRACT. Everything above describes how a node is DISPATCHED; the fields
+  // the node CONTRACT. Everything above describes how a node is DISPATCHED; the fields
   // below describe what it may be WIRED TO, when it runs, and what must be true of it before a
   // graph containing it can be published. The contract package grew all of them and this DTO
   // projected none, so the canvas and the SDK could not see a single port — see

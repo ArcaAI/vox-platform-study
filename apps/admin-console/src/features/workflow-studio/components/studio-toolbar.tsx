@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `StudioToolbar` (TASK-719 Task 15) — view-mode toggle + autosave-state indicator + Validate /
+ * `StudioToolbar` — view-mode toggle + autosave-state indicator + Validate /
  * Publish actions. Publish stays disabled until the server report is clean
  * (`publishBlockedReason`, Task 14) — the client validator is never the gate.
  */
@@ -18,10 +18,10 @@ const AUTOSAVE_LABEL: Record<AutosaveState, string> = {
 };
 
 /**
- * TASK-797 W1 (R2) — the "test this workflow" affordance.
+ * (R2) — the "test this workflow" affordance.
  *
  * Running a definition already exists end-to-end in the WORKBENCH
- * (`/playground/workbench`, TASK-721): fixture picker, `POST
+ * (`/playground/workbench`): fixture picker, `POST
  * admin/workflow-definitions/:id/sandbox-runs`, ticket-authenticated progress
  * stream, per-node trace inspector, and the sandbox banner/badge. What the
  * Studio lacked was a way to GET there for the definition on screen.

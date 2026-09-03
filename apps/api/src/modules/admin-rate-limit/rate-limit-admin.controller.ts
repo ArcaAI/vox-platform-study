@@ -88,7 +88,7 @@ export class RateLimitAdminController {
   }
 
   /**
-   * @deprecated TASK-785 — superseded by the `rules` surface below, which
+   * @deprecated — superseded by the `rules` surface below, which
    * governs ANY of the gateway's routes for ANY tenant rather than the five
    * hand-registered slugs. Kept wired (and still honoured by the guard at rank
    * 4.5) so existing SDK callers and the shipped admin screen keep working.
@@ -108,7 +108,7 @@ export class RateLimitAdminController {
   }
 
   // -------------------------------------------------------------------------
-  // Route catalog + rules (TASK-785)
+  // Route catalog + rules
   // -------------------------------------------------------------------------
 
   @Get('routes')
@@ -188,7 +188,7 @@ export class RateLimitAdminController {
   }
 
   // -------------------------------------------------------------------------
-  // Subscription plans — rank 3 (TASK-785 US-3)
+  // Subscription plans — rank 3 
   // -------------------------------------------------------------------------
 
   /*

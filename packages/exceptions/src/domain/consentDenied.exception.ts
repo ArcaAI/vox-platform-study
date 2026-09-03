@@ -25,11 +25,9 @@ export interface ConsentDeniedMetadata {
  * A genuine denial ONLY — see {@link ConsentUnavailableException} for the
  * "the lookup itself failed" case, which is a DIFFERENT exception type
  * (different HTTP status, different alerting; R4,
- * docs/implementation/TASK-712-Consent-Abac/README.md §6).
  *
  * Wired live via `PatientConsentGuard` (`apps/api/src/guards/`) on every
  * route carrying `@RequiresConsent(...)` — see
- * docs/implementation/TASK-712-Consent-Abac/consent-design.md.
  */
 export class ConsentDeniedException extends BaseDomainException {
   static readonly code = CONSENT_DENIED;

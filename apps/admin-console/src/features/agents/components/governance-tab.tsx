@@ -149,7 +149,7 @@ function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
  * `/harness/observability` (one authoritative editor per resource, rule 13) —
  * this panel only reads + triggers runs.
  *
- * ## What TASK-815 changed here
+ * ## What changed here
  *
  * The picker used to default to the golden set attached to a `DepartmentAgent`
  * bound to this template, and it annotated each set with the agents holding it.

@@ -24,7 +24,6 @@ export interface ConsentUnavailableMetadata {
  * compliance event; an unavailability denial is a gateway/DB hiccup that
  * happens to look like one, and must not be conflated with genuine consent
  * enforcement in alerting or in the audit trail (R4,
- * docs/implementation/TASK-712-Consent-Abac/README.md §6).
  */
 export class ConsentUnavailableException extends BaseDomainException {
   static readonly code = CONSENT_UNAVAILABLE;

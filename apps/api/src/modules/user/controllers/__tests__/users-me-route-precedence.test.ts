@@ -1,5 +1,5 @@
 /**
- * TASK-760 — the `users/me/**` vs `users/:id/**` collision, pinned.
+ * the `users/me/**` vs `users/:id/**` collision, pinned.
  *
  * The self plane moved from the singular `user/me/**` into the PLURAL `users`
  * collection, which was already occupied: `UserRolesController` is
@@ -83,7 +83,7 @@ async function boot(moduleClass: unknown): Promise<INestApplication> {
   return app;
 }
 
-describe('TASK-760 — literal `me` beats `:id` under the users collection', () => {
+describe('literal `me` beats `:id` under the users collection', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -121,7 +121,7 @@ describe('TASK-760 — literal `me` beats `:id` under the users collection', () 
   });
 });
 
-describe('TASK-760 — the wrong registration order is a real, silent failure', () => {
+describe('the wrong registration order is a real, silent failure', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -138,7 +138,7 @@ describe('TASK-760 — the wrong registration order is a real, silent failure', 
   });
 });
 
-describe('TASK-760 — the fixtures above match the real controllers', () => {
+describe('the fixtures above match the real controllers', () => {
   it('the real controller prefixes are the ones this test exercises', async () => {
     const { PATH_METADATA } = await import('@nestjs/common/constants');
     const { PermissionCheckController, UserPermissionCheckController } = await import('../../../rbac/permission-check.controller');

@@ -80,7 +80,7 @@ export interface EffectiveConcurrency {
  * PHI-redaction knobs (guardrail only). `chunkChars` bounds ONE GLiNER
  * extraction call: the model's cost is super-linear in input length, so an
  * unbounded call over a large corpus exhausts both the caller's HTTP timeout and
- * the worker's memory (measured in TASK-710 §7 Task 6). Null ⇒ guardrail keeps
+ * the worker's memory (measured in Task 6). Null ⇒ guardrail keeps
  * its own built-in bound — never "unbounded".
  */
 export interface EffectiveRedaction {

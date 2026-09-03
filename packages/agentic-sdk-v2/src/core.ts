@@ -41,7 +41,7 @@ export {
   // Surface the focused domain hooks (siblings of
   // useArcaSession/useArcaSummary) so consumers can use them without the useArca() aggregate.
   useArcaLiveSummary,
-  // TASK-858 G2 — the live clinician-assist feed (grammar corrections +
+  // the live clinician-assist feed (grammar corrections +
   // interpreter suggestions). SSE only, no audio/ML, so it belongs in core.
   useArcaLiveAssist,
   useArcaAudio,
@@ -60,7 +60,7 @@ export {
   useConsultationSchema,
   useConsultationWorkflow,
   useSelectableConsultationWorkflows,
-  // TASK-850 — workflow invocation (run / watch / cancel). No audio or ML, so
+  // workflow invocation (run / watch / cancel). No audio or ML, so
   // it belongs in /core: an admin or dashboard surface runs workflows too.
   useWorkflowRun,
   useConsultationEvents,
@@ -160,7 +160,7 @@ export type {
   UseConsultationSchemaReturn,
   UseConsultationWorkflowReturn,
   UseSelectableConsultationWorkflowsReturn,
-  // TASK-850 — workflow invocation.
+  // workflow invocation.
   StartWorkflowRunOptions,
   UseWorkflowRunOptions,
   UseWorkflowRunReturn,
@@ -321,7 +321,7 @@ export type { AudioRecording, AddAudioRecordingInput } from './types';
 export type {
   ConsultationContextSchemaDefinition,
   ConsultationSchemaBundle,
-  // TASK-813 — the discovery answer returned by `useConsultationWorkflow`, and the selectable
+  // the discovery answer returned by `useConsultationWorkflow`, and the selectable
   // set returned by `useSelectableConsultationWorkflows`.
   ConsultationWorkflow,
   SelectableConsultationWorkflow,
@@ -335,7 +335,7 @@ export type {
 export { CONTEXT_PRIMITIVES, findConsultationContextKind, isConsultationContextKindDeprecated } from './types';
 
 // =============================================================================
-// Types + guards — workflow invocation (TASK-850)
+// Types + guards — workflow invocation
 // =============================================================================
 
 export type {
@@ -375,7 +375,7 @@ export type {
   TranscriptWord,
   VADEvent,
   VADEventType,
-  // TASK-858 G3 — argument/return shapes of already-public audio surfaces
+  // argument/return shapes of already-public audio surfaces
   // (`audio.start(options)`, dual capture, the store's pipeline/connection
   // state). Types only: erased at build, so `/core` stays audio-code-free.
   ActivePipelineInfo,
@@ -437,7 +437,7 @@ export type {
   HighlightSegment,
   LegacySoapSectionCode,
   SensorScores,
-  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup (TASK-810).
+  // Deprecated aliases of DocumentSectionKey / DocumentSectionGroup.
   SoapSection,
   SoapSectionGroup,
   TranscriptSource,

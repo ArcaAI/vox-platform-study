@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * The runs/observability read model (TASK-723) — one row per workflow-substrate run.
+ * The runs/observability read model — one row per workflow-substrate run.
  *
  * A tenant-scoped OPERATIONAL TELEMETRY row, the same posture as
  * AgentTrajectoryStep (see that entity's header):
@@ -16,7 +16,7 @@ import * as Entities from '../../../entities';
  *     table carries no `resourceStatus` column; `softDelete()`/`restore()`
  *     throw for this repository.
  *   - NO sys-events on write: `recordRunStarted`/`recordRunFinished` are the
- *     write contract (called by TASK-718's dispatcher or a future gateway
+ * write contract (called by dispatcher or a future gateway
  *     controller — see the ticket's R2), and emit nothing.
  *   - `status` deliberately has NO `DEGRADED` member — degradation is the
  *     `degradedNodeCount` flag, never a run STATE (README pitfall 6).
@@ -44,10 +44,12 @@ export interface IWorkflowRunEntity extends IBaseTenantEntity {
   failedNodeCount: number;
   degradedNodeCount: number;
   firstErrorCode?: string | null;
-  /** TASK-790 (M-2) — the run's delivered output, stored verbatim from the
+  /**
+* (M-2) — the run's delivered output, stored verbatim from the
    *  `output.deliver` node: `{ resultRef: ClaimCheckRef }` when offloaded to
    *  claim-check storage, or `{ outputs: {...} }` inline. Null while RUNNING and
-   *  for any graph with no `output.deliver` node. */
+   *  for any graph with no `output.deliver` node. 
+ */
   resultRef?: JsonValue | null;
 }
 

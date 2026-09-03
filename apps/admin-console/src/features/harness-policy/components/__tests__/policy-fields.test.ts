@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 4 — the safety provider/model controls are RETIRED.
+ * the safety provider/model controls are RETIRED.
  *
  * Both columns were dropped from `HarnessPolicy` (no runtime reader; the guardrail
  * selection lives in the `guardrail.safety` AiTaskDefault, resolved by apps/guardrail
@@ -14,7 +14,7 @@ import { POLICY_FIELD_GROUPS, POLICY_FIELDS, TENANT_LOCKED_POLICY_KEYS } from '.
 
 const RETIRED_KEYS = ['safetyProvider', 'safetyModel'];
 
-describe('policy field descriptors after the TASK-816 Phase 4 drop', () => {
+describe('policy field descriptors after the  Phase 4 drop', () => {
   it.each(RETIRED_KEYS)('does not render a control for %s', (key) => {
     expect(POLICY_FIELDS.map((field) => field.key)).not.toContain(key);
   });

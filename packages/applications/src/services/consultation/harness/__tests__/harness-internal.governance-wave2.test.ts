@@ -6,7 +6,7 @@
  *    only when `agentic.revisit.carryForwardEnabled` is on. The default-off case
  *    is asserted as a REGRESSION LOCK (nothing is fetched, nothing is passed),
  *    because carry-forward is the highest-risk context feature in the platform
- *    (SOTA §4.5) and must never switch on by deploy.
+ * (SOTA and must never switch on by deploy.
  *  * **F-11 SummaryMeta OCC.** The two-phase optimistic-delivery write
  *    (`persistDraft` EARLY → `finalizeAssurance` backfill) is a read-modify-write.
  *    Finalize must compare-and-set on `_version`, retry ONCE on drift (both phases

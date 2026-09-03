@@ -7,5 +7,5 @@ export { PublishDialog } from './publish-dialog';
 export { CloneDefinitionDialog } from './clone-definition-dialog';
 export { DefinitionMetadataForm } from './definition-metadata-form';
 export { AssignmentMatrixScreen } from './assignments';
-// TASK-812 (D-10) — the ordered endpoint sequence that runs before a consultation closes.
+// (D-10) — the ordered endpoint sequence that runs before a consultation closes.
 export * from './endpoint-sequence';

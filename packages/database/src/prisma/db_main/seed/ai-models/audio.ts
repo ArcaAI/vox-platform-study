@@ -114,7 +114,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'Azure MAI-Transcribe 1.5',
     slug: 'mai-transcribe-1.5',
     description:
-      'Microsoft MAI-Transcribe 1.5 via the Azure AI Foundry LLM Speech API (PREVIEW — no SLA, no diarization; batch-only per TASK-505 D4).',
+      'Microsoft MAI-Transcribe 1.5 via the Azure AI Foundry LLM Speech API (PREVIEW — no SLA, no diarization; batch-only per D4).',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -139,7 +139,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'Sarvam Saaras v4 (STT)',
     slug: 'sarvam-saaras-v4',
     description:
-      'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential (TASK-567) or SARVAM_API_KEY.',
+      'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential  or SARVAM_API_KEY.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -163,7 +163,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     name: 'OpenAI GPT-4o Transcribe (STT)',
     slug: 'openai-gpt4o-transcribe',
     description:
-      'OpenAI speech-to-text (gpt-4o-transcribe). Cloud REST (POST /v1/audio/transcriptions); per-tenant BYOK via the STT provider credential (TASK-567) or OPENAI_API_KEY.',
+      'OpenAI speech-to-text (gpt-4o-transcribe). Cloud REST (POST /v1/audio/transcriptions); per-tenant BYOK via the STT provider credential  or OPENAI_API_KEY.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
@@ -345,7 +345,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp'],
   },
   {
-    // TASK-858 D1 — the q8_0 build of the SAME repo as the f16 row above, and
+    // the q8_0 build of the SAME repo as the f16 row above, and
     // the model the realtime transcription agent actually binds.
     //
     // It is a SEPARATE catalog row rather than a `computeType` edit, for the
@@ -531,7 +531,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'ECAPA-TDNN Speaker Embedding',
     slug: 'ecapa-tdnn-voxceleb',
-    description: 'SpeechBrain ECAPA-TDNN speaker-verification embeddings (192-d, ~1.71% EER, Apache-2.0). TASK-505 D1 diarization feature extractor.',
+    description: 'SpeechBrain ECAPA-TDNN speaker-verification embeddings (192-d, ~1.71% EER, Apache-2.0).  D1 diarization feature extractor.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.SPEAKER_EMBEDDING,
     modelType: ModelType.BASE_MODEL,

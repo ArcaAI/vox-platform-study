@@ -9,12 +9,12 @@ import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
  * compare-and-set against the current `_version` (drift → 412). The
  * controller folds the RFC 7232 `If-Match` header over this.
  *
- * SHAPE DECISION (OPEN, flagged per ticket §6/§4 Task 3 — not a settled fact):
+ * SHAPE DECISION (OPEN, flagged Task 3 — not a settled fact):
  * both `nlp.topic` and `nlp.intent` use a plain `string[]` label list, the
  * same shape for both task keys. The plan named a richer `{label,
  * description}[]` alternative for `nlp.intent` (an intent description can
  * sharpen the LLM prompt Task 4/5 assembles); this ticket does NOT build that
- * — Karpathy §2 (no speculative richness without a demonstrated need). If the
+ * Karpathy (no speculative richness without a demonstrated need). If the
  * prompt quality genuinely needs per-intent descriptions, upgrading this
  * field to a richer shape is a small, isolated follow-up (validator +
  * `apps/nlp`'s prompt assembly only — the storage column is untyped `Json?`

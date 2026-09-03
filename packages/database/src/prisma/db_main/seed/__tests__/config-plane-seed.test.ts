@@ -4,20 +4,20 @@
  * Static assertions over the EXPORTED seed data (no live DB), following the
  * conventions of `ai-model-consolidation-seed.test.ts` in this directory.
  *
- * SEED-AUTHORITATIVE Day-1 posture (OD-1). The seed is now the
+ * SEED-AUTHORITATIVE Day-1 posture. The seed is now the
  * authoritative source of the built-in-local connection defaults —
  * NOT env. Concretely —
  *
  *   1. The four built-in-local `llm` rows (`lm-studio`, `built-in`,
  *      `vllm`, `llama-cpp`) seed `enabled: true`, so `resolveConnection('llm', …)`
  *      returns the SYSTEM row Day-1 and env becomes a pure fallback. Ollama was
- *      removed entirely (TASK-736) — there is no `llm:ollama` row to seed.
+ * removed entirely — there is no `llm:ollama` row to seed.
  *   2. Every CLOUD-BYO row (all services — e.g. llm `azure`/`bedrock`/`openai`/
  *      `anthropic`/`vertex`/`sarvam`, and all stt/tts cloud rows) stays
  *      `enabled: false`: a cloud provider needs a tenant key, so an
  *      enabled-but-keyless cloud row must never serve.
  *   3. No row carries a VENDOR credential, and no ciphertext is committed to
- *      source. TASK-799 Round 4 lane B narrowed this from "no key material at
+ * source. Round 4 lane B narrowed this from "no key material at
  *      all": the self-hosted engines must carry the non-secret `not-needed`
  *      placeholder, because the `provider_overrides` fold — the channel
  *      `apps/text` actually reads — drops a keyless row on BOTH tiers. See the
@@ -51,7 +51,7 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 // =============================================================================
 
 /**
- * TASK-799 Round 4 lane B.2 — the predicate is IMPORTED, not transcribed.
+ * Round 4 lane B.2 — the predicate is IMPORTED, not transcribed.
  *
  * It used to be a local `c.service === 'llm' && provider in [...]`, which
  * silently answered a narrower question than its name: "is this a built-in
@@ -90,7 +90,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
   });
 
   /**
-   * TASK-799 R2-C.2 — asserted against the DECLARED vocabulary, never a
+   * C.2 — asserted against the DECLARED vocabulary, never a
    * transcription of it.
    *
    * This used to read `['llm', 'stt', 'tts']` inline. P1-C widened
@@ -102,7 +102,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * `tests/contracts/provider-connection-services.contract.test.ts` pins that
    * list to `@arcaai/applications` `PROVIDER_SERVICES` (the source of truth,
    * which this package cannot import — it would be a dependency cycle).
-   */
+ */
   it('carries a valid service discriminator on every row', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
       expect(SEEDABLE_PROVIDER_SERVICES, `service for ${c.service}:${c.provider}`).toContain(c.service);
@@ -130,13 +130,13 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
   });
 
   /*
-   * TASK-736 REVISED (owner decision 2026-08-17): the previous assertion here
+   * REVISED (owner decision 2026-08-17): the previous assertion here
    * was `never seeds an ollama connection row`, encoding the superseded
    * "Ollama removed entirely" directive. The product changed, not the test's
    * rigor: the connection row is REQUIRED so a tenant can point the platform at
    * its own Ollama, while the MODEL CATALOG stays purged — the pair is pinned
    * by `ollama-provider-retained.test.ts`.
-   */
+*/
   it('seeds the ollama connection row keyless, so the endpoint is configurable without a platform key', () => {
     const ollama = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.provider === 'ollama');
     expect(ollama).toHaveLength(1);
@@ -165,7 +165,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
 
   /*
    * ────────────────────────────────────────────────────────────────────────
-   * TASK-799 Round 4 lane B.1 — the DELIVERY-PATH invariants.
+   * Round 4 lane B.1 — the DELIVERY-PATH invariants.
    *
    * Phase 2's text migration made every adapter resolve its connection per
    * request and FAIL CLOSED (`apps/text/src/text/core/connection.py`), and the
@@ -185,7 +185,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * hence the non-secret placeholder `not-needed`, which is literally the value
    * `openai_compat.py` substitutes for LM Studio when the field is empty.
    * ────────────────────────────────────────────────────────────────────────
-   */
+*/
 
   /** The self-host llm engines `apps/text` registers a provider factory for. */
   const TEXT_SELF_HOST_ENGINES = ['llm:lm-studio', 'llm:ollama', 'llm:vllm', 'llm:llama-cpp'] as const;
@@ -339,7 +339,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
 // =============================================================================
 
 describe('AiRuntimeProfile seed', () => {
-  // AMENDED (TASK-858): the shipped default for LIMITS is still none — no row may
+  // AMENDED: the shipped default for LIMITS is still none — no row may
   // claim a measured quota, so `hasOpinion` stays false for every seeded row. The
   // one row that ships is an ENGINE EXTRA paired with a seeded catalog model:
   // gemma-4 thinks by LM Studio default, and `reasoning_effort: "none"` is the

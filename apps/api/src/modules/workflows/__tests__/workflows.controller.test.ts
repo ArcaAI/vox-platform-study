@@ -1,5 +1,5 @@
 /**
- * WorkflowsController unit tests (TASK-722 Task 6).
+ * WorkflowsController unit tests.
  *
  * Asserts every route carries BOTH an authorization decorator (deny-by-default
  * boot audit, rule 05) AND `@RequiredScopes(...)` (the API-key path,

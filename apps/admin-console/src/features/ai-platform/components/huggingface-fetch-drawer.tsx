@@ -29,11 +29,11 @@ function normaliseRepoId(raw: string): string {
 }
 
 function hubUrl(raw: string): string {
-  return `https://huggingface.co/${raw.trim().replace(/^hf:/, '').replace(/^https?:\/\/huggingface\.co\//i, '')}`;
+  return `https://huggingface.co/${raw.trim.replace(/^hf:/, '').replace(/^https?:\/\/huggingface\.co\//i, '')}`;
 }
 
 /**
- * FETCH FROM HUGGINGFACE — the model-store acquisition flow (TASK-845 step 7,
+ * FETCH FROM HUGGINGFACE — the model-store acquisition flow ( step 7,
  * bounded by OD-2: HuggingFace is a model SOURCE, never an inference provider).
  *
  * ## What this actually does, and why it is not a download button

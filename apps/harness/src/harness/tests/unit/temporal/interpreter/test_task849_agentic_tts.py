@@ -1,4 +1,4 @@
-"""TASK-849 lane B (step 5) — ``agentic.tts`` promoted from observable ``DEGRADED`` to REAL.
+"""lane B (step 5) — agentic.tts promoted from observable DEGRADED to REAL.
 
 What this file pins is the SHAPE of the promotion, not merely that it happened:
 
@@ -11,7 +11,7 @@ What this file pins is the SHAPE of the promotion, not merely that it happened:
    run, and a single 30-second WAV is ~1 MB on its own.
 3. **Audio chunks travel the DELTA lane** — ``run_event_producer().emit_token_delta`` — which is
    lane A's single streaming entry point. A second bespoke audio transport is the specific thing
-   this ticket's §5 risk table forbids.
+   risk table forbids.
 4. **Every unresolvable binding still DEGRADES observably.** Promoting a node to "real" is only
    an improvement if its failure modes stay honest.
 """
@@ -165,7 +165,7 @@ class TestTheDeltaLane:
     async def test_a_run_with_no_run_id_still_synthesizes_and_simply_does_not_stream(
         self, producer: _RecordingProducer, synthesized: dict[str, Any]
     ) -> None:
-        # `run_id` is additive-optional (lane A). Losing the live view must never lose the audio.
+        # `run_id` is additive-optional. Losing the live view must never lose the audio.
         result = await agentic.interpreter_agentic_tts(_payload(run_id=""))
         assert result.status == "SUCCEEDED"
         assert producer.deltas == []

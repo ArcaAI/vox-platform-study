@@ -48,15 +48,15 @@ import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
  */
 
 /**
- * TASK-712 Phase 5 — the subject INSTANCE the seeded `ApiKey` conditions
+ * the subject INSTANCE the seeded `ApiKey` conditions
  * compare against. Two rules reach this controller: `manage:ApiKey
  * { tenantId }` (tenant admins) and `api-key-own-manage`'s
  * `[read, update, delete, list]:ApiKey { tenantId, userId }` (every key
  * creator).
  *
- * SHADOW ONLY — corrected by TASK-781. TASK-712 listed `read`/`update`/
- * `delete:ApiKey` in `CASL_ENFORCED_PAIRS`; TASK-779's e2e proved the pairs
- * could never fire, and TASK-781 removed them. Both facts are properties of
+ * SHADOW ONLY — corrected by. listed `read`/`update`/
+ * `delete:ApiKey` in `CASL_ENFORCED_PAIRS`; e2e proved the pairs
+ * could never fire, and removed them. Both facts are properties of
  * THIS resolver, so record them here:
  *
  * 1. It loads the row through `IApiKeyService.fetchById`, which runs
@@ -70,13 +70,13 @@ import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
  *    pre-empt `assertKeyAccess`'s deliberate **404** with a 403, leaking that
  *    a peer's key exists. The ownership boundary belongs to the service layer,
  *    which is the layer that can express 404. See `policy.engine.ts`
- *    §CASL_ENFORCED_PAIRS finding 3.
+ * finding 3.
  *
  * What it still buys: `casl_shadow_divergence_total` observations on a real
  * route, at the cost of one extra query on an admin surface.
  *
  * `subject: 'ApiKey'` is declared so the instance is only ever compared
- * against `ApiKey` permissions — TASK-781 closed the gap where one route-level
+ * against `ApiKey` permissions — closed the gap where one route-level
  * resolver was applied to every required permission on the route.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- request shape varies by HTTP adapter, matching SubjectInstanceResolver's own signature.

@@ -9,7 +9,7 @@ import {
 export const IWorkflowInvariantRuleService = Symbol('IWorkflowInvariantRuleService');
 
 /**
- * `WorkflowInvariantRule` CRUD (TASK-790 W3b). See `WorkflowInvariantRuleService` for the
+ * `WorkflowInvariantRule` CRUD (b). See `WorkflowInvariantRuleService` for the
  * ownership rule and why it is enforced imperatively.
  */
 export interface IWorkflowInvariantRuleService {

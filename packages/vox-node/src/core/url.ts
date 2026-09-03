@@ -7,11 +7,11 @@
  * literal-path exclusion list — the v1-compat shims, which keep their
  * pre-existing v1 URLs so legacy clients don't have to change anything:
  *
- *   - `POST /api/smr/api/v1/presummary`      (summarization; the renamed
- *   - `POST /api/smr/api/v1/summary/sync`     `text` service's frozen
+ *   - `POST /api/smr/api/v1/presummary` (summarization; the renamed
+ *   - `POST /api/smr/api/v1/summary/sync` `text` service's frozen
  *                                             `text`-legacy routes)
- *   - `POST /api/stt/start_session`          (speech-to-text session
- *   - `POST /api/stt/switch`                  lifecycle — TASK-742)
+ *   - `POST /api/stt/start_session` (speech-to-text session
+ * `POST /api/stt/switch` lifecycle —)
  *   - `POST /api/stt/stop_session`
  *
  * Everything else (e.g. `consultations/:id/summary`) DOES get the `api/v1`

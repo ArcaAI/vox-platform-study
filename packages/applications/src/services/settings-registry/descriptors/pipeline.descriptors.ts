@@ -62,7 +62,7 @@ const META: Record<PipelineToggleKey, { label: string; description: string; glob
  *
  * `dnaStyleEnabled` is declared `'closed'` (not the blanket `'open-to-default'`
  * every other toggle gets) to say what is actually true of it: it is a
- * PHI-relevant opt-out gate (TASK-700), and `ConfigResolver.
+ * PHI-relevant opt-out gate, and `ConfigResolver.
  * resolveEffectiveDnaStyleEnabled` already fails CLOSED (DNA off) on any
  * lookup error — never a silently-substituted default. `codeDefault: false`
  * happens to make `'open-to-default' `and `'closed'` observably identical

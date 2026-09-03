@@ -1,7 +1,7 @@
 import { IconFlask } from '@tabler/icons-react';
 
 /**
- * Sandbox containment banner (TASK-721 Task 9) — the CLIENT-SIDE disclosure half of the
+ * Sandbox containment banner — the CLIENT-SIDE disclosure half of the
  * sandbox-containment guardrail. The SERVER side is the actual boundary: every run started
  * from the Workbench is written with `isSandbox: true` (`WorkflowSandboxRunService.startRun`),
  * and real-data run surfaces (`admin/workflow-runs`) exclude sandbox rows BY DEFAULT at the
@@ -9,7 +9,7 @@ import { IconFlask } from '@tabler/icons-react';
  * banner is the disclosure, not the guardrail — sibling of `playground-banner.tsx`, same
  * `role="note"` pattern, in the `statusBanner` slot of `ScreenTemplate`.
  *
- * Rule 11 §7: color is never the only signal — the word "Sandbox" carries the meaning, the
+ * Rule 11: color is never the only signal — the word "Sandbox" carries the meaning, the
  * amber tint reinforces it.
  */
 export function SandboxBanner() {

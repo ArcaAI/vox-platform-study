@@ -1,8 +1,8 @@
 /**
- * The reusable conformance suite (TASK-717 Task 6). Exported from the package
- * root so TASK-722 (exposure SSE) and TASK-727 (webhook channel) can import
+ * The reusable conformance suite. Exported from the package
+ * root so the exposure SSE and webhook channel can import
  * and run it against their OWN producer, rather than re-deriving what
- * "conforms to the envelope" means. §3.9: "A documented contract that nothing
+ * "conforms to the envelope" means. "A documented contract that nothing
  * consumes is a wiki page" — this suite is the thing that makes it real.
  *
  * `assertAsyncConformance` never throws; every check appends a problem string
@@ -19,7 +19,7 @@ export interface AsyncProducerUnderTest {
   produce(input: { type: string; payload: unknown; correlationId: string }): Promise<unknown>;
   /** Replay from a resume token, if the transport is resumable. */
   replay?(token: string): Promise<unknown[]>;
-  /** Whether this transport supports a resume token at all (§3.6). */
+  /** Whether this transport supports a resume token at all. */
   resumable: boolean;
   /**
    * Return the resume token for a value previously returned by `produce()`.
@@ -41,13 +41,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const UUIDV7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TYPE_PATTERN = /^[a-z0-9]+(\.[a-z0-9_]+){1,4}$/;
 
-/** How many envelopes to produce for the volume/uniqueness assertions (§Task 6 assertion 2). */
+/** How many envelopes to produce for the volume/uniqueness assertions. */
 const PRODUCTION_VOLUME = 1000;
 /** Index at which the mid-stream resume assertion cuts the stream. */
 const MID_STREAM_INDEX = 5;
 
 /**
- * Run every assertion from TASK-717 Task 6 against `producer`. Returns the
+ * Run every assertion from against `producer`. Returns the
  * list of problems found — empty means the producer conforms to the async
  * envelope contract.
  */
@@ -147,7 +147,7 @@ export async function assertAsyncConformance(producer: AsyncProducerUnderTest): 
     }
   }
 
-  // 11 & 12. resume tokens (§3.6)
+  // 11 & 12. resume tokens
   if (producer.resumable) {
     if (!producer.replay) {
       problems.push('resumable producer must implement replay()');

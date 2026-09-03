@@ -167,13 +167,13 @@ export class KnowledgeDocumentEntity extends BaseTenantEntity {
   }
 
   /**
-   * Manual archive (TASK-728 — nothing auto-expires this content yet). A
+   * Manual archive (nothing auto-expires this content yet). A
    * soft-touch on the BUSINESS `status` axis, not the generic
    * `resourceStatus` soft-delete axis (`BaseEntity.archive()`, a DIFFERENT
    * method on a different axis — deliberately not overridden/reused here): an
    * ARCHIVED document stays listed and its chunks/vectors are untouched —
    * only `deleteDocument` removes them.
-   */
+ */
   archiveContent(): void {
     this.status = Enums.KnowledgeDocumentStatus.ARCHIVED;
   }

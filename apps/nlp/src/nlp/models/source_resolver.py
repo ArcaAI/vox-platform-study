@@ -36,7 +36,7 @@ Design constraints (rule 06):
   pulls while still permitting ``s3://`` (in-deployment MinIO, checksum-verified,
   admin-declared), ``file://`` and ``local_path``.
 
-Credentials (TASK-855 L6 follow-on)
+Credentials ( follow-on)
 ====================================
 A GENERIC gateway route, ``GET /internal/model-registry-credential``, now backs
 ``s3://`` credential resolution for every service that is not the STT worker —
@@ -139,7 +139,7 @@ def config_from_settings(settings: Any) -> ModelSourceConfig:
 
 
 async def config_for_model(settings: Any) -> ModelSourceConfig:
-    """Resolver config INCLUDING the S3 credential (TASK-855 L6 follow-on).
+    """Resolver config INCLUDING the S3 credential ( follow-on).
 
     Resolves against `SYSTEM_TENANT_ID` — see the module docstring for why nlp
     cannot resolve the model row's TRUE owner tenant today. Fails CLOSED
@@ -320,7 +320,7 @@ async def _resolve_hf(
     # IS the "pre-populate the hub cache" path the error below recommends —
     # raising before the call made that advice impossible to follow, and turned
     # every AiModel-driven load into a hard failure on a pod whose weights are
-    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # mounted read-only from the model bucket. The offline case is
     # still reported distinctly, but only once a cache MISS has actually
     # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}

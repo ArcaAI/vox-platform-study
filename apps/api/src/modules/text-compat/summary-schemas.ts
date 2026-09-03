@@ -8,7 +8,7 @@
  * carries a `title` so the provider's schema name is stable.
  *
  * Shapes mirror the v1 `SimplifiedMedicalSummary` / `EnhancedMedicalSummary`
- * contracts (`TEXT_Summary_Endpoints.md` §3.3, frozen).
+ * contracts (`TEXT_Summary_Endpoints.md`, frozen).
  *
  * STRICT-MODE COMPLIANCE (follow-up): Azure OpenAI (and OpenAI)
  * structured outputs in `strict` mode require, for EVERY object:

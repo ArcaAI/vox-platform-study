@@ -1,7 +1,7 @@
 /**
- * TASK-724 Task 6 (realtime-trigger binding, resolver half) — `SttPipelineResolverService`.
+ * (realtime-trigger binding, resolver half) — `SttPipelineResolverService`.
  *
- * README §1/§4 Task 6: when a session/consultation open resolves to a PUBLISHED `stt`-palette
+ * Task 6: when a session/consultation open resolves to a PUBLISHED `stt`-palette
  * `WorkflowDefinition`, this resolver returns the `pipelineId` to bind — the SAME id Task 4's
  * `SttPipelineCompilerService` wrote (via the deterministic `sttWorkflowPipelineSlug` mapping),
  * so the caller can pass it straight into the EXISTING `CreateStreamingSessionRequest.pipelineId`

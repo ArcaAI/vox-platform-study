@@ -29,7 +29,7 @@ import { TtsWsGateway } from './tts-ws.gateway';
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
-    // TASK-755 G-1 — supplies `IOriginRegistry` to `TtsWsGateway`'s CSWSH
+    // supplies `IOriginRegistry` to `TtsWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is
     // the only place the allow-list reaches the socket path. The gateway
     // injects it `@Optional()` and fails CLOSED, so omitting this import does
@@ -37,7 +37,7 @@ import { TtsWsGateway } from './tts-ws.gateway';
     OriginRegistryServiceModule,
   ],
   // `HarnessTtsInternalController` is the `agentic.tts` node's synthesis dispatch
-  // (TASK-849 lane B). It lives here rather than on the consultation module's harness
+  // . It lives here rather than on the consultation module's harness
   // controller because every dependency it needs — the TTS config resolver, the
   // provider-connection plane, the usage ledger, the entitlements port — is already
   // imported above; see that controller's own docstring.

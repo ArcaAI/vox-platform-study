@@ -62,7 +62,7 @@ class VoiceCatalog:
     def default_binding(self, provider: str, locale_prefix: str) -> str | None:
         """The first catalog voice for ``locale_prefix`` that ``provider`` can speak.
 
-        The catalog is the SINGLE source of provider voice names (TASK-799 lane
+        The catalog is the SINGLE source of provider voice names ( lane
         C): the per-provider `voice_en` / `voice_ml` / `speaker_*` / `voice`
         settings that duplicated these strings are gone. On the request path the
         router already resolves `voice.bindings[provider]` into

@@ -1,7 +1,7 @@
 /**
  * The workflow canvas graph, exactly as a tenant authors it (`WorkflowDefinition.graph`,
- * TASK-715). This is the SOURCE the validator (§validate.ts) checks and the compiler
- * (§compiler.ts) turns into a `compiledConfig`. It is never executed directly — see
+ * ). This is the SOURCE the validator (validate.ts) checks and the compiler
+ * (compiler.ts) turns into a `compiledConfig`. It is never executed directly — see
  * `packages/database/src/prisma/db_main/workflow-definition.prisma`.
  *
  * The id grammar mirrors `AGENT_KIND_KEY_PATTERN`
@@ -9,11 +9,13 @@
  * convention" for tenant-authored keys.
  */
 
-/** Client-authored canvas coordinates (Workflow Studio, TASK-719). Purely presentational —
+/**
+ * Client-authored canvas coordinates (Workflow Studio). Purely presentational
  *  never read by the compiler/interpreter — but it is a first-class sibling of `config`, not
  *  smuggled inside it: `compileNode`/`compileGate` (`compiler.ts`) copy `node.config` verbatim
  *  into `CompiledNode.config`, so nesting layout under a reserved config key would leak client
- *  bookkeeping into the interpreter's input contract. */
+ *  bookkeeping into the interpreter's input contract.
+ */
 export interface WorkflowNodePosition {
   x: number;
   y: number;
@@ -53,7 +55,7 @@ export const WORKFLOW_NODE_ID_PATTERN = /^[a-z0-9_]{2,48}$/;
  * Deliberately NOT `WORKFLOW_NODE_ID_PATTERN`: every seeded slug is hyphenated
  * (`platform-default-summarization`, `arcaai-consultation-soap`, …) and the node-id grammar
  * admits no hyphen, so the three DTOs that reused it (create, clone, session-open) rejected
- * every real workflow with a 400 — found live by TASK-858. Lowercase alphanumerics, `-` and
+ * every real workflow with a 400 — found live by. Lowercase alphanumerics, `-` and
  * `_`, 2–80 characters, must start and end with an alphanumeric.
  */
 export const WORKFLOW_DEFINITION_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/;

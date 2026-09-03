@@ -25,9 +25,9 @@ import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest 
 
 /**
  * the TEXT routing tasks the loop discriminates on:
- *  - `live`     → the live-documentation delta summariser (`text.live`).
+ *  - `live` → the live-documentation delta summariser (`text.live`).
  *  - `finalize` → the final/comprehensive summary generator (`text.finalize`).
- *  - `test`     → the tenant-admin prompt-template test bench (`text.test`,
+ *  - `test` → the tenant-admin prompt-template test bench (`text.test`,
  * — falls back to `finalize` at the CALLER when unresolved.
  * `resolveTextSelection` consults the matching `AiTaskDefault` key FIRST, then
  * falls back to the legacy `HarnessPolicy.textProvider/textModel` cascade.
@@ -35,7 +35,7 @@ import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest 
 export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
 /**
- * TASK-816 (DD-10) — a workflow node's OWN model selection, read off its `config.llmBinding`.
+ *  — a workflow node's OWN model selection, read off its `config.llmBinding`.
  *
  * One field, because one field is the whole of what `AiTaskDefault` transfers: its `taskKey` is
  * already a node config key, its `configJson` has no reader in either runtime, and the
@@ -68,7 +68,7 @@ type TextFallbackTask = Exclude<TextRoutingTask, 'test'>;
  * fallback runs — the same effect as the removed `TEXT_FALLBACK_*` env being
  * unset). No SYSTEM default is seeded.
  *
- * TASK-740 D-4: this map used to carry a third entry, `text.test.fallback`,
+ * this map used to carry a third entry, `text.test.fallback`,
  * purely to satisfy a `Record<TextRoutingTask, string>` exhaustiveness check —
  * an unregistered, unseeded literal that was not in `AI_TASK_KEYS` and that no
  * caller could reach. Narrowing the key type to {@link TextFallbackTask} deletes
@@ -392,7 +392,7 @@ export class HarnessPolicyService {
    * `tenantId` defaults to the CLS tenant; the worker-facing internal endpoint
    * passes it explicitly.
    *
-   * `opts.consultationId` NO LONGER SELECTS ANYTHING (TASK-815 / OD-12). It used
+   * `opts.consultationId` NO LONGER SELECTS ANYTHING ( / OD-12). It used
    * to layer the consultation's department default `DepartmentAgent.harnessOverrides`
    * on top of the resolved policy — an overlay that ran on EVERY return path.
    * The owner decision was to RETIRE that tier outright rather than repoint it:
@@ -406,7 +406,7 @@ export class HarnessPolicyService {
    * ticket's to edit. Removing the query param is a follow-on for whoever owns
    * that module; nothing reads it here.
    *
-   * When `opts.taskKey` is supplied (TASK-740 D-1) the `AiTaskDefault` row for
+   * When `opts.taskKey` is supplied the `AiTaskDefault` row for
    * that key — resolved tenant → SYSTEM by `AiTaskDefaultService.getEffective` —
    * overlays `textProvider`/`textModel` on whichever policy row wins. Same
    * best-effort contract as the judge overlay: an unresolved key leaves the
@@ -419,7 +419,7 @@ export class HarnessPolicyService {
   ): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
-    // TASK-816: the interpreter passes the executing node's `llmBinding.modelSlug` alongside its
+    // the interpreter passes the executing node's `llmBinding.modelSlug` alongside its
     // `taskKey`, so the DURABLE lane resolves through the same two-tier precedence the TS callers
     // do — node binding (fail-CLOSED) first, then the task key. This is the whole of "the graph
     // carries selection" on the Python side: `nodes/*.py` already read `config.taskKey`, and now
@@ -559,7 +559,7 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-816 (DD-10) — resolve a workflow node's OWN `llmBinding.modelSlug`.
+   *  — resolve a workflow node's OWN `llmBinding.modelSlug`.
    *
    * The successor to `AiTaskDefault` for the one thing a task key cannot say: WHICH model THIS
    * node generates with. A tenant running both an `agent.summarization` and an
@@ -632,7 +632,7 @@ export class HarnessPolicyService {
     task: TextRoutingTask = 'finalize',
     binding?: NodeLlmBinding,
   ): Promise<{ provider: string; model: string }> {
-    // TASK-816 precedence 0 — the NODE's own binding, when the caller carries one. It is not a
+    // precedence 0 — the NODE's own binding, when the caller carries one. It is not a
     // "tier" in the widen-on-absence sense: a node that names a model has stated something no
     // tenant-level row can, so it wins outright and fails closed. Absent ⇒ every line below runs
     // byte-identically to before, which is what keeps this addition safe for the live loop.

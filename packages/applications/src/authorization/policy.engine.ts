@@ -13,7 +13,7 @@ import { IRedisCacheService } from '../services/baseServices/redis';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * TASK-712 Phase 5 Task 14 — CASL condition-evaluation SHADOW mode.
+ * CASL condition-evaluation SHADOW mode.
  *
  * `unified-auth.guard.ts:319` evaluates `ability.can(action, subject)` — a
  * bare type-name check. CASL's `conditions` machinery is fully built
@@ -56,7 +56,7 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
     help:
       'Number of requests where the CASL type-only authorization verdict ' +
       '(currently enforced) disagreed with the instance-aware verdict its ' +
-      'seeded `conditions` would produce (TASK-712 Phase 5, shadow mode). ' +
+      'seeded `conditions` would produce (Phase 5, shadow mode). ' +
       "Labeled by action, subject, and direction ('would_deny' | 'would_allow'). " +
       'See casl-blast-radius.md for the rollout this counter measures against.',
     labelNames: ['action', 'subject', 'direction'] as const,
@@ -64,7 +64,7 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
   });
 
 /**
- * TASK-712 Phase 5 Task 15 — ENFORCE. Corrected by TASK-781.
+ * ENFORCE. Corrected by.
  *
  * The explicit, per-`(action, subject)` enforce list. For a pair in this set,
  * AND ONLY for a route that opted into instance resolution via
@@ -78,13 +78,13 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  * the three that were briefly listed turned out to be unreachable. Record the
  * findings here rather than re-deriving them:
  *
- * 1. **`read`/`manage:Consultation`** (`casl-blast-radius.md` §7 step 1) —
+ * 1. **`read`/`manage:Consultation`** (`casl-blast-radius.md` step 1)
  *    `consultation.controller.ts`'s `verifyConsultationAccess` runs a
  *    post-guard, DB-backed shared-patient fallback (its Layer 2) that the
  *    guard cannot see. A guard-level instance denial would 403 before that
  *    fallback ever runs, turning a legitimate shared-patient read into an
  *    outage.
- * 2. **`update`/`delete:UserVoiceProfile`** (§7 step 2's strongest candidate)
+ * 2. **`update`/`delete:UserVoiceProfile`** ( step 2's strongest candidate)
  *    — the `userId = ${user.id}` boundary those routes need is ALREADY
  *    enforced, by `TenantOwnedResourceInterceptor.assertVoiceProfileOwnership`,
  *    which deliberately answers **404** so probing another user's profile id
@@ -92,8 +92,8 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  *    interceptors, so enforcing this pair would pre-empt that check and
  *    downgrade a deliberate 404 into an existence-leaking 403 — a security
  *    REGRESSION, not a tightening. (DEF-C3.)
- * 3. **`read`/`update`/`delete:ApiKey`** — listed by TASK-712, REMOVED by
- *    TASK-781, for BOTH of the reasons above at once:
+ * 3. **`read`/`update`/`delete:ApiKey`** — listed by, REMOVED by
+ * for BOTH of the reasons above at once:
  *
  *    - *Unreachable.* `ApiKeyController.resolveApiKeyInstance` loads the row
  *      through `IApiKeyService.fetchById`, which runs `assertKeyAccess` and
@@ -101,7 +101,7 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  *      the pair existed to deny, the resolver threw, `runCaslInstanceChecks`
  *      swallowed it on its fail-open path, and the service's 404 answered.
  *      Where the resolver succeeded, `assertKeyAccess` had already passed, so
- *      the instance verdict was necessarily `true`. TASK-779 proved this by
+ * the instance verdict was necessarily `true`. proved this by
  *      e2e: `casl_enforce_denial_total` could not increment, which made any
  *      future "measure then enforce" reading of that counter vacuously zero.
  *    - *And unfixable at this layer.* Making it fire requires the resolver to
@@ -110,7 +110,7 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
  *      Same regression as (2).
  *
  * Findings 2 and 3 generalise into the rule that governs every future entry —
- * and note that TASK-712 stated only the first half of it, which is how
+ * and note that stated only the first half of it, which is how
  * `ApiKey` slipped through:
  *
  * > **A subject whose ownership boundary is already enforced downstream with
@@ -132,14 +132,14 @@ const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
 export const CASL_ENFORCED_PAIRS: ReadonlySet<string> = new Set<string>([
   // EMPTY — and the emptiness is the honest state, not a gap.
   //
-  // TASK-712 listed `read`/`update`/`delete:ApiKey` here. TASK-779's e2e
-  // proved by observation that none of them could ever fire, and TASK-781
+  // listed `read`/`update`/`delete:ApiKey` here. e2e
+  // proved by observation that none of them could ever fire, and
   // removed them. Both halves of that finding are recorded above; the short
   // version is that the boundary those pairs described is already enforced by
   // `ApiKeyService.assertKeyAccess`, one layer down, with the SAFER status.
   //
   // Adding an entry is an authorization-semantics change and now costs three
-  // things, not one: evidence in the ticket README, an enforce-grade resolver
+  // things, not one: evidence , an enforce-grade resolver
   // on the declaring route, and a green `auditCaslEnforcePairReachability` —
   // which refuses to boot the gateway if the pair cannot actually fire.
 ]);
@@ -157,7 +157,7 @@ const caslEnforceDenialTotal: Counter<'action' | 'subject'> =
     help:
       'Number of requests denied (403) because an ENFORCED CASL ' +
       '(action, subject) pair evaluated its seeded `conditions` against a ' +
-      'resolved subject instance and refused (TASK-712 Phase 5, enforce mode). ' +
+      'resolved subject instance and refused (Phase 5, enforce mode). ' +
       'A non-zero rate on a newly enforced pair is the signal to revert it.',
     labelNames: ['action', 'subject'] as const,
     registers: [register],
@@ -270,7 +270,7 @@ export class PolicyEngine {
    */
   /**
    * Build an ability from EXPLICIT rules, with no user, no tenant and no
-   * database read (TASK-762).
+   * database read.
    *
    * The service-account path needs a CASL ability for the ACCOUNT ITSELF, not
    * for a bound human — that is the whole point of the credential class: a
@@ -390,7 +390,7 @@ export class PolicyEngine {
    */
   can(ability: AppAbility, action: string, subject: string, resource?: Record<string, unknown>): boolean {
     if (resource) {
-      // TASK-712 Phase 5 Task 15c — BUG FIX. CASL's 3-argument `can(action,
+      // c — BUG FIX. CASL's 3-argument `can(action,
       // subject, field)` treats its THIRD parameter as a FIELD NAME and
       // throws `The 3rd, \`field\` parameter is expected to be a string` for
       // anything else — so this branch had never once returned a verdict. It
@@ -419,7 +419,7 @@ export class PolicyEngine {
   }
 
   /**
-   * TASK-712 Phase 5 Task 14 (shadow mode) — pure comparison, no I/O, no
+   * (shadow mode) — pure comparison, no I/O, no
    * side effects. Computes BOTH the type-only verdict (what
    * `UnifiedAuthGuard` actually enforces) and the instance-aware verdict
    * `conditions` would produce against `instance`, and reports whether they
@@ -466,7 +466,7 @@ export class PolicyEngine {
   }
 
   /**
-   * TASK-712 Phase 5 Task 15 — is this `(action, subject)` pair one whose
+   * is this `(action, subject)` pair one whose
    * instance-aware verdict is AUTHORITATIVE (enforce), or still shadow-only?
    * The single decision point; see {@link CASL_ENFORCED_PAIRS} for why each
    * listed pair is listed.

@@ -1,8 +1,8 @@
 /**
- * TASK-773 Phase D1 — emit the gateway's ROUTE MANIFEST to disk, offline.
+ * emit the gateway's ROUTE MANIFEST to disk, offline.
  *
  * The companion of `emit-openapi.ts`, and the first of the two sources
- * `packages/vox-node-codegen` cross-checks (ticket §3.1):
+ * `packages/vox-node-codegen` cross-checks :
  *
  * | Source | Authoritative for |
  * |---|---|
@@ -31,7 +31,7 @@
  * re-implemented here rather than imported because that function is private to
  * the audit module, and this script must not change audit code.
  *
- * As of TASK-776 the manifest is the ORACLE for a generated authorization
+ * As of the manifest is the ORACLE for a generated authorization
  * conformance suite, so it claims fidelity for all THREE credential classes,
  * not just the service account:
  *
@@ -97,7 +97,7 @@ const OUTPUT_PATH = resolve(__dirname, '..', '..', 'route-manifest.json');
  * `@ApiExcludeEndpoint()` decorators (this script self-executes on import, so
  * a test cannot import it). See that module for why neither decorator stores a
  * boolean and why reading them with `=== true` silently reported "nothing is
- * excluded" for all 657 routes until TASK-783.
+ * excluded" for all 657 routes until.
  *
  * Load-bearing for the cross-check: a route carrying one of these is ABSENT
  * from `openapi.json` BY DESIGN, so `check-openapi-coverage.ts` can tell that

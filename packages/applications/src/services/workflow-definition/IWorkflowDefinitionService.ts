@@ -14,8 +14,8 @@ import {
 } from './dto';
 
 /**
- * `WorkflowDefinition` CRUD + the compile/validate/publish lifecycle (TASK-734, closing the
- * gap TASK-716's own README §2.3 named: "`IWorkflowValidatorService` port + stub" was never
+ * `WorkflowDefinition` CRUD + the compile/validate/publish lifecycle (closing the
+ * gap own named: "`IWorkflowValidatorService` port + stub" was never
  * built — this service calls `@arcaai/workflow-contract`'s `validate`/`compile` directly
  * rather than through a speculative port nothing else consumes).
  *
@@ -31,7 +31,7 @@ export interface IWorkflowDefinitionService {
   getById(id: string): Promise<WorkflowDefinitionResponse>;
 
   /**
-   * Every version row for `id`'s `(tenantId, slug)` lineage, most recent first — TASK-719's
+   * Every version row for `id`'s `(tenantId, slug)` lineage, most recent first
    * `GET admin/workflow-definitions/:id/versions` (`definition-api.contract.md`). Cross-tenant
    * id throws `NotFoundException`.
    */
@@ -40,13 +40,13 @@ export interface IWorkflowDefinitionService {
   /**
    * Creates a new DRAFT row. Rejects (400) a graph that fails shape validation or that
    * `compile()` cannot turn into a `compiledConfig` (a cycle, an unregistered node type) — the
-   * ENGINE gate. DRAFT clinical-rule-catalogue findings (TASK-716's 22 not-yet-clinically-
+   * ENGINE gate. DRAFT clinical-rule-catalogue findings ( 22 not-yet-clinically-
    * reviewed rules) are recorded on `validationReport` but never block create (decision #3).
    */
   create(dto: CreateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
 
   /**
-   * TASK-856 — seed a NEW workflow (new `(tenantId, slug)` lineage, `versionNumber` 1, DRAFT)
+   * seed a NEW workflow (new `(tenantId, slug)` lineage, `versionNumber` 1, DRAFT)
    * from an existing definition's graph.
    *
    * This is NOT `create` with a `parentVersionId`: that branches a new version INSIDE the
@@ -75,7 +75,7 @@ export interface IWorkflowDefinitionService {
   clone(sourceId: string, dto: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
 
   /**
-   * TASK-856 — the platform template library a tenant may clone from: the SYSTEM tenant's live
+   * the platform template library a tenant may clone from: the SYSTEM tenant's live
    * published definitions. Read-only and cross-tenant BY DESIGN, bounded to exactly the SYSTEM
    * tenant; a customer tenant's rows can never appear here.
    */
@@ -84,7 +84,7 @@ export interface IWorkflowDefinitionService {
   /**
    * Versioned PATCH (`If-Match`/`expectedVersion`). Throws `BadRequestException` on a
    * PUBLISHED/DEPRECATED row (`assertMutable`) — those are hard-immutable by service
-   * convention (`workflow-definition.prisma` §3.4). A `graph` change re-runs the same
+   * convention (`workflow-definition.prisma` A `graph` change re-runs the same
    * shape+engine gate as `create`.
    */
   update(id: string, dto: UpdateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
@@ -114,7 +114,7 @@ export interface IWorkflowDefinitionService {
   listNodes(): Promise<WorkflowNodeRegistryResponse>;
 
   /**
-   * Compile `id`'s CURRENT graph fresh, for a Workbench sandbox test run (TASK-721). Unlike
+   * Compile `id`'s CURRENT graph fresh, for a Workbench sandbox test run. Unlike
    * `publish()`, this works on a DRAFT/VALIDATED row too and never persists the result — it is
    * a read, not a lifecycle transition. Throws `BadRequestException` (400) if the engine gate
    * is not clean (same predicate `publish()` uses); cross-tenant/unknown `id` throws
@@ -126,7 +126,7 @@ export interface IWorkflowDefinitionService {
    * DD-11 PATH 1 — edit a node's prompt FROM WITHIN THE NODE: mint a new
    * `PromptVersion` and move THAT node's pin to it, atomically.
    *
-   * ADOPTING is not authoring (§7b item 1). When `content` (+ `variables`) is
+   * ADOPTING is not authoring. When `content` (+ `variables`) is
    * byte-identical to the template's LATEST version, NOTHING is minted: the
    * node's pin simply moves to that existing version. `promptVersionMinted` on
    * the response is how a caller tells the two outcomes apart — adoption is the

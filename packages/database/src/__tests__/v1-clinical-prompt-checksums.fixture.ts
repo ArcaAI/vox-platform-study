@@ -23,7 +23,6 @@
  * replaced with static prose). Nothing in the test suite detected any of
  * this, because nothing pinned the expected byte content — the drift was
  * only found via a manual 15-agent byte-exact audit against the live v1 pod.
- * See docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
  * section 2.9 (D-07) for the full audit table and drift taxonomy.
  *
  * These hashes turn "did the seed content drift from v1?" from a
@@ -44,7 +43,7 @@
  * DO NOT edit these hash values to make a failing test pass. A mismatch
  * means the seed content drifted from v1 — fix the seed content (or get
  * explicit clinical/product sign-off to intentionally diverge and update
- * this fixture with a Change History entry explaining why), never the
+ * this fixture with a entry explaining why), never the
  * reverse.
  */
 

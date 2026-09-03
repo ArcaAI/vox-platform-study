@@ -10,10 +10,10 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
 import { ConsentServiceModule } from '../../consent/consent-grant.service.module';
 
 @Module({
-  // TASK-711 — HarnessAuditServiceModule resolves the @Optional
+  // HarnessAuditServiceModule resolves the @Optional
   // HarnessAuditService WORM append; EffectiveSettingsModule resolves the
   // @Optional TenantSettingsService kill-switch read.
-  // TASK-789 C-1: ConsultationWorkflowDispatchServiceModule supplies the optional
+  // ConsultationWorkflowDispatchServiceModule supplies the optional
   // IConsultationWorkflowDispatchService that `getOrCreate` calls on create.
   imports: [
     CommonServiceModule,
@@ -22,7 +22,7 @@ import { ConsentServiceModule } from '../../consent/consent-grant.service.module
     HarnessAuditServiceModule,
     EffectiveSettingsModule,
     ConsultationWorkflowDispatchServiceModule,
-    // TASK-805 — supplies IConsentGrantService so `getOrCreate` can record the
+    // supplies IConsentGrantService so `getOrCreate` can record the
     // consent the doctor gives by opening the consultation. No cycle:
     // ConsentServiceModule imports neither this module nor anything that leads
     // back to it.

@@ -1,7 +1,7 @@
 /**
- * TASK-758 — policy A1 (business plane = JWT + API key) as an HTTP contract.
+ * policy A1 (business plane = JWT + API key) as an HTTP contract.
  *
- * 13 controllers that carried TASK-742's conservative `@ForbidApiKey()`
+ * 13 controllers that carried conservative `@ForbidApiKey()`
  * default — the classification those `API-KEY-NOTE` blocks explicitly deferred
  * to an owner ruling — now declare a real scope. This spec asserts the three
  * things a decorator swap could plausibly get wrong:
@@ -41,7 +41,7 @@ async function createScopedApiKey(request: APIRequestContext, token: string, sco
   return { id: body.apiKey.id, rawKey: body.rawKey };
 }
 
-test.describe('TASK-758 — business-plane auth model (policy A1)', () => {
+test.describe('business-plane auth model (policy A1)', () => {
   let adminToken: string;
   let superAdminToken: string;
   const createdApiKeyIds: string[] = [];

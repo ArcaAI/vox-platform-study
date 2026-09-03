@@ -1,4 +1,4 @@
--- TASK-789 (finding C-9): the harness has emitted `stepType: "NODE"` on every
+-- The harness has emitted `stepType: "NODE"` on every
 -- `WorkflowInterpreter` graph-node dispatch since the interpreter shipped
 -- (`STEP_NODE` in apps/harness/src/harness/temporal/activities.py), but
 -- `AgentStepType` never carried the member. The ingest DTO validates

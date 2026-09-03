@@ -5,7 +5,7 @@ import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exc
 import { ConsentAssertInput, ConsentDecision, ConsentDenialReason, IConsultationConsentService } from './IConsultationConsentService';
 import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.constants';
 
-/** Bounded-staleness backstop — see consent-design.md §4. Invalidation (below) is the real propagation path. */
+/** Bounded-staleness backstop — see consent- Invalidation (below) is the real propagation path. */
 const CACHE_TTL_MS = 30_000;
 
 interface CacheEntry {
@@ -14,10 +14,10 @@ interface CacheEntry {
 }
 
 /**
- * The ABAC evaluation choke point (TASK-712, consent-abac). See
+ * The ABAC evaluation choke point (consent-abac). See
  * `IConsultationConsentService` for the contract and
- * docs/implementation/TASK-712-Consent-Abac/consent-design.md for the design
- * record — in particular §4 (why this cache is in-process/EventEmitter2-only
+ * for the design
+ * record — in particular (why this cache is in-process/EventEmitter2-only
  * in this phase, not a cross-process Redis channel) and the "legacy-consent
  * posture" section (no exemption logic exists here; every unmatched request
  * denies, unconditionally).
@@ -25,7 +25,7 @@ interface CacheEntry {
  * Deliberately does NOT extend `BaseService` / read CLS: `tenantId` arrives
  * as an explicit input so this is callable identically from an HTTP guard,
  * a BullMQ worker, a Temporal activity, or a tool layer — none of which
- * share the HTTP request's CLS context (§3.3 Pitfall 3 in the ticket
+ * share the HTTP request's CLS context ( Pitfall 3 in the ticket
  * README applies here just as it does to the HTTP guard).
  */
 @Injectable()
@@ -62,7 +62,7 @@ export class ConsultationConsentService implements IConsultationConsentService {
     } catch (error) {
       // Fail-closed: a lookup failure (unreachable dependency, tenant-scope
       // mismatch, ...) still denies, never silently allows — but it is NOT
-      // the same event as a genuine 'no_grant' denial (R4, README §6): a
+      // the same event as a genuine 'no_grant' denial (R4,: a
       // real denial is an expected compliance event; an infra hiccup wearing
       // a denial's shape is an availability incident and must alert
       // differently. `unavailable: true` (no `reason`) carries that
@@ -116,7 +116,7 @@ export class ConsultationConsentService implements IConsultationConsentService {
   }
 
   private deny(reason: ConsentDenialReason, input: ConsentAssertInput, externalPatientId: string, grantId?: string): ConsentDecision {
-    // Not a WORM audit row — see consent-design.md §6. A structured log line
+    // Not a WORM audit row — see consent- A structured log line
     // is what this phase actually delivers; it is NOT a substitute for the
     // audited-denial invariant (INV-007/338), which stays open.
     this.logger.warn({

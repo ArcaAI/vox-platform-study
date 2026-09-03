@@ -1,5 +1,5 @@
 /**
- * TASK-811 — the DocumentSection state machine (§2d).
+ * the DocumentSection state machine
  *
  * The load-bearing assertion in this file is `machineMayOverwrite()`: it is the
  * predicate the flush path consults before replacing a section's content, and

@@ -117,7 +117,7 @@ export function AudioSourcePanel() {
         <CardTitle>Audio source</CardTitle>
         <CardDescription>
           Everything below feeds the same graph — mixer → noise filter → VAD → STT — via{' '}
-          <code className="font-mono text-xs">audio.start(&#123; deviceId … | sourceStreams &#125;)</code> (TASK-597).
+          <code className="font-mono text-xs">audio.start(&#123; deviceId … | sourceStreams &#125;)</code> .
         </CardDescription>
       </CardHeader>
 

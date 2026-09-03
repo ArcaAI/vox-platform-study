@@ -54,7 +54,7 @@ export function randomGraph(rand: () => number, options: RandomGraphOptions = {}
   return { version: 1, nodes, edges };
 }
 
-/** Malformed-input generator — the totality fuzz target (§ non-object nodes, self-edges, …). */
+/** Malformed-input generator — the totality fuzz target ( non-object nodes, self-edges, …). */
 export function randomMalformedInput(rand: () => number): unknown {
   const choice = Math.floor(rand() * 7);
   switch (choice) {

@@ -1,13 +1,13 @@
 """Composing T0 and T1 into the three-axis verdict, on two clocks.
 
-Phase 1 is **T0 + T1 only — no LLM judge.** T2 stays where TASK-818 §3B put it:
+Phase 1 is **T0 + T1 only — no LLM judge.** T2 stays where put it:
 ambiguity only, hard wall-clock cap, and never inline on a streaming summary.
 
 **The two clocks.** A finalized segment is validated in the streaming tier, on the
 utterance clock, and the result drives the clinician-facing signals and caches
 the task-agnostic half. A downstream task is gated in the consumption tier, on
 the checkpoint clock, over the CUMULATIVE artifact. The second is not an
-optimisation of the first; they answer different questions, and §5.2's cost
+optimisation of the first; they answer different questions, and 's cost
 argument is what makes running the expensive one on the cumulative affordable —
 ~10-20 cumulative passes over a 30-60 minute encounter, off the interactive path.
 
@@ -16,18 +16,18 @@ TRUNCATING it, which is right for a one-shot screen and catastrophic here: a
 guardrail that inspects the first N characters of a cumulative transcript while
 the model reads all of it IS Prompt Overflow. So the cumulative path windows the
 whole text and reports ``inspected_chars`` over the whole text. What the ceiling
-bounds is how much goes in VERBATIM (§5.2 mechanism 3) — the earlier prefix is
+bounds is how much goes in VERBATIM ( mechanism 3) — the earlier prefix is
 represented by a rolling summary that is itself a validated artifact — and that
 is a caller obligation this module reports on rather than silently performs.
 
 **Which statistic the session aggregate is, and why the verdict says so.**
-§5.1's arithmetic wants a graded per-window score. ``apps/nlp``'s guard-classify
+'s arithmetic wants a graded per-window score. apps/nlp's guard-classify
 surface used to answer with LABELS alone, so the only computable score was
 categorical (flagged / not flagged) and the session mean was a **flag RATE** —
-not the confidence mean whose "0.32 benign -> 0.628 flagged" separation §5.1
-cites. TASK-830 added per-label confidences to that surface, so when the executor
+not the confidence mean whose "0.32 benign -> 0.628 flagged" separation
+cites. added per-label confidences to that surface, so when the executor
 reports them each window contributes a real graded risk and the mean is the
-statistic §5.1 describes.
+statistic describes.
 
 Both cases remain reachable — a peer that reports no confidence still gets a
 correct categorical verdict — so ``scoreCalibration`` is computed per aggregate
@@ -327,7 +327,7 @@ class RealtimeValidator:
         # checkpoint: `excess_risk` grows with the SQUARE of the encounter and a
         # long, entirely benign consultation eventually trips the session alarm
         # on its own length. Over-blocking a clinician is a patient-safety
-        # failure, not a tuning inconvenience (§3B.2).
+        # failure, not a tuning inconvenience
         #
         # So: the streaming tier owns the persistent accumulation, seeing each
         # utterance exactly once; the consumption tier scores its own artifact
@@ -371,7 +371,7 @@ class RealtimeValidator:
                     )
                 )
             # GRADED when the executor reported confidences, CATEGORICAL when it
-            # did not — and `scoreCalibration` below says which. See §5.1.
+            # did not — and `scoreCalibration` below says which. See
             graded_score = self._graded_risk(
                 results,
                 confidences,
@@ -390,14 +390,14 @@ class RealtimeValidator:
         # directly rather than through the score.
         #
         # The escalation is deliberate and asymmetric. A single hit — a matched
-        # phrase, a flagged window — is CONTAINED, not blocked: §8 rules that a
+        # phrase, a flagged window — is CONTAINED, not blocked: rules that a
         # suspected-injection segment stays verbatim in the transcript and is
         # passed downstream as inert data, never in instruction position.
         # Dictation artefacts and quoted emails land here, and blocking them
-        # would be the over-blocking §2.1 warns is itself a safety failure.
+        # would be the over-blocking warns is itself a safety failure.
         #
         # A SESSION-LEVEL firing is different in kind. It is the stateful global
-        # aggregation of §5.1, the only mitigation shown to recover a
+        # aggregation of, the only mitigation shown to recover a
         # split-payload bypass, and it means the evidence is distributed rather
         # than incidental. That stops derivations.
         aggregate_fired = artifact_state.fired or session_state.fired
@@ -474,7 +474,7 @@ class RealtimeValidator:
         """One classification pass — with confidences when the analyzer has them.
 
         The scored seam is OPTIONAL by design. An analyzer that predates
-        TASK-830 (or a peer `apps/nlp` that still answers with labels alone)
+        (or a peer `apps/nlp` that still answers with labels alone)
         keeps working and is reported as `categorical`; nothing is synthesised to
         make the graded path look available when it is not.
         """
@@ -503,7 +503,7 @@ class RealtimeValidator:
         multi-label sigmoid task it is an estimate rather than a bound — the
         executor returns the labels it selected, not a distribution over the whole
         taxonomy — but it moves monotonically with detector confidence, which is
-        the property §5.1's aggregate actually needs. It is deliberately computed
+        the property 's aggregate actually needs. It is deliberately computed
         HERE and not in `apps/nlp`: `benign_labels` is guardrail's policy, and the
         executor must keep returning raw numbers it does not interpret.
 

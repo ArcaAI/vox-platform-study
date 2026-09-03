@@ -1,7 +1,7 @@
 import { RoutingCandidate, RoutingFallbackContract } from './routing-policy.contract';
 
 /**
- * TASK-818 §3A.4 — the three hard gates, as pure functions.
+ * the three hard gates, as pure functions.
  *
  * > **Three hard gates on any hop, enforced in code, not in policy text**: same
  * > residency class, BAA-covered target, same funding tier. A hop crossing any
@@ -24,7 +24,7 @@ export type RoutingFunding = 'BYOK' | 'CLOUD';
 /**
  * Why a hop is not permitted. Machine-readable: the router turns this into the
  * `x-hope-fallback-reason` header and the `fallback_occurred` sys-event of
- * §3A.4, and a super admin reads it back off `GET .../effective`.
+ * and a super admin reads it back off `GET .../effective`.
  */
 export enum RoutingHopRejection {
   /** Gate 1 — the hop leaves the primary's residency class. */
@@ -64,7 +64,7 @@ export function checkResidencyGate(
  *
  * Judged on the HOP alone, not relative to the primary: a hop from one covered
  * vendor to an uncovered one is the failure mode, and "the primary was also
- * uncovered" is not a defence. §3A.4's evidence is that coverage is per-vendor
+ * uncovered" is not a defence. 's evidence is that coverage is per-vendor
  * AND per-model (AWS lists Bedrock "excluding Fable and Mythos models"), which
  * is why `baaCovered` sits on the CANDIDATE — the vendor alone cannot answer it.
  */
@@ -85,7 +85,7 @@ export function checkBaaGate(
  * labels, it does not compute them, so there is no second notion of funding to
  * drift from the first. Failing over from a tenant's own key to a SYSTEM
  * credential moves the charge onto the platform's P&L and flips the metering
- * class mid-request (§3A.4); getting it wrong is silent, because the wrong
+ * class mid-request (; getting it wrong is silent, because the wrong
  * label still produces a self-consistent ledger pair.
  */
 export function checkFundingGate(

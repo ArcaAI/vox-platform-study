@@ -23,9 +23,11 @@ function CatalogList({ title, endpoint, items, isLoading, error, onRetry }: Cata
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        {/* h2, not h3: the page h1 is the only heading above this card (shadcn's
+        {/*
+ h2, not h3: the page h1 is the only heading above this card (shadcn's
             `CardTitle` renders a div), so h3 skipped a level — axe `heading-order`,
-            caught by the LLM Playground scan added with the TASK-858 Lane D rename. */}
+            caught by the LLM Playground scan added with the rename.
+*/}
         <h2 className="text-sm font-medium">{title}</h2>
         <span className="text-muted-foreground/70 font-mono text-xs">{endpoint}</span>
       </div>

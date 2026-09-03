@@ -1,6 +1,6 @@
 /**
- * `InspectorPanel` (TASK-719 Task 9) — descriptors → the `Field` family, controlled state, no
- * `react-hook-form` (README §2.5). Server `ValidationReport` problems for the selected node
+ * `InspectorPanel` — descriptors → the `Field` family, controlled state, no
+ * `react-hook-form` ( Server `ValidationReport` problems for the selected node
  * render on the matching field via `FieldError`. When the node type carries no config schema
  * (the REAL registry today — `contracts/registry.contract.md`: no delivered node type has
  * one), the panel falls back to the raw `CodeEditor` over `node.config` directly.

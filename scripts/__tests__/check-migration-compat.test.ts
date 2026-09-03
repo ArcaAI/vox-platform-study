@@ -1,5 +1,5 @@
 /**
- * Unit tests for the migration backwards-compatibility gate (TASK-693 §4.4).
+ * Unit tests for the migration backwards-compatibility gate
  *
  * The two narrowings in `scripts/check-migration-compat.ts` are the whole
  * design — `ALTER INDEX … RENAME` and `ALTER TYPE … ADD VALUE` are safe and

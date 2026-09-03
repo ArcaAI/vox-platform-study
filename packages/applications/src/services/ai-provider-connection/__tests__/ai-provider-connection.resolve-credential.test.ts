@@ -1,5 +1,5 @@
 /**
- * TASK-799 — `resolveCredential`, the four-outcome projection of the cascade.
+ * `resolveCredential`, the four-outcome projection of the cascade.
  *
  * The model-registry credentials (`HUGGINGFACE_TOKEN`, `STT_MODEL_S3_*`) are
  * consumed by a Python process that holds no DB handle, so they can only arrive
@@ -178,7 +178,7 @@ describe('resolveCredential — input validation', () => {
       expect(CLOUD_BYO_PROVIDERS['model-registry']).toEqual([]);
     });
 
-    // TASK-855 L8 — the AiModel platform catalogue is SYSTEM-owned
+    // the AiModel platform catalogue is SYSTEM-owned
     // (`06-stt.ts`'s `DEFAULT_TENANT_ID === SYSTEM_TENANT_ID`), so a
     // gateway-internal resolve for one of those rows' HuggingFace token
     // passes SYSTEM_TENANT_ID itself as the resolving tenant — there is no

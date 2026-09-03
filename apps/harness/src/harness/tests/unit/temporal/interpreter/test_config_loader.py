@@ -3,7 +3,7 @@
 Same monkeypatching pattern as test_activities_claim_check.py: get_settings/open_store
 are monkeypatched on the interpreter.activities module so the real activity body runs against
 an InMemoryBlobStore, no network / live MinIO. (`open_store` replaced the bare
-`build_blob_store` seam in TASK-799 A.2 — it resolves the platform storage location first.)
+`build_blob_store` seam in A.2 — it resolves the platform storage location first.)
 """
 
 from __future__ import annotations

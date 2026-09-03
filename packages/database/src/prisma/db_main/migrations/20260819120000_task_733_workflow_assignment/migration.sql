@@ -1,13 +1,13 @@
--- TASK-733 half (a) — per-department workflow assignment.
+-- half (a) — per-department workflow assignment.
 --
 -- Two additive tables plus one enum value. Nothing existing is touched.
 --
---   WorkflowAssignment        — (tenantId, scope, scopeId, paletteKey) ->
+--   WorkflowAssignment — (tenantId, scope, scopeId, paletteKey) ->
 --                               workflowDefinitionSlug. Shaped exactly like
 --                               PipelinePolicy so the same walkCascade
 --                               primitive resolves it (department -> tenant ->
 --                               platform default).
---   WorkflowAssignmentChange  — the append-only WORM change log, mirroring
+--   WorkflowAssignmentChange — the append-only WORM change log, mirroring
 --                               PipelinePolicyChange.
 --
 -- NOTE on WORM enforcement: PipelinePolicyChange / HarnessPolicyChange were
@@ -20,7 +20,7 @@
 -- append-only property is enforced here the same way it is for those two
 -- siblings today: the repository exposes no update/delete surface and the
 -- service only ever `create`s. Restoring the DB-privilege layer for all three
--- change logs at once is a follow-up, not a TASK-733 side effect.
+-- change logs at once is a follow-up, not a side effect.
 
 -- AlterEnum
 ALTER TYPE "core"."ResourceType" ADD VALUE 'WorkflowAssignment';

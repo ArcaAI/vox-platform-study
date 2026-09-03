@@ -88,7 +88,7 @@ def _gen_settings(*, fail_closed: bool = True) -> Settings:
 
 
 def _infer_settings() -> Settings:
-    """No safety provider any more — the screen is a peer-service call (TASK-799 A.1).
+    """No safety provider any more — the screen is a peer-service call ( A.1).
 
     Harness holds no guardian engine, so `ensure_inferential_egress_safe` is passed
     `safety_provider=None`: the note's only destination is `apps/guardrail`, a
@@ -102,7 +102,7 @@ def _infer_settings() -> Settings:
 def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
         # The safety screen is a tenant-scoped call into apps/guardrail
-        # (TASK-737: `X-Tenant-Id` mandatory), so both workflow call sites now thread
+        # (`X-Tenant-Id` mandatory), so both workflow call sites now thread
         # the tenant onto this input; without it the safety sensor degrades by design.
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "note_text": "Patient John Smith stable.",
@@ -230,7 +230,7 @@ class TestRunInferentialSensorsPhiEgress:
     async def test_safety_screen_is_not_cloud_egress_so_the_note_is_not_redacted(
         self, env, monkeypatch
     ):
-        """The PHI cloud boundary MOVED into apps/guardrail (TASK-799 A.1, F-02).
+        """The PHI cloud boundary MOVED into apps/guardrail ( A.1, F-02).
 
         This replaces `test_cloud_safety_redacts_note_before_granite`, which asserted the
         old shape: harness read `HARNESS_SAFETY_PROVIDER`, and when an operator set it to
@@ -275,7 +275,7 @@ class TestRunInferentialSensorsPhiEgress:
         # T6/T7: a cloud fail-closed block degrades the pass (reduced
         # assurance) with a PHI reason, never egresses, and logs the block.
         # Driven by the cloud JUDGE now that the safety path declares no egress target
-        # (TASK-799 A.1); the property under test — one block degrades the WHOLE pass,
+        # ; the property under test — one block degrades the WHOLE pass,
         # and no sensor runs — is unchanged.
         granite = _FakeGranite(dimensions={"harm": False})
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())

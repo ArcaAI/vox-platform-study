@@ -1,5 +1,5 @@
 /**
- * TASK-776 — Response-parsing contract: ETag / If-Match OCC + pagination envelopes.
+ * Response-parsing contract: ETag / If-Match OCC + pagination envelopes.
  *
  * Verifies, against the LIVE gateway:
  *   1. `ETagInterceptor` — strong quoted-decimal `ETag` on a versioned GET.
@@ -40,7 +40,7 @@ async function createDepartment(request: import('@playwright/test').APIRequestCo
   return dept;
 }
 
-test.describe('TASK-776: response parsing — ETag / If-Match OCC + pagination', () => {
+test.describe('response parsing — ETag / If-Match OCC + pagination', () => {
   let tenantAdminToken: string;
 
   test.beforeAll(async ({ request }) => {

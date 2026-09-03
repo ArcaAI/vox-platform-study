@@ -1,5 +1,5 @@
 /**
- * TASK-858 D3 — three EXAMPLE consultation workflows, seeded twice: as SYSTEM
+ * three EXAMPLE consultation workflows, seeded twice: as SYSTEM
  * templates a tenant admin can clone, and as the ArcaAI tenant's own published
  * copies a clinician can select at session-open.
  *
@@ -8,11 +8,11 @@
  * They are the smallest honest expression of three agent combinations the owner
  * named:
  *
- * | Slug suffix        | Grammar fix | Medical NER | Partial summary | Finalization |
+ * | Slug suffix | Grammar fix | Medical NER | Partial summary | Finalization |
  * |--------------------|-------------|-------------|-----------------|--------------|
- * | `grammar-fix`      | yes         | present, OFF| yes             | yes          |
- * | `medical-ner`      | no          | yes         | yes             | yes          |
- * | `ner-grammar-fix`  | yes         | yes         | yes             | yes          |
+ * | `grammar-fix` | yes | present, OFF| yes | yes |
+ * | `medical-ner` | no | yes | yes | yes |
+ * | `ner-grammar-fix` | yes | yes | yes | yes |
  *
  * They are NOT a second SOAP workflow. `23-arcaai-workflow-authoring.ts` owns
  * that: guardrails, evidence retrieval, terminology binding, DNA redaction,
@@ -31,7 +31,7 @@
  * node does not validate and cannot be published at all. "Grammar fix, no NER"
  * therefore cannot be expressed by deleting the node.
  *
- * It is expressed by TASK-852's per-node toggle instead: `config.enabled:
+ * It is expressed by per-node toggle instead: `config.enabled:
  * false`, which BOTH engines honour — `buildRealtimeLane` carries it onto the
  * lane node and the executor skips it, and the durable interpreter skips it
  * too. The node stays structurally present (so the graph is publishable and the
@@ -62,7 +62,7 @@
  *
  * These are SELECTABLE, not assigned. The ArcaAI tenant assignment stays
  * `arcaai-consultation-soap`; a clinician picks one of these three at
- * session-open (`workflowDefinitionSlug`, TASK-813) and the realtime lane
+ * session-open (`workflowDefinitionSlug`) and the realtime lane
  * follows. Assigning one would silently replace the tenant's default SOAP
  * workflow for every consultation, which is not what "here are three examples"
  * means.
@@ -111,7 +111,7 @@ export interface ExampleGraphOptions {
  * ONE spine, three option combinations.
  *
  * ```
- * start -> consentGate -> captureBinding ┬-> agent.grammar ──────┐   (grammar only)
+ * start -> consentGate -> captureBinding ┬-> agent.grammar ──────┐ (grammar only)
  *                                        ├-> realtimeSummary ────┤
  *                                        └-> extractEntities <───┘
  *                                                  |
@@ -149,7 +149,7 @@ export interface ExampleGraphOptions {
  *    consultation transcript server-side from `run_payload`, exactly as it does
  *    in the SOAP graph, where this input is ALSO left unwired.
  *  - `consultation.assemblePrompt` declares no `transcript` input at all
- *    (TASK-806 lane A item 18 removed it): the gateway assembles the prompt from
+ * (lane A item 18 removed it): the gateway assembles the prompt from
  *    the consultation's own persisted transcript, so a second copy over a port
  *    could only duplicate it. Its remaining `in` is an optional
  *    `context<schemaRef>` fed by evidence retrieval, which these graphs do not
@@ -198,7 +198,7 @@ const consultationNodes = (options: ExampleGraphOptions) => [
   // The MEDICAL NER agent (`blaze999/Medical-NER` through `nlp.ner`).
   //
   // `requiresFinalized: true` is WF-CONS-017 — extraction reads the FINALIZED
-  // transcript, never a partial one. `enabled` is TASK-852's per-node toggle:
+  // transcript, never a partial one. `enabled` is per-node toggle:
   // omitted (i.e. on) when this workflow includes NER, and explicitly `false`
   // when it does not. It cannot simply be deleted — see the module docstring.
   {
@@ -436,7 +436,7 @@ const createDefinitions = async (client: CorePrismaClient, rows: ReadonlyArray<R
 
 /** SYSTEM templates — platform configuration, so this phase runs in `safe` too. */
 export const seedExampleConsultationWorkflowTemplates = async (client: CorePrismaClient) => {
-  console.log('Seeding the three example consultation workflow TEMPLATES (TASK-858)...');
+  console.log('Seeding the three example consultation workflow TEMPLATES ...');
   const { created, skipped } = await createDefinitions(client, PLATFORM_EXAMPLE_WORKFLOW_DEFINITIONS);
   console.log(`  ✓ SYSTEM templates: ${created} created, ${skipped} skipped`);
   return { success: true as const, created, skipped };
@@ -444,7 +444,7 @@ export const seedExampleConsultationWorkflowTemplates = async (client: CorePrism
 
 /** The ArcaAI tenant's own copies — excluded from `safe` (fabricated authorship). */
 export const seedArcaaiExampleConsultationWorkflows = async (client: CorePrismaClient) => {
-  console.log('Seeding the three example consultation workflows for the ArcaAI tenant (TASK-858)...');
+  console.log('Seeding the three example consultation workflows for the ArcaAI tenant ...');
   const { created, skipped } = await createDefinitions(client, ARCAAI_EXAMPLE_WORKFLOW_DEFINITIONS);
   console.log(`  ✓ ArcaAI workflows: ${created} created, ${skipped} skipped (selectable at session-open; NOT assigned)`);
   return { success: true as const, created, skipped };

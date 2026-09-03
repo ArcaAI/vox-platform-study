@@ -78,7 +78,7 @@ const SECTION_STATE_META: Record<SectionState, { label: string; icon: typeof Ico
   locked: { label: 'Locked', icon: IconShieldCheck, className: 'bg-muted text-muted-foreground' },
 };
 
-/** TASK-811 §2d state badge — never conveys the state by color alone (rule 11 §10: icon + text). */
+/** state badge — never conveys the state by color alone (rule 11 §10: icon + text). */
 function SectionStateBadge({ state }: { state: SectionState }) {
   const meta = SECTION_STATE_META[state];
   const Icon = meta.icon;
@@ -91,8 +91,8 @@ function SectionStateBadge({ state }: { state: SectionState }) {
 }
 
 /**
- * TASK-811 DD-3 / TASK-814 DD-3 — N documents, each rendering its OWN sections in `idx` order
- * with a live per-section state (`empty` renders as a skeleton, never an error — TASK-811 §2d).
+ * / — N documents, each rendering its OWN sections in `idx` order
+ * with a live per-section state (`empty` renders as a skeleton, never an error
  * Per-section CLINICIAN EDITING is not wired here: no console-facing mutation endpoint exists
  * yet for a single section (only the whole persisted draft is editable, via `editor` below), so
  * this view is read-only live state, not a second writer.
@@ -280,11 +280,11 @@ export interface CaseNoteColumnProps {
   /** D-18 — the live-summary SSE connection's last error, when `liveStatus === 'error'`. */
   liveError?: string | null;
   /**
-   * TASK-811 DD-3 / TASK-814 DD-3 — N documents from the `section.patch` plane
+   * / — N documents from the `section.patch` plane
    * (`useDocumentSectionsStream`). Non-empty ⇒ takes priority over the legacy single-section
    * `live.sections` view below (richer: per-section state, multiple documents). Empty ⇒
    * nothing has arrived on that plane yet and the legacy view renders unchanged.
-   */
+ */
   documentSections?: DocumentView[];
   draft: SummaryResult | null;
   draftLoading: boolean;
@@ -319,10 +319,10 @@ export interface CaseNoteColumnProps {
   editor?: UseNoteEditorResult;
   /**
    * W4/R3 — the agentic loop's live activity (`consultation.realtimeSummary`
-   * and friends). PROGRESS ONLY: TASK-791's `summary.interim` event carries
+   * and friends). PROGRESS ONLY: `summary.interim` event carries
    * `{ kindKey, ordinal, total, chars }` and deliberately no text, so this
    * renders what the assistant is working on, never a synthesised body.
-   */
+ */
   loopActivity?: readonly LoopActivityEntry[];
   /**
    * W3 — the PERSISTED NER aggregate (`GET :id/named-entities`). Live entities ride the
@@ -335,23 +335,23 @@ export interface CaseNoteColumnProps {
   namedEntities?: NamedEntitiesAggregate | null;
   /**
    * W2/R3 — spelling / medical-term / drug-name correction PROPOSALS, off the `live-assist`
-   * stream (TASK-796's brokered contract; shapes in `api/live-assist.ts`). Fed live by
-   * `useLiveAssistStream` (TASK-814 §2b) — the gateway route (TASK-795 RC-2) is up.
+   * stream ( brokered contract; shapes in `api/live-assist.ts`). Fed live by
+   * `useLiveAssistStream` — the gateway route is up.
    *
    * An accepted proposal is written through `editor.change` — the clinician's OWN buffer — so
    * it is a clinician edit, never a machine write, and the R5 two-writer contract in
    * `use-note-editor.ts` is untouched. That edit corrects the NOTE; promoting the SAME
-   * correction over the raw TRANSCRIPT (TASK-812 DD-8's `feedback.capture`) is a separate,
+   * correction over the raw TRANSCRIPT (`feedback.capture`) is a separate,
    * explicit step — see `onAcceptCorrectionForPromotion`.
-   */
+ */
   correctionProposals?: CorrectionsEnvelope | null;
   /**
-   * TASK-814 §2b — fires alongside `onAccept` the moment the clinician accepts a proposal
+   * fires alongside `onAccept` the moment the clinician accepts a proposal
    * (the SAME click — there is deliberately no second "promote" control; accepting a
    * correction already IS the clinician's judgement that it is right). The parent accumulates
-   * these and threads them into `stopRecording` so `feedback.capture` (TASK-812 DD-8) has
+   * these and threads them into `stopRecording` so `feedback.capture` has
    * something to promote over the raw transcript when the endpoint sequence runs.
-   */
+ */
   onProposalAccepted?: (proposal: CorrectionProposal) => void;
   /** W2/R3 — intelligent suggestions, same stream. */
   suggestions?: readonly ClinicalSuggestion[] | null;
@@ -419,10 +419,10 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
   );
 
   /**
-   * TASK-796 — an interpreter-produced INTERIM summary arrives on this same plane, marked
+   * an interpreter-produced INTERIM summary arrives on this same plane, marked
    * `source: 'interpreter'`. Say so, and say where it sits in its sequence: an interim summary
    * is a snapshot of work in progress, and a clinician reading it should know that.
-   */
+ */
   const interimLabel = useMemo(() => {
     if (live?.source !== 'interpreter') return null;
     const position = typeof live.ordinal === 'number' && typeof live.total === 'number' ? ` · ${live.ordinal} of ${live.total}` : '';
@@ -437,7 +437,7 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
    * Corrections rewrite text, so they are offered live ONLY while the clinician is editing —
    * that is the only moment a buffer exists to write into. Outside it they stay visible but
    * inert, with the reason stated (rule 11 §5: a disabled control needs a visible reason).
-   */
+ */
   const correctionsDisabledReason = approved
     ? 'This note is signed — corrections can no longer be applied.'
     : isEditing
@@ -688,10 +688,12 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 </li>
               ))}
             </ul>
-            {/* This FEED is progress-only by design: `EmitLoopEventInput` is `extra="forbid"`
+            {/*
+ This FEED is progress-only by design: `EmitLoopEventInput` is `extra="forbid"`
                 and carries "ids/keys/labels only, NEVER note or transcript text". Interim
-                summary TEXT rides the live-summary plane above instead (TASK-796) — say which
-                is which rather than implying this list is what the assistant produced. */}
+                summary TEXT rides the live-summary plane above instead — say which
+                is which rather than implying this list is what the assistant produced. 
+*/}
             <p className="text-muted-foreground mt-1.5 text-xs">Progress only — interim summary text appears in the note above.</p>
           </div>
         ) : null}

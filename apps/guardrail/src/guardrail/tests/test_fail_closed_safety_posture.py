@@ -1,6 +1,6 @@
 """The safety gate must NEVER answer "safe" for a verdict it could not compute.
 
-Product brief §1 item 4: *"Guardrails: PII, safety, medical validation) fail-closed
+Product brief item 4: *"Guardrails: PII, safety, medical validation) fail-closed
 on generation"*. Before this suite, every engine path in ``apps/guardrail`` did the
 exact inverse — an LLM timeout returned ``{"safe": True, "issues": ["timeout"]}`` —
 so the gate opened precisely when the system was most stressed.
@@ -66,7 +66,7 @@ class _RaisingClient:
 
 
 def _guardian(client: Any, enabled: bool = True) -> TextJudgeClient:
-    """The guardian is now a DELEGATION to `apps/text` (TASK-735 Phase 2b).
+    """The guardian is now a DELEGATION to `apps/text`.
 
     The posture this suite pins is unchanged by that move — which is the point:
     the fail-closed rule belongs to guardrail's policy layer, not to whichever
@@ -89,7 +89,7 @@ def _guardian(client: Any, enabled: bool = True) -> TextJudgeClient:
 
 
 # The four LLM content-analysis tests that stood here went with
-# `providers/openai_compat.py` in TASK-735 Phase 2b: that stack had zero
+# `providers/openai_compat.py` in: that stack had zero
 # production callers (`/guardrail/analyze` runs GLiNER), and the LIVE LLM path —
 # the guardian behind `/medical/validate` — is covered below against the
 # delegating client that replaced it.
@@ -117,7 +117,7 @@ async def test_guardian_error_raises_instead_of_is_medical_true() -> None:
 
 @pytest.mark.asyncio
 async def test_delegated_classification_error_raises_instead_of_returning_safe() -> None:
-    """TASK-735 Phase 3 — the same posture now that `apps/nlp` runs the model."""
+    """the same posture now that `apps/nlp` runs the model."""
     from guardrail.services.safety_analyzer import SafetyAnalyzer, SafetyPolicy
 
     class _RaisingNlp:
@@ -160,7 +160,7 @@ class _UndeterminedAnalyzer:
         self,
         texts: list[str],
         guardrail_type: str = "comprehensive",
-        gate: Any = None,  # TASK-777 B-4: batch fan-out is bounded by a gate
+        gate: Any = None,  # batch fan-out is bounded by a gate
     ) -> list[Any]:
         return [GuardrailUndeterminedError("timeout", "engine timed out") for _ in texts]
 

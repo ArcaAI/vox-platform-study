@@ -1,5 +1,5 @@
 /**
- * TASK-760 — the redirect shims, exercised over real HTTP.
+ * the redirect shims, exercised over real HTTP.
  *
  * The e2e spec (`tests/e2e/task-760-uri-normalization.spec.ts`) asserts the
  * same contract against a running gateway with the real guard chain. This
@@ -30,7 +30,7 @@ import { VoiceProfileRedirectShimController } from '../../modules/voice-profile/
 
 const CALLER_ID = '70000000-0000-0000-0000-000000000010';
 
-describe('TASK-760 redirect shims', () => {
+describe(' redirect shims', () => {
   let app: INestApplication;
 
   beforeAll(async () => {

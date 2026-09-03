@@ -1,6 +1,6 @@
 /**
  * ConsultationConsentService.assertConsent/checkConsent unit tests
- * (TASK-712, consent-abac) — the ABAC evaluation choke point.
+ * (consent-abac) — the ABAC evaluation choke point.
  *
  * Covers: absent / expired / revoked / scope-insufficient grants deny;
  * an active, sufficiently-scoped grant resolves; the cache key is

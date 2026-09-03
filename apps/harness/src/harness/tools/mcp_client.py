@@ -14,7 +14,7 @@ Security posture:
   degrade (never crash) the clinical loop.
 * Bounded transport retry (``max_attempts``) covers a transient timeout / 5xx before
   the activity degrades; a 4xx (client error) is non-retryable.
-* **SSRF egress guard (TASK-846 D-3).** ``base_url`` is TENANT-AUTHORED, so before any
+* **SSRF egress guard .** base_url is TENANT-AUTHORED, so before any
   transport work the host is checked against the platform allow-list and its RESOLVED
   address is checked against the private/loopback/link-local ranges. This is the gate
   that actually protects — the admin-side check in ``packages/applications`` runs at
@@ -232,7 +232,7 @@ class McpToolClient:
         except McpClientError:
             raise
         except EgressBlocked:
-            # TASK-846 D-3 (adversarial review F4): must escape UNNORMALISED. The blanket
+            # (adversarial review F4): must escape UNNORMALISED. The blanket
             # handler below would turn it into `McpClientError(is_server_error=True)`,
             # which `call_tool` RETRIES — re-running the attacker's lookup, the exact
             # thing `activities.py`'s late-rebind comment says must not happen. It would

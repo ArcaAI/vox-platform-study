@@ -29,7 +29,7 @@ import { ConsultationStatusBadge } from './consultation-status-badge';
 const LIST_ENDPOINT_HINT = 'GET /admin/consultations';
 const AGGREGATE_ENDPOINT_HINT = 'aggregate: GET aggregate?from&to[&granularity]';
 
-// TASK-711 — session state machine; mirrors ConsultationStatusBadge's STATUS_META.
+// session state machine; mirrors ConsultationStatusBadge's STATUS_META.
 const STATUS_LABELS: Record<(typeof CONSULTATION_STATUSES)[number], string> = {
   OPEN: 'Open',
   PRIMED: 'Primed',

@@ -1,6 +1,5 @@
 /**
  * Platform Releases screen. Built against the FROZEN contract
- * `docs/implementation/TASK-648-Service-Version-And-Release-Registry/
  * contracts/service-release.api.yaml` — the backend does not exist yet
  * (units U4/U5/U6 build it concurrently), so fetch is stubbed to that shape.
  */

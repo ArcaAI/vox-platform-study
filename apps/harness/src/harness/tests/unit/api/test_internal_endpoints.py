@@ -89,7 +89,7 @@ class TestStartDocument:
 
     @pytest.mark.asyncio
     async def test_start_threads_external_patient_id_into_workflow_input(self, harness):
-        """TASK-712 (consent-abac Phase 4) — externalPatientId reaches
+        """(consent-abac Phase 4) — externalPatientId reaches
         HarnessDocWorkflowInput so call_mcp_tool/retrieve_context can key a
         consent-gate lookup."""
         http, client, _handle, _settings = harness

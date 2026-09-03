@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "TASK-846 D-3 — the SHARED SSRF egress test-vector contract.",
+    " D-3 — the SHARED SSRF egress test-vector contract.",
     "",
     "Two independent implementations enforce the same rule at two different moments:",
     "  • WRITE time  — packages/applications/src/common/egress/  (TypeScript, admin feedback)",

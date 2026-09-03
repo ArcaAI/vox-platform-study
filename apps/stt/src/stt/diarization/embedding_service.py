@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _resolve_hf_token(settings: Any) -> str | None:
     """The HuggingFace token for a PLATFORM diarization model.
 
-    TASK-799 — the token is no longer an environment variable. Speaker
+    the token is no longer an environment variable. Speaker
     embedding/segmentation weights are platform infrastructure with no tenant
     owner, so they resolve the SYSTEM tier (``owner_tenant_of(None)``): a model
     every tenant shares is fetched with the PLATFORM's credential, never with
@@ -43,7 +43,7 @@ def _resolve_hf_token(settings: Any) -> str | None:
     login, not a platform credential, and it is what lets an offline developer
     box keep working.
     """
-    del settings  # the token has not come from settings since TASK-799
+    del settings  # the token has not come from settings since
     token: str | None = None
     try:
         from stt.core.model_credentials import resolve_hf_token as _resolve

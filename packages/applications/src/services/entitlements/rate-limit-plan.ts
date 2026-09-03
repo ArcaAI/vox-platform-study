@@ -6,7 +6,7 @@
  * `{ limit, ttl }` using the DB-backed tier baseline. This is the primitive a
  * post-auth throttle hookup would call.
  *
- * TASK-785: this is rank 3 of the five-level cascade in `rate-limit-resolver.ts`.
+ * this is rank 3 of the five-level cascade in `rate-limit-resolver.ts`.
  * `TieredThrottlerGuard` still runs BEFORE auth, so the tenant reaching this
  * helper comes from a signature-VERIFIED bearer token; an unverifiable token
  * resolves no tenant and never reaches rank 3.
@@ -34,10 +34,10 @@ export interface EffectiveRateLimit {
  *   2. an ABSOLUTE `rateLimitPerMinute`, from the plan row or the per-tenant
  *      entitlement override, which replaces the count.
  *
- * `windowMs` is read ONLY alongside an absolute count (TASK-785). On its own it
+ * `windowMs` is read ONLY alongside an absolute count. On its own it
  * would change the window without changing the count it bounds — which reads to
  * an admin as a limit change nobody asked for. Absent it, the window stays the
- * tier baseline's, preserving the pre-TASK-785 behaviour exactly.
+ * tier baseline's, preserving the earlier behaviour exactly.
  */
 export function resolvePlanRateLimit(
   rateLimitTier: string,

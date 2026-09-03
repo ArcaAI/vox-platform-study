@@ -1,5 +1,5 @@
 /**
- * WorkflowNodeController unit tests (TASK-734).
+ * WorkflowNodeController unit tests.
  *
  * CASL enforcement runs in the global UnifiedAuthGuard (e2e-covered); these specs pin the
  * controller's OWN contract: the class-level `@CanRead` metadata and service delegation.

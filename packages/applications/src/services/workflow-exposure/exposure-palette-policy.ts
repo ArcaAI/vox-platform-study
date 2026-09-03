@@ -2,7 +2,7 @@ import { paletteOf, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 
 /**
  * The keys the interpreter reads as RUN IDENTITY, which a caller may therefore never supply
- * (TASK-850 lane A step 2). Byte-identical to `RESERVED_RUN_IDENTITY_KEYS` in
+ * (lane A step 2). Byte-identical to `RESERVED_RUN_IDENTITY_KEYS` in
  * `apps/harness/src/harness/temporal/interpreter/models.py` — two spellings of this list is a
  * gateway that accepts a key the dispatcher then strips, or worse, one it does not.
  *
@@ -20,7 +20,7 @@ export function reservedIdentityKeysIn(input: Record<string, unknown> | undefine
 }
 
 /**
- * The exposure plane's palette boundary (TASK-790 W1, closing TASK-789 finding C-8).
+ * The exposure plane's palette boundary (closing finding C-8).
  *
  * ## Why this exists
  *
@@ -59,9 +59,9 @@ export function reservedIdentityKeysIn(input: Record<string, unknown> | undefine
  *
  * Deliberately an ALLOW-list, not a deny-list: a palette added to the registry later is refused
  * here until someone affirmatively decides it is an exposure product (config selection fails
- * closed, rule 00). Membership reasoning as of TASK-790:
+ * closed, rule 00). Membership reasoning as of :
  *
- * - `summarization` — ALLOWED. The palette the exposure plane was designed around (TASK-722); the
+ * `summarization` — ALLOWED. The palette the exposure plane was designed around; the
  *   seeded platform-default definition and the `InvokeWorkflowRequest` DTO example are both
  *   summarization. Its one `externalWrite` node (`output.deliver`) writes to claim-check storage,
  *   not to clinical rows.
@@ -81,7 +81,7 @@ export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summariz
 
 /**
  * Palettes invocable on the CONSULTATION-BOUND plane
- * (`POST /consultations/:consultationId/workflows/:slug/runs`) — TASK-850 lane A step 3.
+ * (`POST /consultations/:consultationId/workflows/:slug/runs`) — lane A step 3.
  *
  * ## This is not `EXPOSURE_ALLOWED_PALETTES` with `consultation` added to it
  *
@@ -91,12 +91,12 @@ export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summariz
  * that there is now a plane on which the C-8 chain has no links left to exploit, and this set
  * governs only that plane.
  *
- * The invariant, from TASK-852 §5:
+ * The invariant, from :
  *
  *   > consultation identity comes from the URL and is re-resolved against the caller's tenant —
  *   > never from a caller-composed payload.
  *
- * TASK-852 preserved it with a session-bound entry point; lane A preserves it with an
+ * preserved it with a session-bound entry point; lane A preserves it with an
  * invocation-bound one. Against C-8's four links:
  *
  * 1. **`consultationId` from caller-controlled `dto.input`** — the id is a PATH parameter,
@@ -142,7 +142,7 @@ export const KNOWN_PALETTE_KEYS: ReadonlySet<string> = new Set(
  * Both are read because neither alone is complete. `compile()` lifts `gate`-class nodes OUT of
  * `stages` into `gates`, where the type is recorded as `gateType` — and `gateType` falls back to
  * the node type only when the AUTHOR did not supply `config.gateType`
- * (`compiler.ts`: `typeof config.gateType === 'string' ? config.gateType : node.type`). A gate
+ * (`compiler.ts`: `typeof config.gateType === 'string' ? config.gateType: node.type`). A gate
  * node with an author-supplied `config.gateType` would therefore be invisible in `gates`; reading
  * the graph closes that. Reading the compiled config as well means a compiled blob that somehow
  * disagrees with its graph is judged on both.
@@ -177,7 +177,7 @@ function collectNodeTypes(graph: unknown, compiledConfig: unknown): Set<string> 
 }
 
 /**
- * Which plane the caller reached the definition on (TASK-850 lane A).
+ * Which plane the caller reached the definition on.
  *
  * `consultationBound: true` means the SERVICE has already re-resolved a consultation from a path
  * parameter against the caller's tenant and will freeze it into the run's `subject`. It is never
@@ -219,10 +219,10 @@ export function exposureBoundaryViolation(
 }
 
 /**
- * A graph whose only real work is `lane: 'realtime'` is refused on BOTH planes (TASK-850 step 4).
+ * A graph whose only real work is `lane: 'realtime'` is refused on BOTH planes.
  *
  * The Temporal interpreter deliberately skips every realtime node — that lane belongs to
- * TASK-811's in-gateway `runRealtimeLane` executor, driven by a live consultation session, not
+ * in-gateway `runRealtimeLane` executor, driven by a live consultation session, not
  * by an invocation. Accepting such an invoke would return a `runId`, report `COMPLETED`, and
  * have done nothing: the developer gets a green response for work that never happened.
  *

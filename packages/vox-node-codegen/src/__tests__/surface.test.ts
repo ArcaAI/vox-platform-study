@@ -75,7 +75,7 @@ describe('buildAdminSurface', () => {
 });
 
 /**
- * TASK-773 decision O-3: a READ route may declare its area's `:read` sibling
+ * decision O-3: a READ route may declare its area's `:read` sibling
  * alongside the `:write` twin the controller class carries. The generator has
  * to keep both routes in ONE area (the scopes differ only in their action
  * segment) while still advertising a single entry scope for the resource.

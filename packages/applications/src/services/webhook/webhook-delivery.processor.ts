@@ -22,7 +22,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 
 /**
  * The delivery side of the `Webhook` subscription model — the missing half
- * confirmed dormant by TASK-727's research (§2.4/§2.5 of the ticket README):
+ * confirmed dormant by research ():
  * `JobQueue.SysEvent` has been enqueued on every mutation across the platform
  * since the sys-event pipeline shipped, but nothing has ever consumed it.
  *
@@ -45,7 +45,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
  * failure-isolated — Tenant A's slow endpoint retrying five times never
  * re-POSTs to Tenant A's other three, already-delivered subscribers.
  *
- * Idempotency (TASK-717 §3.5's normative rule — "every consumer must be
+ * Idempotency ( 's normative rule — "every consumer must be
  * idempotent on `idempotencyKey`") is enforced at TWO layers, deliberately
  * redundant: the fan-out job uses `AsyncIdempotencyKey.webhookDelivery(...)`
  * (`hook:<webhookId>:<sourceEnvelopeId>`) as the BullMQ `jobId` (cheap,
@@ -89,7 +89,7 @@ const MAX_RESPONSE_BODY_CHARS = 4_000;
 
 /**
  * `resourceType` → admin-controller path segment, for the reference-not-content
- * `fetchUrl` (§3 of the ticket: identifiers + a fetch-back URL, never
+ * `fetchUrl` (the ticket: identifiers + a fetch-back URL, never
  * `SysEvent.data`/resource content in the outbound payload). BEST-EFFORT: the
  * platform has no single generic "fetch any resource by type" route today,
  * so this is an explicit map for the resource types most plausible for a
@@ -124,7 +124,7 @@ function buildFetchUrl(resourceType: string, resourceId: string | null): string 
   return `${resolveApiBaseUrl()}/api/v1/admin/${resourceTypePath(resourceType)}/${resourceId}`;
 }
 
-/** The reference-not-content outbound payload — never `SysEvent.data` (§3 PHI-egress justification). */
+/** The reference-not-content outbound payload — never `SysEvent.data` ( PHI-egress justification). */
 interface WebhookOutboundPayload {
   eventType: string;
   resourceType: string;
@@ -135,7 +135,7 @@ interface WebhookOutboundPayload {
 }
 
 /**
- * Intent-derived idempotency key (TASK-717 §3.5's own named recipe for this
+ * Intent-derived idempotency key ( 's own named recipe for this
  * exact ticket: `hook:<subscriptionId>:<sourceEnvelopeId>`). Inlined rather
  * than importing `@arcaai/async-contract` — this is the ONE recipe from that
  * package's `AsyncIdempotencyKey.webhookDelivery` this ticket needs, and
@@ -278,7 +278,7 @@ export class WebhookDeliveryDispatchProcessor extends WorkerHost {
 
       const idempotencyKey = webhookDeliveryIdempotencyKey(webhookId, sourceEnvelopeId);
 
-      // Authoritative idempotency guard (TASK-717 §3.5): a redelivered
+      // Authoritative idempotency guard: a redelivered
       // fan-out job (the OUTER SysEvent job retried) must not re-send to a
       // webhook this exact event already reached successfully.
       const alreadyDelivered = await this.webhookRunHistoryRepository.findAll({
@@ -374,7 +374,7 @@ export class WebhookDeliveryDispatchProcessor extends WorkerHost {
 
   /**
    * Append-only telemetry row — deliberately NOT a `broadcastSysEvent` (rule
-   * `04-application-services.md` / this ticket's §3): `WebhookRunHistory` is
+   * `04-application-services.md` /: `WebhookRunHistory` is
    * write-once attempt history, not a CRUD resource with its own lifecycle,
    * mirroring how `AuditLog` rows are written without their own fan-out.
    */

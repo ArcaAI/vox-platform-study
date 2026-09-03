@@ -87,7 +87,7 @@ export class HarnessAdminController {
     private readonly gateEditMiningService: GateEditMiningService,
     // APPENDED: backs `POST golden-sets/:id/run`.
     private readonly evalRunService: EvalRunService,
-    // APPENDED (TASK-792 W3): backs
+    // APPENDED: backs
     // `POST gate-edit-exemplars/:id/promote-to-golden-set`.
     private readonly goldenCasePromotionService: GoldenCasePromotionService,
   ) {}
@@ -404,7 +404,7 @@ export class HarnessAdminController {
     });
   }
 
-  // TASK-792 W4 (C-6) — the fine-tuning export. R7's second clause
+  // (C-6) — the fine-tuning export. R7's second clause
   // ("used for fine-tuning and training models") had NO implementation at all:
   // nothing assembled (original, edited, context) triples into a dataset
   // artifact. This is that artifact.
@@ -481,7 +481,7 @@ export class HarnessAdminController {
     return this.gateEditMiningService.curateExemplar({ id, tenantId, status: request.status });
   }
 
-  // TASK-792 W3 (C-5) — the automated GoldenCase producer. Before
+  // (C-5) — the automated GoldenCase producer. Before
   // this, `GoldenCase` had exactly ONE write path (a manual admin POST), so no
   // eval result in this system was derived from real clinician behaviour, and
   // curation advanced `curationStatus` and then went nowhere.
@@ -632,7 +632,7 @@ export class HarnessAdminController {
     name: 'consultationId',
     required: false,
     description:
-      'Report the lane a live session for THIS consultation would walk, including the workflow its clinician selected at open (TASK-813). Unknown or belonging to another tenant → 404, never a silent fall-through to the tenant cascade.',
+      'Report the lane a live session for THIS consultation would walk, including the workflow its clinician selected at open . Unknown or belonging to another tenant → 404, never a silent fall-through to the tenant cascade.',
   })
   @ApiResponse({ status: 200, type: LiveDocRealtimeCapabilitiesResponse })
   @ApiResponse({ status: 403, description: 'Forbidden — a tenant admin may not read another tenant’s capabilities.' })

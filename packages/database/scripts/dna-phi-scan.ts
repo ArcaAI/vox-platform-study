@@ -1,4 +1,4 @@
-// READ-ONLY DNA PHI scan CLI (TASK-700 Task 6).
+// READ-ONLY DNA PHI scan CLI.
 //
 // Decrypts every `DnaWritingStyleReport.styleText` row for a given tenant
 // in-memory and runs a heuristic scan for PHI-shaped content, WITHOUT going
@@ -8,7 +8,7 @@
 //
 // This is the human-gated instrument for the assessment's "one query decides
 // it" question (docs/architecture/consultation-session-workflow/assessment/
-// README.md §3.2): clean rows mean the containment fix in this ticket already
+// README.md: clean rows mean the containment fix in already
 // closes the forward-going path (a latent control gap); any dirty row means a
 // LIVE incident requiring separate incident-response handling — out of this
 // ticket's scope.
@@ -31,7 +31,7 @@
 //   1 — runtime error (Vault transit error, DB error, etc)
 //   2 — bad invocation (missing/unknown args, wrong SECRETS_PROVIDER)
 //
-// EXECUTION IS HUMAN-GATED — see the ticket README (Task 6). This script is
+// EXECUTION IS HUMAN-GATED — . This script is
 // authored and unit-tested (pure heuristics only) but is NOT run as part of
 // this ticket's automated completion.
 
@@ -69,7 +69,7 @@ const DOB_PATTERN = /\b(?:DOB|D\.O\.B\.?|date of birth)[\s:]*\d{1,2}[/\-.]\d{1,2
 /**
  * A short, hand-authored list of common generic drug names for the
  * dose-co-occurrence heuristic. Narrow by design (this is a cheap, targeted
- * scan, not a general PHI redactor — that is TASK-710, out of scope here).
+ * scan, not a general PHI redactor — that is, out of scope here).
  */
 export const KNOWN_DRUG_NAMES: readonly string[] = [
   'metformin',

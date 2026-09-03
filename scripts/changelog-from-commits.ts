@@ -7,7 +7,6 @@
  *
  *   1. The TECHNICAL changelog: every commit since the previous tag of the same
  *      SERVICE family, grouped by type. Shape frozen by
- *      `docs/implementation/TASK-648-.../contracts/changelog-entry.schema.json`.
  *      Non-Conventional commits are never dropped — they land in `type: "other"`.
  *
  *   2. On an `ALL-<ver>` platform-train tag only: a DRAFT `ChangelogEntry`
@@ -255,14 +254,14 @@ export function getCommitsInRange(sinceRef: string | null, untilRef: string, cwd
 // ─── CLI entrypoint ──────────────────────────────────────────────────────────
 // `npx tsx scripts/changelog-from-commits.ts [<tag>] [--since <ref>] [--cwd <dir>]`
 //
-//   <tag>          A release tag (`TEXT-2.1.0`, `ALL-2.1.0`, …). When present,
+//   <tag> A release tag (`TEXT-2.1.0`, `ALL-2.1.0`, …). When present,
 //                   the previous tag of the same family is auto-detected and
 //                   the breaking/major gate runs — a real release-tag pipeline
 //                   invocation.
-//   --since <ref>  Explicit base ref, overriding tag auto-detection. Lets this
+//   --since <ref> Explicit base ref, overriding tag auto-detection. Lets this
 //                   run against a repo with NO release tags yet (this repo,
 //                   today) to inspect real commit history.
-//   --cwd <dir>    Repo root (default: process.cwd()).
+//   --cwd <dir> Repo root (default: process.cwd()).
 
 function parseCliArgs(argv: string[]): { tag: string | null; since: string | null; cwd: string } {
   let tag: string | null = null;

@@ -194,7 +194,7 @@ afterEach(() => {
 });
 
 describe('PlaygroundLlmScreen', () => {
-  // TASK-858 Lane D — the screen was renamed (Agent Playground → LLM Playground), so its
+  // the screen was renamed (Agent Playground → LLM Playground), so its
   // accessibility gate is re-run against the loaded canvas rather than assumed.
   it('has no axe violations once the canvas has loaded', async () => {
     stubLlm();

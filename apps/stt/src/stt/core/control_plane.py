@@ -1,6 +1,6 @@
 """The stt tuning knobs the CONTROL PLANE owns, and how a served value lands.
 
-TASK-799 lane C. Before this module, ~75 of stt's settings fields were
+lane C. Before this module, ~75 of stt's settings fields were
 environment variables: retuning a VAD threshold, a streaming timeout or a
 punctuation device meant a redeploy, and nothing in the platform could show an
 admin what the running value was. They are now registry keys
@@ -18,7 +18,7 @@ nobody will ever set, and ``Settings`` deliberately leaves ``populate_by_name``
 off so the field name cannot re-open the path either. That is the pattern
 ``apps/tts/src/tts/core/config.py`` already uses to make its cloud credentials
 un-settable from env — generalised here from credentials to tuning knobs.
-Deleting a field's env *documentation* is not the same thing: TASK-602 removed
+Deleting a field's env *documentation* is not the same thing: removed
 `api_key` fields from three text adapters and the SDKs kept reading ambient
 environment anyway (assessment F-01). A structural closure cannot regress
 without a test failing.
@@ -67,7 +67,7 @@ logger = structlog.get_logger(__name__)
 #: deliberately names the ticket: an operator who greps for ``VAD_THRESHOLD`` in
 #: the code must land on something that explains where the value went, rather
 #: than on a field that looks settable and silently is not.
-MOVED_SUFFIX = "__MOVED_TO_CONTROL_PLANE_TASK_799"
+MOVED_SUFFIX = "__MOVED_TO_CONTROL_PLANE"
 
 
 def moved_alias(field_name: str) -> str:
@@ -81,7 +81,7 @@ def moved_alias(field_name: str) -> str:
     return f"{field_name.upper()}{MOVED_SUFFIX}"
 
 
-#: ``Settings`` field  →  settings-registry key.
+#``Settings`` field → settings-registry key.
 #:
 #: This table IS the migration. Its keys must exist on ``Settings`` and its
 #: values must match the descriptors registered on the gateway side; both
@@ -93,7 +93,7 @@ def moved_alias(field_name: str) -> str:
 #: back to the variable it replaced without a lookup table.
 CONTROL_PLANE_KEYS: dict[str, str] = {
     # ── model cache / concurrency: the FOUR keys that already existed ────────
-    # Registered by `service-runtime.descriptors.ts` since TASK-763 and already
+    # Registered by `service-runtime.descriptors.ts` since and already
     # applied at runtime (`ModelCache.apply_retention`,
     # `resolve_worker_concurrency`, `resolve_streaming_max_concurrent`). What
     # changes here is only that their env path closes: they were documented as
@@ -190,7 +190,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "punctuation_max_length": "stt.punctuation.maxLength",
 }
 
-#: ``Settings`` field  →  a PLATFORM-owned registry key that is NOT under `stt.*`.
+#``Settings`` field → a PLATFORM-owned registry key that is NOT under `stt.*`.
 #:
 #: Separate from :data:`CONTROL_PLANE_KEYS` because that table carries an invariant
 #: worth keeping: every key in it is `stt.<group>.<knob>` and has a descriptor in
@@ -203,7 +203,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
 #: apps/api resolves through the same cascade — so stt CONSUMES it rather than owning
 #: it. Minting an `stt.storage.provider` twin would be the second-home failure that
 #: owner decision D-2 exists to prevent. It is `tier: 'db-config'`, and it is only
-#: reachable on the pull route because TASK-799 A.1 opened that tier.
+# reachable on the pull route because A.1 opened that tier.
 PLATFORM_CASCADE_KEYS: dict[str, str] = {
     "storage_provider": "storage.platformDefault.provider",
 }

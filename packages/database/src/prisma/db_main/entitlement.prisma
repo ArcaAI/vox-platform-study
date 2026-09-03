@@ -36,7 +36,7 @@ enum UsageMeterMetric {
   GUARDRAIL_CALLS
   EMBEDDING_TOKENS
 
-  // A fourth BUSINESS-OBJECT meter (TASK-722 exposure plane): a COUNT of
+  // A fourth BUSINESS-OBJECT meter ( exposure plane): a COUNT of
   // `WorkflowRun` rows in the window, the same shape as CONSULTATIONS/
   // SUMMARIES — one row per invocation of a published workflow through
   // `/api/v1/workflows/:slug/invoke`.
@@ -70,8 +70,8 @@ model PlanEntitlement {
   maxApiKeys         Int?
   storageQuotaBytes  BigInt?
   // Quantity ceiling on PUBLISHED WorkflowDefinition slugs a tenant may hold
-  // (TASK-722 exposure plane), modelled verbatim on `maxAsrPipelines`. Checked
-  // by TASK-719's authoring create path, not this migration's own caller.
+  // ( exposure plane), modelled verbatim on `maxAsrPipelines`. Checked
+  // by authoring create path, not this migration's own caller.
   maxWorkflowDefinitions Int?
 
   // concurrency limit — simultaneous active STT sessions (null = unlimited).
@@ -83,7 +83,7 @@ model PlanEntitlement {
   monthlyConsultations        Int?
   monthlyTranscriptionMinutes Int?
   monthlySummaries            Int?
-  // A fourth business-object meter (TASK-722): PUBLISHED-workflow invocations
+  // A fourth business-object meter: PUBLISHED-workflow invocations
   // via `/api/v1/workflows/:slug/invoke`, gated on `assertMeterQuota` at
   // invoke time. Same Int shape as its three siblings (a monthly invocation
   // count never approaches Int32).
@@ -122,19 +122,19 @@ model PlanEntitlement {
   // decides whether the provider-credential cascade may reach the SYSTEM tier,
   // i.e. whether the platform spends its own money serving this tenant.
   //
-  // `false` on all four seeded plans (OD-7). Granting it plan-wide on PRO or
+  // `false` on all four seeded plans. Granting it plan-wide on PRO or
   // ENTERPRISE would hand every tenant on that plan a platform-funded cloud
   // path, reopening the margin hole closed. Grants are per tenant, via
   // `TenantEntitlement.featurePlatformDefaultCredential`.
   featurePlatformDefaultCredential Boolean @default(false)
 
   // May this plan's tenants publish an `stt`-palette `WorkflowDefinition`
-  // (TASK-724)? Display-only, checked once at publish time — `true` on every
+  // ? Display-only, checked once at publish time — `true` on every
   // seeded plan: STT pipeline authoring is a core platform capability, not a
   // premium add-on, unlike featureDnaReports/featureVoiceEnrollment.
   featurePaletteStt Boolean @default(true)
 
-  // Does this plan include the harness AGENTIC LOOP (TASK-705)? Enforcing, not
+  // Does this plan include the harness AGENTIC LOOP ? Enforcing, not
   // display-only: `LoopContextSignalService` resolves it on every signal, and a
   // `false` here suppresses the ContextAdded / consultation-ending / loop-cancel
   // signals sent to `ConsultationLoopWorkflow`. `false` on STARTER (the loop is
@@ -146,7 +146,7 @@ model PlanEntitlement {
   modelTier     String @default("full")
   rateLimitTier String @default("default")
 
-  // TASK-785 rank 3 — an ABSOLUTE per-plan rate limit. Null (the default) keeps
+  // rank 3 — an ABSOLUTE per-plan rate limit. Null (the default) keeps
   // the historical behaviour: the plan expresses its limit indirectly, by naming
   // a `rateLimitTier` whose baseline lives in `rate-limit.tier.<t>.*`. Setting
   // these lets a super admin price a plan's throughput directly, without minting
@@ -232,8 +232,8 @@ model TenantEntitlement {
 
   // The per-tenant platform-default-credential grant, and the
   // ONLY way it is ever granted (no plan carries it — OD-7). Tri-state:
-  //   null  = inherit the plan value (which is `false` on every seeded plan)
-  //   true  = GRANT — this tenant's credential cascade may reach the SYSTEM tier
+  //   null = inherit the plan value (which is `false` on every seeded plan)
+  //   true = GRANT — this tenant's credential cascade may reach the SYSTEM tier
   //   false = explicit DENY, even if a plan row is later flipped on
   // A tenant's own DISABLED provider row remains a stronger, per-provider VETO
   // that this grant can never override.
@@ -251,7 +251,7 @@ model TenantEntitlement {
   modelTier          String?
   rateLimitTier      String?
   rateLimitPerMinute Int?
-  // TASK-785 — the window that pairs with `rateLimitPerMinute`. Read only when
+  // the window that pairs with `rateLimitPerMinute`. Read only when
   // `rateLimitPerMinute` is set, for the same reason as on `PlanEntitlement`.
   rateLimitWindowMs  Int?
 

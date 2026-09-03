@@ -1,4 +1,4 @@
-"""The three R3 capabilities TASK-789 verified do not exist anywhere (TASK-791 W1-W3).
+"""The three R3 capabilities verified do not exist anywhere (-W3).
 
 R3 asks ONE workflow to coordinate: record -> transcribe -> realtime entity extraction ->
 **realtime short summaries** -> autofill SOAP -> **intelligent suggestions** ->
@@ -32,7 +32,7 @@ from harness.temporal.interpreter.nodes import consultation_realtime as rt
 
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = {"consultationId": "c1", "externalPatientId": "p1", "userId": "u1"}
-#: A bound prompt template id. TASK-826 / TASK-827 — `consultation.proposeCorrections` and
+# A bound prompt template id. / — `consultation.proposeCorrections` and
 #: `consultation.suggestions` BOTH resolve their system prompt from this binding, so a test of
 #: either that omits it exercises the unconfigured-node degrade rather than the behaviour it
 #: means to assert.
@@ -56,7 +56,7 @@ def _payload(node_type: str, **overrides) -> NodeActivityInput:
 class _FakeApi:
     """Resolves a provider/model, and records every loop event the node publishes.
 
-    Also records the TASK-796 delivery publishes, so the assertions below keep testing the
+    Also records the delivery publishes, so the assertions below keep testing the
     ANNOUNCEMENT boundary (ids/counts only) rather than accidentally testing that no delivery
     happens at all — the delivery is specified in ``test_realtime_delivery.py``.
     """
@@ -259,7 +259,7 @@ class TestSuggestions:
         [suggestion] = result.output["suggestions"]
         assert suggestion["text"] == "Ask about penicillin allergy"
         assert suggestion["category"] == "history"
-        # TASK-796 — the item is delivered to a clinician, so it carries an id and a status
+        # the item is delivered to a clinician, so it carries an id and a status
         # only the clinician advances. The delivery itself is specified separately.
         assert suggestion["status"] == "PROPOSED"
         assert suggestion["suggestionId"]
@@ -323,7 +323,7 @@ class TestSuggestions:
 
 
 # ---------------------------------------------------------------------------
-# W3 — consultation.proposeCorrections  (patient safety)
+# W3 — consultation.proposeCorrections (patient safety)
 # ---------------------------------------------------------------------------
 
 
@@ -484,7 +484,7 @@ class TestProposeCorrections:
 
 
 # ---------------------------------------------------------------------------
-# TASK-826 — the correction instruction is GOVERNED CONFIGURATION, never a literal
+# the correction instruction is GOVERNED CONFIGURATION, never a literal
 # ---------------------------------------------------------------------------
 
 
@@ -495,7 +495,7 @@ class TestCorrectionInstructionIsGoverned:
     same engine's realtime caller (``LiveDocumentationService.resolveGovernedNodePrompt``) already
     resolved an APPROVED template and threw when it could not. Two configuration postures for one
     capability, and the durable half was the one that violated
-    ``00-project-context.md`` §Configuration Principles — *"a ... prompt ... is NOT a literal in
+    00-project-context.md Principles — *"a ... prompt ... is NOT a literal in
     code"*.
 
     The load-bearing assertion is the second one. A default here would mean the platform deciding
@@ -609,27 +609,27 @@ class TestCorrectionInstructionIsGoverned:
 
         source = inspect.getsource(rt)
         assert "_CORRECTION_SYSTEM_PROMPT" not in source
-        # The deleted constant's own giveaway phrases. TASK-826 scoped this deliberately to
+        # The deleted constant's own giveaway phrases. scoped this deliberately to
         # CORRECTION-specific prose because `_SUGGESTION_SYSTEM_PROMPT` was still a literal in
         # this same file, and widening it then would have made an unrelated node's fix a
-        # prerequisite for this one. TASK-827 removed that literal, so the narrowing is retired
+        # prerequisite for this one. removed that literal, so the narrowing is retired
         # and the sibling is guarded by its own assertion below.
         for phrase in ("You review clinical text", "medical-term and drug-name errors"):
             assert phrase not in source
 
 
 # ---------------------------------------------------------------------------
-# TASK-827 — the suggestion instruction is GOVERNED CONFIGURATION, never a literal
+# the suggestion instruction is GOVERNED CONFIGURATION, never a literal
 # ---------------------------------------------------------------------------
 
 
 class TestSuggestionInstructionIsGoverned:
     """W2's system prompt comes from its OWN ``promptTemplateId`` binding.
 
-    The identical defect TASK-826 fixed one node over, in the same file:
+    The identical defect fixed one node over, in the same file:
     ``_SUGGESTION_SYSTEM_PROMPT`` was a module-level Python constant, so a tenant could not read,
     change or version-pin how suggestions were put to its clinicians —
-    ``00-project-context.md`` §Configuration Principles, *"a ... prompt ... is NOT a literal in
+    00-project-context.md Principles, *"a ... prompt ... is NOT a literal in
     code"*.
 
     The load-bearing assertion is the unbound one. This node proposes clinical questions and
@@ -764,10 +764,10 @@ class TestSuggestionInstructionIsGoverned:
         assert "no instruction template is bound" in result.reason
 
     def test_the_module_holds_no_suggestion_prompt_literal(self):
-        """The source-level half of the mutation guard, as TASK-826 established for W3.
+        """The source-level half of the mutation guard, as established for W3.
 
         The behavioural tests catch a fallback that is REACHED; this catches one merely
-        re-introduced. Neither is sufficient alone — TASK-826 recorded a mutation where a
+        re-introduced. Neither is sufficient alone — recorded a mutation where a
         paraphrased default kept a grep-only guard green.
         """
         import inspect

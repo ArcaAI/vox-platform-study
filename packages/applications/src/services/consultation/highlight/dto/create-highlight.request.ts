@@ -4,7 +4,7 @@ import { HighlightTargetKind } from '@arcaai/domains';
 
 // F-03: highlights fold verbatim into the harness prompt as `[highlight]`
 // lines (`harness-internal.service.ts` assemble) — caps bound the
-// prompt-injection / unbounded-payload surface (SOTA §5.1/§5.2).
+// prompt-injection / unbounded-payload surface (SOTA
 export const HIGHLIGHT_TEXT_MAX_LENGTH = 10_000;
 
 /**

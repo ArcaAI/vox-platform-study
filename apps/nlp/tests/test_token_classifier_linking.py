@@ -13,7 +13,7 @@ Pins:
   * the existing type/offset/confidence output is UNCHANGED (encoder parity);
   * the linker is config-gated (toggle + confidence floor).
 
-TASK-799 lane G: the vocabulary, the toggle and the floor now arrive per request
+lane G: the vocabulary, the toggle and the floor now arrive per request
 on `clinical_taxonomy` (gateway-resolved `AiModel._metadata.clinicalTaxonomy`)
 rather than from a bundled table + `NLP_LINKER_*` env fields, so every case here
 supplies the taxonomy it is asserting against. The CONTRACT is unchanged: a

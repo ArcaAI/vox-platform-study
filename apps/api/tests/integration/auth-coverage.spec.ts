@@ -218,7 +218,7 @@ describe('W4a.2 / AC-13 part 1 — every AppModule route is labeled (@Public OR 
           `${lines.join('\n')}\n\n` +
           `Each drifted route must add @Public() (legitimately unauthenticated) or ` +
           `@Authorize() / @CanXxx() (requires auth + permissions).\n` +
-          `When TASK-307 W4b registers UnifiedAuthGuard as APP_GUARD, drifted routes will return 401 by default.`,
+          `When  W4b registers UnifiedAuthGuard as APP_GUARD, drifted routes will return 401 by default.`,
       );
     }
 

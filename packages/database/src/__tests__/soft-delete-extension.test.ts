@@ -204,28 +204,28 @@ describe('modelHasSoftDelete', () => {
       // table is an audit history whose whole value is that entries cannot be
       // retracted. No `resourceStatus` column.
       'AgentPromotion',
-      // WorkflowRun (TASK-723) — the runs/observability read model. Same
+      // WorkflowRun — the runs/observability read model. Same
       // operational-telemetry posture as AgentTrajectoryStep: hard-retention
       // history, no `resourceStatus` column.
       'WorkflowRun',
-      // TASK-733 — append-only WORM change log for workflow assignments (no
+      // append-only WORM change log for workflow assignments (no
       // `resourceStatus` column; rows are immutable).
       'WorkflowAssignmentChange',
-      // DocumentTemplateVersion (TASK-810) — an immutable published snapshot of
+      // DocumentTemplateVersion — an immutable published snapshot of
       // a clinical-document SHAPE plus the artifacts compiled from it. The same
       // PromptVersion / ConsultationContextSchemaVersion posture: a document
       // generated against version N must resolve version N forever, so there is
       // no `resourceStatus` column and no retraction. The MUTABLE head
       // `DocumentTemplate` is deliberately NOT here — it keeps the standard
-      // lifecycle. A DB trigger enforces the same thing one layer down (OD-13).
+      // lifecycle. A DB trigger enforces the same thing one layer down.
       'DocumentTemplateVersion',
-      // DocumentSection (TASK-811) — per-section rows of a live-generated
+      // DocumentSection — per-section rows of a live-generated
       // clinical document. Same posture as TranscriptSegment / NamedEntity:
       // no `resourceStatus` column, because sections live and die with their
       // consultation's document. Emptying a section is a CONTENT update under
       // the section state machine, never a row delete.
       'DocumentSection',
-      // TASK-816 D-24 — the two POLICY change logs, the same identity-only WORM
+      // the two POLICY change logs, the same identity-only WORM
       // shape as WorkflowAssignmentChange above (no `resourceStatus` column;
       // rows immutable, UPDATE/DELETE REVOKEd by their migrations). They had
       // been omitted since they were introduced.

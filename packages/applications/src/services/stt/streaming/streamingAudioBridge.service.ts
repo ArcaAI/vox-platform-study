@@ -623,7 +623,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     if (now - this.lastWriterHealthLogAt < 5_000) return; // throttle
     this.lastWriterHealthLogAt = now;
     this.logger.warn({
-      message: 'Audio bridge writer Redis degraded — audio writes are being offline-queued (TASK-457 M3)',
+      message: 'Audio bridge writer Redis degraded — audio writes are being offline-queued (M3)',
       kind,
       degradedForMs: now - this.writerDegradedSince,
       ...(detail ? { detail } : {}),

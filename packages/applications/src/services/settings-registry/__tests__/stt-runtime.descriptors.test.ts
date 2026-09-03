@@ -1,4 +1,4 @@
-// Governance for the stt runtime knobs migrated off env by TASK-799 lane C.
+// Governance for the stt runtime knobs migrated off env by lane C.
 //
 // These assertions are about the SHAPE of the migration, not about individual
 // values — the value-level parity check (descriptor default === the Python
@@ -103,7 +103,7 @@ describe('STT_RUNTIME_SETTINGS', () => {
     // `stt.storage.provider` twin of it; that is the second-home failure mode.
     expect(STT_RUNTIME_SETTINGS.map((d) => d.key).filter((k) => k.startsWith('stt.storage'))).toEqual([]);
 
-    // TASK-799 A.1 inverted the assertion that used to live here. Until the
+    // A.1 inverted the assertion that used to live here. Until the
     // `db-config` read lane existed, declaring `consumedBy` on these keys
     // deployed cleanly and served `null` forever, so the test pinned
     // `consumedBy: undefined` to stop anyone shipping the dead declaration.

@@ -1,8 +1,7 @@
 /**
- * `WorkflowDefinition` CRUD + validate/publish + the read-only node registry (TASK-719 Task
+ * `WorkflowDefinition` CRUD + validate/publish + the read-only node registry ( Task
  * 10). All paths are gateway-relative under the /api/hope BFF proxy, verified — not mirrored —
- * against `WorkflowDefinitionController`/`WorkflowNodeController` (TASK-734). See
- * `docs/implementation/TASK-719-Workflow-Studio-V1/contracts/definition-api.contract.md`.
+ * against `WorkflowDefinitionController`/`WorkflowNodeController`. See
  *
  * OCC: only `PATCH :id` requires If-Match. `validate` and `publish` are confirmed NOT If-Match
  * gated — `validate` self-CASes against the version it just read inside the same request
@@ -44,7 +43,7 @@ export interface ListWorkflowDefinitionsParams {
   [key: string]: string | number | boolean | undefined;
 }
 
-/** Caller-tenant scoped only — the controller reads no other filter (README §4 Task 10). */
+/** Caller-tenant scoped only — the controller reads no other filter. */
 export function listWorkflowDefinitions(params?: ListWorkflowDefinitionsParams): Promise<Paginated<WorkflowDefinition>> {
   return getJson(BASE, params);
 }
@@ -64,7 +63,7 @@ export function createWorkflowDefinition(body: CreateWorkflowDefinitionRequest):
 }
 
 /**
- * TASK-856 — clone a definition (the caller's own row, or a SYSTEM template) into a NEW draft
+ * clone a definition (the caller's own row, or a SYSTEM template) into a NEW draft
  * lineage. NOT an If-Match route: it reads a source and creates a different row, so there is no
  * row being compare-and-swapped. A `targetSlug` the tenant already uses comes back 409.
  */
@@ -72,7 +71,7 @@ export function cloneWorkflowDefinition(sourceId: string, body: CloneWorkflowDef
   return postJson(`${definitionPath(sourceId)}/clone`, body);
 }
 
-/** TASK-856 — the platform template library (SYSTEM-tenant, live published). Read-only. */
+/** the platform template library (SYSTEM-tenant, live published). Read-only. */
 export function listWorkflowTemplates(): Promise<WorkflowDefinition[]> {
   return getJson(`${BASE}/templates`);
 }
@@ -123,7 +122,7 @@ export function listPromptTemplateOptions(): Promise<PromptTemplateOption[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Workflow assignments (TASK-733 half (a)) — WHICH definition governs a
+// Workflow assignments — WHICH definition governs a
 // tenant/department for a palette. Paths and OCC posture verified against
 // the DELIVERED `WorkflowAssignmentController`
 // (`apps/api/src/modules/workflow-assignment/workflow-assignment.controller.ts`).
@@ -171,7 +170,7 @@ export function listDepartmentOptions(): Promise<DepartmentOption[]> {
 }
 
 // ---------------------------------------------------------------------------
-// DD-11 (TASK-810) — prompt binding.
+// DD-11 — prompt binding.
 // ---------------------------------------------------------------------------
 
 /**
@@ -191,7 +190,7 @@ export function listNodePromptBindings(id: string): Promise<NodePromptBinding[]>
  * because it rewrites the graph the client is holding, and a STALE validator is
  * rejected with 412 on BOTH branches below.
  *
- * Two branches, one route (§7b item 1). Content that differs from the
+ * Two branches, one route. Content that differs from the
  * template's LATEST version is an AUTHORING act: a new immutable
  * `PromptVersion` is minted and THIS node's pin moves to it, in one
  * transaction. Content byte-identical to that latest version is an ADOPTION:

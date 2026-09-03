@@ -1,6 +1,6 @@
 """The streaming generation path — the producer half of the split.
 
-TASK-818 Lane B (§3C.3). This module owns the provider socket and nothing else
+( This module owns the provider socket and nothing else
 owns it. It runs as a detached task registered with :class:`GenerationHub`, so:
 
 * the HTTP response that started it is just the first subscriber, and killing it
@@ -9,7 +9,7 @@ owns it. It runs as a detached task registered with :class:`GenerationHub`, so:
   client's latency never waits on Redis;
 * the durable write is coalesced into one ``XADD`` per batch (AC-5);
 * the only thing that ends this loop early is an **explicit** cancel or a
-  configured abandonment deadline — never a socket event (§3C.4).
+  configured abandonment deadline — never a socket event.
 
 The metering, audit and metric behaviour of the pre-split implementation is
 preserved verbatim; only the delivery mechanism changed.
@@ -67,7 +67,7 @@ _CB_STATE_MAP = {
 }
 
 #: How often the persisted cancel flag and the abandonment deadline are
-#: re-checked. "Between batches" (§3C.4) in wall-clock terms — bounded so a
+# re-checked. "Between batches" ( in wall-clock terms — bounded so a
 #: cancel lands promptly, gated so a long generation does not cost one Redis read
 #: per token.
 _CONTROL_POLL_INTERVAL_S = 0.5

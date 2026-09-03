@@ -51,7 +51,7 @@ fi
 
 REPORT_PATH="${LATENCY_REPORT_PATH:-./stt-latency-report.json}"
 
-echo "==> STT latency replay harness (TASK-351 P2-5)"
+echo "==> STT latency replay harness (P2-5)"
 echo "    target:  ${STT_BASE_URL:-http://localhost:8861}"
 echo "    fixture: ${LATENCY_WAV_PATH:-<synthetic speech-like signal>}"
 echo "    report:  ${REPORT_PATH}"

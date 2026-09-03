@@ -19,7 +19,7 @@
  * guard, and it gets the same answer: a contract test in the one place that can
  * see both.
  *
- * TASK-799 R2-C.2 — the drift this pins is not hypothetical. P1-C widened
+ * C.2 — the drift this pins is not hypothetical. P1-C widened
  * `ProviderService` from `{llm,stt,tts}` to include
  * `{embeddings,rerank,vector}`, but the seed-shape test still asserted the old
  * three. It was green only because no new-service row had been seeded yet; the

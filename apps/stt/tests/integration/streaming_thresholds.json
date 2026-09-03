@@ -1,5 +1,5 @@
 {
-  "_comment": "TASK-470 (Theme F) committed regression thresholds — the single source of truth A1/A2/A3/B/C are judged against. TRANSPORT baselines are TASK-455's captured LocalAgreement-2 numbers (stt-loss-report.json: commit-latency P50 6023.2 / P99 7624.2 ms, partial_revision.rate 0.0, seq.gap_count 0, audio_coverage_ratio 0.996). QUALITY captured on 2026-07-12 by the live-stack scorecard over the 3 clinical fixtures (pipeline …402 turbo-whisper-large-v3, Apple-Silicon CPU). FINDING: this pipeline is run-to-run NON-DETERMINISTIC (greedy decode + CPU threading) — across repeated live runs medical_wer moved 0.0328↔0.0656 (smooth, ~0.03 swing), keyterm_recall 1.0↔0.833 and keyphrase_recall 0.75↔1.0 (DISCRETE recall cliff: dropping 1 of ~6 terms = −0.167, far exceeding any sane epsilon), and committed_revision_rate 0.0↔0.18 (see the A1 note). Consequence: only medical_wer carries a captured 'baseline' (its epsilon comfortably exceeds the observed WER swing); the recall metrics keep baseline=null and are gated by the ABSOLUTE floors only — a tight vs-baseline epsilon on a discrete recall cliff manufactures flaky reds, whereas the 0.70 floor is a real, stable guardrail that still catches a genuinely regressed model. The absolute ceiling/floor back-stop every metric regardless.",
+  "_comment": " (Theme F) committed regression thresholds — the single source of truth A1/A2/A3/B/C are judged against. TRANSPORT baselines are  captured LocalAgreement-2 numbers (stt-loss-report.json: commit-latency P50 6023.2 / P99 7624.2 ms, partial_revision.rate 0.0, seq.gap_count 0, audio_coverage_ratio 0.996). QUALITY captured on 2026-07-12 by the live-stack scorecard over the 3 clinical fixtures (pipeline …402 turbo-whisper-large-v3, Apple-Silicon CPU). FINDING: this pipeline is run-to-run NON-DETERMINISTIC (greedy decode + CPU threading) — across repeated live runs medical_wer moved 0.0328↔0.0656 (smooth, ~0.03 swing), keyterm_recall 1.0↔0.833 and keyphrase_recall 0.75↔1.0 (DISCRETE recall cliff: dropping 1 of ~6 terms = −0.167, far exceeding any sane epsilon), and committed_revision_rate 0.0↔0.18 (see the A1 note). Consequence: only medical_wer carries a captured 'baseline' (its epsilon comfortably exceeds the observed WER swing); the recall metrics keep baseline=null and are gated by the ABSOLUTE floors only — a tight vs-baseline epsilon on a discrete recall cliff manufactures flaky reds, whereas the 0.70 floor is a real, stable guardrail that still catches a genuinely regressed model. The absolute ceiling/floor back-stop every metric regardless.",
   "medical_wer": {
     "baseline": 0.0656,
     "ceiling": 0.35,
@@ -21,21 +21,21 @@
   "committed_revision_rate": {
     "baseline": 0.0,
     "epsilon": 0.02,
-    "_note": "Lower is better; the A1 guardrail — a tentative tail must NOT increase COMMITTED (settled-text) caption churn. TASK-487: gates the LocalAgreement-2 committed prefix (text[:stable_chars]), NOT the full caption — re-transcribing the by-design tentative tail (text[stable_chars:], UI-ghosted) is excluded. Value unchanged from the TASK-455 baseline 0.0 on the …402 pipeline; LA-2's monotonic commit keeps committed churn ≈0, so epsilon 0.02 still catches real settled-text flicker. The informational full-caption partial_revision_rate (surfaced, ungated) rose to ~0.8 under TASK-471's 0.4s cadence — that is designed tail volatility, not user-visible flicker (see docs/implementation/TASK-487)."
+    "_note": "Lower is better; the A1 guardrail — a tentative tail must NOT increase COMMITTED (settled-text) caption churn. gates the LocalAgreement-2 committed prefix (text[:stable_chars]), NOT the full caption — re-transcribing the by-design tentative tail (text[stable_chars:], UI-ghosted) is excluded. Value unchanged from the  baseline 0.0 on the …402 pipeline; LA-2's monotonic commit keeps committed churn ≈0, so epsilon 0.02 still catches real settled-text flicker. The informational full-caption partial_revision_rate (surfaced, ungated) rose to ~0.8 under  0.4s cadence — that is designed tail volatility, not user-visible flicker (docs/implementation)."
   },
   "commit_latency_ms": {
     "p50_baseline": 6023.2,
     "p99_baseline": 7624.2,
     "epsilon_ratio": 0.15,
-    "_note": "Lower is better; GUARDRAIL for A1 (conservative commit must not regress), TARGET for A2. Inference-dominated on the offline whisper-turbo host, so the gate is on the RATIO delta (15%), not the absolute — transport must not add >15% over TASK-455's baseline."
+    "_note": "Lower is better; GUARDRAIL for A1 (conservative commit must not regress), TARGET for A2. Inference-dominated on the offline whisper-turbo host, so the gate is on the RATIO delta (15%), not the absolute — transport must not add >15% over  baseline."
   },
   "seq_gap_count": {
     "max": 0,
-    "_note": "Dropped captions; GUARDRAIL — zero tolerance. TASK-455 baseline gap_count 0 on the connected path."
+    "_note": "Dropped captions; GUARDRAIL — zero tolerance.  baseline gap_count 0 on the connected path."
   },
   "audio_coverage_ratio": {
     "baseline": 0.996,
     "epsilon": 0.005,
-    "_note": "Higher is better; GUARDRAIL. TASK-455 baseline 0.996 (max final endTime / audio seconds). epsilon 0.005 absorbs VAD-tail jitter."
+    "_note": "Higher is better; GUARDRAIL.  baseline 0.996 (max final endTime / audio seconds). epsilon 0.005 absorbs VAD-tail jitter."
   }
 }

@@ -1,5 +1,5 @@
 -- ============================================================================
--- TASK-855 — Model Weights From Object Storage (lane L2: registry backfill).
+-- Model Weights From Object Storage (lane L2: registry backfill).
 --
 -- Pure DATA migration — no schema change. Corrects two `sourceUri` values
 -- verified WRONG against the HuggingFace API on 2026-09-02: the real repos

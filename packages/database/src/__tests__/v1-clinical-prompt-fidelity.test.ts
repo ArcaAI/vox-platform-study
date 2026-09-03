@@ -8,7 +8,6 @@
  * flipped pre-ticked by a two-character edit, two had content added, and the
  * pre-summary was de-parameterized. Nothing detected it because nothing
  * pinned the expected content (see
- * docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md).
  *
  * This test asserts every seeded ArcaAI clinical content constant still
  * hashes to its pinned v1 sha256 (`./v1-clinical-prompt-checksums.fixture.ts`),
@@ -106,7 +105,7 @@ describe('v1 clinical prompt fidelity fixture', () => {
           'namespace apps, pod apps-text-84c9774997-zhp2l) — never from a local HOPE checkout, ' +
           'which has diverged from production in both directions. If this divergence is an ' +
           'intentional, sign-off-approved content change (not silent drift), update the pinned ' +
-          'hash in v1-clinical-prompt-checksums.fixture.ts with a Change History entry explaining why.',
+          'hash in v1-clinical-prompt-checksums.fixture.ts with an entry explaining why.',
       ).toBe(v1Sha256);
     },
   );

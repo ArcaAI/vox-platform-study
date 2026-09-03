@@ -1,12 +1,12 @@
 /**
- * TASK-850 lane A — a consultation workflow becomes invocable WITHOUT reopening C-8.
+ * lane A — a consultation workflow becomes invocable WITHOUT reopening C-8.
  *
  * The business requirement (owner, 2026-09-01) is that a tenant publishes a consultation
  * workflow and their developer runs it from an application. `EXPOSURE_ALLOWED_PALETTES` refuses
- * that outright, and TASK-850's own brief forbids both the easy answers: lifting the allow-list
+ * that outright, and own brief forbids both the easy answers: lifting the allow-list
  * reopens C-8 verbatim, and refusing the requirement fails the ticket.
  *
- * The resolution is TASK-852 §5's invariant, generalised from a session-bound entry point to an
+ * The resolution is 's invariant, generalised from a session-bound entry point to an
  * invocation-bound one:
  *
  *   > consultation identity comes from the URL and is re-resolved against the caller's tenant —
@@ -88,7 +88,7 @@ beforeEach(() => {
   mockConsultationService.getById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', patientId: 'patient-9', doctorId: 'doc-3' });
 });
 
-describe('TASK-850 — the two palette sets are pinned, and only one is wide', () => {
+describe('the two palette sets are pinned, and only one is wide', () => {
   it('leaves the unbound set exactly as C-8 left it', () => {
     expect([...EXPOSURE_ALLOWED_PALETTES].sort()).toEqual(['summarization']);
   });
@@ -99,7 +99,7 @@ describe('TASK-850 — the two palette sets are pinned, and only one is wide', (
   });
 });
 
-describe('TASK-850 — the unbound plane is unchanged (C-8 stays closed)', () => {
+describe('the unbound plane is unchanged (C-8 stays closed)', () => {
   it('still refuses a consultation graph with 404 and no dispatch', async () => {
     mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(definition());
     const service = build();
@@ -109,7 +109,7 @@ describe('TASK-850 — the unbound plane is unchanged (C-8 stays closed)', () =>
   });
 });
 
-describe('TASK-850 — the bound plane runs a consultation workflow for real', () => {
+describe('the bound plane runs a consultation workflow for real', () => {
   it('re-resolves the path consultation, freezes it into `subject`, and dispatches', async () => {
     mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(definition());
     const service = build();
@@ -136,7 +136,7 @@ describe('TASK-850 — the bound plane runs a consultation workflow for real', (
   });
 });
 
-describe('TASK-850 — THE REFUSAL: a caller cannot name someone else’s consultation', () => {
+describe('THE REFUSAL: a caller cannot name someone else’s consultation', () => {
   it('404s when the path consultation is not the caller tenant’s (the row read returns nothing)', async () => {
     mockWorkflowDefinitionRepository.findPublishedBySlug.mockResolvedValue(definition());
     mockConsultationService.getById.mockResolvedValue(null); // tenant-scoped read: a foreign id is simply absent
@@ -187,7 +187,7 @@ describe('TASK-850 — THE REFUSAL: a caller cannot name someone else’s consul
   });
 });
 
-describe('TASK-850 — list() and the gate keep agreeing', () => {
+describe('list() and the gate keep agreeing', () => {
   it('omits consultation definitions from the unbound catalogue', async () => {
     mockWorkflowDefinitionRepository.findActivePublishedByTenant.mockResolvedValue([
       definition({ slug: 'summary_ok', paletteKey: 'summarization', compiledConfig: SUMMARIZATION_CONFIG }),

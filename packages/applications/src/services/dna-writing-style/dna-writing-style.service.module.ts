@@ -25,7 +25,7 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
     PromptManagementServiceModule,
     ConsultationJobServiceModule,
     HarnessPolicyServiceModule, // TEXT-selection resolver for DnaWritingStyleProcessor
-    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
@@ -33,7 +33,7 @@ import { TextRequestServiceModule } from '../text-request/text-request.service.m
     // toggle (service); ConfigResolver gates the processor's learning corpus.
     PipelinePolicyServiceModule,
     ConfigResolverModule,
-    PhiRedactionServiceModule, // TASK-710 hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-TEXT call
+    PhiRedactionServiceModule, // hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-TEXT call
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [

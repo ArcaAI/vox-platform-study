@@ -7,22 +7,22 @@
  * and messages, returned shape) is unchanged.
  *
  * Coverage targets:
- *   - `findAll` / `findOne`               (pagination + RolePolicies include)
- *   - `create`                            (parent-role validation;
+ *   - `findAll` / `findOne` (pagination + RolePolicies include)
+ *   - `create` (parent-role validation;
  *                                          factory-built payload;
  *                                          audit event with
  *                                          ResourceType.Role)
- *   - `update`                            (system-role guard via
+ *   - `update` (system-role guard via
  *                                          findByIdGuardSelect; cycle
  *                                          detection via
  *                                          findParentRole* helpers;
  *                                          cache invalidation + audit)
- *   - `patch`                             (resourceStatus stamping via
+ *   - `patch` (resourceStatus stamping via
  *                                          factory; previousData on
  *                                          audit)
- *   - `softDelete`                        (system-role guard; cache
+ *   - `softDelete` (system-role guard; cache
  *                                          invalidation; ResourceDeleted)
- *   - `assignPolicy` / `removePolicy`     (upsert-or-update of the join
+ *   - `assignPolicy` / `removePolicy` (upsert-or-update of the join
  *                                          row through the
  *                                          RolePolicyRepository;
  *                                          ResourceType.RolePermission
@@ -77,7 +77,7 @@ function makeMocks(user: typeof ADMIN_USER = ADMIN_USER) {
     // AssignPolicy/removePolicy now pre-check isSystemRole via this
     // select; default to a non-system role so the pre-existing tests (which
     // don't care about the SYSTEM-role gate) don't need to stub it.
-    // TASK-766 OD-1: the projection now carries `tenantId` too. Default it to
+    // the projection now carries `tenantId` too. Default it to
     // the CLS tenant so the shared fixture is an OWN-TENANT role — the normal
     // case these specs exercise. The ownership boundary itself lives in
     // `role.service.task766.test.ts`.
@@ -200,7 +200,7 @@ describe('RbacRoleService', () => {
       const result = await service.create({ name: 'manager' });
 
       expect(mocks.roleRepo.create).toHaveBeenCalledWith({
-        // TASK-766 OD-1: the create input now states the owning tenant.
+        // the create input now states the owning tenant.
         tenantId: TENANT_ID,
         name: 'manager',
         description: undefined,
@@ -288,7 +288,7 @@ describe('RbacRoleService', () => {
 
       await service.update('role-1', { name: 'doctor-v2' });
 
-      // TASK-766 OD-1: third arg is the cross-tenant-lane flag. The fixture
+      // third arg is the cross-tenant-lane flag. The fixture
       // role is owned by the CLS tenant, so no lane is needed.
       expect(mocks.roleRepo.update).toHaveBeenCalledWith(
         'role-1',
@@ -363,7 +363,7 @@ describe('RbacRoleService', () => {
 
       const result = await service.softDelete('role-1', BREAK_GLASS('doctor'));
 
-      // TASK-766 OD-1: third arg is the cross-tenant-lane flag (false here —
+      // third arg is the cross-tenant-lane flag (false here
       // the fixture role belongs to the caller's own tenant).
       expect(mocks.roleRepo.softDelete).toHaveBeenCalledWith('role-1', ADMIN_USER.id, false);
 

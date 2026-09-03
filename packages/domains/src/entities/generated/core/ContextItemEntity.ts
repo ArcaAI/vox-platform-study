@@ -30,7 +30,7 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   // caller.
   kindKey?: string | null;
   contextSchemaVersionId?: string | null;
-  // TASK-811 (OD-6) — WHICH clinical document this item belongs to, layered
+  //  — WHICH clinical document this item belongs to, layered
   // above `type` exactly as `kindKey` is. Null for every write that names no
   // document, i.e. every historical caller.
   documentKey?: string | null;

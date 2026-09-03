@@ -1,5 +1,5 @@
 /**
- * `HopeClient` × the service-account credential class (TASK-773 Phase C).
+ * `HopeClient` × the service-account credential class.
  *
  * Kept in its own file rather than appended to `src/client.test.ts`: the
  * API-key tests there are the regression proof that this addition is purely

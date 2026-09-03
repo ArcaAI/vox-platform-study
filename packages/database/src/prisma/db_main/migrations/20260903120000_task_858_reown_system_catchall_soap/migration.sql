@@ -1,4 +1,4 @@
--- TASK-858 — re-own the platform-wide SOAP fallback to the SYSTEM tenant.
+-- re-own the platform-wide SOAP fallback to the SYSTEM tenant.
 --
 -- `prompt-resolution.service.ts` `SYSTEM_DEFAULTS.promptId` is the Catch-All SOAP
 -- template (71000000-0000-0000-0000-000000000036). It was seeded under the GLOBAL
@@ -7,7 +7,7 @@
 -- and reads widen only to `tenantId IN [caller, SYSTEM]`, so every other tenant's
 -- `assemble` missed the row (DataNotFound → 404) and the durable lane's prompt
 -- assembly degraded on every governed consultation. Same defect and same fix as
--- TASK-635 C2 for the pre-summary default (…040). Data only; idempotent; a
+-- for the pre-summary default (…040). Data only; idempotent; a
 -- database seeded after this change has nothing to move.
 UPDATE "core"."PromptTemplate"
 SET "tenantId" = '00000000-0000-0000-0000-000000000000',

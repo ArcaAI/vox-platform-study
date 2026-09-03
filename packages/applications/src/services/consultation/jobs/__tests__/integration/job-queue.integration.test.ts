@@ -9,7 +9,7 @@
  * NOTE: These are "integration" tests but run with mocked external dependencies
  * (Redis, HTTP services). True E2E tests would require running infrastructure.
  *
- * TASK-732 — `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
+ * `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
  * async generator and its NER companion) were deleted along with
  * `summary.processor.ts`/`ner.processor.ts`. The generic job-lifecycle
  * scenarios below (which never cared WHICH job type they exercised) now use

@@ -1,9 +1,9 @@
 /**
  * Provider usage/cost-API reconciler INTERFACE (credential
- * gating added in ). Implementations live in
+ * gating added in). Implementations live in
  * `provider-reconciler-registry.ts`.
  *
- * Per research-findings.md §11.2, no cloud provider gives per-request,
+ * Per research-findings.md, no cloud provider gives per-request,
  * per-tenant cost — every reconciler here answers a PLATFORM-WIDE control
  * total (usage-type × day), never a tenant slice, and is joined against the
  * ledger's own platform-wide sum for the same window. A reconciler that has

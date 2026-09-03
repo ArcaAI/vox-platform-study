@@ -12,7 +12,6 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  * pure-function style (`llm-usage-normalizer.ts`).
  *
  * SCOPE (deliberately narrow — see the cheat sheet in
- * docs/implementation/TASK-615-Usage-Metering-And-Billing/ws-b-contract.md):
  *   - LLM_CALL steps only. TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/
  *     SIGNAL/GATE/PHASE steps never call an LLM through this path.
  *   - INPUT_TOKEN / OUTPUT_TOKEN only. AD-1 `GenerationStats`

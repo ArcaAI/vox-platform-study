@@ -1,8 +1,8 @@
 /**
- * TASK-705 — the harness agentic loop is a SUBSCRIPTION FEATURE.
+ * the harness agentic loop is a SUBSCRIPTION FEATURE.
  *
  * The owner decision (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
- * §2 row 705) dissolves the old framing entirely: whether the loop runs for a
+ * row 705) dissolves the old framing entirely: whether the loop runs for a
  * consultation is no longer an environment kill-switch, it is the tenant's
  * ENTITLEMENT. The operational device survives alongside it, with a different
  * job and the opposite polarity.
@@ -82,7 +82,7 @@ function payload(overrides: Partial<ContextAddedPayload> = {}): ContextAddedPayl
   };
 }
 
-describe('TASK-705 — loop eligibility is the tenant entitlement', () => {
+describe('loop eligibility is the tenant entitlement', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('an ENTITLED tenant runs the loop', async () => {
@@ -137,7 +137,7 @@ describe('TASK-705 — loop eligibility is the tenant entitlement', () => {
   });
 });
 
-describe('TASK-705 — the emergency stop is a veto, not an enabler', () => {
+describe('the emergency stop is a veto, not an enabler', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('the EMERGENCY OVERRIDE still wins over an entitled tenant', async () => {
@@ -173,7 +173,7 @@ describe('TASK-705 — the emergency stop is a veto, not an enabler', () => {
   });
 });
 
-describe('TASK-705 — the stop resolves platform → code-default, NEVER a customer tenant', () => {
+describe('the stop resolves platform → code-default, NEVER a customer tenant', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('ignores a stop row planted under a customer tenant (maxScope: system)', async () => {
@@ -199,7 +199,7 @@ describe('TASK-705 — the stop resolves platform → code-default, NEVER a cust
   });
 });
 
-describe('TASK-705 — the lifecycle-boundary signals share the composition rule', () => {
+describe('the lifecycle-boundary signals share the composition rule', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('signalConsultationEnding forwards for an entitled CLS tenant', async () => {

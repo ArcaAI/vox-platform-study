@@ -1,5 +1,5 @@
 /**
- * Consent register screen (TASK-805).
+ * Consent register screen.
  *
  * The behaviours worth pinning are the ones that make this a GOVERNANCE
  * surface rather than a table: the lifecycle filter reaches the server, a

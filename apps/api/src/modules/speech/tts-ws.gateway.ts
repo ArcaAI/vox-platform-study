@@ -132,7 +132,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // positional test fixtures keep compiling; absent (or no tenantId on the
     // ticket) ⇒ no check.
     @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
-    // TASK-755 G-1 — CSWSH guard: registry-backed allow-list for the `Origin`
+    // CSWSH guard: registry-backed allow-list for the `Origin`
     // header, the same reverse index `cors.config.ts` consults. Optional and
     // TRAILING so existing positional test fixtures keep compiling; see
     // `isOriginAllowed` for the fail-CLOSED posture when it is absent.
@@ -140,8 +140,8 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {}
 
   /**
-   * Registry lookup backing the CSWSH guard (TASK-755 G-1). Ported from
-   * `SttWsGateway.isOriginAllowed` (TASK-610) with identical semantics and the
+   * Registry lookup backing the CSWSH guard. Ported from
+   * `SttWsGateway.isOriginAllowed` with identical semantics and the
    * identical, greppable log reasons — one operator vocabulary across all
    * three enforcement surfaces (HTTP CORS, STT WS, TTS WS).
    *
@@ -215,7 +215,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
-    // TASK-755 G-1 — CSWSH guard, FIRST, before sessionId/ticket parsing, so a
+    // CSWSH guard, FIRST, before sessionId/ticket parsing, so a
     // hostile origin never burns a ticket and never reaches the quota
     // pre-flight. Mirrors the CORS callback's pre-auth position.
     //

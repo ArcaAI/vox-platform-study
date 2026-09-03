@@ -30,14 +30,14 @@ model AsrPipeline {
   // Per-tenant default backend pipeline assignment
   isDefault Boolean @default(false)
 
-  // TASK-843 — this row's place in the canonical task taxonomy. CONSTANT for
+  // this row's place in the canonical task taxonomy. CONSTANT for
   // the table: every ASR pipeline is, by construction, a speech-to-text
   // binding. It is therefore NOT NULL with the correct default rather than
   // nullable-and-backfilled (the shape `AiTaskDefault.taskKind` needs, where
   // the value is derived per row from `taskKey`) — a new row cannot be wrong,
   // and `db push` fills every existing row correctly with no data step.
   //
-  // Redundant today, and deliberately so: it is the migration SEAM. TASK-844
+  // Redundant today, and deliberately so: it is the migration SEAM.
   // folds AsrPipeline / TenantSttConfig / TenantTtsConfig into the unified
   // selection table, and a uniform `taskKind` on all five sources makes that a
   // single UNION rather than three bespoke per-table mappings. This table is
@@ -148,10 +148,10 @@ model AiModel {
   //
   // `sourceUri` scheme grammar honoured by every service's
   // `resolve_model_dir` (stt, guardrail, nlp, harness):
-  //   hf:<org>/<repo> | <org>/<repo>  HuggingFace Hub snapshot (bare id also
+  //   hf:<org>/<repo> | <org>/<repo> HuggingFace Hub snapshot (bare id also
   //                                   accepted); honours HF_HUB_OFFLINE
-  //   file:///abs/path                verified in place, never copied
-  //   s3://bucket/prefix              downloaded once into the service cache,
+  //   file:///abs/path verified in place, never copied
+  //   s3://bucket/prefix downloaded once into the service cache,
   //                                   single-flight + SHA256-verified
   // Anything else is a hard `ModelSourceError` — never a silent fallback.
   // Only `s3://` is supported; `azure-blob://` is deferred.
@@ -206,7 +206,7 @@ model AiModel {
   // YAML". That convention still holds for the PIPELINE surface (AsrPipeline
   // stages, harness weight lookups) and for `AiTaskDefault.modelSlug`.
   //
-  // TASK-844 makes ONE exception, deliberately: `AiRoutingPolicy.modelId` is a
+  // makes ONE exception, deliberately: `AiRoutingPolicy.modelId` is a
   // real FK, because finding F-6 identified the by-slug join as the mechanical
   // cause of the provider-configuration fragmentation — a configuration could
   // name a model that did not exist, and nothing could report on which

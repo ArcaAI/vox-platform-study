@@ -66,7 +66,7 @@ class SarvamProvider:
 
         Returns ``None`` for a KEYLESS override. That guard - not the provider
         list - is what stops a SYSTEM row's `base_url` from being mistaken for a
-        credential (TASK-799 plan, "Phase 2 landmines"): a keyless row injects on
+        credential ( plan, "Phase 2 landmines"): a keyless row injects on
         NEITHER tier.
 
         `model_copy` clones the platform config rather than mutating it, so two
@@ -100,7 +100,7 @@ class SarvamProvider:
             "target_language_code": self._target_language(req.locale),
             "model": self._config.model,
             # The catalog binding, always. There is no config fallback since
-            # TASK-799 lane C: `voice_ml`/`voice_en` both held `ishita`, which is
+            # lane C: `voice_ml`/`voice_en` both held `ishita`, which is
             # already the catalog's sarvam binding, and the router guarantees
             # `provider_voice` is set (`candidates()` skips a provider the voice
             # is not bound to).

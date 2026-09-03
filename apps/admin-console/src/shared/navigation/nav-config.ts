@@ -79,7 +79,7 @@ import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
  * approved 2026-07-05; Playground 50-59 approved 2026-07-06). The
  * sidebar only renders implemented entries the caller's ability grants.
  *
- * (Corrected by TASK-858 Lane D: this comment claimed "AI models is hidden
+ * (Corrected by: this comment claimed "AI models is hidden
  * (implemented: false)". It has not been hidden since the screen became the
  * AI-models HUB — the entry below is `implemented: true`, gated on
  * `manage:all`. The stale sentence read as a live rule and is gone.)
@@ -87,9 +87,9 @@ import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
 export type NavTier = '10-19' | '20-29' | '30-49' | '50-59';
 
 /**
- * Capability domain — the axis the navigation rail groups by (TASK-788 OD-2).
+ * Capability domain — the axis the navigation rail groups by.
  *
- * ORTHOGONAL to `NavTier`, and deliberately so (OD-3): tier answers *who may
+ * ORTHOGONAL to `NavTier`, and deliberately so: tier answers *who may
  * open a screen* and keeps governing the `(global)`/`(shared)`/`(tenant)` route
  * groups and their guards; domain answers *where a user looks for it*. Where
  * the two disagree — `/ai-configuration` is tier `30-49` but domain
@@ -141,7 +141,7 @@ export interface NavEntry extends NavRouteEntry {
 
 /**
  * Personal chrome rather than domain work — the API documentation portal and
- * the signed-in user's own profile. TASK-788 moves these two out of the rail
+ * the signed-in user's own profile. moves these two out of the rail
  * (they fit no capability domain) and into the topbar user menu; their tier and
  * ability gate are carried over verbatim.
  */
@@ -284,7 +284,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // guardrail/NLP status + config backends that had no screen.
   //
   // The fold originally landed governance on `/agents`, and this comment still
-  // said so after `/agents` itself retired (TASK-815) — pointing the reader at
+  // said so after `/agents` itself retired — pointing the reader at
   // a redirect. The live target is `/prompt-templates?tab=governance`.
   {
     route: '/ai-services',
@@ -365,7 +365,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     // (a vendor bills the platform, not a tenant), so tier 10-19 with no
     // working-tenant gate, unlike its /ai-operations neighbours.
     //
-    // TASK-845 step 3 moved it out of `ai-platform` and into `platform-ops`:
+    // step 3 moved it out of `ai-platform` and into `platform-ops`:
     // it is a VENDOR BILLING auditor and never touches `AiModel`, a provider
     // connection or a routing configuration. It sat in the AI domain because it
     // shares a URL prefix with `/ai-operations/*`, which is a routing accident
@@ -466,7 +466,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-799 Phase 4 (E.1) — the descriptor-driven registry lane. 210
+  //  — the descriptor-driven registry lane. 210
   // descriptors existed with exactly ONE console consumer (the Agentic Context
   // tab, a single hardcoded category), so `GET admin/settings/catalog` +
   // `PUT admin/settings/registry/:key` were fully functional and unreachable.
@@ -512,11 +512,11 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // `/developer` and `/account` used to sit here. TASK-788 moved them out of
+  // `/developer` and `/account` used to sit here. moved them out of
   // the rail into USER_MENU_ENTRIES (below) — they are personal chrome, not
   // capability domains. Tier and ability gate are unchanged.
 
-  // TASK-845 — THE unified AI provider console. Tier 20-29 because it renders
+  // THE unified AI provider console. Tier 20-29 because it renders
   // cross-tenant for a super admin and tenant-scoped for a tenant admin, and
   // because tenancy is a CONTROL on the screen rather than a route: the SYSTEM
   // (platform-default) tier and the working tenant are the two tiers of ONE
@@ -541,7 +541,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-846 / OD-7 (2026-09-01): `/tools-mcp` MOVED here from tier 10-19.
+  // / OD-7 (2026-09-01): `/tools-mcp` MOVED here from tier 10-19.
   // Tenant admins may configure MCP connectors, which makes this a
   // shared-audience screen — it renders cross-tenant for a super admin and
   // tenant-scoped for a tenant admin. Its ability gate narrows from the
@@ -608,7 +608,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // `/agents` — the Agent Catalog — is GONE from the nav (TASK-815). It CRUD-ed
+  // `/agents` — the Agent Catalog — is GONE from the nav. It CRUD-ed
   // `DepartmentAgent`, which was retired: a prompt template's binding to a
   // workflow now lives on the node that references it. The route keeps a
   // one-release `redirect()` to `/prompt-templates` for bookmarks, but a
@@ -641,7 +641,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   {
-    // TASK-810 — tenant-defined clinical document SHAPES. The deliberate
+    // tenant-defined clinical document SHAPES. The deliberate
     // sibling of Context Schemas: that screen governs what context may be
     // SUBMITTED, this one governs what document comes BACK. `manage` mirrors
     // `DocumentTemplateAdminController`'s class-level
@@ -655,7 +655,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'DocumentTemplate']],
     implemented: true,
   },
-  // TASK-728: institutional-RAG knowledge documents — the only real
+  // institutional-RAG knowledge documents — the only real
   // clinical "memory" concept the platform has today (admin-uploaded
   // guidelines/protocols, chunked+embedded, retrieved to ground summary
   // generation with citations). `manage` mirrors `KnowledgeController`'s
@@ -678,7 +678,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'DnaWritingStyleReport']],
     implemented: true,
   },
-  // TASK-805 — the consent register. Tier 30-49 because grants key on
+  // the consent register. Tier 30-49 because grants key on
   // (tenantId, externalPatientId, purpose): a super admin reads them through
   // the working tenant, never cross-tenant. `manage:ConsentGrant` mirrors
   // `ConsentGrantController`'s class-level `@CanManage('ConsentGrant')`.
@@ -761,9 +761,9 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-723: the DEFINITION-scoped runs/observability view — distinct from
+  // the DEFINITION-scoped runs/observability view — distinct from
   // `/ai-operations/runs` (tier 10-19, cross-tenant platform ops over every
-  // agentic session, §2.4). This one reads `WorkflowRun`, the workflow-
+  // agentic session, This one reads `WorkflowRun`, the workflow-
   // substrate read model, and links to its cross-tenant sibling rather than
   // duplicating it (rule 13 "one authoritative editor" + cross-link posture).
   {
@@ -775,8 +775,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['read', 'WorkflowRun']],
     implemented: true,
   },
-  // TASK-719: Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
-  // (TASK-734's `admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
+  // Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
+  // ( `admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
   // controllers). `manage` mirrors `WorkflowDefinitionController`'s class-level
   // `@CanManage('WorkflowDefinition')` gate — the console never widens past what the gateway
   // itself requires.
@@ -789,12 +789,12 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'WorkflowDefinition']],
     implemented: true,
   },
-  // TASK-733 half (a) Task 6 — the assignment matrix. A sub-route of the Studio
+  // half (a) Task 6 — the assignment matrix. A sub-route of the Studio
   // (rule 13 "one authoritative editor per backend resource": the Studio owns
   // `WorkflowDefinition`, so it owns which definition governs which
   // tenant/department too), given its own nav entry rather than a tab so it
   // shows up alongside the sibling `/workflow-runs` entry for the same domain.
-  // Design gate waived for this screen (owner decision, TASK-733 Task 6).
+  // Design gate waived for this screen (owner decision).
   {
     route: '/workflow-studio/assignments',
     domain: 'workflow-harness',
@@ -805,7 +805,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   // Was the four-tab tenant AI hub (Models · Speech · Voice · Providers).
-  // TASK-845 NARROWED it to two: the Models and Providers tabs were the TENANT
+  // NARROWED it to two: the Models and Providers tabs were the TENANT
   // half of a two-tier cascade whose SYSTEM half lived on a different route,
   // and both moved to `/ai-platform`, where the tier is a control rather than a
   // route. The URL is unchanged, so this is a narrowing and takes no redirect.
@@ -813,7 +813,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // Speech and Voice stayed deliberately: `TenantSttConfig` / `TenantTtsConfig`
   // are pipeline and voice BINDINGS resolved on their own rows, not provider
   // configuration on the routing cascade. Folding them into a provider console
-  // would recreate the by-which-table grouping TASK-845 exists to remove.
+  // would recreate the by-which-table grouping exists to remove.
   // `required` is the OR of the two remaining reads; each tab is separately
   // `<RequirePermission>`-gated in the screen.
   {
@@ -881,15 +881,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/playground/llm', domain: 'playground', label: 'LLM Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
-  // TASK-721: deliberate divergence from the `required: []` convention above.
+  // deliberate divergence from the `required: ` convention above.
   // The five entries before this one are own-account end-user demo planes
   // whose backend guards are plain @Authorize() (comment above). The
   // Workbench instead READS and EXECUTES tenant WorkflowDefinition rows — a
   // resource ability the gateway enforces — so declaring `required: []`
   // would hide a real gate from the nav. RECONCILED against the real,
-  // now-landed decorators (Phase C): the definition picker needs
+  // now-landed decorators: the definition picker needs
   // `manage:WorkflowDefinition` (`WorkflowDefinitionController`'s class-level
-  // `@CanManage('WorkflowDefinition')` — TASK-734), and starting/reading/
+  // `@CanManage('WorkflowDefinition')` —), and starting/reading/
   // canceling a sandbox run needs `manage:WorkflowRun`
   // (`WorkflowSandboxRunController`'s `@CanCreate`/`@CanRead`/`@CanUpdate('WorkflowRun')`,
   // all subsumed by the seeded `manage:WorkflowRun` tenant-admin grant —
@@ -917,7 +917,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
  */
 export const USER_MENU_ENTRIES: readonly UserMenuEntry[] = [
   {
-    // TASK-783 — the developer API documentation portal. Tier 20-29: the
+    // the developer API documentation portal. Tier 20-29: the
     // audience is both super admins and tenant admins/developers, and the
     // screens are not tenant-scoped (the API contract belongs to the platform).
     //
@@ -977,7 +977,7 @@ export function visibleUserMenuEntries(rules: readonly PermissionRule[] | null |
 }
 
 /**
- * Rail domains the caller can actually reach (TASK-788 AC-3): a domain shows
+ * Rail domains the caller can actually reach: a domain shows
  * when at least one of its entries is visible. Derived from `visibleNavEntries`
  * so there is exactly ONE ability mechanism — including the playground's
  * role check, which no ability rule can express.
@@ -988,7 +988,7 @@ export function visibleNavDomains(rules: readonly PermissionRule[] | null | unde
 }
 
 /**
- * The rail domain the CURRENT ROUTE belongs to (TASK-788 AC-6).
+ * The rail domain the CURRENT ROUTE belongs to.
  *
  * Selection is derived, never stored: there is no domain state, no
  * localStorage key and no click handler that "remembers" a choice — the URL is

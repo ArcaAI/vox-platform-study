@@ -1,5 +1,5 @@
 /**
- * TASK-783 — cross-check `apps/api/openapi.json` against `apps/api/route-manifest.json`.
+ * cross-check `apps/api/openapi.json` against `apps/api/route-manifest.json`.
  *
  * Both files are committed build artifacts of the same Nest application, so
  * they must describe the same set of routes. When they don't, one of three
@@ -12,11 +12,11 @@
  * | in the spec, absent from the manifest | **a stale artifact** — one of the two was regenerated and the other was not |
  *
  * That third case is not hypothetical: `openapi.json` was one commit behind
- * `route-manifest.json` when this script was written (TASK-733 added
+ * `route-manifest.json` when this script was written ( added
  * `DELETE /admin/dna-writing-styles/doctor/{doctorId}` and only the manifest
  * was re-emitted), and nothing caught it.
  *
- * Neither is the first case's inverse. Until TASK-783 the manifest's
+ * Neither is the first case's inverse. Until the manifest's
  * `apiExcluded` flag was ALWAYS false — it read `@nestjs/swagger`'s wrapped
  * metadata with `=== true` — so all 70 deliberately-excluded routes looked
  * like documentation defects and 70 real ones would have looked normal. The
@@ -38,7 +38,7 @@ const MANIFEST_PATH = resolve(REPO_ROOT, 'apps/api/route-manifest.json');
 /**
  * Documentation-quality RATCHET.
  *
- * Measured 2026-08-20 (TASK-783). These are not targets — they are the WORST the
+ * Measured 2026-08-20. These are not targets — they are the WORST the
  * repo is allowed to get. A change that leaves more operations undocumented than
  * this fails; a change that improves matters is expected to lower the numbers in
  * the same commit.
@@ -59,7 +59,7 @@ export interface QualityRatchet {
 
 export const QUALITY_RATCHET: QualityRatchet = {
   withoutSummary: 1,
-  // Lowered 2026-08-22 (TASK-785): the nine new rate-limit rule/catalog/explain
+  // Lowered 2026-08-22: the nine new rate-limit rule/catalog/explain
   // routes each ship a description and a 4xx, so the absolute counts fell even
   // as the surface grew. Locking the gain in — that is what the ratchet is for.
   withoutDescription: 411,

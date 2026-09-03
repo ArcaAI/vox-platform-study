@@ -145,7 +145,7 @@ class TestEveryRegenSiteRespectsTheBudget:
         ]
         assert not unguarded, (
             f"regen branch(es) at line(s) {unguarded} do not consult `budget_stopped`; "
-            "a per-run token budget must bind at EVERY regen site (TASK-533 B4)"
+            "a per-run token budget must bind at EVERY regen site (B4)"
         )
 
     def test_the_post_delivery_regen_accounts_its_own_spend(self) -> None:
@@ -162,5 +162,5 @@ class TestEveryRegenSiteRespectsTheBudget:
         ]
         assert not unaccounted, (
             f"`_regen_compute()` at line(s) {unaccounted} does not accumulate `tokens_used` "
-            "— the regen's spend would be invisible to the per-run budget (TASK-533 B4)"
+            "— the regen's spend would be invisible to the per-run budget (B4)"
         )

@@ -31,7 +31,7 @@ interface ServiceProbeResult {
 /**
  * Consolidated downstream-service health for operators.
  *
- * TASK-759 (rule P2): these two routes used to live on `ApiHealthController`
+ * These two routes used to live on `ApiHealthController`
  * at `api/v1/health/services{,/:serviceKey}` — a CASL-gated administrative
  * capability sitting on the PUBLIC k8s-probe prefix. The prefix is the
  * load-bearing input to the credential-class decision, so ops telemetry gated
@@ -55,15 +55,15 @@ interface ServiceProbeResult {
 // 30-second poll (`features/monitoring/api/hooks.ts`).
 @Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('admin/health/services')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
 // Reason: downstream-service probes gated on manage:all/read:TenantTelemetry.
 // Inherited verbatim from `ApiHealthController`'s class-level declaration,
-// which is what covered these two routes before the TASK-759 split. Under
-// TASK-757's A2 sweep the same posture is reached by a different route —
+// which is what covered these two routes before the split. Under
+// sweep the same posture is reached by a different route
 // "admin plane, therefore JWT-only" rather than "undeclared, therefore
 // closed" — so this comment is expected to be replaced, not the decorator.
 @ForbidApiKey()
-// SVC-NOTE (TASK-773, owner decision O-1) — CLOSED to the machine class.
+// SVC-NOTE (owner decision O-1) — CLOSED to the machine class.
 // This is a positive decision about the surface, not the "undeclared, therefore
 // closed" default the API-key note above records. A downstream-probe fan-out is
 // operator telemetry a human reads on the monitoring screen to answer "is the
@@ -212,7 +212,7 @@ export class AdminHealthServicesController {
         url: `${svc.url}${svc.healthEndpoint}`,
         error: err instanceof Error ? err.message : String(err),
       });
-      // TASK-768: this is a 200 body, but it is still client-facing — it used
+      // this is a 200 body, but it is still client-facing — it used
       // to hand the admin console `connect ECONNREFUSED 127.0.0.1:8862`. The
       // REASON is the whole point of a health screen, so the string is kept and
       // only the topology is stripped: the errno survives, the host/port/URL do

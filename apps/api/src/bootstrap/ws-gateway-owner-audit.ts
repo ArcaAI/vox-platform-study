@@ -1,5 +1,5 @@
 /**
- * Boot-time audit (TASK-761, gate G4): every WebSocket gateway registered in
+ * Boot-time audit (gate G4): every WebSocket gateway registered in
  * the gateway process is TRIAGED for owner binding.
  *
  * ─── What this pins, and what it deliberately does NOT ─────────────────────
@@ -82,7 +82,7 @@ export const WS_OWNER_BOUND_GATEWAYS: Readonly<Record<string, WsGatewayOwnerReco
     regressionSpec: 'apps/api/src/modules/streaming/__tests__/stt-ws.gateway.test.ts',
     note:
       'Owns a server-side STT session that survives a socket drop for the grace window, so "same tenant, different ' +
-      'user" is a real hijack and not a theoretical one. TASK-754 (commit e3f3713fb) added the owner invariant at two ' +
+      'user" is a real hijack and not a theoretical one.  (commit e3f3713fb) added the owner invariant at two ' +
       'independent points: the handshake compares the ticket principal against the stored binding, and `rebindSession` ' +
       'compares again against the LIVE session object — the line that used to read `session.userId = stored.userId` ' +
       'and silently performed the transplant. Both are pinned by the "session OWNER enforced at the WS handshake" ' +
@@ -94,9 +94,9 @@ export const WS_OWNER_BOUND_GATEWAYS: Readonly<Record<string, WsGatewayOwnerReco
     note:
       'There is no server-side session resource to own: the gateway opens a bridge per socket and the single-use ' +
       '`tts_session:<sessionId>` ticket (minted bound to the active tenant of the caller by POST /auth/stream-ticket, and ' +
-      'burned on consumption) is the whole authorisation. TASK-755 added the fail-closed CSWSH origin gate that runs ' +
+      'burned on consumption) is the whole authorisation.  added the fail-closed CSWSH origin gate that runs ' +
       'BEFORE the ticket is parsed, so a hostile origin never burns a ticket. Classified deliberately rather than ' +
-      'left `pending`: the review was written before TASK-755 landed, when this gateway had no origin check at all.',
+      'left `pending`: the review was written before  landed, when this gateway had no origin check at all.',
   },
   SttCompatGateway: {
     ownerCheck: 'compat-exempt',
@@ -143,6 +143,6 @@ export function auditWebSocketGatewayOwnerBinding(app: INestApplicationContext):
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-761: refused to start — ${offenders.length} WebSocket gateway(s) are not triaged for owner binding:\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} WebSocket gateway(s) are not triaged for owner binding:\n${list}`);
   }
 }

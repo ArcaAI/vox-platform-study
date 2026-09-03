@@ -1,10 +1,10 @@
-"""TDD tests for the admin provider-introspection endpoint (TASK-726 Task 4/5).
+"""TDD tests for the admin provider-introspection endpoint (/5).
 
-Mirrors TASK-725's `GET /providers` for `text`, adapted for tts's 5-provider
-registry — see design-notes.md §(c): tts's per-provider CircuitBreaker
+Mirrors `GET /providers` for `text`, adapted for tts's 5-provider
+registry — see : tts's per-provider CircuitBreaker
 degrade-routing already existed (routing/router.py); this endpoint is the
 NEW read-only admin surface over it, plus the GPU/device classification
-(§b — Task 5).
+(b — Task 5).
 """
 
 from __future__ import annotations

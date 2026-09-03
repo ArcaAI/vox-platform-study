@@ -1,5 +1,5 @@
 /**
- * TASK-711 — Session state machine, HTTP-surface e2e.
+ * Session state machine, HTTP-surface e2e.
  *
  * NOT EXECUTED IN THIS PASS. Playwright's `globalSetup` runs
  * `prisma db push --force-reset`, which Prisma's CLI refuses when invoked by
@@ -24,7 +24,7 @@
  *     `TASK711_E2E_FULL=1` (+ `HARNESS_SERVICE_TOKEN` for case 5) so CI never
  *     reports a fabricated pass when those aren't wired up.
  *
- * Cases covered (README §4 Task 13):
+ * Cases covered :
  *   1. POST :id/close on a never-recorded (OPEN) consultation -> rejected (409) — the A-13 repro.
  *   2. Full walk: OPEN -> PRIMED -> RECORDING -> DRAINING -> PENDING_REVIEW -> SIGNED (RUN_FULL).
  *   3. recording/start without prime: kill-switch OFF (default) -> 200 (logged, not blocked);
@@ -32,7 +32,7 @@
  *   4. close after SIGNED -> 200, status CLOSED_COMPLETE; reopen -> REOPENED (RUN_FULL, needs case 2's walk).
  *   5. Gate-SLA abandonment drives TIMED_OUT, visibly unsigned, notification recorded (RUN_FULL).
  *   6. TIMED_OUT -> SIGNED still commits (RUN_FULL, chained off case 5).
- *   7. PATCH :id with {"metadata":{"status":"SIGNED"}} -> response status unchanged (TASK-701 fix, re-asserted).
+ * 7. PATCH :id with {"metadata":{"status":"SIGNED"}} -> response status unchanged ( fix, re-asserted).
  *   8. Cross-tenant POST :id/close / :id/prime -> 404, never 403.
  *   9. PATCH/POST on a transition route without If-Match -> 428; with a stale ETag -> 412.
  */
@@ -69,7 +69,7 @@ async function getConsultation(request: APIRequestContext, token: string, id: st
 
 /**
  * `POST :id/prime` carries `@RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)`
- * (TASK-712), enforced by `PatientConsentGuard` — a global `APP_GUARD`
+ * enforced by `PatientConsentGuard` — a global `APP_GUARD`
  * registered strictly BEFORE `RequiresIfMatchGuard` in `app.module.ts`, and
  * ON BY DEFAULT with no kill-switch (`ConsultationConsentService` denies
  * unconditionally when no `ConsentGrant` row exists — see its doc comment).
@@ -89,7 +89,7 @@ async function grantAiDocumentationConsent(request: APIRequestContext, adminToke
   expect([200, 201], 'POST /admin/consent-grants (AI_DOCUMENTATION)').toContain(res.status());
 }
 
-test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Postgres only)', () => {
+test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)', () => {
   let doctorToken: string;
   let _doctor2Token: string;
   let tenantAdminToken: string;
@@ -139,7 +139,7 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
   test('case 3a: recording/start without a prior prime succeeds while the kill-switch is OFF (default)', async ({ request }) => {
     const patientId = uniquePatientId('case3a');
     const { id } = await openConsultation(request, doctorToken, patientId);
-    // recording/start is ALSO consent-gated (TASK-712, same AI_DOCUMENTATION
+    // recording/start is ALSO consent-gated (same AI_DOCUMENTATION
     // purpose as prime) — see grantAiDocumentationConsent's doc comment.
     await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
 
@@ -154,11 +154,11 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
     expect(after.status).toBe('RECORDING');
   });
 
-  // ── Case 7: TASK-701's forgery containment, re-asserted now that Task 10 deletes the field ──
+  // ── Case 7: forgery containment, re-asserted now that Task 10 deletes the field ──
   test('case 7: PATCH :id with metadata.status is a no-op on the typed status column', async ({ request }) => {
     const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case7'));
 
-    // TASK-776 H-1 phase 2: `PATCH /consultations/:id` now carries
+    // phase 2: `PATCH /consultations/:id` now carries
     // `@RequiresIfMatch()` — it was the last unprotected write on an aggregate
     // whose every OTHER write (prime/close/reopen, context, summary) already
     // required the precondition. Without the header this request is a 428, so
@@ -194,7 +194,7 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
     test('prime without If-Match -> 428; with a stale version -> 412; with the correct version -> 200', async ({ request }) => {
       const patientId = uniquePatientId('case9-prime');
       const { id, version } = await openConsultation(request, doctorToken, patientId);
-      // prime is consent-gated (TASK-712) ahead of the OCC guard — see
+      // prime is consent-gated ahead of the OCC guard — see
       // grantAiDocumentationConsent's doc comment.
       await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
 
@@ -264,7 +264,7 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
 const RUN_FULL = process.env.TASK711_E2E_FULL === '1';
 const SERVICE_TOKEN = process.env.HARNESS_SERVICE_TOKEN ?? '';
 
-test.describe('TASK-711 — full lifecycle walk (RUN_FULL)', () => {
+test.describe('full lifecycle walk (RUN_FULL)', () => {
   test.skip(!RUN_FULL, 'requires a reachable TEXT/text backend; set TASK711_E2E_FULL=1');
 
   let doctorToken: string;
@@ -339,7 +339,7 @@ test.describe('TASK-711 — full lifecycle walk (RUN_FULL)', () => {
   });
 });
 
-test.describe('TASK-711 — gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
+test.describe('gate SLA TIMED_OUT path (RUN_FULL, service-token)', () => {
   test.skip(!RUN_FULL || !SERVICE_TOKEN, 'requires HARNESS_SERVICE_TOKEN + TASK711_E2E_FULL=1');
 
   let doctorToken: string;
@@ -356,7 +356,7 @@ test.describe('TASK-711 — gate SLA TIMED_OUT path (RUN_FULL, service-token)', 
     tenantId = DEFAULT_TENANT_KEY;
 
     // Drive it to PENDING_REVIEW so the gate-SLA escalation has a legal
-    // predecessor to time out from (state-machine.md §2).
+    // predecessor to time out from
     await request.post(`/api/v1/consultations/${id}/prime`, { headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` } });
     await request.post(`/api/v1/consultations/${id}/recording/start`, { headers: bearer(doctorToken) });
     await request.post(`/api/v1/consultations/${id}/recording/stop`, { headers: bearer(doctorToken) });

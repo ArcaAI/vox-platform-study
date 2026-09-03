@@ -1,5 +1,5 @@
 /**
- * TASK-812 (D-10) — the CONSULTATION ENDPOINT SEQUENCE, read and written from the Studio.
+ * (D-10) — the CONSULTATION ENDPOINT SEQUENCE, read and written from the Studio.
  *
  * The sequence is a `global-kv` setting (`consultation.endpoint.actions`, `maxScope: 'tenant'`),
  * not a `WorkflowDefinition` field, so this file addresses `admin/settings/registry/*` rather

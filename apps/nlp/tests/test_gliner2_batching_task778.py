@@ -1,13 +1,13 @@
-"""TASK-778 — `Gliner2GuardService` drives the runtime's BATCH verbs.
+"""`Gliner2GuardService` drives the runtime's BATCH verbs.
 
 `gliner2==1.3.2` ships `batch_extract_entities(texts, entity_types, batch_size=…)`
 and `batch_classify_text(texts, tasks, batch_size=…)`, which push N texts through
-ONE encoder pass. TASK-735 wired only the single-text verbs, so 100 concurrent
+ONE encoder pass. wired only the single-text verbs, so 100 concurrent
 sessions meant 100 sequential passes.
 
 Also pinned here: the real runtime reports a span's confidence under the key
 `confidence`, NOT `score` (verified against `fastino/gliner2-privacy-filter-PII-multi`
-weights on 2026-08-19). The TASK-735 normaliser read `score` only, so every real
+weights on 2026-08-19). The normaliser read `score` only, so every real
 span came back with `score: 0.0` — below any caller threshold, which turns a
 detected identifier into an invisible one. That is a PHI-leak-shaped bug, so it
 gets an explicit test.

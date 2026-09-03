@@ -1,11 +1,11 @@
 // The VISIT-TYPE CATALOGUE — the pure half of `consultation.visitTypes`.
 //
-// OWNER RULING (TASK-815 §11 row 3, binding): "Visit type is tenant-admin
+// OWNER RULING (row 3, binding): "Visit type is tenant-admin
 // defined and controlled. Two defaults ship: New patient (new visit, new
 // referral) and Revisit (follow-up same-day, review same-day, revisit
 // same-day)."
 //
-// THE VOCABULARY, SETTLED (owner, 2026-08-29 — closes the §16c question):
+// THE VOCABULARY, SETTLED (owner, 2026-08-29 — closes the question):
 //
 //   "visit-type labels must be easy for user/developer/admins to understand:
 //    * new-visit: new patient, new visit, new referral
@@ -18,7 +18,7 @@
 // onto the same entry (see the alias comment on the default below).
 //
 // WHAT THIS REPLACES. Visit type was a DERIVED LITERAL in nine places — six
-// copies of `consultation.parentConsultationId ? 'revisit' : 'new-patient'`, a
+// copies of `consultation.parentConsultationId ? 'revisit': 'new-patient'`, a
 // closed TS union on three service/route signatures, and a hand-rolled
 // `['new_visit', 'referral']` allow-list in the streaming proxy that returned
 // 400 for anything else. It was also INCONSISTENT with itself: the same concept
@@ -38,7 +38,7 @@
 //     'Follow-up', 'Consultation') that the compat layer normalises onto a
 //     two-valued selection.
 //   • `Department` carries exactly TWO visit-type prompt columns
-//     (`newPatientPromptId` / `revisitPromptId`), and TASK-815 DD-2 deliberately
+// (`newPatientPromptId` / `revisitPromptId`), and deliberately
 //     parked the whole visit-type axis there.
 //
 // (a) also SUBSUMES (b): the catalogue is an ordered LIST, so a tenant that
@@ -46,7 +46,7 @@
 // without collapsing the aliases. Per the brief's tiebreak — implement the
 // reading that can represent the other without a migration — (a) wins.
 //
-// THE SECOND OWNER DIRECTIVE (2026-08-29, TASK-815 §15e) — visit type is the
+// THE SECOND OWNER DIRECTIVE (2026-08-29, — visit type is the
 // PROMPT-COMPOSITION IDENTIFIER, not a two-column pointer:
 //
 //   "Visit type is an identifier where the hope platform configure and compose
@@ -73,7 +73,7 @@
 // resolver already knew that — it computes
 // `resolvedCapability: 'pre-summary' | 'live' | 'summary'` from the same
 // parameter. They keep travelling in `promptType` (a frozen v1-compat contract,
-// TASK-815 §2), and `promptSlotFor` treats them as "no visit-type opinion".
+// and `promptSlotFor` treats them as "no visit-type opinion".
 
 /**
  * Which of `Department`'s two visit-type prompt columns a visit type selects.
@@ -112,7 +112,7 @@ export type VisitTypePromptTask = (typeof VISIT_TYPE_PROMPT_TASKS)[number] | (st
  * authored, which is the failure a single binding object rules out by shape.
  *
  * `promptVersionNumber` is the same opt-in pin a workflow generation node
- * carries (DD-11): absent ⇒ the template's `approvedVersionNumber` snapshot,
+ * carries: absent ⇒ the template's `approvedVersionNumber` snapshot,
  * never the mutable content row.
  */
 export interface VisitTypePromptBinding {
@@ -190,7 +190,7 @@ export const CONSULTATION_VISIT_TYPES_DEFAULT: readonly VisitTypeDefinition[] = 
   Object.freeze({
     key: 'revisit',
     label: 'Revisit',
-    // "follow-up same-day, review same-day, revisit same-day" (owner, §11 row 3)
+    // "follow-up same-day, review same-day, revisit same-day" (owner, row 3)
     // + the `follow-up`/`followup` spellings the v1 wire normalises on + the
     // HYPHENATED `re-visit` the owner wrote in the 2026-08-29 directive
     // ("Follow-up/Re-visit"). That last one did NOT resolve before: the key
@@ -205,8 +205,8 @@ export const CONSULTATION_VISIT_TYPES_DEFAULT: readonly VisitTypeDefinition[] = 
  * Fold one visit-type spelling onto a comparable token: lower-case, every run
  * of non-alphanumerics to a single `-`, no leading/trailing `-`.
  *
- *   'Follow-Up  Same_Day'  →  'follow-up-same-day'
- *   'New Visit'            →  'new-visit'
+ *   'Follow-Up Same_Day' → 'follow-up-same-day'
+ *   'New Visit' → 'new-visit'
  */
 export function normalizeVisitTypeToken(raw: string | null | undefined): string {
   if (typeof raw !== 'string') return '';
@@ -262,7 +262,7 @@ export function selectVisitType(
 /**
  * Which `Department` prompt column a `promptType` value reads.
  *
- * `promptType` carries BOTH axes for frozen-contract reasons (TASK-815 §2), so
+ * `promptType` carries BOTH axes for frozen-contract reasons (so
  * a phase selector (`'pre-summary'`, `'live'`) and an unmatched string both mean
  * "no visit-type opinion" and land on the new-patient column — byte-identical to
  * the ternary this replaces, which also treated everything that was not exactly

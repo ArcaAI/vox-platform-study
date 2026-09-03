@@ -8,7 +8,7 @@ import { Authorize, RequiredScopes } from '../../../decorators';
  * Returns typed preferences aggregated from UserSettings (namespace: arcaai-sdk).
  */
 /**
- * TASK-758 — the `me` semantics an integrator cannot infer from the path.
+ * the `me` semantics an integrator cannot infer from the path.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from
  * `apiKeyEntity.userId`, so under a key `me` is the BOUND USER — not the key's
@@ -23,7 +23,7 @@ const ME_IS_THE_BOUND_USER =
 @ApiTags('user')
 @Controller('users/me/preferences')
 @Authorize()
-// TASK-742: maps 1:1 onto the pre-existing, previously unwired
+// maps 1:1 onto the pre-existing, previously unwired
 // `user:preferences:*` scopes that seeded SDK keys already carry.
 @RequiredScopes('user:preferences:write')
 export class UserPreferencesController {

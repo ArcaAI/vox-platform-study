@@ -1,4 +1,4 @@
-"""Degrade-away-from-unhealthy routing at the /generate endpoint (TASK-725 Task 2).
+"""Degrade-away-from-unhealthy routing at the /generate endpoint.
 
 Hermetic: registry/task-manager are stubs, no live engines. RED: written before
 `generate.py`'s routing check existed.

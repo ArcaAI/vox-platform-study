@@ -186,7 +186,7 @@ class TransformerTokenClassifier(TokenClassifier):
                 entities = classifier.classify(request.text, entities)
 
             # Wire the previously dead record_entities at the
-            # real call-site (current-state-review §2.4 — zero call-sites
+            # real call-site (current-state-review — zero call-sites
             # outside its own definition). One call per DISTINCT entity_type so
             # the label stays bounded (the model's own fixed BIO-tag label set,
             # not free text), plus one "document processed" per call — this

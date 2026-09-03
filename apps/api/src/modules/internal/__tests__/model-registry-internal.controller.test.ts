@@ -1,12 +1,12 @@
 /**
  * ModelRegistryInternalController — the generic
- * `GET /internal/model-registry-credential` route (TASK-855 follow-on).
+ * `GET /internal/model-registry-credential` route ( follow-on).
  *
  * Guard choice: `@Public()` + `InternalServiceTokenGuard` (the
  * `EffectiveConfigController` pattern), NOT the STT-specific reserved
  * API-key-scope exemption `SttInternalController` carries.
  * `RESERVED_INTERNAL_SCOPE_CONTROLLERS` is FROZEN AT ONE MEMBER by owner
- * decision (`apps/api/src/bootstrap/api-key-scope-audit.ts`, TASK-761 gate
+ * decision (`apps/api/src/bootstrap/api-key-scope-audit.ts`, gate
  * G2/D-3) and pinned by `api-key-scope-audit.test.ts` — widening it is a
  * deliberate, reviewed change, not a side effect of adding a route. Every
  * caller this route needs to serve (nlp/tts/harness, and stt too) already

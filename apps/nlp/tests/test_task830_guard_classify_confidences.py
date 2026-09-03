@@ -1,4 +1,4 @@
-"""TASK-830 — `/guard/classify` returns per-label CONFIDENCES, not just labels.
+"""`/guard/classify` returns per-label CONFIDENCES, not just labels.
 
 The guardrail-plane classification route was the ONE surface in this service
 that answered with bare labels. `/classify/text` has always returned
@@ -13,8 +13,8 @@ tuples, then DISCARDS them in `_format_results` unless the caller asks with
 `include_confidence=True`. This service asked on the entity path and did not ask
 on the classify path.
 
-The consequence is measured in TASK-829: its session aggregate is a flag RATE,
-not the graded mean §5.1's formula describes, so per-tenant θ/Θ calibration
+The consequence is measured in : its session aggregate is a flag RATE,
+not the graded mean 's formula describes, so per-tenant θ/Θ calibration
 (Phase 4) cannot be built on it.
 
 The contract change is ADDITIVE. `results` keeps its exact shape — three
@@ -121,7 +121,7 @@ def test_a_multi_label_task_reports_a_confidence_per_returned_label(client, monk
 def test_a_confidence_shaped_verdict_still_yields_its_LABEL(client, monkeypatch):
     """The fail-OPEN this change closes.
 
-    Before TASK-830 the reduction accepted only `str` and `list`/`tuple`; a task
+    Before the reduction accepted only `str` and `list`/`tuple`; a task
     whose value was a mapping fell through BOTH branches and was OMITTED. Since
     `include_confidence=True` is precisely what turns those values into mappings,
     flipping the flag alone would have made every task silently vanish — and an

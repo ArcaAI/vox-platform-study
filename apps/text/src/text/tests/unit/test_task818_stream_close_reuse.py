@@ -1,4 +1,4 @@
-"""TASK-818 — a STREAMED generation must return its socket to the pool.
+"""a STREAMED generation must return its socket to the pool.
 
 Lane A (B-2) made the SDK client cache hit on every request and Lane B-8 gave
 each upstream one pooled transport, and both were verifiably working — yet the

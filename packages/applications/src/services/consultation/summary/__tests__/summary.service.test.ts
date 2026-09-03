@@ -21,8 +21,8 @@ import {
 } from '@arcaai/domains';
 
 /**
- * TASK-711 — `approveSummary` now calls the REAL
- * `ConsultationEntity.transitionTo` (state-machine.md §2), so every
+ * `approveSummary` now calls the REAL
+ * `ConsultationEntity.transitionTo` (so every
  * `mockConsultationRepository.findById` fixture must be a real entity
  * instance, not a duck-typed object. Defaults `status` to `PENDING_REVIEW`
  * (a legal predecessor of `SIGNED`) since most of this file's fixtures
@@ -148,7 +148,7 @@ const createMockContextItemRepository = () => {
     findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(),
     update,
-    // TASK-709: `updateSummary`/`approveSummary` now call the OCC-aware
+    // `updateSummary`/`approveSummary` now call the OCC-aware
     // Compare-And-Set variant. Delegate to `update` so every pre-existing
     // `.update.mockResolvedValue(...)` / `.mockImplementation(...)`
     // configuration in this suite keeps driving behavior unchanged; the CAS
@@ -164,7 +164,7 @@ const createMockConsultationRepository = () => {
   return {
     findById: vi.fn(),
     update,
-    // TASK-709: `approveSummary` now CASes the Consultation row too (see
+    // `approveSummary` now CASes the Consultation row too (see
     // `createMockContextItemRepository` above for why this delegates).
     updateWithVersion: vi.fn((id: string, entity: unknown, _expectedVersion?: number, _tx?: unknown) => update(id, entity)),
   };
@@ -318,7 +318,7 @@ describe('SummaryService', () => {
       undefined, // billing (@Optional)
       undefined, // aiModelRepository (@Optional)
       undefined, // noteGenerationService (@Optional)
-      // TASK-710 (re-opened): `IPhiRedactor` is REQUIRED — `extractEntities`
+      // (re-opened): `IPhiRedactor` is REQUIRED — `extractEntities`
       // aborts rather than posting raw PHI to the NLP service. A pass-through
       // double keeps every pre-existing assertion in this file (which asserts
       // on the NLP request body / persisted entities) byte-identical, while
@@ -774,7 +774,7 @@ describe('SummaryService', () => {
       await expect(service.extractEntities('ctx-ws')).rejects.toThrow(BadRequestException);
     });
 
-    // TASK-768: this used to assert a `BadRequestException` whose message was
+    // this used to assert a `BadRequestException` whose message was
     // `Failed to call NLP service: ${error}` — a 400 blaming the caller for an
     // absent dependency, carrying the NLP host:port. The service now RETHROWS
     // the cause unchanged; the gateway boundary
@@ -894,7 +894,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -931,7 +931,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -981,7 +981,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1058,7 +1058,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1126,7 +1126,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1207,7 +1207,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1263,7 +1263,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1338,7 +1338,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1381,7 +1381,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1655,7 +1655,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1715,7 +1715,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
+        // `IPhiRedactor` is a REQUIRED ctor dep; a pass-through
         // double keeps this fixture's assertions byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor (#27)
       );
@@ -1846,10 +1846,10 @@ describe('SummaryService', () => {
       );
     });
 
-    // TASK-709: OCC — updateSummary routes through the Compare-And-Set
+    // OCC — updateSummary routes through the Compare-And-Set
     // repository call, threading the caller-supplied `expectedVersion`
     // through, and never falls back to the legacy non-versioned write.
-    describe('optimistic concurrency (TASK-709)', () => {
+    describe('optimistic concurrency ', () => {
       it('routes through updateWithVersion using request.expectedVersion, not the legacy update()', async () => {
         const mockItem = createMockContextItem({ id: 'ctx-occ-1', content: 'Original' });
         mockContextItemRepository.findById.mockResolvedValue(mockItem);
@@ -2014,7 +2014,7 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
             updatedBy: null,
           }),
         );
@@ -2087,11 +2087,11 @@ describe('SummaryService', () => {
     // ===================================================================
     // RELAXED sign-off governance
     //
-    // Clinician-autonomy + full-audit model (doc 08 §7.1):
+    // Clinician-autonomy + full-audit model (doc 08 :
     //   Q2a — signing BEFORE assurance completes is allowed with NO ack; the
     //         sign proceeds and a SIGNED_BEFORE_ASSURANCE WORM annotation is
     //         appended so the late-verdict path can correlate.
-    //   Q4  — signing PAST a completed safety FLAG is allowed only via an
+    //   Q4 — signing PAST a completed safety FLAG is allowed only via an
     //         explicit one-click override flag (`overrideSafetyFlag`), recorded
     //         as a SAFETY_OVERRIDE WORM event (no free-text). Without the flag
     //         a safety FLAG still hard-blocks.
@@ -2262,11 +2262,11 @@ describe('SummaryService', () => {
     });
 
     // ===================================================================
-    // TASK-709 OCC — approveSummary CASes BOTH the Consultation row (its own
+    // OCC — approveSummary CASes BOTH the Consultation row (its own
     // freshly-read `.version`) and the ContextItem row (the caller-supplied
     // `expectedVersion`), never the legacy non-versioned `.update()`.
     // ===================================================================
-    describe('approveSummary — optimistic concurrency (TASK-709)', () => {
+    describe('approveSummary — optimistic concurrency ', () => {
       let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
       let gatedService: SummaryService;
 
@@ -2410,7 +2410,7 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
             updatedBy: null,
           }),
         );
@@ -2740,7 +2740,7 @@ describe('SummaryService', () => {
         consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+          status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
           updatedBy: null,
         }),
       );
@@ -2793,7 +2793,7 @@ describe('SummaryService', () => {
         undefined, // billing
         undefined, // aiModelRepository
         undefined, // noteGenerationService
-        // TASK-710 — REQUIRED redactor; pass-through keeps these usage-ledger
+        // REQUIRED redactor; pass-through keeps these usage-ledger
         // assertions (charCount, model attribution) byte-identical.
         { redact: vi.fn(async (text: string) => text) } as any, // phiRedactor
       );
@@ -2883,9 +2883,9 @@ describe('SummaryService', () => {
   });
 
   // ===========================================================================
-  // TASK-704 — Generator Entry-Point Seam
+  // Generator Entry-Point Seam
   // ===========================================================================
-  describe('TASK-704 NoteGenerationService seam', () => {
+  describe(' NoteGenerationService seam', () => {
     const createMockNoteGenerationService = () => ({
       generate: vi.fn(),
       resolveConfig: vi.fn(),
@@ -2952,14 +2952,14 @@ describe('SummaryService', () => {
       await expect(svc.generatePreSummary('c-1', {})).resolves.toBeDefined();
     });
 
-    it('generatePreSummary generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+    it('generatePreSummary generates unaffected when noteGenerationService is not wired (pre-fixtures)', async () => {
       const svc = buildServiceWithSeam(undefined);
       primeGeneratePreSummaryMocks();
 
       await expect(svc.generatePreSummary('c-1', {})).resolves.toBeDefined();
     });
 
-    // HUMAN-GATED (ticket README §6): generateSummary deliberately does NOT
+    // HUMAN-GATED: generateSummary deliberately does NOT
     // call `generate()` — it would start a real harness workflow as a side
     // effect on top of the legacy call this route always still runs. Only
     // the side-effect-free `resolveConfig` read is exercised, for logging.
@@ -3005,7 +3005,7 @@ describe('SummaryService', () => {
         await expect(svc.generateSummary('c-1', {})).resolves.toBeDefined();
       });
 
-      it('generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      it('generates unaffected when noteGenerationService is not wired (pre-fixtures)', async () => {
         const svc = buildServiceWithSeam(undefined);
         primeGenerateSummaryMocks();
 

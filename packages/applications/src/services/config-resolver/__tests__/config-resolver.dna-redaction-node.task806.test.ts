@@ -1,17 +1,17 @@
 /**
- * TASK-806 lane A, item 2 — DNA-REDACTION becomes a NODE.
+ * lane A, item 2 — DNA-REDACTION becomes a NODE.
  *
  * ## What the owner ruled, and what it replaces
  *
  * The decision was a triple: a tenant `dnaRedactionEnabled` cascade AND the doctor's own DNA
- * opt-in AND the department default `DepartmentAgent.dnaStylePolicy` VETO. TASK-815 deleted the
+ * opt-in AND the department default `DepartmentAgent.dnaStylePolicy` VETO. deleted the
  * veto with `DepartmentAgent`, and the owner APPROVED that loss with a rider — *"DNA-Redaction
  * must be configured as an agent node"* — because the direction of the loss is that a
  * consultation both surviving gates enable is now actually redacted.
  *
  * So the TENANT gate moves onto the graph: a tenant enables redaction by placing an ACTIVE
  * `agent.dna_redaction` node in its governing consultation definition. The DOCTOR opt-in does NOT
- * move — it is a clinician's own preference over their own writing style, which TASK-815 §12 P-4
+ * move — it is a clinician's own preference over their own writing style, which P-4
  * makes explicit — and the node declares whether it honours it (`requireDoctorOptIn`, default
  * true, which reproduces the surviving two-gate behaviour exactly).
  *

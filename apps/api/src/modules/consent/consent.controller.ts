@@ -12,7 +12,7 @@ import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, For
 
 /**
  * `ConsentGrantController` — admin CRUD over `ConsentGrant`
- * (TASK-712, consent-abac; README §4 Task 10 item 3), mounted at
+ * (consent-abac; Task 10 item 3), mounted at
  * `/admin/consent-grants` (global prefix → `/api/v1/admin/consent-grants`).
  *
  * This is the ONLY write surface for grants — `PatientConsentGuard`
@@ -29,16 +29,16 @@ import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, For
 @ApiTags('admin-consent-grants')
 @Controller('admin/consent-grants')
 @CanManage('ConsentGrant')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: patient consent grants are the PHI authorization root; added after TASK-708 s /admin/* sweep, so covered by no owner approval.
+// API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Reason: patient consent grants are the PHI authorization root; added after s /admin/* sweep, so covered by no owner approval.
 // This route family declared nothing about API-key access, which under the
 // deny-by-default rule is a boot failure. Rather than guess a scope (guessing
 // permissive is how the original gap was created), it is closed explicitly.
 // Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
+// owner confirms a real API-key use case — 's
 // "Reachability changes awaiting owner review" table.
 @ForbidApiKey()
-// SVC-NOTE (TASK-773, owner decision D-3) — CLOSED to the machine class.
+// SVC-NOTE (owner decision D-3) — CLOSED to the machine class.
 // Unlike the API-key note above, this is a decision about WHAT the surface is,
 // not a conservative default awaiting classification: consent is an act of a
 // PERSON. A grant recorded here asserts that a patient authorized a use of
@@ -66,7 +66,7 @@ export class ConsentGrantController {
   }
 
   /**
-   * The consent register (TASK-805). `externalPatientId` is OPTIONAL here —
+   * The consent register. `externalPatientId` is OPTIONAL here
    * it was required, and returned a bare array, which made this route a
    * per-patient lookup rather than a governance surface: HOPE stores no
    * `Patient` model, so an admin auditing consent had no way to discover the
@@ -78,7 +78,7 @@ export class ConsentGrantController {
   // the Consultation Scribe pre-flights the patient's consent through this
   // route before Start, and a clinician (or a super admin impersonating one)
   // holds no `manage`; without this override every clinician session showed a
-  // 403 before recording (TASK-858, hope-v2-dev 2026-09-03). `read` is granted
+  // 403 before recording (hope-v2-dev 2026-09-03). `read` is granted
   // tenant-scoped to the clinician policy in seed/01-policy.ts; rows stay
   // tenant-owned, so cross-tenant reads still resolve to nothing.
   @Get()

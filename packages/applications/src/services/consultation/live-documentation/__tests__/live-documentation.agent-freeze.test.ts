@@ -7,11 +7,11 @@
  * resolved bytes are the SYSTEM default, which is byte-identical to the in-code
  * constants, so the TEXT payload is unchanged down to the byte.
  *
- *   C3-T1  default-prompt parity (prompt + system_prompt byte-identical)
- *   C3-T2  freeze semantics + Redis adopt (cross-instance / crash recovery)
- *   C3-T3  SSE DTO additive-only
- *   C3-T4  fail-open (resolver throws ⇒ session still starts and flushes)
- *   C3-T5  zero added blocking I/O per flush
+ *   C3-T1 default-prompt parity (prompt + system_prompt byte-identical)
+ *   C3-T2 freeze semantics + Redis adopt (cross-instance / crash recovery)
+ *   C3-T3 SSE DTO additive-only
+ *   C3-T4 fail-open (resolver throws ⇒ session still starts and flushes)
+ *   C3-T5 zero added blocking I/O per flush
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -220,7 +220,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     await service.flush(CID);
 
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledTimes(2);
-    // TASK-816: the third argument is the NODE's `llmBinding`. This is the LEGACY FLUSH path —
+    // the third argument is the NODE's `llmBinding`. This is the LEGACY FLUSH path
     // no graph node made this call — so it must be `undefined`, i.e. the tenant `text.live`
     // AiTaskDefault, unchanged. Asserted rather than dropped: a binding appearing here would
     // mean the flush had invented one.

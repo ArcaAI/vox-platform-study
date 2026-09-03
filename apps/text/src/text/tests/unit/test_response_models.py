@@ -44,10 +44,10 @@ class TestOpenAPIResponseSchemas:
         ref_200 = responses["200"]["content"]["application/json"]["schema"].get("$ref", "")
         assert "GenerateResponse" in ref_200
 
-        # TASK-818 §3C.3(1): the 202-and-poll envelope is gone — a streaming
+        # the 202-and-poll envelope is gone — a streaming
         # request gets 200 + `text/event-stream`, which has no JSON schema to
         # declare. What replaced it in the contract is the 409 an
-        # `Idempotency-Key` reused with a different payload returns (§3C.6).
+        # `Idempotency-Key` reused with a different payload returns
         assert "202" not in responses, "the 202-and-poll indirection was removed"
         assert "409" in responses, "generate endpoint must declare idempotency_conflict"
 

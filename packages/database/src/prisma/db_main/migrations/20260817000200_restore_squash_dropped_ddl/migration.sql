@@ -9,7 +9,7 @@
 --   2. ConsentGrant's partial unique index — consent.prisma:65-72 explicitly
 --      warns NOT to "fix" this with a plain @@unique, because a plain unique
 --      would also collide on revoked rows and block re-granting.
---   3. The TASK-712 legacy-grant backfill (Q2 option (a)) for AI_DOCUMENTATION
+-- 3. The legacy-grant backfill (Q2 option (a)) for AI_DOCUMENTATION
 --      and HISTORY_RETRIEVAL. 22-consent-grant.ts deliberately does NOT seed
 --      those two purposes precisely because this backfill covered them — so
 --      losing it left consent enforcement (ON by default) denying the core

@@ -1,4 +1,4 @@
-"""`AiRuntimeProfile.extraJson` must reach the engine (TASK-858, RED-first).
+"""`AiRuntimeProfile.extraJson` must reach the engine (RED-first).
 
 The gateway's ``applyTextRuntimeProfile`` forwards a profile's engine-specific
 ``extraJson`` as the request field ``extra`` — the schema comment on that column

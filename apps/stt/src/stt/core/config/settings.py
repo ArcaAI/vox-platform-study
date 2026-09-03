@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     #
     # This class carries NO `env_prefix`, so every field below resolves to its
     # BARE uppercased name. That was defensible when each service read its own
-    # file; since TASK-558 lane C all seven deployables read ONE
+    # file; since lane C all seven deployables read ONE
     # `.env.<NODE_ENV>`, and a flat file has exactly one value per key. `PORT`,
     # `HOST`, `DEBUG` and `LOG_LEVEL` therefore belong to whoever writes them
     # last — in `.env.test` that is the gateway, which sets `PORT=8968`, so
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # read; anything that consults `settings.port` gets the wrong answer.
     #
     # The prefixed name is listed FIRST so it wins, and the bare name stays
-    # accepted so existing deployments keep working (TASK-799 B.3). Fields that
+    # accepted so existing deployments keep working. Fields that
     # name genuinely SHARED infrastructure — `DATABASE_URL`, `REDIS_URL`,
     # `MINIO_*` — are deliberately left bare: one address, one value, every
     # service.
@@ -167,7 +167,7 @@ class Settings(BaseSettings):
     # Object storage provider (platform default for the no-descriptor path).
     # Per-tenant requests may override this via a `storage` descriptor.
     #
-    # CONTROL-PLANE OWNED (TASK-799 A.3). The value comes from
+    # CONTROL-PLANE OWNED. The value comes from
     # `storage.platformDefault.provider` — the SYSTEM `TenantStorageConfig` row that
     # apps/api resolves through the same cascade — so the env path is closed
     # structurally, like every other migrated field. The default below is the
@@ -279,7 +279,7 @@ class Settings(BaseSettings):
         or os.path.expanduser("~/.cache/huggingface/hub"),
         description="HuggingFace model cache directory",
     )
-    # TASK-799 — CLOSED. The HuggingFace token is a BYO credential on
+    # CLOSED. The HuggingFace token is a BYO credential on
     # `AiProviderConnection` (`service='model-registry'`, `provider='huggingface'`),
     # resolved tenant -> SYSTEM for the tenant that OWNS the model being
     # fetched. See `stt/core/model_credentials.py`.
@@ -293,9 +293,9 @@ class Settings(BaseSettings):
     # value in tests; nothing in production reads it.
     huggingface_token: SecretStr | None = Field(
         default=None,
-        validation_alias="HUGGINGFACE_TOKEN__ENV_REMOVED_TASK_799",
+        validation_alias="HUGGINGFACE_TOKEN__ENV_REMOVED",
         description=(
-            "DEPRECATED and env-CLOSED (TASK-799). The HuggingFace token is a "
+            "DEPRECATED and env-CLOSED. The HuggingFace token is a "
             "model-registry provider connection, resolved per model-owner tenant."
         ),
     )
@@ -306,15 +306,15 @@ class Settings(BaseSettings):
     # the documented `STT_MODEL_S3_*` names are wired via explicit aliases —
     # every service shares one env file, and un-prefixed names would collide.
     #
-    # ONE name each. The `STT_V2_MODEL_S3_*` second spelling is GONE (TASK-799
-    # lane C): it was a rename shim from the service's `stt-v2` days, and
+    # ONE name each. The `STT_V2_MODEL_S3_*` second spelling is gone:
+    # it was a rename shim from the service's `stt-v2` days, and
     # nothing anywhere — code, sample, or comment — ever stated when the two
     # names would carry DIFFERENT values. So it was a coin flip which one an
     # operator set and a coin flip which one won, on fields that carry
     # credentials. `turbo.json#globalEnv` and the generated `.env.sample` still
     # list the `_V2_` names; retiring those declarations belongs to the env-file
     # lane (Phase 1.5), which owns both generated artifacts.
-    # TASK-799 — CLOSED, all three. Endpoint, access key id and secret key are
+    # CLOSED, all three. Endpoint, access key id and secret key are
     # ONE credential and now live together on `AiProviderConnection`
     # (`service='model-registry'`, `provider='s3'`): `baseUrl` = endpoint,
     # `extraJson.accessKeyId` = the non-secret principal, the encrypted field =
@@ -327,18 +327,18 @@ class Settings(BaseSettings):
     # as `huggingface_token` above.
     model_s3_endpoint: str | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_ENDPOINT__ENV_REMOVED_TASK_799",
-        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's baseUrl.",
+        validation_alias="STT_MODEL_S3_ENDPOINT__ENV_REMOVED",
+        description="DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's baseUrl.",
     )
     model_s3_access_key: SecretStr | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED_TASK_799",
-        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's extraJson.accessKeyId.",
+        validation_alias="STT_MODEL_S3_ACCESS_KEY__ENV_REMOVED",
+        description="DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's extraJson.accessKeyId.",
     )
     model_s3_secret_key: SecretStr | None = Field(
         default=None,
-        validation_alias="STT_MODEL_S3_SECRET_KEY__ENV_REMOVED_TASK_799",
-        description="DEPRECATED and env-CLOSED (TASK-799). Now the model-registry/s3 connection's encrypted key.",
+        validation_alias="STT_MODEL_S3_SECRET_KEY__ENV_REMOVED",
+        description="DEPRECATED and env-CLOSED. Now the model-registry/s3 connection's encrypted key.",
     )
     model_s3_secure: bool = Field(
         default=True,
@@ -531,7 +531,7 @@ class Settings(BaseSettings):
             "microphones; keep >=0.6 in production."
         ),
     )
-    # There is deliberately NO `voice_profile_embedding_dim` (TASK-799 lane C).
+    # There is deliberately NO `voice_profile_embedding_dim`.
     # Its own description conceded it "must match the deployed
     # `UserVoiceProfile.embedding vector(N)` column" — so it was one fact stored
     # in two places, only one of which an operator could change. Setting it to
@@ -593,7 +593,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    # `PRELOAD_PIPELINES` is REMOVED (TASK-799 lane C). It had been marked
+    # `PRELOAD_PIPELINES` is REMOVED. It had been marked
     # "DEPRECATED … not used for provider/model/pipeline selection" in its own
     # description while remaining fully settable, which is the worst of both:
     # an operator who set it got no warning and no effect on routing, because
@@ -983,7 +983,7 @@ class Settings(BaseSettings):
         # Bare `OTEL_SERVICE_NAME` is also `apps/nlp`'s first-choice alias and
         # the gateway's own; in the one shared env file it can only ever name
         # ONE service, so every other service's traces get mislabelled. Prefixed
-        # first, bare kept as the fallback (TASK-799 B.3).
+        # first, bare kept as the fallback.
         validation_alias=AliasChoices("STT_OTEL_SERVICE_NAME", "OTEL_SERVICE_NAME"),
         description="Service name in traces and metrics",
     )

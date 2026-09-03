@@ -1,4 +1,4 @@
-"""TASK-818 Lane A / A-7 — the router must not break provider-side prompt caching.
+"""/ A-7 — the router must not break provider-side prompt caching.
 
 4.4, and the reason it is worth a regression fence of its own: provider prompt
 caching is the highest-value cost lever available to this platform, AND it is the

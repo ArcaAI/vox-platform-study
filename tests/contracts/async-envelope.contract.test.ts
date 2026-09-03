@@ -1,5 +1,5 @@
 /**
- * TASK-717 Task 6 — wires the reusable conformance suite against the Task 5
+ * wires the reusable conformance suite against the Task 5
  * Text reference implementation's envelope recipe.
  *
  * `assertAsyncConformance` (`@arcaai/async-contract`) cannot import Python
@@ -9,19 +9,19 @@
  * responses instead of calling it) — this test drives an in-memory producer
  * that reproduces the EXACT recipe `apps/text/src/text/services/
  * task_manager.py`'s `_encode_chunk_data`/`_decode_chunk_data` implement:
- *   - `type`:            `text.stream.<chunk.type>`
- *   - `idempotencyKey`:  `AsyncIdempotencyKey.textChunk(taskId, sequence)`
+ *   - `type`: `text.stream.<chunk.type>`
+ *   - `idempotencyKey`: `AsyncIdempotencyKey.textChunk(taskId, sequence)`
  *     (`text:task:<taskId>:chunk:<sequence>`, matching `AsyncIdempotencyKey.
  *     textChunk` in `packages/async-contract/src/idempotency.ts` and
  *     `AsyncIdempotencyKey.text_chunk` in `packages/py-async-contract/src/
  *     hope_async_contract/idempotency.py` — the SAME recipe on both sides,
  *     proven by `test_parity.py`)
- *   - resume tokens:     `encodeResumeToken('redis-stream', <redis msg id>)`
+ *   - resume tokens: `encodeResumeToken('redis-stream', <redis msg id>)`
  *     (`stream.py`'s SSE `id:` field)
  *
  * A green run here means: if a Python producer follows this documented
  * recipe (as Task 5 does), it conforms to the async envelope contract. This
- * is the artifact TASK-722 (exposure SSE) and TASK-727 (webhook channel)
+ * is the artifact (exposure SSE) and (webhook channel)
  * import and run against their OWN producer — see `async-contract.md`.
  */
 import { describe, it, expect } from 'vitest';
@@ -66,10 +66,10 @@ class TextStreamProducer implements AsyncProducerUnderTest {
    * A genuine at-least-once REDELIVERY of the same logical chunk write (the
    * conformance suite drives this by calling `produce()` twice with an
    * identical `correlationId`) must reuse the same `idempotencyKey` and
-   * `occurredAt` (design doc §3.5's "derived from intent, never chance") —
+   * `occurredAt` ( "derived from intent, never chance")
    * it still appends a fresh Redis Stream entry (a new `id`/resume token),
    * exactly as a retried XADD would.
-   */
+ */
   private readonly identity = new Map<string, { sequence: number; occurredAt: string }>();
 
   async produce(input: { type: string; payload: unknown; correlationId: string }): Promise<unknown> {
@@ -110,7 +110,7 @@ class TextStreamProducer implements AsyncProducerUnderTest {
   }
 }
 
-describe('async envelope contract — Text stream chunk producer (TASK-717 Task 5 recipe)', () => {
+describe('async envelope contract — Text stream chunk producer (Task 5 recipe)', () => {
   it('conforms to the async envelope contract end to end', async () => {
     const problems = await assertAsyncConformance(new TextStreamProducer());
     expect(problems).toEqual([]);

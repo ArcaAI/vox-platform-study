@@ -266,7 +266,7 @@ class SileroVADService:
             from huggingface_hub import hf_hub_download
 
             settings = get_settings()
-            # TASK-799 — Silero VAD is a PLATFORM model with no tenant owner, so
+            # Silero VAD is a PLATFORM model with no tenant owner, so
             # its token resolves the SYSTEM tier. The repo is public, so `None`
             # (no tier has an opinion) is the normal, working case.
             from stt.diarization.embedding_service import _resolve_hf_token

@@ -20,7 +20,7 @@ TEST_TENANT = "11111111-1111-1111-1111-111111111111"
 
 
 class RecordingProvider:
-    """Stub GLiNER provider — the analyse job's only engine (TASK-735 Phase 2b)."""
+    """Stub GLiNER provider — the analyse job's only engine."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []

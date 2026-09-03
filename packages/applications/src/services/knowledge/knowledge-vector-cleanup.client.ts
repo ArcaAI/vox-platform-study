@@ -8,7 +8,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
  * `KnowledgeIngestClient`.
  *
  * Calls the harness internal `DELETE /api/v1/internal/knowledge/{documentId}`
- * endpoint (TASK-728), which removes every Qdrant point belonging to one
+ * endpoint, which removes every Qdrant point belonging to one
  * document, tenant-scoped. `KnowledgeDocumentService.deleteDocument` calls
  * this BEFORE the Postgres soft-delete commits and aborts the delete if it
  * throws (fail-closed — see the service docstring for the reasoning). Mirrors

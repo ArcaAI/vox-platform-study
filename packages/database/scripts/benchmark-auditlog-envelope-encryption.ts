@@ -161,7 +161,7 @@ async function transitEncrypt(client: VaultClientLike, cfg: BenchArgs, plaintext
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
-  console.log(`\nTASK-369 Phase 3D — AuditLog envelope-encryption benchmark`);
+  console.log(`\nPhase 3D — AuditLog envelope-encryption benchmark`);
   console.log(
     `rows=${args.rows} withDb=${args.withDb}(db-rows=${args.dbRows}) withPerRowTransit=${args.withPerRowTransit}(${args.perRowTransitRows})\n`,
   );

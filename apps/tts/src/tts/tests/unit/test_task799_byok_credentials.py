@@ -290,7 +290,7 @@ def test_keyless_override_injects_nothing(name: str, cls: type):
     """A keyless row injects on NEITHER tier.
 
     That guard — not the provider list — is what stops a SYSTEM row's `base_url`
-    from being mistaken for a credential (TASK-799 plan, "Phase 2 landmines").
+    from being mistaken for a credential ( plan, "Phase 2 landmines").
     """
     settings = _bare_settings()
     assert _build_override_engine(settings, name, {"base_url": "https://x/"}) is None

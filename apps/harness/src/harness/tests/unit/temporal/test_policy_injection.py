@@ -141,7 +141,7 @@ class TestFetchPolicyActivity:
 
     @pytest.mark.asyncio
     async def test_fetch_policy_never_forwards_consultation_id(self, env, monkeypatch):
-        # TASK-815 / OD-12 retired the per-agent `harnessOverrides` overlay, which
+        # / OD-12 retired the per-agent `harnessOverrides` overlay, which
         # was the only reason this activity threaded the consultation id onto the
         # policy GET. The gateway route still accepts the query param, so sending
         # it would not fail — it would just claim an overlay that no longer runs.
@@ -305,7 +305,7 @@ class TestPolicyDrivesInferentialGate:
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
-                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # tenant-scoped safety screen: both workflow call sites
                 # thread this; without it the safety sensor degrades by design.
                 tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
@@ -331,7 +331,7 @@ class TestPolicyDrivesInferentialGate:
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
-                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # tenant-scoped safety screen: both workflow call sites
                 # thread this; without it the safety sensor degrades by design.
                 tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
@@ -355,7 +355,7 @@ class TestPolicyDrivesInferentialGate:
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
-                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # tenant-scoped safety screen: both workflow call sites
                 # thread this; without it the safety sensor degrades by design.
                 tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",
@@ -395,7 +395,7 @@ class TestJudgeSelectionFailClosed:
             result = await env.run(
                 activities.run_inferential_sensors,
                 RunInferentialSensorsInput(
-                    # tenant-scoped safety screen (TASK-737): both workflow call sites
+                    # tenant-scoped safety screen: both workflow call sites
                     # thread this; without it the safety sensor degrades by design.
                     tenant_id="11111111-1111-1111-1111-111111111111",
                     note_text="note",
@@ -429,7 +429,7 @@ class TestJudgeSelectionFailClosed:
         result = await env.run(
             activities.run_inferential_sensors,
             RunInferentialSensorsInput(
-                # tenant-scoped safety screen (TASK-737): both workflow call sites
+                # tenant-scoped safety screen: both workflow call sites
                 # thread this; without it the safety sensor degrades by design.
                 tenant_id="11111111-1111-1111-1111-111111111111",
                 note_text="note",

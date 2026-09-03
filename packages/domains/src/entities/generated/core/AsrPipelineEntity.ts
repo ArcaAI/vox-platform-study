@@ -22,7 +22,7 @@ export interface IAsrPipelineEntity extends IBaseTaggedEntity {
   // interface for the same reason as `isDefault` (DB defaults cover creates).
   sourceTemplateSlug?: string | null;
   templateLocked?: boolean;
-  // TASK-843 — this row's place in the canonical task taxonomy. CONSTANT for
+  // this row's place in the canonical task taxonomy. CONSTANT for
   // the model: every ASR pipeline is a speech-to-text binding. Optional on the
   // interface for the same reason as `isDefault` (the DB default covers
   // creates), and non-optional on the class with the matching code default.

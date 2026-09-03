@@ -40,7 +40,6 @@ export const NO_OPTIMISTIC_CONCURRENCY_KEY = 'noOptimisticConcurrency';
  *    a contradiction.
  *  - It is not a way to silence a route that simply has not been migrated yet;
  *    those belong in the inventory
- *    (`docs/implementation/TASK-776-API-Contract-Test-Suite/occ-coverage-inventory.md`).
  *
  * @see apps/api/src/bootstrap/occ-coverage-audit.ts
  * @see apps/api/src/decorators/requiresIfMatch.decorator.ts

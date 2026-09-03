@@ -47,7 +47,7 @@ describe('UserDepartmentsMeController', () => {
     });
 
     /**
-     * TASK-815 §12 (P-4) — the ownership property the playground's department
+     *  — the ownership property the playground's department
      * picker now RESTS on.
      *
      * The Consultation Scribe moved its picker off `admin/departments` (403 for
@@ -55,7 +55,7 @@ describe('UserDepartmentsMeController', () => {
      * the CLS principal and nothing else: under impersonation CLS holds the
      * IMPERSONATED clinician, so the read must follow the clinician, never the
      * admin who is acting as them, and never an id supplied by the caller.
-     */
+ */
     it('follows the IMPERSONATED clinician, not the admin acting as them', async () => {
       clsService = createMockClsService({ id: 'doctor-derm', impersonatedBy: 'tenant-admin-1' } as never);
       controller = new UserDepartmentsMeController(userDepartmentService as never, clsService as never);

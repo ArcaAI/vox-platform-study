@@ -51,7 +51,7 @@ class HarnessGateConfig(BaseModel):
     gate_escalation_seconds: float = 43_200.0
     # Optimistic two-phase delivery. Snapshotted at
     # workflow start (the behaviour key) so it stays deterministic across replay;
-    # the durable ``workflow.patched("task-355-optimistic-delivery")`` marker is the
+    # the durable ``workflow.patched`` marker is the
     # separate replay key. BOTH must be set for the optimistic path to run. Default
     # False ⇒ the legacy single-phase path, byte-identical to before optimistic delivery.
     optimistic_delivery_enabled: bool = False
@@ -59,12 +59,12 @@ class HarnessGateConfig(BaseModel):
     # gate ABANDONS (stops escalating + completes, approved=False) instead of escalating
     # forever. Loop-safety bound, not a policy knob (carried from the input over a policy
     # merge, like ``optimistic_delivery_enabled``). Behaviour is patch-gated by
-    # ``workflow.patched("task-458-gate-terminal-abandon")`` ⇒ replay-safe.
+    # ``workflow.patched`` ⇒ replay-safe.
     gate_max_escalations: int = 3
     # Cap on clinician-edit-driven optimistic assurance re-runs. After
     # this many edit re-runs the loop binds to the latest edit but STOPS re-running the
     # costly inferential pass, so N rapid edits can't drive N passes. Patch-gated by
-    # ``workflow.patched("task-458-edit-rerun-cap")`` ⇒ replay-safe.
+    # ``workflow.patched`` ⇒ replay-safe.
     max_edit_reruns: int = 5
 
 
@@ -88,7 +88,7 @@ class HarnessDocWorkflowInput(BaseModel):
     # harness a transcript REF instead of the inline blob; until then the harness threads
     # ``transcript_text`` inline (ref None) and every consuming activity resolves inline-or-ref.
     transcript_ref: ClaimCheckRef | None = None
-    # TASK-712 (consent-abac Phase 4) — the consultation's external patient id
+    # (consent-abac Phase 4) — the consultation's external patient id
     # (``Consultation.patientId``), threaded through to the ``call_mcp_tool``/
     # ``retrieve_context`` activities so they can key a `ConsentClient` lookup.
     # ADDITIVE-OPTIONAL: None (every legacy start payload, and any caller that
@@ -106,7 +106,7 @@ class HarnessDocWorkflowInput(BaseModel):
     redaction_rules: list[RedactionRule] = Field(default_factory=list)
     template: str | None = None
     # Text generation defaults (None => Text service default).
-    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # renamed these from smr_provider/smr_model. These payloads are
     # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
     # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
     # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
@@ -208,7 +208,7 @@ class TrajectoryContext(BaseModel):
     ``is_regen`` marks a bounded-regen generation (drives ``harness_regen_total``).
 
     ``workflow_version_id``/``stage_id``/``node_id``/``node_type`` are ADDITIVE-OPTIONAL
-    (TASK-718 Task 7) — a WorkflowInterpreter run carries a ``sessionId``, not a
+    a WorkflowInterpreter run carries a sessionId, not a
     ``consultationId``, so ``consultation_id`` stays ``None`` for those rows; the four new
     fields identify which interpreter node a step belongs to. `test_gating_consolidation_replay
     .py`'s additive-optional-field assertion style covers this same discipline for
@@ -303,7 +303,7 @@ class HarnessPolicy(BaseModel):
     safety_enabled: bool = True
     phi_enabled: bool = True
     phi_fail_closed: bool = True
-    # TASK-816 Phase 4 removed ``safety_provider`` / ``safety_model``. Their Prisma columns
+    # removed safety_provider / safety_model. Their Prisma columns
     # were dropped, so apps/api no longer sends the keys — and keeping the fields would have
     # meant ``from_api`` resolving these two literals on every run: a hardcoded engine name and
     # model id with no reader, which rule 00 §Configuration Principles forbids. The guardrail
@@ -311,7 +311,7 @@ class HarnessPolicy(BaseModel):
     # AiTaskDefault (tenant -> SYSTEM, fail-closed); the harness only supplies the text.
     # ``extra="ignore"`` above is what makes this replay-safe: a history recorded before the
     # drop still carries the keys and still decodes, they are simply ignored.
-    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # renamed these from smr_provider/smr_model. These payloads are
     # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
     # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
     # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
@@ -517,7 +517,7 @@ class CallMcpToolInput(BaseModel):
     # PHI egress policy snapshot (mirrors the generate/inferential egress guard).
     phi_enabled: bool = True
     phi_fail_closed: bool = True
-    # TASK-712 (consent-abac Phase 4) — consent-gate identity. ADDITIVE-OPTIONAL:
+    # (consent-abac Phase 4) — consent-gate identity. ADDITIVE-OPTIONAL:
     # None on an old/legacy input makes the activity treat consent as
     # UNAVAILABLE (fail-closed, but distinguishable from a genuine denial —
     # R4) rather than raise a TypeError. No new workflow command, replay-safe.
@@ -623,7 +623,7 @@ class GenerateInput(BaseModel):
 
     prompt: str
     system_prompt: str | None = None
-    # TASK-737 — the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
+    # the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
     # outbound Text call. ADDITIVE-OPTIONAL (default "") so an old history still
     # deserializes and replays; going forward every workflow populates it. An empty
     # value reaching `TextClient.generate` is a CALLER defect and raises there rather
@@ -685,7 +685,7 @@ class RetrieveContextInput(BaseModel):
     # policy. None ⇒ the activity falls through to ``HARNESS_RETRIEVAL_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
     retrieval_enabled: bool | None = None
-    # TASK-712 (consent-abac Phase 4) — consent-gate identity. See
+    # (consent-abac Phase 4) — consent-gate identity. See
     # CallMcpToolInput's field comment: ADDITIVE-OPTIONAL, None ⇒ UNAVAILABLE
     # (fail-closed) rather than a crash.
     external_patient_id: str | None = None
@@ -711,10 +711,10 @@ class RetrievedContext(BaseModel):
 
 
 class DispatchBatchTranscriptionInput(BaseModel):
-    """Inputs for the ``dispatch_batch_transcription`` activity (TASK-724 Task 5).
+    """Inputs for the dispatch_batch_transcription activity.
 
     ``pipeline_id`` is the resolved ``AsrPipeline`` id a published STT
-    `WorkflowDefinition` compiled to (TASK-724 Task 4's
+    `WorkflowDefinition` compiled to ('s
     ``SttPipelineCompilerService.compileAndPublish`` write path, or
     ``SttPipelineResolverService.resolvePipelineId`` re-deriving the same id).
     ``consultation_id`` doubles as the idempotency correlation key: apps/api
@@ -757,7 +757,7 @@ class DispatchBatchTranscriptionOutput(BaseModel):
 
 
 class SpeechSynthesisInput(BaseModel):
-    """Inputs for the ``dispatch_speech_synthesis`` activity (TASK-849 lane B, step 5).
+    """Inputs for the dispatch_speech_synthesis activity ( lane B, step 5).
 
     The TTS mirror of :class:`DispatchBatchTranscriptionInput`, and deliberately the same
     SHAPE: harness names what it wants by REFERENCE and apps/api resolves it. ``voice`` is an
@@ -904,7 +904,7 @@ class RunInferentialSensorsInput(BaseModel):
     consultation_id: str | None = None
     tenant_id: str | None = None
     job_id: str | None = None
-    # Workflow-threaded, data-only verdict cache (L2). Content-addressed
+    # Workflow-threaded, data-only verdict cache. Content-addressed
     # {claim_verdict_key: supported} carried in from earlier inferential passes; the activity
     # seeds its cache from this and re-judges only cache-missing (changed) claims, reusing the
     # rest byte-identically. Additive-optional default ⇒ no new workflow command, no
@@ -1159,7 +1159,7 @@ class ApplyRedactionInput(BaseModel):
     note_text: str
     note_text_ref: ClaimCheckRef | None = None
     rules: list[RedactionRule] = Field(default_factory=list)
-    # TASK-737 — the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
+    # the tenant this work belongs to, forwarded as `X-Tenant-Id` on the
     # outbound Text call. ADDITIVE-OPTIONAL (default "") so an old history still
     # deserializes and replays; going forward every workflow populates it. An empty
     # value reaching `TextClient.generate` is a CALLER defect and raises there rather
@@ -1217,7 +1217,7 @@ LOOP_ACTION_NLP_EXTRACT_ENTITIES = "nlp.extract_entities"
 LOOP_ACTION_HARNESS_FINALIZE = "harness.finalize"
 LOOP_ACTION_CLIENT_EMIT = "client.emit"
 
-# TASK-812 — the ENDPOINT STAGE's three action keys. These are the SAME strings as the three
+# the ENDPOINT STAGE's three action keys. These are the SAME strings as the three
 # `trigger: 'on-end'` node types in `packages/workflow-contract/src/node-registry.ts`, and that
 # is the point: the endpoint sequence an admin orders is a list of these keys, whether the
 # consultation runs on the legacy loop (which dispatches them here) or on an authored graph
@@ -1249,7 +1249,7 @@ LOOP_SKIP_DEPTH_CAP = "depth_cap"
 LOOP_SKIP_BUDGET_EXHAUSTED = "budget_exhausted"
 LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
 
-# TASK-812 — an ENDPOINT action whose bounded retries were exhausted. Its own reason rather than
+# an ENDPOINT action whose bounded retries were exhausted. Its own reason rather than
 # a reuse of `unsupported_action`: an action the platform does not implement and an action that
 # implements fine but could not reach its endpoint are different operational facts, and the
 # second is the one that means "go look at the gateway".
@@ -1276,7 +1276,7 @@ AGENT_ROLE_PRIMARY = "PRIMARY"
 AGENT_ROLE_SPECIALIST = "SPECIALIST"
 
 # Output kinds NO specialist may ever write, whatever its configured
-# ``writeScope`` says (/D12 + ). This is a PLATFORM FLOOR, not a
+# ``writeScope`` says (/D12 +). This is a PLATFORM FLOOR, not a
 # per-agent setting: the primary owns the note and the gate exclusively, and a
 # tenant misconfiguring a specialist's write scope must not be able to hand that
 # ownership away. Enforced by the orchestrator — outside the agent's own code —
@@ -1373,7 +1373,7 @@ class ConsultationLoopConfig(BaseModel):
     consultation_id: str | None = None
     department_id: str | None = None
     agent_id: str | None = None
-    # The two immutable version ids this run is pinned to ( / ).
+    # The two immutable version ids this run is pinned to.
     agent_config_version_id: str | None = None
     context_schema_version_id: str | None = None
     subscriptions: list[LoopSubscription] = Field(default_factory=list)
@@ -1493,7 +1493,7 @@ class LoopFinalizeRequest(BaseModel):
     conversation_language: str = "en"
     dna_style_id: str | None = None
     template: str | None = None
-    # TASK-740 renamed these from ``smr_provider``/``smr_model``. These payloads are
+    # renamed these from smr_provider/smr_model. These payloads are
     # RECORDED IN TEMPORAL HISTORY, so a bare rename makes every pre-740 history fail
     # to decode ("Failed decoding arguments") on replay — or, on an ``extra="ignore"``
     # model, silently lose the selection. The legacy key is a VALIDATION alias ONLY:
@@ -1516,7 +1516,7 @@ class ConsultationEndingSignal(BaseModel):
     reason: str | None = None
     persist_snapshot: bool = True
     finalize: LoopFinalizeRequest | None = None
-    #: TASK-814 §2b — advisory transcript corrections the CLINICIAN accepted (from
+    # — advisory transcript corrections the CLINICIAN accepted (from
     #: ``StopRecordingRequest.acceptedProposals``, forwarded verbatim). Threaded into
     #: ``CaptureFeedbackInput.accepted_proposals`` when the endpoint sequence's
     #: ``feedback.capture`` action dispatches (``_run_endpoint_action`` in ``workflows.py``), so
@@ -2013,7 +2013,7 @@ class ConsultationLoopWorkflowResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# TASK-812 — the ENDPOINT STAGE
+# the ENDPOINT STAGE
 #
 # The ordered sequence that runs before a consultation session closes. Three
 # payloads, one per endpoint node type, all crossing the same

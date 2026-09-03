@@ -79,7 +79,7 @@ export const ModelType = {
  * switch; the DTO layer validates with `@IsIn(AI_MODEL_PROVIDERS)`.
  *
  * `ollama` is a SELECTABLE provider with NO platform-seeded catalog rows, and
- * that pairing is deliberate (TASK-736, owner decision 2026-08-17: "ollama
+ * that pairing is deliberate (owner decision 2026-08-17: "ollama
  * provider logic must be available, however, model catalog related to ollama
  * must be removed"). It reverses the 2026-08-16 directive that removed the
  * provider outright. The platform ships no Ollama model because it standardises
@@ -129,9 +129,9 @@ export type TtsVoiceBinding = { id: string; locale: string };
  */
 /**
  * The CLINICAL TAXONOMY a token-classification (NER) checkpoint executes against
- * (TASK-799 lane G). `apps/nlp` used to carry all four of these as Python
+ * . `apps/nlp` used to carry all four of these as Python
  * literals or `TOKEN_CLASSIFIER_*` / `NLP_LINKER_*` env fields; rule 00
- * §Configuration Principles names a threshold, taxonomy or label set as neither.
+ * Principles names a threshold, taxonomy or label set as neither.
  *
  * It rides on the MODEL ROW rather than in a settings key because most of it IS
  * a property of the checkpoint — which labels it emits meaning "nothing", how
@@ -194,7 +194,7 @@ export type ClinicalTaxonomy = {
 };
 
 /**
- * The MiniCheck calibration gate's ground truth (TASK-799 lane G), for an NLI
+ * The MiniCheck calibration gate's ground truth , for an NLI
  * entailment checkpoint. `apps/nlp` keeps the ADAPTER (the `'predict: '`
  * template and the 3/209 label-token read) in code — no other value of those
  * makes it work — but refuses to load a row whose declared `adapter` is
@@ -238,7 +238,7 @@ export type LabelTaxonomy = {
  * service never branches on a model id — the capability envelope is
  * configuration, and a selection pointing a `classify_text` task at an
  * extraction-only row is wrong at the catalog, not at inference time.
- * TASK-778 proved this is load-bearing: every checkpoint ANSWERS every verb,
+ * proved this is load-bearing: every checkpoint ANSWERS every verb,
  * so a wrong selection mis-answers confidently instead of failing.
  */
 export type AiModelCapability = 'extract_entities' | 'classify_text';
@@ -247,7 +247,7 @@ export type AiModelCapability = 'extract_entities' | 'classify_text';
 export type NlpModelCapability = AiModelCapability;
 
 /**
- * TASK-847 finding F-32 — which GENERATION hyper-parameters a catalogue row, as served by its
+ * finding F-32 — which GENERATION hyper-parameters a catalogue row, as served by its
  * provider, actually accepts.
  *
  * The vocabulary is `GENERATION_HYPERPARAMETERS` from `@arcaai/workflow-contract`, restated here
@@ -302,16 +302,16 @@ export interface AiModelSeed {
    * ahead of `sourceUri` scheme dispatch. Weights are read IN PLACE from this
    * path, never copied.
    *
-   * DELIBERATELY NOT HAND-SET on any seed row (TASK-855). The path segment
+   * DELIBERATELY NOT HAND-SET on any seed row. The path segment
    * under the slug is CONTENT-DERIVED — `<quant>-<first 12 of
    * sha256(SHA256SUMS)>`, produced by the `hope-models-publish` Job — so it
    * cannot be known, let alone typed here, before a model is actually
-   * published to the `hope-models` bucket. The TASK-855 Phase 2 download
+   * published to the `hope-models` bucket. The download
    * action writes this field back automatically once a model is fetched,
    * alongside `downloadStatus`/`checksum` — do NOT hand-author a value here;
    * an absent value simply falls through to `sourceUri` scheme dispatch with
    * a structlog warning, so it is always safe to omit.
-   */
+ */
   localPath?: string | null;
   format: (typeof AiModelFormat)[keyof typeof AiModelFormat];
   /** Canonical serving provider. */
@@ -323,14 +323,14 @@ export interface AiModelSeed {
   tags: string[];
   /**
    * Per-model extras: TTS `{voices}`, Azure LLM `{azureDeployment}`, guardrail
-   * `{policy}` (TASK-777 — `apps/guardrail/src/guardrail/core/policy.py`'s
+   * `{policy}` — `apps/guardrail/src/guardrail/core/policy.py`'s
    * governed key table, resolved through the same tenant → SYSTEM cascade as
    * model selection; a key declared `failMode: closed` there — e.g.
    * `medicalValidationCriteria` — is NOT a code default and MUST be seeded here
    * or the resolving endpoint fails closed with 503), and — for the NLP safety
-   * plane (TASK-778) — the capability envelope, languages and label taxonomy
+   * plane — the capability envelope, languages and label taxonomy
    * that keep model ids and label sets out of Python.
-   */
+ */
   metaData?: {
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;

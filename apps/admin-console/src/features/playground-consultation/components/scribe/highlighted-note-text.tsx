@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-797 W3 — the case note's text, with detected clinical entities marked inline.
+ * the case note's text, with detected clinical entities marked inline.
  *
  * The splitting and, crucially, the VERIFICATION of every offset lives in
  * `../../lib/entity-highlights` so the safety property is testable without React: a span

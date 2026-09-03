@@ -5,7 +5,7 @@ import { redirect308 } from '../../common';
 import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old path retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old path retired 2026-08-18.
  *
  * `entitlements/me` folded into the tenant self alias as
  * `tenants/me/entitlements`.

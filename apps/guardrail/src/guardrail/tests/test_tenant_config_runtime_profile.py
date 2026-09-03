@@ -6,7 +6,7 @@ runtime profile (temperature / maxTokens / timeoutS).
 
 The existing fail-safe posture must not be weakened: profile fields stay optional
 everywhere, and an absent profile leaves the judge policy's own defaults in force.
-Since TASK-735 Phase 2b the profile lands on the DELEGATING client rather than on
+Since the profile lands on the DELEGATING client rather than on
 an env engine sub-config — the tuning contract is unchanged, its destination moved.
 """
 
@@ -25,7 +25,7 @@ def settings() -> Settings:
     return Settings()
 
 
-# TASK-777 A-3: the criteria that decides the verdict is CONFIG (policy key
+# the criteria that decides the verdict is CONFIG (policy key
 # `medicalValidationCriteria`, failMode=closed) with no code default, so the
 # resolved config must carry one before a judge can be built at all.
 _POLICY = {"medicalValidationCriteria": "you are a medical context validator"}

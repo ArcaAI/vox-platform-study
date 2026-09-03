@@ -5,14 +5,14 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
 /**
- * Platform-issued machine identity for administration (TASK-762).
+ * Platform-issued machine identity for administration.
  *
  * HAND-AUTHORED — `gen:entity` reconciles and coverage-checks committed
  * entities; it never creates one (`03-domain-layer.md` §Generated Code
  * Discipline). Follows the `AiProviderConnection*` exemplar.
  *
  * This is the THIRD credential class. It shares no mechanism with tenant API
- * keys (`ApiKey`) or the shared peer-service token, because the TASK-708 §6
+ * keys (`ApiKey`) or the shared peer-service token, because the
  * owner ruling forbids mixing the `/admin/*` and `/internal/*` planes. The
  * structural consequence enforced here is the SCOPE NAMESPACE: every scope must
  * start with `svc:`. The `admin:*` vocabulary belongs to tenant API keys; a
@@ -21,7 +21,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
  *
  * NO SECRET MATERIAL lives on this entity. `credentialsRef` /
  * `previousCredentialsRef` are VAULT PATHS (`09-infrastructure-devops.md`
- * §Configuration Tiers: "never put a credential in a DB column in plaintext"),
+ * Tiers: "never put a credential in a DB column in plaintext"),
  * and `secretVerifier` / `previousSecretVerifier` are peppered one-way HMACs —
  * the same verifier shape `ApiKey.keyHash` uses. Business rules that need the
  * tenant→SYSTEM cascade or the issuance privilege gate live in

@@ -1,4 +1,4 @@
-"""The GENERIC (``agentic``) node catalogue — the Python half of TASK-847.
+"""The GENERIC (agentic) node catalogue — the Python half of.
 
 Eight node types whose behaviour is CONFIGURATION rather than key, mirroring
 ``packages/workflow-contract/src/node-registry.ts``. The cross-language parity guard
@@ -17,13 +17,13 @@ observable rather than papered over:
 ``agentic.guardrail``            DELEGATION to ``interpreter_guardrail_check``.
 ``agentic.stt``                  REAL, and this is the PROMOTION the ticket asks for: it
                                  dispatches ``dispatch_batch_transcription``, the existing
-                                 TASK-724 Task 5 batch path, instead of returning ``DEGRADED``
+                                 batch path, instead of returning DEGRADED
                                  like every ``stt.*`` placeholder does.
-``agentic.tts``                  REAL, and this is the PROMOTION TASK-849 lane B asks for: it
+agentic.tts REAL, and this is the PROMOTION lane B asks for: it
                                  dispatches ``dispatch_speech_synthesis``, writes the audio to
                                  the claim-check store, and streams frames on lane A's delta
                                  lane. Three existing mechanisms, no fourth.
-``agentic.loop``                 OBSERVABLE non-execution on THIS path. TASK-848 made the loop
+agentic.loop OBSERVABLE non-execution on THIS path. made the loop
                                  real via a child workflow; this activity is what a history
                                  recorded before that gate replays through.
 ===============================  ==========================================================
@@ -31,7 +31,7 @@ observable rather than papered over:
 ## Why ``agentic.loop`` is ``implemented: true`` and still does not run here
 
 ``compile()`` REFUSES any graph containing an ``implemented: false`` node type
-(``nodeInfo()`` returns undefined), and TASK-847's own verification criterion is *"a graph
+(nodeInfo returns undefined), and own verification criterion is *"a graph
 using every new node type compiles to a valid IR"*. So the choice is not between "runs" and
 "refused at compile" — it is between an honest ``DEGRADED`` naming the ticket that owns the work,
 and a silent ``SUCCEEDED`` for work that never happened. This module takes the first, which is
@@ -42,7 +42,7 @@ trajectory.
 ## What is NOT here, and must not be added
 
 **No resolution of any reference.** ``providerConfigRef``, ``tools[].mcpServerId`` and
-``pipelineRef`` are REFERENCES on the compiled graph (TASK-837 §3.4 rule 16); resolving them
+pipelineRef are REFERENCES on the compiled graph ( rule 16); resolving them
 means reading the tenant's row through the tenant → SYSTEM cascade, which is the gateway's job
 and reaches this worker through the engines these activities delegate to. An adapter here that
 built its own client from a graph value would be the exact cascade bypass the whole contract
@@ -76,7 +76,7 @@ from harness.temporal.interpreter.nodes.text_generate import interpreter_text_ge
 _LOOP_NOT_YET_EXECUTABLE = (
     "agentic.loop declares its BOUNDS (maxIterations / maxDurationSeconds / maxTotalTokens) as a "
     "contract; the loop BODY — continue_as_new per iteration, sub-agents as child workflows, and "
-    "the bounds enforced against a workflow TIMER rather than wall-clock — is TASK-848. This "
+    "the bounds enforced against a workflow TIMER rather than wall-clock — is . This "
     "activity degrades observably rather than claiming an iteration that did not run."
 )
 
@@ -91,7 +91,7 @@ def _bound_inputs(payload: NodeActivityInput) -> dict[str, Any]:
     return bound if isinstance(bound, dict) else {}
 
 
-# ── TIER 3: the node-boundary schema check (TASK-848c) ────────────────────────────────────────
+# ── TIER 3: the node-boundary schema check (c) ────────────────────────────────────────
 #
 # Tiers 1 and 2 live in the EDITOR: tier 1 kind-checks a connection and blocks, tier 2 warns about
 # shallow structural mismatch and never blocks. Neither runs at execution time, and neither sees
@@ -168,7 +168,7 @@ async def interpreter_agentic_input(payload: NodeActivityInput) -> NodeActivityR
     """The graph's typed entry point.
 
     ``sourceKey`` names which key of the run payload this node binds; absent means the whole
-    payload. The declared ``ioSchema`` is enforced here (TIER 3, TASK-848c): an entry point whose
+    payload. The declared ioSchema is enforced here (TIER 3, c): an entry point whose
     payload does not match the shape its author declared has nothing sound to hand downstream, so
     it FAILS by default rather than degrading. `onSchemaViolation` overrides that.
     """
@@ -242,7 +242,7 @@ async def interpreter_agentic_data(payload: NodeActivityInput) -> NodeActivityRe
 async def interpreter_agentic_output(payload: NodeActivityInput) -> NodeActivityResult:
     """The graph's typed exit point.
 
-    ``onSchemaViolation`` is honoured here (TIER 3, TASK-848c) against the declared ``ioSchema``.
+    onSchemaViolation is honoured here (TIER 3, c) against the declared ioSchema.
     This node never silently reshapes what it was handed — a mismatch is reported, never
     corrected. It DEGRADES by default rather than failing: an exit point has at least produced
     something a caller can inspect, which is more useful than an empty run. It is
@@ -275,7 +275,7 @@ async def interpreter_agentic_agent(payload: NodeActivityInput) -> NodeActivityR
 
     Its config differs from ``generate.text``'s (a ``providerConfigRef`` instead of a ``taskKey``,
     plus tools and guard references), and RESOLVING that binding is the engine's job, through the
-    tenant → SYSTEM cascade — never this wrapper's, which would be the cascade bypass §3.4 rule 16
+    tenant → SYSTEM cascade — never this wrapper's, which would be the cascade bypass rule 16
     forbids.
     """
     return await interpreter_text_generate(payload)
@@ -286,7 +286,7 @@ async def interpreter_agentic_guardrail(payload: NodeActivityInput) -> NodeActiv
     """The generic guardrail — delegation to the content-safety engine, same as
     ``guard.moderation``. ``guardrailType`` is a POLICY key ``apps/guardrail`` resolves per
     tenant; the model, its threshold and its label taxonomy all ride on the ``AiModel`` row that
-    cascade selected (TASK-735 phases 3 & 6), never on this node."""
+    cascade selected ( phases 3 & 6), never on this node."""
     return await interpreter_guardrail_check(payload)
 
 
@@ -296,13 +296,13 @@ async def interpreter_agentic_stt(payload: NodeActivityInput) -> NodeActivityRes
     placeholder to real"*, done the only way that is compatible with workflow determinism.
 
     The eight ``stt.*`` palette nodes stay placeholders, and that is correct rather than
-    unfinished: TASK-724 §1's central design decision is that a published ``stt``
+    unfinished: 's central design decision is that a published stt
     ``WorkflowDefinition`` COMPILES INTO an ``AsrPipeline`` row and is never walked node-by-node
     by this interpreter. Per-frame audio inside a Temporal workflow would violate rule 06's
     determinism constraint and be a latency disaster besides.
 
     This node is the other half of that design: ONE activity, dispatching the existing
-    ``dispatch_batch_transcription`` path (TASK-724 Task 5 — which itself calls apps/api's
+    dispatch_batch_transcription path  — which itself calls apps/api's
     ``POST /internal/harness/stt/batch-jobs``, the same ``TranscriptionJobService`` write path the
     batch controller uses). No second job-processing path, no per-frame audio, and the pipeline is
     named by REFERENCE so engine, model and thresholds all resolve off the ``AsrPipeline`` row.
@@ -378,7 +378,7 @@ async def interpreter_agentic_stt(payload: NodeActivityInput) -> NodeActivityRes
 
 @activity.defn(name="interpreter.agentic_loop")
 async def interpreter_agentic_loop(payload: NodeActivityInput) -> NodeActivityResult:
-    """OBSERVABLE non-execution — TASK-848 owns the loop body. See the module docstring for why
+    """OBSERVABLE non-execution — owns the loop body. See the module docstring for why
     this is ``implemented: true`` and still does not run."""
     started = now()
     await record_and_flush(payload, status=STATUS_OK, started=started)
@@ -387,7 +387,7 @@ async def interpreter_agentic_loop(payload: NodeActivityInput) -> NodeActivityRe
 
 @activity.defn(name="interpreter.agentic_tts")
 async def interpreter_agentic_tts(payload: NodeActivityInput) -> NodeActivityResult:
-    """SPEECH SYNTHESIS to a stored artifact — TASK-849 lane B (OD-4), the promotion this node
+    """SPEECH SYNTHESIS to a stored artifact — lane B (OD-4), the promotion this node
     was declared for.
 
     Three existing mechanisms, no fourth. That reuse is what makes OD-4 affordable, and a second
@@ -489,7 +489,7 @@ async def interpreter_agentic_tts(payload: NodeActivityInput) -> NodeActivityRes
             reason="agentic.tts: synthesis returned no audio — refusing to publish an empty artifact.",
         )
 
-    # The DELTA lane, best-effort by contract (lane A): a Redis outage costs the live view and
+    # The DELTA lane, best-effort by contract: a Redis outage costs the live view and
     # nothing else, so it is deliberately NOT allowed to fail the synthesis that already
     # succeeded. A run with no `run_id` (additive-optional) simply does not stream.
     run_id = getattr(payload, "run_id", "") or ""

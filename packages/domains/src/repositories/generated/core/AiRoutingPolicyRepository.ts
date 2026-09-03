@@ -10,7 +10,7 @@ import { AiRoutingPolicyEntityMapper } from '../../../mappers';
 import { AiRoutingPolicy } from '../../../models';
 
 /**
- * Provider routing policies (TASK-818 §3A.3).
+ * Provider routing policies
  *
  * One row per (tenant, taskKey, policyVersion) — enforced by the
  * `AiRoutingPolicy_tenantId_taskKey_policyVersion_unique` index. The reserved
@@ -18,7 +18,7 @@ import { AiRoutingPolicy } from '../../../models';
  * SYSTEM-shared read model, so the tenant-scope extension permits pinning
  * `tenantId` to either the caller OR the SYSTEM tenant (mirrors
  * `AiTaskDefaultRepository`); the tenant → SYSTEM cascade itself, the
- * most-specific-match rules and the §3A.4 gates are resolved in the
+ * most-specific-match rules and the gates are resolved in the
  * application service, not here.
  */
 @Injectable()
@@ -70,7 +70,7 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
   }
 
   /**
-   * TASK-844 — the ORDERED CANDIDATE CHAIN for one selection, across the tiers
+   * the ORDERED CANDIDATE CHAIN for one selection, across the tiers
    * the caller names.
    *
    * `tenantIds` is passed in rather than derived here on purpose: the two-tier
@@ -83,7 +83,7 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
    * so the newest authored revision wins a tie. The ELECTED default is picked
    * out by the service, not by this ordering, because `isDefault` outranks
    * `priority`.
-   */
+ */
   async findCandidates(
     tenantIds: string[],
     taskKey: string,
@@ -110,7 +110,7 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
   }
 
   /**
-   * TASK-844 — the UNSET half of the default election.
+   * the UNSET half of the default election.
    *
    * Clears `isDefault` on every live row of `(tenantId, taskKey)` except
    * `exceptId`, and returns how many rows it cleared. It exists as a
@@ -127,7 +127,7 @@ export class AiRoutingPolicyRepository extends Repository<AiRoutingPolicyEntity,
    *
    * `_version` is bumped on every touched row so a concurrent OCC writer that
    * held a stale token is still rejected.
-   */
+ */
   async clearDefaultFor(
     tenantId: string,
     taskKey: string,

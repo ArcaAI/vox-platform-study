@@ -4,7 +4,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Ma
 import { ENDPOINT_REASONS } from '../endpoint.constants';
 
 /**
- * TASK-812 — request DTOs for the three endpoint-stage routes.
+ * request DTOs for the three endpoint-stage routes.
  *
  * Every field is declared here because the global `ValidationPipe` runs
  * `whitelist + forbidNonWhitelisted + forbidUnknownValues`: an undeclared field 400s the whole

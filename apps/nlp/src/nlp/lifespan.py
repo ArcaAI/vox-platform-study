@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.effective_config_client = EffectiveConfigClient(
         base_url=settings.service.gateway_url,
         # Owner decision D-D: PRESENT the ONE shared `INTERNAL_ACCESS_TOKEN`.
-        # The legacy per-service fallback is gone (TASK-799 lane D) now that the
+        # The legacy per-service fallback is gone now that the
         # migration it existed for is complete.
         token=settings.service.peer_service_token(),
         service="nlp",
@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # ── Push invalidation for that client (owner decision D-5) ─────────────
     #
-    # Rule 09 §"Config caches": *invalidation is the propagation path; the TTL
+    # Rule 09: *invalidation is the propagation path; the TTL
     # is a bounded-staleness safety net.* Round 2 built the subscriber and the
     # gateway's publisher, but this service held no Redis client — so the
     # handler existed with no wire under it and every control-plane write took
@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:  # noqa: BLE001 — propagation degrades to the TTL backstop
         logger.warning(f"nlp.config_invalidation.unavailable error={type(exc).__name__} {exc}")
 
-    # apps/nlp's first peer-service client (TASK-729): a dedicated,
+    # apps/nlp's first peer-service client: a dedicated,
     # long-lived httpx.AsyncClient for calling `text`'s /generate — mirrors
     # apps/text's own `guardrail_client`/`http_client` app.state wiring.
     # Construction performs no I/O; closed in shutdown below.

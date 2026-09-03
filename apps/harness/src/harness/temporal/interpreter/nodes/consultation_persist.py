@@ -1,7 +1,7 @@
 """N-11 ``consultation.persistDraft`` and N-12 ``consultation.finalizeAssurance`` — the two
 ``external_write`` persistence nodes.
 
-Compile targets per ``contracts/palette-contract.md`` §1: ``persist_draft`` and
+Compile targets per contracts/palette-contract.md : persist_draft and
 ``finalize_assurance``. Both belong to no reference role — they are the substrate's own
 durability checkpoints, and both are `mandatory` safety class for the reason
 ``contracts/node-types.md`` gives.
@@ -11,7 +11,7 @@ Neither activity checks ``payload.sandbox``: ``workflow.py:188`` already SKIPS a
 of a consultation graph never writes a ContextItem. Re-checking here would be a second copy of
 one rule in the place least able to enforce it.
 
-``config.occ`` (CR-07/WF-CONS-014, the TASK-709 authorship protection made structural) is
+config.occ (CR-07/WF-CONS-014, the authorship protection made structural) is
 enforced by the VALIDATOR, not re-derived here — same reasoning as ``consultation.synthesize``'s
 ``producesCode``. The optimistic-concurrency behaviour itself lives in apps/api, which owns the
 write.

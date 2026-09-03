@@ -4,7 +4,7 @@
  * ## Why this file exists
  *
  * A prior change turned the SIGNALLING gate on (that gate is now the `agenticLoop`
- * subscription entitlement composed with `harness.loop.emergencyStop` — TASK-705), so a real
+ * subscription entitlement composed with `harness.loop.emergencyStop` —), so a real
  * `context.added` now starts `ConsultationLoopWorkflow`. The workflow then
  * completed `phase: "DISABLED"`, because its pinned config's `enabled` is
  * DERIVED, never stored
@@ -16,7 +16,7 @@
  * `ConsultationContextSchema` + `Version` per seeded tenant.
  *
  * The OTHER half — the loop configuration carried on a seeded default
- * `DepartmentAgent` — went away with `DepartmentAgent` itself (TASK-815). The
+ * `DepartmentAgent` — went away with `DepartmentAgent` itself. The
  * loop's agent-shaped fields now resolve from the tenant's governing
  * `WorkflowDefinition`, so the seeded schema below is the only day-1 source
  * `LoopConfigService` reads.
@@ -29,10 +29,10 @@
  * platform's default clinical vocabulary for every tenant, so the bar for
  * adding one is a producer that actually exists.
  *
- *   audio_stream → STREAM_AUDIO   the STT session + AudioRecording
- *   work_note    → TEXT           today's WORKNOTE ContextItem
- *   case_note    → TEXT           today's CASE_NOTE ContextItem
- *   attachment   → DOCUMENT       today's ATTACHMENT ContextItem (Media + OCR)
+ *   audio_stream → STREAM_AUDIO the STT session + AudioRecording
+ *   work_note → TEXT today's WORKNOTE ContextItem
+ *   case_note → TEXT today's CASE_NOTE ContextItem
+ *   attachment → DOCUMENT today's ATTACHMENT ContextItem (Media + OCR)
  *
  * A single output, `soap_note` — the note `harness.finalize` produces. It is
  * `TEXT`, not `STRUCTURED`: the note the harness writes is markdown, and
@@ -72,8 +72,8 @@
  * checksum parity against the real ones, so the copies cannot drift silently.
  *
  * ID blocks (registered in 00-constants.ts):
- *   79000000-…-XXXX-…  Consultation context schemas       (slot = tenant, as 78000000)
- *   89000000-…-XXXX-…  their published version snapshots  (mirror slot)
+ *   79000000-…-XXXX-… Consultation context schemas (slot = tenant, as 78000000)
+ *   89000000-…-XXXX-… their published version snapshots (mirror slot)
  */
 import { createHash } from 'node:crypto';
 
@@ -212,7 +212,7 @@ export const DAY1_CONTEXT_SCHEMA_VERSIONS = TENANT_ID_SLOTS.map(({ tenantId, slo
 // =============================================================================
 
 export const seedConsultationLoopDefaults = async (client: CorePrismaClient) => {
-  console.log('Seeding day-1 consultation context schema (TASK-686)...');
+  console.log('Seeding day-1 consultation context schema ...');
 
   let created = 0;
   let skipped = 0;

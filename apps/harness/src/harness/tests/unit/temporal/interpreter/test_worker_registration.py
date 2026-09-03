@@ -2,7 +2,7 @@
 registration lists `harness.temporal.worker.run_worker` uses.
 
 No live Temporal server is available in this environment (infra down), so this cannot exercise
-`pnpm worker:dev` end-to-end (gated — see the ticket README). What CAN be proven hermetically:
+`pnpm worker:dev` end-to-end (gated — ). What CAN be proven hermetically:
 the exact combined `workflows=[...]`/`activities=[...]` lists `run_worker` passes to `Worker(...)`
 construct without error (no duplicate name, no invalid class) against an ephemeral time-skipping
 Temporal test server — the same proof `Worker.__init__` performs internally at real startup.

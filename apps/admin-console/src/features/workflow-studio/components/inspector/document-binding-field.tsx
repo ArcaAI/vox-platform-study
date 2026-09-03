@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * DD-2's document binding as ONE control (TASK-810 §7b item 2).
+ * DD-2's document binding as ONE control.
  *
  * The binding is two config keys — `documentTemplateId` + `documentVersionNumber` — and the
  * Studio inspector generates its form from the node's JSON Schema, so until now they surfaced
@@ -12,12 +12,12 @@
  *
  * ## The three pin states, and the one that must NOT be flagged
  *
- * The treatment deliberately mirrors `PromptBindingsRail` (DD-11), including the part that is
+ * The treatment deliberately mirrors `PromptBindingsRail` , including the part that is
  * easy to get wrong:
  *
- *   pinned + behind    "New v5 available" — the template moved on without this node
- *   pinned + current   the pin, quietly
- *   unpinned           "Follows the template" — NOT flagged
+ *   pinned + behind "New v5 available" — the template moved on without this node
+ *   pinned + current the pin, quietly
+ *   unpinned "Follows the template" — NOT flagged
  *
  * An unpinned node tracks the template on purpose. Badging it would put a permanent warning on
  * a correct configuration and train admins to ignore the badge that does mean something.

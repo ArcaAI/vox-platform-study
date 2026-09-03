@@ -1,6 +1,6 @@
-"""``AgenticLoopWorkflow`` + ``AgenticSubAgentWorkflow`` — the ``agentic.loop`` body (TASK-848).
+"""AgenticLoopWorkflow + AgenticSubAgentWorkflow — the agentic.loop body.
 
-TASK-847 shipped the CONTRACT (four bounds, an orchestrator reference, sub-agent references, a
+shipped the CONTRACT (four bounds, an orchestrator reference, sub-agent references, a
 truthiness-keyed early exit) and an activity that observably refused to run. This module is the
 body, and it is the FIRST construct in this substrate that iterates.
 
@@ -186,7 +186,7 @@ class AgenticLoopWorkflow:
         # 2) The ORCHESTRATOR decides. Its seed arrives on iteration 0 only; from then on it
         # reads the previous iteration's product, which is what makes this a loop rather than a
         # fan-out repeated N times.
-        # TASK-848b step 6 — the carry-forward may have been OFFLOADED by the previous
+        # b step 6 — the carry-forward may have been OFFLOADED by the previous
         # iteration's checkpoint. A workflow cannot load a blob, so rehydration is an activity;
         # it runs only when a ref is actually set, so an under-threshold loop pays nothing.
         carried: Any = inp.state.inline

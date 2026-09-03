@@ -9,7 +9,7 @@
 
 /** Per-flush generation stats (subset of the gateway `LiveSummaryStatsDto`). */
 export interface LiveSummaryStats {
-  /** TASK-796 — the resolved AiTaskDefault key behind an interpreter-produced summary. */
+  /** the resolved AiTaskDefault key behind an interpreter-produced summary. */
   task_key?: string | null;
   total_ms?: number | null;
   ttft_ms?: number | null;
@@ -54,7 +54,7 @@ export interface LiveSummarySnapshot {
   sections: LiveSummarySection[];
   entities: LiveSummaryEntity[];
   /**
-   * TASK-796 — provenance for an INTERPRETER-produced interim summary. Absent on an ordinary
+   * provenance for an INTERPRETER-produced interim summary. Absent on an ordinary
    * live flush. `source: 'interpreter'` is what distinguishes the two; `ordinal`/`total`
    * position the snapshot within its sequence, and `metadata.stats.task_key` names the
    * resolved task.

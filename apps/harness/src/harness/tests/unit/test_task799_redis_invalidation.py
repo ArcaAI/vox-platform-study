@@ -1,4 +1,4 @@
-"""TASK-799 A.3 (D-5) — harness gets a Redis client, so invalidation can be DELIVERED.
+"""A.3 (D-5) — harness gets a Redis client, so invalidation can be DELIVERED.
 
 Round 2 built the subscriber SHAPE in `core/effective_config.py`
 (`CONFIG_INVALIDATION_CHANNEL`, `handle_invalidation_message`,

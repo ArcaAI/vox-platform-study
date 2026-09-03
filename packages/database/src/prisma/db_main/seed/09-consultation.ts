@@ -27,15 +27,15 @@ import { encryptSeedRow } from './phi-encryption';
  * exercise the full clinical workflow without additional setup.
  *
  * Seeded entities:
- *   9 Consultations         — full lifecycle coverage across 6 statuses and 6 departments
- *   +2 Consultations        — customer-tenant (ArcaAI) NEW + REVISIT pair (doc-08 F1)
- *   21 ContextItems          — transcripts, summaries, audio, worknotes, pre-summaries, case notes
- *   +2 ContextItems          — one transcript per customer-tenant consultation (doc-08 F1)
- *   4  SummaryMetas          — AI generation metadata
- *   3  Media                 — dual-capture demo blobs (primary + raw + processed) for the GEN recording
- *   4  AudioRecordings       — linked to audio context items (GEN row carries raw+processed dual-capture ids)
- *   18 ContextItemVersions   — content-at-version audit trail (v1 initials + multi-version edit history)
- *   8  NamedEntities         — NER results for medications, conditions, procedures, anatomy
+ *   9 Consultations — full lifecycle coverage across 6 statuses and 6 departments
+ *   +2 Consultations — customer-tenant (ArcaAI) NEW + REVISIT pair (doc-08 F1)
+ *   21 ContextItems — transcripts, summaries, audio, worknotes, pre-summaries, case notes
+ *   +2 ContextItems — one transcript per customer-tenant consultation (doc-08 F1)
+ *   4 SummaryMetas — AI generation metadata
+ *   3 Media — dual-capture demo blobs (primary + raw + processed) for the GEN recording
+ *   4 AudioRecordings — linked to audio context items (GEN row carries raw+processed dual-capture ids)
+ *   18 ContextItemVersions — content-at-version audit trail (v1 initials + multi-version edit history)
+ *   8 NamedEntities — NER results for medications, conditions, procedures, anatomy
  *
  * Consultation chains:
  *   GEN_COMPLETED → GEN_REOPENED (follow-up with addendum)
@@ -43,7 +43,7 @@ import { encryptSeedRow } from './phi-encryption';
  *   CARD_NEW → CARD_CROSS_DEPT (cross-department referral to Neurology)
  */
 
-// Exported (TASK-712, consent-abac Phase 6) so 22-consent-grant.ts seeds
+// Exported (consent-abac Phase 6) so 22-consent-grant.ts seeds
 // grants against the SAME literal patient ids these demo consultations use —
 // one source of truth rather than a second hardcoded copy.
 export const PATIENT_IDS = {

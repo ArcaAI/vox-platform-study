@@ -158,14 +158,14 @@ describe('BlobStorageProviderFactory', () => {
    * The SYSTEM row's Vault `credentialsRef` is the PLATFORM credential tier;
    * `S3_ACCESS_KEY` / `S3_SECRET_KEY` are only the documented BOOTSTRAP fallback
    * used before that ref holds a value (`09-infrastructure-devops.md`
-   * §Configuration Tiers).
+   * Tiers).
    *
    * The "did the ref supply anything?" test must therefore consider EVERY field
    * the ref can carry. It originally omitted `secretAccessKey`, so a Vault value
    * carrying only that field scored as empty and the whole ref was discarded in
    * favour of env — a silent downgrade from the Vault tier to the bootstrap tier
    * on a credential path, which is the drift this ticket exists to remove.
-   */
+ */
   describe('platform credentials — the Vault credentialsRef outranks the env bootstrap tier', () => {
     /** A SYSTEM `TenantStorageConfig` row carrying a Vault path and nothing else. */
     function systemRowRepo(credentialsRef: string) {

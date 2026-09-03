@@ -1,4 +1,4 @@
-"""Guardrail-class executor routes (TASK-735 Phases 3 & 6).
+"""Guardrail-class executor routes ( Phases 3 & 6).
 
 `apps/guardrail` holds no resident model weights. It owns POLICY — the label
 taxonomy, the thresholds, the verdict shape, the fail-closed posture — and
@@ -222,7 +222,7 @@ def _split_verdict(value: Any) -> tuple[str | list[str] | None, dict[str, float]
     guardrail parses it in three places as "a string, or a sequence I will
     ``str()`` element-wise", so a reshape would have it comparing
     ``"{'label': 'unsafe', …}"`` against its benign-label set. The confidences
-    therefore travel in a SEPARATE map (TASK-830).
+    therefore travel in a SEPARATE map.
 
     This function is also what makes ``include_confidence=True`` safe to turn on.
     The previous inline reduction accepted only ``str`` and ``list``/``tuple``;
@@ -279,7 +279,7 @@ async def guard_pii(
         )
 
     # The lane decides the geometry, so the runtime `batch_size` comes from the
-    # lane rather than from the single global bound TASK-778 used.
+    # lane rather than from the single global bound used.
     lane = normalize_lane(request.latency_class)
     batch_size = batch_size_for(lane)
     try:

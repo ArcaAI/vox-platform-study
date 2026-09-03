@@ -8,7 +8,7 @@
  * passed through unchanged.
  *
  * Strong validators are required because the `If-Match` precondition on
- * PATCH must use strong comparison (RFC 7232 §2.3.2 / §3.1).
+ * PATCH must use strong comparison (RFC 7232 §2.3.2 /
  *
  * @see apps/api/src/interceptors/etag.interceptor.ts
  * @see https://www.rfc-editor.org/rfc/rfc7232.html#section-2.3.2

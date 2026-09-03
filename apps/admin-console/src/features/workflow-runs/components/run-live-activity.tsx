@@ -30,7 +30,7 @@ function eventLabel(event: RunLiveEvent): string {
 }
 
 /**
- * The live control-event feed (TASK-849 lane C, step 6 "agent tool-call printing" /
+ * The live control-event feed (lane C, step 6 "agent tool-call printing" /
  * general activity affordance). Prints exactly what the interpreter's push transport
  * sent — node started/completed/failed, in arrival order — never a fabricated
  * tool-call argument or result (neither is on the wire; see `WorkflowNodeEventPayload`'s

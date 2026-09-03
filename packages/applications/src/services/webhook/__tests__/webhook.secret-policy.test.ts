@@ -1,5 +1,5 @@
 /**
- * TASK-786 — an issued webhook signing secret follows the SUPER_ADMIN-managed
+ * an issued webhook signing secret follows the SUPER_ADMIN-managed
  * `security.secret.*` policy, not a literal in this service.
  *
  * The webhook secret is the one member of the family that honours `encoding`

@@ -1,5 +1,5 @@
 /**
- * RuleTester pins for `require-internal-tenant-header` (TASK-737 §4.4).
+ * RuleTester pins for `require-internal-tenant-header`
  *
  * The rule flags an outbound HTTP call to a downstream Python service whose
  * `headers` option carries `X-Service-Token` but no tenant channel. That exact
@@ -8,9 +8,9 @@
  * sites without a single review catching it.
  *
  * Sanctioned ways to satisfy it:
- *   - `headers: internalServiceHeaders({ ... })`     (the builder)
+ *   - `headers: internalServiceHeaders({ ... })` (the builder)
  *   - an explicit `'X-Tenant-Id'` / `TENANT_ID_HEADER` / `tenantHeaderValue(...)`
- *   - `'X-Internal-Tenant-Id'` (the STT↔gateway channel, §3.0 channel 2)
+ * `'X-Internal-Tenant-Id'` (the STT↔gateway channel, channel 2)
  */
 'use strict';
 
@@ -114,4 +114,4 @@ ruleTester.run('require-internal-tenant-header', rule, {
   ],
 });
 
-console.log('require-internal-tenant-header: RuleTester passes (TASK-737 §4.4)');
+console.log('require-internal-tenant-header: RuleTester passes (§4.4)');

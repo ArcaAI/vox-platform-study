@@ -18,7 +18,7 @@ export class UpdateDocumentSectionRequest {
   /**
    * Not `@IsNotEmpty()`: an empty string is a VALID edit. A clinician emptying a
    * section is authorized by definition — the transcript-contradiction rule
-   * (`section-store.ts` §2d) exists to stop the MODEL deleting content it wrote,
+   * (`section-store.ts` exists to stop the MODEL deleting content it wrote,
    * not to make a clinician justify deleting their own.
    */
   @ApiProperty({

@@ -48,7 +48,7 @@ def build_http_client(settings: Settings) -> httpx.AsyncClient:
             connect=t.connect_timeout_s,
             read=t.read_timeout_s,
             write=t.write_timeout_s,
-            # BOUNDED (TASK-777 B-1): pool exhaustion surfaces as a fast failure
+            # BOUNDED: pool exhaustion surfaces as a fast failure
             # the admission gate can turn into a declared 503, not a silent stall.
             pool=t.pool_timeout_s,
         ),
@@ -193,7 +193,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     http_client = build_http_client(settings)
     app.state.http_client = http_client
 
-    # Declared concurrency bounds + per-peer breakers (TASK-777 Lane B).
+    # Declared concurrency bounds + per-peer breakers.
     app.state.admission_gates = build_admission_gates(settings)
     app.state.circuit_breakers = build_circuit_breakers(settings)
 
@@ -220,8 +220,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     # Per-tenant config resolver. Always initialized: the `db_config_enabled`
-    # gate that used to gate it is gone (TASK-799 lane D). It described an
-    # "otherwise the env-only engine path is used" fallback that TASK-735/736
+    # gate that used to gate it is gone. It described an
+    # "otherwise the env-only engine path is used" fallback that /736
     # deleted, so its only effect was to leave the resolver unbuilt and 503 every
     # route that needs a selection.
     if not hasattr(app.state, "tenant_config_resolver"):
@@ -249,12 +249,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     # No engine providers are initialized here. Guardrail hosts no LLM
-    # (TASK-735 Phase 2b): medical validation delegates to `apps/text`'s judge
+    # medical validation delegates to `apps/text`'s judge
     # lane through a per-request client built from the tenant's own
     # `AiTaskDefault` selection, so there is nothing process-wide to construct —
     # and no env-configured engine to fall back to.
 
-    # No aux models are loaded here either. TASK-735 Phases 3 & 6 moved the GLiNER
+    # No aux models are loaded here either. Phases 3 & 6 moved the GLiNER
     # detector and the MiniCheck groundedness scorer into `apps/nlp` along with
     # their model cache and weight staging, so guardrail holds ZERO resident model
     # weights in ANY process, at any point in its lifetime.
@@ -389,9 +389,9 @@ def create_app() -> FastAPI:
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
-    # Tenant-facing PHI redactor (TASK-710) — behind X-Service-Token.
+    # Tenant-facing PHI redactor — behind X-Service-Token.
     app.include_router(redact_router, prefix="/api", tags=["guardrails"])
-    # Bidirectional screening (TASK-777 Lane C) — inbound prompt + outbound response.
+    # Bidirectional screening — inbound prompt + outbound response.
     app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
     app.include_router(realtime_router, prefix="/api/v1", tags=["realtime"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])

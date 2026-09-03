@@ -19,7 +19,7 @@ import { CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
  * There is deliberately no PATCH and no DELETE: an `AgentPromotion` is a WORM
  * audit record. A correction is a new promotion.
  *
- * The route path and the record's type name still say "agent" (TASK-815 moved
+ * The route path and the record's type name still say "agent" ( moved
  * the promotable from a `DepartmentAgentVersion` to a `WorkflowDefinition`
  * version, and the WORM table pre-dates that); everything a caller passes and
  * receives names what it actually is.

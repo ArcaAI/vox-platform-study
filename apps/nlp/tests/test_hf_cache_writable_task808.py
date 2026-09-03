@@ -1,4 +1,4 @@
-"""TASK-808 — the image must give huggingface_hub a writable cache directory.
+"""the image must give huggingface_hub a writable cache directory.
 
 `hope-python-base` creates the non-root `hope` user with ``--no-create-home``,
 so ``$HOME`` (/home/hope) does not exist in the container. huggingface_hub

@@ -11,15 +11,15 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/guardrail/Dockerfile --target production -t guardrail .
+#   docker build -f apps/guardrail/Dockerfile --target production -t guardrail.
 #
 # Notes:
 #   - curl (healthcheck) comes from the base. So does libgomp1, but guardrail no
-#     longer needs it: TASK-735 Phase 3 removed onnxruntime along with the GLiNER
+# longer needs it: removed onnxruntime along with the GLiNER
 #     runtime, and nothing guardrail installs links against OpenMP. It costs
 #     nothing here — the base carries it for `hope-stt` and `hope-nlp`.
-#   - Guardrail holds NO model weights and needs NO model cache (TASK-817 F-2).
-#     TASK-735 Phase 3 moved the GLiNER runtime and MiniCheck to `apps/nlp`;
+# Guardrail holds NO model weights and needs NO model cache.
+# moved the GLiNER runtime and MiniCheck to `apps/nlp`;
 #     this image installs no huggingface library, so it downloads nothing and
 #     has nothing to persist. Do not add HF_HOME or a cache volume here — the
 #     service that needs one is `hope-nlp`.
@@ -87,7 +87,6 @@ COPY --chown=hope:hope apps/guardrail/src ./src
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG
@@ -108,7 +107,7 @@ RUN set -eu; \
 USER hope
 
 # The start-period covers process start alone: guardrail loads no weights
-# (TASK-735 Phase 3), so it is live once uvicorn binds and the DB/Redis pools
+# so it is live once uvicorn binds and the DB/Redis pools
 # open. The 120s is slack for a cold host, not for a model download.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:${GUARDRAIL_PORT}/api/health/live || exit 1

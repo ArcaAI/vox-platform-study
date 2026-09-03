@@ -1,12 +1,12 @@
 /**
- * TASK-724 Task 4 — STT graph -> `AsrPipeline`/`AsrPipelineVersion` compiler.
+ * STT graph -> `AsrPipeline`/`AsrPipelineVersion` compiler.
  *
  * `compileSttGraphToYaml` is a pure function (no I/O) that walks a `CompiledWorkflowConfig`
- * (the output of `@arcaai/workflow-contract`'s `compile()`, per §1's central design decision:
+ * (the output of `@arcaai/workflow-contract`'s `compile()`, per 's central design decision:
  * a published STT `WorkflowDefinition` compiles to `AsrPipeline.configYaml` — no per-node
  * Temporal dispatch). `SttPipelineCompilerService` wraps it and writes through the EXISTING
  * `PipelineService` (never a raw repository call), so `PipelineService`'s own
- * `broadcastSysEvent`/OCC/version-snapshot behavior is reused unmodified (README §4 Task 4).
+ * `broadcastSysEvent`/OCC/version-snapshot behavior is reused unmodified.
  *
  * RED-first: this file was authored, and run RED (`compileSttGraphToYaml`/
  * `SttPipelineCompilerService` did not exist), before `stt-pipeline.compiler.ts`.

@@ -51,7 +51,7 @@ const GIB = 1024 ** 3;
  * documentation, not behaviour. Worse, it was unfixable by adding the key alone:
  * the GitOps `db-migrate` Job deliberately carries NO `envFrom` (the DB-05 fix),
  * so a ConfigMap value would never have reached this process. Every fresh
- * cluster seed came up OFF, and TASK-643's platform-default credential gate —
+ * cluster seed came up OFF, and platform-default credential gate
  * which only takes effect when this switch is ON — sat inert.
  *
  * So the default is now INVERTED and derived, not stamped:
@@ -61,7 +61,7 @@ const GIB = 1024 ** 3;
  *   - unset ⇒ {@link seedsEnforcementOn}: ON everywhere a human runs the product,
  *     OFF only in test/CI.
  *
- * Per-environment outcome (TASK-785 OD-6, owner decision 2026-08-22):
+ * Per-environment outcome (owner decision 2026-08-22):
  *   - LOCAL DEV → **ON**. Previously OFF ("a developer never fights quota locally"),
  *     which meant every quota path was exercised for the first time in a deployed
  *     environment. Enforcement is a product behaviour, not a deployment artifact:
@@ -77,14 +77,14 @@ const GIB = 1024 ** 3;
  * kill-switch upsert's `update` branch intentionally omits `value`, so a re-seed
  * NEVER clobbers a live operator toggle (flip it any time via
  * `PUT /admin/entitlements/enabled`). `defaultValue` TRACKS the resolved default
- * (TASK-785): it is the RESET target, and reverting should restore the policy —
+ * it is the RESET target, and reverting should restore the policy
  * enforcement ON — not silently disable quota gating platform-wide.
  *
  * KNOWN CONSEQUENCE: with enforcement ON by default in deployed envs, the open
- * fail-closed gap in `resolveForTenant` (TASK-646) becomes reachable there — a
+ * fail-closed gap in `resolveForTenant` becomes reachable there — a
  * failed read of the billing-only entitlements tables raises instead of falling
  * back, which can surface as a 500 on the clinical path. Accepted deliberately;
- * TASK-646 is the fix.
+ * is the fix.
  */
 const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_ENV = new Set(['0', 'false', 'no', 'off']);
@@ -94,7 +94,7 @@ const FALSY_ENV = new Set(['0', 'false', 'no', 'off']);
  *
  * This used to key off "is this a deployed environment?" (host-env-only, no
  * `.env` file loaded), which made LOCAL DEV the one place a developer never saw
- * a quota. TASK-785 OD-5 gives every plan-less tenant a real plan (STARTER), so
+ * a quota. gives every plan-less tenant a real plan (STARTER), so
  * quota behaviour is now something you want to meet early and locally.
  *
  * Only CI and `NODE_ENV=test` stay OFF — see the per-environment table above for
@@ -113,7 +113,7 @@ function seedsEnforcementOn(): boolean {
  * `packages/applications/src/common/env/env-file-resolution.ts`), so it is
  * reused here rather than inventing a second signal.
  *
- * Still the fallback for the METERING RECONCILE switch, which TASK-785 did not
+ * Still the fallback for the METERING RECONCILE switch, which did not
  * touch: the reconcile sweep is a `TenantUsageMeter` snapshot-persist job, and
  * enforcement does not depend on it (`assertMeterQuota` reads live usage, so
  * meters are populated with the job off). Leaving it OFF locally keeps that
@@ -152,7 +152,7 @@ interface PlanEntitlementSeed {
   maxPromptTemplates: number | null;
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
-  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722 exposure
+  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure
   // plane), modelled verbatim on `maxAsrPipelines`. Kept in sync with
   // `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
   // `plan-matrix-parity.test.ts`.
@@ -162,17 +162,17 @@ interface PlanEntitlementSeed {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
-  // Fourth business-object meter (TASK-722): PUBLISHED-workflow invocations via
+  // Fourth business-object meter: PUBLISHED-workflow invocations via
   // `/api/v1/workflows/:slug/invoke`. Same shape/units as its three siblings.
   monthlyWorkflowInvocations: number | null;
   // Per-capability included allowances, derived in
   // from the RATIFIED business ceilings above:
   //
   //   sttSessionSeconds = transcriptionMinutes × 60 × 1.1 (session ≥ audio)
-  //   llmTokens         = summaries          × 6,000      (in+out, all passes)
-  //   ttsCharacters     = consultations      × 2,000
-  //   nlpTextUnits      = consultations      ×    30      (100-char units)
-  //   embeddingTokens   = consultations      × 1,500
+  //   llmTokens = summaries × 6,000 (in+out, all passes)
+  //   ttsCharacters = consultations × 2,000
+  //   nlpTextUnits = consultations × 30 (100-char units)
+  //   embeddingTokens = consultations × 1,500
   //
   // …then DOUBLED. The ×2 headroom is deliberate: `monthlyConsultations` is the
   // commercial cap, so these per-capability numbers exist as RUNAWAY GUARDS, not
@@ -191,18 +191,18 @@ interface PlanEntitlementSeed {
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
   // May this plan's tenants consume the PLATFORM-DEFAULT
-  // (SYSTEM-tenant) provider credential? `false` on every plan (OD-7): the
+  // (SYSTEM-tenant) provider credential? `false` on every plan: the
   // grant is sold per tenant via `TenantEntitlement`, because a plan-level
   // grant would hand every tenant on that tier a platform-funded cloud path —
   // the margin hole closed. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featurePlatformDefaultCredential: boolean;
   // May this plan's tenants publish an `stt`-palette `WorkflowDefinition`
-  // (TASK-724)? `true` on every plan — STT pipeline authoring is a core
+  // ? `true` on every plan — STT pipeline authoring is a core
   // platform capability, not a premium add-on. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featurePaletteStt: boolean;
-  // Does this plan include the harness AGENTIC LOOP (TASK-705)? `false` on
+  // Does this plan include the harness AGENTIC LOOP ? `false` on
   // STARTER (premium capability), `true` on TRIAL/PRO/ENTERPRISE. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featureAgenticLoop: boolean;
@@ -227,10 +227,10 @@ const PRO_VALUES = {
   monthlyWorkflowInvocations: 250,
   // Derived + ×2 headroom — see the interface comment.
   monthlySttSessionSeconds: 660_000n, // 5,000 × 60 × 1.1 × 2
-  monthlyLlmTokens: 3_000_000n, //        250 × 6,000     × 2
-  monthlyTtsCharacters: 1_000_000n, //    250 × 2,000     × 2
-  monthlyNlpTextUnits: 15_000n, //        250 ×    30     × 2
-  monthlyEmbeddingTokens: 750_000n, //    250 × 1,500     × 2
+  monthlyLlmTokens: 3_000_000n, // 250 × 6,000 × 2
+  monthlyTtsCharacters: 1_000_000n, // 250 × 2,000 × 2
+  monthlyNlpTextUnits: 15_000n, // 250 × 30 × 2
+  monthlyEmbeddingTokens: 750_000n, // 250 × 1,500 × 2
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
@@ -253,7 +253,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,
     plan: TenantPlan.STARTER,
     maxUsers: 5,
-    // TASK-785 (owner decision 2026-08-22): these two are STRUCTURAL floors, not
+    // (owner decision 2026-08-22): these two are STRUCTURAL floors, not
     // commercial ones, and they are sized to what tenant creation actually
     // provisions — 8 golden departments (`seed/04-department.ts`) and the 14
     // SYSTEM pipelines `provisionTenantPipelineCatalog` clones. They were 2 and 1,
@@ -280,10 +280,10 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyWorkflowInvocations: 50,
     // Derived + ×2 headroom — see the interface comment.
     monthlySttSessionSeconds: 132_000n, // 1,000 × 60 × 1.1 × 2
-    monthlyLlmTokens: 600_000n, //            50 × 6,000     × 2
-    monthlyTtsCharacters: 200_000n, //        50 × 2,000     × 2
-    monthlyNlpTextUnits: 3_000n, //           50 ×    30     × 2
-    monthlyEmbeddingTokens: 150_000n, //      50 × 1,500     × 2
+    monthlyLlmTokens: 600_000n, // 50 × 6,000 × 2
+    monthlyTtsCharacters: 200_000n, // 50 × 2,000 × 2
+    monthlyNlpTextUnits: 3_000n, // 50 × 30 × 2
+    monthlyEmbeddingTokens: 150_000n, // 50 × 1,500 × 2
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
@@ -368,7 +368,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
       // Fresh-DB initial value is derived (ON everywhere except test/CI),
       // overridable either way by the env var.
       //
-      // `defaultValue` tracks it (TASK-785, owner decision 2026-08-22) rather
+      // `defaultValue` tracks it (owner decision 2026-08-22) rather
       // than staying pinned to `'false'`. It is the RESET target — the value an
       // operator reverts to — and a reset that silently disables quota and
       // feature enforcement platform-wide is not a "safe" default, it is the

@@ -1,5 +1,5 @@
 /**
- * AiRoutingPolicyEntityMapper — round-trip tests (TASK-818 §3A.3).
+ * AiRoutingPolicyEntityMapper — round-trip tests
  *
  * Mirrors the `AiTaskDefaultEntityMapper` suite, plus the one assertion this
  * model needs that the others do not: `_version` is stripped from both write

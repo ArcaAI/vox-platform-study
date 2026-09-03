@@ -16,8 +16,8 @@ const SUPER_ADMIN = 'SUPER_ADMIN';
 // from the live 'SUPER_ADMIN' role above ( renamed SUPER_ADMIN to
 // SUPER_ADMIN, which now collides in name — but not in id — with this
 // pre-existing retired role; see the seed placeholder
-// 'SUPER_ADMIN__RETIRED_TASK_417' used by the  data migration).
-const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED_TASK_417';
+// 'SUPER_ADMIN__RETIRED' used by the  data migration).
+const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'DOCTOR';
 

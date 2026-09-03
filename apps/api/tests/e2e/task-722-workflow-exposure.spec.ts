@@ -1,5 +1,5 @@
 /**
- * TASK-722 — Exposure Plane v1: e2e contract tests for `/api/v1/workflows/*`.
+ * Exposure Plane v1: e2e contract tests for `/api/v1/workflows/*`.
  *
  * SCOPE OF WHAT THIS SPEC CAN PROVE IN THIS ENVIRONMENT: the gateway-side
  * contract — scoping, tenant isolation, kill-switch, DTO validation, and the
@@ -9,7 +9,7 @@
  * `HarnessGatewayService.startWorkflowRun`, which POSTs to the harness
  * dispatcher (`apps/harness`) — that service, and the Temporal worker behind
  * it, are NOT part of `pnpm test:up:api` and are not started by this suite.
- * R-2 (`docs/implementation/TASK-722-Exposure-V1/README.md` §6) already names
+ * R-2 ( already names
  * Temporal as not yet production-ready for exactly this reason. A test that
  * asserted 202 here would either hang on an unreachable dispatcher or require
  * mocking the very boundary this suite exists to exercise for real — so the
@@ -72,7 +72,7 @@ async function createPublishedWorkflow(request: APIRequestContext, token: string
   // `POST :id/publish` carries an explicit `@HttpCode(HttpStatus.OK)` in
   // `WorkflowDefinitionController`, so 200 IS the contract and the route's
   // `@ApiResponse({ status: 200 })` is accurate. (This assertion read 201 —
-  // Nest's default POST status — which was correct until TASK-780 made
+  // Nest's default POST status — which was correct until made
   // validate/publish answer 200; the annotation was never the stale half.)
   expect(published.status(), `publish workflow definition '${slug}'`).toBe(200);
   const publishedBody = await published.json();
@@ -80,7 +80,7 @@ async function createPublishedWorkflow(request: APIRequestContext, token: string
   return { id: publishedBody.id, slug: publishedBody.slug, version: publishedBody.version };
 }
 
-test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
+test.describe('/api/v1/workflows exposure plane', () => {
   let tenantAdminToken: string;
   let otherTenantAdminToken: string;
   const createdApiKeyIds: string[] = [];

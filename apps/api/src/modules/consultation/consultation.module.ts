@@ -26,12 +26,12 @@ import {
   LoopContextTextServiceModule,
   RedisSubscriberService,
   // ConsultationConsentService for the internal consent-assert endpoint
-  // (TASK-712 Phase 4 — non-HTTP enforcement front door).
+  // (non-HTTP enforcement front door).
   ConsentServiceModule,
   // IPromptManagementService for the internal prompt-template resolution endpoint
-  // (TASK-720 N-2 — the summarization palette's `prompt.template_ref` node).
+  // (the summarization palette's `prompt.template_ref` node).
   PromptManagementServiceModule,
-  // TASK-724 Task 5 — the harness batch-trigger activity's dispatch/poll routes
+  // the harness batch-trigger activity's dispatch/poll routes
   // reuse the EXISTING batch-transcription write path (no duplicate job-processing
   // logic in harness).
   TranscriptionJobServiceModule,
@@ -49,7 +49,7 @@ import { ConsentInternalController } from './consent-internal.controller';
     ConsultationServiceModule,
     ContextServiceModule,
     ConsultationJobServiceModule,
-    // TASK-732: the legacy SummaryProcessor was deleted, so `generateSummaryAsync`
+    // the legacy SummaryProcessor was deleted, so `generateSummaryAsync`
     // now calls the NoteGeneration seam DIRECTLY. Without this import the
     // controller's INoteGenerationService parameter is unresolvable and the API
     // fails to BOOT — a failure unit tests cannot catch, since they mock it.
@@ -75,7 +75,7 @@ import { ConsentInternalController } from './consent-internal.controller';
     HarnessProgressServiceModule,
     // Assurance per-claim publish (internal POST) + SSE relay.
     HarnessAssuranceServiceModule,
-    // TASK-795 RC-2 — supplies HarnessLiveAssistService to BOTH the internal
+    // supplies HarnessLiveAssistService to BOTH the internal
     // publish route and the SSE relay.
     HarnessLiveAssistServiceModule,
     // IAgentTrajectoryService for the internal ingest route.

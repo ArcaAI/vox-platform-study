@@ -1,6 +1,6 @@
-// Unit tests for the TASK-732 Phase 1 Task 2 instrumentation script
+// Unit tests for the instrumentation script
 // (scripts/harness-migration-readiness-report.ts). The live Postgres round-trip is exercised
-// manually/in the ticket README (see readiness-checklist.md / go-no-go-thresholds.md); here we
+// manually/ (see readiness-checklist.md / go-no-go-thresholds.md); here we
 // lock down parseArgs and the two rate-computation functions against an in-memory fake client —
 // NO live DB.
 import { describe, it, expect } from 'vitest';

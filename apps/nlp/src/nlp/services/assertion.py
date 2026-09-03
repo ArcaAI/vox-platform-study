@@ -33,10 +33,10 @@ from collections.abc import Iterable, Sequence
 from nlp.schemas.clinical_taxonomy import AssertionTaxonomy
 from nlp.schemas.common import AssertionStatus, Entity
 
-# THE TRIGGER LEXICON IS CONFIGURATION (TASK-799 lane G).
+# THE TRIGGER LEXICON IS CONFIGURATION.
 #
 # It used to be `_TRIGGERS`, four Python tuples of ConText/NegEx phrases. Rule 00
-# §Configuration Principles names a label set / taxonomy as something that is
+# Principles names a label set / taxonomy as something that is
 # never a literal in code, and a negation lexicon is exactly that: it is
 # language- and site-specific (a dictation-heavy clinic negates differently from
 # a typed-note one), and widening it should never require a redeploy. It now

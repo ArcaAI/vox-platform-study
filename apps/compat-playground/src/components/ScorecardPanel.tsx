@@ -165,7 +165,7 @@ export function ScorecardPanel() {
         <CardTitle>Reference scoring (WER / CER)</CardTitle>
         <CardDescription>
           Paste or upload the ground-truth transcript for this clip and the live hypothesis is scored against it. Normalization and CER are ported
-          from <code className="font-mono text-xs">apps/stt/scripts/mlen_scorecard.py</code>, so these numbers match the TASK-594 Malayalam-English
+          from <code className="font-mono text-xs">apps/stt/scripts/mlen_scorecard.py</code>, so these numbers match the  Malayalam-English
           quality gate. Case and punctuation are significant; text is NFC-normalized and whitespace-collapsed only.
         </CardDescription>
       </CardHeader>

@@ -22,7 +22,7 @@
  *
  * Source: the RUNNING v1 TEXT pod (Rancher cluster c-9lwv8, namespace apps,
  * pod apps-text-84c9774997-zhp2l), NOT a local v1 checkout — the two have
- * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
+ * diverged (see
  * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before
  * concatenation, then cross-checked two independent reconstruction methods
@@ -30,8 +30,8 @@
  * byte-for-byte agreement. See D-12 and the README Phase 5.
  *
  * GENERATED, DO NOT HAND-EDIT — regenerate from the pod, never retype.
- * json_response_spec_fallback sha256 fd5c50d7aa259dc655263f7741c6e3c919384faff6130b7c3b659080b947e457  143 bytes
- * dept_visit_schemas (all 22, canonical JSON) sha256 5233b803a2848464fa839ac4656aedb6dd9823a17d1f493b8c9c4bf010ef363d  12294 bytes
+ * json_response_spec_fallback sha256 fd5c50d7aa259dc655263f7741c6e3c919384faff6130b7c3b659080b947e457 143 bytes
+ * dept_visit_schemas (all 22, canonical JSON) sha256 5233b803a2848464fa839ac4656aedb6dd9823a17d1f493b8c9c4bf010ef363d 12294 bytes
  */
 
 /** Byte-exact v1 generic JSON_RESPONSE_SPEC fallback schema, as a `json.dumps(indent=2)`-equivalent JSON string (parse before use). */

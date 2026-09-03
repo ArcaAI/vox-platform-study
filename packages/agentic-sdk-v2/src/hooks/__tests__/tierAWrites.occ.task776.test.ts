@@ -1,10 +1,10 @@
 /**
- * TASK-776 / REST review H-1 phase 0b — the SDK sends `If-Match` on the
+ * / REST review H-1 phase 0b — the SDK sends `If-Match` on the
  * tier-A routes it drives.
  *
  * Two of the seven flipped routes are reachable from the BROWSER SDK:
  *
- *   `PATCH /consultations/:id`                  — `useArcaSession.update` / `useArca.updateConsultation`
+ *   `PATCH /consultations/:id` — `useArcaSession.update` / `useArca.updateConsultation`
  *   `PATCH /dna-writing-styles/:reportId/default` — `useDnaStyle.setDefault`
  *
  * The contract these tests pin, in both directions:
@@ -84,7 +84,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 
 const conflict = () => new AgenticError('UNKNOWN_ERROR', 'HTTP 412', { context: { status: 412, currentVersion: 9 } });
 
-describe('TASK-776 phase 0b — SDK sends If-Match on the tier-A routes', () => {
+describe(' phase 0b — SDK sends If-Match on the tier-A routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore.consultation = { ...consultation };

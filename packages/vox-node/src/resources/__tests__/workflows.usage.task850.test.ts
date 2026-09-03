@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane B — THE DEVELOPER EXPERIENCE, executed.
+ * lane B — THE DEVELOPER EXPERIENCE, executed.
  *
  * The requirement this lane is judged on is not "the methods exist"; it is
  * *"the developer will utilize the SDK for implementing the features"*. So the

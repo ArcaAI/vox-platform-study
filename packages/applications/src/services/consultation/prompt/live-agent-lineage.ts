@@ -14,7 +14,7 @@
  *
  * THE TIER, NOT THE AGENT ID, IS WHAT MAKES A BLOCK REAL. `agentId` is null on
  * the `default` and `code-default` tiers by contract (see
- * {@link FrozenLiveAgentSnapshot}), and since TASK-815 it is the workflow NODE
+ * {@link FrozenLiveAgentSnapshot}), and since it is the workflow NODE
  * id — so a session that ran on the governed SYSTEM live default legitimately
  * carries no id. Gating on `agentId` therefore DISCARDED genuine provenance for
  * those sessions: finalize wrote `sessionAgentPromptVersion: null` for a live

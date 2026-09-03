@@ -16,7 +16,7 @@
 // MUST default OFF, so the migrated key defaults `false` and server-side OCR
 // enrichment is now OPT-IN.
 //
-// TASK-705 — `harness.loop.enabled` is GONE, replaced by
+// `harness.loop.enabled` is GONE, replaced by
 // `harness.loop.emergencyStop`. It was two devices wearing one key: commercial
 // eligibility (now the `agenticLoop` subscription entitlement, resolved from
 // the database per tenant) and an operational stop (what remains here, with the
@@ -36,7 +36,7 @@ import {
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
-  // TASK-811 — the realtime graph executor's PER-TENANT rollout flag.
+  // The realtime graph executor's PER-TENANT rollout flag.
   {
     key: CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY,
     tier: 'global-kv',
@@ -52,10 +52,10 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     category: 'Feature Flags',
     label: 'Realtime graph executor',
     description:
-      "Routes the live-documentation flush through the TASK-811 GRAPH EXECUTOR — a walk over the tenant's compiled realtime lane — instead of the hardcoded sequence. Defaults OFF, so an unflagged tenant runs the legacy engine unchanged; the legacy path stays executable until trajectory parity is demonstrated on the same transcript. Set a row under ONE tenant to roll it out there first. With it ON, a tenant that has authored no consultation-palette graph still serves PLATFORM_REALTIME_LANE, which encodes the legacy sequence as a graph — so enabling it is not the same as changing what the tenant's note looks like.",
+      "Routes the live-documentation flush through the GRAPH EXECUTOR — a walk over the tenant's compiled realtime lane — instead of the hardcoded sequence. Defaults OFF, so an unflagged tenant runs the legacy engine unchanged; the legacy path stays executable until trajectory parity is demonstrated on the same transcript. Set a row under ONE tenant to roll it out there first. With it ON, a tenant that has authored no consultation-palette graph still serves PLATFORM_REALTIME_LANE, which encodes the legacy sequence as a graph — so enabling it is not the same as changing what the tenant's note looks like.",
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY],
   },
-  // TASK-705 — the loop's OPERATIONAL stop. Its commercial counterpart is the
+  // the loop's OPERATIONAL stop. Its commercial counterpart is the
   // `agenticLoop` subscription entitlement, which is not a setting at all.
   {
     key: HARNESS_LOOP_EMERGENCY_STOP_KEY,
@@ -94,7 +94,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
       'Enables `OcrEnrichmentProcessor` — the in-cluster PyMuPDF + RapidOCR pass that fills `ContextItem.metaData.extractedText` for scanned attachments the browser text-layer extractor could not read. Resolved on EVERY ContextAdded event, so it can be cut without a redeploy when the NLP service is under pressure. NOW DEFAULTS OFF: the `OCR_ENABLED` env flag it replaces defaulted ON, which violated the kill-switch defaults-OFF invariant — enabling OCR is now an explicit operator action. With it off, a scanned attachment degrades to its filename label exactly as a failed OCR pass already did. PHI posture is unchanged (bytes stay in-cluster, no third-party egress).',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OCR_ENABLED_KEY],
   },
-  // TASK-711 (Task 9) — the session state-machine's one flagged precondition.
+  // The session state-machine's one flagged precondition.
   {
     key: CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
     tier: 'global-kv',
@@ -108,10 +108,10 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     category: 'Feature Flags',
     label: 'Require PRIMED before RECORDING',
     description:
-      "Enforces `docs/implementation/TASK-711-Session-State-Machine/state-machine.md` §2's `PRIMED → RECORDING` guard on `POST :id/recording/start`. Defaults OFF: no existing SDK/admin-console caller invokes `POST :id/prime` yet, so flipping this ON without a prior client rollout would 409 every recording start. OFF logs the would-be violation and proceeds; ON enforces (409 without a prior `prime`). Deleted once TASK-712 makes `prime` the end-to-end consent checkpoint.",
+      "Enforces the session state machine's `PRIMED → RECORDING` guard on `POST :id/recording/start`. Defaults OFF: no existing SDK/admin-console caller invokes `POST :id/prime` yet, so flipping this ON without a prior client rollout would 409 every recording start. OFF logs the would-be violation and proceeds; ON enforces (409 without a prior `prime`). Deleted once `prime` is the end-to-end consent checkpoint.",
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY],
   },
-  // TASK-711 (state-machine.md §1a) — general session-idleness timeout. A
+  // General session-idleness timeout. A
   // tuning knob, not a kill-switch: no on/off semantics, so `killSwitch` is
   // intentionally omitted.
   {
@@ -126,10 +126,10 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     category: 'Feature Flags',
     label: 'Consultation session idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE (state-machine.md §1a). Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
+      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE. Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
   },
-  // TASK-711 (state-machine.md §1a mechanism) — how OFTEN
+  // Sweep cadence — how OFTEN
   // `ConsultationTimeoutSweepService` ticks. A tuning knob, not a kill-switch
   // (no `enabled` gate — the sweep runs unconditionally once the module is
   // wired, matching the "ship complete, not flag-gated" pre-production

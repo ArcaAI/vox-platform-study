@@ -971,7 +971,7 @@ class TestReportTrajectory:
 
 
 class TestSttBatchJobs:
-    """TASK-724 Task 5 — the harness batch-trigger activity's HTTP client half."""
+    """the harness batch-trigger activity's HTTP client half."""
 
     @pytest.mark.asyncio
     async def test_create_stt_batch_job_posts_and_parses_response(self):

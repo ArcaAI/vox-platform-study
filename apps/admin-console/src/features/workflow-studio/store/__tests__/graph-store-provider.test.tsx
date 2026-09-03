@@ -1,5 +1,5 @@
 /**
- * `GraphStoreProvider` (TASK-719 Task 11) — mirrors rule 08 §Store's "the store is not
+ * `GraphStoreProvider` — mirrors rule 08 §Store's "the store is not
  * reachable without a provider" contract.
  */
 import { renderHook } from '@testing-library/react';

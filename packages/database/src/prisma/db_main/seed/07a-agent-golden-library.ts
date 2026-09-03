@@ -15,7 +15,7 @@
  * This file also used to seed 18 SYSTEM golden `DepartmentAgent` rows, a
  * lock-and-lineage CLONE set for the Global fixture tenant, and 7 tenant-owned
  * per-visit-type agents for ArcaAI. All three went with `DepartmentAgent` itself
- * (TASK-815) — a prompt template's binding to a workflow now lives on the NODE
+ * a prompt template's binding to a workflow now lives on the NODE
  * that references it, so there is no per-department agent row to seed. The
  * DEPARTMENT and PROMPT halves are untouched: they are the golden catalog every
  * tenant's provisioning still copies from.
@@ -27,9 +27,9 @@
  * already a deletion.
  *
  * ID blocks (documented in 00-constants.ts):
- *   70000000-…-0002-…  SYSTEM golden departments
- *   71000000-…-0002-…  SYSTEM golden prompt templates
- *   72000000-…-0002-…  SYSTEM golden prompt versions
+ *   70000000-…-0002-… SYSTEM golden departments
+ *   71000000-…-0002-… SYSTEM golden prompt templates
+ *   72000000-…-0002-… SYSTEM golden prompt versions
  *
  * SYSTEM_SHARED_READ_MODELS decision, amended:
  * Department is still deliberately NOT widened. PROMPT TEMPLATES ARE: `PromptTemplate`/`PromptVersion` joined SYSTEM_SHARED_READ_MODELS

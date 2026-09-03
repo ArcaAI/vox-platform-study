@@ -25,7 +25,7 @@
  *       target (it ties to the dropped-frame counters).
  *
  * Live-stack requirement: needs STT behind the gateway; self-skips with an
- * explicit reason when unreachable. Prereqs + invocation: ticket README
+ * explicit reason when unreachable. Prereqs + invocation: 
  * (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
 import { test, expect } from '@playwright/test';
@@ -148,7 +148,7 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
         'Gateway EGRESS-watermark drops (partials dropped / finals queued at 512 KiB) are NOT ' +
           'client-observable and not naturally reproducible on the shared stack — see the ' +
           'test.fixme + stt-ws.gateway.test.ts.',
-        'TASK-467 (FIXED): `{type:stop}` finalize is a JSON text frame the gateway USED to ' +
+        ' (FIXED): `{type:stop}` finalize is a JSON text frame the gateway USED to ' +
           'misclassify as binary audio (ws@8 text-as-Buffer); it now branches on the message ' +
           "event's isBinary arg and reaches writeControlCommand(finalize). reachedClosedStatusAfterStop " +
           'now hinges on the upstream finalize emitting a closed status, not on frame classification.',
@@ -158,7 +158,7 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
         body: JSON.stringify(report, null, 2),
         contentType: 'application/json',
       });
-      console.log('\n[TASK-455 AC-3] backpressure/overload baseline:\n' + JSON.stringify(report, null, 2));
+      console.log('\n[ AC-3] backpressure/overload baseline:\n' + JSON.stringify(report, null, 2));
 
       socket.close();
 

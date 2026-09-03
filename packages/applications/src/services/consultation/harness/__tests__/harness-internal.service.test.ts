@@ -4,8 +4,8 @@
  * The INBOUND apps/api half of the gate adapter. Three operations the harness
  * calls back into apps/api (which stays the sole DB writer / system-of-record):
  *   - persistEntities: persist NamedEntity rows from NLP
- *   - assemble:        PromptAssemblyService (incl. NER injection + SOAP responseFormat)
- *   - persistDraft:    ContextItem + SummaryMeta + status PENDING_REVIEW + SSE + WORM audit
+ *   - assemble: PromptAssemblyService (incl. NER injection + SOAP responseFormat)
+ *   - persistDraft: ContextItem + SummaryMeta + status PENDING_REVIEW + SSE + WORM audit
  *
  * Each re-establishes CLS (cls.run + cls.set) from the body `tenantId` because
  * the harness calls these out-of-band of the API edge ClsModule middleware.
@@ -17,7 +17,7 @@ import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
 
 /**
- * TASK-711 — `consultationRepository.findById` fixtures used to be plain
+ * `consultationRepository.findById` fixtures used to be plain
  * data bags; `persistDraft`/`finalizeAssurance`/`recordEscalation` now call
  * the REAL `ConsultationEntity.transitionTo`/`.version`, so every fixture
  * must be a real entity instance, not a duck-typed object. This wraps a
@@ -125,7 +125,7 @@ const createMockContextItemRepository = () => {
     // persistDraft test is unaffected.
     findByType: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockImplementation(async (id: string, entity: Record<string, unknown>) => ({ ...entity, id })),
-    // TASK-709: `persistDraft`'s adoption branch now CASes against `_version`
+    // `persistDraft`'s adoption branch now CASes against `_version`
     // instead of the legacy non-versioned `.update()`. Delegate to `update` so
     // every pre-existing `.update`-based assertion in this suite keeps
     // driving/observing behavior unchanged; the OCC-specific drift behavior is
@@ -180,9 +180,9 @@ const createMockConsultationRepository = () => ({
       departmentId: 'dept-1',
       doctorId: 'doctor-1',
       parentConsultationId: null,
-      // TASK-711 — DRAINING is the realistic (and only legal) predecessor
+      // DRAINING is the realistic (and only legal) predecessor
       // for persistDraft's DRAFT_PENDING_SENSORS/PENDING_REVIEW targets
-      // (state-machine.md §2); most tests in this file exercise persistDraft
+      // (; most tests in this file exercise persistDraft
       // and rely on this default. `recordEscalation`'s own describe block
       // overrides to PENDING_REVIEW (its real-world predecessor).
       status: ConsultationStatus.DRAINING,
@@ -717,7 +717,7 @@ describe('HarnessInternalService', () => {
         contextItemRepository.findPreSummaries.mockResolvedValue([SNAPSHOT]);
       });
 
-      // : the snapshot LOAD is now unconditional — the load is
+      //: the snapshot LOAD is now unconditional — the load is
       // what tells finalize whether a live agent ran at all (`metaData.agent`).
       // The observable contract is unchanged and is what is asserted here: with
       // no lineage on the row, flag=false still injects NOTHING.
@@ -925,7 +925,7 @@ describe('HarnessInternalService', () => {
 
       const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
       expect(call.preSummaryText).toBeUndefined();
-      // : the load is unconditional now (it is how lineage is
+      //: the load is unconditional now (it is how lineage is
       // detected); with no `metaData.agent` on the row the flag still decides,
       // so nothing is injected and nothing is pinned.
       expect(call.preSummaryLineage).toBeUndefined();
@@ -1391,7 +1391,7 @@ describe('HarnessInternalService', () => {
 
       await service.persistDraft('consultation-1', draftBody());
 
-      // : unconditional load, flag-gated provenance when the
+      //: unconditional load, flag-gated provenance when the
       // row carries no agent lineage — empty `preSummaryIds`, null lineage.
       expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
         expect.objectContaining({ preSummaryIds: [], sessionAgentId: null, sessionAgentPromptVersion: null }),
@@ -1895,11 +1895,11 @@ describe('HarnessInternalService', () => {
     });
 
     beforeEach(() => {
-      // TASK-711 — the gate SLA escalation's real-world predecessor is
+      // the gate SLA escalation's real-world predecessor is
       // PENDING_REVIEW (the state a gate-queue item sits in while awaiting
       // clinician sign-off); the file-level default is DRAINING (persistDraft's
       // predecessor). `PENDING_REVIEW → TIMED_OUT` is the only legal target
-      // for the terminal `gate_sla_abandoned` reason (state-machine.md §2).
+      // for the terminal `gate_sla_abandoned` reason
       consultationRepository.findById.mockResolvedValue(
         consultationFixture({
           id: 'consultation-1',
@@ -1933,7 +1933,7 @@ describe('HarnessInternalService', () => {
     it('gate_sla_abandoned → GATE_ABANDONED (terminal) WORM append, returns { recorded: true }', async () => {
       const result = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
 
-      // TASK-711 — the terminal abandon ALSO drives PENDING_REVIEW -> TIMED_OUT,
+      // the terminal abandon ALSO drives PENDING_REVIEW -> TIMED_OUT,
       // which appends a second WORM row (SESSION_TIMED_OUT) alongside the
       // pre-existing GATE_ABANDONED event.
       expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
@@ -2041,7 +2041,7 @@ describe('HarnessInternalService', () => {
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalled();
     });
 
-    // TASK-709 — the adoption branch used to overwrite `content`
+    // the adoption branch used to overwrite `content`
     // unconditionally on a routine second `HarnessDocWorkflow` execution,
     // silently reverting a clinician edit made between the first and second
     // execution. It now CASes against `_version`: a drift (the clinician
@@ -2088,7 +2088,7 @@ describe('HarnessInternalService', () => {
       expect(contextItemRepository.update).not.toHaveBeenCalled();
     });
 
-    // TASK-825 — the adoption branch shares the empty-write defect
+    // the adoption branch shares the empty-write defect
     // `ContextService.updateContext` had: `encryptStringToCiphertext` returns
     // `null` for `''`, so `encryptContentIntoEntity` no-ops and the UPDATE omits
     // `encryptedContent` — the only persisted form of the note — while
@@ -2224,7 +2224,7 @@ describe('HarnessInternalService', () => {
     const escBody = (reason = 'gate_sla_breached') => ({ tenantId: 'tenant-1', reason, jobId: 'harness-doc-1' });
 
     it('recordEscalation: SAME key twice → ONE WORM append + identical replay', async () => {
-      // TASK-711 — gate_sla_abandoned's real predecessor is PENDING_REVIEW
+      // gate_sla_abandoned's real predecessor is PENDING_REVIEW
       // (the file-level default, DRAINING, is persistDraft's predecessor).
       consultationRepository.findById.mockResolvedValue(
         consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', doctorId: 'doctor-1', status: ConsultationStatus.PENDING_REVIEW }),

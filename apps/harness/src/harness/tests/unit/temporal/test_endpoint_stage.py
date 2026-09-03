@@ -1,7 +1,7 @@
-"""TASK-812 — the ENDPOINT STAGE, asserted against the REAL workflow definition.
+"""the ENDPOINT STAGE, asserted against the REAL workflow definition.
 
 The endpoint stage is the ordered sequence that runs before a consultation session closes. Three
-defects define it, and each has a test here that FAILS on the pre-TASK-812 workflow:
+defects define it, and each has a test here that FAILS on the earlier workflow:
 
 * **D-10** — the sequence was a hardcoded literal an admin could only SUBTRACT from. The loop now
   runs whatever ordered list the pinned config carries, including keys that did not exist before
@@ -328,7 +328,7 @@ class TestD10OrderedAndExtensible:
 
 
 class TestTask814S2bAcceptedProposalsReachFeedbackCapture:
-    """TASK-814 §2b — the promotion path (TASK-812 DD-8) is inert until the loop actually
+    """the promotion path is inert until the loop actually
     threads what the console recorded into ``capture_feedback``.
 
     Before this, ``ConsultationEndingSignal`` had no field to carry a clinician's accepted

@@ -44,7 +44,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     HarnessAuditServiceModule,
     HarnessGatewayServiceModule,
     HarnessPolicyServiceModule,
-    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
@@ -57,24 +57,24 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // BillingServiceModule supplies IBillingService for the optional
     // spend-limit precheck on LLM generation (402).
     BillingServiceModule,
-    // TASK-704 seam — logging-only for generateSummary/generatePreSummary
+    // seam — logging-only for generateSummary/generatePreSummary
     // (see summary.service.ts for the HUMAN-GATED note on why sync
     // generateSummary does not short-circuit to harness).
     NoteGenerationServiceModule,
-    // TASK-710 hop 1 — supplies `IPhiRedactor` for `extractEntities`, which
+    // hop 1 — supplies `IPhiRedactor` for `extractEntities`, which
     // pseudonymizes before posting to the NLP service. SummaryService injects
     // it WITHOUT `@Optional()`, so this import is load-bearing: dropping it
     // fails module initialization loudly rather than silently leaking raw PHI
-    // (the failure mode TASK-732's deletion of `ner.processor.ts` re-opened).
+    // (the failure mode deletion of `ner.processor.ts` re-opened).
     PhiRedactionServiceModule,
-    // TASK-792 W1+W2 — BOTH halves of the gate-edit learning loop.
+    // +W2 — BOTH halves of the gate-edit learning loop.
     // WRITE: supplies `IGateEditMiningQueue` so `approveSummary` can hand the
     // clinician's sign-off to the miner. READ: supplies
     // `IGateEditExemplarRetriever`, which the `PromptAssemblyService` provided
     // BELOW injects with `@Optional()` — without this import that resolves to
     // `undefined` and few-shot silently degrades to zero-shot.
     GateEditMiningServiceModule,
-    // TASK-810 carry-over A — supplies `IDocumentTemplateService`, which
+    // carry-over A — supplies `IDocumentTemplateService`, which
     // `SummaryService` injects with `@Optional()` to key the edit-capture
     // `fieldChanges` map on the tenant's PINNED document shape. Without this
     // import the token resolves to `undefined` and every edit/sign delta

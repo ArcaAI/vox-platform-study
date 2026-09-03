@@ -1,10 +1,10 @@
 # ============================================================================
-# Harness / Temporal alert rules — TASK-730 Task 5
+# Harness / Temporal alert rules
 # ============================================================================
 # Local-dev counterpart to arca/hope-v2-deployment's base/alert-rules.yaml
 # `temporal`/`workers` groups. Deliberately not a copy: this repo's local
 # Prometheus previously had NO rule_files/alerting block of any kind
-# (README.md §2.4/§2.10.6), so this file's first job is to exist at all, not
+# (README.md, so this file's first job is to exist at all, not
 # to duplicate the cluster-side rules verbatim.
 #
 # No Alertmanager runs in local dev (docker-compose.dev.yml has no such
@@ -23,7 +23,7 @@ groups:
     rules:
       # 5xx rate over the existing http_* series (prometheus_fastapi_instrumentator
       # defaults) — the exact PromQL scripts/harness-availability-report.py
-      # prints for the TASK-730 Task 4 availability measurement, made into a
+      # prints for the availability measurement, made into a
       # standing rule so it doesn't have to be re-typed by hand.
       - alert: HarnessHttp5xxRateHigh
         expr: |
@@ -60,7 +60,7 @@ groups:
       # Temporal instance harness talks to (docker-compose.dev.yml's `temporal`
       # service) — unlike the cluster-side rule of the same name, which
       # currently scrapes the dead in-cluster copy, not the production
-      # unmanaged-VM instance (README.md §2.10 finding 1/5). Do not assume this
+      # unmanaged-VM instance (README.md finding 1/5). Do not assume this
       # rule's cluster-side twin is meaningful until that scrape-target gap is
       # closed — that is Task 1's decision + a follow-on deployment-repo fix,
       # not something this local rule file can affect.
@@ -84,7 +84,7 @@ groups:
       # data," which is the honest state here. Wiring worker-side Prometheus
       # metrics is out of THIS ticket's scope (it touches
       # apps/harness/src/harness/temporal/worker.py, excluded per README.md
-      # §1 — this ticket does not touch workflow/activity code, and worker
+      # does not touch workflow/activity code, and worker
       # startup wiring is adjacent to that boundary); flagged here so it is
       # not silently forgotten.
       - alert: HarnessWorkerTaskFailures
@@ -109,7 +109,7 @@ groups:
       # not a container with an exposed port). ABSENCE of the `harness` job's
       # own liveness is a weak proxy at best (the FastAPI app and the worker
       # are separate processes per .claude/rules/06-python-services.md
-      # §Temporal — one being up says nothing about the other). No rule is
+      # one being up says nothing about the other). No rule is
       # authored for worker-process health here; it would either be
       # meaningless (this comment explains why) or require new instrumentation
       # this ticket does not add. Flagged as an open item rather than papered

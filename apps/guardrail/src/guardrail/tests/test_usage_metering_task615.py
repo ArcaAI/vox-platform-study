@@ -41,7 +41,7 @@ class _FakeClient:
 
 
 def _judge_client(payload: dict[str, Any]) -> TextJudgeClient:
-    """The judge is a DELEGATION since TASK-735 Phase 2b — the metering guarantee
+    """The judge is a DELEGATION since — the metering guarantee
     is unchanged: guardrail's spend still rides back on its own verdict, because
     guardrail is still the peer service with no gateway in front of it."""
     return TextJudgeClient(
@@ -78,8 +78,8 @@ def _judge_body(usage: dict[str, Any] | None = None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # 1. The endpoint threw the stats away
 #
-# (The Ollama-guardian arm of this suite went with the engine in TASK-736, and the
-# OpenAI-compat arm with TASK-735 Phase 2b. The guarantee they carried — a stats
+# (The Ollama-guardian arm of this suite went with the engine in, and the
+# OpenAI-compat arm with The guarantee they carried — a stats
 # problem must never fail a safety check — is engine-independent and now lives on
 # the delegating client, whose stats mapping is null-safe by contract.)
 # ---------------------------------------------------------------------------

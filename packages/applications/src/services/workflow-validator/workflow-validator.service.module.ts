@@ -4,13 +4,13 @@ import { CommonServiceModule } from '../baseServices';
 import { WorkflowValidatorService } from './workflow-validator.service';
 
 /**
- * WorkflowValidatorService DI module (TASK-716 Task 8).
+ * WorkflowValidatorService DI module.
  *
  * - CoreDatabaseModule -> `WorkflowInvariantRuleRepository`, the rule rows.
  * - CommonServiceModule -> the house baseline every service module imports.
  *
- * NO symbol-token port. TASK-716's original Task 8 specified an
- * `IWorkflowValidatorService` token, but TASK-734 deliberately removed that port
+ * NO symbol-token port. original Task 8 specified an
+ * `IWorkflowValidatorService` token, but deliberately removed that port
  * when it wired the engine ("this service calls `@arcaai/workflow-contract`'s
  * validate/compile directly rather than through a speculative port nothing else
  * consumes" — `IWorkflowDefinitionService.ts`). Re-introducing the token for a

@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — filling the case note from the live SOAP stream.
+ * filling the case note from the live SOAP stream.
  *
  * `LiveSummarySnapshot.sections` already carries the four SOAP sections (the server parses
  * them in `live-documentation/soap-parser.ts`, whose `LIVE_SOAP_RESPONSE_FORMAT` pins

@@ -1,4 +1,4 @@
 # Harness eval-gate run artifacts. The numbers that matter are transcribed into
-# apps/harness/eval/README.md and the TASK-713 ticket; the raw report is a
+# apps/harness/eval/README.md; the raw report is a
 # per-run local artifact, not source.
 eval-report*.json

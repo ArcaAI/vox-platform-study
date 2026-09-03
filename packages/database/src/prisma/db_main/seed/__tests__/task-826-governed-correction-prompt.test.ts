@@ -1,5 +1,5 @@
 /**
- * TASK-826 — the durable corrector's prompt, as CONFIGURATION rather than a Python literal.
+ * the durable corrector's prompt, as CONFIGURATION rather than a Python literal.
  *
  * `consultation.proposeCorrections` ran on `_CORRECTION_SYSTEM_PROMPT`, a module-level constant in
  * `apps/harness/.../consultation_realtime.py`, while the realtime caller of the SAME engine
@@ -13,7 +13,7 @@
  * `test_realtime_capability_nodes.py::TestCorrectionInstructionIsGoverned`. What that suite CANNOT
  * assert is that the platform default actually exists, sits in the right tenancy tier, and is
  * bound on the node: a governed resolver with nothing seeded to resolve degrades on every run,
- * which is the "runs for nobody" failure TASK-815 §14a names and TASK-821 §17e closed for
+ * which is the "runs for nobody" failure names and closed for
  * `agent.grammar`. So this file asserts the CONFIGURATION, and that suite asserts the RUNTIME.
  *
  * ## Why the tenancy assertion is the load-bearing one

@@ -1,6 +1,6 @@
 /**
  * Theming bridge for React Flow (`@xyflow/react`), imitating `custom/code-editor.tsx`'s
- * `--code-editor-*` bridge (TASK-719 Task 5 / DEPENDENCY.md §(d)).
+ * `--code-editor-*` bridge ( / DEPENDENCY.md (d)).
  *
  * React Flow reads every colour through `var(--xy-<token>, var(--xy-<token>-default))`
  * (verified in the unpacked `dist/style.css`). Overriding the NON-`-default` variable once,

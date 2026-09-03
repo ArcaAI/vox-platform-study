@@ -1,4 +1,4 @@
-"""Resume-token convention (design doc §3.6).
+"""Resume-token convention.
 
 Opaque, transport-assigned, consumer-echoed: ``base64url(JSON({v, t, c}))``.
 Uses the SAME base64url alphabet (``-``/``_``, no padding) as the TypeScript
@@ -31,7 +31,7 @@ def encode_resume_token(transport: str, cursor: str) -> str:
     """Wrap a transport-native cursor into an opaque resume token.
 
     Callers on a non-resumable transport (BullMQ, Temporal) MUST NOT call
-    this — §3.6 forbids a synthetic token where the transport cannot resume.
+    this — forbids a synthetic token where the transport cannot resume.
     """
     wire = {"v": 1, "t": transport, "c": cursor}
     return _base64url_encode(json.dumps(wire).encode("utf-8"))

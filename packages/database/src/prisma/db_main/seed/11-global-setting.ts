@@ -484,7 +484,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
+      'Platform capability for local raw-stream dual-capture . The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
   // Turn the nightly SYSTEM-template resync sweep ON.
@@ -510,7 +510,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates (TASK-531). Customized pipelines are never touched. Locked — only SUPER_ADMIN may change it.",
+      "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates . Customized pipelines are never touched. Locked — only SUPER_ADMIN may change it.",
     locked: true,
   },
   {
@@ -522,7 +522,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     value: '0 3 * * *',
     defaultValue: '0 3 * * *',
     dataType: ValueType.String,
-    description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only SUPER_ADMIN may change it.',
+    description: 'Cron expression for the nightly SYSTEM-template resync sweep . Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
 ];
@@ -565,7 +565,7 @@ export const RETIRED_GLOBAL_SETTING_KEYS: ReadonlyArray<{ namespace: string; key
  * increment. Already-DELETED rows are excluded, so re-runs write nothing.
  */
 export const retireSupersededGlobalSettings = async (client: CorePrismaClient): Promise<{ retired: number }> => {
-  console.log('Retiring superseded Global Settings (TASK-506)...');
+  console.log('Retiring superseded Global Settings ...');
 
   let retired = 0;
   for (const { namespace, key } of RETIRED_GLOBAL_SETTING_KEYS) {

@@ -106,7 +106,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
     name: 'api-documentation-read',
     description: 'Read the developer API documentation portal in the admin console',
     scope: PolicyScope.GLOBAL,
-    // TASK-783 (owner decision D-1, 2026-08-20). A DEDICATED subject, on the
+    // (owner decision D-1, 2026-08-20). A DEDICATED subject, on the
     // `PrismaStudio` precedent above: reading the API reference is its own
     // privilege, grantable to tenant developers without handing out
     // `manage:all` and without implying any data access.
@@ -136,7 +136,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // User management
       { action: 'manage', subject: 'User', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'UserProfile' },
-      // TASK-762 (owner decision 2026-08-18): a tenant admin may READ the service
+      // (owner decision 2026-08-18): a tenant admin may READ the service
       // accounts belonging to their own tenant. Without this, no seeded role below
       // SUPER_ADMIN held `read:ServiceAccount`, so CASL refused every caller with a
       // uniform 403 and the service's own 404-over-403 in `loadOwned` was
@@ -153,7 +153,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'Consultation', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'ContextItem', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'Media', conditions: { tenantId: '${context.tenantId}' } },
-      // Consent & ABAC (TASK-712) — a clinician/tenant-admin records the
+      // Consent & ABAC — a clinician/tenant-admin records the
       // grant (Q1: clinician-recorded grant is sufficient; no patient-facing
       // surface exists). Tenant-scoped like its clinical-data neighbors
       // above; real isolation is enforced at the service/repository layer
@@ -238,7 +238,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // every op to the caller's tenant. `manage` implies `read` (GET routes).
       { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's nlp.topic/nlp.intent
-      // instruction content (TASK-729) — a SEPARATE subject from
+      // instruction content — a SEPARATE subject from
       // AiTaskDefault, deliberately NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES:
       // this is tenant-authored CONTENT, not model selection. Tenant-scoped;
       // the service pins every op to the caller's tenant.
@@ -272,13 +272,13 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // the whole boundary. Without this grant the feature would be
       // unreachable by the audience names.
       { action: 'manage', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
-      // TASK-810 — the clinical-document SHAPE catalog, same posture and for the
+      // the clinical-document SHAPE catalog, same posture and for the
       // same reason: `@CanManage('DocumentTemplate')` is the whole boundary
       // (no narrower imperative gate), and without this grant a tenant admin
       // could not author the document shapes their own clinicians produce.
       { action: 'manage', subject: 'DocumentTemplate', conditions: { tenantId: '${context.tenantId}' } },
-      // Agentic workflow substrate (TASK-734 authoring controllers,
-      // TASK-722 exposure plane) — tenant admins manage their own tenant's
+      // Agentic workflow substrate ( authoring controllers,
+      // exposure plane) — tenant admins manage their own tenant's
       // workflow definitions (author/validate/publish, `admin/workflow-
       // definitions/*`) and workflow runs (invoke/status/stream/cancel,
       // `/workflows/:slug/*` — `@CanCreate`/`@CanRead`/`@CanUpdate`
@@ -286,11 +286,11 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // route pins reads/writes to the caller's CLS tenant and answers 404
       // for a cross-tenant id (404-over-403). Without this grant BOTH
       // controllers 403 for every principal except a super admin — this is
-      // the gap TASK-722's own plan named ("coordinate with TASK-719, which
+      // the gap own plan named ("coordinate with, which
       // needs the same subjects... seed them once, in one place").
       { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'WorkflowRun', conditions: { tenantId: '${context.tenantId}' } },
-      // TASK-850 lane A — the consultation-BOUND invocation plane
+      // lane A — the consultation-BOUND invocation plane
       // (`POST /consultations/:consultationId/workflows/:slug/runs`). A SEPARATE subject from
       // `WorkflowRun` on purpose: that one covers running a workflow, this one covers running
       // one AGAINST A CONSULTATION, which can write real clinical rows. Keeping them apart is
@@ -308,20 +308,20 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // BillingService via isSuperAdmin (see that controller's AUTH-NOTE), so this
       // grant widens reads only.
       { action: 'manage', subject: 'BillingInvoice', conditions: { tenantId: '${context.tenantId}' } },
-      // Institutional-RAG knowledge corpus governance (TASK-728). Same gap as
+      // Institutional-RAG knowledge corpus governance. Same gap as
       // BillingInvoice above: knowledge.controller.ts says "the class-level
       // `@CanManage('KnowledgeDocument')` is the whole gate", and its by-id paths
       // answer 404-over-403 via findOwnedOrThrow — but no policy granted the
       // subject, so every tenant admin was rejected at the guard with 403 and the
       // documented tenant-scoped path was unreachable.
       { action: 'manage', subject: 'KnowledgeDocument', conditions: { tenantId: '${context.tenantId}' } },
-      // Per-tenant saved synthetic Workbench test inputs (TASK-721 Phase B) —
+      // Per-tenant saved synthetic Workbench test inputs
       // `WorkflowTestFixtureController` gates on `@CanManage('WorkflowTestFixture')`. Same gap
       // shape as the two grants above: without this row the fixture CRUD surface 403s for every
       // tenant admin (code-correct, unreachable-by-role — flagged as a gap in the ticket's Phase
       // B evidence, closed here now that Phase C's Workbench screen actually consumes it).
       { action: 'manage', subject: 'WorkflowTestFixture', conditions: { tenantId: '${context.tenantId}' } },
-      // The validator's rule rows (TASK-790 W3b). `WorkflowInvariantRuleController` gates on
+      // The validator's rule rows (b). `WorkflowInvariantRuleController` gates on
       // `@CanManage('WorkflowInvariantRule')`; without this row the surface 403s for every tenant
       // admin — the same gap shape as the three grants above.
       //
@@ -376,7 +376,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
     rules: [
       // Can create consultations
       { action: 'create', subject: 'Consultation', conditions: { tenantId: '${context.tenantId}' } },
-      // TASK-858 — can READ the tenant's consent register. The Consultation
+      // can READ the tenant's consent register. The Consultation
       // Scribe pre-flights the patient's AI_DOCUMENTATION consent through
       // `GET /admin/consent-grants` before Start; without `read` every clinician
       // session (or a super admin impersonating one) surfaced a 403 there.
@@ -462,13 +462,13 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'ResourceSubscription', conditions: { targetUserId: '${user.id}' } },
       // Read tenant info
       { action: 'read', subject: 'Tenant', conditions: { id: '${context.tenantId}' } },
-      // TASK-763 — two READER-PLANE abilities that exist ONLY to make the
-      // TASK-756 minting ceiling agree with the routes that already exist.
+      // two READER-PLANE abilities that exist ONLY to make the
+      // minting ceiling agree with the routes that already exist.
       //
       // `ChangelogController` (`/changelog/*`) and `MyTenantContextSchemaController`
       // (`/tenant/me/context-schema`) are both `@Authorize()` with NO ability:
       // any authenticated user may call them, and the row-level filtering lives
-      // in the service. But TASK-758 gave each a business-plane scope
+      // in the service. But gave each a business-plane scope
       // (`platform:changelog:read`, `tenant:context-schema:read`), and
       // `ApiKeyService.assertScopeCeiling` refuses to mint a scope whose implied
       // CASL pair the CALLER does not hold. No seeded policy granted
@@ -485,7 +485,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // `@CanManage('ConsultationContextSchema')`), which `read` does not imply.
       { action: 'read', subject: 'ChangelogEntry' },
       { action: 'read', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
-      // TASK-810 — the sibling DISCOVERY read (`GET /tenants/me/document-template`).
+      // the sibling DISCOVERY read (`GET /tenants/me/document-template`).
       // Same reasoning as the context-schema read above: a clinician's client
       // must resolve the document shape at session open, so requiring an admin
       // ability would make the feature unreachable by its actual consumer. It

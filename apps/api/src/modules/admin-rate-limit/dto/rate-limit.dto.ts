@@ -113,7 +113,7 @@ export class RateLimitPolicyResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Rate-limit RULES (TASK-785) — ranks 1, 2 and 4 of the precedence chain
+// Rate-limit RULES — ranks 1, 2 and 4 of the precedence chain
 // ---------------------------------------------------------------------------
 
 export class CreateRateLimitRuleRequest {

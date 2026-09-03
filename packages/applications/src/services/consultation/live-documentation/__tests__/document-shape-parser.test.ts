@@ -1,5 +1,5 @@
 /**
- * TASK-810 — the template-driven replacement for the SOAP parser tests.
+ * the template-driven replacement for the SOAP parser tests.
  *
  * Every case that used to be written against the four hardcoded SOAP headings
  * is preserved, now driven by the COMPILED platform SOAP template — so the same

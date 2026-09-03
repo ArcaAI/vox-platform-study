@@ -4,12 +4,12 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { HarnessLiveAssistService } from './harness-live-assist.service';
 
 /**
- * HarnessLiveAssistService DI module (TASK-795 RC-2) — live clinician-assist feed.
+ * HarnessLiveAssistService DI module — live clinician-assist feed.
  *
  * Redis-only wiring, mirroring `HarnessProgressServiceModule` exactly (the assist
  * feed is ephemeral realtime data, never persisted):
- * - RedisCacheModule        → publish/setex the folded state to `consultation:live-assist:{id}`
- * - RedisSubscriberService  → dedicated subscriber connection for the SSE relay
+ * - RedisCacheModule → publish/setex the folded state to `consultation:live-assist:{id}`
+ * - RedisSubscriberService → dedicated subscriber connection for the SSE relay
  */
 @Module({
   imports: [RedisCacheModule.register()],

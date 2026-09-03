@@ -1,5 +1,5 @@
 /**
- * TASK-811 §2b — offset re-anchoring.
+ * offset re-anchoring.
  *
  * The property under test is the one the whole ticket turns on: with global
  * offsets, growing an EARLIER section silently invalidates every annotation after

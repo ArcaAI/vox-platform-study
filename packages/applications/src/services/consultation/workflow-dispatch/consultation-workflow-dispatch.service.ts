@@ -35,7 +35,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   constructor(
     @Inject(IWorkflowAssignmentService) private readonly assignments: IWorkflowAssignmentService,
     private readonly definitionRepository: WorkflowDefinitionRepository,
-    // TASK-795 W1 — carries the durable governing-engine marker. REQUIRED, not
+    // carries the durable governing-engine marker. REQUIRED, not
     // `@Optional()`: this is the exclusivity gate's write half, and a module that
     // forgot `CoreDatabaseModule` must fail loudly at boot rather than quietly
     // dispatch Substrate B while leaving Substrate A running alongside it.
@@ -43,14 +43,14 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     @Inject(HarnessGatewayService) private readonly harnessGateway: HarnessGatewayService,
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
-    // TASK-790 W4 — the FIRST production injector of this resolver, which TASK-789 H-5 found
+    // the FIRST production injector of this resolver, which found
     // "exported for a future consumer, injected nowhere". `@Optional()` so unit fixtures still
     // construct; production DI (WorkflowDefinitionServiceModule) supplies it.
     @Optional() private readonly sttPipelineResolver?: SttPipelineResolverService,
   ) {}
 
   /**
-   * TASK-813 OD-1 point 6 — the selector authorization gate. See
+   * point 6 — the selector authorization gate. See
    * `IConsultationWorkflowDispatchService.assertSelectableForConsultation` for the 404/403 split
    * and why it is that way round.
    *
@@ -83,7 +83,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 
   /**
-   * TASK-813 §8 — the DISCOVERY half of the same question: which slugs would pass the gate
+   * the DISCOVERY half of the same question: which slugs would pass the gate
    * above, for this tenant, right now.
    *
    * Selection shipped without it, so the contract was "guess a slug, get a 404/403". The fix is
@@ -147,12 +147,12 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   async dispatchForConsultation(input: DispatchForConsultationInput): Promise<ConsultationWorkflowDispatchResult> {
     const { consultationId, tenantId, departmentId, userId, externalPatientId, workflowDefinitionSlug } = input;
 
-    // TASK-790 W4 — resolved FIRST, and unconditionally, because the two palettes are separate
+    // resolved FIRST, and unconditionally, because the two palettes are separate
     // assignments: a tenant may assign an `stt` graph and no `consultation` graph. Putting this
     // after the early return below would silently skip the STT lane for exactly that tenant.
     const sttPipelineId = await this.resolveSttPipelineId(tenantId, departmentId ?? null);
 
-    // TASK-813 OD-1 point 5 — a caller selection REPLACES the consultation-palette cascade.
+    // point 5 — a caller selection REPLACES the consultation-palette cascade.
     // `assignments.resolve` is not called at all in that case: consulting it and then discarding
     // the answer would put a second, invisible slug in the logs for an operator to mistake for
     // the one that ran.
@@ -214,11 +214,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       });
 
       // The identity every consultation node reads from `run_payload`
-      // (`interpreter/nodes/_consultation_shared.py`). Omitting it is what made TASK-789 C-2 look
+      // (`interpreter/nodes/_consultation_shared.py`). Omitting it is what made look
       // like a broken invoke path: `input.context_binding` is `critical=True`, so a run without
       // identity fails at its first node.
       //
-      // TASK-850 lane A moved it from `payload` to `subject`. It is the SAME three values
+      // lane A moved it from `payload` to `subject`. It is the SAME three values
       // reaching the same `run_identity(...)` readers — the dispatcher re-stamps them into
       // `run_payload` — but they now travel on a channel a caller cannot compose. This call site
       // was always safe (its `consultationId` comes from a consultation the gateway just opened,
@@ -234,7 +234,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         subject: { consultationId, userId, externalPatientId: externalPatientId ?? undefined },
       });
 
-      // TASK-795 W1 — record the decision AFTER the run has actually started. The
+      // record the decision AFTER the run has actually started. The
       // order is the safety argument: every failure up to this line degrades to
       // "Substrate A documents this consultation", never to "nobody does".
       const governanceRecorded = await this.recordGovernance(consultationId, runId, definition.slug);
@@ -259,7 +259,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
 
   /**
    * Persist the marker that makes Substrate A stand down for this consultation
-   * (TASK-795 W1). Returns whether the decision is now durable.
+   * Returns whether the decision is now durable.
    *
    * Best-effort in the sense that it never throws — the interpreter run has already
    * started by the time this runs, so raising here would report a dispatch that
@@ -297,11 +297,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 
   /**
-   * TASK-790 W4 (TASK-789 H-5) — completes the STT lane: assignment -> definition slug ->
+   * completes the STT lane: assignment -> definition slug ->
    * compiled `AsrPipeline` id.
    *
    * The rest of this lane was already live. Publishing an `stt`-palette graph writes a REAL
-   * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` (finding C-7),
+   * `AsrPipeline` + `AsrPipelineVersion` through the production `PipelineService` ,
    * and that pipeline already shows up in the consultation Listener selector. The only unwired
    * link was this one — `SttPipelineResolverService` had no injector at all.
    *
@@ -310,7 +310,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
    * may stop a clinician opening a consultation.
    *
    * NOT done here: binding this id into the realtime WS session. That lives under
-   * `apps/api/src/modules/streaming/**`, which TASK-724's grep-gate deliberately fences so a
+   * `apps/api/src/modules/streaming/**`, which grep-gate deliberately fences so a
    * change there forces an explicit decision rather than riding along in an unrelated diff.
    */
   private async resolveSttPipelineId(tenantId: string, departmentId: string | null): Promise<string | null> {

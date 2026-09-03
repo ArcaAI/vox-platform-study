@@ -27,16 +27,16 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     HttpModule,
     PromptResolutionServiceModule,
     HarnessPolicyServiceModule,
-    // TASK-808 — the shared TEXT credential/profile enrichment. TEXT holds no
+    // the shared TEXT credential/profile enrichment. TEXT holds no
     // endpoint or credential of its own; without a `provider_overrides` entry it
     // fails closed with 503 PROVIDER_CREDENTIALS_MISSING.
     TextRequestServiceModule,
     ConfigResolverModule,
     UsageLedgerServiceModule,
-    // TASK-704 seam — always resolves to 'legacy' for this trigger (no
+    // seam — always resolves to 'legacy' for this trigger (no
     // harness equivalent); logging-only, never short-circuits generation.
     NoteGenerationServiceModule,
-    // TASK-792 W2 — supplies `IGateEditExemplarRetriever` for the
+    // supplies `IGateEditExemplarRetriever` for the
     // `PromptAssemblyService` provided below; absent ⇒ silent zero-shot.
     GateEditMiningServiceModule,
   ],

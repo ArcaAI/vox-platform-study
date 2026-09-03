@@ -67,7 +67,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ResourceSubscription',
   // tag.prisma (1)
   'Tag',
-  // rbac.prisma — TASK-766 OD-1: `Role` is now genuinely tenant-scoped.
+  // rbac.prisma —: `Role` is now genuinely tenant-scoped.
   // SYSTEM-tenant rows are the platform's built-in roles (TENANT_ADMIN,
   // DOCTOR, NURSE, ...) — every tenant resolves them directly (also a
   // SYSTEM-shared read model, below) rather than getting its own clone.
@@ -142,7 +142,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // ai-task-default.prisma (1) — per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
   // tenant-nlp-task-instructions.prisma (1) — tenant-writable topic/intent
-  // instruction content for nlp.topic/nlp.intent (TASK-729). Deliberately NOT
+  // instruction content for nlp.topic/nlp.intent. Deliberately NOT
   // a SYSTEM-shared read model — unlike AiTaskDefault there is no platform
   // default; a plain per-tenant resource (the TenantFrontendConfig pattern).
   'TenantNlpTaskInstructions',
@@ -158,7 +158,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // (super-admin-only per owner expectation); tenantId is
   // carried for the house template + forward compatibility.
   'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
-  // ai-routing-policy.prisma (1) — config-plane core (TASK-818 §3A.3). The
+  // ai-routing-policy.prisma (1) — config-plane core ( The
   // ORDERED N-way candidate chain per (tenant, taskKey, policyVersion): which
   // providers serve a task, in what order, and what may happen on failure.
   // SYSTEM row = platform default; a tenant row wins on presence. Carries no
@@ -203,7 +203,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-scoped and soft-delete EXEMPT (no resourceStatus column; segments
   // live/die with their parent transcript) — see MODELS_WITHOUT_SOFT_DELETE.
   'TranscriptSegment',
-  // TASK-811 — consultation.prisma. Per-section rows of a live-generated
+  // consultation.prisma. Per-section rows of a live-generated
   // clinical document. Tenant-scoped and soft-delete EXEMPT for the same reason
   // TranscriptSegment above is: sections live and die with their consultation's
   // document. Deliberately NOT SYSTEM-shared — a section is PHI.
@@ -270,7 +270,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ConsultationContextSchema',
   'ConsultationContextSchemaVersion',
   // document-template.prisma — the tenant's clinical-document SHAPE catalog
-  // (TASK-810). BOTH the mutable head and its immutable version snapshots are
+  // BOTH the mutable head and its immutable version snapshots are
   // ordinary tenant-owned rows, deliberately NOT added to
   // SYSTEM_SHARED_READ_MODELS: a tenant reads only its own templates, and the
   // platform's SOAP/discharge shapes reach a tenant by the golden-library CLONE
@@ -279,28 +279,28 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'DocumentTemplate',
   'DocumentTemplateVersion',
   // workflow-definition.prisma — the workflow substrate's persistence floor
-  // (TASK-715). Rows ARE versions (no separate head/version split).
+  // Rows ARE versions (no separate head/version split).
   // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a tenant reads
   // only its own definitions, and the SYSTEM-tenant platform-default rows
   // reach a tenant via the seed's clone path, not shared read — the same
   // posture ConsultationContextSchema records above.
   'WorkflowDefinition',
-  // consent.prisma (TASK-712) — ordinary tenant-owned rows, keyed
+  // consent.prisma — ordinary tenant-owned rows, keyed
   // (tenantId, externalPatientId, purpose). No SYSTEM row and no widening:
   // a tenant reads/writes only its own consent grants.
   'ConsentGrant',
-  // workflow-run.prisma — the runs/observability read model (TASK-723).
+  // workflow-run.prisma — the runs/observability read model.
   // Tenant-scoped ops telemetry (one row per run), NOT SYSTEM-shared — a
   // tenant's runs are never visible cross-tenant. Soft-delete EXEMPT (hard
   // retention, no resourceStatus column) — see MODELS_WITHOUT_SOFT_DELETE.
   'WorkflowRun',
   // workflow-test-fixture.prisma — per-tenant saved synthetic Workbench
-  // inputs (TASK-721). Ordinary tenant-owned rows, NOT SYSTEM-shared — a
+  // inputs. Ordinary tenant-owned rows, NOT SYSTEM-shared — a
   // tenant's fixtures are never visible cross-tenant. Keeps soft delete
   // (NOT in MODELS_WITHOUT_SOFT_DELETE).
   'WorkflowTestFixture',
   // workflow-assignment.prisma — WHICH workflow definition governs a
-  // tenant/department for a palette (TASK-733). Ordinary tenant-owned rows.
+  // tenant/department for a palette. Ordinary tenant-owned rows.
   // Deliberately NOT in SYSTEM_SHARED_READ_MODELS: the platform-default tier
   // is the tenant's OWN active published definition for the palette (the
   // seed's clone path), never a SYSTEM-tenant assignment row read
@@ -309,18 +309,18 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // Its append-only WORM change log (no soft-delete; see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts).
   'WorkflowAssignmentChange',
-  // workflow-invariant-rule.prisma (TASK-716) — the validator's rule rows.
+  // workflow-invariant-rule.prisma — the validator's rule rows.
   // ALSO a SYSTEM-shared read model (below): a tenant reads its own rows AND
   // the SYSTEM platform rule set, never writes to a SYSTEM-owned row.
   'WorkflowInvariantRule',
-  // rate-limit.prisma (TASK-785) — the rate-limit rule config plane. A
+  // rate-limit.prisma — the rate-limit rule config plane. A
   // SYSTEM-tenant row is a platform-wide per-route limit; a customer-tenant row
   // overrides it for that tenant alone.
   //
   // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS, unlike the other
   // "SYSTEM row is the platform default" models above. Nothing resolves these
   // rows under a tenant's CLS: `TieredThrottlerGuard` reads an in-memory cache
-  // that `RateLimitRuleCache` loads inside `clsService.exit(...)` (the TASK-771
+  // that `RateLimitRuleCache` loads inside `clsService.exit(...)` (the
   // fix, so an in-request invalidation cannot poison it with one tenant's view),
   // and there is no tenant-facing read surface — every rule route is
   // `manage all`. Widening reads here would buy no consumer anything.
@@ -372,7 +372,7 @@ export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   'AsrPipeline',
   'AiModel',
-  // TASK-766 OD-1: the platform's built-in roles (TENANT_ADMIN, DOCTOR,
+  // the platform's built-in roles (TENANT_ADMIN, DOCTOR,
   // NURSE, SUPER_ADMIN, ...) are SYSTEM-tenant rows every tenant must read
   // directly to function at all (RolesController listing, `:id/clone`
   // source lookup, member counts) — the same "every tenant resolves the
@@ -439,7 +439,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // read by every tenant's injection cascade at request time. No secrets on
   // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
   'AiRuntimeProfile',
-  // The provider ROUTING policy (TASK-818 §3A.3). The SYSTEM-tenant row is the
+  // The provider ROUTING policy ( The SYSTEM-tenant row is the
   // platform default candidate chain every tenant without its own row must
   // resolve — the identical "tenant row → SYSTEM row" shape as AiTaskDefault
   // above, and the resolver runs under the caller's own tenant CLS at request
@@ -542,7 +542,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // A new list surface MUST keep pinning tenantId explicitly.
   'PromptTemplate',
   'PromptVersion',
-  // workflow-invariant-rule.prisma (TASK-716). The SYSTEM-tenant rows ARE the
+  // workflow-invariant-rule.prisma. The SYSTEM-tenant rows ARE the
   // platform invariant register made executable; every tenant's
   // `WorkflowValidatorService` must read them (merged with its own
   // additions) to validate ANY graph, the same "every tenant must resolve

@@ -1,5 +1,5 @@
 /**
- * WorkflowTestFixtureService unit tests (TASK-721).
+ * WorkflowTestFixtureService unit tests.
  *
  * Mirrors the ConsentGrantService/WebhookService/DepartmentService test
  * convention: mock the repository, EventEmitter2, and ClsService; assert

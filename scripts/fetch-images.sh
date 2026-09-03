@@ -5,11 +5,11 @@
 # Mirrors the pipeline's naming contract by READING the same sources of truth,
 # so there is no second copy of the service list or the tag grammar here:
 #
-#   image repo   $REGISTRY/$CI_PROJECT_PATH/<SERVICE_NAME>
+#   image repo $REGISTRY/$CI_PROJECT_PATH/<SERVICE_NAME>
 #                (.gitlab/ci/templates.yml → .build-template)
-#   service set  .github/services.json  (TASK-693 §4.1 — the single source of
+#   service set .github/services.json (the single source of
 #                truth the services-manifest contract test enforces)
-#   tag          sha-<sha8> — the immutable audit tag EVERY build pushes, on
+#   tag sha-<sha8> — the immutable audit tag EVERY build pushes, on
 #                every branch and every release tag. Env tags (dev-/staging-/
 #                prod-/<branch>-<sha8>) point at the same manifest; this is the
 #                one that always exists, which is why .gitlab/ci/promote.sh
@@ -48,13 +48,13 @@ Usage: scripts/fetch-images.sh [options] [service ...]
                      (default: the current branch)
   -t, --tag TAG      use this image tag verbatim; skips the GitLab API entirely
                      (e.g. sha-a4b1c2d3, dev-a4b1c2d3, ALL-2.1.0)
-      --status S     pipeline status to match (default: success)
+      --status S pipeline status to match (default: success)
   -o, --out DIR      output directory (default: ./image-bundles/<tag>)
-      --registry H   registry host (default: auto — 10.10.1.110:5050 when the
+      --registry H registry host (default: auto — 10.10.1.110:5050 when the
                      LAN is reachable, else registry.taphuynh.dev)
       --include-base also fetch hope-python-base (promotable:false, build-time only)
-      --gzip         gzip each tarball after saving
-      --list         resolve and print what would be fetched, download nothing
+      --gzip gzip each tarball after saving
+      --list resolve and print what would be fetched, download nothing
   -h, --help
 
   With no service names, every promotable service in .github/services.json.
@@ -83,11 +83,11 @@ while [ $# -gt 0 ]; do
     -r|--ref)       REF="$2"; shift 2 ;;
     -t|--tag)       TAG="$2"; shift 2 ;;
     -o|--out)       OUT_DIR="$2"; shift 2 ;;
-    --status)       STATUS="$2"; shift 2 ;;
-    --registry)     REGISTRY="$2"; shift 2 ;;
+    --status) STATUS="$2"; shift 2 ;;
+    --registry) REGISTRY="$2"; shift 2 ;;
     --include-base) INCLUDE_BASE=1; shift ;;
-    --gzip)         GZIP=1; shift ;;
-    --list)         LIST_ONLY=1; shift ;;
+    --gzip) GZIP=1; shift ;;
+    --list) LIST_ONLY=1; shift ;;
     -h|--help)      usage 0 ;;
     -*)             die "unknown flag: $1 (see --help)" ;;
     *)              SERVICES="$SERVICES $1"; shift ;;

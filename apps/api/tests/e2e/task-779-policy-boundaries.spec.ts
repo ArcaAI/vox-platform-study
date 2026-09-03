@@ -1,9 +1,9 @@
 /**
- * TASK-779 area 1 — POLICY: the authorization + config-policy surface, at the wire.
+ * area 1 — POLICY: the authorization + config-policy surface, at the wire.
  *
  * Three things this file pins, none of which had e2e evidence before:
  *
- * 1. **The TASK-712 `CASL_ENFORCED_PAIRS` entries for `ApiKey` are inert.**
+ * 1. **The `CASL_ENFORCED_PAIRS` entries for `ApiKey` are inert.**
  *    `policy.engine.ts` enforces `read`/`update`/`delete:ApiKey`: for a route
  *    carrying `@ResolveSubjectInstance(...)`, a `false` instance verdict is
  *    supposed to become a 403 "privilege" denial. On this controller it never
@@ -128,7 +128,7 @@ test.afterAll(async ({ request }) => {
   }
 });
 
-test.describe('TASK-779 policy — CASL enforced pairs on ApiKey are inert; 404 is the real posture', () => {
+test.describe(' policy — CASL enforced pairs on ApiKey are inert; 404 is the real posture', () => {
   test("every by-id route answers 404 (never 403) for a peer's key, and casl_enforce_denial_total does not move", async ({ request }) => {
     const victimId = await createOwnKey(request, doctorToken, 'victim');
 
@@ -191,7 +191,7 @@ test.describe('TASK-779 policy — CASL enforced pairs on ApiKey are inert; 404 
   });
 });
 
-test.describe('TASK-779 policy — the contrasting 403 PRIVILEGE boundaries', () => {
+test.describe(' policy — the contrasting 403 PRIVILEGE boundaries', () => {
   test('the minting ceiling refuses a scope beyond the caller’s own abilities with 403, not 404', async ({ request }) => {
     const response = await request.post('/api/v1/admin/api-keys', {
       headers: bearer(tenantAdminToken),
@@ -211,7 +211,7 @@ test.describe('TASK-779 policy — the contrasting 403 PRIVILEGE boundaries', ()
   });
 });
 
-test.describe('TASK-779 policy — config resolution is exactly two tiers: request tenant → SYSTEM', () => {
+test.describe(' policy — config resolution is exactly two tiers: request tenant → SYSTEM', () => {
   /** Every registered AI task key, discovered from the API itself (400 message) rather than hardcoded. */
   async function allTaskKeys(request: APIRequestContext): Promise<string[]> {
     const response = await request.get('/api/v1/admin/ai-task-defaults?taskKey=__t779_unknown__', { headers: bearer(tenantAdminToken) });

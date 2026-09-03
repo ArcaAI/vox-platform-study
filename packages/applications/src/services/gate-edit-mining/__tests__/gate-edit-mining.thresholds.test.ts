@@ -1,10 +1,10 @@
 /**
- * TASK-792 W5 (M-9) — the quality-signal thresholds are GOVERNED, not literals.
+ * (M-9) — the quality-signal thresholds are GOVERNED, not literals.
  *
  * `APPROVED_CLEAN_MAX_RATIO` / `HEAVILY_EDITED_MIN_RATIO` decide the training-label
  * taxonomy: which encounters become "imitate this" few-shot exemplars and which
  * become "this was reworked" evidence. Per rule 00 (`00-project-context.md`
- * §Configuration Principles) a threshold is config, never a TS literal — and it
+ * Principles) a threshold is config, never a TS literal — and it
  * stopped being moot the moment W1 gave the pipeline a live writer.
  *
  * Resolution goes through `EffectiveSettingsService`, the same governed read the

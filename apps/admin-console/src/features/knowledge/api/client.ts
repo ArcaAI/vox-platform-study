@@ -1,6 +1,6 @@
 /**
  * Institutional-RAG knowledge-document admin CRUD-lite + governance
- * (TASK-728). All paths are gateway-relative under the /api/hope BFF proxy,
+ * All paths are gateway-relative under the /api/hope BFF proxy,
  * mirroring `apps/api/src/modules/knowledge/knowledge.controller.ts`.
  *
  * No create/approve calls here: document registration/approval stays on the

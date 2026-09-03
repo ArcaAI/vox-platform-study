@@ -1,5 +1,5 @@
 /**
- * TASK-795 W1 — which agentic-loop engine GOVERNS a consultation.
+ * which agentic-loop engine GOVERNS a consultation.
  *
  * ## The defect this closes
  *
@@ -80,7 +80,7 @@ export function tenantWorkflowGoverns(metadata: unknown): boolean {
 }
 
 /**
- * TASK-813 — the marker's CONTENTS, for the discovery route, or `null` when no
+ * the marker's CONTENTS, for the discovery route, or `null` when no
  * well-formed marker is present.
  *
  * `tenantWorkflowGoverns` is defined in terms of this rather than beside it on

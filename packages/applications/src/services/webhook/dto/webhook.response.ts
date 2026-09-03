@@ -9,7 +9,7 @@ export class WebhookResponse extends BaseResponse {
   @ApiProperty({ description: 'URL of the webhook endpoint' })
   url!: string;
 
-  // TASK-727: the raw secret is shown exactly once, at creation/rotation
+  // the raw secret is shown exactly once, at creation/rotation
   // (see `CreateWebhookResponse.rawSecret` at the controller edge), and the
   // peppered hash is never re-exposed on any read — only whether a secret is
   // currently configured. Mirrors `ApiKeyResponse` never re-exposing a raw

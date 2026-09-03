@@ -4,7 +4,7 @@ import { PaginatedResponse } from '../../../common';
 /**
  * One immutable promotion record, read from the TARGET tenant.
  *
- * TASK-815 moved the promotable from a `DepartmentAgentVersion` to a
+ * moved the promotable from a `DepartmentAgentVersion` to a
  * `WorkflowDefinition` version. The FIELD NAMES here follow what they now
  * carry; the physical `AgentPromotion` columns behind them keep their original
  * names because the table is WORM (see `AgentPromotionService`'s header for the

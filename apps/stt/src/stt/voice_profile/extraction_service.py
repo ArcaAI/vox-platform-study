@@ -54,7 +54,7 @@ class ExtractionService:
             # constant is the single source and is gated against `user.prisma`
             # by `tests/unit/test_task799_env_surface.py`.
             #
-            # It used to be a settings field too (TASK-799 lane C removed it):
+            # It used to be a settings field too (lane C removed it):
             # one fact in two places, only one of which was operator-settable.
             # An ECAPA cutover (192-d) is a migration plus full re-enrolment —
             # changing this number alone does not perform it, it only makes

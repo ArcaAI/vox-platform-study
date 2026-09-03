@@ -57,7 +57,7 @@ interface DiscoveryResponse {
   probedAt: string;
 }
 
-// TASK-736 REVISED (owner decision 2026-08-17): Ollama's provider logic stays
+// REVISED (owner decision 2026-08-17): Ollama's provider logic stays
 // available, so it is still a server-managed, discoverable engine and the DTO
 // allow-list accepts it. Only its MODEL CATALOG rows were purged — which is why
 // discovery matters for it: a tenant running its own Ollama has no seeded rows

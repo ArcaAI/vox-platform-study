@@ -8,7 +8,7 @@
 // Governance: `nlp.*` and `harness.*` keys are SUPER_ADMIN-ONLY —
 // `editableBy` points at the super-admin resource (`'all'`, the CASL
 // manage-everything subject) and the descriptor is flagged `globalOnly`.
-// `text.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16,
+// `text.*` and, since (owner decision 2026-08-16,
 // reversing the 2026-07-17 super-admin-only directive), `guardrail.*` are
 // tenant-admin configurable: their descriptors resolve to the tenant-editable
 // `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
@@ -20,7 +20,7 @@ import { AI_TASK_KEYS, AiTaskKey, isSuperAdminOnlyTaskKey } from '../../ai-task-
 import { SettingDescriptor } from '../registry.types';
 
 const META: Record<AiTaskKey, { label: string; description: string }> = {
-  // Tenant-admin configurable since TASK-735 Phase 0, subject to the
+  // Tenant-admin configurable since, subject to the
   // platform-approved-list floor (a SYSTEM-tenant AiModel row is required).
   'guardrail.validate': {
     label: 'Guardrail validation model',
@@ -37,7 +37,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     description:
       'Default MiniCheck NLI/entailment fact-checker used by the safety engine for groundedness verification. Selection is limited to the platform-approved model catalog.',
   },
-  // TASK-799 R6 — PII redaction selections. SUPER_ADMIN-only by owner decision
+  // PII redaction selections. SUPER_ADMIN-only by owner decision
   // (2026-08-24) via `SUPER_ADMIN_ONLY_TASK_KEYS`, not by the `guardrail.`
   // prefix, which stays tenant-configurable: these two select nlp-hosted
   // TOKEN_CLASSIFICATION models, and D-4 makes nlp-hosted models
@@ -66,7 +66,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Diagnosis suggestion model',
     description: 'Default text-classification model used for symptom→disease diagnosis suggestions (super admins only).',
   },
-  // TASK-729: sentiment / toxicity classifiers — same generic /classify/text
+  // sentiment / toxicity classifiers — same generic /classify/text
   // path as nlp.classification/nlp.diagnosis (super admins only).
   'nlp.sentiment': {
     label: 'Sentiment classification model',
@@ -98,7 +98,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
   // prompt-template test-bench routing (tenant-admin
   // configurable, same governance class as text.live/text.finalize). Consulted
   // only when the caller does not supply an explicit provider/model pair on
-  // `POST admin/prompt-templates/:id/test`. TASK-740 D-5: fail-CLOSED when unset
+  // `POST admin/prompt-templates/:id/test`.: fail-CLOSED when unset
   // for the tenant — there is no `text.finalize` fallback hop (removed
   // deliberately; this comment described behaviour that no longer existed).
   'text.test': {

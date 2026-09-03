@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { resolveDocsAccess } from '@/server/api-docs';
 
 /**
- * TASK-783 — the developer portal is gated on `read:ApiDocumentation`
+ * the developer portal is gated on `read:ApiDocumentation`
  * (owner decision D-1), checked once here for every screen beneath it.
  *
  * `notFound()` rather than a 403 page, matching the tier-10–19 guard and the

@@ -19,7 +19,7 @@ import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot, type ILiveAgentRe
  * A `ResolvedToolPlan` with `overrides` applied over the platform default.
  *
  * This used to be `normalizeToolPlan(agentToolConfig)` — the parser that turned
- * `DepartmentAgent.toolConfig` JSONB into a plan. TASK-815 deleted the parser
+ * `DepartmentAgent.toolConfig` JSONB into a plan. deleted the parser
  * with the column it read. What this suite is about — that the FLUSH honours
  * whatever plan the frozen snapshot carries — is unchanged, so the plans are
  * built directly.

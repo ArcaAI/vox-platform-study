@@ -36,7 +36,7 @@ import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 
 /**
- * The guard now VERIFIES the token before trusting its `tenantId` (TASK-785),
+ * The guard now VERIFIES the token before trusting its `tenantId`,
  * because that claim decides which tenant's COUNTER a request spends — not just
  * which tier it gets. So these fixtures sign for real.
  */
@@ -96,7 +96,7 @@ class ThrottleTestController {
     return { ok: 'strict-optin' };
   }
 
-  /** TASK-773 — used only by the credential-class parity block at the end. */
+  /** used only by the credential-class parity block at the end. */
   @Throttle({ default: { limit: 3, ttl: 60000 } })
   @Get('parity')
   parity() {
@@ -336,7 +336,7 @@ class Q7Controller {
     return { ok: 'anon' };
   }
 
-  // TASK-785 OD-2: the decorator is rank 5's SEED, so the plan tier (2) beats
+  // the decorator is rank 5's SEED, so the plan tier (2) beats
   // this 5 — the reverse of the behaviour this route was added to prove.
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Get('decorated')
@@ -358,7 +358,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
   const policies: Record<string, TenantRateLimitPolicy | null> = {
     'tenant-strict': { tier: 'strict', perMinute: null, windowMs: null },
     // A tenant of its own for (e): a plan-resolved limit is now counted per
-    // TENANT across every route (OD-3), so two cases sharing a tenant would
+    // TENANT across every route , so two cases sharing a tenant would
     // share one counter.
     'tenant-decorated': { tier: 'strict', perMinute: null, windowMs: null },
     'tenant-override': { tier: 'strict', perMinute: 4, windowMs: null },
@@ -440,13 +440,13 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
   });
 
   /*
-   * REWRITTEN for TASK-785 OD-2. This case previously asserted the OPPOSITE —
+   * REWRITTEN for. This case previously asserted the OPPOSITE
    * that a route's `@Throttle` decorator beat the tenant's plan tier. That was
    * the shipped behaviour, and it is exactly what made the plan lane useless: an
    * ENTERPRISE tenant could not be granted more than a hardcoded decorator value
    * without a code change and a redeploy. The decorator is now rank 5's SEED,
    * so the plan (rank 3) wins.
-   */
+*/
   it('(e) precedence: the plan tier beats a @Throttle decorator — /q7/decorated 429s on the 3rd call (plan strict = 2, decorator = 5)', async () => {
     expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
     expect((await hit('/q7/decorated', 'tenant-decorated')).status).toBe(200);
@@ -511,7 +511,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
 
   const TENANT_TIGHT = 'tenant-tight';
   const TENANT_NORMAL = 'tenant-normal';
-  // TASK-785 OD-3: a tenant-wide limit is ONE bucket across every route, so a
+  // a tenant-wide limit is ONE bucket across every route, so a
   // case that exhausts a tenant's budget exhausts it for every later case using
   // that tenant. Each case below that spends a tenant-scoped budget therefore
   // gets a tenant of its own — the same reason each already had its own route
@@ -570,7 +570,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
 
   // NOTE ON ROUTE-PER-TENANT. Historically the tracker was IP-based for EVERY
   // request, so two tenants calling the same route from one client shared a
-  // counter — which is why each tenant gets its own route here. TASK-785 OD-3
+  // counter — which is why each tenant gets its own route here.
   // fixed that for tenant-resolved limits (they are now keyed on the tenant, so
   // that sharing is gone; see the dedicated isolation case below), but the
   // per-route split is kept because what these cases are really asserting is the
@@ -601,7 +601,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     // it. The very next request through the SAME running app resolves the new
     // limit — no restart, no redeploy.
     //
-    // TASK-785 OD-3: the write also moves this tenant from the platform lane
+    // the write also moves this tenant from the platform lane
     // (IP-keyed, per route) to the tenant lane (tenant-keyed), so the counter it
     // is measured against CHANGES with it and the window restarts. That is
     // inherent to per-tenant counting, and it is the safe direction — a scope
@@ -618,7 +618,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
     expect(settings.getTierForTenant('default', 'tenant-third').limit).toBe(1000);
   });
 
-  it('does NOT let two tenants on the same route share a counter (TASK-785 F-02)', async () => {
+  it('does NOT let two tenants on the same route share a counter (F-02)', async () => {
     // Both tenants hit ONE route from ONE client IP. Before OD-3 the shared
     // IP-keyed bucket meant the tight tenant's traffic could 429 the other's.
     tenantRows[TENANT_ISOLATION_A] = { 'rateLimit.maxRequests': 2 };
@@ -645,12 +645,12 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
 });
 
 /**
- * TASK-773 — the three credential classes are rate-limited IDENTICALLY.
+ * the three credential classes are rate-limited IDENTICALLY.
  *
  * Owner decision, 2026-08-19: a service account gets the same rate-limit
  * treatment as every other caller — no tier of its own.
  *
- * STILL TRUE after TASK-785 O-4, but for a better reason. A machine credential
+ * STILL TRUE after, but for a better reason. A machine credential
  * now resolves its tenant (service-account token → Redis blob, API key → Redis
  * hint) and is counted against THAT TENANT's bucket, exactly as a human's JWT
  * is. No credential class gets a tier of its own; they simply stopped being
@@ -666,7 +666,7 @@ describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
  * is exactly what a pre-auth throttle guard must not do. So both fall to the
  * global tier, together, for the same structural reason.
  */
-describe('TieredThrottlerGuard — credential-class parity (TASK-773)', () => {
+describe('TieredThrottlerGuard — credential-class parity ', () => {
   let app: INestApplication;
   const prevEnabled = process.env.RATE_LIMIT_ENABLED;
 
@@ -703,7 +703,7 @@ describe('TieredThrottlerGuard — credential-class parity (TASK-773)', () => {
 
 
 /**
- * TASK-785 O-4 — the machine plane is no longer ungoverned.
+ * the machine plane is no longer ungoverned.
  *
  * Before this, `resolveTrustedTenantId` looked only at a bearer JWT, so API-key
  * and service-account traffic — including every `@arcaai/vox-node` admin call —
@@ -727,7 +727,7 @@ class MachineController {
   }
 }
 
-describe('TieredThrottlerGuard (machine credentials — TASK-785 O-4)', () => {
+describe('TieredThrottlerGuard (machine credentials — O-4)', () => {
   let app: INestApplication;
   const prevEnabled = process.env.RATE_LIMIT_ENABLED;
 

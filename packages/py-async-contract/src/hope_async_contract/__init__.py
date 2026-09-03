@@ -1,4 +1,4 @@
-"""hope_async_contract — the normative async task/event envelope (TASK-717).
+"""hope_async_contract — the normative async task/event envelope.
 
 Identity, tenancy, type, payload-or-claim-check, correlation, causation,
 idempotency key, schema version — plus the idempotency-key and resume-token

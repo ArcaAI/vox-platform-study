@@ -1,5 +1,5 @@
 /**
- * `ConsentExceptionFilter` unit tests (TASK-712, consent-abac).
+ * `ConsentExceptionFilter` unit tests (consent-abac).
  *
  * The exception this filter exists for is thrown from a GUARD
  * (`PatientConsentGuard`), which NestJS's request lifecycle never routes

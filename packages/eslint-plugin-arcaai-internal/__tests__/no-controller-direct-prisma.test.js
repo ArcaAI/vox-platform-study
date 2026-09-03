@@ -45,7 +45,7 @@ ruleTester.run('no-controller-direct-prisma', rule, {
       code: `
         class Foo {
           bar() {
-            /** @allowedDirectPrisma TASK-XXX: documented justification */
+            /** @allowedDirectPrisma documented justification */
             return this.databaseService.client.user.findMany();
           }
         }
@@ -55,7 +55,7 @@ ruleTester.run('no-controller-direct-prisma', rule, {
       name: 'escape hatch on the enclosing method is honored',
       code: `
         class Foo {
-          /** @allowedDirectPrisma TASK-XXX: documented justification */
+          /** @allowedDirectPrisma documented justification */
           bar() {
             return this.databaseService.client.user.findMany();
           }
@@ -115,7 +115,7 @@ ruleTester.run('no-controller-direct-prisma', rule, {
       name: 'an @allowedDirectPrisma comment that is too far away (>3 lines) does not silence the rule',
       code: `
         class Foo {
-          /** @allowedDirectPrisma TASK-XXX: justification */
+          /** @allowedDirectPrisma justification */
           bar() {
             const a = 1;
             const b = 2;
@@ -131,4 +131,4 @@ ruleTester.run('no-controller-direct-prisma', rule, {
   ],
 });
 
-console.log('no-controller-direct-prisma: RuleTester passes (TASK-307 W6.4)');
+console.log('no-controller-direct-prisma: RuleTester passes (W6.4)');

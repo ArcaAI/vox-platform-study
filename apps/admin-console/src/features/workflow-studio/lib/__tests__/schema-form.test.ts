@@ -6,9 +6,9 @@ import summarizeSchema from './fixtures/summarize.schema.json';
 import discriminatedSchema from './fixtures/discriminated.schema.json';
 import unsupportedSchema from './fixtures/unsupported.schema.json';
 
-// design.md §Testing strategy: "Contract tests: one schema, three consumers (registry ↔
+// strategy: "Contract tests: one schema, three consumers (registry ↔
 // inspector forms ↔ compiled config)." This suite is consumer #2 (inspector forms) — the RED
-// step for TASK-719 Task 7/8.
+// step for /8.
 
 describe('toFieldDescriptors — compile', () => {
   it('yields one ordered descriptor per authored property, in authoring order', () => {

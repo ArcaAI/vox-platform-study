@@ -84,7 +84,7 @@ def test_catalog_binding_present_but_not_in_default_routing():
     assert not hasattr(Settings(), "routing_ml")
 
 
-# --- `s3://` local-mirror override resolution (TASK-855 L6) ---
+# `s3://` local-mirror override resolution
 
 
 @pytest.mark.asyncio

@@ -7,15 +7,15 @@ import { WorkflowRunService } from './workflow-run.service';
 import { IWorkflowRunService } from './IWorkflowRunService';
 
 /**
- * WorkflowRunService DI module (TASK-723).
+ * WorkflowRunService DI module.
  *
  * - CommonServiceModule → config + globals.
- * - CoreDatabaseModule  → `WorkflowRunRepository`.
+ * - CoreDatabaseModule → `WorkflowRunRepository`.
  * - AgentTrajectoryServiceModule → `IAgentTrajectoryService`, reused by
  *   `getRunTrace` for the single bounded step read (README Task 5 — PHI/
  *   `payloadRef` handling stays in one place).
  * - HarnessGatewayServiceModule → the outbound harness client, for the LIVE gate read/approve
- *   (TASK-731 Phase B). The gate's state is not in the read model by design — see
+ * The gate's state is not in the read model by design — see
  *   `IWorkflowRunService.getRunGate`.
  *
  * Exports both the symbol token (for `@Inject(IWorkflowRunService)`) and the

@@ -1,4 +1,4 @@
-"""TASK-799 lane C — the rest of stt's env-surface reduction.
+"""lane C — the rest of stt's env-surface reduction.
 
 Four separate defects, each with its own mechanism, grouped here because they
 all answer the same question: *is this variable still reachable from the
@@ -100,7 +100,7 @@ class TestModelS3AliasCollapsed:
         """The surviving canonical spelling has since been closed as well.
 
         Collapsing the `STT_V2_` alias left ONE env name for the model-store
-        credential; TASK-799 removed that one too. Endpoint, access key id and
+        credential; removed that one too. Endpoint, access key id and
         secret key are ONE credential and moved together onto
         `AiProviderConnection` (`model-registry` / `s3`), resolved for the
         tenant that OWNS the model being fetched.

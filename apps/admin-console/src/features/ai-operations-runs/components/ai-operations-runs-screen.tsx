@@ -71,9 +71,9 @@ export function AiOperationsRunsScreen() {
               meta={
                 <>
                   <span>trajectory timeline &middot; per-step stats &middot; gate queue</span>
-                  {/* TASK-723: reciprocal cross-link to the definition-scoped
+                  {/* reciprocal cross-link to the definition-scoped
                       tenant view — this screen is the cross-tenant platform-ops
-                      sibling (§2.4); neither forks the other's components. */}
+                      sibling; neither forks the other's components. */}
                   <Link href="/workflow-runs" className="text-foreground underline underline-offset-2">
                     See workflow-definition runs (tenant view) →
                   </Link>

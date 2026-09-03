@@ -37,7 +37,7 @@ if (!RELEASE_TAG_PATTERN.test(tag)) {
     `Release tag "${tag}" does not match the grammar <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>] ` +
       `(service ∈ ${SERVICE_TAG_PREFIXES.join(', ')}). Build metadata ("+...") is rejected — an image is ` +
       `identified by its digest, not a second, weaker version string. ` +
-      `See docs/implementation/TASK-648-Service-Version-And-Release-Registry/README.md.`,
+      `See the release-tag grammar.`,
   );
   process.exit(1);
 }

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `PromptTemplatePicker` (TASK-719 Task 19) — the Studio's node inspector gets a *picker* of the
+ * `PromptTemplatePicker` — the Studio's node inspector gets a *picker* of the
  * tenant's prompt templates, never its own editor: design.md "prompt templates keep their own
  * authoritative editor (picker + deep link)" and rule 13 §Routing's one-authoritative-editor
  * rule. Reads `admin/prompt-templates` through this feature's own `api/hooks.ts`

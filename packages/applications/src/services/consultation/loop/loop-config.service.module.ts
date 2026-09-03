@@ -18,7 +18,7 @@ import { ILoopConfigService } from './ILoopConfigService';
  *
  * `WorkflowAssignmentServiceModule` resolves the `@Optional()`
  * `IWorkflowAssignmentService` the loop config uses to find the GOVERNING
- * definition (TASK-815). Both injections are optional on the service so it can
+ * definition. Both injections are optional on the service so it can
  * be constructed positionally in tests; wiring the module HERE is what makes
  * the resolution actually happen in the running gateway.
  *

@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, Min } from 'class-validator';
 
 /**
- * TASK-727: rotation is itself a version-bumping write, so it carries the
+ * rotation is itself a version-bumping write, so it carries the
  * same OCC predicate as `UpdateWebhookRequest.expectedVersion` — the
  * controller folds `If-Match` over this exactly like the PATCH route.
  */

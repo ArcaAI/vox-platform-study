@@ -1,8 +1,8 @@
 /**
- * TASK-790 W2 — registry-drift detection actually fires (TASK-789 finding H-2).
+ * registry-drift detection actually fires.
  *
  * `node-registry.ts` documents that a definition's stamped `registryChecksum` "is compared
- * against this at read time to trigger TASK-716's NEEDS_REVIEW re-validation". It never was:
+ * against this at read time to trigger NEEDS_REVIEW re-validation". It never was:
  * `needsReview` is never assigned `true` anywhere in `packages/applications` or `apps/api` —
  * only entity/factory/mapper/DTO plumbing and a factory `?? false` default. Meanwhile the
  * seeded SYSTEM row's checksum (computed over 7 registry entries) is already stale against the
@@ -51,7 +51,7 @@ const entity = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as any;
 
-describe('TASK-790 W2 — registryChecksum drift sets needsReview on read (H-2)', () => {
+describe(' W2 — registryChecksum drift sets needsReview on read (H-2)', () => {
   it('flags a published definition stamped with a stale registry checksum', () => {
     const dto = WorkflowDefinitionDtoMapper.toResponse(entity({ registryChecksum: STALE_SEEDED_CHECKSUM }));
 

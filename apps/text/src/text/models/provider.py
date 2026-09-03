@@ -42,9 +42,9 @@ class ProviderInfo(BaseModel):
     probe_status: str | None = None
     probe_latency_ms: int | None = None
     probe_error: str | None = None
-    # TASK-725 Task 3 — admin introspection additions. All additive/optional:
+    # admin introspection additions. All additive/optional:
     # `pool_health`/`pool_health_checked_at` come from the SAME
-    # `PoolHealthTracker` `/generate`'s degrade-routing check consults (Task 2)
+    # `PoolHealthTracker` `/generate`'s degrade-routing check consults 
     # — `None` means nobody has health-checked this provider yet (distinct
     # from `False`, which means the LAST check failed). `in_flight_requests`
     # mirrors the `text_active_generations` gauge for this provider.

@@ -42,7 +42,7 @@ async def get_inference_bound(request: Request) -> ResizableSemaphore:
 
 
 async def get_peer_call_bound(request: Request) -> ResizableSemaphore:
-    """The outbound peer-call bound (TASK-729 §6), with its limit refreshed
+    """The outbound peer-call bound (with its limit refreshed
     from the control plane. A SEPARATE semaphore from `get_inference_bound` —
     see `nlp.core.concurrency.get_peer_call_semaphore` for why sharing the
     inference bound with `text` delegation was rejected. Never raises.
@@ -53,7 +53,7 @@ async def get_peer_call_bound(request: Request) -> ResizableSemaphore:
 
 
 def get_external_text_client(request: Request) -> ExternalTextClient | None:
-    """Retrieve apps/nlp's peer client to `text` from app.state (TASK-729).
+    """Retrieve apps/nlp's peer client to `text` from app.state.
 
     None only if lifespan never ran (e.g. an app built directly in a test
     without the lifespan context) — the `/classify/topic`/`/classify/intent`
@@ -120,7 +120,7 @@ async def _weights_source(model_name: str, model_path: str | None) -> str:
     failing the request — the same precedence the other three services apply.
 
     `model_name` (`AiModel.sourceUri`) may itself be an `s3://bucket/prefix` or
-    `file:///abs/path` URI (TASK-855 L6) rather than a HuggingFace hub id — those
+    `file:///abs/path` URI rather than a HuggingFace hub id — those
     two schemes are materialised to a real local directory through the mirrored
     resolver (`nlp.models.source_resolver`) before being handed to `from_pretrained`.
     An `hf:`-prefixed or bare hub id is returned UNCHANGED, exactly as before, so
@@ -147,7 +147,7 @@ async def _weights_source(model_name: str, model_path: str | None) -> str:
             resolve_model_dir,
         )
 
-        # Only `s3://` needs a credential (TASK-855 L6 follow-on,
+        # Only `s3://` needs a credential ( follow-on,
         # `nlp.core.model_credentials`). `file://` stays on the
         # credential-free, gateway-independent config, so a pre-staged
         # on-prem file resolves even when the control plane cannot be
@@ -235,7 +235,7 @@ _CACHE_GLOBALS = (
     "_token_classifier_cache_instance",
     "_text_classifier_cache_instance",
     "_medical_suggester_cache_instance",
-    # TASK-735 Phases 3 & 6 — the guardrail-class models moved here.
+    # Phases 3 & 6 — the guardrail-class models moved here.
     "_gliner2_guard_cache_instance",
     "_entailment_scorer_cache_instance",
 )
@@ -445,7 +445,7 @@ async def pinned_medical_suggester(
 
 
 # ---------------------------------------------------------------------------
-# Guardrail-class models (TASK-735 Phases 3 & 6).
+# Guardrail-class models ( Phases 3 & 6).
 #
 # `apps/guardrail` holds ZERO resident weights: its GLiNER detector and its
 # MiniCheck groundedness scorer live here now, behind the same per-slot,
@@ -467,10 +467,10 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
     # for the safety plane means silently serving a different model than the
     # admin configured — and pulling it from the internet on a host that
     # deliberately staged its weights. The guard plane fails CLOSED instead
-    # (owner addition, TASK-778); the reference may be a hub id OR a local path.
+    # (owner addition); the reference may be a hub id OR a local path.
     # Placement is decided HERE, from configuration, before a single tensor
     # executes: an op the accelerator does not support aborts the process
-    # instead of raising, so there is no "try it and fall back" (TASK-782).
+    # instead of raising, so there is no "try it and fall back".
     service = Gliner2GuardService(
         weights_source=resolve_guard_weights_source(model_name, model_path),
         model_id=model_name,

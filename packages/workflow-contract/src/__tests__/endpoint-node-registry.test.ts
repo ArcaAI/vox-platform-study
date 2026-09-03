@@ -1,5 +1,5 @@
 /**
- * TASK-812 — the ENDPOINT STAGE node types.
+ * the ENDPOINT STAGE node types.
  *
  * The endpoint stage is the ordered sequence of actions that runs before a consultation session
  * closes. Before this ticket it existed only as a hardcoded literal in
@@ -21,7 +21,7 @@ import { nodeDescriptorContractProblems } from '../port-validation';
 /** The endpoint stage's three node types, in the order the default sequence runs them. */
 const ENDPOINT_KEYS = ['session.timeout', 'summary.finalize', 'feedback.capture'] as const;
 
-describe('TASK-812 — endpoint-stage node types', () => {
+describe('endpoint-stage node types', () => {
   it.each(ENDPOINT_KEYS)('%s is registered', (key) => {
     expect(WORKFLOW_NODE_REGISTRY[key], `${key} is missing from WORKFLOW_NODE_REGISTRY`).toBeDefined();
   });
@@ -44,8 +44,8 @@ describe('TASK-812 — endpoint-stage node types', () => {
   });
 
   it('summary.finalize and feedback.capture declare externalWrite; session.timeout does too', () => {
-    // All three WRITE. `summary.finalize` locks every document (DD-3), `feedback.capture`
-    // promotes an accepted correction onto the transcript (DD-8), and `session.timeout` stamps
+    // All three WRITE. `summary.finalize` locks every document , `feedback.capture`
+    // promotes an accepted correction onto the transcript , and `session.timeout` stamps
     // the consultation's endpoint disposition. `externalWrite` is also what makes the
     // interpreter suppress them on a SANDBOX run, which is the property that matters most here:
     // a sandbox must never lock a real clinician's note.
@@ -78,7 +78,7 @@ describe('TASK-812 — endpoint-stage node types', () => {
     const editsConsumingWriters = Object.values(WORKFLOW_NODE_REGISTRY)
       .filter((descriptor) => descriptor.externalWrite && descriptor.inputs.some((port) => port.primitive === 'edits'))
       .map((descriptor) => descriptor.key);
-    // TASK-806 lane A — `agent.feedback` is the target catalogue's entry over the SAME engine
+    // lane A — `agent.feedback` is the target catalogue's entry over the SAME engine
     // (`interpreter.feedback_capture`), so it carries the same property rather than opening a
     // second promotion path: two names, one implementation.
     expect(editsConsumingWriters.sort()).toEqual(['agent.feedback', 'feedback.capture']);

@@ -101,4 +101,4 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
   ],
 });
 
-console.log('no-direct-downstream-url-env: RuleTester passes (TASK-310 E-5 / AC-5)');
+console.log('no-direct-downstream-url-env: RuleTester passes (E-5 / AC-5)');

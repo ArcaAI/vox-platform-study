@@ -1,9 +1,9 @@
 /**
- * TASK-810 Task 8 + Task 9 — the template compiler, and D-21.
+ * + Task 9 — the template compiler, and D-21.
  *
  * Two separate claims are under test here and they are worth keeping apart:
  *
- *  - **The compiler is a pure, deterministic function of the shape** (Task 8).
+ *  - **The compiler is a pure, deterministic function of the shape**.
  *    A golden test on the SOAP shape is the anchor: if the emitted bytes move,
  *    every published version row's `compiled` artifact is now a different
  *    document, and `DOCUMENT_TEMPLATE_COMPILER_VERSION` must move with it.

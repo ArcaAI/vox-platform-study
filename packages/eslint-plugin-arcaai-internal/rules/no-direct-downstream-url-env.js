@@ -63,13 +63,13 @@ module.exports = {
     type: 'problem',
     docs: {
       description:
-        'Forbid `process.env.<DOWNSTREAM_URL_KEY>` reads. Use `IConfigService.getConfigValue(...)` (TASK-310 E-5 / AC-5).',
+        'Forbid `process.env.<DOWNSTREAM_URL_KEY>` reads. Use `IConfigService.getConfigValue(...)` (E-5 / AC-5).',
       recommended: true,
     },
     schema: [],
     messages: {
       directDownstreamUrlEnv:
-        "Do not read `process.env.{{name}}` directly. Inject `IConfigService` and call `getConfigValue('{{name}}')` so the URL goes through bootstrap-time validation (TASK-310 E-5 / AC-5).",
+        "Do not read `process.env.{{name}}` directly. Inject `IConfigService` and call `getConfigValue('{{name}}')` so the URL goes through bootstrap-time validation (E-5 / AC-5).",
     },
   },
 

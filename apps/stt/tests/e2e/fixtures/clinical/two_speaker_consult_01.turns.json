@@ -1,5 +1,5 @@
 {
-  "_comment": "TASK-475 (Theme B2 · AC-5) de-identified SYNTHETIC 2-speaker clinical fixture with speaker-turn ground truth. NO real PHI — invented dialogue, no real patient/clinician identifiers. Turns are non-overlapping (clinician/patient clinical scope). Feeds the diarization-accuracy scorecard (streaming_diarization_quality.py). Timings are illustrative until a real de-identified audio capture + forced-alignment ground truth is staged alongside the Sortformer model.",
+  "_comment": " (Theme B2 · AC-5) de-identified SYNTHETIC 2-speaker clinical fixture with speaker-turn ground truth. NO real PHI — invented dialogue, no real patient/clinician identifiers. Turns are non-overlapping (clinician/patient clinical scope). Feeds the diarization-accuracy scorecard (streaming_diarization_quality.py). Timings are illustrative until a real de-identified audio capture + forced-alignment ground truth is staged alongside the Sortformer model.",
   "audio_seconds": 48.0,
   "speakers": {
     "clinician": "Clinician",

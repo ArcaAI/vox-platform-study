@@ -38,7 +38,7 @@ import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition 
  * BullMQ processor for async comprehensive summary generation.
  *
  * Follows the same pattern as the legacy signable summary generator (deleted
- * TASK-732) but aggregates content across the entire consultation chain
+ * ) but aggregates content across the entire consultation chain
  * before calling the TEXT service.
  *
  * Progress steps:
@@ -49,7 +49,7 @@ import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition 
  *   85% — Saving results
  *  100% — Complete
  *
- * TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+ * boundary (owner decision,: KEPT,
  * un-gated — never had a harness equivalent (`GenerationTrigger.COMPREHENSIVE_SUMMARY`
  * is not in `HARNESS_SUPPORTED_TRIGGERS`). **Deliberately (not incidentally) signable**:
  * it writes its rollup via `ContextItemFactory.CreateRawSummary` against the
@@ -62,11 +62,11 @@ import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition 
  * clinician who explicitly requests a chain rollup for the consultation they
  * are viewing is choosing to make that rollup this consultation's note — the
  * same product decision `SummaryService.generateSummary` implements for a
- * single consultation. TASK-732's §2.6 originally assumed comprehensive
+ * single consultation. originally assumed comprehensive
  * summaries were non-signable "the same way" `PreSummaryProcessor` is,
  * without checking; that assumption was corrected (not the code) once this
  * ticket verified it against `ContextItemEntity.isFinalSummary` — see
- * `deletion-manifest.md` §5 and README.md §7A. Locked by
+ * `deletion-manifest.md` and README.md Locked by
  * `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
  */
 @Processor(JobQueue.GenerateComprehensiveSummary)
@@ -108,21 +108,21 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // wrong one — flagged separately, out of this lane's scope). Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
-    // TASK-704 — comprehensive-summary has no harness equivalent today (§2 of
+    // comprehensive-summary has no harness equivalent today ( of
     // the ticket); this call exists purely to make the harnessEnabled read
     // happen through the single seam and get the decision logged — the
     // decision is always 'legacy'/'harness-not-supported-for-trigger' and
     // this processor's generation body always runs regardless. Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
-    // TASK-808 — the SHARED TEXT enrichment path. Since TASK-799 lane B
+    // the SHARED TEXT enrichment path. Since lane B
     // (`70eec34d5`) removed TEXT's per-provider env plane, a `/api/v1/generate`
     // body with no `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING. Optional + trailing so existing positional
     // fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -164,8 +164,8 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       });
 
       try {
-        // TASK-704 — route the harnessEnabled read through the single seam.
-        // Comprehensive-summary has no harness equivalent (§2 of the ticket)
+        // route the harnessEnabled read through the single seam.
+        // Comprehensive-summary has no harness equivalent (the ticket)
         // — the decision is always 'legacy', logged, and this generation
         // body always runs. Never blocks/short-circuits generation.
         if (this.noteGenerationService) {
@@ -408,7 +408,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
-      // Tenant-configured visit type (TASK-815 §11 row 3); `parentConsultationId`
+      // Tenant-configured visit type ; `parentConsultationId`
       // remains the follow-up signal, the vocabulary is no longer a literal.
       promptType: this.visitType(consultation).key,
       transcript: fullText,
@@ -439,18 +439,18 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         promptResolvedFrom: assembledPrompt.resolvedFrom,
         promptHyperparameters: assembledPrompt.hyperparameters,
       });
-      // TASK-808 — inject the tenant's resolved provider credential through the
+      // inject the tenant's resolved provider credential through the
       // ONE shared implementation. Without it TEXT fails closed with 503
-      // PROVIDER_CREDENTIALS_MISSING (TASK-799 lane B removed its env plane).
+      // PROVIDER_CREDENTIALS_MISSING (lane B removed its env plane).
       // `process()` rebinds `tenantId` into a fresh CLS scope, which is where
       // the resolver reads it from.
-      // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+      // layer the platform admin's runtime profile (hyperparameters + engine
       // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
       // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-      // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is in
+      // migration fallback).: `X-Tenant-Id` is MANDATORY — `tenantId` is in
       // scope and was used for `resolveTextSelection` one line above, then dropped.
       const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
@@ -557,7 +557,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
    * `parentConsultationId` is still the consultation's own follow-up signal —
    * that rule has not changed. What changed is that WHICH visit type the signal
    * selects, and what that type is called, is tenant-configured data rather
-   * than a literal repeated at each call site (TASK-815 §11 row 3). An unwired
+   * than a literal repeated at each call site. An unwired
    * resolver serves the two shipped types, so the answer is byte-identical to
    * the ternary this replaces.
    */

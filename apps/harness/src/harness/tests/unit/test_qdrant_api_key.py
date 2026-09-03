@@ -23,7 +23,7 @@ class TestRetrievalConfigApiKey:
         assert cfg.qdrant_api_key is None
 
     def test_api_key_no_longer_reads_its_env_var(self, monkeypatch):
-        """TASK-799 lane B — the env path is CLOSED; the key is BYO-only now.
+        """lane B — the env path is CLOSED; the key is BYO-only now.
 
         This assertion is INVERTED from what it was, deliberately. The Qdrant key
         is a provider credential and lives on

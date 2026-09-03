@@ -1,5 +1,5 @@
 /**
- * The consultation-selection predicate (TASK-813 §8).
+ * The consultation-selection predicate
  *
  * ## Why this is a module and not two `if`s
  *

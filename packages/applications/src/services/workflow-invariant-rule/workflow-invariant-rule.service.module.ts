@@ -5,10 +5,10 @@ import { IWorkflowInvariantRuleService } from './IWorkflowInvariantRuleService';
 import { WorkflowInvariantRuleService } from './workflow-invariant-rule.service';
 
 /**
- * WorkflowInvariantRuleService DI module (TASK-790 W3b).
+ * WorkflowInvariantRuleService DI module (b).
  *
  * - CommonServiceModule -> the house baseline every service module imports.
- * - CoreDatabaseModule  -> `WorkflowInvariantRuleRepository`.
+ * - CoreDatabaseModule -> `WorkflowInvariantRuleRepository`.
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],

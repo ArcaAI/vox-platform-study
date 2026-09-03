@@ -1,8 +1,8 @@
-"""The ``compiledConfig`` contract, Python side (TASK-716 Task 7b).
+"""The compiledConfig contract, Python side (b).
 
 ``compiledConfig`` is what ``@arcaai/workflow-contract``'s TypeScript compiler
 (``packages/workflow-contract/src/compiler.ts``) produces from a server-validated
-``WorkflowGraph``, and what the Python interpreter (TASK-718) consumes. The single
+WorkflowGraph, and what the Python interpreter consumes. The single
 normative machine artifact is
 ``packages/workflow-contract/schemas/compiled-config.schema.json``;
 this module is a MIRROR of it, kept honest by ``tests/test_parity.py``.
@@ -12,11 +12,11 @@ compiler and no rule catalogue here, and there must not be one. The graph is
 untrusted input; the compiled config is a server-produced artifact.
 
 Normative rules, binding on every consumer in both languages
-(``contracts/README.md`` §"Normative rules"):
+(contracts/README.md ):
 
 1. **There is no node type that can write ``SIGNED``.** The format has no such
    field anywhere. Approval remains ``approveSummary``, outside the substrate
-   entirely (TASK-716 §2.7).
+   entirely.
 2. **A gate's ``onTimeout`` may never be a value that means "approved"**
    (INV-001, INV-147, INV-181). ``CompiledGate`` rejects the literal ``APPROVED``;
    that is the same mechanical tripwire the schema encodes and is NOT a substitute
@@ -110,7 +110,7 @@ class CompiledNode(_CompiledModel):
     node_id: NodeIdStr
     type: str = Field(min_length=1)
     #: A closed set drawn from ``apps/harness/src/harness/temporal/activities.py``'s
-    #: ``@activity.defn`` names. No activity here writes SIGNED (TASK-716 §2.7).
+    # @activity.defn names. No activity here writes SIGNED
     activity: str = Field(min_length=1)
     config: dict[str, Any]
     #: Already clamped to ``caps.maxNodeSeconds`` at COMPILE time — never re-derived here.
@@ -154,7 +154,7 @@ class CompiledPromptTemplateRef(_CompiledModel):
 
 
 class CompiledDocumentTemplateRef(_CompiledModel):
-    """TASK-810 DD-2 — WHICH ``DocumentTemplate`` version one generation node decodes into.
+    """WHICH DocumentTemplate version one generation node decodes into.
 
     Structurally identical to :class:`CompiledPromptTemplateRef` and a DIFFERENT pin:
     that one pins what the model is TOLD, this one pins the SHAPE its output is decoded

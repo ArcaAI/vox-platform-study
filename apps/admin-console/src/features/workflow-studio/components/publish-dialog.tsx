@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * `PublishDialog` (TASK-719 Task 15) — a SHORT confirmation dialog (rule 11 §1: dialogs stay
+ * `PublishDialog` — a SHORT confirmation dialog (rule 11 §1: dialogs stay
  * for short confirmations and break-glass step-up, not record detail). Publish is a destructive,
- * effectively-irreversible action (the published row becomes immutable — design.md §Plane 1),
+ * effectively-irreversible action (the published row becomes immutable — 1),
  * so it gets an explicit confirm step per rule 11 §5.
  */
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Field, FieldContent, FieldDescription, FieldLabel, Switch } from '@arcaai/ui';

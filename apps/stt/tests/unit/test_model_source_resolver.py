@@ -118,7 +118,7 @@ async def test_local_path_wins_without_network(
 async def test_resolve_for_model_config_honours_local_path_before_credentials(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """TASK-858 — Mode M must not depend on the credential plane.
+    """Mode M must not depend on the credential plane.
 
     `resolve_for_model_config` (the whisper.cpp / parakeet.cpp seam) resolved the
     HuggingFace + S3 credentials EAGERLY, before honouring `local_path`, so a model

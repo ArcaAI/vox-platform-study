@@ -129,7 +129,7 @@ describe('discovery client', () => {
 });
 
 // =============================================================================
-// Download client — FROZEN contract (TASK-855)
+// Download client — FROZEN contract
 // =============================================================================
 describe('download client', () => {
   it('POSTs :id/download with no body and returns the 202 job envelope', async () => {

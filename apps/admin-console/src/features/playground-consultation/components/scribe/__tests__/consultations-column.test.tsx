@@ -36,8 +36,7 @@ describe('ConsultationsColumn', () => {
    * WCAG 2.1.1 / 2.1.3 — axe `scrollable-region-focusable` (impact: serious).
    * The list pane scrolls; while it is loading or empty it holds no focusable
    * child, so a keyboard user cannot scroll it. Real-browser-only finding
-   * (TASK-814 §9).
-   */
+ */
   it('exposes the scrolling list pane to the keyboard', () => {
     const { container } = setup({ isLoading: true });
     const pane = container.querySelector('.overflow-y-auto');
@@ -133,7 +132,7 @@ describe('ConsultationsColumn', () => {
 });
 
 /**
- * TASK-793 W2 / TASK-789 H-4 — department scoping was structurally dead
+ * / — department scoping was structurally dead
  * because the open call never carried a department. `consultation.departmentId`
  * feeds BOTH the SOAP prompt-tier resolver (`summary.service.ts:367,606`) and
  * the workflow-assignment cascade's department tier.
@@ -166,13 +165,13 @@ describe('ConsultationsColumn — department scoping on open', () => {
 });
 
 /**
- * TASK-815 §12 (P-4) — the department picker must never degrade SILENTLY.
+ *  — the department picker must never degrade SILENTLY.
  *
  * The catalog now reads `users/me/departments` (clinician plane), but it can
  * still be genuinely unavailable — the caller has no assignments, or the read
  * failed. Previously ALL THREE of those states rendered as the same thing: the
  * control simply vanished, with nothing telling the clinician why the note
- * would be scoped to the tenant tier instead. Rule 11 §5: every state is
+ * would be scoped to the tenant tier instead. Rule 11: every state is
  * explained; rule 10: loading is a Skeleton, never a blank or a spinner.
  */
 describe('ConsultationsColumn — department scoping degrades explicitly (P-4)', () => {
@@ -232,9 +231,9 @@ describe('ConsultationsColumn — department scoping degrades explicitly (P-4)',
 });
 
 /**
- * TASK-858 Lane D — workflow selection at open.
+ * workflow selection at open.
  *
- * TASK-813 shipped `session.open({ workflowDefinitionSlug })` and the two discovery hooks, and
+ * shipped `session.open({ workflowDefinitionSlug })` and the two discovery hooks, and
  * the console called neither: a clinician could not choose which published consultation workflow
  * governs the session. The picker's three source states stay distinct here for the same reason
  * the SDK keeps them distinct (`useSelectableConsultationWorkflows`): `null` is "we could not

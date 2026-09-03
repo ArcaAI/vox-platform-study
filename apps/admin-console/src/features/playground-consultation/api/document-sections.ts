@@ -1,5 +1,5 @@
 /**
- * TASK-811 §2b (`section.patch`) / TASK-814 DD-3 — the per-document, per-section realtime
+ * (`section.patch`) / — the per-document, per-section realtime
  * protocol. Mirrors the gateway's `SectionPatchDto`
  * (`packages/applications/src/services/consultation/live-documentation/realtime/dto/section-patch.dto.ts`)
  * verbatim, transcribed from that file, not from prose.
@@ -34,7 +34,7 @@ export interface SectionProvenance {
   transcriptEnd?: number;
 }
 
-/** Section state machine (TASK-811 §2d). `empty` renders as a SKELETON, never an error. */
+/** Section state machine ( `empty` renders as a SKELETON, never an error. */
 export type SectionState = 'empty' | 'provisional' | 'confirmed' | 'locked';
 
 /** One section's new state, streamed independently of every other section and document. */

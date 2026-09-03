@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-811 §2b — the `section.patch` SSE payload.
+ * the `section.patch` SSE payload.
  *
  * ## The offset problem this exists to solve
  *

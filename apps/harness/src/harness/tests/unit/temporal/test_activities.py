@@ -871,7 +871,7 @@ class _FakeRetriever:
 
 
 class _AllowConsentClient:
-    """TASK-712 (consent-abac Phase 4) — stub `ConsentClient`, always allowed."""
+    """(consent-abac Phase 4) — stub `ConsentClient`, always allowed."""
 
     async def check(self, **_kwargs):  # noqa: ANN201
         from harness.core.consent_client import ConsentDecision
@@ -964,7 +964,7 @@ class TestRetrieveContext:
         assert result.degraded is True
         assert result.prompt_block == ""
 
-    # -- TASK-712 (consent-abac Phase 4) -----------------------------------
+    # (consent-abac Phase 4)
 
     @pytest.mark.asyncio
     async def test_consent_denied_degrades_to_empty_WITHOUT_calling_the_retriever(
@@ -1155,7 +1155,7 @@ class TestReportProgress:
 def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     base: dict[str, Any] = {
         # The safety screen is a tenant-scoped call into apps/guardrail
-        # (TASK-737: `X-Tenant-Id` mandatory), so both workflow call sites now thread
+        # (`X-Tenant-Id` mandatory), so both workflow call sites now thread
         # the tenant onto this input; without it the safety sensor degrades by design.
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "note_text": "Patient stable; continue current plan.",

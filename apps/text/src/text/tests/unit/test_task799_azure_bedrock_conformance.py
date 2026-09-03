@@ -1,4 +1,4 @@
-"""TASK-799 — Azure OpenAI + AWS Bedrock adapters vs. the official vendor contracts.
+"""Azure OpenAI + AWS Bedrock adapters vs. the official vendor contracts.
 
 Every assertion below is anchored to a vendor document, cited inline. The two
 adapters worked before this ticket; what they did not do was CONFORM on four

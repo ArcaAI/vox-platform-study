@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — the four rendering rules TASK-796 declared as SAFETY PROPERTIES.
+ * the four rendering rules declared as SAFETY PROPERTIES.
  *
  * 1. Never auto-apply — status advances only on an explicit clinician action.
  * 2. Verify the local text's SHA-256 against `corrections.textSha256` BEFORE applying;
@@ -80,7 +80,7 @@ describe('Rule 2 — the SHA-256 gate', () => {
   });
 });
 
-describe('TASK-814 §2b — onProposalAccepted (promotion over the raw transcript, DD-8)', () => {
+describe(' — onProposalAccepted (promotion over the raw transcript, DD-8)', () => {
   it('fires alongside onAccept, with the proposal marked ACCEPTED, when the digest gate passes', async () => {
     const onAccept = vi.fn();
     const onProposalAccepted = vi.fn();

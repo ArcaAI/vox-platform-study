@@ -1,13 +1,13 @@
 /**
  * The LIVE capability chain.
  *
- * Tier 1a  the governing workflow definition's LIVE generation node — the node
+ * Tier 1a the governing workflow definition's LIVE generation node — the node
  *          whose effective `taskKey` is `text.live` (APPROVED template + the
- *          node's own pinned PromptVersion snapshot). TASK-815 moved this tier
+ * node's own pinned PromptVersion snapshot). moved this tier
  *          off `DepartmentAgent.livePromptTemplateId`; the tier's REPORTED name
  *          (`resolvedFrom: 'agent'`) is a frozen v1-compat contract and stays.
- * Tier 2   `SYSTEM_DEFAULTS.livePromptId` — the seeded SYSTEM live-default row
- * Tier 3   in-code constants, reported as `'code-default'` — the DOCUMENTED
+ * Tier 2 `SYSTEM_DEFAULTS.livePromptId` — the seeded SYSTEM live-default row
+ * Tier 3 in-code constants, reported as `'code-default'` — the DOCUMENTED
  *          FAIL-OPEN: a live consultation must never be failed by a
  *          prompt-resolution error. Safe only because tier-3 bytes are proven
  *          identical to tier-2's (paired sha256 guards), so "fail-open"

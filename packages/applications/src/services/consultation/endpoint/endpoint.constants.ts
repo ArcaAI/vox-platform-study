@@ -1,5 +1,5 @@
 /**
- * TASK-812 — endpoint-stage constants shared by the service, its DTOs and the internal route.
+ * endpoint-stage constants shared by the service, its DTOs and the internal route.
  *
  * Deliberately a tiny module of its own rather than exports on the service: the harness speaks
  * these strings on the wire (`ENDPOINT_REASON_*` mirrors `apps/harness/.../temporal/models.py`),
@@ -10,7 +10,7 @@
 /**
  * How a consultation session reached its endpoint.
  *
- * `TIMED_OUT` is the D-12 case and the reason this vocabulary exists at all. Before TASK-812 an
+ * `TIMED_OUT` is the D-12 case and the reason this vocabulary exists at all. Before an
  * expiry ABANDONED the run, so there was nothing to record and no way to tell a note produced
  * from a complete consultation from one produced from a truncated recording. Now expiry runs the
  * endpoint sequence — which makes stamping the distinction mandatory, not optional: a clinician

@@ -3,7 +3,7 @@ import type { ComponentType, ReactNode } from 'react';
 /**
  * Mirrors `WorkflowFindingSeverity` from `@arcaai/workflow-contract`
  * (`packages/workflow-contract/src/report.ts:12`) — the composite never imports that package
- * (it is the server validator's engine, not a browser artifact; see TASK-719
+ * (it is the server validator's engine, not a browser artifact; see
  * `contracts/validation-report.contract.md`), so the two ERROR/WARNING string literals are
  * repeated here rather than shared.
  */
@@ -22,7 +22,7 @@ export interface WorkflowCanvasNode {
   label: string;
   position: { x: number; y: number };
   /**
-   * Open set of registry-declared classes (`TASK-719 contracts/registry.contract.md` —
+   * Open set of registry-declared classes (`contracts/registry.contract.md`
    * `WorkflowNodeClassLookup.classesOf`). A node is "mandatory" iff `'mandatory'` is a member.
    */
   safetyClasses?: readonly string[];
@@ -62,7 +62,7 @@ export interface WorkflowCanvasProps {
   nodeTypes?: WorkflowCanvasNodeTypes;
   selectedNodeId?: string | null;
   readOnly?: boolean;
-  /** Reserved for TASK-723's run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
+  /** Reserved for run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
   overlay?: (node: WorkflowCanvasNode) => ReactNode;
   onNodesChange?: (nodes: WorkflowCanvasNode[]) => void;
   onEdgesChange?: (edges: WorkflowCanvasEdge[]) => void;

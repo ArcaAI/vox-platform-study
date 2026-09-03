@@ -1,5 +1,5 @@
 /**
- * TASK-733 Task 1 — assignment RESOLUTION.
+ * assignment RESOLUTION.
  *
  * The declared order is `department override → tenant default → platform
  * default`, walked with `walkCascade` (first-set-wins), the SAME primitive

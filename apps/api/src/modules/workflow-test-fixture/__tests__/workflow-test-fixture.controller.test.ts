@@ -1,5 +1,5 @@
 /**
- * WorkflowTestFixtureController unit tests (TASK-721).
+ * WorkflowTestFixtureController unit tests.
  *
  * CASL enforcement runs in the global UnifiedAuthGuard (e2e-covered); these
  * specs pin the controller's OWN contract: the class-level `@CanManage`

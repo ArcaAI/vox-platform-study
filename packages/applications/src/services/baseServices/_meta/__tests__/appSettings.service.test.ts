@@ -126,7 +126,7 @@ describe('AppSettingsService', () => {
   ) => ({
     id: `setting-${key}`,
     // `GlobalSetting.tenantId` is NOT NULL, and the platform cache admits the
-    // reserved SYSTEM tenant EXCLUSIVELY (owner ruling 2026-08-20, TASK-763
+    // reserved SYSTEM tenant EXCLUSIVELY (owner ruling 2026-08-20,
     // OD-1) — so a fixture on any other tenant is not a row the platform cache
     // can ever hold. GLOBAL (`50000000-…`) is a CUSTOMER tenant, not a tier;
     // `filters customer-tenant rows out of the platform cache` below pins that.
@@ -435,7 +435,7 @@ describe('AppSettingsService', () => {
     });
 
     it('filters customer-tenant rows out of the platform cache', async () => {
-      // TASK-763 OD-1: the platform (key-only) cache is sound ONLY because it
+      // the platform (key-only) cache is sound ONLY because it
       // admits the reserved SYSTEM tenant EXCLUSIVELY. GLOBAL (`50000000-…`) is
       // the platform-admin PLAYGROUND — a customer tenant — so its rows must
       // never widen into the platform tier, or one customer's configuration is

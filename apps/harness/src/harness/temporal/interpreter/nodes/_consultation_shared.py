@@ -3,7 +3,6 @@
 Not itself an activity module. Every consultation node beyond N-1/N-5 wraps an activity that
 already exists in ``harness.temporal.activities`` (the ones ``HarnessDocWorkflow`` has run in
 production since long before this palette existed) — see
-``docs/implementation/TASK-731-Palette-Consultation/contracts/palette-contract.md`` §1's
 "Compile target" column. What every one of those wrappers needs, and what lives here, is the
 same three-part mapping:
 
@@ -16,14 +15,14 @@ same three-part mapping:
 * **Data** flows in through ``payload.bound_inputs``, keyed by ``toPort`` — read generically
   (never off a fixed port name), the same rule ``nodes/text_generate.py`` and
   ``nodes/guardrail_check.py`` already apply, because port names are graph-author-chosen. Since
-  TASK-809 OD-15 each bound value is the SINGLE output key the producing socket declares, never
+  each bound value is the SINGLE output key the producing socket declares, never
   the whole predecessor output dict; ``bound_value`` reads the top level first for that reason.
 
 Failure posture, uniformly: a wrapped activity that raises DEGRADES the node with a named
 ``error_code`` — it never propagates. CR-14 (``contracts/node-types.md``) makes only
 ``consentGate`` and ``hitlGate`` ``critical``; every other consultation node must degrade
 visibly rather than fail the run, and the interpreter's own workflow body is what promotes a
-degraded CRITICAL node to a run-level failure (``contracts/execution-semantics.md`` §4).
+degraded CRITICAL node to a run-level failure (contracts/execution-semantics.md
 
 Sandbox suppression is NOT re-implemented here: ``workflow.py:188`` already skips any
 ``external_write`` node when the run is sandboxed, before the activity is ever scheduled.
@@ -71,7 +70,7 @@ def bound_value(bound_inputs: dict[str, Any], key: str) -> Any:
     """``key`` as a TOP-LEVEL bound input, else the first occurrence of it inside a dict-valued
     one, else ``None``.
 
-    ## Why both, and why the top level comes first (TASK-809 OD-15)
+    ## Why both, and why the top level comes first
 
     This function used to search the nested level ONLY, and its own docstring said why: the
     interpreter threaded "either the single value named by the edge's ``fromPort`` or the WHOLE

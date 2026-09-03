@@ -215,7 +215,7 @@ export function useArcaContext() {
       setContextLoading(true);
       setContextError(null);
 
-      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // the route is `@RequiresIfMatch()` — send the strong
       // validator AND the body-field fallback, and surface 412 distinctly.
       const expectedVersion = requireExpectedVersion(id, options?.expectedVersion, contextItems.find((i) => i.id === id)?.version);
 

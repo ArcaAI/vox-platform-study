@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane A step 6 — idempotency that a retried webhook cannot defeat.
+ * lane A step 6 — idempotency that a retried webhook cannot defeat.
  *
  * Before this ticket the ONLY idempotency was a best-effort Redis response cache: on a cache
  * miss (eviction, a cold node, Redis down — all of which `tryReadIdempotencyCache` swallows by
@@ -75,7 +75,7 @@ beforeEach(() => {
   mockHarnessGateway.startWorkflowRun.mockResolvedValue({ runId: 'x', workflowId: 'w', temporalRunId: 't', status: 'started' });
 });
 
-describe('TASK-850 — deterministicRunId', () => {
+describe('deterministicRunId', () => {
   it('is a pure function of (tenantId, slug, idempotencyKey)', () => {
     expect(deterministicRunId('t', 's', 'k')).toBe(deterministicRunId('t', 's', 'k'));
   });
@@ -96,7 +96,7 @@ describe('TASK-850 — deterministicRunId', () => {
   });
 });
 
-describe('TASK-850 — a retried Idempotency-Key JOINS rather than starting a second run', () => {
+describe('a retried Idempotency-Key JOINS rather than starting a second run', () => {
   it('derives the run id from the key, so the retry addresses the same workflow', async () => {
     const service = build();
     const expected = deterministicRunId('tenant-1', 'discharge_summary', 'webhook-42');

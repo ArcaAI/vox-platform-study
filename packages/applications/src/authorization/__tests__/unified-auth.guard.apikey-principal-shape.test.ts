@@ -1,5 +1,5 @@
 /**
- * TASK-757 — the API-key CLS principal carries NO `roles`, and that is
+ * the API-key CLS principal carries NO `roles`, and that is
  * LOAD-BEARING. Do not "fix" it.
  *
  * `UnifiedAuthGuard.handleApiKeyAuth` writes `{ id, tenantId }` into CLS
@@ -45,7 +45,7 @@ const createMockContext = () => {
   } as unknown as ExecutionContext;
 };
 
-describe('UnifiedAuthGuard — API-key CLS principal shape (TASK-757 regression pin)', () => {
+describe('UnifiedAuthGuard — API-key CLS principal shape (regression pin)', () => {
   let guard: UnifiedAuthGuard;
   const clsStore = new Map<string, unknown>();
 

@@ -173,7 +173,7 @@ export class DnaWritingStyleAdminController {
     return this.dnaService.generateDnaReport(doctorId, dto);
   }
 
-  // TASK-733 Task 10 — the admin half of INV-240's "deletable by the
+  // the admin half of INV-240's "deletable by the
   // clinician" requirement: a tenant admin can reset a doctor's profile (on
   // request, or as part of incident response) without impersonating them.
   // Soft delete only — the scheduled DNA profile retention purge is the one

@@ -26,7 +26,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 1024,
     computeType: 'float32',
     tags: ['medical', 'ner', 'default'],
-    // `metaData.clinicalTaxonomy` is LOAD-BEARING, not documentation (TASK-799
+    // `metaData.clinicalTaxonomy` is LOAD-BEARING, not documentation
     // lane G) — the same mechanism `labelTaxonomy` already uses on the guardrail
     // rows below. Until now these four lived inside `apps/nlp` as Python
     // literals (`ontology_linker._VOCABULARY_ENTRIES`, `vitals_extractor`'s
@@ -366,7 +366,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     computeType: 'float32',
     tags: ['medical', 'classification', 'default'],
   },
-  // ── Guardrail-plane models (TASK-735 Phases 3 & 6; roster completed by TASK-776) ──
+  // ── Guardrail-plane models ( Phases 3 & 6; roster completed by) ──
   //
   // Owner directive 2026-08-19. THREE models, all RUNNING IN `apps/nlp`
   // (guardrail holds zero resident weights), selected from here via
@@ -374,15 +374,15 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
   // `16-ai-task-default.ts`. They are split BY TASK SHAPE, not by vendor:
   //
   //   1. token classification + ENTITY EXTRACTION (PII detect/redact/mask):
-  //      `gliner2-privacy-filter-pii-multi`  — 205M, PII spans ONLY. The
+  //      `gliner2-privacy-filter-pii-multi` — 205M, PII spans ONLY. The
   //      high-volume redaction default: smallest, therefore fastest, and every
   //      consultation turn is scanned.
-  //      `gliner2-guardrails-pii-multi`      — 300M, PII spans AND safety
+  //      `gliner2-guardrails-pii-multi` — 300M, PII spans AND safety
   //      classification in ONE checkpoint. Selected where safety needs SPANS
   //      (not just a label), or where one model must cover both jobs on a
   //      memory-constrained node.
   //   2. safety CLASSIFICATION ONLY (no entity extraction):
-  //      `gliguard-llm-guardrails-300m`      — 300M, six moderation tasks.
+  //      `gliguard-llm-guardrails-300m` — 300M, six moderation tasks.
   //
   // Verified empirically against the real weights on 2026-08-19: all three load
   // through the same `gliner2` runtime and share one call shape, so the
@@ -494,7 +494,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       },
     },
   },
-  // The JOINT checkpoint (TASK-776). Same 42 PII types as the privacy filter —
+  // The JOINT checkpoint. Same 42 PII types as the privacy filter
   // its card lists an identical set — PLUS the six GLiGuard moderation tasks.
   // Seeded so a platform admin can select it wherever safety needs SPANS, or
   // where one resident model must cover both jobs.
@@ -764,7 +764,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
   // guardrail groundedness sensor; modelled as TEXT_CLASSIFICATION (the
   // closest existing ModelTaskType for a sequence-pair entailment head — there
   // is no dedicated NLI task type). Default for the `guardrail.groundedness`
-  // AiTaskDefault. GGUF served by `apps/nlp` (TASK-735 Phase 6 moved it out of `apps/guardrail`, which now hosts no weights).
+  // AiTaskDefault. GGUF served by `apps/nlp` ( moved it out of `apps/guardrail`, which now hosts no weights).
   {
     id: '80000000-0000-0000-0007-000000000018',
     tenantId: SYSTEM_TENANT_ID,
@@ -784,7 +784,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 1200,
     computeType: 'q6_k',
     tags: ['guardrail', 'groundedness', 'minicheck', 'nli'],
-    // `metaData.entailment` is the CALIBRATION GATE's ground truth (TASK-799
+    // `metaData.entailment` is the CALIBRATION GATE's ground truth
     // lane G). `apps/nlp` runs this checkpoint through a fail-closed self-check
     // before it is allowed to score a clinical groundedness gate; the bounds and
     // the reference pair used to be module constants there, which meant they

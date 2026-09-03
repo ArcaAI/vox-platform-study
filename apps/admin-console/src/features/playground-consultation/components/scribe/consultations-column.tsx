@@ -59,19 +59,19 @@ export interface ConsultationsColumnProps {
   /**
    * Open (get-or-create) a consultation for a patient id, optionally scoped to
    * a department. `departmentId` is what makes the department prompt tier and
-   * the workflow-assignment department tier reachable at all (TASK-789 H-4).
-   */
+   * the workflow-assignment department tier reachable at all.
+ */
   onOpenPatient: (patientId: string, departmentId?: string, workflowDefinitionSlug?: string) => Promise<void>;
   activeIsRecording: boolean;
   /**
-   * TASK-858 Lane D — the published consultation workflows this caller may pass as
+   * the published consultation workflows this caller may pass as
    * `session.open({ workflowDefinitionSlug })` (SDK `useSelectableConsultationWorkflows`).
    *
    * THREE source states, never collapsed — the SDK keeps them apart for the same reason:
    * `undefined` = the caller did not wire the picker (render nothing), `null` = we could not
    * ask (offline/503/unauthorized), `[]` = the tenant has published none. Telling a clinician
    * their tenant has no workflows because a request blipped is the failure this prevents.
-   */
+ */
   workflows?: WorkflowSelectionOption[] | null;
   /** Read in flight ⇒ skeleton, never a premature "none". */
   workflowsLoading?: boolean;
@@ -80,10 +80,10 @@ export interface ConsultationsColumnProps {
   onWorkflowChange?: (slug: string) => void;
   /**
    * Departments the CALLER may scope to — `users/me/departments`, the
-   * clinician plane (TASK-815 §12 / P-4). Empty is a real, explainable state,
+   * clinician plane ( / P-4). Empty is a real, explainable state,
    * not a reason to hide the control: see `departmentsLoading` /
    * `departmentsError` below.
-   */
+ */
   departments?: DepartmentOption[];
   /** Catalog read in flight ⇒ skeleton, never a blank or a premature "none". */
   departmentsLoading?: boolean;
@@ -324,11 +324,13 @@ export function ConsultationsColumn({
             ) : (
               <DepartmentScopingNotice unavailable={departmentsError} />
             )}
-            {/* Workflow selection (TASK-858 Lane D). TASK-813 shipped
+            {/*
+ Workflow selection. shipped
                 `session.open({ workflowDefinitionSlug })` and the discovery route that says
                 which slugs are accepted; nothing in the console offered the choice, so a
                 clinician always got whatever the assignment cascade picked. `undefined` keeps
-                the control off entirely for callers that do not wire it. */}
+                the control off entirely for callers that do not wire it. 
+*/}
             {workflows === undefined ? null : workflowsLoading ? (
               <>
                 <Skeleton className="h-4 w-20" />

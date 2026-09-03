@@ -81,7 +81,7 @@ CASES: tuple[GroundingCase, ...] = (
         abstracted_entities=("paracetamol", "salbutamol"),
         fabricated_entities=("tramadol", "tiotropium"),
         fabrication_basis=(
-            "The exact failure mode TASK-664 §1.2 names: a different analgesic and a "
+            "The exact failure mode  §1.2 names: a different analgesic and a "
             "different inhaled agent are lexically indistinguishable from the correct "
             "generic substitution. If a mechanism grounds paracetamol it must NOT ground "
             "tramadol."

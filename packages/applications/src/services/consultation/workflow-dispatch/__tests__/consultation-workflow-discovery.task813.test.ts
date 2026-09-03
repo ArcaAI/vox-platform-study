@@ -1,5 +1,5 @@
 /**
- * TASK-813 §8 — selectable-set DISCOVERY.
+ * selectable-set DISCOVERY.
  *
  * The property under test is not "the list returns rows". It is that the list and the
  * gate are ONE predicate with two consumers:

@@ -1,11 +1,11 @@
-"""Tier 3 — the node-boundary schema check (TASK-848c).
+"""Tier 3 — the node-boundary schema check (c).
 
 Tiers 1 and 2 live in the EDITOR: tier 1 kind-checks a connection and blocks, tier 2 warns about
 shallow structural mismatch and never blocks. Neither runs at execution time and neither sees the
 actual value. Tier 3 is the only tier that sees data, and it is therefore the only one that can
 tell an author their run did not produce what their schema promised.
 
-The declaration was carried on the compiled config from TASK-847 with the enforcement deliberately
+The declaration was carried on the compiled config from with the enforcement deliberately
 absent, because claiming to validate without an evaluator is a false safety claim. This file is the
 evidence the claim is now true.
 """

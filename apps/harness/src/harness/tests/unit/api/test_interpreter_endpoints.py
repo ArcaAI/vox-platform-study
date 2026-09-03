@@ -105,7 +105,7 @@ class TestStartWorkflowRun:
 
     @pytest.mark.asyncio
     async def test_forwards_sandbox_flag_and_payload(self, harness):
-        """TASK-721 Workbench: a sandbox run's synthetic test payload reaches
+        """Workbench: a sandbox run's synthetic test payload reaches
         `InterpreterInput.payload` verbatim — the field every node's
         `NodeActivityInput.run_payload` is threaded from."""
         http, client, _handle, _settings = harness

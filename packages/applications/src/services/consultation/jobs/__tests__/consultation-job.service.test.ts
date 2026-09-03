@@ -170,7 +170,7 @@ describe('ConsultationJobService', () => {
     });
   });
 
-  // TASK-732 — `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
+  // `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
   // async generator and its NER companion) were deleted along with
   // `summary.processor.ts`/`ner.processor.ts`. Their describe blocks were
   // removed here in the same commit.
@@ -487,7 +487,7 @@ describe('ConsultationJobService', () => {
       expect(mockCacheService.publish).toHaveBeenCalled();
     });
 
-    // TASK-732 — 'SUMMARY'/'NER' cancel coverage removed: their queues and
+    // 'SUMMARY'/'NER' cancel coverage removed: their queues and
     // processors were deleted, so `cancelJob` now falls through to the
     // default (not-found) branch for those types — see the "unknown job
     // type" test below, which now also covers 'SUMMARY'/'NER'.
@@ -538,7 +538,7 @@ describe('ConsultationJobService', () => {
       expect(mockJob.remove).not.toHaveBeenCalled();
     });
 
-    it('should return false for a job type whose queue was deleted (SUMMARY/NER, TASK-732)', async () => {
+    it('should return false for a job type whose queue was deleted (SUMMARY/NER)', async () => {
       const storedStatus = {
         jobId: 'job-123',
         type: 'SUMMARY',

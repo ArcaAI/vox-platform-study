@@ -1,4 +1,4 @@
-"""TASK-809 OD-15 — assurance data survives STRICT per-key binding.
+"""assurance data survives STRICT per-key binding.
 
 ## The failure this pins
 

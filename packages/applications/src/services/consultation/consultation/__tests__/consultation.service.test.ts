@@ -177,7 +177,7 @@ describe('ConsultationService', () => {
     );
   });
 
-  // TASK-805 owner directive (2026-08-25) — opening a consultation IS the
+  // owner directive (2026-08-25) — opening a consultation IS the
   // doctor's consent event, because `POST /admin/consent-grants` needs
   // `manage:ConsentGrant`, a tenant-admin ability no clinician holds.
   describe('getOrCreate — consent on open', () => {
@@ -1097,9 +1097,9 @@ describe('ConsultationService', () => {
   //
   // The Consultation aggregate owns three cross-aggregate references
   // that the multi-tenancy audit flagged as leak vectors:
-  //   - parentConsultationId  (audit C-4 / B-3 — revisits + chains)
-  //   - departmentId          (audit C-2 — Department lives in Department aggregate)
-  //   - doctorId              (audit C-1 — User membership via UserRoleAssignment)
+  //   - parentConsultationId (audit C-4 / B-3 — revisits + chains)
+  //   - departmentId (audit C-2 — Department lives in Department aggregate)
+  //   - doctorId (audit C-1 — User membership via UserRoleAssignment)
   //
   // Each must be asserted in the caller's tenant before any create.
   // Failures route through `assertParentInScope` /
@@ -1480,7 +1480,7 @@ describe('ConsultationService', () => {
   });
 
   // ============================================================
-  // TASK-711 — Consultation lifecycle (prime / close / reopen / update /
+  // Consultation lifecycle (prime / close / reopen / update /
   // recording) now routes exclusively through `ConsultationEntity.
   // transitionTo`, the single guarded write path (the legacy
   // `metadata.status` tracker is deleted). These tests construct REAL
@@ -1684,7 +1684,7 @@ describe('ConsultationService', () => {
       });
     });
 
-    // TASK-776 H-1 phase 2: `PATCH /consultations/:id` is `@RequiresIfMatch()`,
+    // phase 2: `PATCH /consultations/:id` is `@RequiresIfMatch()`,
     // so the write is a CAS (`updateWithVersion`) rather than a blind `update` —
     // and it returns the FRESHLY-PERSISTED entity, because the CAS bumps
     // `_version` and a client chaining `If-Match` off a stale body would 412 on
@@ -1719,7 +1719,7 @@ describe('ConsultationService', () => {
         mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
         // UpdateConsultationRequest no longer declares `status` at all
-        // (TASK-711); passing one through is simply ignored by the DTO/service.
+        // passing one through is simply ignored by the DTO/service.
         const result = await service.updateConsultation('c-1', { appointmentDate: '2026-04-02' } as any);
 
         expect(result.status).toBe(ConsultationStatus.PENDING_REVIEW);

@@ -6,7 +6,7 @@ import { objectBasename } from './file-meta';
 import { SelectedObjectActions } from './object-actions-panel';
 
 /**
- * Frame 31 object-actions surface (redesign build spec §3): the presigned-URL
+ * Frame 31 object-actions surface (redesign build spec: the presigned-URL
  * actions for a selected object move out of the old right rail into the
  * console-wide `DetailDrawer` (size `md`). A file row click — or the `?object=`
  * deep-link — opens it; folder rows still navigate the prefix.

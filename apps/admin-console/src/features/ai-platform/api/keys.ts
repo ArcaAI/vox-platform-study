@@ -6,7 +6,7 @@
  * tenant without navigating, so a key that omitted the tenant would serve one
  * tenant's configurations under another's heading the moment the control moved
  * — the client-side shape of the cache rule in `09-infrastructure-devops.md`
- * §"Config caches" (`tenantId` is part of every config cache key).
+ * (`tenantId` is part of every config cache key).
  */
 
 export const routingPolicyKeys = {

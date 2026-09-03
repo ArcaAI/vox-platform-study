@@ -1,7 +1,7 @@
 /**
  * `consultation.visitTypes` — the descriptor contract.
  *
- * The owner ruling (TASK-815 §11 row 3) is a CONFIGURATION statement, and every
+ * The owner ruling is a CONFIGURATION statement, and every
  * clause of it lands on a descriptor field. This file is where those fields are
  * pinned, so a later edit that quietly re-platforms the key has to argue with a
  * test rather than slip through.
@@ -51,7 +51,7 @@ describe('the descriptor says what the ruling said', () => {
 
   it('fails OPEN to those defaults — a missing taxonomy must not take out every consultation', () => {
     expect(descriptor().failMode).toBe('open-to-default');
-    // The fail-closed rule in 09 §Configuration Tiers is about
+    // The fail-closed rule in 09 Tiers is about
     // provider/model SELECTION, where a fallback could silently become another
     // tenant's value. This key cannot do that: the only thing above a tenant is
     // the platform's own published default.
@@ -75,10 +75,10 @@ describe('the SYSTEM tier answers by DEFAULT, not by a seeded row', () => {
   /*
    * A `GlobalSetting` row carrying the same two types would be a SECOND source
    * of one truth — written once at bootstrap and never re-asserted, because
-   * `RUN_SEED` defaults to `none`. That is the exact defect TASK-705 removed
+   * `RUN_SEED` defaults to `none`. That is the exact defect removed
    * from `harness.loop.enabled`. A row is warranted only when the intended
    * value DIFFERS from the descriptor default; here it does not.
-   */
+*/
   it('is not written by any seed phase', () => {
     const seeds = readFileSync(resolve(SEED_DIR, 'index.ts'), 'utf8');
     const phases = [...seeds.matchAll(/from '\.\/([0-9a-z-]+)'/g)].map((m) => m[1]!);

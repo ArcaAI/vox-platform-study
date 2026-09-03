@@ -1,5 +1,5 @@
 /**
- * TASK-811 — the realtime graph executor.
+ * the realtime graph executor.
  *
  * Tasks 3, 4, 5, 6 and 10 of the ticket plan all land here, because they are all
  * properties of the same walk: declared order, disabled-node skip, per-node

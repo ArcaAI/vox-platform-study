@@ -75,7 +75,7 @@ const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
 // Mirrors `SYSTEM_TENANT_ID` in `base.service.ts` / `tenant.service.ts`
 // (duplicated as a literal per the established convention). A template owned by
 // this tenant is the shared library and its approval stays super-admin-only
-// (OD-3); tenant-owned templates devolve to `manage:PromptTemplate`.
+// ; tenant-owned templates devolve to `manage:PromptTemplate`.
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 // Word count at which a generated test output earns the full
@@ -474,7 +474,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * transaction (mirrors `updatePromptTemplate`). Idempotent: approving an
    * already-APPROVED template is a no-op that returns the current row.
    *
-   * Authorization is split by ownership (OD-3):
+   * Authorization is split by ownership :
    * - **SYSTEM/library** template (tenantId = SYSTEM) — the shared library is
    *   globally visible, so approval is a SUPER_ADMIN-only PRIVILEGE (403, not
    *   404: existence is not hidden for the shared library).
@@ -713,9 +713,9 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * Resulting predicate (top-level AND of the OR group, per query-builder
    * semantics):
    *   tenantId = caller AND resourceStatus = ENABLED [AND category = ?]
-   *   AND ( ( scope = TENANT_DEFAULT      AND status != DRAFT )
-   *         OR ( scope = DEPARTMENT_DEFAULT AND status != DRAFT )
-   *         OR ( scope = USER_PERSONAL      AND ownerUserId = caller ) )
+   *   AND ( ( scope = TENANT_DEFAULT AND status != DRAFT)
+   *         OR ( scope = DEPARTMENT_DEFAULT AND status != DRAFT)
+   *         OR ( scope = USER_PERSONAL AND ownerUserId = caller))
    *
    * The publication gate (`status != DRAFT`) applies only to
    * the shared DEFAULT scopes; personal overlays are never publication-gated.
@@ -772,7 +772,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * Compute a structured, field-level diff between two
    * versions of a prompt template SERVER-side (previously the SDK GET both
    * versions and diffed locally). Returns:
-   *   - `fields[]`  — per-field (`content`, `variables`) line diffs, each
+   *   - `fields[]` — per-field (`content`, `variables`) line diffs, each
    *     flagged `changed` for a future field-aware UI;
    *   - `changes/patch/stats` — the COMBINED (content + variables) line diff,
    *     byte-identical to the SDK's prior `serializeVersionForDiff` +
@@ -1332,13 +1332,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * (`GET text/tasks/:taskId/stream`, which is where the ledger row is emitted)
    * and then finalized through {@link finalizePromptTemplateTest}.
    *
-   * TASK-818 §3C.3(1) — the SINGLE-CALL contract. TEXT no longer answers a
+   * the SINGLE-CALL contract. TEXT no longer answers a
    * streaming `POST /generate` with `202 {task_id, stream_url}`; it answers
    * **200 + `text/event-stream`**, with the id in the first frame's `data`.
    * There is therefore no ack body to read: we open the stream, take the id off
    * the meta frame, and drop our subscription.
    *
-   * Dropping it is NOT a cancel (§3C.4) — the producer is owned by TEXT's hub,
+   * Dropping it is NOT a cancel — the producer is owned by TEXT's hub,
    * not by this response — so nothing is lost between here and the browser's own
    * subscription: it replays from seq 0 out of the replay buffer. This service
    * still holds no stream state, which is what keeps the id round-trip honest.
@@ -1361,8 +1361,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
       });
       taskId = await readGenerationId(response.data as Readable);
     } catch (error) {
-      // TASK-768: was `BadRequestException(\`Failed to call TEXT service: ${error}\`)`.
-      // That is the exact body the TASK-764 evidence captured — a 400 naming
+      // was `BadRequestException(\`Failed to call TEXT service: ${error}\`)`.
+      // That is the exact body the evidence captured — a 400 naming
       // `connect ECONNREFUSED 127.0.0.1:8862`. Rethrow the cause; the gateway
       // boundary (`downstream-error.ts` via `ExceptionInterceptor`) owns the
       // status and the client-facing message.
@@ -1376,7 +1376,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), never a
     // service-relative one — the browser talks to the gateway, with a
     // `text_task:<taskId>`-scoped single-use ticket. TEXT used to report its own
-    // `stream_url` in the 202 ack; under TASK-818 §3C.3(1) there is no ack, so
+    // `stream_url` in the 202 ack; under there is no ack, so
     // this path is composed here from the id and nowhere else.
     return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
   }
@@ -1404,7 +1404,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       if (status === 404) {
         throw new NotFoundException(`Generation task ${taskId} not found`);
       }
-      // TASK-768 — as above. The 404 branch stays: that is a considered mapping
+      // as above. The 404 branch stays: that is a considered mapping
       // of an upstream status, not a composed cause string.
       this.logger.error({
         message: 'TEXT task-output read failed; rethrowing the cause for the gateway boundary to classify',
@@ -1422,7 +1422,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
   /**
    * D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-   * migration fallback). TASK-737: `X-Tenant-Id` is no longer CONDITIONAL.
+   * migration fallback).: `X-Tenant-Id` is no longer CONDITIONAL.
    *
    * The old `if (tenantId) headers['X-Tenant-Id'] = tenantId` was the narrower
    * half of the audit's Class-B finding: this bench has a legitimate no-tenant

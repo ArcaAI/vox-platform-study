@@ -27,7 +27,7 @@ export interface ResolvedProviderConnection {
  * platform bore no vendor cost, so the call is rated notionally and not
  * invoiced.
  * `platform` — the SYSTEM-tenant platform default. The platform DID bear the
- * vendor cost, so the call meters `CLOUD` + `INTERNAL` (OD-2), reaching the
+ * vendor cost, so the call meters `CLOUD` + `INTERNAL` , reaching the
  * COGS rollups and the premium SELL row.
  *
  * Getting this label wrong is silent: the wrong value still produces a
@@ -75,7 +75,7 @@ export interface ProviderOverrideEntry {
   location?: string;
 
   /**
-   * TASK-799 P1-C.2 — every OTHER key of the row's `extraJson`, forwarded
+   * C.2 — every OTHER key of the row's `extraJson`, forwarded
    * VERBATIM after shape validation (`provider-extras.ts`).
    *
    * This index signature is the type-level statement of the fix: forwarding is
@@ -123,17 +123,17 @@ export interface ResolvedProviderOverrides {
 }
 
 /**
- * TASK-799 — the four outcomes a FAIL-CLOSED consumer needs from one credential
+ * the four outcomes a FAIL-CLOSED consumer needs from one credential
  * resolve, and the wire shape `/internal/*` routes return.
  *
  * Why four and not two. `absent` and `unavailable` MUST stay distinct:
  *
- *   `resolved`    — a row supplied a credential. Use it.
- *   `absent`      — no tier has an opinion (no row, or a keyless row). Proceed
+ *   `resolved` — a row supplied a credential. Use it.
+ *   `absent` — no tier has an opinion (no row, or a keyless row). Proceed
  *                   UNAUTHENTICATED. For a PUBLIC model repo or an in-boundary
  *                   self-hosted endpoint this is the CORRECT resolved state,
  *                   and it is never a licence to read an environment variable.
- *   `denied`      — the tenant VETOED this `(service, provider)` by disabling
+ *   `denied` — the tenant VETOED this `(service, provider)` by disabling
  *                   its row, or the platform-default entitlement is not
  *                   granted. Fail closed; never fall through to another tier.
  *   `unavailable` — the resolve itself faulted. Fail closed. Collapsing this
@@ -215,7 +215,7 @@ export interface IProviderConnectionService {
    * env configuration" signal. Server-side only; the result carries ciphertext
    * and is never serialized to a client.
    *
-   * Shares ONE cascade helper with `resolveTenantCloudOverrides` (
+   * Shares ONE cascade helper with `resolveTenantCloudOverrides`
    * ), so the veto and the entitlement gate apply here too
    * there is exactly one `if` in the codebase deciding whether a tenant may see
    * the platform default. The gate applies to CLOUD BYO providers only: a
@@ -266,7 +266,7 @@ export interface IProviderConnectionService {
   resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
 
   /**
-   * TASK-799 — ONE credential, projected onto the four-outcome contract above.
+   * ONE credential, projected onto the four-outcome contract above.
    *
    * For a consumer that holds no DB handle and receives no request to fold a
    * `provider_overrides` envelope into — the STT worker fetching model weights,

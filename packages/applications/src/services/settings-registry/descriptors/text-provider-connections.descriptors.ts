@@ -7,7 +7,7 @@
 // `TEXT_VERTEX_DEFAULT_MODEL` — on the reasoning that they were "non-secret
 // platform routing used when a tenant has no enabled BYO connection".
 //
-// TASK-799 lane B removed every one of them from `apps/text`, and the reasoning
+// lane B removed every one of them from `apps/text`, and the reasoning
 // is what changed rather than the mechanics. A platform routing value read from
 // the process environment is one that no tenant can override and no admin can
 // change without a redeploy — so "the platform default for a provider" and "the
@@ -28,14 +28,14 @@
 //
 // ── The guardrail posture, split by CARDINALITY (owner decision D-1) ─────────
 //
-// | Retired env var                              | Kind             | Home |
+// | Retired env var | Kind | Home |
 // |---|---|---|
-// | `TEXT_EXTERNAL_GUARDRAIL_ENABLED`            | platform switch  | HERE (`global-kv` kill-switch) |
-// | `TEXT_EXTERNAL_GUARDRAIL_TIMEOUT_S`          | platform tuning  | HERE (`global-kv`, PULL) |
-// | `TEXT_EXTERNAL_GUARDRAIL_MAX_RETRIES`        | platform tuning  | HERE |
-// | `TEXT_EXTERNAL_GUARDRAIL_RETRY_BACKOFF_MS`   | platform tuning  | HERE |
-// | `TEXT_EXTERNAL_GUARDRAIL_REQUIRE_MEDICAL`    | **tenant policy**| HERE as the platform DEFAULT; the tenant's own value is PUSHED per request |
-// | `TEXT_EXTERNAL_GUARDRAIL_INCLUDE_REASONING`  | **tenant policy**| same |
+// | `TEXT_EXTERNAL_GUARDRAIL_ENABLED` | platform switch | HERE (`global-kv` kill-switch) |
+// | `TEXT_EXTERNAL_GUARDRAIL_TIMEOUT_S` | platform tuning | HERE (`global-kv`, PULL) |
+// | `TEXT_EXTERNAL_GUARDRAIL_MAX_RETRIES` | platform tuning | HERE |
+// | `TEXT_EXTERNAL_GUARDRAIL_RETRY_BACKOFF_MS` | platform tuning | HERE |
+// | `TEXT_EXTERNAL_GUARDRAIL_REQUIRE_MEDICAL` | **tenant policy**| HERE as the platform DEFAULT; the tenant's own value is PUSHED per request |
+// | `TEXT_EXTERNAL_GUARDRAIL_INCLUDE_REASONING` | **tenant policy**| same |
 //
 // The bottom two are why this could not be one family. A non-clinical tenant
 // needs `requireMedical` off while every other tenant keeps it on, and a

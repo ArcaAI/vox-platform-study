@@ -3,7 +3,7 @@
 /**
  * Frame 54 / artboard 4f — LLM Playground (tier 50–59, matrix row 38).
  *
- * RENAMED from "Agent Playground" by TASK-858 Lane D (route unchanged). Nothing
+ * RENAMED from "Agent Playground" by (route unchanged). Nothing
  * agent- or workflow-shaped runs here: the three tabs are raw calls to the text,
  * guardrail and NLP services. Agents and workflows are authored in
  * `/workflow-studio` and exercised in `/playground/workbench` and

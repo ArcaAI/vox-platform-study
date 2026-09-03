@@ -1,5 +1,5 @@
 /**
- * What the in-node prompt editor is allowed to CLAIM happened (TASK-810 §7b item 1).
+ * What the in-node prompt editor is allowed to CLAIM happened.
  *
  * `PUT :id/nodes/:nodeId/prompt` used to mint unconditionally, so "Minted v6 and pinned …" was
  * always true. It is not any more: content byte-identical to the template's latest version

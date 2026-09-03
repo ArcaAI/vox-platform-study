@@ -1,6 +1,6 @@
 """The generation hub — producers that outlive the HTTP responses reading them.
 
-TASK-818 Lane B, specified by README §3C.3. The property this module exists to
+specified by The property this module exists to
 provide, and the one every test here defends:
 
     **Killing the HTTP response never kills the producer.**
@@ -12,12 +12,12 @@ own terminal frame, or until an **explicit** cancel.
 
 Three consequences, each of which is a rule rather than an implementation detail:
 
-* **A dropped socket is never a cancel** (§3C.4). Disconnect detection is
+* **A dropped socket is never a cancel** ( Disconnect detection is
   unreliable — ``request.is_disconnected()`` does not fire under
   ``BaseHTTPMiddleware`` and raises noisily on uvicorn 0.28 — so generation
   lifetime is derived from an explicit persisted flag, never from socket state.
   Nothing in this module calls it.
-* **The client's latency never waits on Redis** (§3C.2). The producer fans a
+* **The client's latency never waits on Redis** ( The producer fans a
   delta out to attached subscribers *first*, then appends it to a pending batch
   that a separate flush task writes. The durable write is off the hot path in
   both directions: one ``XADD`` per :data:`FLUSH_MAX_DELTAS` deltas or
@@ -26,7 +26,7 @@ Three consequences, each of which is a rule rather than an implementation detail
   alone would miss deltas that were delivered to a live subscriber but not yet
   flushed. :attr:`_Producer.recent` keeps the last :data:`RING_CAPACITY` events
   in process so a same-pod resume is gapless; a cross-pod resume falls back to
-  the flushed prefix, which is the ≤ one-batch loss §3C.8 documents as never
+  the flushed prefix, which is the ≤ one-batch loss documents as never
   user-visible (those deltas were never delivered to anyone either).
 """
 
@@ -45,7 +45,7 @@ from prometheus_client import Counter, Histogram
 logger = structlog.get_logger(__name__)
 
 
-# ── Coalescing window (§3C.2) ────────────────────────────────────────────────
+# ── Coalescing window ( ────────────────────────────────────────────────
 #
 # The spec fixes these: "Flush on N = 16-32 deltas OR T = 25 ms, whichever
 # first." They are the coalescer's own algorithmic constants, not a tenant-facing
@@ -101,7 +101,7 @@ class GenerationEvent:
     ``payload`` is the wire JSON, built exactly **once** by the producer and
     reused by every subscriber and by the durable write. That single encode
     replaces the two JSON passes and two pydantic validations the per-chunk
-    path used to spend on every token (§3C.1 — "the Python tax").
+    path used to spend on every token  — "the Python tax").
     """
 
     seq: int
@@ -115,7 +115,7 @@ class GenerationEvent:
 
 @dataclass(frozen=True, slots=True)
 class GenerationPolicy:
-    """Abandonment policy for one generation (§3C.5).
+    """Abandonment policy for one generation.
 
     Resolved **tenant → SYSTEM** by :func:`resolve_generation_policy`; these
     field defaults are the in-code FLOOR that applies when the control plane has
@@ -136,7 +136,7 @@ class GenerationPolicy:
 def resolve_generation_policy(
     app_state: Any, tenant_id: str | None, task_key: str | None = None
 ) -> GenerationPolicy:
-    """Resolve the abandonment policy, **tenant first, then SYSTEM** (§3C.5).
+    """Resolve the abandonment policy, **tenant first, then SYSTEM**.
 
     ``apps/text`` is a stateless router with no database, so the values arrive
     pushed on ``app.state`` by the effective-config pull client, exactly as lane
@@ -270,7 +270,7 @@ class Producer:
         """Explicit cancellation — the ONLY thing that stops a producer early.
 
         Checked between batches by the producer loop. Never reachable from a
-        socket event (§3C.4).
+        socket event.
         """
         self._cancelled.set()
 
@@ -290,7 +290,7 @@ class Producer:
         The grace timer starts when the **last subscriber detached**, which for a
         vanished peer is when its heartbeat write failed and sse-starlette tore
         the response down — not when a socket-state probe guessed. That is the
-        distinction §3C.5 draws, and it is why this takes no ``Request``.
+        distinction draws, and it is why this takes no Request.
         """
         clock = now or time.monotonic()
         if clock - self.started_at > policy.max_generation_seconds:
@@ -413,7 +413,7 @@ def get_generation_hub(app: Any) -> GenerationHub:
     """The hub on ``app.state``, created on first use.
 
     Lazy rather than constructed in ``create_app()`` because ``main.py`` is an
-    orchestrator-owned surface on this ticket (EXECUTION-PLAN §4). Eager
+    orchestrator-owned surface on (EXECUTION-PLAN Eager
     construction plus a ``hub.drain()`` call in ``lifespan``'s shutdown is the
     better home and is listed in this lane's REGISTRATIONS.
     """
@@ -445,7 +445,7 @@ def dedupe_by_seq(
 
 @dataclass(slots=True)
 class BatchFlusher:
-    """Coalesces deltas and writes one durable batch per window (§3C.2, AC-5).
+    """Coalesces deltas and writes one durable batch per window (AC-5).
 
     Runs as its own task. The producer only ever calls :meth:`offer`, which
     appends to a list and possibly sets an event — no await, no Redis, no

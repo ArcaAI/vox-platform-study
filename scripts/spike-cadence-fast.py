@@ -17,7 +17,6 @@ Exit codes:
     4 = tokenizer load failed
 
 SPIKE ONLY — no production wiring. Findings:
-docs/implementation/TASK-351-Realtime-Transcription-Performance/spike-cadence-fast.md
 """
 
 import os
@@ -117,7 +116,7 @@ def main() -> int:
     import torch
     import transformers
 
-    print("=== TASK-351 D-2 spike: ai4bharat/Cadence-Fast direct load ===")
+    print("=== D-2 spike: ai4bharat/Cadence-Fast direct load ===")
     print(f"python        : {platform.python_version()} ({platform.platform()})")
     print(f"transformers  : {transformers.__version__}")
     print(f"torch         : {torch.__version__} | cpu threads: {torch.get_num_threads()}")

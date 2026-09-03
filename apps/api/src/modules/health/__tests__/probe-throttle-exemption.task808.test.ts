@@ -1,5 +1,5 @@
 /**
- * TASK-808 — the three kubelet probes must never be rate limited.
+ * the three kubelet probes must never be rate limited.
  *
  * OBSERVED (`hope-v2-dev`, 2026-08-25): `hope-api` Endpoints flipped to
  * `notReadyAddresses` at 09:02 and back to ready at 09:03, with NO container
@@ -48,7 +48,7 @@ const THROTTLER_SKIP = 'THROTTLER:SKIP';
  */
 const KUBELET_PROBES = ['liveness', 'readiness', 'startup'] as const;
 
-describe('TASK-808 — kubelet probes are exempt from rate limiting', () => {
+describe('kubelet probes are exempt from rate limiting', () => {
   for (const handler of KUBELET_PROBES) {
     it(`${handler}() skips the default throttler tier`, () => {
       const method = ApiHealthController.prototype[handler];

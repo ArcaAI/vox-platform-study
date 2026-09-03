@@ -494,7 +494,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
    * blob — see `InternalCompleteJobRequest`), this also emits ONE
    * `transcribe.batch` `AUDIO_SECOND` usage row through the ledger, in the
    * SAME transaction as the completing write (`updateWithVersion` + `tx`
-   * passthrough — ws-b-contract.md §5). That guards both directions: usage
+   * passthrough — ws-b-contract.md That guards both directions: usage
    * lost after a successful call, and usage recorded for a completion that
    * rolled back. `durationSeconds`/`engine` absent (older worker, or a job
    * that decoded no audio) skips emission — never guessed.

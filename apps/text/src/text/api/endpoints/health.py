@@ -73,7 +73,7 @@ async def health_check(
             healthy = await provider.health_check()
             status = "healthy" if healthy else "unhealthy"
             PROVIDER_HEALTH.labels(provider=name).set(1 if healthy else 0)
-            # TASK-725 Task 2: the SAME result feeds the degrade-routing cache
+            # the SAME result feeds the degrade-routing cache
             # `/generate` consults before dispatch — see services/pool_health.py.
             pool_health_tracker.record(name, healthy)
         except Exception:

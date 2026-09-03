@@ -65,7 +65,7 @@ const createMockClsService = () => ({
 });
 
 /**
- * TASK-710 (re-opened) — `IPhiRedactor` is now a REQUIRED dependency of this
+ * (re-opened) — `IPhiRedactor` is now a REQUIRED dependency of this
  * processor (owner directive D-A): an absent redactor ABORTS the job instead of
  * silently posting the raw cross-patient corpus to TEXT. Every fixture below
  * therefore supplies a pass-through double, which keeps each pre-existing
@@ -234,7 +234,7 @@ describe('DnaWritingStyleProcessor', () => {
       mockHarnessPolicyService as never, // HarnessPolicyService resolver
       undefined, // configResolver (@Optional)
       undefined, // promptTemplateRepository (@Optional)
-      createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+      createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
     );
   });
 
@@ -308,7 +308,7 @@ describe('DnaWritingStyleProcessor', () => {
       );
     });
 
-    it('sends the job’s real tenant id as X-Tenant-Id when CLS holds one (TASK-737)', async () => {
+    it('sends the job’s real tenant id as X-Tenant-Id when CLS holds one ', async () => {
       // Regression guard: `processWithContext` sets `tenantId` into CLS from the
       // job payload (`this.clsService.set('tenantId', tenantId)`), and `callText`
       // reads it back for the mandatory `X-Tenant-Id` header. The test above uses
@@ -397,10 +397,10 @@ describe('DnaWritingStyleProcessor', () => {
       expect(result.styleText).toBe('Formal medical writing style.');
     });
 
-    // TASK-700 (Task 1 RED test 1 / PHI containment): a schema-mismatched TEXT
+    // (Task 1 RED test 1 / PHI containment): a schema-mismatched TEXT
     // response must never be persisted verbatim. Pre-fix, this test asserted
     // the OPPOSITE (silent fallback to raw content) — flipped here so the
-    // suite pins the fixed behavior; see the ticket README for the RED-run
+    // suite pins the fixed behavior;  for the RED-run
     // evidence captured before this assertion was updated.
     it('fails the job (never persists verbatim) when TEXT returns non-JSON content', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
@@ -649,7 +649,7 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // harnessPolicyService (@Optional)
         undefined, // configResolver (@Optional)
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -689,7 +689,7 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // harnessPolicyService (@Optional)
         undefined, // configResolver (@Optional)
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -764,7 +764,7 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // harnessPolicyService (@Optional)
         undefined, // configResolver (@Optional)
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-1', content: 'text-1', text: null, type: 'RAW_SUMMARY' }]);
@@ -804,7 +804,7 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // harnessPolicyService (@Optional)
         undefined, // configResolver (@Optional)
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
       mockPromptService.listPromptTemplates.mockResolvedValue([]);
@@ -864,7 +864,7 @@ describe('DnaWritingStyleProcessor', () => {
         undefined, // harnessPolicyService (@Optional)
         undefined, // configResolver (@Optional)
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
       mockContextItemRepo.findAll.mockResolvedValue([{ id: 'ci-x', content: 'text', text: null, type: 'RAW_SUMMARY' }]);
@@ -1119,7 +1119,7 @@ describe('DnaWritingStyleProcessor', () => {
         mockHarnessPolicyService as never, // harnessPolicyService
         configResolver as never, // configResolver
         undefined, // promptTemplateRepository (@Optional)
-        createPassThroughPhiRedactor() as never, // phiRedactor (TASK-710 — REQUIRED)
+        createPassThroughPhiRedactor() as never, // phiRedactor (REQUIRED)
       );
 
     const primeStorageMocks = () => {
@@ -1195,7 +1195,7 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockContextItemRepo.findAll).not.toHaveBeenCalled();
     });
 
-    // TASK-700 (Task 1 RED test 2 / PHI containment): the opt-out gate now
+    // (Task 1 RED test 2 / PHI containment): the opt-out gate now
     // applies to BOTH paths — an admin/migration `textSamples` call can no
     // longer override a doctor's (or tenant's) opt-out. Pre-fix, this test
     // asserted the bypass SUCCEEDED; flipped here to pin the fixed gating.
@@ -1216,10 +1216,10 @@ describe('DnaWritingStyleProcessor', () => {
   });
 
   // ===========================================================================
-  // TASK-710 hop 2 — PHI redaction before the corpus reaches TEXT
+  // hop 2 — PHI redaction before the corpus reaches TEXT
   // ===========================================================================
 
-  describe('PHI redaction (TASK-710 hop 2)', () => {
+  describe('PHI redaction (hop 2)', () => {
     const buildProcessorWithPhiRedactor = (phiRedactor: unknown) =>
       new DnaWritingStyleProcessor(
         mockJobService as never,
@@ -1279,14 +1279,14 @@ describe('DnaWritingStyleProcessor', () => {
     });
 
     /**
-     * TASK-710 (re-opened), owner directive D-A. This assertion is INVERTED
+     * (re-opened), owner directive D-A. This assertion is INVERTED
      * from what it said before: an unwired redactor used to mean "post the raw
      * corpus unchanged", guarded by `if (this.phiRedactor)`. That is the exact
-     * shape by which hop 1 silently lost its redaction when TASK-732 deleted
+     * shape by which hop 1 silently lost its redaction when deleted
      * `ner.processor.ts` — a dependency whose absence is indistinguishable from
      * "nothing to redact". The dependency is now REQUIRED (Nest fails at boot
      * without `PhiRedactionServiceModule`) and the call site aborts.
-     */
+ */
     it('FAIL-CLOSED: an unwired redactor aborts the job — the raw corpus is never posted to TEXT', async () => {
       const proc = buildProcessorWithPhiRedactor(undefined);
       primeStorageMocks();

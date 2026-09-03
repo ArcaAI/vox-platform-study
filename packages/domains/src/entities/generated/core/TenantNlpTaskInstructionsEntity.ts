@@ -5,7 +5,7 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
 // Tenant-writable instruction content for the open-taxonomy `nlp.topic` /
-// `nlp.intent` task types (TASK-729). One row per (tenant, taskKey);
+// `nlp.intent` task types. One row per (tenant, taskKey);
 // `instructionsJson` carries only tenant-authored instruction content (topic
 // list / intent list / free-text guidance) — deliberately NEVER a modelSlug.
 // Model/provider SELECTION for these task types still resolves through

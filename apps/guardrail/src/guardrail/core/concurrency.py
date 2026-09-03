@@ -2,7 +2,7 @@
 
 Guardrail is on the critical path of every generation and fails CLOSED, so a
 guardrail that saturates is a denial of *generation* for every tenant. Before
-TASK-777 there was no bound anywhere: load arrived at `apps/text` and `apps/nlp`
+there was no bound anywhere: load arrived at `apps/text` and `apps/nlp`
 exactly as fast as clients offered it, and the only "limit" was the httpx pool —
 which, with no pool timeout, expressed itself as an unbounded wait rather than a
 refusal.

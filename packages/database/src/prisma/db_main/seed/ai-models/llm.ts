@@ -2,7 +2,7 @@ import { SYSTEM_TENANT_ID } from '../00-constants';
 import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, type AiModelSeed, type GenerationParamName } from './shared';
 
 /**
- * TASK-847 finding F-32 — the generation hyper-parameters this platform can actually deliver to
+ * finding F-32 — the generation hyper-parameters this platform can actually deliver to
  * a provider, declared once and shared by every generation row below.
  *
  * This is a MEASURED fact about `apps/text`, not a vendor capability matrix:
@@ -75,7 +75,7 @@ const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'max
 export const LLM_AI_MODELS: AiModelSeed[] = [
   // =========================================================================
   // Guardrail / Safety (slug continuity with the `guardrail.safety` AiTaskDefault, which is
-  // what apps/guardrail resolves its engine + model from since TASK-735/736)
+  // what apps/guardrail resolves its engine + model from since /736)
   // =========================================================================
   {
     id: '80000000-0000-0000-0005-000000000060',
@@ -97,7 +97,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_k_s',
     tags: ['guardrail', 'safety', 'granite'],
-    // `metaData.policy` (TASK-777) — the governed key set declared in
+    // `metaData.policy` — the governed key set declared in
     // `apps/guardrail/src/guardrail/core/policy.py::_SPECS`, resolved through
     // the SAME tenant → SYSTEM cascade as this row's selection. This SYSTEM
     // row is the platform default; `POST /medical/validate` fails closed
@@ -111,8 +111,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     //
     // `injectionScreeningCriteria` (also `failMode: closed`) is declared in
     // `core/policy.py` but UNUSED by any call site today (reserved for a
-    // future LLM-judge second opinion on the inbound path — TASK-777 README
-    // §5.6.2). Deliberately NOT seeded here: authoring criteria text for a
+    // future LLM-judge second opinion on the inbound path — README
+    // Deliberately NOT seeded here: authoring criteria text for a
     // check nothing resolves yet would be unreviewed policy masquerading as
     // shipped configuration.
     metaData: {
@@ -346,7 +346,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   // =========================================================================
   // Harness LLM-as-judge model — a catalogued ALTERNATE. The `harness.judge`
   // AiTaskDefault targets `lms-gemma-4-e4b-it-qat` (owner directive
-  // 2026-09-03, TASK-858 D4), not this row: both are E4B, but that one names
+  // 2026-09-03), not this row: both are E4B, but that one names
   // the QAT wire id the deployed LM Studio serves. Kept catalogued so a super
   // admin can select the un-quantized build deliberately.
   // =========================================================================
@@ -379,7 +379,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   // for two task types; `AiModel`'s only uniqueness constraint is
   // (tenantId, slug), not sourceUri). In-boundary (self-hosted) default —
   // no PHI ever leaves the tenant's infrastructure — chosen over a BYOK cloud
-  // VLM (see docs/implementation/TASK-657-Vision-Capability/README.md for
+  // VLM (see for
   // the full tradeoff). Not loaded on the dev LM Studio instance (verified
   // 2026-08-10, same as `lms-medgemma-1.5-4b-it`); catalogued-but-not-loaded
   // rows are never selected by an AiTaskDefault, so `vlm.extract` has
@@ -392,7 +392,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'MedGemma 1.5 4B IT — Vision (LM Studio)',
     slug: 'lms-medgemma-1.5-4b-it-vision',
     description:
-      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical image+text vision-language extraction (TASK-657 vlm.extract). Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
+      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical image+text vision-language extraction (vlm.extract). Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
     category: ModelCategory.VISION,
     taskType: ModelTaskType.IMAGE_TEXT_TO_TEXT,
     modelType: ModelType.QUANTIZED_MODEL,

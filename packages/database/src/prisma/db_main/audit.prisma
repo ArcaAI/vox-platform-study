@@ -9,10 +9,10 @@ model AuditLog {
 
   // Actor information
   //
-  // TASK-762 — an admin action may be performed by a HUMAN or by a platform-
+  // an admin action may be performed by a HUMAN or by a platform-
   // issued MACHINE identity (`ServiceAccount`), never by both. Exactly one of
   // the two columns below is populated per row:
-  //   - `responsibleUserId`          — an interactive human principal (JWT), or
+  //   - `responsibleUserId` — an interactive human principal (JWT), or
   //                                    the human an API key is bound to.
   //   - `responsibleServiceAccountId`— a service-account principal.
   // Attributing a machine action to the human who happens to have issued the
@@ -196,7 +196,7 @@ enum ResourceType {
   // ResourceCreated per persisted exemplar.
   GateEditExemplar
   // RETAINED, DELIBERATELY, though nothing writes it any more. `DepartmentAgent`
-  // was retired by TASK-815 and no service broadcasts this `resourceType`
+  // was retired by and no service broadcasts this `resourceType`
   // today — but historical `AuditLog` rows do carry it, and audit history is
   // immutable on a PHI platform, so the value has to stay readable.
   //
@@ -283,7 +283,7 @@ enum ResourceType {
   // able to enumerate.
   AgentPromotion
 
-  // Workflow definition (TASK-715). The row IS the audited resource — its
+  // Workflow definition. The row IS the audited resource — its
   // rows ARE versions (no separate head/version split; see
   // workflow-definition.prisma), so create / update / validate / publish /
   // activate / deprecate / delete all broadcast against this single
@@ -292,28 +292,28 @@ enum ResourceType {
   // is a ResourceType.
   WorkflowDefinition
 
-  // Consent & ABAC (TASK-712). Emitted as audit `resourceType` by
+  // Consent & ABAC. Emitted as audit `resourceType` by
   // ConsentGrantService.broadcastSysEvent on create/revoke. Deliberately
   // routed through the standard AuditLog sys-event pipeline rather than the
   // HarnessAuditEvent WORM ledger — see
-  // docs/implementation/TASK-712-Consent-Abac/consent-design.md §6.
+  
   ConsentGrant
 
-  // Workflow test fixture (TASK-721). Per-tenant saved synthetic
+  // Workflow test fixture. Per-tenant saved synthetic
   // Workbench inputs — ordinary CRUD (create/update/delete broadcast), NOT
   // telemetry, so unlike its sibling WorkflowRun it DOES need a ResourceType
   // (rule 03 step 4: the entry is conditioned on sys-event emission, and
   // WorkflowTestFixtureService broadcasts on every mutation).
   WorkflowTestFixture
 
-  // Tenant NLP task instructions (TASK-729). Tenant-writable topic/intent
+  // Tenant NLP task instructions. Tenant-writable topic/intent
   // instruction content for `nlp.topic`/`nlp.intent` — deliberately separate
   // from AiTaskDefault's model-selection governance (see
   // tenant-nlp-task-instructions.prisma). Emitted as audit `resourceType` by
   // TenantNlpTaskInstructionsService.broadcastSysEvent.
   TenantNlpTaskInstructions
 
-  // Institutional-RAG knowledge document (TASK-728). The
+  // Institutional-RAG knowledge document. The
   // `KnowledgeDocument` head row is the audited resource — register / approve
   // / archive / delete all broadcast against it, mirroring the
   // ConsultationContextSchema precedent. `KnowledgeChunk` is DELIBERATELY
@@ -323,14 +323,14 @@ enum ResourceType {
   // resourceId (see knowledge-document.service.ts#listChunks).
   KnowledgeDocument
 
-  // Platform-issued machine identity for administration (TASK-762). The
+  // Platform-issued machine identity for administration. The
   // THIRD credential class: not a tenant API key (`ApiKey`) and not the
-  // shared peer-service token, which the TASK-708 §6 owner ruling forbids
+  // shared peer-service token, which the owner ruling forbids
   // extending to `/admin/*`. Issued SUPER_ADMIN-only; every issuance,
   // rotation and revocation broadcasts against this resourceType.
   ServiceAccount
 
-  // Per-scope workflow assignment (TASK-733). WHICH workflow definition
+  // Per-scope workflow assignment. WHICH workflow definition
   // governs a tenant/department for a palette — a governance act distinct
   // from the definition it points at, so it is its own audited resource
   // (WorkflowAssignmentService broadcasts on create/update/delete). Its
@@ -339,7 +339,7 @@ enum ResourceType {
   // mutation they record, exactly as PipelinePolicyChange is.
   WorkflowAssignment
 
-  // Workflow-graph safety rule (TASK-716). SYSTEM-tenant rows are the
+  // Workflow-graph safety rule. SYSTEM-tenant rows are the
   // platform's authoring-time invariant register made executable; a tenant
   // row ADDS strictness on top (never disables/loosens a SYSTEM rule — see
   // workflow-invariant-rule.prisma). Both create/update/enable/disable/delete
@@ -347,7 +347,7 @@ enum ResourceType {
   // ConsultationContextSchema precedent.
   WorkflowInvariantRule
 
-  // Rate-limit rule (TASK-785). SYSTEM-tenant rows are the platform-wide
+  // Rate-limit rule. SYSTEM-tenant rows are the platform-wide
   // per-route limits; a customer-tenant row overrides them for that tenant
   // alone. Its own audited resource rather than riding `GlobalSetting`: unlike
   // the `rate-limit.tier.*` key-value rows, a rule has a lifecycle
@@ -357,7 +357,7 @@ enum ResourceType {
   // mutation.
   RateLimitRule
 
-  // Clinical-document shape catalog (TASK-810). The MUTABLE head row is the
+  // Clinical-document shape catalog. The MUTABLE head row is the
   // audited resource — create / update / publish / pin / delete all broadcast
   // against it, so a reviewer sees one lifecycle per template rather than one
   // per snapshot. `DocumentTemplateVersion` is DELIBERATELY ABSENT: an
@@ -368,9 +368,9 @@ enum ResourceType {
   // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
   DocumentTemplate
 
-  // Provider routing policy (TASK-818 §3A.8). A routing-policy change can
+  // Provider routing policy ( A routing-policy change can
   // redirect PHI to a different vendor, which puts it squarely inside the
-  // HIPAA §164.312(b) audit-controls standard — a *required*, not addressable,
+  // HIPAA audit-controls standard — a *required*, not addressable,
   // standard. Every mutation (author / activate / archive / kill-switch)
   // broadcasts against this ResourceType so who/what/when/before-after is
   // recorded immutably. Each AUTHORED revision is its own row of the same

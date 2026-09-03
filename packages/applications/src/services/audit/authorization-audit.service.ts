@@ -162,7 +162,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Log to database
    *
-   * (HIPAA §164.312(b)) — derive the persisted row's `tenantId` from CLS,
+   * (HIPAA — derive the persisted row's `tenantId` from CLS,
    * NOT from the caller-supplied `entry.tenantId`. The caller-supplied value
    * is allowed only as a back-compat fallback when no CLS context is wired
    * (background jobs, legacy boot paths). When neither source resolves a
@@ -247,7 +247,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    * Get authorization history for a user
    * Uses optimized index: AuditLog_event_user_time_idx (eventType, responsibleUserId, createdAt)
    *
-   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * (HIPAA: scoped to the caller's CLS tenantId
    * so a Tenant-A admin can never query Tenant-B authorization history.
    * SUPER_ADMIN bypasses the filter.
    */
@@ -301,7 +301,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   /**
    * Get recent denied access attempts
    *
-   * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
+   * (HIPAA: scoped to the caller's CLS tenantId
    * so denial monitoring cannot fan-out across tenants. SUPER_ADMIN may
    * query all tenants.
    */

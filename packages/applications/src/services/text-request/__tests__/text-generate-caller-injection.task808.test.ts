@@ -1,11 +1,11 @@
 /**
- * TASK-808 — every TEXT `/api/v1/generate` caller must POST a body carrying
+ * every TEXT `/api/v1/generate` caller must POST a body carrying
  * `provider_overrides[provider]`.
  *
  * The companion `text-generate-caller-coverage.test.ts` is the STRUCTURAL gate:
  * it scans the source so a NEW caller cannot be added without an injector. This
  * file is the BEHAVIOURAL half — it drives the real payload-building code of
- * each of the six callers TASK-808 repaired and inspects what actually reaches
+ * each of the six callers repaired and inspects what actually reaches
  * `axiosRef.post`. Both are needed: the scan cannot prove the injector runs on
  * the path that posts, and a behavioural test cannot see a caller nobody wrote
  * a test for.
@@ -80,7 +80,7 @@ function expectOverridesPosted(post: ReturnType<typeof vi.fn>): void {
   expect(body.provider_overrides, `posted body: ${JSON.stringify(Object.keys(body))}`).toEqual({ [PROVIDER]: ENTRY });
 }
 
-describe('TASK-808 — each TEXT /generate caller posts provider_overrides', () => {
+describe('each TEXT /generate caller posts provider_overrides', () => {
   it('LiveDocumentationService.callText (the live-flush loop)', async () => {
     const http = httpStub();
     const enrichment = enrichmentStub();

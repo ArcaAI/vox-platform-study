@@ -20,7 +20,7 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   // it produced before.
   kindKey?: IContextItemEntity['kindKey'];
   contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
-  // TASK-811 (OD-6). Optional and defaulted to null, so every pre-existing
+  // . Optional and defaulted to null, so every pre-existing
   // caller produces exactly the row it produced before.
   documentKey?: IContextItemEntity['documentKey'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];

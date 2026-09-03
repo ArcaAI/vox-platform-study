@@ -16,7 +16,7 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   metadata?: IConsultationEntity['metadata'];
   // Typed lifecycle state (defaults to OPEN)
   status?: IConsultationEntity['status'];
-  // Health-flag projection on the active phase (TASK-711); not a state of its own
+  // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: IConsultationEntity['degradedReasons'];
   tenantId: IConsultationEntity['tenantId'];
 

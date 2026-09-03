@@ -63,7 +63,7 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
   it('exports a non-trivial stable system prefix carrying the compiled output instruction', () => {
     expect(typeof LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX).toBe('string');
     expect(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX.length).toBeGreaterThan(50);
-    // TASK-810 — the prefix is now COMPILED from the platform document shape
+    // the prefix is now COMPILED from the platform document shape
     // rather than written out as four literal headings, so this asserts the
     // compiled instruction's invariant parts instead of the old sentence.
     expect(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX).toContain('Output a single JSON object with EXACTLY these keys');
@@ -97,7 +97,7 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     await service.flush(CID);
 
     const update = prompts[1];
-    // TASK-810 — the prose blocks now name the RESOLVED template's title
+    // the prose blocks now name the RESOLVED template's title
     // instead of asserting "SOAP note" while the response schema described
     // whatever the tenant actually published. With no template service wired
     // this fixture resolves the platform shape, whose title is "SOAP Note".

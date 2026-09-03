@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 /** Canonical fields hashed for a single audit event (everything except `hash`). */
 export interface HarnessAuditHashInput {
   tenantId: string;
-  // NULLABLE (TASK-712, consent-abac Phase 4): CONSENT_GIVEN/CONSENT_WITHDRAWN
+  // NULLABLE (consent-abac Phase 4): CONSENT_GIVEN/CONSENT_WITHDRAWN
   // events have no consultation. Folded into the digest as `?? null` below,
   // which is a no-op for every event that DOES carry one (i.e. every event
   // that predates this change) — see the backward-compatibility test.

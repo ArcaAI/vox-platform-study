@@ -1,5 +1,5 @@
 /**
- * The JSONB structures on `AiRoutingPolicy`, as TypeScript (TASK-818 §3A.3).
+ * The JSONB structures on `AiRoutingPolicy`, as TypeScript
  *
  * The Prisma model keeps `matchJson` / `candidatesJson` / `fallbackJson` /
  * `healthJson` as JSONB precisely because they are nested; the shape rule
@@ -16,14 +16,14 @@
  *    application code to drift from reality (rule 00: a label set is config, not
  *    a literal). New regions need a new policy row, never a new release.
  * 2. **No invented fallback defaults.** An ABSENT `fallbackJson` means
- *    `maxDepth: 0` — no hop at all — not some plausible-looking number. §3A.4
+ * `maxDepth: 0` — no hop at all — not some plausible-looking number.
  *    requires a hard cap on hops; a default pulled out of the air would be a
  *    threshold wearing a config costume AND would silently authorise a hop the
  *    author never wrote. Absence is fail-closed here.
  *
  * The three gate flags DO carry defaults, and those defaults are the SECURE
  * posture (`requireSameResidencyClass: true`, `requireBaaCovered: true`,
- * `crossFundingAllowed: false`). That is not a tuning value — it is the §3A.4
+ * `crossFundingAllowed: false`). That is not a tuning value — it is the
  * ruling expressed as the state you get when nobody said otherwise.
  */
 
@@ -37,7 +37,7 @@ export interface RoutingCandidate {
    * Names an `AiProviderConnection` by its `provider` under the `llm` service
    * — the model's real natural key is `(tenantId, service, provider)`, so this
    * is `provider`, NOT a free-form connection nickname. See the note in
-   * `ai-routing-policy.service.ts` on the §3A.3 illustration.
+   * `ai-routing-policy.service.ts` on the illustration.
    */
   connectionRef: string;
   /** Model id served by that connection. */
@@ -50,7 +50,7 @@ export interface RoutingCandidate {
   maxTtftMs?: number | null;
 }
 
-/** The depth-bounded, typed fallback contract (§3A.3). */
+/** The depth-bounded, typed fallback contract */
 export interface RoutingFallbackContract {
   /** Hops AFTER the primary. Hard cap. 0 (and absence) = no fallback. */
   maxDepth: number;
@@ -100,7 +100,7 @@ const asFiniteInt = (value: unknown): number | null => (typeof value === 'number
 /**
  * Parse `candidatesJson`. Throws nothing — an unparseable entry is DROPPED
  * rather than defaulted, because every field it would need a default for
- * (`residency`, `baaCovered`) is one the §3A.4 gates read. Guessing
+ * (`residency`, `baaCovered`) is one the gates read. Guessing
  * `baaCovered: true` for a candidate whose author did not say so is exactly
  * the silent PHI redirection this ticket exists to prevent; guessing `false`
  * would be safe but would make a typo look like a policy decision. Dropping it
@@ -194,7 +194,7 @@ export function matchesRequest(match: RoutingMatch, request: RoutingRequestConte
 }
 
 /**
- * How SPECIFIC a match predicate is — "most-specific match wins" (§3A.3).
+ * How SPECIFIC a match predicate is — "most-specific match wins"
  *
  * One point per declared predicate. A row that pins both a model list and a
  * metadata key outranks one that pins only a model list; a row with no `match`

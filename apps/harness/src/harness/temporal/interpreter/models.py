@@ -16,12 +16,12 @@ from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import TrajectoryContext
 
 # ---------------------------------------------------------------------------
-# Node-level lifecycle (contracts/execution-semantics.md §4)
+# Node-level lifecycle (contracts/execution-semantics.md)
 # ---------------------------------------------------------------------------
 NodeStatus = Literal["SUCCEEDED", "DEGRADED", "SKIPPED", "FAILED"]
 
 # ---------------------------------------------------------------------------
-# Run-level terminal states (contracts/execution-semantics.md §6)
+# Run-level terminal states (contracts/execution-semantics.md)
 # ---------------------------------------------------------------------------
 RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED"]
 
@@ -34,13 +34,13 @@ class NodeActivityInput(BaseModel):
     matching the existing ``TrajectoryContext`` replay-safety posture (claim_check.py / models.py
     precedent): omitting it costs only observability, never correctness.
 
-    ``bound_inputs``/``run_payload`` (TASK-720 Task 5, additive) complete a mechanism that was
+    bound_inputs/run_payload (additive) complete a mechanism that was
     already HALF built: the compiler unconditionally derives ``CompiledNode.inputs`` (the edge-
     derived ``fromNodeId``/``fromPort``/``toPort`` bindings) for every node, and
     ``NodeActivityResult.output`` already existed for an activity to publish a result — but
     ``workflow.py``'s dispatch loop never connected the two (see that module's own note, and
-    ``contracts/execution-semantics.md`` §3's "v1 does not thread" scope note, which this
-    completes rather than overrides — see the reasoning recorded in this ticket's README §7).
+    `contracts/execution-semantics.md` "v1 does not thread" scope note, which this
+    completes rather than overrides — see the reasoning recorded in
     Both fields are additive-optional with an empty-dict default, so a node with no incoming
     edges (``inputs: []``, e.g. every pre-existing ``noop``/``passthrough`` test fixture) gets
     byte-identical behavior to before this change — this is opt-in wiring, not a new dynamic
@@ -73,7 +73,7 @@ class NodeActivityInput(BaseModel):
     trajectory: TrajectoryContext | None = None
     bound_inputs: dict[str, Any] = Field(default_factory=dict)
     run_payload: dict[str, Any] = Field(default_factory=dict)
-    # TASK-849 lane A, additive-optional. The DELTA lane's stream key is per-RUN
+    # lane A, additive-optional. The DELTA lane's stream key is per-RUN
     # (`wf:run:<runId>:events`), so an activity that streams tokens has to know which run it
     # belongs to — `trajectory` carries a workflow VERSION id and a stage/node id, never a run
     # id. Empty default keeps every pre-existing fixture byte-identical; an activity that
@@ -88,7 +88,7 @@ class NodeActivityResult(BaseModel):
     ``status`` here is the ACTIVITY's own outcome (never ``FAILED`` — promotion of a degraded
     critical node to the run-level ``FAILED`` state happens in the workflow body, not the
     activity, since criticality is a registry/workflow-level property — see
-    contracts/execution-semantics.md §4).
+    contracts/execution-semantics.md)
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -133,7 +133,7 @@ RESERVED_RUN_IDENTITY_KEYS: tuple[str, ...] = (
 
 
 class RunSubject(BaseModel):
-    """The SERVER-RESOLVED clinical subject a run acts on (TASK-850 lane A, closing C-8 link 1).
+    """The SERVER-RESOLVED clinical subject a run acts on ( lane A, closing C-8 link 1).
 
     This exists because ``payload`` cannot be trusted to carry identity. The exposure plane
     forwards a caller's ``input`` into ``payload`` verbatim with ``sandbox=False``, and the
@@ -141,7 +141,7 @@ class RunSubject(BaseModel):
     ``consultationId`` let a caller name any live consultation and reach the same
     ``persist_draft`` activity the real consultation workflow uses.
 
-    The invariant this field carries, from TASK-852 §5: *consultation identity comes from the URL
+    The invariant this field carries, from : *consultation identity comes from the URL
     and is re-resolved against the caller's tenant — never from a caller-composed payload.* The
     gateway populates it ONLY from a path parameter it has re-resolved through a tenant-scoped
     read; there is no request shape that lets a caller write it and no field on
@@ -206,19 +206,19 @@ class InterpreterInput(BaseModel):
     tenant_id: str
     run_id: str
     sandbox: bool = False
-    # TASK-850 lane A, additive-optional. The run's SERVER-RESOLVED clinical subject — see
+    # lane A, additive-optional. The run's SERVER-RESOLVED clinical subject — see
     # `RunSubject`. Carried alongside `payload` rather than inside it so the two channels are
     # visibly different things in a Temporal history: `payload` is what a caller sent, `subject`
     # is what the server resolved. `payload` is sanitized against this field by
     # `sanitize_run_payload` BEFORE the workflow starts, so the two can never disagree.
     subject: RunSubject | None = None
-    # Additive-optional (TASK-720 Task 5): the raw invocation payload, threaded generically
+    # Additive-optional: the raw invocation payload, threaded generically
     # into every node's `NodeActivityInput.run_payload` — see that field's docstring.
     # NOTE (honesty, not fabrication): `WorkflowExposureService.invoke()`
     # (`packages/applications/src/services/workflow-exposure/workflow-exposure.service.ts`)
     # accepts `InvokeWorkflowRequest.input` but does NOT yet forward it to
     # `HarnessGatewayService.startWorkflowRun(...)` — confirmed by reading that call site. So
-    # today this field is always `{}` in a real invoke; wiring the dispatcher side is TASK-722's
+    # today this field is always `{}` in a real invoke; wiring the dispatcher side is
     # gap, not this ticket's fix (a different, actively-reviewed ticket's files) — recorded here
     # so the gap is traceable, not silently papered over.
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -239,7 +239,7 @@ class CancelSignal(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# HITL gate (TASK-731 Phase B) — the ONE durable human wait in this substrate.
+# HITL gate — the ONE durable human wait in this substrate.
 # ---------------------------------------------------------------------------
 
 
@@ -303,7 +303,7 @@ class GateApprovalSignal(BaseModel):
 
 
 class InterpreterStateQueryResult(BaseModel):
-    """Live snapshot returned by the ``state`` query (contracts/execution-semantics.md §8)."""
+    """Live snapshot returned by the state query (contracts/"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -313,7 +313,7 @@ class InterpreterStateQueryResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# The agentic LOOP (TASK-848) — the second durable construct in this substrate,
+# The agentic LOOP — the second durable construct in this substrate,
 # and the first that ITERATES.
 #
 # Every field here exists because something in the loop must survive a
@@ -331,7 +331,7 @@ class InterpreterStateQueryResult(BaseModel):
 #: Why a loop stopped. Six values, deliberately DISTINGUISHABLE: an operator
 #: reading a trajectory must be able to tell "it converged" from "it ran out of
 #: money" from "it ran out of clock" without inspecting anything else. Four of
-#: them are the TASK-847 bounds; ``termination_key`` is the authored early exit;
+# them are the bounds; termination_key is the authored early exit;
 #: ``orchestrator_failed`` is the honest outcome when the master agent could not
 #: run at all (never silently re-tried into one of the bound reasons).
 LoopStopReason = Literal[
@@ -384,7 +384,7 @@ class AgenticLoopNodeSpec(BaseModel):
 class AgenticLoopState(BaseModel):
     """The accumulator carried ACROSS ``continue_as_new`` — the loop's entire memory.
 
-    ``inline``/``ref`` are the claim-check pair (TASK-837 §3.4 rule 15): the orchestrator's
+    inline/ref are the claim-check pair ( rule 15): the orchestrator's
     working state stays inline while it is small and moves to MinIO the moment it is not, so a
     long clinical deliberation never marches the 2 MB payload ceiling. ``digest`` is a sha256
     over the canonical form of that state, computed in the ACTIVITY that offloads it — it is
@@ -399,7 +399,7 @@ class AgenticLoopState(BaseModel):
     no_progress_streak: int = 0
     digest: str = ""
     inline: Any = None
-    #: RESERVED, and deliberately never set in this pass. The claim-check offload is TASK-848b
+    # RESERVED, and deliberately never set in this pass. The claim-check offload is b
     #: step 6; the field exists now so the carry-forward shape does not change when it lands
     #: (a state model change is a replay-visible change to every in-flight loop).
     ref: ClaimCheckRef | None = None
@@ -467,7 +467,7 @@ class LoopCheckpointInput(BaseModel):
     sub_agent_outputs: list[dict[str, Any]] = Field(default_factory=list)
     termination_key: str | None = None
 
-    # --- the `workflow.loop.iteration` run event (TASK-848 follow-up) -------------------
+    # the `workflow.loop.iteration` run event ( follow-up)
     #
     # Identity and counters the checkpoint needs in order to EMIT, not to compute. The
     # checkpoint already runs exactly once per iteration, so emitting from inside it costs no
@@ -481,7 +481,7 @@ class LoopCheckpointInput(BaseModel):
     #
     # Everything here is a scalar. The carry-forward itself must never join them: it may be
     # megabytes and may be claim-check offloaded, and putting it on a per-iteration event
-    # would undo the offload TASK-848b exists for.
+    # would undo the offload b exists for.
     run_id: str = ""
     node_id: str = ""
     tenant_id: str = ""

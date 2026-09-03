@@ -25,13 +25,13 @@ import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, Updat
  * tenant-admin roles hold `manage:McpServer` in CASL, and only the imperative
  * check here overrode it.
  *
- *   | Row the write targets          | Tenant admin | Rationale                  |
+ *   | Row the write targets | Tenant admin | Rationale |
  *   |--------------------------------|--------------|----------------------------|
- *   | SYSTEM (`00000000-…`) registry | **403**      | privilege — the row is     |
- *   |                                |              | READABLE, so hiding its    |
- *   |                                |              | existence would be a lie   |
- *   | Another customer tenant's row  | **404**      | 404-over-403 tenancy       |
- *   | Its OWN tenant's row           | allowed      | OD-7                       |
+ *   | SYSTEM (`00000000-…`) registry | **403** | privilege — the row is |
+ *   | | | READABLE, so hiding its |
+ *   | | | existence would be a lie |
+ *   | Another customer tenant's row | **404** | 404-over-403 tenancy |
+ *   | Its OWN tenant's row | allowed | OD-7 |
  *
  * ORDER IS LOAD-BEARING: existence is resolved BEFORE privilege, so an unknown
  * id is 404 for everyone. Gating first (as this service used to) would let a
@@ -200,7 +200,7 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   // ────────────────────────────── internals ──────────────────────────────
 
   /**
-   * SSRF egress guard for a tenant-authored connector URL (TASK-846 D-3).
+   * SSRF egress guard for a tenant-authored connector URL.
    *
    * Delegates the verdict to `EgressPolicyService`, which reads the platform
    * allow-list from `mcp.egress.allowedHosts` (`global-kv`, `failMode: 'closed'`),

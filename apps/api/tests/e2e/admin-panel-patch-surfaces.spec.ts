@@ -50,7 +50,7 @@ test.describe('Admin Panel Gaps', () => {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
           name: `task219-role-${Date.now()}`,
-          description: 'Test role for TASK-219 PATCH',
+          description: 'Test role for  PATCH',
         },
       });
       expect(res.status()).toBe(201);
@@ -121,7 +121,7 @@ test.describe('Admin Panel Gaps', () => {
         headers: { Authorization: `Bearer ${superAdminToken}` },
         data: {
           name: `task219-policy-${Date.now()}`,
-          description: 'Test policy for TASK-219 PATCH',
+          description: 'Test policy for  PATCH',
           scope: 'TENANT',
           rules: [{ action: 'read', subject: 'TestResource' }],
         },

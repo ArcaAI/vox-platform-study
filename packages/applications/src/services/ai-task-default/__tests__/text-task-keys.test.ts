@@ -1,10 +1,10 @@
 /**
- * TASK-740 — the `smr` identifier is eliminated from the AiTaskDefault task-key
+ * the `smr` identifier is eliminated from the AiTaskDefault task-key
  * plane.
  *
- * Owner directive 2026-08-17 (`owner-decisions-2026-08-17.md` §3b decision 3):
+ * Owner directive 2026-08-17 (`owner-decisions-2026-08-17.md` decision 3):
  * "`smr` was renamed to `text`. Do NOT use `smr` anymore!" — which REVERSES the
- * frozen-identifier position TASK-707 took on the DB-persisted keys.
+ * frozen-identifier position took on the DB-persisted keys.
  *
  * These are the DB-persisted `AiTaskDefault.taskKey` values, so this test is the
  * guard that the constant list, the seeded rows and the settings-registry
@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isSuperAdminOnlyTaskKey } from '../constants';
 
-describe('TASK-740 — text.* task keys', () => {
+describe('text.* task keys', () => {
   it('registers the five text generation keys', () => {
     expect(AI_TASK_KEYS).toContain('text.live');
     expect(AI_TASK_KEYS).toContain('text.finalize');

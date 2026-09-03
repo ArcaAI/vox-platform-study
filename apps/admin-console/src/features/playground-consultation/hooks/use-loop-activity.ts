@@ -8,16 +8,16 @@
  * there is no fold, no snapshot and no late-join replay. This module keeps
  * that shape and only normalises what the UI renders.
  *
- * Contract brokered from TASK-791 for the realtime-summary capability:
+ * Contract brokered from for the realtime-summary capability:
  *
  *   { kind: 'summary.interim', data: { kindKey, ordinal, total, chars } }
  *
  * **The event carries no summary text, by design** — the loop plane is a live
  * UI feed, not a PHI transport. So this surface renders PROGRESS ONLY. The
- * read-back that would supply the actual interim text is TASK-791's W5, which
- * is blocked on a TASK-790 schema column and is not started; until it lands
+ * read-back that would supply the actual interim text is, which
+ * is blocked on a schema column and is not started; until it lands
  * there is no body to show, and inventing a field the wire does not carry is
- * exactly the class of error TASK-789 struck two of its own findings for.
+ * exactly the class of error struck two of its own findings for.
  */
 
 /** Wire shape of one loop event (`LoopEventDto`). */
@@ -44,8 +44,8 @@ export interface LoopActivityEntry {
   /**
    * Always `undefined`. Present as an explicit, typed reminder that the loop
    * event has no body and that one must never be synthesised here — remove it
-   * only when TASK-791's read-back actually supplies text.
-   */
+   * only when read-back actually supplies text.
+ */
   body?: undefined;
 }
 

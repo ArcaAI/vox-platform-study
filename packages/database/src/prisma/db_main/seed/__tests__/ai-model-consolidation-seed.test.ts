@@ -10,7 +10,7 @@
  *      non-empty `metaData.voices`, and `indic-f5` seeds DISABLED (prod
  *      NO-GO).
  *   2. `RETIRED_AI_MODEL_SLUGS` is exactly the 50 original retired slugs plus
- *      the 3 Ollama slugs TASK-736 retires (53 total), disjoint from the
+ * the 3 Ollama slugs retires (53 total), disjoint from the
  *      catalog, and retired ∪ keepers === the previous 60-row catalog plus
  *      those 3.
  *   3. Regression lock — every slug referenced by seeded pipeline YAML
@@ -69,7 +69,7 @@ const KEEPER_SLUGS = [
   'granite-guardian-4.1-8b',
 ] as const;
 
-// Ollama slugs removed entirely (TASK-736, owner directive 2026-08-16); see
+// Ollama slugs removed entirely (owner directive 2026-08-16); see
 // EXPECTED_RETIRED_SLUGS below for their ledger entries.
 const NEW_LLM_SLUGS = [
   'lms-gemma-4-e2b-it-qat',
@@ -80,7 +80,7 @@ const NEW_LLM_SLUGS = [
   'azure-gpt-5.4-mini',
 ] as const;
 
-// TASK-776 completes the owner's three-model safety roster: the dedicated PII
+// completes the owner's three-model safety roster: the dedicated PII
 // span model, the JOINT PII+safety checkpoint, and the classification-only
 // LLM-guardrails model.
 const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41', 'gliguard-llm-guardrails-300m', 'gliner2-privacy-filter-pii-multi', 'gliner2-guardrails-pii-multi'] as const;
@@ -140,7 +140,7 @@ const ADMIN_CONSOLE_BACKFILL_NEW_SLUGS = [
 // loaded" LM_STUDIO_SOURCE_URIS entry below) — no AiTaskDefault selects it.
 const TASK_657_NEW_SLUGS = ['lms-medgemma-1.5-4b-it-vision'] as const;
 
-// TASK-858 D1 — the q8_0 build of the in-house EN-medical whisper.cpp repo. A
+// the q8_0 build of the in-house EN-medical whisper.cpp repo. A
 // separate row rather than a `computeType` edit on the f16 one, because
 // `computeType` is what selects the GGUF FILE inside the repo.
 const TASK_858_NEW_SLUGS = ['whisper-large-en-medical-260726-merged-gguf-q8_0'] as const;
@@ -191,7 +191,7 @@ const EXPECTED_RETIRED_SLUGS = [
   'ollama-gemma3n-latest',
   'ollama-granite4-tiny-h',
   'ollama-granite4-latest',
-  // Ollama LLMs (TASK-736 — Ollama removed entirely, owner directive 2026-08-16)
+  // Ollama LLMs (Ollama removed entirely, owner directive 2026-08-16)
   'ollama-gemma4-12b-mlx',
   'ollama-gemma4-e2b-it-qat',
   'ollama-qwen3.5-2b',
@@ -260,15 +260,15 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 46 expected slugs (46 minus 3 Ollama rows, +1 net from the TASK-735 guardrail split, +1 from the TASK-776 joint model, +1 from the TASK-858 q8_0 medical ASR row)', () => {
+  it('is exactly the 46 expected slugs (46 minus 3 Ollama rows, +1 net from the guardrail split, +1 from the joint model, +1 from the q8_0 medical ASR row)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    // TASK-776 added `gliner2-guardrails-pii-multi`, completing the three-model
-    // roster; TASK-858 added the q8_0 build of the EN-medical whisper.cpp repo.
+    // added `gliner2-guardrails-pii-multi`, completing the three-model
+    // roster; added the q8_0 build of the EN-medical whisper.cpp repo.
     expect(catalog.length).toBe(46);
   });
 
-  it('seeds no row with provider "ollama" (TASK-736 — Ollama removed entirely)', () => {
+  it('seeds no row with provider "ollama" (Ollama removed entirely)', () => {
     catalog.forEach((m) => {
       expect(m.provider, `model ${m.slug} still carries provider 'ollama'`).not.toBe('ollama');
     });
@@ -455,7 +455,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
   });
 
   // ===========================================================================
-  // Catalog ⊆ instance (TASK-736) — the check that would have caught the
+  // Catalog ⊆ instance — the check that would have caught the
   // `harness.judge` id-drift defect. Hard-coded fixture, no network call.
   // Deliberately a SUBSET assertion, not equality: the live instance also
   // serves qwen/bonsai/veena/etc. models HOPE deliberately does not catalog
@@ -511,7 +511,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
 // =============================================================================
 
 describe('RETIRED_AI_MODEL_SLUGS ledger', () => {
-  it('is exactly the 53 expected retired slugs (50 original + 3 Ollama from TASK-736)', () => {
+  it('is exactly the 53 expected retired slugs (50 original + 3 Ollama from)', () => {
     expect(RETIRED_AI_MODEL_SLUGS).toBeDefined();
     expect([...(RETIRED_AI_MODEL_SLUGS ?? [])].sort()).toEqual([...EXPECTED_RETIRED_SLUGS].sort());
     expect(RETIRED_AI_MODEL_SLUGS?.length).toBe(53);
@@ -524,12 +524,12 @@ describe('RETIRED_AI_MODEL_SLUGS ledger', () => {
     });
   });
 
-  it('together with the 10 keepers accounts for the previous 60-row catalog plus the 3 TASK-736 Ollama retirements (63)', () => {
+  it('together with the 10 keepers accounts for the previous 60-row catalog plus the 3  Ollama retirements (63)', () => {
     const union = new Set([...(RETIRED_AI_MODEL_SLUGS ?? []), ...KEEPER_SLUGS]);
     expect(union.size).toBe(63);
   });
 
-  it('contains every slug TASK-736 removed from the live Ollama catalog', () => {
+  it('contains every slug  removed from the live Ollama catalog', () => {
     const removedByTask736 = ['ollama-gemma4-12b-mlx', 'ollama-gemma4-e2b-it-qat', 'ollama-qwen3.5-2b'];
     removedByTask736.forEach((slug) => {
       expect(RETIRED_AI_MODEL_SLUGS, `${slug} must be in the retired ledger`).toContain(slug);
@@ -681,11 +681,11 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // BUG-018 — prompt-template Test routing, independent of harness.
     'text.test': 'TEXT_GENERATION',
     // guardrail safety/groundedness, harness judge, diagnosis.
-    // TASK-735 Phase 3 — the safety plane split in two: moderation is a
+    // the safety plane split in two: moderation is a
     // multi-task TEXT classifier, PII spans are TOKEN classification.
     'guardrail.safety': 'TEXT_CLASSIFICATION',
     'guardrail.pii': 'TOKEN_CLASSIFICATION',
-    // TASK-776 — the JOINT checkpoint. Its primary shape is span extraction,
+    // the JOINT checkpoint. Its primary shape is span extraction,
     // so it is TOKEN_CLASSIFICATION even though it also serves the six safety
     // tasks; `metaData.capabilities` carries the dual envelope.
     'guardrail.pii.spans': 'TOKEN_CLASSIFICATION',
@@ -715,9 +715,9 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // placeholder); the diagnosis suggester moved to nlp.diagnosis.
     expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
-    // TEXT live/finalize routing. OWNER DIRECTIVE 2026-09-03 (TASK-858 D4):
+    // TEXT live/finalize routing. OWNER DIRECTIVE 2026-09-03 :
     // every text-generation task routes to LM Studio `gemma-4-e2b-it-qat`
-    // (owner correction 2026-09-03, TASK-858: E2B is the ONLY LM Studio model).
+    // (owner correction 2026-09-03,: E2B is the ONLY LM Studio model).
     expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // BUG-018 — the prompt-template Test key. Seeded so the Test path
@@ -728,12 +728,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliguard-llm-guardrails-300m');
     expect(byKey.get('guardrail.pii')?.modelSlug).toBe('gliner2-privacy-filter-pii-multi');
-    // TASK-776 — completes the owner's three-model roster.
+    // completes the owner's three-model roster.
     expect(byKey.get('guardrail.pii.spans')?.modelSlug).toBe('gliner2-guardrails-pii-multi');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
     // The judge points at the model the dev LM Studio instance actually serves.
     // OWNER DIRECTIVE 2026-08-16 fixed the FAMILY (LM Studio + gemma-4 E4B);
-    // 2026-09-03 (TASK-858 D4) narrows it to the QAT build every other
+    // 2026-09-03 narrows it to the QAT build every other
     // text-generation task now names, so judgement and documentation resolve
     // one identity rather than two. Both are E4B — this is a narrowing of the
     // earlier directive, not a reversal of it.

@@ -1,5 +1,5 @@
 /**
- * TASK-777 — seed data for guardrail's policy plane
+ * seed data for guardrail's policy plane
  *
  * `apps/guardrail/src/guardrail/core/policy.py` resolves `medicalValidationCriteria`
  * (`failMode: closed`) from `AiModel._metadata.policy` through the tenant → SYSTEM
@@ -45,7 +45,7 @@ function findGraniteRow() {
   return row;
 }
 
-describe('TASK-777 — SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob', () => {
+describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob', () => {
   it('sets metaData.policy.medicalValidationCriteria to the recovered text, verbatim', () => {
     const row = findGraniteRow();
     expect(row.metaData?.policy?.medicalValidationCriteria).toBe(RECOVERED_MEDICAL_VALIDATION_CRITERIA);
@@ -170,7 +170,7 @@ describe('backfillCustomerTenantAiModels and the policy blob', () => {
       aiModel: {
         // Every clone already exists with a non-null provider — the state the
         // ticket found in the live dev DB (already backfilled long before
-        // TASK-777 authored the policy blob).
+        // authored the policy blob).
         findFirst: vi.fn(async () => ({ id: 'pre-existing-clone', provider: 'lm-studio' })),
         update: vi.fn(async (args: { data: Record<string, unknown> }) => {
           updates.push(args);

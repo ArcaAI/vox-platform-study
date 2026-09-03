@@ -1,5 +1,5 @@
 /**
- * Runtime-profile draft translation (TASK-799 Phase 4, E.2).
+ * Runtime-profile draft translation.
  *
  * The knobs are THREE-STATE on the wire — a number, `null` ("no opinion, fall
  * through the cascade"), or absent ("leave the stored value alone") — and the

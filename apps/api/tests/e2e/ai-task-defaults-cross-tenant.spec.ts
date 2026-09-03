@@ -5,7 +5,7 @@
  * Governance contracts (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts` covers
  * `nlp.` AND `harness.` only. REMOVED `text.` (earlier) and `guardrail.`
- * (TASK-735 Phase 0, owner decision 2026-08-16, reversing the 2026-07-17
+ * (owner decision 2026-08-16, reversing the 2026-07-17
  * super-admin-only directive) — both are now TENANT-ADMIN configurable, so a
  * tenant admin may write them for their OWN tenant while `nlp.`/`harness.`
  * stay super-admin-only. `guardrail.*` carries an ADDITIONAL platform floor
@@ -82,9 +82,9 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     const body = (await resp.json()) as Array<{ taskKey: string }>;
     expect(Array.isArray(body)).toBe(true);
     // The full registry (AI_TASK_KEYS, ai-task-default/constants.ts):
-    // guardrail.validate/safety/groundedness + TASK-799 R6's guardrail.pii and
+    // guardrail.validate/safety/groundedness + 's guardrail.pii and
     // guardrail.pii.spans, nlp.ner/classification/diagnosis
-    // + TASK-729's nlp.sentiment/toxicity, text.live/finalize + the
+    // + nlp.sentiment/toxicity, text.live/finalize + the
     // tenant-configurable text.*.fallback keys + text.test, harness.judge, and
     // vlm.extract.
     //
@@ -137,12 +137,12 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect([403, 404]).toContain(resp.status());
   });
 
-  test('TASK-735: tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({
+  test('tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({
     request,
   }) => {
     // Reverses the OLD "GOVERNANCE: tenant admin PUT on guardrail.validate …
     // → 403 (deliberate, not 404)" contract (owner directive 2026-07-17).
-    // TASK-735 Phase 0 (owner decision 2026-08-16) makes guardrail.*
+    // (owner decision 2026-08-16) makes guardrail.*
     // tenant-admin configurable, same cascade as text.*. The seeded slug is a
     // SYSTEM-catalog row, so it also satisfies the D2 platform-approved-list
     // floor (see the negative probe below for the floor itself).
@@ -158,7 +158,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(updated.tenantId).not.toBe('00000000-0000-0000-0000-000000000000');
   });
 
-  test('TASK-735 D2: tenant admin PUT on guardrail.validate with a slug OUTSIDE the platform-approved (SYSTEM) list → 403', async ({ request }) => {
+  test(' D2: tenant admin PUT on guardrail.validate with a slug OUTSIDE the platform-approved (SYSTEM) list → 403', async ({ request }) => {
     // The platform-approved-list floor is independent of the blanket
     // super-admin-only governance check above (which no longer fires for
     // guardrail.* at all) — it rejects an unvetted slug even for the
@@ -172,7 +172,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   });
 
   test('GOVERNANCE: a still-locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
-    // nlp./harness. remain SUPER_ADMIN-ONLY (text. and, since TASK-735,
+    // nlp./harness. remain SUPER_ADMIN-ONLY (text. and, since,
     // guardrail. were un-locked). The 403 fires BEFORE the OCC compare, so
     // any valid If-Match sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');

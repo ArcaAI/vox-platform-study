@@ -2,7 +2,7 @@
 
 The original intent of this file was already "CORS should be disabled by default
 for this internal service — the API gateway communicates via server-to-server
-HTTP, so CORS is irrelevant". TASK-799 lane B made that structural rather than a
+HTTP, so CORS is irrelevant". lane B made that structural rather than a
 default: ``TEXT_CORS_ENABLED`` / ``TEXT_CORS_ORIGINS`` are gone, so the origin
 policy of a PHI service can no longer be widened from an env file. Browser-facing
 origin policy belongs to the gateway, which is the only thing a browser talks to

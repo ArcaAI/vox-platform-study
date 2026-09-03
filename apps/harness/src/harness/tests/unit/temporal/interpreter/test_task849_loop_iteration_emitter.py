@@ -1,4 +1,4 @@
-"""TASK-848 follow-up — ``workflow.loop.iteration`` is PRODUCED, not merely handled.
+"""follow-up — workflow.loop.iteration is PRODUCED, not merely handled.
 
 Lane A shipped the constant (``run_events.EVENT_LOOP_ITERATION``), the idempotency-key
 recipe (``loop_iteration_key``) and the envelope branch (``_envelope_for``). Lane C shipped
@@ -238,7 +238,7 @@ class TestALoopRunEmitsOneIterationEventPerIteration:
             f"({loop_result.iterations}) — nothing is being measured"
         )
         print(
-            f"\n[TASK-848 loop.iteration emitter, measured] "
+            f"\n[ loop.iteration emitter, measured] "
             f"iterations_performed={loop_result.iterations} "
             f"stop_reason={loop_result.stop_reason} "
             f"loop_iteration_events_emitted={len(events)}"
@@ -349,7 +349,7 @@ class TestThePayloadCarriesWhatTheDrilldownNeeds:
 
     @pytest.mark.asyncio
     async def test_the_carry_forward_itself_never_rides_the_event(self, env, monkeypatch):
-        """TASK-848b's whole point: a loop's accumulated state may be MEGABYTES.
+        """b's whole point: a loop's accumulated state may be MEGABYTES.
 
         The payload must stay a handful of scalars. This drives a loop whose carry-forward is
         pushed past the inline budget (`_stub_bulk_bytes`, the same knob
@@ -369,7 +369,7 @@ class TestThePayloadCarriesWhatTheDrilldownNeeds:
             encoded = json.dumps(event)
             assert "zzzz" not in encoded, (
                 "the carry-forward leaked into the iteration event — a 400 KB blob per "
-                "iteration on the delta stream defeats TASK-848b's offload entirely"
+                "iteration on the delta stream defeats the offload entirely"
             )
             assert len(encoded) < 2_000, (
                 f"iteration event is {len(encoded)} bytes; it must stay ids + counters"
@@ -408,7 +408,7 @@ class TestIterationEventsDoNotBloatTemporalHistory:
         silent_events = len(json.loads(silent_history)["events"])
 
         print(
-            f"\n[TASK-848 loop.iteration history impact, measured] "
+            f"\n[ loop.iteration history impact, measured] "
             f"iterations={emit_result.iterations} events_emitted={len(emitted)} | "
             f"interpreter_history_events emitting={emit_events} "
             f"producer_disabled={silent_events} | "

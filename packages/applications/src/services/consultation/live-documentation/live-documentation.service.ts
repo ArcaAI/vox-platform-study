@@ -35,7 +35,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-// TASK-816 (DD-10) — the ONE reader of a node's `llmBinding`, shared with the durable
+//  — the ONE reader of a node's `llmBinding`, shared with the durable
 // interpreter's Python mirror (`nodes/_shared.py`'s `read_model_slug`).
 import { readLlmBindingFromConfig } from '../../workflow-definition/node-llm-binding';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
@@ -53,7 +53,7 @@ import {
   LiveSummaryStatsDto,
   LiveSummaryAgentDto,
 } from './dto';
-// TASK-795 RC-1 — the harness inbound contract for interpreter summary text. Type-only: this
+// the harness inbound contract for interpreter summary text. Type-only: this
 // service consumes the shape, never the harness module's runtime code.
 import type { HarnessLiveAssistProposalDto, HarnessLiveSummaryRequest, HarnessRealtimeDeliveryAck } from '../harness/dto/realtime-delivery.dto';
 // Lane R (R1) — the live clinician-assist feed. A RUNTIME import (unlike the type-only line
@@ -63,7 +63,7 @@ import { HarnessLiveAssistService } from '../harness/harness-live-assist.service
 import { DEFAULT_MAX_FINDINGS, parseImportantFindings } from './realtime/parse-findings';
 import { verifyCorrectionProposals } from './realtime/verify-corrections';
 import { buildRunningSummary, parseDocumentJson, parseDocumentSections } from './document-shape-parser';
-// TASK-810 — the clinical-document SHAPE catalog. The live loop no longer knows
+// the clinical-document SHAPE catalog. The live loop no longer knows
 // what a SOAP note is: it resolves a COMPILED template once per session and
 // reads its strict `responseFormat`, its section list and its prose instruction
 // off that. Type-only for the artifacts, value import for the platform default
@@ -84,7 +84,7 @@ import {
   type PersistedLiveAgentLineage,
 } from './live-agent.port';
 import { LiveToolRegistry } from './live-tool-registry';
-// TASK-811 — the realtime graph executor. The flush no longer runs a hardcoded
+// the realtime graph executor. The flush no longer runs a hardcoded
 // sequence; it walks a LANE, and which lane it walks is data.
 import { GUARDRAIL_GROUNDEDNESS_TOOL } from './live-tool-registry';
 import {
@@ -101,9 +101,9 @@ import {
   type RealtimeRunResult,
 } from './realtime';
 import { readGoverningEngineMarker, tenantWorkflowGoverns } from '../governing-engine';
-// TASK-858 lane A — the consultation's OWN workflow selection, durable from create.
+// lane A — the consultation's OWN workflow selection, durable from create.
 import { readWorkflowSelectionMarker } from '../consultation/workflow-selection';
-// The palette predicate the TASK-813 authorization gate and the selectable-set listing both call.
+// The palette predicate the authorization gate and the selectable-set listing both call.
 // Imported rather than restated: a third copy of "may this graph govern a consultation?" is
 // exactly how the three answers would come apart.
 import { consultationSelectionViolation } from '../workflow-dispatch/consultation-selection-policy';
@@ -140,14 +140,14 @@ const TRANSCRIPT_PARTS_HARD_CAP = 50_000;
 const LIVE_DOC_CONTEXT_TYPES = new Set<string>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
 /**
- * TASK-810 — the PLATFORM template, compiled once at module load.
+ * the PLATFORM template, compiled once at module load.
  *
  * This is the FAIL-OPEN tier: what a session serves when no tenant template can
  * be resolved. It replaces the former `SOAP_OUTPUT_INSTRUCTION` constant, which
  * hardcoded four headings as a string literal and was therefore the reason a
  * tenant could not author a discharge summary at all. The four SOAP sections
  * still exist — as a ROW in the catalog (`SOAP_NOTE_SHAPE`), compiled by the
- * same compiler as anyone else's shape (DD-1).
+ * same compiler as anyone else's shape.
  */
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
   templateId: null,
@@ -262,7 +262,7 @@ interface LiveSoapCall {
 }
 
 /**
- * TASK-811 — what a GRAPH-MODE flush produces, projected onto exactly the locals
+ * what a GRAPH-MODE flush produces, projected onto exactly the locals
  * the legacy path produces. Everything downstream is shared, so this projection
  * is the seam the trajectory-parity diff measures across.
  */
@@ -367,7 +367,7 @@ interface LiveSession {
   agentPromise?: Promise<FrozenLiveAgentSnapshot>;
   agentSnapshot?: FrozenLiveAgentSnapshot;
   /**
-   * The session's FROZEN document template (TASK-810).
+   * The session's FROZEN document template.
    *
    * Resolved once at `start()` and cached exactly like `agentSnapshot`, and for
    * the same reason: a tenant publishing a new template version mid-consultation
@@ -378,21 +378,21 @@ interface LiveSession {
   templatePromise?: Promise<ResolvedDocumentTemplate>;
   templateSnapshot?: ResolvedDocumentTemplate;
   /**
-   * TASK-811 task 13 — the SUBSTRATE GATE.
+   * task 13 — the SUBSTRATE GATE.
    *
    * `startRecording` used to call `start()` after only an ownership and status
    * check, so the hardcoded loop ran for every recording session regardless of
-   * what the tenant had authored (TASK-806 §2.1 — the root cause). Resolved once
+   * what the tenant had authored (the root cause). Resolved once
    * at `start()` with the same discipline as the agent and the template above;
    * `false` means this engine must stand down entirely.
    *
-   * TASK-858 A2 — `false` no longer follows from the governing marker alone. See
+   * `false` no longer follows from the governing marker alone. See
    * {@link LiveDocumentationService.ensureSubstrateResolved} for the three-way contract.
    */
   substratePromise?: Promise<boolean>;
   substrateAllowed?: boolean;
   /**
-   * TASK-858 A2 — does a TENANT-AUTHORED workflow govern this consultation?
+   * does a TENANT-AUTHORED workflow govern this consultation?
    *
    * Frozen beside `substrateAllowed`, and deliberately NOT the same question. A governed
    * session in GRAPH mode keeps running (`substrateAllowed === true`) because it walks the
@@ -403,7 +403,7 @@ interface LiveSession {
    */
   governedByTenantWorkflow?: boolean;
   /**
-   * TASK-811 — the session's FROZEN realtime lane, and whether the graph
+   * the session's FROZEN realtime lane, and whether the graph
    * executor is enabled for this tenant. Frozen for the same reason the agent and
    * template are: a publish mid-consultation must not change the engine walking
    * the note already being produced.
@@ -566,7 +566,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   private readonly toolRegistry: LiveToolRegistry;
   /**
-   * TASK-811 (OD-7) — per-section writes with per-section OCC. Constructed lazily
+   *  — per-section writes with per-section OCC. Constructed lazily
    * on first use because its repository dependency is optional.
    */
   private sectionStore?: DocumentSectionStore;
@@ -613,20 +613,20 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // code-default snapshot locally from the in-code constants, i.e. behavior
     // byte-identical to pre-C3.
     @Optional() @Inject(ILiveAgentResolver) private readonly liveAgentResolver?: ILiveAgentResolverPort,
-    // TASK-808 — the SHARED TEXT enrichment path. TEXT holds no endpoint or
-    // credential of its own since TASK-799 lane B (`70eec34d5`) deleted its
+    // the SHARED TEXT enrichment path. TEXT holds no endpoint or
+    // credential of its own since lane B (`70eec34d5`) deleted its
     // per-provider env plane, so an outgoing `/api/v1/generate` body without a
     // `provider_overrides` entry fails closed with 503
     // PROVIDER_CREDENTIALS_MISSING — which is exactly what this, the
     // highest-volume TEXT hop in the platform, was doing on every flush.
     // Optional + trailing so existing positional fixtures keep their arity.
     @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
-    // TASK-810 — the clinical-document SHAPE catalog. Optional + trailing so
+    // the clinical-document SHAPE catalog. Optional + trailing so
     // existing positional fixtures keep their arity; ABSENT ⇒ every session
     // serves the compiled PLATFORM shape, i.e. behavior equivalent to the
     // hardcoded four-section format this ticket replaced.
     @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplateService?: IDocumentTemplateServicePort,
-    // TASK-811 — the SUBSTRATE GATE's read half. Carries the durable
+    // the SUBSTRATE GATE's read half. Carries the durable
     // governing-engine marker `ConsultationWorkflowDispatchService` writes; the
     // same row `LoopContextSignalService.standDownForTenantWorkflow` reads before
     // every loop signal. Optional + trailing so existing positional fixtures keep
@@ -634,13 +634,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // because a consultation documented by the default engine is a better
     // clinical outcome than one documented by nobody.
     @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
-    // TASK-811 — the realtime LANE's two resolution hops: which definition the
+    // the realtime LANE's two resolution hops: which definition the
     // tenant assigned, and that definition's compiled config. Both optional and
     // trailing; ABSENT ⇒ every session serves PLATFORM_REALTIME_LANE, which
     // encodes today's behaviour.
     @Optional() @Inject(IWorkflowAssignmentService) private readonly workflowAssignments?: IWorkflowAssignmentService,
     @Optional() @Inject(WorkflowDefinitionRepository) private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
-    // TASK-811 (OD-7) — per-section persistence. Optional + trailing; ABSENT ⇒
+    //  — per-section persistence. Optional + trailing; ABSENT ⇒
     // section writes report `unavailable` and the whole-document payload still
     // publishes, so the clinician never loses the feed to a persistence outage.
     @Optional() @Inject(DocumentSectionRepository) private readonly documentSectionRepository?: DocumentSectionRepository,
@@ -835,17 +835,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `start()` stays synchronous for the recording controller; `flush()` awaits
     // the memoized promise, which is already settled by the second flush.
     session.agentPromise = this.ensureAgentResolved(session);
-    // Same fire-and-forget shape, same reason (TASK-810): freeze the document
+    // Same fire-and-forget shape, same reason: freeze the document
     // shape at session start so a mid-consultation publish cannot change the
     // note being produced. `flush()` awaits the memoized promise.
     session.templatePromise = this.ensureTemplateResolved(session);
-    // TASK-811 task 13 — the lane the flush will walk, and the SUBSTRATE GATE.
+    // task 13 — the lane the flush will walk, and the SUBSTRATE GATE.
     // Same fire-and-forget shape as the two above so `start()` stays synchronous
     // for the recording controller; `flush()` awaits the memoized promises, and
     // the gate additionally tears this session down when it resolves to "stand
     // down", so a governed consultation leaves no timers or locks behind.
     //
-    // TASK-858 A2 — the ORDER is now load-bearing. The gate's answer depends on the MODE, and
+    // the ORDER is now load-bearing. The gate's answer depends on the MODE, and
     // the mode IS the frozen lane (`null` ⇒ legacy flush, a lane ⇒ graph executor), so the lane
     // promise must exist before the gate can await it. Kicking both off here rather than
     // chaining them keeps the lane resolving concurrently with the gate's own consultation read.
@@ -964,7 +964,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Resolve and FREEZE the session's document template (TASK-810).
+   * Resolve and FREEZE the session's document template.
    *
    * Deliberately simpler than `ensureAgentResolved`: there is no Redis mirror
    * and no durable lineage re-pin, because a template is not an identity that a
@@ -1004,7 +1004,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------
-  // TASK-811 — the substrate gate and the realtime lane
+  // the substrate gate and the realtime lane
   // ------------------------------------------------------------------
 
   /**
@@ -1013,13 +1013,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `startRecording` called `start()` after only an ownership and status check
    * (`consultation.controller.ts`), so the hardcoded flush ran for every
    * recording session no matter what the tenant had authored. That is the root
-   * cause TASK-806 §2.1 names, and this is the gate that closes it.
+   * cause names, and this is the gate that closes it.
    *
    * Whether a tenant-authored graph took ownership at consultation open is the SAME durable
    * marker the loop plane already consults (`governing-engine.ts`): a well-formed
    * `governingEngine` on `Consultation.metadata`.
    *
-   * ── THE CONTRACT (TASK-858 A2) ──────────────────────────────────────────────
+   * ── THE CONTRACT ──────────────────────────────────────────────
    *
    * | Governed? | Frozen lane | Outcome |
    * |---|---|---|
@@ -1027,12 +1027,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * | yes | `null` (LEGACY mode) | `false` — stand down, and tear the session down |
    * | yes | a lane (GRAPH mode) | `true` — run the GOVERNING definition's realtime lane |
    *
-   * The middle row is TASK-811 task 13 unchanged, and for its original reason: the legacy flush
+   * The middle row is task 13 unchanged, and for its original reason: the legacy flush
    * is a hardcoded script that writes a whole document, so running it beside a tenant-authored
    * graph is two engines writing one document.
    *
    * The bottom row is new, and it exists because the premise of a blanket stand-down stopped
-   * being true. Since TASK-852 a session with `consultation.realtime.graphExecutor.enabled`
+   * being true. Since a session with `consultation.realtime.graphExecutor.enabled`
    * walks the REALTIME LANE of a published graph, and the durable interpreter deliberately SKIPS
    * every `lane: 'realtime'` node (`apps/harness/.../interpreter/workflow.py` `_dispatch_node`,
    * `reason="realtime_lane"`). Standing this engine down therefore left the realtime nodes —
@@ -1041,7 +1041,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * Exclusivity still holds in that row, and holds BY CONSTRUCTION rather than by this gate:
    * `buildRealtimeLane` admits only `REALTIME_NODE_TYPES`, so `consultation.persistDraft` and
-   * every other durable writer is filtered out of the lane (TASK-852 §5). The one path that
+   * every other durable writer is filtered out of the lane ( The one path that
    * could still put a legacy document on a governed consultation is `flush()`'s fall-back when
    * the lane cannot be WIRED, and {@link LiveDocumentationService.flush} refuses it for a
    * governed session — which is what `session.governedByTenantWorkflow` is frozen for.
@@ -1148,7 +1148,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   /**
    * Effective `consultation.realtime.graphExecutor.enabled` for one tenant.
    *
-   * Extracted from {@link ensureLaneResolved} so the TASK-852 read-out resolves the flag through
+   * Extracted from {@link ensureLaneResolved} so the read-out resolves the flag through
    * the same call a session does. A read-out with its own copy of this cascade would report the
    * engine an admin *configured* rather than the one that will *run*.
    */
@@ -1181,9 +1181,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * resolves `tenant` + `platform-default`, which is precisely the silent misconfiguration this
    * read-out exists to surface.
    *
-   * ## TASK-858 (G1) — the consultation tier, above the cascade
+   * ## (G1) — the consultation tier, above the cascade
    *
-   * TASK-813 let a clinician CHOOSE the workflow at session open. The choice was authorized and
+   * let a clinician CHOOSE the workflow at session open. The choice was authorized and
    * honoured by the durable dispatcher, and then dropped here: this function consulted only
    * `workflowAssignments.resolve(...)`, so a clinician who selected workflow B got workflow A's
    * realtime nodes — different live NER, different partial summarization, different grammar
@@ -1232,18 +1232,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-858 (G1) — the lane this CONSULTATION selected, or `null` to fall back to the cascade.
+   * (G1) — the lane this CONSULTATION selected, or `null` to fall back to the cascade.
    *
    * ## Two recorded selections, read in this order
    *
    * | Key | Claim | Written when |
    * |---|---|---|
-   * | `metadata.governingEngine` (TASK-795) | the durable interpreter run OWNS this consultation | after a run actually started |
-   * | `metadata.workflowSelection` (TASK-858) | the clinician ASKED for this workflow | at consultation create |
+   * | `metadata.governingEngine` | the durable interpreter run OWNS this consultation | after a run actually started |
+   * | `metadata.workflowSelection` | the clinician ASKED for this workflow | at consultation create |
    *
    * `governingEngine` first, because what actually governs beats what was asked for.
    *
-   * AMENDED by TASK-858 A2. This used to add that the marker was "the weaker of the two here in
+   * AMENDED by. This used to add that the marker was "the weaker of the two here in
    * practice", because it ALSO made {@link ensureSubstrateResolved} stand the whole engine down,
    * so on a live session the lane it selected was never walked. That gate is now MODE-AWARE: in
    * GRAPH mode a governed session stays up and walks exactly the lane this function resolves
@@ -1255,7 +1255,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * `Consultation.metadata` is client-writable at open, so both keys are re-resolved through the
    * tenant-scoped `findPublishedBySlug` and the same `consultationSelectionViolation` palette
-   * predicate the TASK-813 gate uses. A forged value can therefore only ever name a workflow the
+   * predicate the gate uses. A forged value can therefore only ever name a workflow the
    * caller was already entitled to select, in their own tenant.
    */
   private async resolveConsultationSelectedLane(tenantId: string, consultationId: string): Promise<RealtimeLane | null> {
@@ -1323,7 +1323,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-858 — the read-out's 404 half.
+   * the read-out's 404 half.
    *
    * `resolveConsultationSelectedLane` is deliberately silent about a missing or foreign
    * consultation (a session must degrade, never fail). The READ-OUT must not be: an admin who
@@ -1341,7 +1341,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-852 item 6 — which realtime capabilities are LIVE for a tenant.
+   * item 6 — which realtime capabilities are LIVE for a tenant.
    *
    * ## Why this exists
    *
@@ -1367,15 +1367,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * | Graph executor OFF | `laneSource: null`, `nodes: []` — there IS no lane; the legacy flush runs |
    * | ON, no resolvable assignment | `platform-default` and the platform lane's own nodes, because those genuinely execute |
    * | ON + assignment | `tenant-graph`, the slug and version, and the tenant's realtime nodes |
-   * | ON + a consultation that SELECTED a workflow | `tenant-graph` with `assignmentSource: 'consultation'` — the clinician's own pick, not the tenant default (TASK-858) |
+   * | ON + a consultation that SELECTED a workflow | `tenant-graph` with `assignmentSource: 'consultation'` — the clinician's own pick, not the tenant default |
    *
    * Tenant-scoped by construction: the caller's tenant is the only one resolved, and the
    * definition lookup is itself tenant-scoped, so a guessed slug cannot cross the boundary.
    *
-   * ## TASK-858 — `consultationId`, and why it is not decoration
+   * ## — `consultationId`, and why it is not decoration
    *
    * Without it this answers "what would a NEW session for this tenant get". With it, it answers
-   * "what would a session for THIS consultation get" — which since TASK-813 can differ, because
+   * "what would a session for THIS consultation get" — which since can differ, because
    * the clinician selected the workflow at open. A read-out that could only ever report the
    * tenant cascade would report the wrong graph for exactly the consultations someone is most
    * likely to be asking about. An unknown or foreign consultation id is a 404, never a silent
@@ -1514,10 +1514,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `closed` marker — so a `stop` routed to a non-owner instance still ends the
    * stream and frees the lock.
    *
-   * ## What this does NOT do, in any mode (TASK-858 A2)
+   * ## What this does NOT do, in any mode
    *
    * It runs no note or summary FINALIZATION. Finalization of a governed consultation belongs to
-   * the durable run's endpoint stage (TASK-812: `livedoc.stop` → `session.timeout` →
+   * the durable run's endpoint stage (`livedoc.stop` → `session.timeout` →
    * `harness.finalize` → `summary.finalize`), and `livedoc.stop` is that stage's FIRST action —
    * it calls this method. So there is no legacy finalization branch here to gate on the mode;
    * there never was one.
@@ -1728,7 +1728,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
-    // TASK-811 (DD-7) — a memo scoped to THIS flush. Not to the session: a guard
+    //  — a memo scoped to THIS flush. Not to the session: a guard
     // verdict is a statement about a specific text at a specific moment, so
     // carrying it across flushes would serve a verdict computed against an older
     // note.
@@ -1741,26 +1741,26 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `ensureAgentResolved` never rejects, so this can never fail a flush.
     const agent = session.agentSnapshot ?? (session.agentSnapshot = await (session.agentPromise ?? this.ensureAgentResolved(session)));
 
-    // TASK-810 — the session's FROZEN document template, resolved and cached
+    // the session's FROZEN document template, resolved and cached
     // with exactly the same discipline as the agent above. `ensureTemplateResolved`
     // never rejects (the service's own `resolveForGeneration` fails open to the
     // platform shape), so this can never fail a flush.
     const template = session.templateSnapshot ?? (session.templateSnapshot = await (session.templatePromise ?? this.ensureTemplateResolved(session)));
 
-    // TASK-811 task 13 — the SUBSTRATE GATE. Awaited here rather than checked at
-    // `start()` because `start()` is synchronous for the recording controller;
+    // task 13 — the SUBSTRATE GATE. Awaited here rather than checked at
+    // `start()` because `start` is synchronous for the recording controller;
     // resolving it is a row read. `false` means this engine publishes NOTHING for this
     // consultation — the fix for "the hardcoded loop runs regardless of what the tenant
     // authored".
     //
-    // TASK-858 A2 — `false` now means "governed AND in legacy mode". A governed session in
+    // `false` now means "governed AND in legacy mode". A governed session in
     // GRAPH mode resolves `true` and walks the governing definition's realtime lane below;
     // `session.governedByTenantWorkflow` is what keeps it off the legacy branch.
     const substrateAllowed =
       session.substrateAllowed ?? (session.substrateAllowed = await (session.substratePromise ?? this.ensureSubstrateResolved(session)));
     if (!substrateAllowed) return null;
 
-    // TASK-811 — the session's FROZEN realtime lane. `null` routes this flush
+    // the session's FROZEN realtime lane. `null` routes this flush
     // down the LEGACY path (the per-tenant flag is off, or its resolution failed).
     const lane =
       session.laneSnapshot !== undefined
@@ -1849,7 +1849,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // PHI-safe: sizes/counts only — never transcript text.
       this.logger.warn({
         message: windowed
-          ? 'Live summary transcript windowed — older backlog elided (TASK-533 B3)'
+          ? 'Live summary transcript windowed — older backlog elided (B3)'
           : 'Live summary transcript delta truncated — carrying overflow forward (C5-04)',
         consultationId,
         truncatedDeltaCount: session.truncatedDeltaCount,
@@ -1889,7 +1889,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let textRepaired = false;
     let repairLatencyMs = 0;
     let repairStats: LiveSummaryStatsDto | null = null;
-    // ── TASK-811 — GRAPH MODE ────────────────────────────────────────────────
+    // ── — GRAPH MODE ────────────────────────────────────────────────
     // The session's frozen LANE decides what runs. A null lane is the LEGACY
     // path below, which stays executable until trajectory parity is proven on the
     // same transcript — this ticket does not remove it.
@@ -1914,7 +1914,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       : null;
     if (graph === 'stale') return this.dropStale(session);
 
-    // TASK-858 A2 — a GOVERNED consultation NEVER falls through to the legacy engine.
+    // a GOVERNED consultation NEVER falls through to the legacy engine.
     //
     // `runGraphLane` returns null when the tenant's lane could not be WIRED (a
     // `RealtimeBindingError`), and for an ungoverned session that legitimately means "publish
@@ -2015,7 +2015,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // request, and disabling BOTH is what skips the call entirely. The registry
     // context receives `nerSourceText` and nothing else, so the anti-laundering
     // rule above is enforced by the executor's input TYPE, not by convention.
-    // TASK-811 — in GRAPH MODE the entity extraction was performed by the lane's
+    // in GRAPH MODE the entity extraction was performed by the lane's
     // `consultation.extractEntities` node, bound to its declared `in: transcript`
     // port. The anti-laundering rule is enforced there by the executor's port-type
     // check, which refuses `document -> transcript` outright.
@@ -2072,7 +2072,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (this.toolRegistry.isEnabled(agent.toolPlan, 'groundedness') && runningSummary) {
       const groundednessStartedAt = Date.now();
       const guardSource = notes ? `${transcript}\n${notes}` : transcript;
-      // TASK-811 (DD-7) — through the per-FLUSH guard memo. With one document
+      //  — through the per-FLUSH guard memo. With one document
       // this changes nothing (one call, one miss); with several documents drawn
       // from one transcript the same guard is asked the same question repeatedly,
       // and this is what stops that becoming N groundedness round-trips per turn.
@@ -2141,7 +2141,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastPayload = payload;
     await this.safePublish(consultationId, payload);
     await this.persistDurableSnapshot(session, payload, { force: false });
-    // TASK-811 §2b/OD-7 — the per-SECTION plane, ADDITIVE to the whole-document
+    // the per-SECTION plane, ADDITIVE to the whole-document
     // payload above so every existing consumer is untouched. Only in graph mode:
     // the legacy engine's contract is "one document, global offsets", and
     // emitting section patches from it would claim a granularity it does not have.
@@ -2216,7 +2216,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-811 — run one flush through the GRAPH EXECUTOR and project the result
+   * run one flush through the GRAPH EXECUTOR and project the result
    * onto the same locals the legacy path produces.
    *
    * The projection is the point. Everything downstream of this method — entity
@@ -2265,7 +2265,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     let parsedSections: LiveSummarySectionDto[] = [];
 
     const capabilities: RealtimeCapabilities = {
-      // TASK-811 task 14 / TASK-809 §2y1 — capture PRODUCES the transcript.
+      // task 14 / — capture PRODUCES the transcript.
       // The declared `out: transcript` port was design intent the durable
       // activity never kept (it emits `{action, consultationId}`), which left the
       // consultation palette with no producer of `transcript` and made
@@ -2289,7 +2289,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
               corrective,
               ctx.agent,
               ctx.template.compiled,
-              // TASK-816 — the realtime node's own config, so its `llmBinding` reaches selection.
+              // the realtime node's own config, so its `llmBinding` reaches selection.
               input.config,
             );
             return { text, stats, structured, latencyMs: Date.now() - startedAt };
@@ -2377,7 +2377,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const extractOutput = extract?.status === 'succeeded' ? extract.output : undefined;
     // Lane N. `agent.important_findings` is its OWN canonical type — it has no pipeline
     // counterpart, so `canonicalRealtimeNodeType` returns it unchanged and matching on the raw
-    // type here is correct rather than the §14d bug repeated.
+    // type here is correct rather than the bug repeated.
     const findingsNode = run.outcomes.find((o) => o.type === 'agent.important_findings');
     const findingsOutput = findingsNode?.status === 'succeeded' ? findingsNode.output : undefined;
 
@@ -2401,7 +2401,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-811 §2b/OD-7 — persist and stream this flush's sections.
+   * persist and stream this flush's sections.
    *
    * Two things happen per section, in this order: the row is written under
    * per-section OCC (so a CONFIRMED section a clinician touched is never
@@ -2411,7 +2411,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * the panel flicker between the two.
    *
    * Annotations are RE-ANCHORED to section-local offsets first. That is the whole
-   * §2b fix: the global offsets on the whole-document payload are valid only while
+   * fix: the global offsets on the whole-document payload are valid only while
    * there is exactly one document rebuilt whole each flush, and the moment
    * sections stream independently an earlier section growing invalidates every
    * offset after it.
@@ -2486,7 +2486,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * Overlay the session's frozen tool plan onto the PLATFORM lane.
    *
    * `ner`/`vitals` disabled ⇒ the extraction node is skipped, which is exactly
-   * what the pre-TASK-811 flush did with the same plan. Without this, turning the
+   * what the earlier flush did with the same plan. Without this, turning the
    * graph executor on would quietly re-enable a tool the tenant had turned off —
    * a behaviour change disguised as an engine change.
    */
@@ -2957,11 +2957,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   private async persistDurableSnapshot(session: LiveSession, payload: LiveSummaryEventDto, opts: { force: boolean }): Promise<void> {
     if (!this.contextItemRepository) return;
-    // TASK-811 (OD-6) — WHICH document this snapshot is. `ContextItemType.PRE_SUMMARY`
+    //  — WHICH document this snapshot is. `ContextItemType.PRE_SUMMARY`
     // is overloaded (D-22): the context-derived pre-summary and this running-note
     // snapshot are the same enum member, and with more than one document per
     // consultation that ambiguity becomes unresolvable. The key is the session's
-    // frozen template slug; null (every pre-TASK-811 row, and a session whose
+    // frozen template slug; null (every earlier row, and a session whose
     // template never resolved) keeps its exact legacy meaning.
     const documentKey = session.templateSnapshot?.slug ?? null;
     if (!opts.force && (this.durableSnapshotMs <= 0 || Date.now() - session.lastDurableAt < this.durableSnapshotMs)) return;
@@ -3049,7 +3049,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) instead of
    * hand-rolling the find + subType-filter + newest-wins reduce here — this was one
    * of several copies of that exact logic (harness's `loadLiveSoapSnapshot`,
-   * `SummaryService.resolveWarmStartPreSummary` and, before TASK-732 deleted
+   * `SummaryService.resolveWarmStartPreSummary` and, before deleted
    * it, the legacy async summary generator's own copy). No
    * `secrets` is passed: this caller only ever reads `.metaData` off the row (agent
    * lineage / dedup identity), never `.content`, so there is nothing to decrypt and
@@ -3104,7 +3104,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     notes: string,
     elided = false,
     stablePrefix: string = LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
-    // TASK-810 — the resolved template's own title. The three blocks below used
+    // the resolved template's own title. The three blocks below used
     // to say "SOAP note" in prose while the response schema described whatever
     // the tenant actually published; a model told to update a SOAP note and
     // decoded against a discharge summary is being given two different jobs.
@@ -3212,10 +3212,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     signal?: AbortSignal,
     corrective?: string,
     agent?: FrozenLiveAgentSnapshot,
-    // TASK-810 — the session's FROZEN compiled template. Defaulted to the
+    // the session's FROZEN compiled template. Defaulted to the
     // platform shape so non-DI/positional test fixtures keep their arity.
     compiled: CompiledDocumentTemplate = PLATFORM_TEMPLATE.compiled,
-    // TASK-816 (DD-10) — the GRAPH node's own config, when a graph node made this call.
+    //  — the GRAPH node's own config, when a graph node made this call.
     // Trailing and optional, so every legacy-flush caller keeps its arity and reads as unbound.
     nodeConfig?: Readonly<Record<string, unknown>>,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
@@ -3235,7 +3235,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // below runs exactly as before, which is what keeps an admin re-point
     // landing on the next flush for unconfigured tenants.
     //
-    // TASK-816 (DD-10): when a GRAPH node made this call and that node carries an `llmBinding`,
+    // When a GRAPH node made this call and that node carries an `llmBinding`,
     // the binding SELECTS the model — fail-closed, per node. It sits below the frozen
     // session-level override (which is what a resumed session was already generating with) and
     // above the tenant `text.live` default. Unbound ⇒ the two lines below run exactly as before.
@@ -3266,14 +3266,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       model,
       max_tokens: this.textMaxTokens,
       stream: false as const,
-      // TASK-810 — the strict schema COMPILED from the session's pinned template
+      // the strict schema COMPILED from the session's pinned template
       // shape, not a frozen literal. This is the whole of "the template IS the
       // schema": an optional section arrives here as a nullable property, so a
       // model that was never told about an examination can say so (D-21) instead
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    // TASK-808 — fold in the caller tenant's resolved provider credential
+    // fold in the caller tenant's resolved provider credential
     // (`provider_overrides`) through the ONE shared implementation. Not
     // hand-rolled here: the resolver cascades tenant → SYSTEM and each entry's
     // `funding` label rides along, so TEXT meters platform-funded generation as
@@ -3281,7 +3281,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolver error injects nothing and the call proceeds, while a POLICY
     // refusal (tenant veto / missing entitlement) still throws so the outage is
     // attributable instead of surfacing as TEXT's unattributable 503.
-    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
@@ -3295,8 +3295,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
-    // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — TEXT resolves the
-    // tenant's BYOK provider/credential from it, and TASK-735 derives
+    // migration fallback).: `X-Tenant-Id` is MANDATORY — TEXT resolves the
+    // tenant's BYOK provider/credential from it, and derives
     // `funding`/`cost_basis` from whichever tier supplied that credential, so a
     // dropped header mis-bills silently as well as mis-configuring the call. This is
     // the highest-volume internal hop in the platform (every live-doc flush).
@@ -3356,7 +3356,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const systemPrompt = await this.resolveCorrectionPrompt(config);
 
     // Same LIVE tier the running note uses, and fail-CLOSED the same way: provider/model
-    // SELECTION is never substituted with an env default. TASK-816 — and the node's own
+    // SELECTION is never substituted with an env default. — and the node's own
     // `llmBinding`, off the SAME `config` the prompt above came from, selects for this node.
     let provider = this.textProvider;
     let model = this.textModel;
@@ -3373,7 +3373,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
-    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
@@ -3422,7 +3422,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * ## There is no importance logic in this method, and that is the design
    *
-   * TASK-815 §14a asked the owner what makes information "important". The answer was not a
+   * asked the owner what makes information "important". The answer was not a
    * severity scale:
    *
    * > "'Important' information or findings will be mined/generated/extracted by agent following a
@@ -3453,7 +3453,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const { sourceText, context, entities, tenantId, config } = input;
     const systemPrompt = await this.resolveGovernedNodePrompt(config, 'findings');
 
-    // TASK-816 — same per-node selection as the grammar pass, off the same `config`.
+    // same per-node selection as the grammar pass, off the same `config`.
     let provider = this.textProvider;
     let model = this.textModel;
     if (this.harnessPolicyService)
@@ -3473,7 +3473,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
-    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // layer the platform admin's runtime profile (hyperparameters + engine
     // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
     // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
@@ -3611,7 +3611,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-795 RC-1 — publish an INTERPRETER-produced summary snapshot onto this
+   * publish an INTERPRETER-produced summary snapshot onto this
    * service's own live-summary plane.
    *
    * ## Why this lives here and not in a service of its own
@@ -3623,7 +3623,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *
    * ## Why the existing channel at all
    *
-   * TASK-796 established that the harness has no way to deliver summary TEXT to
+   * established that the harness has no way to deliver summary TEXT to
    * the gateway: of the 18 `/internal/harness/*` routes, the only text-accepting
    * write creates a `RAW_SUMMARY` ContextItem — the FINAL note, not a
    * mid-consultation snapshot. Publishing here instead means the existing SSE

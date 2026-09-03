@@ -29,12 +29,12 @@ const MAX_FILES = 3;
 @ApiTags('voice-profile')
 @Controller('voice-profiles')
 // API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
-// business plane), recorded by TASK-758 and policed by
+// business plane), recorded and policed by the boot audit
 // `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
 // Voice biometrics: enrolment audio IS a biometric identifier, and a tenant
 // API key has no MFA, no session expiry and no revocation-on-logout. A
 // credential that can sit in a CI log must never enrol or read a voice
-// profile. JWT only — this is a decision, not TASK-742's pending default.
+// profile. JWT only — this is a decision, not pending default.
 @ForbidApiKey()
 export class VoiceProfileController {
   constructor(

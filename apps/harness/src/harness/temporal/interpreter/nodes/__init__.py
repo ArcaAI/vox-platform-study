@@ -1,4 +1,4 @@
-"""Summarization-palette node activities (TASK-720 Task 5).
+"""Summarization-palette node activities.
 
 One module per node type, mirroring `contracts/palette.md`'s node table:
 ``context_binding`` (N-1), ``template_ref`` (N-2), ``text_generate`` (N-3), ``guardrail_check``

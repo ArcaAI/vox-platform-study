@@ -1,6 +1,5 @@
 /**
  * The RUN-IDENTITY keys a caller may never put in a workflow `input`
- * (TASK-850).
  *
  * ## Why the SDK refuses what the gateway already refuses
  *

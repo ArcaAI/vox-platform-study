@@ -5,8 +5,8 @@
  * `VirtualizedDataGrid`. It applies the console defaults and
  * bridges the three Phase-4 adapters that already live in `shared/data`:
  *   • layout persistence → `createGridLayoutPersistenceAdapter` (`ui.data-grid`)
- *   • URL query-state    → `useAdminGridParams` (the `grid-url-state` nuqs codec)
- *   • list envelopes     → `normalizeList` (called in the screen; rows/total in)
+ *   • URL query-state → `useAdminGridParams` (the `grid-url-state` nuqs codec)
+ *   • list envelopes → `normalizeList` (called in the screen; rows/total in)
  *
  * The grid is SERVER-DRIVEN: manual sorting/filtering/pagination is on, so the
  * screen keeps owning data fetching (TanStack Query) and passes
@@ -174,7 +174,7 @@ export function AdminDataGrid<TData extends RowData>({
   const hasRows = rows.length > 0;
   // Block error (no data) → the grid's error slot; stale error (rows present) →
   // an inline banner above the table so the last-loaded rows stay visible
-  // (the list-frame error variant, design-spec §G).
+  // (the list-frame error variant, design-spec
   const blockError = hasRows ? null : (error ?? null);
   const staleError = hasRows ? (error ?? null) : null;
 

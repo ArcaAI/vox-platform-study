@@ -67,8 +67,8 @@ function buildController(
       {} as never, // eventEmitter
       consultationRepository as never, // consultationRepository
       streamSessionTenantBinding as never, // streamSessionTenantBinding
-      workflowRunService as never, // workflowRunService (TASK-722)
-      dnaQueue as never, // dnaQueue (finding H-02)
+      workflowRunService as never, // workflowRunService
+      dnaQueue as never, // dnaQueue 
       policyEngine as never, // policyEngine (finding H-02 — admin arm of the dna_job mint)
     ),
     streamTicketService,
@@ -494,7 +494,7 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  // `workflow_run:<runId>` (TASK-722 Task 7): mint-time ownership check for the
+  // `workflow_run:<runId>`: mint-time ownership check for the
   // exposure-plane SSE route. Reuses `IWorkflowRunService.getRun`, which already
   // 404s a foreign-tenant/unknown runId — no second lookup path.
   describe('workflow_run scope ownership', () => {
@@ -557,13 +557,13 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  // `tts_session:<sessionId>` (TASK-755 G-2): the LAST stream-ticket scope
+  // `tts_session:<sessionId>`: the LAST stream-ticket scope
   // prefix with no branch at mint. Deliberately NOT an ownership check —
   // Option A ("document-and-assert"): TTS has no server-side session resource
   // to look up, so this asserts only what is knowable (well-formed bounded id
   // + an active tenant). See `assertTtsSessionScopeShape` for the full
   // rationale and the trigger that would upgrade this to Option B.
-  describe('tts_session scope shape (TASK-755 G-2)', () => {
+  describe('tts_session scope shape (G-2)', () => {
     it('mints a well-formed tts_session ticket for a caller with an active tenant, scope preserved', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'tts_session:sess-1' }));
       const { controller } = buildController({

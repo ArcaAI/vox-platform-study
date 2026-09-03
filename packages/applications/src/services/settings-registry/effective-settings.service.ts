@@ -27,7 +27,7 @@ export interface EffectiveSettingResult {
  * The single place the declared failure mode is applied — called wherever a
  * cascade bottoms out with NO value.
  *
- * `closed`          → raise. The caller gets an explicit "unresolved", never a
+ * `closed` → raise. The caller gets an explicit "unresolved", never a
  *                     substituted value it did not ask for.
  * `open-to-default` → the descriptor default, reported as `code-default`.
  *
@@ -50,7 +50,7 @@ export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingRe
  * (`consumed-by-resolvability.governance.test.ts`) asserts that no descriptor
  * declaring `consumedBy` maps to `null`.
  *
- * That test is the structural half of the TASK-799 A.1 fix. The runtime half
+ * That test is the structural half of the A.1 fix. The runtime half
  * (this branch table) makes `db-config` resolvable; the test is what stops the
  * NEXT unresolvable tier from shipping, because
  * `EffectiveConfigService.resolveKey` cannot tell a permanently-missing
@@ -146,8 +146,8 @@ export class EffectiveSettingsService {
 
     // The `global-kv` lane — the full cascade:
     //
-    //   tenant override  →  SYSTEM/platform row  →  descriptor.default
-    //   sourceScope:  'tenant'  →  'system'  →  'code-default'
+    //   tenant override → SYSTEM/platform row → descriptor.default
+    //   sourceScope: 'tenant' → 'system' → 'code-default'
     //
     // The reported `sourceScope` is the tier that actually answered, so a
     // caller can see WHY a value is what it is. `ctx.tenantId` is the
@@ -159,7 +159,7 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: resolved.value, sourceScope: resolved.source };
     }
 
-    // The `db-config` lane (TASK-799 A.1).
+    // The `db-config` lane.
     //
     // Dispatched per key FAMILY to the service that owns that family's table —
     // never resolved here. `AiTaskDefault` (`models.*`) and `PipelinePolicy`

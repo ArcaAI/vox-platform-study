@@ -1,5 +1,5 @@
 /**
- * TASK-776 — Route manifest loader + case generation helpers.
+ * Route manifest loader + case generation helpers.
  *
  * `apps/api/route-manifest.json` is emitted by a Nest ModulesContainer walk that uses the
  * SAME reflector lookups `UnifiedAuthGuard` uses, so it records exactly what the guard sees
@@ -80,13 +80,13 @@ export type SkipReason = 'streaming' | 'auth-endpoint';
  *
  * The routes it covers are precisely the ones this sweep most needs: every `/internal/*`
  * controller carries `@ApiExcludeController()` — including the 24 `@Public()` routes assertion
- * A5b proves are service-token-gated rather than publicly reachable — and the TASK-760 redirect
+ * A5b proves are service-token-gated rather than publicly reachable — and the redirect
  * shims carry `@ApiExcludeEndpoint()` while deliberately REPRODUCING their target's
  * `@Authorize()`/`@ForbidApiKey()` decorators, a reproduction nothing else verifies.
  *
  * The bug was dormant only because the emitter mis-read the metadata (`=== true` against
  * `@nestjs/swagger`'s wrapped `{ disable: true }` / `[true]` shapes), so the flag was always
- * `false` and the predicate skipped nothing. Once TASK-783 made the flag truthful, 70 of 657
+ * `false` and the predicate skipped nothing. Once made the flag truthful, 70 of 657
  * routes would have silently dropped out of the sweep — the exact "silent truncation" the
  * predicate below exists to prevent.
  *

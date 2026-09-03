@@ -28,7 +28,7 @@ function setupCommandLineOptions(): EntityGeneratorOptions {
   program
     .name('generate-data-entity')
     .description(
-      'Preserve & reconcile the hand-curated TypeScript entity layer (TASK-370). ' +
+      'Preserve & reconcile the hand-curated TypeScript entity layer . ' +
         'Existing entities are reproduced verbatim; barrels are kept in sync.',
     )
     .option('-o, --output-path <path>', 'Base output directory (expects <base>/domains/src/entities/generated)')

@@ -17,7 +17,7 @@
  * method can produce would be noise.
  *
  * A property typed `unknown` is the document declining to describe a shape,
- * not this generator giving up: `openapi-fidelity.md` §B2 measured the
+ * not this generator giving up: `openapi-fidelity.md` measured the
  * minority of admin operations with no usable schema and the recorded decision
  * was to emit `unknown` at those call sites rather than invent one.
  */
@@ -427,7 +427,7 @@ export interface BillingInvoiceResponse {
   period: string;
   periodEnd: string;
   periodStart: string;
-  /** How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY (TASK-615 #6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated. */
+  /** How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY ( #6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated. */
   planFeeBasis: 'PERIOD_END_PLAN' | 'TENANT_PLAN_HISTORY';
   /** Plan the period was billed under; null = ungated-legacy tenant. */
   planTier?: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER' | null;
@@ -709,7 +709,7 @@ export interface ConsultationResponse {
   parentConsultationId?: string;
   /** Patient identifier */
   patientId: string;
-  /** Clinical lifecycle status — the single-sourced ConsultationStatus column (TASK-711 session state machine; docs/implementation/TASK-711-Session-State-Machine/state-machine.md). */
+  /** Clinical lifecycle status — the single-sourced ConsultationStatus column ( session state machine;). */
   status?:
     | 'OPEN'
     | 'RECORDING'
@@ -725,7 +725,7 @@ export interface ConsultationResponse {
     | 'CLOSED_INCOMPLETE';
   /** Last update timestamp */
   updatedAt: string;
-  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — TASK-711). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
+  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen —). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
   version?: number;
 }
 
@@ -1372,7 +1372,7 @@ export interface CreateWorkflowDefinitionRequest {
 export interface CreateWorkflowTestFixtureRequest {
   /** Fixture description */
   description?: string;
-  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (README §6/R4, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted. */
+  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (RESOLVED): the plaintext column was dropped, so only ciphertext is persisted. */
   input: Record<string, unknown>;
   /** Fixture name */
   name: string;
@@ -1535,7 +1535,7 @@ export interface DnaDashboardUsageEntry {
 export interface DnaErasureResponse {
   /** Number of DNA writing-style reports soft-deleted. */
   deletedReports: number;
-  /** Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (TASK-733 Task 10). */
+  /** Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge. */
   deletedVersions: number;
   /** The clinician whose writing-style profile was erased. */
   doctorId: string;
@@ -2461,7 +2461,7 @@ export interface MlflowStatusResponse {
   embedBlockedReason: string | null;
   /** Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists. */
   embeddable: boolean;
-  /** Operator-facing failure summary. Never carries the internal host:port (TASK-768). */
+  /** Operator-facing failure summary. Never carries the internal host:port. */
   error?: string;
   /** The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none. */
   frameOptions: string | null;
@@ -3144,31 +3144,31 @@ export interface PlanEntitlementResponse {
   maxPromptTemplates?: number | null;
   /** Max users/seats; null = unlimited */
   maxUsers?: number | null;
-  /** Max PUBLISHED workflow definitions (TASK-722); null = unlimited */
+  /** Max PUBLISHED workflow definitions; null = unlimited */
   maxWorkflowDefinitions?: number | null;
   /** Model-access tier (base | full | full_custom) */
   modelTier: string;
   /** Monthly consultations; null = unlimited */
   monthlyConsultations?: number | null;
-  /** Monthly embedding tokens allowance (TASK-615 D11); null = unlimited */
+  /** Monthly embedding tokens allowance; null = unlimited */
   monthlyEmbeddingTokens?: number | null;
-  /** Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited */
+  /** Monthly LLM tokens allowance, all billable kinds summed; null = unlimited */
   monthlyLlmTokens?: number | null;
-  /** Monthly NLP text-units allowance (TASK-615 D11); null = unlimited */
+  /** Monthly NLP text-units allowance; null = unlimited */
   monthlyNlpTextUnits?: number | null;
-  /** Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited */
+  /** Monthly STT session-seconds allowance; null = unlimited */
   monthlySttSessionSeconds?: number | null;
   /** Monthly summaries; null = unlimited */
   monthlySummaries?: number | null;
   /** Monthly transcription minutes; null = unlimited */
   monthlyTranscriptionMinutes?: number | null;
-  /** Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited */
+  /** Monthly TTS characters allowance, Unicode code points; null = unlimited */
   monthlyTtsCharacters?: number | null;
-  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited */
+  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke; null = unlimited */
   monthlyWorkflowInvocations?: number | null;
   /** Commercial plan */
   plan: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER';
-  /** TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`. */
+  /** ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`. */
   rateLimitPerMinute?: number | null;
   /** Rate-limit tier (strict | default | relaxed | heavy) */
   rateLimitTier: string;
@@ -4232,7 +4232,7 @@ export interface SettingCatalogItemResponse {
   sensitivity: 'public' | 'internal' | 'secret';
   /** Recorded eventual home when `tier` is not where the key ends up. */
   targetTier?: string;
-  /** Storage tier / §3 data class. */
+  /** Storage tier / data class. */
   tier: string;
 }
 
@@ -4461,27 +4461,27 @@ export interface TenantEntitlementResponse {
   maxPromptTemplates?: number | null;
   /** Override max users; null = inherit */
   maxUsers?: number | null;
-  /** Override max PUBLISHED workflow definitions (TASK-722); null = inherit */
+  /** Override max PUBLISHED workflow definitions; null = inherit */
   maxWorkflowDefinitions?: number | null;
   /** Override model tier; null = inherit */
   modelTier?: string | null;
   /** Override monthly consultations; null = inherit */
   monthlyConsultations?: number | null;
-  /** Override monthly embedding tokens allowance (TASK-615 D11); null = inherit */
+  /** Override monthly embedding tokens allowance; null = inherit */
   monthlyEmbeddingTokens?: number | null;
-  /** Override monthly LLM tokens allowance (TASK-615 D11); null = inherit */
+  /** Override monthly LLM tokens allowance; null = inherit */
   monthlyLlmTokens?: number | null;
-  /** Override monthly NLP text-units allowance (TASK-615 D11); null = inherit */
+  /** Override monthly NLP text-units allowance; null = inherit */
   monthlyNlpTextUnits?: number | null;
-  /** Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit */
+  /** Override monthly STT session-seconds allowance; null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */
   monthlySummaries?: number | null;
   /** Override monthly transcription minutes; null = inherit */
   monthlyTranscriptionMinutes?: number | null;
-  /** Override monthly TTS characters allowance (TASK-615 D11); null = inherit */
+  /** Override monthly TTS characters allowance; null = inherit */
   monthlyTtsCharacters?: number | null;
-  /** Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit */
+  /** Override monthly PUBLISHED-workflow invocations; null = inherit */
   monthlyWorkflowInvocations?: number | null;
   /** Per-tenant absolute rate override (req/min); null = use the tier */
   rateLimitPerMinute?: number | null;
@@ -4966,7 +4966,7 @@ export interface UpdateDnaReportRequest {
   changeReason?: string;
   /** Current row version of the DNA report (from the prior GET). The admin PATCH fails with 412 if the version drifted. */
   expectedVersion?: number;
-  /** TASK-551 — the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear. */
+  /** the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: } to clear. */
   redactionRules?: Record<string, unknown>;
   /** Updated report data (JSON) */
   reportData?: Record<string, unknown>;
@@ -5269,7 +5269,7 @@ export interface UpdatePipelineRequest {
 export interface UpdatePlanEntitlementRequest {
   /** Current row version (OCC). REQUIRED; the update fails with 412 on drift. */
   expectedVersion: number;
-  /** Does this plan include the harness AGENTIC LOOP (TASK-705)? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE. */
+  /** Does this plan include the harness AGENTIC LOOP ? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE. */
   featureAgenticLoop?: boolean;
   /** DNA writing-style + reports enabled */
   featureDnaReports?: boolean;
@@ -5291,29 +5291,29 @@ export interface UpdatePlanEntitlementRequest {
   maxPromptTemplates?: number | null;
   /** Max users/seats; null = unlimited */
   maxUsers?: number | null;
-  /** Max PUBLISHED workflow definitions (TASK-722); null = unlimited */
+  /** Max PUBLISHED workflow definitions; null = unlimited */
   maxWorkflowDefinitions?: number | null;
   /** Model-access tier (base | full | full_custom) */
   modelTier?: string;
   /** Monthly consultations; null = unlimited */
   monthlyConsultations?: number | null;
-  /** Monthly embedding tokens allowance (TASK-615 D11); null = unlimited */
+  /** Monthly embedding tokens allowance; null = unlimited */
   monthlyEmbeddingTokens?: number | null;
-  /** Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited */
+  /** Monthly LLM tokens allowance, all billable kinds summed; null = unlimited */
   monthlyLlmTokens?: number | null;
-  /** Monthly NLP text-units allowance (TASK-615 D11); null = unlimited */
+  /** Monthly NLP text-units allowance; null = unlimited */
   monthlyNlpTextUnits?: number | null;
-  /** Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited */
+  /** Monthly STT session-seconds allowance; null = unlimited */
   monthlySttSessionSeconds?: number | null;
   /** Monthly summaries; null = unlimited */
   monthlySummaries?: number | null;
   /** Monthly transcription minutes; null = unlimited */
   monthlyTranscriptionMinutes?: number | null;
-  /** Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited */
+  /** Monthly TTS characters allowance, Unicode code points; null = unlimited */
   monthlyTtsCharacters?: number | null;
-  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited */
+  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke; null = unlimited */
   monthlyWorkflowInvocations?: number | null;
-  /** TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`. */
+  /** ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`. */
   rateLimitPerMinute?: number | null;
   /** Rate-limit tier (strict | default | relaxed | heavy) */
   rateLimitTier?: string;
@@ -5686,7 +5686,7 @@ export interface UpsertPlatformStorageConfigRequest {
 export interface UpsertTenantEntitlementRequest {
   /** Current row version (OCC). REQUIRED to update an existing override; ignored on create. */
   expectedVersion?: number;
-  /** Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant (TASK-705). Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide. */
+  /** Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant. Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide. */
   featureAgenticLoop?: boolean | null;
   /** Override DNA reports feature; null = inherit */
   featureDnaReports?: boolean | null;
@@ -5708,27 +5708,27 @@ export interface UpsertTenantEntitlementRequest {
   maxPromptTemplates?: number | null;
   /** Override max users; null = inherit */
   maxUsers?: number | null;
-  /** Override max PUBLISHED workflow definitions (TASK-722); null = inherit */
+  /** Override max PUBLISHED workflow definitions; null = inherit */
   maxWorkflowDefinitions?: number | null;
   /** Override model tier; null = inherit */
   modelTier?: string | null;
   /** Override monthly consultations; null = inherit */
   monthlyConsultations?: number | null;
-  /** Override monthly embedding tokens allowance (TASK-615 D11); null = inherit */
+  /** Override monthly embedding tokens allowance; null = inherit */
   monthlyEmbeddingTokens?: number | null;
-  /** Override monthly LLM tokens allowance (TASK-615 D11); null = inherit */
+  /** Override monthly LLM tokens allowance; null = inherit */
   monthlyLlmTokens?: number | null;
-  /** Override monthly NLP text-units allowance (TASK-615 D11); null = inherit */
+  /** Override monthly NLP text-units allowance; null = inherit */
   monthlyNlpTextUnits?: number | null;
-  /** Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit */
+  /** Override monthly STT session-seconds allowance; null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */
   monthlySummaries?: number | null;
   /** Override monthly transcription minutes; null = inherit */
   monthlyTranscriptionMinutes?: number | null;
-  /** Override monthly TTS characters allowance (TASK-615 D11); null = inherit */
+  /** Override monthly TTS characters allowance; null = inherit */
   monthlyTtsCharacters?: number | null;
-  /** Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit */
+  /** Override monthly PUBLISHED-workflow invocations; null = inherit */
   monthlyWorkflowInvocations?: number | null;
   /** Per-tenant absolute rate override (req/min); null = use the tier */
   rateLimitPerMinute?: number | null;
@@ -6124,7 +6124,7 @@ export interface WorkflowNodePortResponse {
   multiple: boolean;
   /** Stable, node-type-local port name — what a graph edge’s fromPort/toPort names. */
   name: string;
-  /** The key of the producing activity’s output object that this socket carries (TASK-809 OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort. */
+  /** The key of the producing activity’s output object that this socket carries. A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort. */
   outputKey?: string;
   /** The port’s type in the closed workflow port vocabulary. Compatibility is a subtype relation with exactly two widenings (transcript ⊑ text, document ⊑ text); transcript and document are siblings, which is what makes document → ner a type error. */
   primitive:

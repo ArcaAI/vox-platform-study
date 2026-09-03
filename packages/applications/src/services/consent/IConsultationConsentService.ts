@@ -29,7 +29,7 @@ export interface ConsentDecision {
    * determined — the grant-store lookup itself failed — as distinct from a
    * genuine denial. Still `allowed: false` (fail-closed either way), but
    * callers that branch instead of catching `assertConsent`'s exception must
-   * be able to tell "denied" from "we could not check" (R4, README §6):
+   * be able to tell "denied" from "we could not check" (R4, :
    * different reason code, different alerting, never conflated.
    */
   unavailable?: boolean;
@@ -38,7 +38,7 @@ export interface ConsentDecision {
 }
 
 /**
- * The ABAC evaluation choke point (TASK-712, consent-abac). One
+ * The ABAC evaluation choke point (consent-abac). One
  * implementation, callable identically from HTTP guards, BullMQ workers,
  * Temporal activities, and tool layers. Fail-closed by construction: no
  * grant, an expired grant, a revoked grant, a grant whose `scope` does not
@@ -52,7 +52,7 @@ export interface IConsultationConsentService {
    * Resolves on an active, sufficiently-scoped grant. Throws
    * `ConsentDeniedException` (403) on a genuine denial, or
    * `ConsentUnavailableException` (503) when the grant-store lookup itself
-   * failed — never the same exception type for both (R4, README §6).
+   * failed — never the same exception type for both (R4,
    */
   assertConsent(input: ConsentAssertInput): Promise<void>;
   /** Same evaluation as `assertConsent`, returned as a decision for callers that must branch instead of throw. */

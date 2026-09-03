@@ -96,7 +96,7 @@ class TestResolveRequestDefaults:
 class TestGenerationFloor:
     """The in-code FLOOR — the last fallback, not the intended value.
 
-    Renamed from `GENERATION_DEFAULTS` in TASK-799 lane B, and the rename is the
+    Renamed from `GENERATION_DEFAULTS` in lane B, and the rename is the
     point: these three numbers had NO config surface at all, so "default" was a
     euphemism for "hardcoded". They are the last of three sources now — the
     caller's own value, then the platform generation profile from the control

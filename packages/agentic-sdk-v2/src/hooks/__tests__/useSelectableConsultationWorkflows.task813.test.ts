@@ -1,5 +1,5 @@
 /**
- * TASK-813 §8 — `useSelectableConsultationWorkflows`, the picker's data source.
+ * `useSelectableConsultationWorkflows`, the picker's data source.
  *
  * Two behaviours are worth pinning, and they pull in opposite directions:
  *

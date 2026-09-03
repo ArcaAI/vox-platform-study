@@ -25,9 +25,9 @@
 
 /**
  * Per-claim verification status from the harness sensors.
- * - `verified`   — at least one sensor grounded the claim in the transcript.
+ * - `verified` — at least one sensor grounded the claim in the transcript.
  * - `unverified` — no provenance / sensors could not confirm (never dropped).
- * - `flagged`    — a sensor actively contradicted the claim (e.g. a dose
+ * - `flagged` — a sensor actively contradicted the claim (e.g. a dose
  *                  mismatch or a medication not present in the transcript).
  */
 export type ClaimStatus = 'verified' | 'unverified' | 'flagged';
@@ -43,13 +43,13 @@ export type ClaimStatus = 'verified' | 'unverified' | 'flagged';
 export type LegacySoapSectionCode = 'S' | 'O' | 'A' | 'P';
 
 /**
- * The section of a clinical document a claim belongs to (TASK-810).
+ * The section of a clinical document a claim belongs to.
  *
  * ## Why this is open rather than a four-value union
  *
  * This used to be `'S' | 'O' | 'A' | 'P'` — a CLOSED union, and the deepest
  * structural commitment to exactly four sections anywhere in the platform.
- * TASK-810 made document shapes tenant-authored: a `DocumentTemplate` declares
+ * made document shapes tenant-authored: a `DocumentTemplate` declares
  * its own ordered sections, each with its own key, and SOAP is one row in that
  * catalog rather than the only expressible shape. A tenant publishing a
  * ten-section discharge summary could not previously even TYPE a claim against

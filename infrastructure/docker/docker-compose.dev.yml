@@ -166,26 +166,26 @@ services:
   # (defined in the core compose file), ALWAYS pass BOTH -f files — the wrappers
   # (scripts/dev-infra.sh) and the commands below already do.
   #
-  # IMAGES (TASK-701): `temporalio/auto-setup` is deprecated and has no 1.30/1.31
+  # IMAGES: `temporalio/auto-setup` is deprecated and has no 1.30/1.31
   # tags. Layout matches temporalio/samples-server compose/docker-compose-postgres.yml
   # — `temporalio/admin-tools` (schema) + `temporalio/server` + `temporalio/ui`.
   # Schema updates are in-place (no `docker compose down -v`).
   #
-  # VOLUME HOP (TASK-702): if hope-temporal fails on a leftover auto-setup 1.29.x
+  # VOLUME HOP: if hope-temporal fails on a leftover auto-setup 1.29.x
   # DB, hop the server — do not wipe volumes, do not DROP Temporal DBs.
   #   TEMPORAL_VERSION=1.30.4 TEMPORAL_ADMINTOOLS_VERSION=1.30.4 pnpm infra:dev:up
   #   # wait until hope-temporal is healthy, then
-  #   pnpm infra:dev:up          # defaults 1.31.2
+  #   pnpm infra:dev:up # defaults 1.31.2
   # admin-tools:1.29.7 does not exist; last auto-setup tag is 1.29.7.
   # Print-only helper: pnpm infra:dev:temporal-hop
-  # Runbook: docs/implementation/TASK-702-Dependency-Blocker-Resolutions
+  # Runbook:
   #
   # Start (from the monorepo root):
   #   docker compose -f infrastructure/docker/docker-compose.yml \
   #                  -f infrastructure/docker/docker-compose.dev.yml \
   #                  --profile temporal up -d temporal temporal-ui
   #
-  #   Web UI:        http://localhost:${TEMPORAL_UI_PORT:-8233}
+  #   Web UI: http://localhost:${TEMPORAL_UI_PORT:-8233}
   #   gRPC frontend: localhost:${TEMPORAL_PORT:-7233}
   # ==========================================================================
 
@@ -245,13 +245,13 @@ services:
       - SQL_VIS_MAX_CONNS=4
       - SQL_VIS_MAX_IDLE_CONNS=4
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-      # TASK-730: Temporal server metrics, off by default. Same env var
+      # Temporal server metrics, off by default. Same env var
       # arca/hope-v2-deployment's base/temporal.yaml sets on the in-cluster
       # (currently disconnected) hope-temporal Deployment — task-queue latency,
       # workflow-task timeouts, and persistence errors are otherwise invisible
       # to Prometheus for every durable workflow this platform runs. Paired
       # with configs/prometheus/prometheus.yml's `temporal` scrape job below.
-      # AUTHORED, NOT RUNTIME-VERIFIED (TASK-730): local infra was down for the
+      # AUTHORED, NOT RUNTIME-VERIFIED: local infra was down for the
       # whole of this session, so this has not been confirmed against a live
       # `temporalio/server:1.31.2` container — verify on the next infra-up.
       - PROMETHEUS_ENDPOINT=0.0.0.0:9090
@@ -351,7 +351,7 @@ services:
   # Local Grafana keeps dev-convenience auth (admin/admin, anonymous Viewer).
   # Production Prometheus/Grafana live under cluster/ops — not this Compose file.
   #
-  #   Prometheus UI: http://localhost:9090   ·   Grafana UI: http://localhost:3001
+  #   Prometheus UI: http://localhost:9090 · Grafana UI: http://localhost:3001
   # ==========================================================================
   prometheus:
     container_name: hope-prometheus
@@ -369,7 +369,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      # TASK-730: alert rules, matching prometheus.yml's `rule_files` glob.
+      # alert rules, matching prometheus.yml's `rule_files` glob.
       - ./configs/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
@@ -393,7 +393,7 @@ services:
   # Same profile(s) as Prometheus. Start via `pnpm infra:up -- -o` /
   # `pnpm dev:setup-o` / `pnpm dev:stack-o`.
   #
-  #   Grafana UI: http://localhost:${GRAFANA_PORT:-3001}  (dev login admin/admin;
+  #   Grafana UI: http://localhost:${GRAFANA_PORT:-3001} (dev login admin/admin;
   #   anonymous Viewer is enabled so dashboards open without signing in).
   # ==========================================================================
   grafana:
@@ -448,7 +448,7 @@ services:
   # Wire TEXT to them by seeding a SYSTEM-tenant `AiProviderConnection` row per
   # engine, carrying the `baseUrl` (see packages/applications/.../ai-provider-connection).
   # There is NO env-var wiring: `TEXT_VLLM_BASE_URL` / `TEXT_LLAMA_CPP_BASE_URL`
-  # were deleted with the engine sub-configs (TASK-736/799) and are BANNED BY NAME
+  # were deleted with the engine sub-configs (/799) and are BANNED BY NAME
   # in test_task799_config_surface.py — setting one has no effect at all.
   # Every self-hosted adapter is fail-closed on a caller-supplied base_url
   # (`text.core.connection.require_base_url`); it holds no endpoint of its own.
@@ -469,7 +469,7 @@ services:
     restart: unless-stopped
     # vLLM needs a large /dev/shm for its NCCL/worker IPC.
     ipc: host
-    # LOOPBACK ONLY (TASK-823 V-2). vLLM is UNAUTHENTICATED by default, and
+    # LOOPBACK ONLY. vLLM is UNAUTHENTICATED by default, and
     # `--api-key` protects only /v1, /v2 and /inference — NOT /invocations,
     # /pause, /abort_requests or /update_weights. CVE-2026-22778 (CVSS 9.8) is a
     # pre-auth RCE reachable on /invocations. In the cluster an nginx
@@ -485,7 +485,7 @@ services:
       HF_HOME: /data
       # V-4: INFO, never DEBUG. At DEBUG vLLM logs prompt text and token ids.
       VLLM_LOGGING_LEVEL: ${VLLM_LOGGING_LEVEL:-INFO}
-      # ── MinIO weight streaming (TASK-823 §4) ─────────────────────────────
+      # ── MinIO weight streaming ( ─────────────────────────────
       # Inert while VLLM_MODEL is a HuggingFace repo id. Set VLLM_MODEL to an
       # `s3://hope-models/...` URI and VLLM_LOAD_FORMAT=runai_streamer to stream
       # weights from the local MinIO instead — the `hope-models` bucket is
@@ -527,7 +527,7 @@ services:
       # needs ~16.4 GB for WEIGHTS ALONE. It will not load on a 16 GB card (the
       # cluster's RTX 2000 Ada, and many dev boxes) — it OOMs at load, before
       # any KV cache exists. On a 16 GB card use a 4B-class AWQ checkpoint and
-      # see TASK-823 §2A for the arithmetic that decides what fits.
+      # see for the arithmetic that decides what fits.
       - "--model"
       - "${VLLM_MODEL:-Qwen/Qwen3-8B}"
       - "--served-model-name"
@@ -634,10 +634,10 @@ services:
 
 
   # ==========================================================================
-  # MLflow — model registry, experiment tracking, lineage (TASK-822)
+  # MLflow — model registry, experiment tracking, lineage
   # ==========================================================================
   # OPT-IN tier, gated behind the `mlflow` profile. Start with:
-  #   pnpm infra:dev:up -- -m          (or --mlflow)
+  #   pnpm infra:dev:up -- -m (or --mlflow)
   # `pnpm infra:dev:down` tears it down too — `mlflow` is in dev-infra.sh's
   # ALL_PROFILES, so it never lingers as an orphan.
   #
@@ -646,7 +646,7 @@ services:
   # This block mirrors the CLUSTER manifests exactly where it matters — same
   # image DIGEST, same server flags, same migrate-then-serve ordering — and
   # differs only in endpoints. Keep them in step: the shipped manifests are
-  # docs/implementation/TASK-822-MLflow-Deployment/deployment/mlflow*.yaml.
+  # *.yaml.
   #
   # ⚠️ IMAGE: the `-full` variant, NOT the plain one. `ghcr.io/mlflow/mlflow`
   # ships mlflow + SQLAlchemy + alembic and NOTHING ELSE — no psycopg2, no
@@ -785,7 +785,7 @@ services:
           memory: 256M
 
   # ==========================================================================
-  # GGUF serving tier — TASK-824 / TASK-831
+  # GGUF serving tier — /
   # ==========================================================================
   # OPT-IN behind the `gguf` profile (NOT `inference`, deliberately: this tier
   # and the vLLM/TEI tier target the same GPU, and starting both at once on a
@@ -819,17 +819,15 @@ services:
   # must never degrade or fail the /v1/models listing", and a non-200 returns {}
   # before any parsing.)
   #
-  # BUILD FLOOR — NOT NEGOTIABLE. Pinned b9853 (2026-07-01). TASK-831 §4.1 sets
+  # BUILD FLOOR — NOT NEGOTIABLE. Pinned b9853 (2026-07-01). sets
   # a hard floor of b9383: below it a projector pre-norm bug and an audio
   # RMS-norm eps bug make Gemma 4 vision/audio output plausible but WRONG, with
   # no error. Verified by ancestry, not by build number —
-  # docs/implementation/TASK-824-LM-Studio-Service/image/verify-build-floor.py.
   #
   # Weights are operator-staged into ${GGUF_MODELS_DIR} (default ./models/gguf),
   # the same posture as the llama-cpp service above. In the cluster a Job syncs
   # them from MinIO with sha256 verification; locally you place them by hand.
   # Pinned revisions + digests:
-  # docs/implementation/TASK-824-LM-Studio-Service/deployment/model-sync.yaml
   gguf-server:
     container_name: hope-gguf-server
     # CPU image by default so this profile starts on any dev box, Apple Silicon
@@ -856,7 +854,7 @@ services:
       # ⚠️ llama-server prints, at every startup:
       #      "NOTE: router mode is experimental"
       #      "it is not recommended to use this mode in untrusted environments"
-      #    Recorded, not hidden. See the ticket §2A for why it is accepted here
+      # Recorded, not hidden. for why it is accepted here
       #    (ingress-restricted pod + --api-key-file) and what the fallback is.
       - "--models-preset"
       - "/models/presets.ini"
@@ -898,8 +896,8 @@ services:
   #
   # ⚠️ NOT REACHABLE FROM apps/text YET. `main.py:191-194` registers exactly one
   # embedding provider — `tei-embed` — and TEI cannot load a GGUF at all
-  # (TASK-831 §5: safetensors/ONNX only). Wiring this needs an `embeddings`
-  # provider factory in apps/text, which is TASK-831 §9 owner decision 2.
+  # (safetensors/ONNX only). Wiring this needs an `embeddings`
+  # provider factory in apps/text, which is owner decision 2.
   # The server works; the routing does not exist. It is started here so that
   # decision can be evaluated against a running endpoint instead of a document.
   gguf-embed:
@@ -919,7 +917,7 @@ services:
       - "/models/${GGUF_EMBED_MODEL:-embeddinggemma-300M-qat-Q4_0.gguf}"
       # The served id. MUST equal the AiModel row's `sourceUri`: the gateway
       # puts `model.sourceUri` on the wire as the OpenAI `model` field, so a
-      # mismatch 404s every request (TASK-831 §7.4).
+      # mismatch 404s every request
       - "--alias"
       - "llama-cpp-embeddinggemma-300m-qat"
       - "--embeddings"

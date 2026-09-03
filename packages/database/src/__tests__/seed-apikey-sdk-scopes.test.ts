@@ -18,10 +18,10 @@ import { SEED_API_KEY_IDS } from '../prisma/db_main/seed/00-constants';
 
 /**
  * The scopes the day-1 SDK surface needs, mirroring the `@RequiredScopes(...)` declared on:
- *  - POST /api/smr/api/v1/{presummary,summary/sync}          → consultation:report:write
- *  - POST /consultations/:id/summary[/pre-summary][/async]   → consultation:report:write
- *  - GET  /consultations/:id/summary{,/latest,/pre-summary/latest} → consultation:report:read
- *  - GET/POST /consultations/jobs/:jobId{,/cancel,/stream}   → consultation:session:read
+ *  - POST /api/smr/api/v1/{presummary,summary/sync} → consultation:report:write
+ *  - POST /consultations/:id/summary[/pre-summary][/async] → consultation:report:write
+ *  - GET /consultations/:id/summary{,/latest,/pre-summary/latest} → consultation:report:read
+ *  - GET/POST /consultations/jobs/:jobId{,/cancel,/stream} → consultation:session:read
  *
  * Keep in sync with those decorators. `api-key-scope-audit.ts` guards the routes' half.
  */
@@ -70,9 +70,9 @@ describe('seeded API keys — day-1 Node SDK scope coverage', () => {
 });
 
 /**
- * TASK-763 — no seeded key may carry a RESERVED scope.
+ * no seeded key may carry a RESERVED scope.
  *
- * TASK-757 makes `/api/v1/admin/*` a JWT-only plane: all 65 admin controllers
+ * makes `/api/v1/admin/*` a JWT-only plane: all 65 admin controllers
  * carry `@ForbidApiKey()`, which `UnifiedAuthGuard` checks BEFORE the scope
  * check, so every `admin:*` string is inert whatever a key holds. The
  * `webhook:*` family goes with them — its only consumer is `WebhookController`
@@ -93,7 +93,7 @@ describe('seeded API keys — day-1 Node SDK scope coverage', () => {
  */
 const RESERVED_SCOPE_PREFIXES = ['admin:', 'webhook:'] as const;
 
-describe('seeded API keys — reserved scopes (TASK-757 policy A2)', () => {
+describe('seeded API keys — reserved scopes (policy A2)', () => {
   for (const key of DEFAULT_API_KEYS) {
     it(`"${key.keyName}" carries no reserved scope`, () => {
       const offending = (key.scopes as string[]).filter((scope) => RESERVED_SCOPE_PREFIXES.some((prefix) => scope.startsWith(prefix)));
@@ -115,9 +115,9 @@ describe('seeded API keys — reserved scopes (TASK-757 policy A2)', () => {
 });
 
 /**
- * TASK-763 — the business-plane reads the SDK actually performs.
+ * the business-plane reads the SDK actually performs.
  *
- * TASK-758 gave nine previously-undeclared controllers a scope. Several sit
+ * gave nine previously-undeclared controllers a scope. Several sit
  * directly on the day-1 SDK path, so a key minted before that change now 403s
  * on them. Each scope below is pinned to the SDK call that needs it, so
  * trimming one fails here instead of surfacing as a confusing 403 in a
@@ -137,7 +137,7 @@ const SDK_BUSINESS_PLANE_SCOPES: ReadonlyArray<readonly [scope: string, why: str
   ['tts:voice:read', 'GET /speech/voices'],
 ];
 
-describe('seeded SDK keys — TASK-758 business-plane coverage', () => {
+describe('seeded SDK keys —  business-plane coverage', () => {
   for (const [scope, why] of SDK_BUSINESS_PLANE_SCOPES) {
     it(`the shared SDK scope set carries "${scope}"`, () => {
       expect(SDK_DAY_ONE_SCOPES as readonly string[], why).toContain(scope);
@@ -166,7 +166,7 @@ describe('seeded SDK keys — TASK-758 business-plane coverage', () => {
  * half. The STT strings below were unpinned by anything in this file, yet every
  * compat transcription path dies without them:
  *
- *   - `stt:stream:write`        → POST /api/stt/{start_session,switch,stop_session}
+ *   - `stt:stream:write` → POST /api/stt/{start_session,switch,stop_session}
  *                                 (`SttCompatController`, class-level
  *                                 `@RequiredScopes`) — the frozen v1 session
  *                                 lifecycle the compat audio socket `/stt` rides on.
@@ -175,7 +175,7 @@ describe('seeded SDK keys — TASK-758 business-plane coverage', () => {
  *                                 which mints the `stt_session:<id>` ticket for
  *                                 `/ws/stt/stream`, AND the batch job routes
  *                                 (`POST /audio/transcription-jobs`, `/{id}`).
- *   - `stt:transcription:read`  → transcription result reads.
+ *   - `stt:transcription:read` → transcription result reads.
  *   - `consultation:report:write` → POST /api/smr/api/v1/{summary/sync,presummary}
  *                                 (`TextCompatController`) — the API-compat
  *                                 summarization pair `useText()` calls.

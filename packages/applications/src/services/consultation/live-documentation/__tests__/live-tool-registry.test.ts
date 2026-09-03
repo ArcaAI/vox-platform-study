@@ -1,11 +1,11 @@
 /**
  * The config-driven live tool layer.
  *
- * C4-T1  null/absent toolConfig ⇒ executor sequence + HTTP calls identical to pre-C4
+ * C4-T1 null/absent toolConfig ⇒ executor sequence + HTTP calls identical to pre-C4
  *        (one NLP call producing entities+vitals; groundedness iff env-enabled).
- * C4-T2  `ner.enabled:false` ⇒ no NLP call; grounding of PRIOR entities still re-runs.
- * C4-T3  unknown tool key ⇒ ignored at read (the write-side 400 lives in C2's service).
- * C4-T4  anti-laundering lock: extraction executors receive the transcript delta,
+ * C4-T2 `ner.enabled:false` ⇒ no NLP call; grounding of PRIOR entities still re-runs.
+ * C4-T3 unknown tool key ⇒ ignored at read (the write-side 400 lives in C2's service).
+ * C4-T4 anti-laundering lock: extraction executors receive the transcript delta,
  *        never `runningSummary` — enforced by type AND asserted on the wire.
  */
 
@@ -29,7 +29,7 @@ const logger = { warn: vi.fn(), log: vi.fn(), error: vi.fn(), debug: vi.fn() } a
  * A `ResolvedToolPlan` with `overrides` applied over the platform default.
  *
  * This used to be `normalizeToolPlan(agentToolConfig)` — the parser that turned
- * `DepartmentAgent.toolConfig` JSONB into a plan. TASK-815 deleted the parser
+ * `DepartmentAgent.toolConfig` JSONB into a plan. deleted the parser
  * with the column it read; the REGISTRY's plan handling, which is what this
  * suite is actually about, is unchanged, so the plans are built directly.
  */
@@ -95,7 +95,7 @@ describe('LiveToolRegistry — plan resolution (C4-T1/T2/T3)', () => {
 
   // C4-T3's first half — "an unknown tool key is ignored at READ" — tested
   // `normalizeToolPlan`'s tolerance of a hand-written `DepartmentAgent.toolConfig`
-  // blob. Both the column and the parser went with TASK-815, so there is no
+  // blob. Both the column and the parser went with, so there is no
   // untrusted plan document left to be tolerant of. The REGISTRY's own
   // tolerance survives and is what the remaining assertion covers.
   it('C4-T3: a plan missing a tool entirely degrades to the env default, never to a crash', () => {

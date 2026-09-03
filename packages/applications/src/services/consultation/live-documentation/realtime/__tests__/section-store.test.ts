@@ -1,5 +1,5 @@
 /**
- * TASK-811 tasks 8, 9 and 12 — per-section state, per-section OCC, the deletion
+ * tasks 8, 9 and 12 — per-section state, per-section OCC, the deletion
  * rule, and the `section.patch` contract.
  *
  * The headline case is `concurrent flush + clinician edit`: it is the reason

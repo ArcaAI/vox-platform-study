@@ -5,7 +5,7 @@
  * department and the capability-keyed prompt chain. What comes back is one
  * immutable {@link FrozenLiveAgentSnapshot} that governs a whole session.
  *
- * ## Two fields that used to come off a `DepartmentAgent` row (TASK-815)
+ * ## Two fields that used to come off a `DepartmentAgent` row
  *
  * `toolPlan` was `DepartmentAgent.toolConfig`, normalised. Its successor is not
  * another config blob but the GRAPH: in the workflow substrate "is NER on for
@@ -17,7 +17,7 @@
  *
  * `liveLlm` was `DepartmentAgent.llmOverrides.live`, frozen to a
  * `{provider, model}` pair. Its successor is a per-node `llmBinding`
- * (TASK-816), which has not landed. `null` here is not a gap: it puts the
+ * which has not landed. `null` here is not a gap: it puts the
  * session on the per-flush tenant `text.live` `AiTaskDefault`, which is the
  * tenant → SYSTEM cascade and was already the behaviour for every session whose
  * agent carried no override. The fail-OPEN posture that made the override safe
@@ -140,7 +140,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
         // The model pair was FROZEN at the original session start; re-using the
         // recorded pair keeps a recovered session on the same model rather than
         // re-deriving one that may since have changed. Written by sessions that
-        // predate TASK-815; null for every new one.
+        // predate; null for every new one.
         liveLlm: lineage.liveLlm ?? null,
         frozenAt: lineage.frozenAt ?? new Date().toISOString(),
       };
@@ -212,7 +212,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
   }
 
   /**
-   * The system-role string served for this session (step 4).
+   * The system-role string served for this session.
    *
    * Reads the resolved template's `metaData.promptConfig.systemPrompt` —
    * surfaced via a hand-authored accessor on `PromptTemplateEntity` (mirrors

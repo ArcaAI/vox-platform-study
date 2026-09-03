@@ -1193,11 +1193,11 @@ describe('ChainSummaryService', () => {
   });
 
   // ===========================================================================
-  // TASK-704 — Generator Entry-Point Seam. Comprehensive-summary has no
+  // Generator Entry-Point Seam. Comprehensive-summary has no
   // harness equivalent; the seam call exists purely to log the decision and
   // never blocks/short-circuits generation.
   // ===========================================================================
-  describe('TASK-704 NoteGenerationService seam', () => {
+  describe(' NoteGenerationService seam', () => {
     const buildServiceWithSeam = (noteGenerationService: { generate: ReturnType<typeof vi.fn> } | undefined) => {
       const contextItemRepo = createMockContextItemRepository();
       const consultationRepo = createMockConsultationRepository();
@@ -1263,7 +1263,7 @@ describe('ChainSummaryService', () => {
       await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();
     });
 
-    it('generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+    it('generates unaffected when noteGenerationService is not wired (pre-fixtures)', async () => {
       const mocks = buildServiceWithSeam(undefined);
       primeComprehensive(mocks);
 

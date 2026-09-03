@@ -27,7 +27,7 @@ import { buildTableExport } from '../../shared/table-export';
  * Note: Audit logs are created automatically by the system when resources are
  * created, viewed, updated, or deleted. There is no manual create endpoint, and
  * no delete endpoint either — the trail is append-only/immutable for
- * compliance (HIPAA §164.312(b)). Retention/archival is a separate, audited
+ * compliance (HIPAA Retention/archival is a separate, audited
  * process owned outside the admin surface.
  *
  * Permissions are defined in database policies and assigned to roles.

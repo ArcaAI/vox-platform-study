@@ -1,11 +1,11 @@
 /**
- * Boot-time audit (TASK-758): policy **A1** — a non-`admin` (business) route
+ * Boot-time audit: policy **A1** — a non-`admin` (business) route
  * carries the auth model **JWT + API key**.
  *
  * The point of A1 is developer reach: an integrator holding a scoped tenant
  * API key should be able to drive the platform's business capabilities
  * (transcribe, summarize, run a consultation, read their own usage) without a
- * human session. Its counterpart A2 — `admin/*` ⇒ JWT only — is TASK-757's,
+ * human session. Its counterpart A2 — `admin/*` ⇒ JWT only — is,
  * and this audit deliberately says nothing about that plane.
  *
  * ─── Why an audit and not just a sweep of decorators ───────────────────────
@@ -21,12 +21,12 @@
  * This is the same shape as `RESERVED_INTERNAL_SCOPE_CONTROLLERS`
  * (`api-key-scope-audit.ts`): a POLICED exemption, not a hole.
  *
- * ─── The TASK-759 deferral set is gone (TASK-757 close-out) ────────────────
+ * ─── The deferral set is gone ( close-out) ────────────────
  *
  * A second set, `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED`, once named
  * `MonitoringController` and `ApiHealthController` — two administrative
  * capabilities sitting on business prefixes that A1 had no opinion about while
- * TASK-759 was in flight. TASK-759 has landed (commit `7155c14d4`) and both are
+ * was in flight. has landed (commit `7155c14d4`) and both are
  * now handled structurally rather than by name:
  *
  * - `MonitoringController` moved to `@Controller('admin/monitoring')`, so the
@@ -44,7 +44,7 @@
  * ─── What this does NOT check ──────────────────────────────────────────────
  *
  * Presence of a declaration is `auditEveryApiKeyReachableRouteDeclaresScopes`'s
- * job (TASK-742) and stays there; this audit only judges the VALUE
+ * job and stays there; this audit only judges the VALUE
  * `@ForbidApiKey()` on the business plane. A converted controller passes here
  * the moment it stops forbidding — whether the scope it now declares is the
  * RIGHT one is pinned by `business-plane-apikey-exemptions.test.ts` and the
@@ -83,7 +83,7 @@ export const BUSINESS_PLANE_KEY_FORBIDDEN: ReadonlySet<string> = new Set([
   'AuthController',
   'VoiceProfileController',
   'DnaWritingStyleController',
-  // TASK-760: the 308 shim for the retired `voice-profile` prefix. A shim copies
+  // the 308 shim for the retired `voice-profile` prefix. A shim copies
   // its target's auth posture verbatim, so it inherits `VoiceProfileController`'s
   // exemption and must inherit its entry here too — otherwise the audit reads a
   // faithful shim as an unexplained hole and refuses to boot, which is exactly
@@ -94,7 +94,7 @@ export const BUSINESS_PLANE_KEY_FORBIDDEN: ReadonlySet<string> = new Set([
   'VoiceProfileRedirectShimController',
 ]);
 
-/** `/admin/...` — A2's plane (TASK-757). Matched on the JOINED route path. */
+/** `/admin/...` — A2's plane. Matched on the JOINED route path. */
 const ADMIN_ROUTE_RE = /^\/admin(\/|$)/;
 
 export function auditBusinessPlaneApiKeyExemptions(app: INestApplicationContext): void {
@@ -158,7 +158,7 @@ export function auditBusinessPlaneApiKeyExemptions(app: INestApplicationContext)
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-758: refused to start — ${offenders.length} route(s) forbid API keys on the business plane without an exemption:\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} route(s) forbid API keys on the business plane without an exemption:\n${list}`);
   }
 }
 

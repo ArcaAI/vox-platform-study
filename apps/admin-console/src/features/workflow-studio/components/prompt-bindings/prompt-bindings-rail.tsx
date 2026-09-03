@@ -16,9 +16,9 @@
  * So this rail lives beside the inspector, in the editor an admin already has
  * open, and reports three states per node — never two:
  *
- *   pinned + behind    "New v5 available" + the action to adopt it
- *   pinned + current   the pin, quietly
- *   unpinned           "Follows template" — NOT flagged as behind
+ *   pinned + behind "New v5 available" + the action to adopt it
+ *   pinned + current the pin, quietly
+ *   unpinned "Follows template" — NOT flagged as behind
  *
  * That third state matters. An unpinned node deliberately tracks the template;
  * reporting it as stale would put a permanent badge on a correct configuration
@@ -89,8 +89,10 @@ function BindingRow({
             {binding.hasNewVersion ? <IconArrowUpCircle aria-hidden /> : <IconPencil aria-hidden />}
             {binding.hasNewVersion ? `Review and adopt v${binding.latestVersionNumber}` : 'Edit prompt for this node'}
           </Button>
-          {/* Plain href, never a cross-feature import: `/prompt-templates` is the
-              authoritative editor for the template itself (rule 13 §Routing). */}
+          {/*
+ Plain href, never a cross-feature import: `/prompt-templates` is the
+              authoritative editor for the template itself (rule 13 §Routing).
+*/}
           <Link href="/prompt-templates" className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2">
             Manage prompt templates
           </Link>

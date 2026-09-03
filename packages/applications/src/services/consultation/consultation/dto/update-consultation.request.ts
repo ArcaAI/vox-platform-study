@@ -9,7 +9,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
  * the structural `parentConsultationId` link, and the typed `status` COLUMN
  * are intentionally NOT mutable here.
  *
- * TASK-711 — the `status` field (previously written into the legacy
+ * the `status` field (previously written into the legacy
  * `metadata.status` JSON key) is REMOVED. Lifecycle status now goes
  * exclusively through the dedicated, matrix-guarded routes:
  * `POST :id/prime`, `POST :id/close`, `POST :id/reopen`,

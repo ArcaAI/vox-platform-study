@@ -1,4 +1,4 @@
-"""TASK-799 lane B — the harness judge + retrieval credentials on the BYO plane.
+"""lane B — the harness judge + retrieval credentials on the BYO plane.
 
 Three credentials moved off env and onto `AiProviderConnection`:
 

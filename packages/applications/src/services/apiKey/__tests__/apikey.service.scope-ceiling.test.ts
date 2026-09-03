@@ -1,5 +1,5 @@
 /**
- * TASK-756 — privilege ceiling on API-key minting.
+ * privilege ceiling on API-key minting.
  *
  * `create()` and `update()` used to persist `request.scopes` verbatim. The only
  * validation was `ValidScopesConstraint`, which checks membership in
@@ -80,7 +80,7 @@ const storedKey = (scopes: string[] | null) => ({
   setProperty: vi.fn(),
 });
 
-describe('TASK-756 — ApiKeyService minting privilege ceiling', () => {
+describe('ApiKeyService minting privilege ceiling', () => {
   let service: ApiKeyService;
 
   beforeEach(() => {
@@ -165,12 +165,12 @@ describe('TASK-756 — ApiKeyService minting privilege ceiling', () => {
     // T8
     /**
      * The CEILING has a SUPER_ADMIN fast path — `manage:all` would satisfy every
-     * implication anyway. TASK-757 narrowed WHAT is on the menu, not who may
+     * implication anyway. narrowed WHAT is on the menu, not who may
      * order from it: `admin:*` is now a RESERVED scope and `assertNoReservedScopes`
      * (which runs first, and deliberately has NO super-admin fast path) refuses it
      * for everyone. So this test keeps proving the ceiling does not block a super
      * admin, using the scopes A2 still allows.
-     */
+ */
     it('lets a SUPER_ADMIN mint any NON-RESERVED scope array', async () => {
       setCaller({ roles: ['SUPER_ADMIN'], noAbility: true });
 
@@ -178,7 +178,7 @@ describe('TASK-756 — ApiKeyService minting privilege ceiling', () => {
       expect(mockApiKeyRepository.create).toHaveBeenCalled();
     });
 
-    it("refuses a SUPER_ADMIN's reserved scope — A2 (TASK-757) is not a privilege question", async () => {
+    it("refuses a SUPER_ADMIN's reserved scope — A2  is not a privilege question", async () => {
       setCaller({ roles: ['SUPER_ADMIN'], noAbility: true });
 
       await expect(service.create({ keyName: 'platform', scopes: ['admin:*'] } as never)).rejects.toBeInstanceOf(ForbiddenException);

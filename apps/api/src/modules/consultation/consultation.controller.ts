@@ -72,7 +72,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced note-content
-// PATCH/POST routes on this controller (TASK-709).
+// PATCH/POST routes on this controller.
 import { ApiEndpoint, Authorize, RequiredScopes, RequiresIfMatch, ExpectedVersion, RequiresConsent } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
@@ -158,7 +158,7 @@ class OkResponseDto {
 @ApiTags('consultations')
 @Controller('consultations')
 @Authorize()
-// TASK-742: CLASS-level default for the ~42 consultation routes that carried
+// CLASS-level default for the ~42 consultation routes that carried
 // no API-key declaration (context items, transcriptions, highlights, recording
 // control, streams, entity extraction). The 11 summarization/session routes
 // that already carry their own finer method-level @RequiredScopes are
@@ -178,8 +178,8 @@ export class ConsultationController {
     private readonly chainSummaryService: ChainSummaryService,
     @Inject(IConsultationJobService)
     private readonly consultationJobService: IConsultationJobService,
-    // TASK-732 — the single seam every note-generation entry point routes
-    // through (TASK-704). `generateSummaryAsync` calls it directly now that
+    // the single seam every note-generation entry point routes
+    // through. `generateSummaryAsync` calls it directly now that
     // the legacy `SummaryProcessor`/`createSummaryJob` dispatch it used to
     // rely on has been deleted.
     @Inject(INoteGenerationService)
@@ -196,7 +196,7 @@ export class ConsultationController {
     private readonly highlightService: IHighlightService,
     private readonly harnessProgressService: HarnessProgressService,
     private readonly harnessAssuranceService: HarnessAssuranceService,
-    // TASK-795 RC-2 — relays `consultation:live-assist:{id}` (interpreter
+    // relays `consultation:live-assist:{id}` (interpreter
     // suggestions + correction proposals) to the clinician surface.
     private readonly harnessLiveAssistService: HarnessLiveAssistService,
     // dedicated Redis subscriber for the trajectory SSE relay.
@@ -204,7 +204,7 @@ export class ConsultationController {
     // Best-effort consultation-loop lifecycle signals
     // (`signalConsultationEnding`/`signalLoopCancel`); gated inside that service
     // by the tenant's `agenticLoop` subscription entitlement composed with the
-    // `harness.loop.emergencyStop` platform veto (TASK-705), and never lets a
+    // `harness.loop.emergencyStop` platform veto, and never lets a
     // harness failure surface here.
     private readonly loopContextSignalService: LoopContextSignalService,
     // Lane D — the CLINICIAN writer for `DocumentSection`, counterpart to the
@@ -236,9 +236,9 @@ export class ConsultationController {
    *
    * Default-CLOSED. The flag must be EXPLICITLY set to the string `'true'`
    * to enable shared-patient reads.
-   *   - missing row    -> false
+   *   - missing row -> false
    *   - any other value -> false
-   *   - DB error       -> false (fail-closed, log for ops)
+   *   - DB error -> false (fail-closed, log for ops)
    */
   private async isSharingEnabled(): Promise<boolean> {
     const tenantId = this.cls.get('tenantId');
@@ -379,7 +379,7 @@ export class ConsultationController {
   }
 
   /**
-   * TASK-813 §8 — the SELECTABLE-set half of workflow selection.
+   * the SELECTABLE-set half of workflow selection.
    *
    * `open` accepts `workflowDefinitionSlug` and authorizes it, but until now nothing returned
    * the set of slugs that would pass that gate, so the contract was "guess a slug, get a
@@ -449,7 +449,7 @@ export class ConsultationController {
   }
 
   /**
-   * TASK-813 — the discovery half of workflow selection.
+   * the discovery half of workflow selection.
    *
    * The governing-engine decision was already durable (written to
    * `Consultation.metadata` at open, read by `LoopContextSignalService` before every
@@ -501,8 +501,8 @@ export class ConsultationController {
   @ApiParam({ name: 'patientId', description: 'Patient ID' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  // Consent & ABAC (TASK-712). Prior-history retrieval is one of the four
-  // gated stages named in design.md §Data flow.
+  // Consent & ABAC. Prior-history retrieval is one of the four
+  // gated stages named in flow.
   @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
   async getPatientHistory(@Param('patientId') patientId: string, @Query() query: PaginatedQuery): Promise<PaginatedConsultationResponse> {
     await this.verifyPatientAccess(patientId);
@@ -517,7 +517,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'patientId', description: 'Patient ID' })
   @ApiParam({ name: 'date', description: 'Appointment date (YYYY-MM-DD)' })
-  // Consent & ABAC (TASK-712). Same purpose as getPatientHistory — a
+  // Consent & ABAC. Same purpose as getPatientHistory — a
   // date-scoped view of the same prior-history retrieval stage.
   @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
   async getByPatientAndDate(@Param('patientId') patientId: string, @Param('date') date: string): Promise<ConsultationResponse[]> {
@@ -532,7 +532,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  // Consent & ABAC (TASK-712). The chain is a cross-visit history view — the
+  // Consent & ABAC. The chain is a cross-visit history view — the
   // same prior-history retrieval stage as getPatientHistory, gated on the
   // SAME purpose even though this route resolves patientId via the loaded
   // consultation (:id) rather than a :patientId param.
@@ -579,10 +579,10 @@ export class ConsultationController {
     return this.consultationService.updateConsultation(id, request, expectedFromHeader);
   }
 
-  // TASK-711 — session state machine. `prime`/`close`/`reopen` are the API
-  // surface of the legality matrix (state-machine.md §2); each carries
-  // `@RequiresIfMatch()` + `@ExpectedVersion()` (TASK-709/05-nestjs-api.md
-  // §Optimistic Concurrency) so a stale client CAS-fails (412) rather than
+  // session state machine. `prime`/`close`/`reopen` are the API
+  // surface of the legality matrix (; each carries
+  // `@RequiresIfMatch()` + `@ExpectedVersion()` (/05-nestjs-api.md
+  // Concurrency) so a stale client CAS-fails (412) rather than
   // silently clobbering a concurrent transition, and an illegal transition
   // surfaces as 409 (`ConsultationService.applyTransition` maps the domain
   // `BusinessException` — verified by the parity unit test alongside this
@@ -607,7 +607,7 @@ export class ConsultationController {
   @ApiResponse({ status: 409, description: "Illegal state transition for the consultation's current status." })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  // Consent & ABAC (TASK-712). `prime` is the session state machine's first
+  // Consent & ABAC. `prime` is the session state machine's first
   // checkpoint — the same AI_DOCUMENTATION purpose `recording/start` already
   // gates (that decorator is left in place; a follow-up ticket removes it
   // once `prime` is the sole consent checkpoint, per the kill-switch's own
@@ -683,8 +683,8 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
-  // Consent & ABAC (TASK-712). Capture start is one of the four gated
-  // stages named in design.md §Data flow.
+  // Consent & ABAC. Capture start is one of the four gated
+  // stages named in flow.
   @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
   async startRecording(@Param('id') id: string, @Body() request: StartRecordingRequest): Promise<RecordingStateResponse> {
     await this.verifyConsultationOwnership(id);
@@ -725,7 +725,7 @@ export class ConsultationController {
     await this.loopContextSignalService.signalConsultationEnding(id, {
       reason: 'recording_stopped',
       persistSnapshot: request?.persistSnapshot ?? true,
-      // TASK-814 §2b: forward accepted corrections so `feedback.capture` (DD-8) has
+      // forward accepted corrections so `feedback.capture` has
       // something to promote over the raw transcript when the endpoint sequence runs.
       // Omitted (not an empty array) when the clinician accepted nothing this session.
       ...(request?.acceptedProposals?.length ? { acceptedProposals: request.acceptedProposals } : {}),
@@ -753,7 +753,7 @@ export class ConsultationController {
     return this.liveDocumentationService.subscribeToLiveSummary(id);
   }
 
-  // TASK-795 RC-2 — relays `consultation:live-assist:{id}` (published by the
+  // relays `consultation:live-assist:{id}` (published by the
   // internal POST /internal/harness/consultations/:id/live-assist route) so the
   // clinician surface can show interpreter suggestions and PROPOSED corrections
   // live.
@@ -899,7 +899,7 @@ export class ConsultationController {
     name: 'X-Context-Schema-Version',
     required: false,
     description:
-      'TASK-661 — the tenant-declared context-schema version the CALLER built against (a `ConsultationContextSchemaVersion` id, ' +
+      'the tenant-declared context-schema version the CALLER built against (a `ConsultationContextSchemaVersion` id, ' +
       'e.g. from the discovery bundle `contextSchemaVersionId` read at session open). When `request.kindKey` is present, the ' +
       "payload validates against THIS version rather than the tenant's current pin — a client on an older schema version is " +
       'never silently upgraded (or broken) by a publish that lands mid-consultation. Ignored when `kindKey` is absent.',
@@ -1051,12 +1051,12 @@ export class ConsultationController {
   }
 
   // ─── Document Sections ───────────────────
-  // The REST surface for `DocumentSection` (TASK-811 OD-7) — a clinical document
+  // The REST surface for `DocumentSection` — a clinical document
   // stored one section per row so that a flush writing `assessment` and a
   // clinician editing `plan` never contend.
   //
-  // TASK-811 §7 left the editing route to "TASK-812 or the console lane", TASK-812
-  // never took it, and TASK-814 §6 declined it ("no section-level mutation
+  // left the editing route to " or the console lane",
+  // never took it, and declined it ("no section-level mutation
   // endpoint exists yet"), so until now `DocumentSectionStore.applyClinicianEdit`
   // had no caller outside its own tests and a clinician could not persist an edit
   // at all. These three routes are that caller.
@@ -1512,7 +1512,7 @@ export class ConsultationController {
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
 
-    // TASK-732 — this route used to enqueue onto the legacy `GenerateSummary`
+    // this route used to enqueue onto the legacy `GenerateSummary`
     // BullMQ queue (`ConsultationJobService.createSummaryJob`), which decided
     // harness-vs-legacy only later, inside `SummaryProcessor.process()`. That
     // processor (the seam-decision site for THIS trigger) was deleted along
@@ -1539,7 +1539,7 @@ export class ConsultationController {
       // Reachable only if `harnessEnabled` resolves false for this
       // consultation (stale per-consultation override, or a not-yet-
       // migrated tenant) — the legacy generator that used to run here no
-      // longer exists. Per `design.md` §Error handling this is a VISIBLE
+      // longer exists. Per `design.md` handling this is a VISIBLE
       // queued failure, never a silent no-op and never a resurrection of the
       // legacy generator.
       this.logger.error({
@@ -1556,7 +1556,7 @@ export class ConsultationController {
     // unresolvable: `GET /consultations/jobs/:jobId` (plus `/cancel` and
     // `/stream`) 404s inside `TenantOwnedResourceInterceptor`, which reads
     // `getJobStatus` for its tenancy check. The legacy queue path deleted in
-    // TASK-732 used to create this record.
+    // used to create this record.
     await this.consultationJobService.registerHarnessNoteJob(decision.harnessJobId, consultationId, tenantId, userId);
 
     return new AsyncJobResponseDto({

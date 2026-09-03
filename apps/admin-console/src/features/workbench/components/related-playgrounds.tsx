@@ -18,8 +18,8 @@ const LINKS = [
 ] as const;
 
 /**
- * Cross-links to the existing STT / text-generation playgrounds (TASK-721 Task 10). Plain
- * `href`s only — no cross-feature imports, no re-implementation (README §2.3): those surfaces
+ * Cross-links to the existing STT / text-generation playgrounds. Plain
+ * `href`s only — no cross-feature imports, no re-implementation: those surfaces
  * already cover the free-form exploration case; this card just points at them.
  */
 export function RelatedPlaygrounds() {

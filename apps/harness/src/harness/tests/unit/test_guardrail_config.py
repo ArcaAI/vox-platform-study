@@ -3,7 +3,7 @@
 Phase 2 needs
 
 * NO safety sub-config at all — ``HARNESS_SAFETY_*`` and its Granite Guardian engine
-  plane were DELETED (TASK-799 A.1 / F-02); the content-safety screen is delegated to
+  plane were DELETED ( A.1 / F-02); the content-safety screen is delegated to
   ``apps/guardrail``. ``TestSafetyEnginePlaneDeleted`` locks that,
 * a fail-closed **PHI** sub-config (``HARNESS_PHI_*``) for the pre-cloud-egress
   redaction guard, and
@@ -89,9 +89,9 @@ class TestPhiConfig:
         # The whole point of the PHI guard: fail CLOSED (block egress on doubt).
         assert c.fail_closed is True
         # The known-LOCAL providers — everything else (including a provider not
-        # in this list) defaults to redact-and-confirm (default-deny; TASK-706).
+        # in this list) defaults to redact-and-confirm (default-deny;).
         assert "lm-studio" in c.local_providers
-        # Owner decision 2026-08-20 (TASK-736/TASK-740 D-740-3): Ollama provider
+        # Owner decision 2026-08-20 (/-3): Ollama provider
         # logic stays available, and it is a local (non-egress) engine like
         # lm-studio/vllm/llama-cpp — it belongs back on the PHI local allowlist.
         assert "ollama" in c.local_providers
@@ -106,7 +106,7 @@ class TestPhiConfig:
         assert c.local_providers == ["lm-studio"]
 
     def test_empty_local_providers_raises_when_enabled(self) -> None:
-        # TASK-706 Task 4: an empty local-provider list under enabled=True would
+        # an empty local-provider list under enabled=True would
         # redact EVERY call (including genuinely local ones) — almost certainly a
         # misconfiguration, so refuse to boot rather than silently degrade.
         with pytest.raises(ValidationError):

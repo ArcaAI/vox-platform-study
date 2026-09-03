@@ -24,7 +24,7 @@ Why fakeredis and not a real ephemeral Redis: `fakeredis[lua]` (already an
 `apps/text` `test` extra — see `pyproject.toml`) implements Redis Streams
 (XADD/XREAD/XRANGE), which is all the current `TaskManager` needs, without
 requiring a live Redis server — running `redis-server` or docker infra is an
-orchestrator-owned surface (EXECUTION-PLAN §4), not something a Lane H
+orchestrator-owned surface (EXECUTION-PLAN, not something a Lane H
 benchmark script should spin up itself.
 
 Hermetic env: every var that would otherwise dial an unreachable peer

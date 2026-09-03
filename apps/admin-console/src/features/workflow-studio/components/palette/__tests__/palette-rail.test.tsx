@@ -1,5 +1,5 @@
 /**
- * `PaletteRail` (TASK-719 Task 12) — registry-driven, safety class always visible, adding a
+ * `PaletteRail` — registry-driven, safety class always visible, adding a
  * node works without dragging (WCAG 2.5.7: each item is a real `<button>`).
  */
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -84,7 +84,7 @@ describe('PaletteRail', () => {
   });
 });
 
-describe('PaletteRail filter (TASK-719 UX pass)', () => {
+describe('PaletteRail filter (UX pass)', () => {
   it('narrows the list by humanized label, announces the count, and shows an empty state', () => {
     render(<PaletteRail descriptors={[NOOP, MANDATORY]} onAddNode={vi.fn()} />);
     expect(screen.getByText('2 of 2 node types')).toBeTruthy();

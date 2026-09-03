@@ -1,4 +1,4 @@
-"""TASK-816 Phase 1 (DD-10) — the DURABLE lane carries per-node model selection.
+"""(DD-10) — the DURABLE lane carries per-node model selection.
 
 ## What this pins
 

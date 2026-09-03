@@ -53,7 +53,7 @@ function ScreenBody() {
 
   // BUG-014: a pending query that is NOT fetching never resolves, so the
   // skeleton would stand forever. Fold it in with the error case and render
-  // one retryable terminal control instead (rules 10 and 11 §4). Only when
+  // one retryable terminal control instead (rules 10 and 11 Only when
   // there is nothing to show — a refetch that fails over cached options must
   // keep the working picker rather than take the screen away.
   const pickerFailed = !pipelinesQuery.data && (pipelinesQuery.isError || isStalledQuery(pipelinesQuery));

@@ -1,5 +1,5 @@
 /**
- * Lane N (TASK-815 §14a) — parse a model's IMPORTANT-FINDINGS reply.
+ * Lane N — parse a model's IMPORTANT-FINDINGS reply.
  *
  * ## What this module deliberately does NOT do
  *
@@ -58,7 +58,7 @@ function parseJsonObject(content: string): Record<string, unknown> | null {
  * The findings a client can actually anchor a highlight to, capped at `limit`.
  *
  * Shaped as `LiveSummaryEntityDto` on purpose: that is what lets a finding travel the highlight
- * path TASK-811 already built (`groundEntitiesToNote` → `reanchorAnnotations`) with no second
+ * path already built (`groundEntitiesToNote` → `reanchorAnnotations`) with no second
  * anchoring mechanism to keep in step.
  */
 export function parseImportantFindings(content: string, limit: number = DEFAULT_MAX_FINDINGS): LiveSummaryEntityDto[] {

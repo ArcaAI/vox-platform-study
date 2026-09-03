@@ -1,4 +1,4 @@
-"""Capture the ``agentic.loop`` history fixture for the replay-compat tests (TASK-848b step 9).
+"""Capture the agentic.loop history fixture for the replay-compat tests (b step 9).
 
 Companion to ``_capture_interpreter_replay_fixture.py``, and deliberately the same shape. What it
 adds is the ONE command the loop introduced: the interpreter starting `AgenticLoopWorkflow` as a

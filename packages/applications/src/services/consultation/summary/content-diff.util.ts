@@ -8,12 +8,12 @@
  * diff) so the summary write path pulls in no new packages, and pure so it is
  * trivially unit-testable. NO schema change — both columns already exist.
  *
- * ## Why the section vocabulary is a PARAMETER (TASK-810 carry-over A)
+ * ## Why the section vocabulary is a PARAMETER ( carry-over A)
  *
  * This module used to own a private four-key tuple —
  * `['subjective','objective','assessment','plan']` — and match note headings
  * against it. That is the same structural commitment to exactly four sections
- * that TASK-810 removed from the live-flush plane, surviving here only because
+ * that removed from the live-flush plane, surviving here only because
  * it sits on a DIFFERENT call graph: the FINAL summary write (clinician edit and
  * sign-off in `summary.service.ts`), not the live loop.
  *
@@ -48,7 +48,7 @@ export interface FieldChange {
 
 /** The delta written onto a `ContextItemVersion` on edit / sign. */
 export interface ContentDelta {
-  /** Unified line diff (`  ` context, `- ` removed, `+ ` added), or null when unchanged. */
+  /** Unified line diff (` ` context, `- ` removed, `+ ` added), or null when unchanged. */
   contentDiff: string | null;
   /** Per-section (or whole-document) changes, or null when unchanged. */
   fieldChanges: Record<string, FieldChange> | null;
@@ -121,7 +121,7 @@ function parseSections(text: string, lookup: SectionLookup): Record<string, stri
 
 /**
  * Hand-rolled LCS line diff → compact unified text. Context lines are prefixed
- * `  `, removals `- `, additions `+ `. Clinical notes are small, so the O(n·m)
+ * ` `, removals `- `, additions `+ `. Clinical notes are small, so the O(n·m)
  * table is fine (the DNA corpus is independently capped upstream).
  */
 function buildLineDiff(oldText: string, newText: string): string {

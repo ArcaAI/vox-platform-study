@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `GraphListEditor` (TASK-719 Task 13) — the WCAG 2.5.7 single-pointer / keyboard-only peer of
+ * `GraphListEditor` — the WCAG 2.5.7 single-pointer / keyboard-only peer of
  * the canvas, not a fallback: every mutation the canvas supports (configure, connect, delete)
  * is reachable here through real `<button>`s; reorder is buttons, not drag. Renders inside
  * `contentMode="scroll"` (rule 11 §1: "this editor is the one that scrolls").

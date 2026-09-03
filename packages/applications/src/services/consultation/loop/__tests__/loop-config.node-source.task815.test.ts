@@ -1,5 +1,5 @@
 /**
- * TASK-815 — `LoopConfigService` resolves against the GOVERNING WORKFLOW
+ * `LoopConfigService` resolves against the GOVERNING WORKFLOW
  * DEFINITION and the tenant's context schema, not against a `DepartmentAgent`.
  *
  * ## What each field's source became

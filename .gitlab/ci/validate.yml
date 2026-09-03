@@ -163,7 +163,7 @@ env-drift-check:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-env-declarations, rules]
 
-# ── Dead settings-field gate (TASK-799 Phase 3.2) ────────────────────────────
+# ── Dead settings-field gate (Phase 3.2) ────────────────────────────
 # The MIRROR of `env-drift-check` above, and the two fail for opposite reasons:
 #
 #   env-drift-check          an env var is READ but not DECLARED — a generated
@@ -173,7 +173,7 @@ env-drift-check:
 #                            pydantic-settings field an operator can set while
 #                            nothing consumes the value. Config theatre.
 #
-# The second was the unwatched direction: TASK-799 Phases 0-2 deleted ~95 such
+# The second was the unwatched direction: Phases 0-2 deleted ~95 such
 # fields, every one found by hand (assessment RC-3), and nothing stopped the
 # next ~95 accumulating.
 #
@@ -193,7 +193,7 @@ python-dead-settings:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-python, rules]
 
-# ── vox-node admin surface drift gate (TASK-773) ─────────────────────────────
+# ── vox-node admin surface drift gate ─────────────────────────────
 # The same shape as the three `generate-*-check` gates above, for
 # `@arcaai/vox-node`'s ~380-method `/api/v1/admin/**` surface.
 #
@@ -243,7 +243,7 @@ generate-vox-node-admin-check:
         - packages/vox-node/src/resources/admin/**/*
     - if: $PIPELINE_TYPE == "release_sdk"
 
-# ── OpenAPI coverage gate (TASK-783) ────────────────────────────────────────
+# ── OpenAPI coverage gate ────────────────────────────────────────
 # Cross-checks the two committed artifacts against each other. Catches:
 #
 #   1. a route that is served but carries no Swagger metadata — invisible in
@@ -252,10 +252,10 @@ generate-vox-node-admin-check:
 #      from different builds and one is stale.
 #
 # (2) is not hypothetical: `openapi.json` sat one commit behind
-# `route-manifest.json` after TASK-733 and nothing caught it.
+# `route-manifest.json` after and nothing caught it.
 #
 # The distinction between (1) and "deliberately hidden" rests entirely on the
-# manifest's `apiExcluded` flag, which was ALWAYS false until TASK-783 fixed
+# manifest's `apiExcluded` flag, which was ALWAYS false until fixed
 # how it reads `@nestjs/swagger`'s wrapped metadata. `api-exclude-metadata.test.ts`
 # locks that against the real decorators.
 #
@@ -290,7 +290,7 @@ openapi-coverage-check:
         - apps/api/src/**/*
         - scripts/check-openapi-coverage.ts
 
-# ── Developer-portal spec drift gate (TASK-783) ─────────────────────────────
+# ── Developer-portal spec drift gate ─────────────────────────────
 # The two projections the admin console's developer portal serves are GENERATED
 # by joining `openapi.json` (types) with `route-manifest.json` (the
 # authorization oracle). Same shape as `generate-vox-node-admin-check`: re-run

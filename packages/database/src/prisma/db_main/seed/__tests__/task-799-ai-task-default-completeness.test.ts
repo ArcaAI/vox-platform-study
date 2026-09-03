@@ -1,5 +1,5 @@
 /**
- * TASK-799 Round 5 lane D — every DECLARED AI task key has a seeded platform default.
+ * Round 5 lane D — every DECLARED AI task key has a seeded platform default.
  *
  * THE DEFECT THIS EXISTS TO PREVENT. `AI_TASK_KEYS`
  * (`packages/applications/src/services/ai-task-default/constants.ts`) is the

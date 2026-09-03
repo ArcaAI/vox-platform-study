@@ -22,7 +22,7 @@
  * ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which DEFAULTS TO
  * TRUE — for every tenant including SYSTEM and GLOBAL, in every environment,
  * with no row present and no opt-in step (`platform-ops.descriptors.ts`;
- * TASK-641 FR-6 reversed the original permissive-by-default posture). While
+ * FR-6 reversed the original permissive-by-default posture). While
  * it is off (rule 0 below — an operator's deliberate flip, not the default)
  * this guard passes every request. Nothing here is deleted — one settings
  * write re-arms it.
@@ -39,7 +39,7 @@
  *  0. Origin enforcement disabled (an operator opt-OUT — enforcement is ON by
  * default) → PASS THROUGH, without consulting the registry.
  *
- *  1. No `Origin` header  → PASS THROUGH. Server-to-server, CLI, worker and
+ *  1. No `Origin` header → PASS THROUGH. Server-to-server, CLI, worker and
  *     internal callers send none, and CORS already admits them
  *     (`no_origin_provided`). This is the MAJORITY of gateway traffic, not an
  *     edge case — enforcing a binding here would break every internal caller

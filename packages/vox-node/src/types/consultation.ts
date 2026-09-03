@@ -106,7 +106,7 @@ export interface ConsultationGetResponse {
   appointmentDate: string;
   /**
    * Clinical lifecycle status — the single-sourced `ConsultationStatus`
-   * column (TASK-711 session state machine; the legacy `metadata.status`
+   * column ( session state machine; the legacy `metadata.status`
    * tracker this field used to derive from is deleted). Defaults to
    * `'OPEN'` server-side for a freshly-created consultation.
    */

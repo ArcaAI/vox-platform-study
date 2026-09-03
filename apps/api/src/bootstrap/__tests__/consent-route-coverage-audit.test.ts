@@ -1,10 +1,10 @@
 /**
- * Boot-time consent-coverage audit (TASK-712, consent-abac — README §4 Task 11).
+ * Boot-time consent-coverage audit (consent-abac — Task 11).
  *
  * Pins the predicate: any route whose full path carries a `:patientId`
  * segment must declare `@RequiresConsent(...)` or `@ConsentExempt(reason)`,
  * and proves the audit "bites" — refuses to start, then passes once the
- * decorator is restored (README §5 Acceptance Criteria).
+ * decorator is restored ( Acceptance Criteria).
  */
 import { describe, it, expect } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';

@@ -3,10 +3,10 @@ import { DEFAULT_POLICIES } from '../01-policy';
 import { DEFAULT_ROLES } from '../03-role';
 
 /**
- * TASK-763 — a scope whose implied ability NO seeded policy grants is
+ * a scope whose implied ability NO seeded policy grants is
  * unmintable by anyone below SUPER_ADMIN.
  *
- * `ApiKeyService.assertScopeCeiling` (TASK-756) refuses to mint a key carrying
+ * `ApiKeyService.assertScopeCeiling` refuses to mint a key carrying
  * a scope whose implied CASL pair the CALLER does not itself hold. That is the
  * right rule, but it silently contradicts any route that is `@Authorize()` with
  * NO ability — those are open to every authenticated user, yet their scope may
@@ -14,7 +14,7 @@ import { DEFAULT_ROLES } from '../03-role';
  *
  * Two such contradictions existed when this ticket was written:
  *
- * | Scope (TASK-758) | Route | Implied ability | Held by |
+ * | Scope | Route | Implied ability | Held by |
  * |---|---|---|---|
  * | `platform:changelog:read` | `ChangelogController` `@Authorize()` | `read:ChangelogEntry` | **nobody** — SUPER_ADMIN only, via `manage:all` |
  * | `tenant:context-schema:read` | `MyTenantContextSchemaController` `@Authorize()` | `read:ConsultationContextSchema` | tenant admins only, via `manage:` |

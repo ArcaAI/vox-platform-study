@@ -1,12 +1,12 @@
 /*
-  TASK-721 R4 (RESOLVED, owner ruling 2026-08-20): WorkflowTestFixture.input
+   R4 (RESOLVED, owner ruling 2026-08-20): WorkflowTestFixture.input
   is now encrypted with Vault Transit, mirroring GoldenCase's
   transcript/referenceNote treatment (harness.prisma) exactly — ciphertext in
   `encryptedInput` + shared `keyVersion`, decrypted on read by the same
   `hope-phi` Transit key and the same phi-read-decrypt.ts wiring.
 
   Existing rows: this repo is pre-production (no customer/prod data behind
-  this brand-new, still design-gated Workbench feature — TASK-721 Task 1 is
+  this brand-new, still design-gated Workbench feature —  Task 1 is
   still HUMAN-GATED and unshipped). The plaintext `input` column cannot be
   transformed into Vault-Transit ciphertext with plain SQL (Transit
   encryption requires a live Vault round-trip, which a migration cannot

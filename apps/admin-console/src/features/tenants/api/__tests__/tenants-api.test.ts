@@ -111,7 +111,7 @@ describe('tenants client', () => {
     const calls = installFetchMock(() => Response.json({ tags: ['pilot'] }));
     await getTenantUsage('t-1');
     await getTenantTags('t-1');
-    // TASK-776 H-1 phase 2: `PUT :id/tags` writes the TENANT row and now
+    // phase 2: `PUT :id/tags` writes the TENANT row and now
     // requires `If-Match`, so the caller passes the tenant DETAIL ETag — the
     // `/tags` read carries no row version of its own.
     await setTenantTags('t-1', ['pilot', 'emea'], '"5"');

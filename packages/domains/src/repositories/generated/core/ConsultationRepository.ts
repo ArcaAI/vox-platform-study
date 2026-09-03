@@ -377,13 +377,13 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * TASK-711 — consultations whose gate SLA was exhausted (PENDING_REVIEW →
+   * consultations whose gate SLA was exhausted (PENDING_REVIEW →
    * TIMED_OUT, `recordEscalation`'s terminal `GATE_ABANDONED` path), oldest
    * first. A sibling to `findPendingReviewForTenant`: rows that time out must
    * NOT silently drop out of the gate-queue surface — this is the explicit
-   * dedicated read state-machine.md/README §3.3 pitfall 5 calls for, rather
+   * dedicated read state-machine.md/ pitfall 5 calls for, rather
    * than widening the PENDING_REVIEW filter to include TIMED_OUT.
-   */
+ */
   async findTimedOutForTenant(tenantId: string): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
@@ -396,7 +396,7 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * TASK-711 (state-machine.md §1a) — consultations sitting in a
+   *  — consultations sitting in a
    * sweep-eligible state (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`,
    * `TIMED_OUT`, `REOPENED`) whose `updatedAt` is older than `cutoff`, oldest
    * first. Backs `ConsultationTimeoutSweepService`'s scheduled tick.
@@ -406,11 +406,11 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * request), so this must see every tenant's stale rows in one query rather
    * than being called once per tenant. `OPEN` is deliberately NOT in the
    * eligible set — a consultation never even primed has no clinical content
-   * to be "incomplete" about (state-machine.md §1a "Sweep-ineligible"); nor is
+   * to be "incomplete" about ( "Sweep-ineligible"); nor is
    * `PENDING_REVIEW`, which has its own narrower gate-SLA path
    * (`recordEscalation` → `TIMED_OUT`), or `RECORDING`, an active capture
    * session that force-terminating live audio would wrongly interrupt.
-   */
+ */
   async findTimeoutSweepEligible(cutoff: Date): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {

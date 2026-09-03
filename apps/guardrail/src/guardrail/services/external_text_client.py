@@ -1,4 +1,4 @@
-"""Guardrail's peer-service client to `apps/text` (TASK-735 Phase 2b).
+"""Guardrail's peer-service client to `apps/text`.
 
 Guardrail owns POLICY and delegates INFERENCE. This client is the whole of the
 LLM half of that split: it posts one judgement to `text`'s isolated judge lane
@@ -58,7 +58,7 @@ JUDGE_PATH = "/api/v1/generate/internal/judge"
 # no criteria is not a lenient judge — it is no judge at all, so absence raises.
 #
 # The 40-term `_MEDICAL_KEYWORDS` fallback that used to live here is gone with it
-# (TASK-777 A-4). It scored the RAW MODEL OUTPUT, so a caller who could steer the
+# It scored the RAW MODEL OUTPUT, so a caller who could steer the
 # judge into emitting prose containing two clinical words earned `is_medical: true`
 # without any model having judged the input — a hardcoded taxonomy and a prompt-
 # injection bypass in the same twelve lines.
@@ -270,7 +270,7 @@ class TextJudgeClient:
         )
 
         if result["confidence"] < self.min_confidence:
-            # ENFORCED, not merely logged (TASK-777 A-6). A verdict the model is not
+            # ENFORCED, not merely logged. A verdict the model is not
             # confident in is a verdict that was not rendered: returning it as if it
             # had cleared the floor made the floor decorative.
             logger.warning(

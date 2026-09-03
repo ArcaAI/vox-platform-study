@@ -25,7 +25,7 @@ import { AiProviderConnectionService } from '../ai-provider-connection.service';
 const TENANT = 'tenant-abc';
 
 /**
- * TASK-799 — the fields an ENABLED connection must carry, per provider.
+ * the fields an ENABLED connection must carry, per provider.
  *
  * These suites use `azure`/`bedrock` as stand-ins for "a cloud provider" while
  * testing the tenant lane, the factory, secret containment and sys-events —
@@ -276,7 +276,7 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
 
     // Revived DISABLED on purpose: the subject here is "a revive that omits
     // `apiKey` clears the stale ciphertext", which requires NOT sending a key —
-    // and TASK-799 requires a key of an ENABLED azure row. The restore lane runs
+    // and requires a key of an ENABLED azure row. The restore lane runs
     // either way, so the assertion below is unaffected.
     const res = await svc.upsertRow('llm', 'azure', { enabled: false, expectedVersion: 0 }, TENANT);
     // Must actually go through the restore lane (not merely coincide with a

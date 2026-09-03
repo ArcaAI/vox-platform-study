@@ -26,8 +26,10 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   return (
     <Providers session={safeSession}>
       <WhatsNewDialog />
-      {/* 248px scoped sidebar (TASK-788) — the primitive's 16rem default is
-          overridden here so the two-tier shell measures 56 + 248 exactly. */}
+      {/*
+ 248px scoped sidebar — the primitive's 16rem default is
+          overridden here so the two-tier shell measures 56 + 248 exactly. 
+*/}
       <SidebarProvider style={{ '--sidebar-width': '15.5rem' } as CSSProperties}>
         <SidebarTierSync />
         {/* Tier one: the capability-domain rail. In flow at 56px on md+, gone

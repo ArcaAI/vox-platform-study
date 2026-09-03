@@ -1,4 +1,4 @@
-"""TASK-799 lane C.3 (F-06) and C.4 (F-10).
+"""lane C.3 (F-06) and C.4 (F-10).
 
 C.3 — `lifespan.py` read `settings.service.service_token` directly at two of its
 three outbound call sites instead of going through `peer_service_token()`. Under
@@ -123,7 +123,7 @@ class TestBodyTenantIsCrossCheckedAgainstTheHeader:
         assert response.status_code == 503
 
     def test_no_header_is_still_allowed(self, client) -> None:
-        """The header is the CALLER's business (TASK-737 enforces it upstream).
+        """The header is the CALLER's business ( enforces it upstream).
 
         This check is about DISAGREEMENT, not about adding a second mandatory
         header — a body tenant with no header keeps working exactly as before.

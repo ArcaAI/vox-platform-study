@@ -3,7 +3,7 @@ import { SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../00-constants';
 import { DEFAULT_ROLES, GLOBAL_ROLES, SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, seedRole } from '../03-role';
 
 /**
- * Owner decision OD-1 (TASK-766, 2026-08-20): `Role` gained a `tenantId`.
+ * Owner decision OD-1 (2026-08-20): `Role` gained a `tenantId`.
  *
  * The rule this file pins: **every seeded role belongs to the SYSTEM tenant.**
  * SYSTEM is the platform-configuration TIER; `50000000-…` ("Global") is a
@@ -16,7 +16,7 @@ import { DEFAULT_ROLES, GLOBAL_ROLES, SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, see
  * absence of any per-tenant seeding, and enforced at runtime by
  * `SYSTEM_SHARED_READ_MODELS` (see `extensions/__tests__/tenant-scope.test.ts`).
  */
-describe('Role seed — SYSTEM tenant ownership (TASK-766 OD-1)', () => {
+describe('Role seed — SYSTEM tenant ownership (OD-1)', () => {
   it('seeds every built-in role under the SYSTEM tenant, never Global and never a customer tenant', async () => {
     const created: Array<Record<string, unknown>> = [];
     const client = {

@@ -122,7 +122,7 @@ function MatrixCards({ data }: { data: PermissionMatrixData }) {
 }
 
 /**
- * Effective-permissions matrix (build spec §4). Read-only derived view: rows =
+ * Effective-permissions matrix (build spec Read-only derived view: rows =
  * resources, columns = actions, cells = granted ✓ / inherited ◐ / conditional /
  * none —. Every glyph is paired with `sr-only` text so meaning never rides on
  * color alone. Desktop/tablet render a semantic `<table>`; mobile renders

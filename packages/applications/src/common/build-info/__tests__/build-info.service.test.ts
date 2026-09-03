@@ -1,7 +1,7 @@
 /**
  * TypeScript build-info reader.
  *
- * Contract: `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json`.
+ * Contract:.
  * Mirrors `test_build_info.py` on the Python side — same behavior, same shape.
  */
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

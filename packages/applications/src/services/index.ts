@@ -20,7 +20,7 @@ export * from './webhook';
 export * from './apiKey';
 export * from './consultation';
 export * from './consultation-context-schema';
-// Clinical-document SHAPE catalog (TASK-810) — head/version/pin over the
+// Clinical-document SHAPE catalog — head/version/pin over the
 // shapes a generation node produces, plus the compiler that turns a shape into
 // a strict decoding constraint. SOAP is a row here, not a privilege.
 export * from './document-template';
@@ -44,7 +44,7 @@ export * from './ai-task-default';
 export * from './ai-provider-connection';
 export * from './ai-runtime-profile';
 // The ordered N-way candidate chain over those two: which providers serve a
-// task, in what order, and what may happen on failure (TASK-818 §3A).
+// task, in what order, and what may happen on failure
 export * from './ai-routing-policy';
 // The read side: per-service effective-config for the Python pull clients.
 export * from './effective-config';
@@ -61,14 +61,14 @@ export * from './agent-trajectory-retention';
 // Gate-edit learning loop: mining job, few-shot
 // exemplar retrieval, and the SME-gated eval regression-corpus export.
 export * from './gate-edit-mining';
-// TASK-710 — IPhiRedactor implementation over the guardrail
+// IPhiRedactor implementation over the guardrail
 // POST /api/guardrail/redact endpoint.
 export * from './phi-redaction';
 // Phase 3A item 6 — read-only effective agentic instruction inventory.
 export * from './agentic-instructions';
 export * from './prompt-management';
 export * from './dna-writing-style';
-// TASK-733 Task 10 — scheduled hard-delete of soft-deleted DNA writing-style
+// scheduled hard-delete of soft-deleted DNA writing-style
 // profiles past their retention window ("purge later").
 export * from './dna-profile-retention';
 export * from './text';
@@ -110,7 +110,7 @@ export * from './platform-metrics';
 export * from './tenant-tts-config';
 // Per-tenant STT fallback configuration (fallback pipeline pointer + BYO provider creds).
 export * from './tenant-stt-config';
-// Tenant-writable nlp.topic/nlp.intent instruction content (TASK-729) — deliberately separate from AiTaskDefault's model-selection governance.
+// Tenant-writable nlp.topic/nlp.intent instruction content — deliberately separate from AiTaskDefault's model-selection governance.
 export * from './tenant-nlp-task-instructions';
 // Tenant-scoped external identity provider (OIDC config + per-tenant client resolver + JIT-provisioning login round-trip).
 export * from './tenant-idp-config';
@@ -127,33 +127,33 @@ export * from './changelog';
 // Service version & release registry: boot self-registration + heartbeat,
 // release history, and what is running right now per environment.
 export * from './serviceRelease';
-// Consent & ABAC (TASK-712) — ConsentGrant admin CRUD + the assertConsent
+// Consent & ABAC — ConsentGrant admin CRUD + the assertConsent
 // choke point. No enforcement wired anywhere this phase — see
-// docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+
 export * from './consent';
-// Runs/observability read model (TASK-723) — one row per workflow-substrate
+// Runs/observability read model — one row per workflow-substrate
 // run, keyset-paginated list + single-bounded-read trace rollup.
 export * from './workflow-run';
-// Per-tenant saved synthetic Workbench test input (TASK-721).
+// Per-tenant saved synthetic Workbench test input.
 export * from './workflow-test-fixture';
-// WorkflowDefinition CRUD + compile/validate/publish lifecycle (TASK-734) — wires
+// WorkflowDefinition CRUD + compile/validate/publish lifecycle — wires
 // @arcaai/workflow-contract's compiler/validator into the application layer.
 export * from './workflow-definition';
-// The DB-backed rule-set half of the validator (TASK-716 Task 8) — resolves
+// The DB-backed rule-set half of the validator — resolves
 // SYSTEM ∪ tenant `WorkflowInvariantRule` rows, merges them one-way-strict, and
 // evaluates a graph against the result. Total: never throws, never `ok: true`
 // on an internal failure.
 export * from './workflow-validator';
-// The rule ROWS the validator above resolves (TASK-790 W3b) — tenant-scoped CRUD so a tenant
+// The rule ROWS the validator above resolves (b) — tenant-scoped CRUD so a tenant
 // admin can actually author strictness rules. Before this the model had no HTTP surface at all,
-// so the validator could only ever see seeded rows (TASK-789 H-1).
+// so the validator could only ever see seeded rows.
 export * from './workflow-invariant-rule';
-// Per-scope workflow assignment (TASK-733) — WHICH definition governs a
+// Per-scope workflow assignment — WHICH definition governs a
 // tenant/department for a palette, resolved with the shared cascade primitive.
 export * from './workflow-assignment';
-// Exposure plane (TASK-722) — invoke / status / cancel / list over a tenant's
+// Exposure plane — invoke / status / cancel / list over a tenant's
 // published workflows, through the harness dispatcher.
 export * from './workflow-exposure';
-// Workbench sandbox runs (TASK-721 Phase C) — start/status/cancel a sandbox run of ANY
+// Workbench sandbox runs — start/status/cancel a sandbox run of ANY
 // (DRAFT or published) WorkflowDefinition version, session-JWT only, always sandbox:true.
 export * from './workflow-sandbox-run';

@@ -1,5 +1,5 @@
 /**
- * ConsentGrant seed (TASK-712, consent-abac Phase 6).
+ * ConsentGrant seed (consent-abac Phase 6).
  *
  * Seeds EXTERNAL_TOOL_LOOKUP / STYLE_LEARNING / QUALITY_REVIEW grants for the
  * demo patients in `09-consultation.ts`, so a freshly-seeded environment can
@@ -15,7 +15,7 @@
  * local and test databases: rule 02 says the dev DB and `hope_test` are
  * `db push`-managed and carry NO `_prisma_migrations` ledger, so migrations
  * NEVER execute against them — only seeds do. The practical consequence, once
- * TASK-712 turned consent enforcement ON by default, was that a freshly-seeded
+ * turned consent enforcement ON by default, was that a freshly-seeded
  * environment denied the core documentation flow outright:
  *   POST /consultations/:id/prime -> 403
  *   `Consent denied for purpose "AI_DOCUMENTATION" (no_grant)`
@@ -102,7 +102,7 @@ function buildGrants(): ConsentGrantSeed[] {
 }
 
 /**
- * Mirror of the TASK-712 migration backfill, for databases that never replay
+ * Mirror of the migration backfill, for databases that never replay
  * migrations. One dated `IMPORTED` grant per (tenant, patient, purpose) for the
  * two purposes the explicit demo rows above do not cover, derived from the
  * Consultation table exactly as the migration's SELECT does — including the

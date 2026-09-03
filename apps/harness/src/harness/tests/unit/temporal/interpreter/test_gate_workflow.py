@@ -1,4 +1,4 @@
-"""``ConsultationGateWorkflow`` — the durable human wait (TASK-731 Phase B).
+"""ConsultationGateWorkflow — the durable human wait.
 
 Run against a real time-skipping Temporal test server, because the property under test IS the
 timing: an SLA that expires, an escalation ladder that fires, a terminal bound that abandons.

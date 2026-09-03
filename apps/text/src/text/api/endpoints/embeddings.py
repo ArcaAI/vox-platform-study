@@ -1,5 +1,5 @@
-"""Text-embedding endpoints (TASK-725 Task 4) — net new; `text` had no
-embedding capability before this ticket (§2.7).
+"""Text-embedding endpoints — net new; `text` had no
+embedding capability before.
 
 `POST /embeddings` — synchronous, immediate round trip (mirrors `/generate`'s
 shape for the small-batch, low-latency case).

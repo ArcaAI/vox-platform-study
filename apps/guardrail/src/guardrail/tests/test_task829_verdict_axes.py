@@ -1,4 +1,4 @@
-"""TASK-829 C-1 — three verdict axes, two cache scopes; and C-5's structural half.
+"""three verdict axes, two cache scopes; and C-5's structural half.
 
 C-1 says a single verdict is unsound. The three axes differ in what they are a
 property OF, and therefore in how far they may travel:

@@ -1,5 +1,5 @@
 /**
- * TASK-858 D2 — regenerate the realtime transcription agent's seed blobs from
+ * regenerate the realtime transcription agent's seed blobs from
  * the REAL `validate()` / `compile()` / `registryChecksum()` engine, and its
  * compiled `AsrPipeline.configYaml` from the REAL
  * `compileSttGraphToYaml`.

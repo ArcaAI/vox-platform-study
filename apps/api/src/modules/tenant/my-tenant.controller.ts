@@ -17,7 +17,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-758 — the counterpart to `/users/me/*`'s bound-user rule: the bare
+ * the counterpart to `/users/me/*`'s bound-user rule: the bare
  * "mine" surfaces resolve to the key's TENANT, via the CLS `tenantId` the
  * guard sets from `apiKeyEntity.tenantId`. Different resolution, so it gets
  * its own sentence rather than a shared one.

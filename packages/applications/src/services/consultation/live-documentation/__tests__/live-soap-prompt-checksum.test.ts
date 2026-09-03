@@ -35,10 +35,10 @@ const PINNED_SYSTEM_PROMPT_SHA256 = 'd3ce3a7c63fd5d4e6aecc32921759759ab79c880019
 const sha256Hex = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex');
 
 /**
- * RE-PINNED BY TASK-810 (ticket §4 Task 13), and both digests moved.
+ * RE-PINNED BY , and both digests moved.
  *
  * This guard failing was the guard WORKING: the whole reason it exists is that
- * a change to these bytes must be a conscious act, and TASK-810 changed them
+ * a change to these bytes must be a conscious act, and changed them
  * on purpose.
  *
  *  - The stable prefix no longer spells out four SOAP headings. It is COMPILED
@@ -58,8 +58,8 @@ const sha256Hex = (content: string): string => createHash('sha256').update(conte
  * same reason: they are no longer about SOAP.
  *
  * Previous digests, for the record:
- *   prompt  efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f
- *   system  25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3
+ *   prompt efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f
+ *   system 25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3
  */
 
 describe('Live-summarization prompt constants byte lock', () => {

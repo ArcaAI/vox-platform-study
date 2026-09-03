@@ -1,5 +1,5 @@
 /**
- * TASK-783 — the gateway's canonical OpenAPI tag taxonomy.
+ * the gateway's canonical OpenAPI tag taxonomy.
  *
  * ## Why this file exists
  *
@@ -21,7 +21,7 @@
  *
  * ## Plane
  *
- * `plane` mirrors the API-plane taxonomy of TASK-757/758/759 and is emitted
+ * `plane` mirrors the API-plane taxonomy of /758/759 and is emitted
  * as the `x-hope-plane` vendor extension so the portal can render the two
  * audience views (`gen:api-portal`) without re-deriving it from paths:
  *

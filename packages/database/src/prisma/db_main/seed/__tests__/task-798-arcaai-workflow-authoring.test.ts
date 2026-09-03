@@ -1,5 +1,5 @@
 /**
- * TASK-798 — the tenant-authored consultation workflow seed.
+ * the tenant-authored consultation workflow seed.
  *
  * ## What this suite is actually for
  *
@@ -70,7 +70,7 @@ const DEFAULT_POLICY_BINDINGS = {
   guardrailProfile: 'STANDARD',
   redactionRuleSetId: null,
   promptTemplateRefs: [],
-  // TASK-810 DD-2 — derived per compile like its siblings; `[]` for these graphs, whose
+  // derived per compile like its siblings; for these graphs, whose
   // generation nodes bind no document template yet.
   documentTemplateRefs: [],
   contextSchemaVersionId: null,
@@ -88,7 +88,7 @@ const graphFor = (slug: string) => (slug === 'arcaai-consultation-soap' ? ARCAAI
 // ---------------------------------------------------------------------------------------------
 // W1 — a real, tenant-authored consultation workflow
 // ---------------------------------------------------------------------------------------------
-describe('TASK-798 W1 — tenant-authored consultation WorkflowDefinition', () => {
+describe(' W1 — tenant-authored consultation WorkflowDefinition', () => {
   it('seeds exactly two definitions, both on the consultation palette', () => {
     expect(ARCAAI_WORKFLOW_DEFINITIONS).toHaveLength(2);
     for (const row of ARCAAI_WORKFLOW_DEFINITIONS) {
@@ -152,7 +152,7 @@ describe('TASK-798 W1 — tenant-authored consultation WorkflowDefinition', () =
 // ---------------------------------------------------------------------------------------------
 // W1 — PROVENANCE. The blobs are engine output or this suite fails.
 // ---------------------------------------------------------------------------------------------
-describe('TASK-798 W1 — derived blobs are real compiler output', () => {
+describe(' W1 — derived blobs are real compiler output', () => {
   it.each(['arcaai-consultation-soap', 'arcaai-rheum-consultation-soap'])(
     '%s: graphChecksum equals sha256(canonicalJson(graph)) computed by the real engine',
     (slug) => {
@@ -234,7 +234,7 @@ describe('TASK-798 W1 — derived blobs are real compiler output', () => {
 // ---------------------------------------------------------------------------------------------
 // W2 — the assignment safety guard
 // ---------------------------------------------------------------------------------------------
-describe('TASK-798 W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mechanism', () => {
+describe(' W2 — WorkflowAssignment is gated on the Substrate-A exclusivity mechanism', () => {
   it('the flag tracks the real presence of the gate, in both directions', () => {
     const gate = detectSubstrateExclusivityGate();
     expect(CONSULTATION_ASSIGNMENT_ENABLED).toBe(gate.present);
@@ -263,7 +263,7 @@ describe('TASK-798 W2 — WorkflowAssignment is gated on the Substrate-A exclusi
     }
     const message = lines.join('\n');
     expect(message).toMatch(/WorkflowAssignment/);
-    expect(message).toMatch(/TASK-795/);
+    expect(message).toMatch(/NOT seeded/);
     expect(message).toMatch(/exclusiv/i);
   });
 
@@ -303,7 +303,7 @@ describe('TASK-798 W2 — WorkflowAssignment is gated on the Substrate-A exclusi
   });
 });
 
-describe('TASK-798 W2 — the gate detector itself', () => {
+describe(' W2 — the gate detector itself', () => {
   it('does not mistake a prose mention of the workflow for a governance check', () => {
     // The probed file names `ConsultationLoopWorkflow` in its own docstring. A detector that
     // matched raw text would report the gate present today, which is exactly backwards.
@@ -338,7 +338,7 @@ describe('TASK-798 W2 — the gate detector itself', () => {
 // ---------------------------------------------------------------------------------------------
 // W4 — fixtures the sandbox can actually run
 // ---------------------------------------------------------------------------------------------
-describe('TASK-798 W4 — WorkflowTestFixture rows', () => {
+describe(' W4 — WorkflowTestFixture rows', () => {
   it('seeds a definition-scoped fixture and a tenant-wide one', () => {
     expect(ARCAAI_WORKFLOW_TEST_FIXTURES).toHaveLength(2);
     expect(ARCAAI_WORKFLOW_TEST_FIXTURES.filter((f) => f.workflowDefinitionId !== null)).toHaveLength(1);
@@ -396,7 +396,7 @@ function mockClient(calls: string[]): any {
 // ---------------------------------------------------------------------------------------------
 // Seed-mode posture — these rows claim a HUMAN authored them.
 // ---------------------------------------------------------------------------------------------
-describe('TASK-798 — the tenant-authored rows are excluded from `safe` mode', () => {
+describe('the tenant-authored rows are excluded from `safe` mode', () => {
   it('names both phases in the safe-mode deny-list', async () => {
     const { SEED_PHASES_EXCLUDED_FROM_SAFE } = await import('../seed-mode');
     // `safe` is documented as "suitable for a production day-1 bootstrap". These rows carry
@@ -417,7 +417,7 @@ describe('TASK-798 — the tenant-authored rows are excluded from `safe` mode', 
 });
 
 // ---------------------------------------------------------------------------------------------
-describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruling, TASK-815 §11)', () => {
+describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruling, §11)', () => {
   const GRAPHS = [
     ['arcaai-consultation-soap', ARCAAI_CONSULTATION_GRAPH],
     ['arcaai-rheum-consultation-soap', ARCAAI_RHEUM_CONSULTATION_GRAPH],
@@ -439,7 +439,7 @@ describe('Lane R (R2) — a pre-summarization node exists BY DEFAULT (owner ruli
   it.each(GRAPHS)('%s binds the TENANT’s own pre-summary prompt, not the SYSTEM default', (_slug, graph) => {
     // The ruling's substance: pre-summary is TENANT tier. A tenant node pointing at the platform
     // row would resolve to the platform's bytes and satisfy the letter of "a node exists" while
-    // reinstating exactly the silent fallback §11 refuses.
+    // reinstating exactly the silent fallback refuses.
     const node = (graph.nodes as { type: string; config?: Record<string, unknown> }[]).find((n) => n.type === 'agent.presummarization');
     expect(node?.config?.promptTemplateId).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
     expect(node?.config?.promptTemplateId).not.toBe(SYSTEM_DEFAULT_PRE_SUMMARY_PROMPT_ID);

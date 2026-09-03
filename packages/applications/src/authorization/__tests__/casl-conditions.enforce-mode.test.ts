@@ -1,11 +1,11 @@
 /**
- * TASK-781 — the two halves TASK-712 left as prose.
+ * the two halves left as prose.
  *
  * 1. **OR mode.** `runCaslInstanceChecks` applied ONE route-level resolver to
  *    EVERY required permission and never consulted `PERMISSION_MODE_KEY`. On a
  *    `@CanAny` route that means: the type-only verdict allows via alternative
  *    B, the enforced denial from alternative A is then applied, and the route's
- *    declared OR semantics silently become AND. TASK-712 disclosed this as a
+ * declared OR semantics silently become AND. disclosed this as a
  *    limitation; here it becomes behaviour.
  * 2. **Subject mismatch.** With two required permissions and one resolver, the
  *    instance shaped for subject X was evaluated against subject Y's
@@ -53,7 +53,7 @@ const denialTotal = async (): Promise<number> => {
   return collected.values.reduce((sum, sample) => sum + sample.value, 0);
 };
 
-describe('UnifiedAuthGuard — enforce mode is permission-scoped (TASK-781)', () => {
+describe('UnifiedAuthGuard — enforce mode is permission-scoped ', () => {
   let guard: UnifiedAuthGuard;
   let reflector: Reflector;
   let policyEngine: PolicyEngine;
@@ -151,7 +151,7 @@ describe('UnifiedAuthGuard — enforce mode is permission-scoped (TASK-781)', ()
     expect(recordEnforceDenial).toHaveBeenCalledWith('update', 'UserVoiceProfile', expect.any(Object));
   });
 
-  it('a bare-function resolver (the pre-TASK-781 metadata shape) still works', async () => {
+  it('a bare-function resolver (the pre-metadata shape) still works', async () => {
     metadata[SUBJECT_INSTANCE_RESOLVER_KEY] = vi.fn().mockReturnValue({ tenantId: 'tenant-1', userId: 'someone-else' });
     await expect(guard.canActivate(createMockContext())).rejects.toMatchObject({ status: 403 });
   });
@@ -167,7 +167,7 @@ describe('UnifiedAuthGuard — enforce mode is permission-scoped (TASK-781)', ()
   // ─── The metric is alive ──────────────────────────────────────────────
 
   it('HONESTY PROOF: an applied denial actually increments casl_enforce_denial_total', async () => {
-    // The whole point of TASK-781: prove the counter is not structurally dead.
+    // The whole point of: prove the counter is not structurally dead.
     // A REAL PolicyEngine records the denial, so the increment is observed on
     // the real prom-client registry rather than on a spy.
     const realEngine = new PolicyEngine({ client: {}, baseClient: {} } as never, undefined);

@@ -1,5 +1,5 @@
 // ============================================================================
-// Tenant NLP Task Instructions (TASK-729)
+// Tenant NLP Task Instructions
 //
 // Tenant-writable INSTRUCTION CONTENT for the two open-taxonomy `nlp.*` task
 // types — `nlp.topic` (topic labeling) and `nlp.intent` (intent detection).

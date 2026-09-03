@@ -1,8 +1,8 @@
-"""The reusable conformance suite (TASK-717 Task 6) — Python twin of
+"""The reusable conformance suite — Python twin of
 ``@arcaai/async-contract``'s ``assertAsyncConformance``
 (``packages/async-contract/src/conformance/index.ts``).
 
-Exported from the package root so a Python producer (the TASK-717 Task 5
+Exported from the package root so a Python producer (the
 reference adoption on ``apps/text``, and any future Python adopter) can be
 checked without re-deriving what "conforms to the envelope" means. Mirrors
 the TypeScript suite assertion-for-assertion — see that module's docstring
@@ -60,7 +60,7 @@ def _as_envelopes(values: list[object]) -> list[Envelope]:
 
 
 async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str]:
-    """Run every assertion from TASK-717 Task 6 against ``producer``.
+    """Run every assertion from against producer.
 
     Returns the list of problems found — empty means the producer conforms
     to the async envelope contract.
@@ -170,7 +170,7 @@ async def assert_async_conformance(producer: AsyncProducerUnderTest) -> list[str
                 "parse_async_envelope did not refuse an unknown schemaVersion"
             )
 
-    # 11 & 12. resume tokens (design doc §3.6)
+    # 11 & 12. resume tokens
     resumable = getattr(producer, "resumable", False)
     replay = getattr(producer, "replay", None)
     resume_token_of = getattr(producer, "resume_token_of", None)

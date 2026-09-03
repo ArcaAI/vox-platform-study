@@ -1,4 +1,4 @@
-"""TASK-777 — the screening ROUTES: attribution, fail-closed, backpressure.
+"""the screening ROUTES: attribution, fail-closed, backpressure.
 
 Handlers are exercised DIRECTLY with a lightweight fake request, matching the rest
 of this suite (`test_medical_db_config.py`): guardrail's `lifespan` opens Redis and

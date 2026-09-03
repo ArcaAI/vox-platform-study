@@ -8,7 +8,7 @@ Verifies:
   - each request builds its OWN client, so two tenants can never share one.
   - an ABSENT connection FAILS CLOSED.
 
-That last point is the TASK-799 lane B inversion, and it is the whole reason this
+That last point is the lane B inversion, and it is the whole reason this
 file changed. These tests used to assert "absent override ⇒ the shared,
 config-built client is reused" — which was only expressible because the process
 held a credential of its own, read from `TEXT_<PROVIDER>_*`. A process-wide
@@ -99,7 +99,7 @@ class TestAzureProviderOverrideConsumption:
         assert content == "byo response"
         # The tenant credential reached the SDK client constructor...
         #
-        # `http_client` is ANY because TASK-818 Lane A hands the SDK this
+        # `http_client` is ANY because hands the SDK this
         # upstream's pooled transport (B-2/B-8): the identity of that transport is
         # asserted in `test_task818_client_cache.py`, and pinning it here would
         # only couple this test — which is about the CREDENTIAL reaching the
@@ -212,7 +212,7 @@ class TestBedrockProviderOverrideConsumption:
 
 class TestProviderOverrideNeverLogged:
     """The gateway/service already guarantee the plaintext key is never
-    logged on their side (see the config-plane assessment §Security). This
+    logged on their side (see the config-plane assessment This
     locks the Text-side half: a failed generation's error/log path must never
     include the raw override key, even incidentally via `str(request_body)`
     in an exception message."""

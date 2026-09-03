@@ -1,6 +1,6 @@
 /**
  * Section parsing for the live running summary, driven by a COMPILED DOCUMENT
- * TEMPLATE rather than by a hardcoded list of headings (TASK-810).
+ * TEMPLATE rather than by a hardcoded list of headings.
  *
  * ## What this module replaces, and why it had to be replaced
  *
@@ -18,7 +18,7 @@
  * A tenant wanting a discharge summary had nowhere to put it. Now every one of
  * those decisions reads off `CompiledDocumentTemplate.sectionKeys` and
  * `checklist`, so SOAP is one row in the catalog and nothing in this file knows
- * its name (DD-1).
+ * its name.
  *
  * ## D-21 — `null` means "not discussed", and it is not the same as `""`
  *

@@ -170,7 +170,7 @@ enum ModelJobStatus {
 enum WebhookRunStatus {
   SUCCESS
   FAILED
-  // TASK-727: terminal state after the delivery job's BullMQ `attempts` are
+  // terminal state after the delivery job's BullMQ `attempts` are
   // exhausted — distinct from a single FAILED attempt still eligible for
   // retry/backoff. Written once, by the delivery processor, on the final
   // attempt only.
@@ -279,7 +279,7 @@ enum ConsultationContextSchemaStatus {
 // Governance lifecycle of a `WorkflowDefinition`. Rows ARE versions (no
 // separate head/version split — see workflow-definition.prisma header);
 // PUBLISHED rows are hard-immutable (service guard + DTO whitelist +
-// checksum, TASK-715 §3.4 — no DB trigger).
+// checksum, — no DB trigger).
 enum WorkflowDefinitionStatus {
   DRAFT
   VALIDATED
@@ -300,19 +300,19 @@ enum ConsultationStatus {
   PENDING_REVIEW // Summary generated + assurance complete + gate verdict recorded; awaiting clinician review/attestation
   SIGNED // Clinician-attested (immutable signed note committed)
   CLOSED // SUPERSEDED — never a legal `transitionTo` target. Split into CLOSED_COMPLETE /
-  // CLOSED_INCOMPLETE below (owner decision, TASK-711 state-machine.md §1a) before this
+  // CLOSED_INCOMPLETE below (owner decision, before this
   // migration ever reached a live environment. Retained only because Postgres cannot drop an
   // enum value; deliberately and permanently dead, unlike the pre-ticket A-46 finding this
   // ticket otherwise closes.
   REOPENED // Reopened after being closed
-  // TASK-711: session state machine additions. Appended (never renumbered/
+  // session state machine additions. Appended (never renumbered/
   // renamed) per `ALTER TYPE … ADD VALUE` migration discipline.
   PRIMED // Consent asserted; the checkpoint RECORDING now requires
   DRAINING // Capture stopped, not yet drafted — replaces the old revert-to-OPEN
   TIMED_OUT // Gate SLA exhausted; terminal absent an explicit reopening, visibly unsigned
-  // TASK-711 follow-up: owner decision replacing the speculative "ABANDONED" state
-  // (README §6 Q1) — a closed consultation now types whether a human ever gave clinical
-  // feedback (signed) before it closed. See state-machine.md §1a/§2.
+  // follow-up: owner decision replacing the speculative "ABANDONED" state
+  // ( Q1) — a closed consultation now types whether a human ever gave clinical
+  // feedback (signed) before it closed. See
   CLOSED_COMPLETE // Closed after SIGNED — a human attested the note before closure
   CLOSED_INCOMPLETE // Closed from TIMED_OUT (or the session-timeout sweep) with no signature ever recorded
 
@@ -479,7 +479,7 @@ enum IdpStatus {
 // The vocabulary of the append-only `AiUsageEvent` ledger, the effective-dated
 // `AiPriceBook`, and the invoice plane built on top of them. See
 // `usage-ledger.prisma` / `billing.prisma` for the models and
-// docs/implementation/TASK-615-Usage-Metering-And-Billing/README.md for the
+
 // decisions (D2, D10–D17) each value encodes.
 // =============================================================================
 
@@ -637,10 +637,10 @@ enum ChangelogPublishStatus {
   @@schema("core")
 }
 
-// TASK-712 — consent-abac. The purpose-of-use a ConsentGrant authorizes.
+// consent-abac. The purpose-of-use a ConsentGrant authorizes.
 // One purpose per grant row (see consent.prisma) — per-purpose expiry and
 // revocation is the design.md D3/INV-342 requirement. Recommendation only,
-// not a ratified vocabulary — see consent-design.md §2 (HUMAN-GATED).
+// not a ratified vocabulary — see consent- (HUMAN-GATED).
 enum ConsentPurpose {
   AI_DOCUMENTATION // Consultation capture + AI-assisted note generation (INV-201, INV-004).
   HISTORY_RETRIEVAL // Prior-consultation / prior-history lookup (INV-015, INV-198).
@@ -651,9 +651,9 @@ enum ConsentPurpose {
   @@schema("core")
 }
 
-// TASK-712 — consent-abac. How the grant was captured; provenance only, no
+// consent-abac. How the grant was captured; provenance only, no
 // bearing on evaluation. IMPORTED exists for a future legacy-backfill
-// decision (Q2) this ticket does not make — see consent-design.md §"The
+// decision (Q2) does not make — see consent-
 // legacy-consent posture".
 enum ConsentGrantMethod {
   VERBAL_ATTESTED
@@ -664,7 +664,7 @@ enum ConsentGrantMethod {
   @@schema("core")
 }
 
-// TASK-716 — the workflow safety validator. A rule with severity WARNING is
+// the workflow safety validator. A rule with severity WARNING is
 // recorded on `WorkflowValidationReport` but never blocks publish; ERROR
 // blocks it. Graduated rollout: a rule may ship as WARNING and be promoted to
 // ERROR later by a row edit (bumping `ruleVersion`), never the reverse for a
@@ -677,11 +677,11 @@ enum WorkflowRuleSeverity {
   @@schema("core")
 }
 
-// TASK-716 — the CLOSED catalogue of predicate *kinds* a `WorkflowInvariantRule`
-// row may parameterize (§3.3: the kind is code, the instance is data). Mirrors
+// the CLOSED catalogue of predicate *kinds* a `WorkflowInvariantRule`
+// row may parameterize (the kind is code, the instance is data). Mirrors
 // `WORKFLOW_RULE_PREDICATE_TYPES` in `packages/workflow-contract/src/predicates/index.ts`
 // verbatim — adding a member here means adding the matching evaluator there
-// first; the two must never drift; see `contracts/rule-model.md` §3.
+// first; the two must never drift; see `contracts/rule-model.md`
 enum WorkflowRulePredicateType {
   ACYCLIC
   SINGLE_ENTRY
@@ -698,10 +698,10 @@ enum WorkflowRulePredicateType {
   @@schema("core")
 }
 
-// TASK-785 — how a `RateLimitRule.routeMatch` pattern is compared against the
+// how a `RateLimitRule.routeMatch` pattern is compared against the
 // live route key (`METHOD:/route/pattern`).
 //
-// EXACT  — the whole route key must match, e.g. `POST:/api/v1/auth/login`.
+// EXACT — the whole route key must match, e.g. `POST:/api/v1/auth/login`.
 // PREFIX — a `METHOD:` (or `*:`) part plus a path that may end in `/*`,
 //          e.g. `*:/api/v1/admin/*`. The reserved pattern `*` matches every
 //          route and is how a tenant expresses "all of my traffic".
@@ -717,7 +717,7 @@ enum RateLimitMatchKind {
   @@schema("core")
 }
 
-// Governance lifecycle of a `DocumentTemplate` (TASK-810). Deliberately the
+// Governance lifecycle of a `DocumentTemplate`. Deliberately the
 // same three members as `ConsultationContextSchemaStatus` above, because it is
 // the same governance triple (head → immutable version → movable pin): DRAFT is
 // editable and never served, PUBLISHED is served to generation nodes, APPROVED
@@ -731,20 +731,20 @@ enum DocumentTemplateStatus {
   @@schema("core")
 }
 
-// TASK-811 — the per-section state machine of a live-generated clinical
+// the per-section state machine of a live-generated clinical
 // document. The states are ordered by how much clinical authority the content
 // carries, and the ONLY transition a machine may perform on its own is
 // EMPTY -> PROVISIONAL -> PROVISIONAL.
 //
-//   EMPTY       nothing extracted yet. Renders as a skeleton, NOT an error — an
+//   EMPTY nothing extracted yet. Renders as a skeleton, NOT an error — an
 //               unpopulated section of an in-progress note is a normal state.
 //   PROVISIONAL model-written. A later flush may freely replace it.
-//   CONFIRMED   a clinician has touched it. A flush may APPEND to it but must
+//   CONFIRMED a clinician has touched it. A flush may APPEND to it but must
 //               never overwrite it; that rule is what makes the running note
 //               safe to edit while it is still being generated.
-//   LOCKED      finalized at the endpoint. Every write is rejected.
+//   LOCKED finalized at the endpoint. Every write is rejected.
 //
-// NOT the same thing as the TASK-810 COMPILED section-state machine
+// NOT the same thing as the COMPILED section-state machine
 // (`CompiledSectionStateMachine.states` = PENDING | NOT_DISCUSSED | DRAFTED |
 // CONFIRMED, in `document-template-compiler.ts`). That one is the TEMPLATE's
 // declaration of how a section may legitimately be filled in — it is authored
@@ -761,15 +761,15 @@ enum DocumentSectionState {
   @@schema("core")
 }
 
-// TASK-818 §3A.3 — governance lifecycle of an `AiRoutingPolicy` row. The same
+// governance lifecycle of an `AiRoutingPolicy` row. The same
 // three-member governance triple as `DocumentTemplateStatus` above, and for the
 // same reason: a routing policy is AUTHORED, then made live, then superseded.
 //
-//   DRAFT     editable, never resolved at runtime. This is what the dry-run
+//   DRAFT editable, never resolved at runtime. This is what the dry-run
 //             (`/simulate`) endpoint replays recorded traffic against.
-//   ACTIVE    the row the runtime resolver serves for its (tenant, taskKey).
-//   ARCHIVED  a superseded revision, kept addressable for one-click rollback
-//             and for the HIPAA §164.312(b) before/after audit trail (§3A.8).
+//   ACTIVE the row the runtime resolver serves for its (tenant, taskKey).
+//   ARCHIVED a superseded revision, kept addressable for one-click rollback
+// and for the HIPAA before/after audit trail
 //
 // Supersede-only: an ACTIVE row is not edited in place, it is replaced by a
 // higher `policyVersion` and demoted to ARCHIVED. That is why `policyVersion`
@@ -782,18 +782,18 @@ enum AiRoutingPolicyStatus {
   @@schema("core")
 }
 
-// TASK-818 §3A.3 — how the router picks among the candidates of one rank tier.
-// The vocabulary is the common denominator of the gateways surveyed in §3A.2
+// how the router picks among the candidates of one rank tier.
+// The vocabulary is the common denominator of the gateways surveyed in
 // (LiteLLM Router, Portkey, Envoy AI Gateway, Kong AI Proxy Advanced,
 // OpenRouter, Cloudflare AI Gateway).
 //
-//   PRIORITY        strict candidate order; `rank` decides, weights ignored.
-//   WEIGHTED        weighted split WITHIN a rank tier.
-//   LEAST_BUSY      fewest in-flight requests.
-//   LOWEST_LATENCY  best observed TTFT.
-//   LOWEST_COST     cheapest per the `AiPriceBook` row effective now.
+//   PRIORITY strict candidate order; `rank` decides, weights ignored.
+//   WEIGHTED weighted split WITHIN a rank tier.
+//   LEAST_BUSY fewest in-flight requests.
+//   LOWEST_LATENCY best observed TTFT.
+//   LOWEST_COST cheapest per the `AiPriceBook` row effective now.
 //
-// Deliberately NOT a member: any learned / prompt-difficulty strategy. §3A.6(4)
+// Deliberately NOT a member: any learned / prompt-difficulty strategy.
 // rules quality-aware routing out for day one — the space has no reproducible
 // evaluation yet, so a member here would be a promise the resolver cannot keep.
 enum AiRoutingStrategy {
@@ -806,15 +806,15 @@ enum AiRoutingStrategy {
   @@schema("core")
 }
 
-// TASK-818 §3A.4 — what happens when a request NAMES a provider and that
+// what happens when a request NAMES a provider and that
 // provider is down. The platform default is STRICT, which deliberately inverts
 // the industry default (OpenRouter and Cloudflare default `allow_fallbacks` to
 // true; LiteLLM fires configured fallbacks by default).
 //
-//   STRICT                  503 `provider_unavailable`. No silent substitution.
-//   STRICT_UNLESS_OPTED_IN  hard-fail unless the request itself carried
+//   STRICT 503 `provider_unavailable`. No silent substitution.
+//   STRICT_UNLESS_OPTED_IN hard-fail unless the request itself carried
 //                           `allow_fallbacks: true`.
-//   POLICY_MAY_OVERRIDE     the policy chain may re-route without the caller
+//   POLICY_MAY_OVERRIDE the policy chain may re-route without the caller
 //                           asking.
 //
 // The justification is clinical, not stylistic: BAA coverage is per-vendor AND
@@ -833,7 +833,7 @@ enum AiExplicitProviderMode {
   @@schema("core")
 }
 
-// TASK-843 — the CANONICAL AI TASK TAXONOMY.
+// the CANONICAL AI TASK TAXONOMY.
 //
 // WHICH PLATFORM TASK a provider binding serves. This is the axis the product
 // means by "one configuration per task": text generation, translation,
@@ -847,17 +847,17 @@ enum AiExplicitProviderMode {
 // Three enums now touch the word "task". They are orthogonal, and conflating
 // any two of them loses information the platform already relies on:
 //
-//   ModelTaskType  WHAT SHAPE OF ARTIFACT a model is — the HuggingFace
+//   ModelTaskType WHAT SHAPE OF ARTIFACT a model is — the HuggingFace
 //                  pipeline-tag vocabulary, a property of `AiModel`. 47 members
 //                  including TEXT_TO_3D and TABULAR_REGRESSION, and
 //                  parity-gated member-for-member against a Python mirror
 //                  (`apps/stt/tests/unit/test_db_enum_mirrors.py`).
-//   AiCapability   WHAT A LEDGER ROW IS BILLED UNDER — five COGS buckets
+//   AiCapability WHAT A LEDGER ROW IS BILLED UNDER — five COGS buckets
 //                  (STT/LLM/NLP/TTS/EMBEDDING). Deliberately coarse: its own
 //                  comment records that guardrail and harness LLM calls meter
 //                  under `LLM` because they are the same cost unit. Too coarse
 //                  to select with — "the translation model" is not expressible.
-//   AiTaskKind     WHICH TASK A BINDING IS FOR — this enum.
+//   AiTaskKind WHICH TASK A BINDING IS FOR — this enum.
 //
 // The proof they are different axes is already in the tree:
 // `AI_TASK_MODEL_TASK_TYPES` (ai-task-default/constants.ts) is a MANY-TO-ONE
@@ -876,7 +876,7 @@ enum AiExplicitProviderMode {
 // exhaustive `Record<AiTaskKey, AiTaskKind>` makes it impossible to add a task
 // key without deciding its kind.
 //
-// CONSEQUENCE FOR TASK-844, stated here because the column is what invites the
+// CONSEQUENCE FOR, stated here because the column is what invites the
 // mistake: a "one default per task" constraint must be keyed on the SELECTION
 // (`taskKey`), NOT on this KIND. A partial unique index on
 // `(tenantId, taskKind) WHERE isDefault` would collapse `text.live` with

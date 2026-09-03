@@ -3,7 +3,7 @@ import { WorkflowRuleSeverity } from '@arcaai/domains';
 import { IsEnum, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * A versioned PATCH of a rule row (TASK-790 W3b).
+ * A versioned PATCH of a rule row (b).
  *
  * `ruleId`, `predicateType` and `paletteKey` are deliberately absent: changing any of them makes
  * the row a DIFFERENT rule, which is an insert, not an edit — and silently re-pointing a ruleId

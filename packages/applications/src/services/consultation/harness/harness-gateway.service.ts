@@ -19,7 +19,7 @@ export interface HarnessStartContext {
   contextItemId?: string;
   /**
    * The transcript text the workflow runs NER + sensors against. apps/api stays
-   * the sole DB reader, so it supplies the text at start; the assemble callback
+   * the sole DB reader, so it supplies the text at start(); the assemble callback
    * re-loads the transcript on the apps/api side as the prompt's source of truth.
    */
   transcriptText?: string;
@@ -32,7 +32,7 @@ export interface HarnessStartContext {
    */
   redactionRules?: Record<string, unknown>[];
   /**
-   * `Consultation.patientId` (TASK-712, consent-abac Phase 4) — threaded onto
+   * `Consultation.patientId` (consent-abac Phase 4) — threaded onto
    * `HarnessDocWorkflowInput` so the `call_mcp_tool`/`retrieve_context`
    * activities can key a consent-gate lookup. Omitted ⇒ those activities
    * degrade to `consent_unavailable` (fail-closed, but distinguishable from
@@ -130,9 +130,9 @@ export interface HarnessConsultationEndingSignal {
   reason?: string;
   persistSnapshot?: boolean;
   /**
-   * TASK-814 §2b — advisory transcript corrections the clinician accepted (forwarded from
+   * advisory transcript corrections the clinician accepted (forwarded from
    * `StopRecordingRequest.acceptedProposals`), so the endpoint stage's `feedback.capture` node
-   * (TASK-812 DD-8) has something to promote over the raw transcript. Absent/empty is the
+   * has something to promote over the raw transcript. Absent/empty is the
    * common case — most stops accept nothing.
    */
   acceptedProposals?: AcceptedCorrectionProposal[];
@@ -204,7 +204,7 @@ export interface HarnessEvalRunResult {
 
 /**
  * Explicit connect+response timeout for the workflow-run dispatcher calls
- * (TASK-722). Axios has NO default timeout — an unreachable/filtered harness
+ * Axios has NO default timeout — an unreachable/filtered harness
  * host (rather than one that actively refuses the connection) would otherwise
  * hang the calling request indefinitely, discovered via this ticket's own e2e
  * run against an environment with no harness process. `start()` and the
@@ -213,9 +213,9 @@ export interface HarnessEvalRunResult {
 const WORKFLOW_RUN_HTTP_TIMEOUT_MS = 15_000;
 
 /**
- * Out-of-band reference to a claim-checked blob (TASK-718's `ClaimCheckRef`,
+ * Out-of-band reference to a claim-checked blob ( `ClaimCheckRef`,
  * `apps/harness/src/harness/temporal/claim_check.py:64-80`). The wire body sent to
- * `/workflow-runs:start` MUST spell the content-type field `content_type`
+ * `/workflow-runs:start()` MUST spell the content-type field `content_type`
  * (snake_case) — the Python `ClaimCheckRef` model carries no alias of its own
  * (only the OUTER `StartWorkflowRunRequest` fields are camelCase-aliased), and
  * `ConfigDict(extra="forbid")` 422s on an unrecognized `contentType` key.
@@ -229,9 +229,9 @@ export interface HarnessClaimCheckRef {
   content_type: string;
 }
 
-/** Body for `POST /workflow-runs:start` (TASK-718 Task 10 / TASK-722 Task 5). */
+/** Body for `POST /workflow-runs:start()`. */
 /**
- * The SERVER-RESOLVED clinical subject a run acts on (TASK-850 lane A, closing C-8 link 1).
+ * The SERVER-RESOLVED clinical subject a run acts on (lane A, closing C-8 link 1).
  *
  * Mirrors `RunSubject` in `apps/harness/src/harness/temporal/interpreter/models.py`. It is a
  * SEPARATE field from `payload` on purpose: `payload` is what a caller sent and can never be
@@ -254,14 +254,16 @@ export interface StartWorkflowRunInput {
   tenantId: string;
   configRef: HarnessClaimCheckRef;
   sandbox?: boolean;
-  /** Forwarded into `InterpreterInput.payload` (TASK-721 Workbench sandbox test input) — with
-   *  every `RESERVED_RUN_IDENTITY_KEYS` entry stripped by the dispatcher (TASK-850 lane A). */
+  /**
+   * Forwarded into `InterpreterInput.payload` ( Workbench sandbox test input) — with
+   * every `RESERVED_RUN_IDENTITY_KEYS` entry stripped by the dispatcher.
+   */
   payload?: Record<string, unknown>;
   /** See {@link StartWorkflowRunSubject}. Omitted ⇒ the run has no clinical subject. */
   subject?: StartWorkflowRunSubject;
 }
 
-/** Response of `POST /workflow-runs:start`. */
+/** Response of `POST /workflow-runs:start()`. */
 export interface StartWorkflowRunResult {
   runId: string;
   workflowId: string;
@@ -291,7 +293,7 @@ export interface CancelWorkflowRunResult {
 
 /**
  * Response of `GET /workflow-runs/{runId}/gate` — the live state of a run's HITL gate, read
- * from the CHILD workflow's own `state` query (TASK-731 Phase B).
+ * from the CHILD workflow's own `state` query.
  *
  * `exists: false` is the normal answer for every run without a gate; it is NOT an error.
  * `waiting` is the only field a caller should key an Approve affordance off — `WorkflowRunStatus`
@@ -498,8 +500,8 @@ export class HarnessGatewayService {
 
   /**
    * Start (or idempotently re-attach to, on a workflow-id collision) an
-   * interpreter run (TASK-722's exposure plane / TASK-721's Workbench — the
-   * two callers TASK-718's own docstring names). `configRef` MUST already be
+   * interpreter run ( exposure plane / Workbench — the
+   * two callers own docstring names). `configRef` MUST already be
    * minted (this endpoint never accepts a raw `compiledConfig` — see
    * `interpreter.py:StartWorkflowRunRequest`'s docstring); minting it is the
    * caller's job (`WorkflowExposureService`).
@@ -511,7 +513,7 @@ export class HarnessGatewayService {
     // segment and therefore addressed paths FastAPI does not route: a missing route answers
     // `{"detail":"Not Found"}`, whereas the real handler answers `{"detail":"workflow run not
     // found"}` — which is how the difference was confirmed rather than assumed. Fixed
-    // 2026-08-19; see TASK-722's README for the consequence (no interpreter run could be
+    // 2026-08-19; for the consequence (no interpreter run could be
     // started, read or cancelled through the gateway).
     const url = `${this.harnessUrl}/api/v1/internal/workflow-runs:start`;
     const body = {
@@ -542,7 +544,7 @@ export class HarnessGatewayService {
   /**
    * Send the interpreter's `cancel` signal — a CODE allow-list (this method's
    * whole surface), never a caller-supplied signal name (the F-09 anti-pattern
-   * TASK-722's README names, `harness-admin.controller.ts:485`).
+   * README names, `harness-admin.controller.ts:485`).
    */
   async cancelWorkflowRun(runId: string): Promise<CancelWorkflowRunResult> {
     const url = `${this.harnessUrl}/api/v1/internal/workflow-runs/${runId}:cancel`;

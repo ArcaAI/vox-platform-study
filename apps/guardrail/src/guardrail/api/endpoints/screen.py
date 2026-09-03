@@ -3,7 +3,7 @@
 `/guardrail/analyze` answers guardrail's legacy `{safe, issues, confidence}` shape
 and is unchanged; these routes answer the question that shape cannot:
 **who decided, with which model, from whose policy tier, and what would have
-happened had the check failed** (ticket README §2.4 C-4).
+happened had the check failed** ( C-4).
 
 Both routes carry tenant-scoped work, so `X-Tenant-Id` is mandatory (428), both
 run under the admission gate (503 + `Retry-After` when saturated), and both fail

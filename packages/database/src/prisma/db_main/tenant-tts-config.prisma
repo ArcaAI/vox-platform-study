@@ -45,10 +45,10 @@ model TenantTtsConfig {
   sarvamPublicApiAllowed Boolean  @default(false)
   configJson             Json?    @db.JsonB
 
-  // TASK-843 — CONSTANT for the table (every row is a text-to-speech binding),
+  // CONSTANT for the table (every row is a text-to-speech binding),
   // so NOT NULL with the correct default. See `AsrPipeline.taskKind` for the
   // full rationale, including why a redundant column is the right migration
-  // seam for TASK-844. This table is NOT retired here.
+  // seam for. This table is NOT retired here.
   taskKind AiTaskKind @default(TEXT_TO_SPEECH)
 
   // resource status fields

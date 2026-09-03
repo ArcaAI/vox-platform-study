@@ -154,7 +154,7 @@ class TestHybridQuery:
 
 
 class TestDeleteByDocument:
-    """Cross-tenant safety net for TASK-728's delete flow: the filter is
+    """Cross-tenant safety net for delete flow: the filter is
     tenant_id AND knowledge_document_id together, so a document id belonging
     to another tenant can never be used to delete this tenant's points (and
     vice versa) — asserted with two tenants' worth of fixture chunks below.

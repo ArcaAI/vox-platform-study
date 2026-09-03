@@ -1,4 +1,4 @@
-"""TASK-818 Lane A / A-4 — Bedrock streams stop eating the default executor.
+"""/ A-4 — Bedrock streams stop eating the default executor.
 
 Bottleneck B-3, verbatim from the audit: `bedrock.py` bridged boto3's SYNCHRONOUS
 `converse_stream` iterator onto the event loop with

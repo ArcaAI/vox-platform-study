@@ -98,7 +98,7 @@ async function main() {
   const prisma = getPlatformAdminPrismaClient_Unscoped();
 
   const mode = opts.apply ? 'APPLY' : 'DRY RUN (default — no writes)';
-  console.log(`===== TASK-634 D-22 — stale pre-summary overrides =====`);
+  console.log(`===== D-22 — stale pre-summary overrides =====`);
   console.log(`mode   : ${mode}`);
   console.log(`tenant : ${opts.tenantId ?? 'ALL'}`);
 

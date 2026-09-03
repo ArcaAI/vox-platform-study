@@ -29,7 +29,7 @@ export interface ResolvedAiPlatformScope {
    * Why the tenant tier is unavailable, or null when it is available. A control
    * that is disabled without a reason is an affordance without a function
    * (rule 11 §5) — the caller renders this string next to it.
-   */
+ */
   tenantUnavailableReason: string | null;
   setScope: (next: AiPlatformScope) => void;
   /** True until the session projection has hydrated. */
@@ -37,7 +37,7 @@ export interface ResolvedAiPlatformScope {
 }
 
 /**
- * TENANCY IS A SELECTOR, NOT A ROUTE (TASK-845 step 2).
+ * TENANCY IS A SELECTOR, NOT A ROUTE.
  *
  * The platform default and a tenant's own configuration are the two tiers of
  * ONE cascade, so splitting them across two screens (`/ai-task-defaults` and

@@ -1,10 +1,10 @@
 /**
- * TASK-858 lane A — the consultation's OWN workflow selection, durable from the
+ * lane A — the consultation's OWN workflow selection, durable from the
  * moment the consultation is created.
  *
  * ## Why this exists beside `governingEngine` rather than instead of it
  *
- * TASK-813 lets a caller pick `workflowDefinitionSlug` at session open. The pick
+ * lets a caller pick `workflowDefinitionSlug` at session open. The pick
  * is authorized in `ConsultationService.getOrCreate` (`assertSelectableForConsultation`),
  * but the only place it was ever WRITTEN DOWN is
  * `Consultation.metadata.governingEngine` — and `governing-engine.ts` requires a
@@ -39,7 +39,7 @@
  * predicate the authorization gate uses, so a forged value can only ever name a
  * workflow the caller was already entitled to select, in their own tenant. The
  * key is therefore NOT stripped from caller metadata — doing so would mutate a
- * field TASK-795 deliberately preserves untouched, to close nothing.
+ * field deliberately preserves untouched, to close nothing.
  */
 
 import type { JsonObject } from '@arcaai/domains';

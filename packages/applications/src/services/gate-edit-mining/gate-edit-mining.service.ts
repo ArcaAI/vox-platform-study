@@ -35,7 +35,7 @@ import { IPhiRedactor } from './IPhiRedactor';
  * materially reworked. The band between the two is deliberately NOT mined: an
  * ambiguous example teaches the model an ambiguous lesson.
  *
- * TASK-792 W5 (M-9): these are now GOVERNED settings resolved per candidate, not
+ * (M-9): these are now GOVERNED settings resolved per candidate, not
  * TS literals — they decide a training-label taxonomy, and rule 00 puts a
  * threshold in config. The values below are the code DEFAULTS the governed read
  * degrades to; they are numerically identical to the literals they replaced, so
@@ -93,7 +93,7 @@ export interface GateEditCorpusExport {
 }
 
 /**
- * Fine-tuning dataset schema (TASK-792 W4 / C-6).
+ * Fine-tuning dataset schema ( / C-6).
  *
  * Versioned in-band because a training artifact outlives the code that produced
  * it: a JSONL file found on disk in six months must still say what it is.
@@ -128,7 +128,7 @@ export interface GateEditFineTuningRecord {
    * Real clinician behaviour, as opposed to the harness's synthetic golden
    * fixture. Stated per record so a downstream consumer can never present a
    * synthetic-derived result as clinical evidence by accident
-   * (`apps/harness/.../golden/sources.py` §OPEN PREREQUISITE).
+   * (`apps/harness/.../golden/sources.py` PREREQUISITE).
    */
   provenance: 'CLINICIAN_EDIT';
   /** Which redaction mode produced the text. `full` for retained artifacts. */
@@ -445,7 +445,7 @@ export class GateEditMiningService extends BaseService {
       .filter((row) => row.tenantId === params.tenantId)
       // The SME gate. Filtered here rather than in the query only because
       // `findForCorpusExport` has no `curationStatus` predicate yet (an
-      // index-backed one is requested from TASK-790, which owns that layer);
+      // index-backed one is requested from, which owns that layer);
       // the semantics are identical, the read is merely wider than it needs to be.
       .filter((row) => row.curationStatus === ExemplarCurationStatus.APPROVED)
       // A pair missing either half cannot train anything, and reaching past the

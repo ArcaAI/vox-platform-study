@@ -1,6 +1,6 @@
 """OpenAI-compatible mock upstream for the Lane H benchmark harness.
 
-README §4.8 / TASK-818 H-1: "Mock the upstream, but publish both numbers."
+/ : "Mock the upstream, but publish both numbers."
 Serves the exact wire shape `apps/text`'s real `openai_compat` provider
 (`src/text/providers/openai_compat.py`) already speaks to (it builds requests
 with the official `openai` SDK's `AsyncOpenAI(base_url=...)`), so pointing
@@ -40,7 +40,7 @@ message's content.
 
 ## TLS mode — why it exists and what it does NOT prove
 
-`docs/implementation/TASK-818-Text-LLM-Router/baseline.md` ("Harness gap to
+("Harness gap to
 close"): Lane A's pooled egress-client cache is supposed to save TLS
 handshakes, DNS and connection setup, and this mock was plain HTTP on
 loopback — nothing for connection reuse to save, so the harness could not

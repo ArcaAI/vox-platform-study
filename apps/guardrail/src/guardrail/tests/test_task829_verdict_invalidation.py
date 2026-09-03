@@ -1,11 +1,11 @@
-"""TASK-829 §12 — a policy change must invalidate every verdict it affects.
+"""a policy change must invalidate every verdict it affects.
 
 The fan-out handle (`gr:rt:seg:<tenant>:<segment>`) is what a consumer reads
 INSTEAD of calling guardrail. It is keyed by tenant and segment id and by
 nothing else — so on its own it will happily serve a verdict computed under a
 policy that has since been replaced, for as long as the TTL allows.
 
-That is the §12 criterion "policy/classifier/taxonomy version change invalidates
+That is the criterion "policy/classifier/taxonomy version change invalidates
 every affected verdict" failing on the one path Phase 1 is actually about. The
 operational shape is the one that matters: an operator tightens the guardrail
 *during* an incident, the config-invalidation channel correctly drops the config
@@ -202,7 +202,7 @@ async def test_an_unchanged_policy_still_serves_the_cached_verdict() -> None:
 
 
 async def test_three_consumers_still_cause_exactly_one_classification() -> None:
-    """§12's headline property must survive the staleness check."""
+    """'s headline property must survive the staleness check."""
     store = InMemoryRealtimeStore()
     analyzer = CountingAnalyzer()
     validator = _validator(_policy(), store, analyzer)
@@ -216,7 +216,7 @@ async def test_three_consumers_still_cause_exactly_one_classification() -> None:
 
 
 async def test_the_stamp_is_an_opaque_digest_and_carries_no_transcript_text() -> None:
-    """The stamp travels on the wire, so it is held to the §6/C-5 invariant too.
+    """The stamp travels on the wire, so it is held to the invariant too.
 
     `test_the_verdict_carries_no_transcript_text` covers `to_dict()`; the stamp is
     attached alongside it on the stored artifact, so it needs its own assertion

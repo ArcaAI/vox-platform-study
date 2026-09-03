@@ -2,7 +2,6 @@
  * `BillingService.recordPlanChange` is genuinely atomic.
  *
  * Closes the audit finding recorded in
- * `docs/implementation/TASK-677-Transactional-Write-Sequences/README.md`.
  * deliberately left unfixed there because it changes billing behaviour.
  *
  * The method wraps its two writes — CLOSE the current plan window, OPEN the

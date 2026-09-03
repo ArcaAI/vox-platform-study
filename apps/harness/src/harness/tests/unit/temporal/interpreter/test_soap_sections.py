@@ -1,4 +1,4 @@
-"""TASK-796 — the harness-side SOAP mirror must match the default engine's parser.
+"""the harness-side SOAP mirror must match the default engine's parser.
 
 ``_soap.py`` is a deliberate mirror of
 ``packages/applications/.../live-documentation/soap-parser.ts`` so an interpreter-produced

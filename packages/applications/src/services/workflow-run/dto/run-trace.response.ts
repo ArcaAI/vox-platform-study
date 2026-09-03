@@ -2,28 +2,27 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkflowRunResponse } from './workflow-run.response';
 
 /**
- * One node-execution rollup within a run's trace (TASK-723 Task 5's
- * `getRunTrace`).
+ * One node-execution rollup within a run's trace (`getRunTrace`).
  *
  * `nodeType` is the trajectory step's `name` (`= payload.node_type` on the
- * interpreter side) — NOT a per-node id. The Task 1 contract (§5,
- * `contracts/run-read-model.contract.md`) found that TASK-718 does not stamp
+ * interpreter side) — NOT a per-node id. The Task 1 contract
+ * `contracts/run-read-model.contract.md`) found that the interpreter does not stamp
  * a `node_id` onto the persisted trajectory row, only onto the ephemeral
  * in-workflow `NodeResult`, so two distinct node INSTANCES of the same TYPE
  * within one run are indistinguishable in the trajectory stream except by
  * `order` (their position in the run's `seq` sequence). `order` is therefore
  * the closest thing to node identity this rollup can offer today.
  *
- * `attemptGroupingIsDerived` is ALWAYS `true` (Task 1 contract §3: no attempt
+ * `attemptGroupingIsDerived` is ALWAYS `true` (Task 1 contract: no attempt
  * column exists anywhere) — a consecutive run of steps sharing the same
  * `nodeType` at increasing `seq` is folded into one group and labelled as a
  * DERIVED retry grouping, never presented as authoritative (README pitfall 4).
  *
  * `degraded` cannot be told apart from a critically-FAILED node using the
- * trajectory row alone (Task 1 contract §5 — both persist as
+ * trajectory row alone (Task 1 contract — both persist as
  * `status: ERROR`); this rollup does not attempt that distinction from the
  * trajectory alone. `WorkflowRun.degradedNodeCount`/`failedNodeCount` (set by
- * `recordRunFinished`, once TASK-718 is wired to call it) are the
+ * `recordRunFinished`, once is wired to call it) are the
  * authoritative run-level counts. A per-node ERROR status here is rendered
  * honestly as "error" without asserting degraded vs. failed.
  */

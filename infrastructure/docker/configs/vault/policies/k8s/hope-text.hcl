@@ -1,11 +1,11 @@
 # Vault policy for the Kubernetes auth role
 # `hope-text`, bound to the `hope-text` ServiceAccount.
-# Renamed from `hope-smr` by TASK-740. Vault has no policy rename: the live
+# Renamed from `hope-smr` by. Vault has no policy rename: the live
 # swap is create-then-bind-then-delete, per the deployment-repo checklist in
-# the ticket README section 6.4.
+#  section 6.4.
 #
 # LEAST PRIVILEGE BY ENUMERATION, NOT BY GLOB. Each path is one secret this
-# workload actually reads (see deployment/vault-agent/README.md § Per-service
+# workload actually reads (see deployment/vault-agent/README.md
 # secret sets). A `secret/data/hope/*` glob would let any compromised pod read
 # every platform credential, which is the posture this policy is removing.
 #

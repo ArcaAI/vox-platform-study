@@ -1,5 +1,5 @@
 /**
- * TASK-719 UX pass — editor keyboard shortcuts. The load-bearing assertion is the NEGATIVE one:
+ * UX pass — editor keyboard shortcuts. The load-bearing assertion is the NEGATIVE one:
  * a chord fired while focus is inside a text field must fall through to the browser, or undo in
  * the inspector's inputs would silently revert graph edits instead of typing.
  */

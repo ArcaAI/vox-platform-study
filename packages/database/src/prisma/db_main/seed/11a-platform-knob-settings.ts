@@ -16,7 +16,7 @@
  *
  * The rows live on the reserved SYSTEM tenant (`SYSTEM_TENANT_ID`,
  * `00000000-…`) — the sole platform-configuration tier (owner ruling
- * 2026-08-20, TASK-763 OD-1; GLOBAL/`SEED_TENANT_ID` is a CUSTOMER tenant,
+ * 2026-08-20,; GLOBAL/`SEED_TENANT_ID` is a CUSTOMER tenant,
  * never a runtime tier) — under the `registry` namespace, which is what
  * `SettingsRegistryWriteService` writes and what `AppSettingsService` admits
  * into its platform (key-only) cache lane. Per-TENANT overrides are NOT seeded:

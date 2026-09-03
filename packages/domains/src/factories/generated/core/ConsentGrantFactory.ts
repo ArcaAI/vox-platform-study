@@ -5,7 +5,7 @@ import { BaseEntityFactoryCreateProps } from '../../../common';
 import { ConsentGrantEntity, IConsentGrantEntity } from '../../../entities';
 import { generateId } from '../../../utils';
 
-// HAND-AUTHORED — TASK-712 (consent-abac). `gen:entity`/`gen:factory`
+// HAND-AUTHORED — (consent-abac). `gen:entity`/`gen:factory`
 // reconcile against committed source; they do not scaffold (see
 // .claude/rules/03-domain-layer.md). Follows AiProviderConnectionFactory.
 export interface CreateConsentGrantProps extends BaseEntityFactoryCreateProps {

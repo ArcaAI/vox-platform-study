@@ -72,7 +72,7 @@ export interface RateLimitExplainResult {
 }
 
 /**
- * Admin CRUD over `RateLimitRule` rows plus the resolution `explain` (TASK-785).
+ * Admin CRUD over `RateLimitRule` rows plus the resolution `explain`.
  *
  * SUPER_ADMIN-only at the HTTP layer (`manage all` + `@ForbidApiKey`), so these
  * methods do not re-derive privilege; they DO enforce tenant existence, the

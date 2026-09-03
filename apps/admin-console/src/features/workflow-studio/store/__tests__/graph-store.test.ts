@@ -1,6 +1,6 @@
 /**
- * Graph editing store (TASK-719 Task 11). Business rules live on the store's actions so both
- * editors (canvas + list/tree, Task 13) get identical refusal behavior — README §4 Task 11.
+ * Graph editing store. Business rules live on the store's actions so both
+ * editors (canvas + list/tree, Task 13) get identical refusal behavior — Task 11.
  */
 import { describe, expect, it } from 'vitest';
 import { createGraphStore } from '../create-graph-store';
@@ -82,7 +82,7 @@ describe('createGraphStore', () => {
     expect(store.getState().canConnect({ source: a, sourceHandle: 'out', target: b, targetHandle: 'in' }).ok).toBe(true);
   });
 
-  describe('port-type compatibility (TASK-809 Task 12)', () => {
+  describe('port-type compatibility (Task 12)', () => {
     function descriptor(type: string, inputs: WorkflowNodeDescriptor['inputs'], outputs: WorkflowNodeDescriptor['outputs']): WorkflowNodeDescriptor {
       return {
         type,

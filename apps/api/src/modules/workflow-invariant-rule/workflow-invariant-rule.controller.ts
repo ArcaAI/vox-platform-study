@@ -12,9 +12,9 @@ import { CanManage, ExpectedVersion, ForbidApiKey, ForbidServiceAccount, Require
 
 /**
  * WorkflowInvariantRuleController — tenant-scoped CRUD for the validator's rule rows
- * (TASK-790 W3b), mounted at `/admin/workflow-invariant-rules`.
+ * (b), mounted at `/admin/workflow-invariant-rules`.
  *
- * Closes TASK-789 finding H-1: the model had NO HTTP surface at all, so a tenant admin could
+ * Closes finding H-1: the model had NO HTTP surface at all, so a tenant admin could
  * not write a row and the capability `workflow-invariant-rule.prisma`'s header documents ("a
  * tenant may add strictness rules") did not exist in the running system. `WorkflowValidatorService`
  * — which resolves these rows and merges them one-way-strict — is wired into the definition
@@ -31,15 +31,15 @@ import { CanManage, ExpectedVersion, ForbidApiKey, ForbidServiceAccount, Require
 // NO `@RequiredSvcScopes` — deliberately, and it is the SAFE posture, not an oversight. Adding a
 // scope requires declaring it in `SERVICE_ACCOUNT_SCOPE_REGISTRY`
 // (`packages/applications/src/services/serviceAccount/`) and regenerating `vox-node`'s generated
-// admin area, neither of which this ticket owns (TASK-790 ownership boundary). With no scope
+// admin area, neither of which owns ( ownership boundary). With no scope
 // declared, BOTH machine credential classes are denied by default (rule 05 §API Test Standard:
 // "No scope declaration = deny-by-default 403 for BOTH machine classes") — so this surface is
 // reachable only by a tenant-admin / super-admin JWT, which is the audience a governance surface
 // wants. Whoever owns the service-account registry can widen it later; see the ticket's
 // `requestedContracts`.
 //
-// TASK-789 day-1 fix: the reasoning above was recorded in a COMMENT but not in a DECORATOR,
-// and the TASK-762/773 boot audit refuses to start on exactly that ambiguity — "a deliberate
+// day-1 fix: the reasoning above was recorded in a COMMENT but not in a DECORATOR,
+// and the /773 boot audit refuses to start on exactly that ambiguity — "a deliberate
 // closure nobody wrote down". The gateway would not boot AT ALL. `@ForbidServiceAccount()`
 // states the decision above in the form the audit reads, closing this surface to the machine
 // class explicitly rather than by the absence of a scope. Same posture as MonitoringController.

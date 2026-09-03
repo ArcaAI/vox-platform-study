@@ -2,7 +2,6 @@
 
 Every HOPE process registers its baked build identity with the gateway on
 boot, then heartbeats every 5 minutes. Contract (frozen):
-``docs/implementation/TASK-648-Service-Version-And-Release-Registry/
 contracts/service-release.api.yaml`` ``POST /internal/service-releases`` —
 idempotent upsert keyed on ``(service, gitCommitSha, releaseTag)`` for the
 release and ``(serviceName, environment, instanceId)`` for the instance. A

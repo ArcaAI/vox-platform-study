@@ -1,8 +1,8 @@
 /**
- * TASK-814 D-18 + DD-3 — the LIVE surface of the Consultation Scribe, against a
+ * + DD-3 — the LIVE surface of the Consultation Scribe, against a
  * RUNNING gateway.
  *
- * WHY THIS FILE EXISTS. TASK-814 §9 recorded D-18 (live status/error surfacing)
+ * WHY THIS FILE EXISTS. recorded D-18 (live status/error surfacing)
  * and DD-3 (N documents from `section.patch`) as unverifiable without "a
  * microphone-capable browser". That is not what the code does, and the
  * distinction matters because it is the reason these two sat unverified:

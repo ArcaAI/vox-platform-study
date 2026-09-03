@@ -15,7 +15,7 @@ import * as Entities from '../../../entities';
  * `TENANT_SCOPED_MODELS` and NOT in `MODELS_WITHOUT_SOFT_DELETE`.
  *
  * PUBLISHED/DEPRECATED rows are hard-immutable by SERVICE convention
- * (`assertMutable`, owned by TASK-719's authoring service — not enforced at
+ * (`assertMutable`, owned by authoring service — not enforced at
  * this layer, which only expresses structural invariants per rule 03).
  */
 export interface IWorkflowDefinitionEntity extends IBaseTenantEntity {

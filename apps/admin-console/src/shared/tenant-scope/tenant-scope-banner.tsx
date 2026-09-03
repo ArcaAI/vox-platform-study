@@ -4,7 +4,7 @@ import { IconBuilding } from '@tabler/icons-react';
 import { useSession } from '@/shared/auth';
 
 /**
- * Per-page tenant-scope banner (redesign build spec §3, region 1). Info-tinted
+ * Per-page tenant-scope banner (redesign build spec, region 1). Info-tinted
  * strip for the `ScreenTemplate` `statusBanner` slot on tenant-scoped (tier
  * 30–49) pages, naming the working tenant every mutation runs against. Unlike the
  * global `WorkingTenantBanner` (frame 07, warning-tinted, with the clear-tenant

@@ -1,5 +1,5 @@
 /**
- * TASK-790 (finding M-2, requested by TASK-791) — a run's delivered OUTPUT is recordable and
+ * (finding M-2, requested by) — a run's delivered OUTPUT is recordable and
  * readable back.
  *
  * `output.deliver` is the summarization palette's only `external_write` node. It performs a real
@@ -65,7 +65,7 @@ function build() {
   return new WorkflowRunService(mockRepository as any, mockEventEmitter as any, mockClsService as any);
 }
 
-describe('TASK-790 M-2 — WorkflowRun.resultRef', () => {
+describe(' M-2 — WorkflowRun.resultRef', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRepository.update.mockImplementation(async (_id: string, entity: any) => entity);

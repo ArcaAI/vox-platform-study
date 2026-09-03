@@ -1,4 +1,4 @@
-"""Unit tests for the Lane H2 (TASK-818) TLS mode additions to `mock_upstream.py`.
+"""Unit tests for the Lane H2 TLS mode additions to `mock_upstream.py`.
 
 Deliberately outside `src/text/tests` — see `test_stats.py`'s docstring for why
 this directory never runs as part of `pnpm text:test`. Run explicitly with:

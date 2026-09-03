@@ -1,4 +1,4 @@
-"""Per-model coalescing dispatch for the guardrail plane (TASK-778).
+"""Per-model coalescing dispatch for the guardrail plane.
 
 `nlp.core.batching.MicroBatcher` is the generic primitive; this module binds one
 batcher per (weight slot, verb) and defines the GROUP KEY — the answer to "which
@@ -16,14 +16,14 @@ Batchers are keyed by the SAME `(model_name, model_path)` cache key the model
 cache uses, so an admin flipping `AiModel.localPath` gets a fresh batcher along
 with fresh weights rather than a queue still pointed at the old runtime.
 
-TWO LANES OVER ONE WEIGHT SLOT (TASK-782)
+TWO LANES OVER ONE WEIGHT SLOT
 -----------------------------------------
-TASK-778 gave each (slot, verb) exactly one queue and measured p95 ~1.7 s at 100
+gave each (slot, verb) exactly one queue and measured p95 ~1.7 s at 100
 concurrent — the right answer for the asynchronous per-utterance redaction pass
 and the wrong one for a SYNCHRONOUS inline gate. The two are different service
 classes with different latency budgets, so each (slot, verb) now carries two
 batchers with their own geometry: `interactive` (small batch, ~2 ms linger,
-short wait ceiling) and `bulk` (the TASK-778 geometry, unchanged).
+short wait ceiling) and `bulk` (the geometry, unchanged).
 
 Splitting the queues alone would not have been enough. Both lanes drive the SAME
 tensor graph, so a bulk pass in flight is head-of-line blocking for the gate
@@ -53,7 +53,7 @@ from nlp.core.priority_gate import PRIORITY_BULK, PRIORITY_INTERACTIVE, Priority
 logger = structlog.get_logger(__name__)
 
 #: The two declared service classes. `bulk` is the DEFAULT so a caller that
-#: names no class keeps exactly the TASK-778 behaviour.
+# names no class keeps exactly the behaviour.
 LANE_INTERACTIVE = "interactive"
 LANE_BULK = "bulk"
 LANES = (LANE_INTERACTIVE, LANE_BULK)
@@ -90,7 +90,7 @@ def classify_group_key(tasks: dict[str, Any], threshold: float) -> str:
     return _policy_fingerprint("classify", tasks, threshold)
 
 
-#: Control-plane batching geometry, keyed by lane (TASK-799 lane D).
+# Control-plane batching geometry, keyed by lane.
 _served_batching: dict[str, Any] = {}
 
 

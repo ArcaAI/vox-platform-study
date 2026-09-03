@@ -59,7 +59,6 @@
  *
  * @see apps/api/src/modules/prompt-management/prompt-management.controller.ts
  * @see packages/applications/src/services/prompt-management/prompt-management.service.ts
- * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
@@ -129,7 +128,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     const created = await request.post(PROMPTS, {
       headers: auth(tenantAdminToken),
       data: {
-        name: `TASK-635 test-bench ${stamp}`,
+        name: ` test-bench ${stamp}`,
         content: 'Generate a {{department}} clinical summary from the following notes.',
         category: 'SUMMARY',
         status: 'PUBLISHED',
@@ -242,7 +241,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
     });
     // `finalizePromptTemplateTest` validates the taskId ONLY by calling TEXT
     // (`prompt-management.service.ts:1001` → `:1386`), so with `apps/text` down an
-    // `ECONNREFUSED` becomes an honest 503 by the TASK-768 downstream-error design
+    // `ECONNREFUSED` becomes an honest 503 by the downstream-error design
     // (`downstream-error.ts:160`) — the service genuinely cannot tell an unknown task from an
     // unreachable validator. Every sibling test in this file already gates on TEXT availability;
     // this one did not, which is why it failed in a stack without TEXT.
@@ -274,7 +273,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       expect(ack.provider).toBe(KNOWN_PROVIDER);
       expect(ack.model).toBe(KNOWN_MODEL);
     } else {
-      // TASK-768 made this branch decisive. Previously an unreachable TEXT ALSO
+      // made this branch decisive. Previously an unreachable TEXT ALSO
       // produced a 400 (`Failed to call TEXT service: connect ECONNREFUSED
       // 127.0.0.1:8862`), so a bare status check could not tell "known pair
       // wrongly rejected" apart from "TEXT is down in this stack" and the test

@@ -20,7 +20,7 @@ export interface ITenantTtsConfigEntity extends IBaseTenantEntity {
   maxInputChars?: number | null;
   sarvamPublicApiAllowed: boolean;
   configJson?: Record<string, unknown> | null;
-  // TASK-843 — CONSTANT for the model: every row is a text-to-speech binding.
+  // CONSTANT for the model: every row is a text-to-speech binding.
   // Optional on the interface so the create path can omit it (the DB default
   // covers it); non-optional on the class with the matching code default.
   taskKind?: AiTaskKind;

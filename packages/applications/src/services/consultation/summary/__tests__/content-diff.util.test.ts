@@ -7,7 +7,7 @@
  * whole-document fallback) when a doctor edits / signs an AI draft. No schema
  * change — these columns already exist.
  *
- * TASK-810 carry-over A: the section vocabulary is now supplied by the caller's
+ * carry-over A: the section vocabulary is now supplied by the caller's
  * COMPILED DOCUMENT TEMPLATE instead of a private four-key SOAP tuple. The
  * cases below lock both halves of that contract: with a shape the map is keyed
  * on that shape's section keys (whatever they are, however many), and with NO
@@ -151,7 +151,7 @@ describe('diffContent', () => {
     it('falls back when NO shape is supplied, even for a SOAP-shaped note', () => {
       // Carry-over A: without a resolved template this util has no section
       // vocabulary at all. It must not fall back to a private hardcoded SOAP
-      // tuple — that assumption is exactly what TASK-810 removes.
+      // tuple — that assumption is exactly what removes.
       const before = soapNote('Patient reports headache.');
       const after = soapNote('Patient reports severe headache.');
 

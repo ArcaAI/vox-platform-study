@@ -1,5 +1,5 @@
 """``hope_workflow_contract`` — the Python mirror of ``@arcaai/workflow-contract``'s
-``compiledConfig`` contract (TASK-716 Task 7b).
+compiledConfig contract (b).
 
 CONSUMER half only: pydantic models for the compiled artifact, checksum verification
 and a ``formatVersion`` guard. There is no compiler and no validator here — Python

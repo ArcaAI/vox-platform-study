@@ -139,7 +139,7 @@ def test_no_gguf_raises(tmp_path):
 def test_quant_mismatch_raises_instead_of_silently_substituting(tmp_path):
     """A requested quant with no matching candidate must fail closed (selection
     is `failMode: closed` — see .claude/rules/09-infrastructure-devops.md
-    §Configuration Tiers), not silently return an unrelated quantization.
+    Tiers), not silently return an unrelated quantization.
     """
     repo = str(tmp_path)
     _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-f16.bin"))

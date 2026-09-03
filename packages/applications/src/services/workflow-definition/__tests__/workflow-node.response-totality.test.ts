@@ -1,5 +1,5 @@
 /**
- * TASK-809 task 11 — `toNodeResponse` must be a TOTAL projection of `WorkflowNodeDescriptor`.
+ * task 11 — `toNodeResponse` must be a TOTAL projection of `WorkflowNodeDescriptor`.
  *
  * ## Why this test is shaped the way it is
  *
@@ -8,7 +8,7 @@
  * internal type) but it has one failure mode, and it is silent: a field added to the descriptor
  * is simply never assigned, the endpoint keeps returning 200, and the consumer — the Studio
  * canvas, the SDK — cannot tell "the platform has no value for this" from "the gateway dropped
- * it". That is exactly what happened to all seven TASK-809 contract fields (`inputs`, `outputs`,
+ * it". That is exactly what happened to all seven contract fields (`inputs`, `outputs`,
  * `trigger`, `lane`, `requires`, `idempotent`, `schemaVersion`, plus `evalGate`): the contract
  * package grew them, and `GET /api/v1/admin/workflow-nodes` never showed one of them.
  *
@@ -147,7 +147,7 @@ function assertTotalProjection(descriptor: WorkflowNodeDescriptor, fields: reado
   expect(misprojected, 'toNodeResponse projected a field from the wrong source:\n' + misprojected.join('\n')).toEqual([]);
 }
 
-describe('TASK-809 — WorkflowNodeResponse is a total projection of WorkflowNodeDescriptor', () => {
+describe('WorkflowNodeResponse is a total projection of WorkflowNodeDescriptor', () => {
   const fields = declaredDescriptorFields();
 
   it('every field declared on WorkflowNodeDescriptor reaches the DTO (synthetic, fully-populated)', () => {

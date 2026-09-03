@@ -17,7 +17,7 @@ export const ENTITLEMENTS_NAMESPACE = 'entitlements';
 /**
  * Platform tenant that owns the single authoritative kill-switch row. The
  * SYSTEM tenant is the SOLE platform-configuration tier (owner ruling
- * 2026-08-20, TASK-763 OD-1) — matches `RATE_LIMIT_TENANT_ID` and
+ * 2026-08-20) — matches `RATE_LIMIT_TENANT_ID` and
  * `PLATFORM_TENANT_IDS` in `AppSettingsService` / `SettingsRegistryWriteService`,
  * and the seed's `SYSTEM_TENANT_ID`. One platform row keeps the flat
  * `AppSettingsService` cache lookup deterministic. NEVER the GLOBAL/default
@@ -51,7 +51,7 @@ export const RESERVED_UNGATED_TENANT_IDS: readonly string[] = [ENTITLEMENTS_TENA
 
 /**
  * The plan a CUSTOMER tenant resolves against when `Tenant.plan` is NULL
- * (TASK-785 OD-5, owner decision 2026-08-22).
+ * (owner decision 2026-08-22).
  *
  * Previously a NULL plan resolved to `UNGATED_ENTITLEMENTS`: unlimited quotas
  * and `rateLimitTier: 'relaxed'` (300/min) — i.e. an unknown, unbilled tenant
@@ -59,7 +59,7 @@ export const RESERVED_UNGATED_TENANT_IDS: readonly string[] = [ENTITLEMENTS_TENA
  * default. Defaulting to the lowest paid plan makes "no plan" fail conservative
  * instead of fail generous.
  *
- * This REVERSES the NULL-plan half of TASK-766 OD-2, which had SYSTEM and Global
+ * This REVERSES the NULL-plan half of, which had SYSTEM and Global
  * keep `plan = null` specifically to resolve ungated. That intent survives —
  * it is now carried by {@link RESERVED_UNGATED_TENANT_IDS} rather than by the
  * absence of a plan, so it no longer leaks to unknown customer tenants.
@@ -123,7 +123,7 @@ export const ENTITLEMENTS_STORAGE_WARN_EVENT = 'entitlements.storage-warn';
 export const ENTITLEMENTS_METER_SKIPPED_METRIC = 'entitlements_meter_check_skipped_total';
 
 /**
- * Enforcement ships ON by default (TASK-785 OD-6, owner decision 2026-08-22;
+ * Enforcement ships ON by default (owner decision 2026-08-22;
  * supersedes proposal Q9's "OFF until an operator flips it per-env", which was
  * the safe posture while the epic was landing in pieces — it has since landed).
  *
@@ -155,7 +155,7 @@ export interface PlanEntitlementValues {
   maxPromptTemplates: number | null;
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
-  /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722 exposure plane). */
+  /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs ( exposure plane). */
   maxWorkflowDefinitions: number | null;
   storageQuotaBytes: number | null;
   /** Concurrency cap — simultaneous active STT sessions (null = unlimited). */
@@ -163,17 +163,17 @@ export interface PlanEntitlementValues {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
-  /** Fourth business-object meter — PUBLISHED-workflow invocations via `/api/v1/workflows/:slug/invoke` (TASK-722). */
+  /** Fourth business-object meter — PUBLISHED-workflow invocations via `/api/v1/workflows/:slug/invoke`. */
   monthlyWorkflowInvocations: number | null;
   /**
    * Per-capability included allowances, derived in
    * from each plan's ratified business ceilings and then DOUBLED:
    *
    *   sttSessionSeconds = transcriptionMinutes × 60 × 1.1
-   *   llmTokens         = summaries          × 6,000
-   *   ttsCharacters     = consultations      × 2,000
-   *   nlpTextUnits      = consultations      ×    30
-   *   embeddingTokens   = consultations      × 1,500
+   *   llmTokens = summaries × 6,000
+   *   ttsCharacters = consultations × 2,000
+   *   nlpTextUnits = consultations × 30
+   *   embeddingTokens = consultations × 1,500
    *
    * The ×2 headroom is deliberate — `monthlyConsultations` is the commercial
    * cap, so these are RUNAWAY GUARDS, not a second business ceiling. `null` =
@@ -195,7 +195,7 @@ export interface PlanEntitlementValues {
    * decides whether the provider-credential cascade reaches the SYSTEM tier,
    * i.e. whether the platform spends its own money serving this tenant.
    *
-   * `false` on all four plans (OD-7). A plan-level grant on PRO or ENTERPRISE
+   * `false` on all four plans. A plan-level grant on PRO or ENTERPRISE
    * would hand every tenant on that tier a platform-funded cloud path — the
    * margin hole closed when it ratified "SYSTEM stays self-hosted,
    * managed cloud is a paid add-on". Grants are per tenant, through
@@ -203,18 +203,18 @@ export interface PlanEntitlementValues {
    */
   featurePlatformDefaultCredential: boolean;
   /**
-   * May this plan's tenants publish an `stt`-palette `WorkflowDefinition` (TASK-724)?
+   * May this plan's tenants publish an `stt`-palette `WorkflowDefinition` ?
    * Display-only (checked once at publish time, never at runtime) — `true` on every plan below:
    * STT pipeline authoring is a core platform capability, not a premium add-on, unlike
    * `featureDnaReports`/`featureVoiceEnrollment`. See
-   * `docs/implementation/TASK-724-Palette-Stt/contracts/palette.md` §Entitlement gate.
+   * gate.
    */
   featurePaletteStt: boolean;
   /**
-   * TASK-705 — may this plan's tenants run the HARNESS AGENTIC LOOP?
+   * may this plan's tenants run the HARNESS AGENTIC LOOP?
    *
    * The owner ruling (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
-   * §2 row 705): *"harness agentic loop is one of the core business, so, lets treat
+   * row 705): *"harness agentic loop is one of the core business, so, lets treat
    * it as a feature in subscription plan"*. Loop eligibility is therefore
    * COMMERCIAL — a plan property resolved from the database — and no longer an
    * environment kill-switch. The operational device survives as a separate,
@@ -233,7 +233,7 @@ export interface PlanEntitlementValues {
   modelTier: ModelTier;
   rateLimitTier: string;
   /**
-   * TASK-785 — an ABSOLUTE per-plan rate limit. Optional and unset across the
+   * an ABSOLUTE per-plan rate limit. Optional and unset across the
    * seeded matrix on purpose: every seeded plan still expresses its limit
    * INDIRECTLY, by naming a `rateLimitTier`. These exist so a super admin can
    * price a plan's throughput directly without minting a new named tier.
@@ -279,7 +279,7 @@ const PRO_VALUES: PlanEntitlementValues = {
 export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues> = {
   STARTER: {
     maxUsers: 5,
-    // TASK-785 (owner decision 2026-08-22): these two are STRUCTURAL floors, not
+    // (owner decision 2026-08-22): these two are STRUCTURAL floors, not
     // commercial ones, and they are sized to what tenant creation actually
     // provisions — 8 golden departments (`seed/04-department.ts`) and the 14
     // SYSTEM pipelines `provisionTenantPipelineCatalog` clones. They were 2 and 1,

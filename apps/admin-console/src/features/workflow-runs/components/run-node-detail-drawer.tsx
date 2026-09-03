@@ -35,7 +35,7 @@ function PayloadUnavailableNotice({ label }: { label: string }) {
 }
 
 /**
- * Node-level detail for the run trace (Task 8, extended TASK-849 lane C step 6 into
+ * Node-level detail for the run trace (Task 8, extended lane C step 6 into
  * Input/Output/Error tabs). The always-visible summary (status, timing, attempts)
  * sits ABOVE the tabs — the tabs are for the three things a debugger actually digs
  * into per node, matching the ticket's own wording.
@@ -58,9 +58,11 @@ export function RunNodeDetailDrawer({
   /** Only meaningful when `nodeType === 'agentic.loop'` — see `LoopIterationDrilldown`'s own honesty note. */
   loopIterations?: LoopIterationState | null;
   onLoopStep?: (direction: -1 | 1) => void;
-  /** Live-accumulated `workflow.token.delta` text for this exact node (TASK-849 lane C step 6/8;
+  /**
+* Live-accumulated `workflow.token.delta` text for this exact node (lane C step 6/8;
    *  see `liveOutputByNodeId`'s own doc comment in `api/live-events.ts`). A PREVIEW only — never
-   *  the durable output, and absent once the node settles and the connection's map is cleared. */
+   *  the durable output, and absent once the node settles and the connection's map is cleared. 
+ */
   liveOutputPreview?: string;
   onOpenChange: (open: boolean) => void;
 }) {

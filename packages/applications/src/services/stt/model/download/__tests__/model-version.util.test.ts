@@ -1,6 +1,6 @@
 /**
  * Pure content-addressed version derivation for the `hope-models` bucket
- * layout — see `infrastructure/docker/minio/README.md` §5.2.
+ * layout — see `infrastructure/docker/minio/README.md`
  *
  * These are the two live bucket examples the orchestrator provided as the
  * source of truth for the naming convention:
@@ -120,7 +120,7 @@ describe('deriveModelVersion', () => {
 });
 
 /**
- * TASK-855 — the fetch allowlist must actually reach the weights of the three
+ * the fetch allowlist must actually reach the weights of the three
  * models nominated for end-to-end validation. Before this suite, two of the
  * three published NO weight file at all, silently: the selection simply
  * returned companions (or nothing) and the publish "succeeded".
@@ -128,7 +128,7 @@ describe('deriveModelVersion', () => {
  * File lists below are the REAL repo contents, read from the HuggingFace API
  * on 2026-09-02, not invented fixtures.
  */
-describe('isRelevantModelSourceFile — real repo listings (TASK-855)', () => {
+describe('isRelevantModelSourceFile — real repo listings ', () => {
   const MEDICAL_NER = [
     '.gitattributes',
     'README.md',

@@ -1,5 +1,5 @@
 /**
- * Wire types for the platform AI runtime-profile plane (TASK-799 Phase 4, E.2).
+ * Wire types for the platform AI runtime-profile plane.
  *
  * Shapes mirror the gateway DTOs (`AiRuntimeProfileResponse` /
  * `UpsertAiRuntimeProfileRequest` in @arcaai/applications) — the console cannot

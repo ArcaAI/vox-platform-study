@@ -7,7 +7,7 @@ import { WorkflowRun } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 
 /**
- * The runs/observability read-model repository (TASK-723).
+ * The runs/observability read-model repository.
  *
  * `WorkflowRun` is TENANT-SCOPED operational telemetry — the same posture as
  * `AgentTrajectoryStepRepository`, deliberately exempt from two platform

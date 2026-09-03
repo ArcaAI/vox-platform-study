@@ -149,7 +149,7 @@ class S3BlobStore:
     ) -> None:
         import boto3  # lazy — hermetic suite never imports this
 
-        # TASK-858 — boto3 takes the scheme from ``endpoint_url``; an https URL with
+        # boto3 takes the scheme from endpoint_url; an https URL with
         # ``secure=False`` was never plaintext, it just skipped the relaxation below and
         # verified the internal-CA leaf against the system store. The URL is the truth.
         secure = secure or endpoint_url.strip().lower().startswith("https://")
@@ -203,7 +203,7 @@ _MEMORY_STORE = InMemoryBlobStore()
 
 
 #: Registry keys describing WHERE the platform's object storage lives
-#: (TASK-799 A.2). `tier: 'db-config'`, backed by the SYSTEM `TenantStorageConfig`
+# . `tier: 'db-config'`, backed by the SYSTEM `TenantStorageConfig`
 #: row, `consumedBy: ['harness']`. The claim-check store IS that storage — it is
 #: not a second backend — so harness reads the location from here rather than
 #: from a parallel `HARNESS_CLAIM_CHECK_*` block (owner decision D-2: never
@@ -421,7 +421,7 @@ async def store_bytes(
     """Write raw BYTES out-of-band and return their content-addressed claim-check ref.
 
     The binary sibling of :func:`store_blob`, added for the ``agentic.tts`` artifact write
-    (TASK-849 lane B). Audio is not text: ``store_blob`` encodes utf-8, and a WAV body has no
+    ( lane B). Audio is not text: store_blob encodes utf-8, and a WAV body has no
     valid utf-8 decoding, so routing audio through it would either raise or silently mangle.
 
     This is deliberately the SAME mechanism, not a second one — same store, same

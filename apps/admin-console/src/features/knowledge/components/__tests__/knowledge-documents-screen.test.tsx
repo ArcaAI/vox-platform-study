@@ -1,5 +1,5 @@
 /**
- * Knowledge Base screen (TASK-728) — fetch is stubbed at the network
+ * Knowledge Base screen — fetch is stubbed at the network
  * boundary. Covers the working-tenant gate, the offset-paginated grid, the
  * empty state, opening the detail drawer (Overview + force-audited Chunks
  * tab), the archive confirm flow, the fail-closed delete confirm flow

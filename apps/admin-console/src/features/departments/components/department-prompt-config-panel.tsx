@@ -153,9 +153,9 @@ function PromptConfigSkeleton() {
  * only the drifted slots on the department's own :id/prompt-config OCC route.
  * The header carries the Edit affordance that opens the department DetailDrawer.
  *
- * TASK-719 Task 19 (owner verdict, `consolidation-map.md`): this panel stays the AUTHORITATIVE
- * editor for these four slots — per-department workflow assignment is TASK-733 and the
- * consultation palette is TASK-731, so folding into Workflow Studio does not fold in v1. A plain
+ * (owner verdict, `consolidation-map.md`): this panel stays the AUTHORITATIVE
+ * editor for these four slots — per-department workflow assignment is and the
+ * consultation palette is, so folding into Workflow Studio does not fold in v1. A plain
  * `href` link to `/workflow-studio` is added here (reciprocal to the Studio's own
  * `PromptTemplatePicker` deep link back to `/prompt-templates`) so the two surfaces are
  * discoverable from each other, per rule 13's one-authoritative-editor-per-resource rule — never

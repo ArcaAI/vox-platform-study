@@ -23,12 +23,12 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * `/api/v1/admin/ai-task-defaults`). Mirrors `TenantTtsConfigAdminController`:
  * `resolveScopedTenantId` scoping, `If-Match` OCC on the row PUT.
  *
- *  - `GET ''?taskKey=`  → the RESOLVED effective default (tenant row → SYSTEM
+ *  - `GET ''?taskKey=` → the RESOLVED effective default (tenant row → SYSTEM
  *    row → null/service-env fallback). Omit `taskKey` to get the effective
  *    response for ALL task keys at once (array — one round-trip for the UI).
- *  - `GET 'row'?taskKey=`  → ONE raw, editable row (`version` drives the OCC
+ *  - `GET 'row'?taskKey=` → ONE raw, editable row (`version` drives the OCC
  *    token; a `version:0` placeholder when none exists yet).
- *  - `PUT 'row'?taskKey=`  → create (`expectedVersion` 0) or CAS-update under
+ *  - `PUT 'row'?taskKey=` → create (`expectedVersion` 0) or CAS-update under
  *    `If-Match` (drift → 412, missing → 428).
  *
  * Tenant admins are pinned to their CLS tenant; super admins act cross-tenant
@@ -41,7 +41,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * probe). Tenant admins may READ the effective default but cannot write those
  * task keys; runtime resolution uses the SYSTEM row only.
  *
- * `text.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16, reversing
+ * `text.*` and, since (owner decision 2026-08-16, reversing
  * the 2026-07-17 super-admin-only directive), `guardrail.*` are
  * tenant-admin configurable — `getEffective` honours the tenant row and
  * `upsertRow` accepts tenant writes for those keys. `guardrail.*` carries an
@@ -49,7 +49,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * write must name a `modelSlug` that resolves to a SYSTEM-tenant `AiModel`
  * row (the platform-approved list) — also a `ForbiddenException`. A
  * `featureGuardrailModelSelection` entitlement ceiling is catalogued but not
- * yet enforced (needs a DB migration outside TASK-735 Phase 0's scope).
+ * yet enforced (needs a DB migration outside 's scope).
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-task-defaults')
@@ -136,7 +136,7 @@ export class AiTaskDefaultAdminController {
       '`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. ' +
       '`If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version ' +
       'CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for ' +
-      'tenant admins). `guardrail.*` is tenant-admin configurable (TASK-735), but the slug must resolve to a ' +
+      'tenant admins). `guardrail.*` is tenant-admin configurable , but the slug must resolve to a ' +
       'SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.',
   })
   @ApiQuery({ name: 'taskKey', required: true, enum: [...AI_TASK_KEYS] })
@@ -152,7 +152,7 @@ export class AiTaskDefaultAdminController {
   @ApiResponse({
     status: 403,
     description:
-      'nlp.*/harness.* keys are super-admin-only. guardrail.* is tenant-admin configurable (TASK-735) but rejects a ' +
+      'nlp.*/harness.* keys are super-admin-only. guardrail.* is tenant-admin configurable  but rejects a ' +
       'modelSlug outside the platform-approved (SYSTEM-tenant) list.',
   })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })

@@ -5,7 +5,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 
 /**
- * Append-only WORM record of ONE workflow-assignment edit (TASK-733).
+ * Append-only WORM record of ONE workflow-assignment edit.
  * Mirrors `PipelinePolicyChange`: the backing table has no `_version` /
  * `_metadata` / `updatedAt` / `resourceStatus` columns and the migration
  * REVOKEs UPDATE/DELETE from the application role, so the entity exposes

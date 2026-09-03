@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * Knowledge Base screen (tier 30-49, TASK-728) — the institutional-RAG
+ * Knowledge Base screen (tier 30-49) — the institutional-RAG
  * knowledge corpus, the platform's only real "memory" concept (see the
- * ticket README §1/§2 for why episodic/session-artifact memory is out of
+ * for why episodic/session-artifact memory is out of
  * scope: it does not exist in the code today). Tenant-scoped: elevated
  * sessions must pick a working tenant before any query mounts; tenant admins
  * are pinned and pass straight through (`WorkingTenantGate`).

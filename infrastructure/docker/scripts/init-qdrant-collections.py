@@ -23,7 +23,7 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 # An EMPTY key means "no key", not "the empty string is my key": qdrant-client
 # switches to TLS whenever api_key is not None, so an empty value from a Secret
 # turned every request into `[SSL: WRONG_VERSION_NUMBER]` against the plain-HTTP
-# hope-qdrant (found by TASK-858's OrbStack bring-up). TLS is a stated choice
+# hope-qdrant (found by OrbStack bring-up). TLS is a stated choice
 # (QDRANT_HTTPS=true), never a side effect of holding a key.
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY") or None
 QDRANT_HTTPS = os.getenv("QDRANT_HTTPS", "false").strip().lower() in ("1", "true", "yes")

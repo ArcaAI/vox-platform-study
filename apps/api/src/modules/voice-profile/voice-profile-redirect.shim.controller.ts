@@ -5,12 +5,12 @@ import { redirect308 } from '../../common';
 import { Authorize, ForbidApiKey } from '../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
  *
  * `voice-profile` (singular) became `voice-profiles`.
  *
  * API-KEY-NOTE — `@ForbidApiKey()` is reproduced verbatim from the target: voice biometrics
- * are JWT-only (TASK-758's reasoned exemption from policy A1), and a shim that
+ * are JWT-only ( reasoned exemption from policy A1), and a shim that
  * accepted a key would be a way of reaching an enrolment route with a
  * credential the target refuses. `@TenantOwnedResource` is NOT reproduced —
  * that interceptor resolves the row to enforce 404-over-403, and this handler

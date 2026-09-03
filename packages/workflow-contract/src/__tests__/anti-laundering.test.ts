@@ -1,5 +1,5 @@
 /**
- * TASK-809 Task 6 — **`document -> ner` is a TYPE ERROR.** The single most important test in
+ * **`document -> ner` is a TYPE ERROR.** The single most important test in
  * this ticket.
  *
  * The rule, stated clinically: **NER must never see LLM-generated text, only the raw
@@ -127,10 +127,10 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
       .filter((descriptor) => descriptor.outputs.some((port) => port.primitive === 'transcript'))
       .map((descriptor) => descriptor.key)
       .sort();
-    // TASK-806 lane A — `agent.transcription` is the target catalogue's capture entry. It
+    // lane A — `agent.transcription` is the target catalogue's capture entry. It
     // belongs on this list for exactly the reason the list exists: it is a TRANSCRIPTION node,
     // not a generation node, and the loop below is what enforces that distinction.
-    // TASK-847 — `agentic.stt` joins the list, and the loop below is why that is safe rather
+    // `agentic.stt` joins the list, and the loop below is why that is safe rather
     // than merely expected: it is a TRANSCRIPTION node (it dispatches a batch ASR job and
     // publishes what the recogniser returned), it carries no `generation` class, and the
     // generic `agentic.agent` deliberately produces `text` rather than `transcript` precisely so

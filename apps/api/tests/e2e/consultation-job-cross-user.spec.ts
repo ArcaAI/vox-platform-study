@@ -4,8 +4,8 @@
  * Pins the contract end-to-end:
  *
  *   - tenant-A user-1 (the job's creator) cancels their own job → 200
- *   - tenant-A user-2 (a same-tenant peer)                cancels → 404
- *   - tenant-A user-2 GETs the same job                            → 200
+ *   - tenant-A user-2 (a same-tenant peer) cancels → 404
+ *   - tenant-A user-2 GETs the same job → 200
  *     (read routes deliberately stay tenant-only)
  *
  * Cross-TENANT 404 behaviour is already proven by
@@ -22,8 +22,8 @@
  * seed Redis directly with the same JSON shape the W3.3 `JobService`
  * writes. Cleanup deletes the key in `afterAll`.
  *
- *   Redis key  : `consultation_job:<jobId>`
- *   JSON shape : `ConsultationJobStatus` from
+ *   Redis key: `consultation_job:<jobId>`
+ *   JSON shape: `ConsultationJobStatus` from
  *                `packages/applications/src/services/consultation/jobs/dto/job.dto.ts`
  *
  * Requires the dev/test stack (`docker compose up postgres redis`) +
@@ -43,7 +43,7 @@ const JOB_KEY_PREFIX = 'consultation_job:';
 /**
  * Build a `ConsultationJobStatus` row that mirrors `JobService` exactly.
  *
- * `type` must be one of the types `cancelJob` still routes — TASK-732 deleted
+ * `type` must be one of the types `cancelJob` still routes — deleted
  * the `SUMMARY`/`NER` queues and processors, so a `SUMMARY` row now falls to
  * that switch's `default: return false` and the creator's own cancel answers
  * 404. `PRE_SUMMARY` is a live type, so the cancel arm below exercises the
@@ -65,7 +65,7 @@ function buildJobStatusJson(opts: { jobId: string; tenantId: string; userId: str
 }
 
 /**
- * TASK-764: prefer `REDIS_URL` (what `.env.test` actually declares) and only
+ * prefer `REDIS_URL` (what `.env.test` actually declares) and only
  * then fall back to the discrete host/port/pass triple.
  *
  * The old code went straight to `localhost:6379` with NO password when the
@@ -118,7 +118,7 @@ test.describe('AC-4 — ConsultationJob cancel ownership (intra-tenant)', () => 
   let redis: Redis | null = null;
 
   /**
-   * TASK-764 — is the seeded fixture actually VISIBLE to the API under test?
+   * is the seeded fixture actually VISIBLE to the API under test?
    *
    * Every assertion below distinguishes 200 from 404, so a fixture the API
    * cannot see is indistinguishable from the product refusing the read. That is

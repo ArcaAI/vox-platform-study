@@ -164,10 +164,10 @@ def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
 
 
 # ---------------------------------------------------------------------------
-# Throughput / saturation (TASK-777 Lane B)
+# Throughput / saturation
 # ---------------------------------------------------------------------------
 # Guardrail fails CLOSED and sits on every generation's critical path, so its
-# saturation is the platform's saturation. Before TASK-777 `/metrics` carried
+# saturation is the platform's saturation. Before `/metrics` carried
 # per-model gauges and token counters only: there was no way to see in-flight
 # work, queue depth, peer health or shed load — the four numbers you need to
 # answer "is the safety plane the bottleneck?".

@@ -1,8 +1,8 @@
 /**
- * `WorkflowStudioEditor` — TASK-719 Task 15/16 remainder (README §7 "still genuinely NOT done"):
+ * `WorkflowStudioEditor` — /16 remainder ( "still genuinely NOT done"):
  *  - the metadata form autosaves `name`/`description` the same way `graph` does;
  *  - a PUBLISHED (read-only) row offers "Create new version from this" instead of an edit
- *    affordance (design.md §Plane 1: "published rows immutable — edits create versions");
+ * affordance ( 1: "published rows immutable — edits create versions");
  *  - `?view=list` round-trips through the URL via nuqs, both directions;
  *  - the unsaved-changes guard is actually wired to the combined graph/metadata dirty state.
  *
@@ -76,7 +76,7 @@ function installFetchMock(responder?: (call: RecordedCall) => Response): Recorde
         headers: Object.fromEntries(new Headers(init?.headers).entries()),
       };
       calls.push(call);
-      // DD-11 (TASK-810): the editor's right rail reads `:id/prompt-bindings`,
+      // DD-11: the editor's right rail reads `:id/prompt-bindings`,
       // which answers an ARRAY. The catch-all definition-row default below
       // would hand it an object and the rail would fail to render — so route
       // that one path explicitly, ahead of any per-test responder's fallback.

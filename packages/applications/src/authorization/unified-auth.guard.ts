@@ -22,7 +22,7 @@ import { serviceAccountPolicyRules } from '../services/serviceAccount/service-ac
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
 /**
- * Metadata key set by `@ForbidApiKey()` (TASK-708 Task 3 bucket (c)).
+ * Metadata key set by `@ForbidApiKey()` ( bucket (c)).
  *
  * Unlike `API_KEY_REQUIRED_SCOPES` (deny unless a listed scope is held),
  * this is an unconditional deny for ANY API-key-authenticated caller,
@@ -39,14 +39,14 @@ export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 export const API_KEY_FORBIDDEN = 'apiKeyForbidden';
 
 /**
- * The header a service-account access token is presented in (TASK-762).
+ * The header a service-account access token is presented in.
  *
  * A DEDICATED header, not `Authorization: Bearer`. The token is opaque and
  * server-validated; sharing the JWT header would make "is this a JWT or a
  * machine token?" a parsing heuristic on the hot auth path, and a heuristic
  * that guesses wrong is an authentication bypass. A distinct header makes the
  * branch selection unambiguous and keeps the third class mechanically separate
- * from the other two, which is what the TASK-708 §6 ruling requires.
+ * from the other two, which is what the ruling requires.
  */
 export const SERVICE_ACCOUNT_TOKEN_HEADER = 'x-service-account-token';
 
@@ -77,7 +77,7 @@ export const SERVICE_ACCOUNT_REQUIRED_SCOPES = 'serviceAccountRequiredScopes';
 export const SERVICE_ACCOUNT_FORBIDDEN = 'serviceAccountForbidden';
 
 /**
- * Metadata key for `@ResolveSubjectInstance(...)` (TASK-712 Phase 5 Task 14
+ * Metadata key for `@ResolveSubjectInstance(...)`
  * — CASL shadow mode).
  */
 export const SUBJECT_INSTANCE_RESOLVER_KEY = 'subjectInstanceResolver';
@@ -106,11 +106,11 @@ export type SubjectInstanceResolver = (
 
 /**
  * The dependency access a `SubjectInstanceResolver` is handed as its SECOND
- * argument (TASK-712 Phase 5 Task 15b).
+ * argument (b).
  *
  * Task 14 gave the resolver only the raw request, which meant it could build
  * an instance from `params`/`body` but could never LOAD A ROW — and every
- * identity-shaped condition in `casl-blast-radius.md` §4 (`userId`,
+ * identity-shaped condition in `casl-blast-radius.md` (`userId`,
  * `doctorId`, `targetUserId`, `createdBy`, `isSystemRole`) needs the row. So
  * shadow mode could not be wired to a single real route and
  * `casl_shadow_divergence_total` could never move. This is the narrowest
@@ -144,7 +144,7 @@ export interface SubjectResolverContext {
 }
 
 /**
- * Opt IN a route to CASL shadow-mode instance comparison (TASK-712 Phase 5
+ * Opt IN a route to CASL shadow-mode instance comparison
  * Task 14). Explicit and per-route by design — `UnifiedAuthGuard` never
  * resolves a subject instance (never loads a row) for a route that did not
  * ask for one. Divergences are logged (`CASL_SHADOW_DIVERGENCE_EVENT`) and
@@ -157,7 +157,7 @@ export interface SubjectResolverContext {
  * @Authorize(['read', 'Consultation'])
  * @ResolveSubjectInstance(async (request) => {
  *   const c = await consultationService.getById(request.params.id);
- *   return c ? { tenantId: c.tenantId, doctorId: c.doctorId } : undefined;
+ *   return c ? { tenantId: c.tenantId, doctorId: c.doctorId }: undefined;
  * })
  * getOne() { ... }
  * ```
@@ -170,9 +170,9 @@ export const ResolveSubjectInstance = (resolver: SubjectInstanceResolver, option
   } satisfies SubjectInstanceResolverDescriptor);
 
 /**
- * TASK-781 — what a route DECLARES about its resolver, beyond the function.
+ * what a route DECLARES about its resolver, beyond the function.
  *
- * `subject` closes the disclosed TASK-712 limitation that one route-level
+ * `subject` closes the disclosed limitation that one route-level
  * resolver was applied to EVERY required permission: an instance shaped for
  * subject X was evaluated against subject Y's conditions, where a spurious
  * `false` becomes a wrongful 403. When declared, the instance is only ever
@@ -182,8 +182,8 @@ export const ResolveSubjectInstance = (resolver: SubjectInstanceResolver, option
  * `assertCaslEnforcePairReachability` at boot, not by this guard: it states
  * that the resolver returns an instance for rows the caller does NOT own —
  * i.e. it does not delegate to an access-asserting accessor. A resolver that
- * throws on the deny case fails open, which is precisely how TASK-712's
- * `ApiKey` pairs ended up listed-but-unreachable (TASK-779 F-1). The guard
+ * throws on the deny case fails open, which is precisely how
+ * `ApiKey` pairs ended up listed-but-unreachable. The guard
  * deliberately does NOT require the flag to enforce: a mis-declaration must
  * fail the BOOT loudly, never silently disable an enforced pair at runtime.
  */
@@ -270,7 +270,7 @@ export const SERVICE_ACCOUNT_AUTHENTICATOR = Symbol('SERVICE_ACCOUNT_AUTHENTICAT
  * (`enforceApiKeyAbilities`) compute the SAME verdict from the SAME metadata —
  * the two must never drift, or `@Authorize(...)` would mean something different
  * depending on how the caller authenticated, which is precisely the defect
- * TASK-742 closed.
+ * closed.
  */
 function evaluatePermissions(
   ability: AppAbility,
@@ -314,7 +314,7 @@ function evaluatePermissions(
  *    - Check CASL permissions
  * 4. Both failed → 401
  *
- * ─── Authorization model on the API-key path (TASK-742) ───────────────────
+ * ─── Authorization model on the API-key path ───────────────────
  *
  * An API-key request is authorized by **scopes AND abilities**, in that order,
  * both mandatory:
@@ -357,14 +357,14 @@ export class UnifiedAuthGuard implements CanActivate {
     @Inject(IApiKeyRateLimiter)
     private readonly rateLimiter?: { checkRateLimit: (apiKeyId: string, tenantId: string, limit: number) => Promise<RateLimitResult> },
     @Optional() @Inject(JWT_AUTH_GUARD) private readonly jwtAuthGuard?: CanActivate,
-    // TASK-762 — the THIRD credential class. `@Optional` so every existing test
+    // the THIRD credential class. `@Optional` so every existing test
     // double and any context that does not wire the service-account module
     // keeps constructing; without it the branch is simply never taken and a
     // presented machine token falls through to the ordinary 401.
     @Optional()
     @Inject(SERVICE_ACCOUNT_AUTHENTICATOR)
     private readonly serviceAccounts?: IServiceAccountAuthenticator,
-    // TASK-712 Task 15b — the container handle a `@ResolveSubjectInstance`
+    // b — the container handle a `@ResolveSubjectInstance`
     // resolver needs to load the row its `conditions` compare against.
     // `@Optional` so every existing test double keeps constructing; without
     // it `SubjectResolverContext.get` throws and the fail-open path in
@@ -406,7 +406,7 @@ export class UnifiedAuthGuard implements CanActivate {
     const serviceAccountToken = this.extractServiceAccountToken(request);
 
     // AMBIGUOUS CREDENTIALS ARE REJECTED, never silently resolved to one of
-    // them (TASK-762 §5.5 test 28). Whichever branch we picked would be a
+    // them ( test 28). Whichever branch we picked would be a
     // guess about caller intent, and a guess here decides an authorization
     // outcome: a caller could present a broad API key alongside a narrow
     // machine token (or vice versa) and receive whichever grant the guard
@@ -501,7 +501,7 @@ export class UnifiedAuthGuard implements CanActivate {
     throw new UnauthorizedException('Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).');
   }
 
-  // ─── Service-Account Auth Path (TASK-762) ──────────────────────────
+  // ─── Service-Account Auth Path ──────────────────────────
   //
   // The THIRD credential class. It shares NO mechanism with the two below:
   // its own header, its own scope namespace (`svc:*`), its own exclusion
@@ -551,7 +551,7 @@ export class UnifiedAuthGuard implements CanActivate {
     // The principal goes on its OWN CLS key. Never on `user`: every
     // `requestUser?.id` read in the codebase — including
     // `BaseService.broadcastSysEvent` — would otherwise record this machine's
-    // actions against a person, which is §2.8's defect made worse.
+    // actions against a person, which is 's defect made worse.
     this.cls.set('serviceAccount', principal);
     // The WORKING tenant, not the account's home tenant: a platform account
     // acts on the tenant it presented (validated against its allow-list at
@@ -724,7 +724,7 @@ export class UnifiedAuthGuard implements CanActivate {
   }
 
   /**
-   * DENY BY DEFAULT (TASK-742).
+   * DENY BY DEFAULT.
    *
    * A route is reachable by an API key only if it EXPLICITLY declares what an
    * API key may do there — i.e. carries `@RequiredScopes(...)` at the method or
@@ -770,7 +770,7 @@ export class UnifiedAuthGuard implements CanActivate {
   }
 
   /**
-   * The SECOND half of the API-key authorization conjunction (TASK-742): the
+   * The SECOND half of the API-key authorization conjunction: the
    * route's own `@Authorize()`/`@CanXxx()` permissions, evaluated against the
    * ability of the user the key is BOUND to.
    *
@@ -906,7 +906,7 @@ export class UnifiedAuthGuard implements CanActivate {
     request.ability = ability;
     this.cls.set('userAbility', ability);
 
-    // TASK-712 Phase 5 Tasks 14+15 — CASL instance evaluation. For any
+    // Tasks 14+15 — CASL instance evaluation. For any
     // permission whose route opted in via `@ResolveSubjectInstance(...)`,
     // computes the instance-aware verdict its seeded `conditions` produce.
     // Pairs NOT in `CASL_ENFORCED_PAIRS` stay shadow (recorded, not applied);
@@ -950,7 +950,7 @@ export class UnifiedAuthGuard implements CanActivate {
   }
 
   /**
-   * TASK-712 Phase 5 Task 14 — CASL shadow mode.
+   * CASL shadow mode.
    *
    * For each required permission whose route carries a
    * `@ResolveSubjectInstance(...)` resolver, resolves an instance and asks
@@ -967,7 +967,7 @@ export class UnifiedAuthGuard implements CanActivate {
    * This method NEVER throws. For a SHADOW pair it exists purely to populate
    * `casl_shadow_divergence_total` / `casl.shadow.divergence`.
    *
-   * TASK-712 Phase 5 Task 15 — ENFORCE. For a pair in `CASL_ENFORCED_PAIRS`
+   * ENFORCE. For a pair in `CASL_ENFORCED_PAIRS`
    * (`PolicyEngine.isEnforcedPair`) a `false` instance verdict is RETURNED to
    * the caller as a denial rather than merely recorded. The caller applies it
    * only after the type-only verdict already allowed, so enforcement can only
@@ -1010,11 +1010,11 @@ export class UnifiedAuthGuard implements CanActivate {
         );
         if (!declared) continue; // opt-in only — no resolver, no shadow check, no row loaded
 
-        // A bare function is the pre-TASK-781 metadata shape; still accepted so
+        // A bare function is the earlier metadata shape; still accepted so
         // an un-migrated route keeps its (shadow) behaviour exactly.
         const descriptor: SubjectInstanceResolverDescriptor = typeof declared === 'function' ? { resolver: declared, enforceGrade: false } : declared;
 
-        // TASK-781 — a resolver that declares WHICH subject it resolves is
+        // a resolver that declares WHICH subject it resolves is
         // applied to that subject only. Without this, one route-level resolver
         // was compared against every required permission, so an instance
         // shaped for subject X was evaluated against subject Y's conditions
@@ -1027,7 +1027,7 @@ export class UnifiedAuthGuard implements CanActivate {
         const verdict = this.policyEngine.evaluateShadowVerdict(ability, permission.action, permission.subject, instance);
 
         if (this.policyEngine.isEnforcedPair(permission.action, permission.subject)) {
-          // TASK-781 R4 — never enforce on an OR-mode route. The denial is
+          // never enforce on an OR-mode route. The denial is
           // applied AFTER the type-only verdict, so on `@CanAny` a denial from
           // one alternative would override an allow earned by another and
           // silently rewrite the route's declared OR into an AND. Shadow

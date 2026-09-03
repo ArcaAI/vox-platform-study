@@ -39,7 +39,7 @@ export interface StorageSoftWarn {
 export interface TenantRateLimitPolicy {
   tier: string;
   perMinute: number | null;
-  /** TASK-785 — the window paired with `perMinute`; `null` = use the tier baseline's. */
+  /** the window paired with `perMinute`; `null` = use the tier baseline's. */
   windowMs: number | null;
 }
 
@@ -92,7 +92,7 @@ export interface IEntitlementsService {
    * never needed the platform credential at all. The throw belongs at the point
    * of selection, once a provider is chosen and found to have no override.
    *
-   * **Honours the global kill switch (OD-6).** When `entitlements.enabled` is
+   * **Honours the global kill switch .** When `entitlements.enabled` is
    * OFF this returns `true` without resolving anything — the same "do not
    * enforce" early return the four `assert*`/`evaluate*` methods make. The
    * consequence is deliberate: with the switch off, feature gates are INERT.

@@ -10,7 +10,7 @@ import {
 import { SecurityPolicyController } from '../security-policy.controller';
 
 /**
- * TASK-786 — the credential-policy routes.
+ * the credential-policy routes.
  *
  * The controller only routes, so the assertions that matter are the metadata a
  * boot audit and the authz matrix read off it: both credential CLASSES that

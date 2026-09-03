@@ -667,7 +667,7 @@ class HarnessDocWorkflow:
                             # fail-closed inside the activity when the server is external.
                             phi_enabled=phi_enabled,
                             phi_fail_closed=phi_fail_closed,
-                            # TASK-712 (consent-abac Phase 4) — consent-gate identity.
+                            # (consent-abac Phase 4) — consent-gate identity.
                             # `inp.external_patient_id` is None on a caller that has not
                             # been upgraded to send it (e.g. the ConsultationLoopWorkflow
                             # finalize-child path today); the activity treats that as
@@ -706,7 +706,7 @@ class HarnessDocWorkflow:
                     entities=transcript_entities,
                     # policy retrieval override (None ⇒ env default).
                     retrieval_enabled=retrieval_enabled,
-                    # TASK-712 (consent-abac Phase 4) — see the call_mcp_tool
+                    # (consent-abac Phase 4) — see the call_mcp_tool
                     # construction above for the None-caller degrade note.
                     external_patient_id=inp.external_patient_id,
                     consultation_id=inp.consultation_id,
@@ -745,9 +745,7 @@ class HarnessDocWorkflow:
         # AFTER an early draft delivery and runs as assurance-only (a delivered draft is
         # never silently regenerated in the early-delivery path — the regen-if-untouched
         # dynamics live in the post-delivery assurance path below).
-        use_optimistic = gate.optimistic_delivery_enabled and workflow.patched(
-            "task-355-optimistic-delivery"
-        )
+        use_optimistic = gate.optimistic_delivery_enabled and workflow.patched()
         regens_used = 0
         # Running token spend for this run, folded from RECORDED
         # ACTIVITY OUTPUTS (`generated.stats`). Deriving it this way is what keeps
@@ -767,7 +765,7 @@ class HarnessDocWorkflow:
         regen_feedback: RegenFeedback | None = None
         guardrail_decisions: dict[str, Any] = {}
         rag_triad_score: float | None = None
-        # Workflow-threaded, data-only per-claim verdict cache (L2). Carried
+        # Workflow-threaded, data-only per-claim verdict cache. Carried
         # from one inferential pass's OUTPUT into the next pass's INPUT so a regen re-judges only
         # changed claims (unchanged claims reuse the byte-identical cached verdict). DATA
         # flow only — adds no new command, needs no ``workflow.patched()``; reconstructed
@@ -952,7 +950,7 @@ class HarnessDocWorkflow:
                         phi_enabled=phi_enabled,
                         phi_fail_closed=phi_fail_closed,
                         # The safety screen is a tenant-scoped call into
-                        # `apps/guardrail` and `X-Tenant-Id` is mandatory on it (TASK-737),
+                        # `apps/guardrail` and `X-Tenant-Id` is mandatory on it,
                         # so this pass must carry the tenant too — the optimistic ASSURANCE
                         # call site below already did. Populating an ALREADY-DECLARED
                         # additive-optional input field changes no workflow COMMAND, so it
@@ -1728,7 +1726,7 @@ LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
     LOOP_ACTION_NLP_EXTRACT_ENTITIES: LoopActionSpec(
         key=LOOP_ACTION_NLP_EXTRACT_ENTITIES, implemented=True, derives_context=True
     ),
-    # TASK-812 — the ENDPOINT STAGE. All three are `lifecycle=True`: they are driven by the
+    # the ENDPOINT STAGE. All three are `lifecycle=True`: they are driven by the
     # consultation's END, never by a context subscription, so they are counted against the
     # action budget but never BLOCKED by it. Finalizing a note and capturing the clinician's
     # feedback must happen even on a run that overspent — the same argument that already
@@ -2171,7 +2169,7 @@ class ConsultationLoopWorkflow:
                 # the same asymmetry used to refuse wiring
                 # `signalLoopCancel` to `close()`.
                 if not (self._pending or self._ending or self._cancelled):
-                    # D-12 (TASK-812). This branch used to ABANDON the run: it
+                    # D-12. This branch used to ABANDON the run: it
                     # published `loop.timed_out` and deliberately skipped the
                     # ending actions, on the argument that `harness.finalize`
                     # would fabricate a clinical note out of a truncated
@@ -2387,7 +2385,7 @@ class ConsultationLoopWorkflow:
             return
         self._actions_dispatched += 1
 
-    # -- the endpoint stage (TASK-812) --------------------------------------
+    # the endpoint stage
 
     async def _run_endpoint_action(self, spec: LoopActionSpec) -> bool:
         """Dispatch one endpoint action. True when it ran, False when it was skipped.
@@ -2410,7 +2408,7 @@ class ConsultationLoopWorkflow:
 
         ## No patch era, and why none is needed
 
-        None of the three keys this branch serves existed before TASK-812, so no recorded
+        None of the three keys this branch serves existed before, so no recorded
         `ending_actions` list contains one and replay of an old history can never reach this
         code. The change that DOES alter an old command sequence — running the sequence on
         expiry — is gated on `_PATCH_ENDPOINT_ON_TIMEOUT`.
@@ -2446,7 +2444,7 @@ class ConsultationLoopWorkflow:
                 )
             else:  # LOOP_ACTION_FEEDBACK_CAPTURE
                 # DD-8. Acceptance is a clinician act that reaches the gateway through the
-                # console (TASK-814 §2b) — never something an orchestrator can infer — and
+                # console — never something an orchestrator can infer — and
                 # arrives here on the `consultationEnding` signal's `accepted_proposals`
                 # (forwarded from `StopRecordingRequest.acceptedProposals`). Absent a signal
                 # (e.g. this endpoint sequence ran on IDLE EXPIRY, D-12, where nobody ever sent

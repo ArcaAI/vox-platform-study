@@ -19,7 +19,7 @@
  * ## What the assertions protect
  *
  *   1. Both keys are DECLARED on every schema that can carry a document binding.
- *   2. Neither key is REQUIRED — §7b's "no published graph is invalidated" is a property of the
+ * 2. Neither key is REQUIRED — 's "no published graph is invalidated" is a property of the
  *      contract, and this UI must not quietly depend on it changing.
  *   3. The pin's floor is 1 in the schema, matching the compiled artifact (`versionNumber >= 1`)
  *      and both pydantic models (`ge=1`). A `0` authorable here would be a pin the interpreter

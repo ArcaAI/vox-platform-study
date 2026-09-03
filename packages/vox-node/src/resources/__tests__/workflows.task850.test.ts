@@ -1,5 +1,5 @@
 /**
- * TASK-850 lane B — `@arcaai/vox-node`'s workflow invocation surface.
+ * lane B — `@arcaai/vox-node`'s workflow invocation surface.
  *
  * Every assertion here is pinned to an artifact the GATEWAY actually ships,
  * never to a shape invented for the SDK:

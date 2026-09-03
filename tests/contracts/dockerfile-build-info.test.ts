@@ -1,7 +1,6 @@
 /**
  * Every runnable image must bake `/app/build-info.json` from the
  * eight BUILD_* args CI passes (see .gitlab/ci/build.yml SERVICE_NAME per job
- * and docs/implementation/TASK-648-Service-Version-And-Release-Registry/
  * contracts/build-info.schema.json). This test asserts the invariant across
  * every Dockerfile CI actually builds a running image from.
  *

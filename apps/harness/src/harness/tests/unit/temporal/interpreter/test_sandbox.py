@@ -76,7 +76,7 @@ class TestSandboxSkipsExternalWrites:
     async def test_sandboxed_run_skips_external_write_node_with_zero_writes(self, monkeypatch):
         # Register a temporary node type whose registry entry is external_write=True — a
         # code-owned property, matching how the real palette registry will mark its writing
-        # nodes (TASK-720). It points at the real `interpreter_noop` activity (registered on
+        # nodes. It points at the real `interpreter_noop` activity (registered on
         # the worker) so a bug that dispatches it anyway would be observable as SUCCEEDED, not
         # silently absorbed by a missing registration.
         writer_spec = NodeSpec(

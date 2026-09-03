@@ -49,7 +49,7 @@ export class SettingsCatalogController {
         globalOnly: d.globalOnly,
         label: d.label,
         description: d.description,
-        // TASK-799 Phase 4 — the governance half. The console builds its
+        // the governance half. The console builds its
         // explain-before-you-click affordances from these; without them
         // `floorDirection` was only discoverable as a 403.
         killSwitch: d.killSwitch,

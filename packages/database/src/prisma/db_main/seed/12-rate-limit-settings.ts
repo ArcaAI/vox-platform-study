@@ -7,7 +7,7 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-c
  *
  * Rate limiting is a gateway-wide concern, so a SINGLE authoritative set of
  * rows lives under the SYSTEM tenant (`SYSTEM_TENANT_ID`) — the sole platform
- * configuration tier (owner ruling 2026-08-20, TASK-763 OD-1; GLOBAL/`SEED_TENANT_ID`
+ * configuration tier (owner ruling 2026-08-20,; GLOBAL/`SEED_TENANT_ID`
  * is a CUSTOMER tenant, never a runtime tier). The
  * `AppSettingsService` cache is keyed by flat `key` across all tenants;
  * seeding one platform row per key keeps that lookup deterministic and avoids
@@ -18,7 +18,7 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS } from './00-c
  * absence means "fall back to the route's `@Throttle` decorator", so the
  * shipped behavior is unchanged until an admin opts a specific endpoint in.
  *
- * TASK-785 — `RateLimitRule` rows are NOT seeded either, for the same reason
+ * `RateLimitRule` rows are NOT seeded either, for the same reason
  * and one more. Under OD-2 a route's `@Throttle` decorator already seeds rank 5,
  * so a platform rule mirroring it would add no behaviour; it would only add a
  * second copy of a number that lives in code, which then drifts the moment the

@@ -4,10 +4,10 @@ import type { Readable } from 'node:stream';
  * Open a TEXT generation under the SINGLE-CALL streaming contract, and learn its
  * id without consuming the stream.
  *
- * TASK-818 §3C.3(1). `POST /api/v1/generate` with `stream:true` no longer returns
+ * `POST /api/v1/generate` with `stream:true` no longer returns
  * `202 {task_id, stream_url}` — it returns **200 + `text/event-stream`
  * immediately**, and the generation id arrives in the FIRST frame's `data`
- * (§3C.3(4)), not in a response body:
+ * (not in a response body:
  *
  * ```
  * event: meta
@@ -20,12 +20,12 @@ import type { Readable } from 'node:stream';
  * reads that one frame and then drops its subscription.
  *
  * **Dropping the subscription is not a cancel.** The producer is an `asyncio`
- * task owned by TEXT's generation hub, not by this HTTP response (§3C.3(1)), and
- * cancellation is an explicit `POST /generations/{gid}/cancel` (§3C.4). So the
+ * task owned by TEXT's generation hub, not by this HTTP response (and
+ * cancellation is an explicit `POST /generations/{gid}/cancel` ( So the
  * generation runs on, every delta lands in the replay buffer, and the browser's
  * later subscription replays the whole prefix from seq 0 — no gap. Destroying
  * this socket is exactly the "drop ONLY our own upstream subscription" the
- * gateway relay is required to do on a browser disconnect (§3C.3(6)).
+ * gateway relay is required to do on a browser disconnect
  */
 
 /** How long to wait for the first frame before giving up on the open. */
@@ -53,7 +53,7 @@ export function readGenerationId(stream: Readable, timeoutMs: number = DEFAULT_M
       stream.removeListener('data', onData);
       stream.removeListener('end', onEnd);
       stream.removeListener('error', onError);
-      // Drop OUR subscription only. The producer outlives it (§3C.3(1)).
+      // Drop OUR subscription only. The producer outlives it
       stream.destroy();
       if (err) reject(err);
       else resolve(id as string);
@@ -94,7 +94,7 @@ export function readGenerationId(stream: Readable, timeoutMs: number = DEFAULT_M
 /**
  * Pull `generation_id` out of one SSE frame's `data:` payload.
  *
- * Only the `data` line is trusted as the source, per §3C.3(4). The `id:` line
+ * Only the `data` line is trusted as the source, per The `id:` line
  * carries `{generation_id}:{seq}` too, but splitting that is guesswork where
  * `data` is a statement.
  */

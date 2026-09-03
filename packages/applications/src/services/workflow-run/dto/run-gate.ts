@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * The clinician decision a caller may send when releasing a run's HITL gate (TASK-731 Phase B).
+ * The clinician decision a caller may send when releasing a run's HITL gate.
  *
  * Deliberately NARROW. Notably absent: `clinicianId`. The signer is resolved server-side from
  * the acting user's CLS context, because a body field naming the signer is exactly the forgery

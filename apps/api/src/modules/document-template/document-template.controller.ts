@@ -15,7 +15,7 @@ import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes,
 
 /**
  * Admin CRUD + governance for the tenant's clinical-document SHAPE catalog
- * (TASK-810), at `/admin/document-templates`.
+ * at `/admin/document-templates`.
  *
  * A DOCUMENT TEMPLATE is the shape of a document a generation node produces:
  * which sections exist, in which order, what form each takes, and which may
@@ -171,7 +171,7 @@ export class DocumentTemplateAdminController {
 }
 
 /**
- * TASK-758 — `tenants/me/*` resolves to the key's TENANT (the CLS `tenantId`
+ * `tenants/me/*` resolves to the key's TENANT (the CLS `tenantId`
  * `UnifiedAuthGuard` sets from `apiKeyEntity.tenantId`), NOT to the key's bound
  * user the way `/users/me/*` does.
  */

@@ -1,5 +1,5 @@
 /**
- * TASK-810 Task 6 + Task 10 — `DocumentTemplateService`.
+ * + Task 10 — `DocumentTemplateService`.
  *
  * Mirrors the `ConsultationContextSchemaService` suite's conventions (mocked
  * repositories, EventEmitter2, ClsService) and locks the behaviours that would

@@ -35,7 +35,7 @@ model Consultation {
   // gate transitions PENDING_REVIEW → SIGNED.
   status ConsultationStatus @default(OPEN)
 
-  // TASK-711: health-flag projection on the active phase, not a state of its
+  // health-flag projection on the active phase, not a state of its
   // own — the reference model's `Degraded` state is REJECTED (see
   // state-machine.md). Append-only within a session; cleared on SIGNED.
   degradedReasons String[] @default([])
@@ -54,7 +54,7 @@ model Consultation {
   // Manual doctor highlights anchored to this consultation's persisted
   // surfaces (virtual relation; FK lives on Highlight).
   Highlights   Highlight[]
-  // TASK-811 (OD-7) — the per-section rows of every clinical document being
+  //  — the per-section rows of every clinical document being
   // generated for this consultation (virtual relation; FK lives on
   // DocumentSection).
   DocumentSections DocumentSection[]
@@ -129,11 +129,11 @@ model ContextItem {
   kindKey                String?
   contextSchemaVersionId String?
 
-  // TASK-811 (OD-6) — WHICH clinical document this item belongs to, layered
+  //  — WHICH clinical document this item belongs to, layered
   // ABOVE `type` exactly as `kindKey` is. `type` keeps its meaning, so every
   // existing row, query and encryption path is untouched and there is ZERO
   // backfill: NULL means "the single, unnamed document", which is what every
-  // pre-TASK-811 row is.
+  // earlier row is.
   //
   // It exists because `ContextItemType.PRE_SUMMARY` is overloaded (D-22): the
   // context-derived pre-summary and the live running-note snapshot are the same
@@ -144,7 +144,7 @@ model ContextItem {
   // Soft reference (no FK), the same convention `kindKey` above uses.
   documentKey            String?
 
-  // Qdrant sync status (for semantic search). RESERVED, NO WRITER (
+  // Qdrant sync status (for semantic search). RESERVED, NO WRITER
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
   // was removed from infrastructure/docker/scripts/init-qdrant-collections.py
@@ -193,7 +193,7 @@ model ContextItem {
   // reverse lookup "which items were validated against this schema version"
   // that a schema-retirement check needs.
   @@index([consultationId, kindKey], name: "ContextItem_consultation_kindKey_idx")
-  // TASK-811 (OD-6) — the `documentKey` twin of the index above: "give me every
+  //  — the `documentKey` twin of the index above: "give me every
   // item of document X for this consultation".
   @@index([consultationId, documentKey], name: "ContextItem_consultation_documentKey_idx")
   @@index([contextSchemaVersionId], name: "ContextItem_contextSchemaVersionId_idx")
@@ -585,7 +585,7 @@ model Highlight {
   targetKind          HighlightTargetKind
 
   // W3C Web Annotation dual selectors:
-  //  - TextQuoteSelector  : exact + ~32-char prefix/suffix (robust to re-flow)
+  //  - TextQuoteSelector: exact + ~32-char prefix/suffix (robust to re-flow)
   //  - TextPositionSelector: startOffset/endOffset (precise but brittle)
   // The quote-selector / note free-text columns (exact / prefix / suffix /
   // note) have been DROPPED; persisted as Vault-Transit ciphertext only (see
@@ -696,7 +696,7 @@ model TranscriptSegment {
 }
 
 // =============================================================================
-// DOCUMENT SECTION (TASK-811, OD-7)
+// DOCUMENT SECTION 
 // =============================================================================
 // One section of one clinical document being generated for a consultation —
 // `(consultationId, documentKey, sectionKey)` is its identity.
@@ -766,7 +766,7 @@ model DocumentSection {
 
   // Section-LOCAL annotation spans: entities, groundedness verdicts and flagged
   // spans whose `start`/`end` index THIS section's content, never a concatenated
-  // running summary (§2b — a global offset is invalidated the moment any earlier
+  // running summary — a global offset is invalidated the moment any earlier
   // section grows).
   annotations Json? @db.JsonB
   // Provenance anchors back to the transcript (`transcriptSegmentId` /

@@ -3,7 +3,7 @@ import { IsString, IsOptional, IsObject } from 'class-validator';
 import { BaseRequest } from '../../../common';
 import { JsonValue } from '@arcaai/domains';
 
-// TASK-727: a caller may NEVER supply `hashedSecret` — mirrors
+// a caller may NEVER supply `hashedSecret` — mirrors
 // `ApiKeyService.generateRawKey`. The signing secret is always
 // server-generated at creation (see `WebhookService.create`) and returned
 // exactly once in the response; a client-supplied value here would let a

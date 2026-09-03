@@ -61,7 +61,7 @@ describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
     getEffective: ReturnType<typeof vi.fn>;
     post?: ReturnType<typeof vi.fn>;
   }) => {
-    // TASK-818 Lane E-stream: `POST /generate` with `stream:true` now answers 200 +
+    // stream: `POST /generate` with `stream:true` now answers 200 +
     // text/event-stream, not a 202 ack. `readGenerationId` reads the id off the first
     // frame, so the mock must be a real stream — a plain object fails on `stream.on`.
     // Mirrors `streamingGenerateAck` in prompt-management.service.test.ts.

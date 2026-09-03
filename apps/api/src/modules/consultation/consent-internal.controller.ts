@@ -8,10 +8,10 @@ import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 
 /**
- * Body for `POST /internal/consent/assert` (TASK-712, consent-abac Phase 4).
+ * Body for `POST /internal/consent/assert` (consent-abac Phase 4).
  *
  * The gateway-internal front door for the non-HTTP consent choke point
- * (README §4 Task 12, consent-design.md §4 option A+B hybrid): the harness
+ * ( Task 12, consent- option A+B hybrid): the harness
  * calls this from a Temporal ACTIVITY (never from workflow code — workflows
  * must stay deterministic, `.claude/rules/06-python-services.md` §Temporal)
  * before a gated MCP tool call or a RAG retrieval.
@@ -79,10 +79,10 @@ class ConsentAssertResponseBody {
 
 /**
  * `ConsentInternalController` — the ONE gateway-internal HTTP front door for
- * `assertConsent`'s decision-returning sibling (README §4 Task 12).
+ * `assertConsent`'s decision-returning sibling.
  *
  * Reuses `HarnessServiceTokenGuard` (X-Service-Token, `.claude/rules/06-python-services.md`
- * §Gateway Integration) — the same auth the harness already uses for every
+ * Integration) — the same auth the harness already uses for every
  * other callback into apps/api (`HarnessInternalController`). No new auth
  * mechanism is introduced.
  */
@@ -105,7 +105,7 @@ export class ConsentInternalController {
     const context: ConsentAssertContext | undefined =
       body.consultationId || body.toolName ? { consultationId: body.consultationId, toolName: body.toolName } : undefined;
 
-    // TASK-858 — a service-token route arrives with an EMPTY CLS (the harness calls
+    // a service-token route arrives with an EMPTY CLS (the harness calls
     // out-of-band of the API-edge ClsModule middleware) and `ConsentGrant` is a
     // tenant-scoped model, so the lookup MUST run inside a CLS context that names
     // the tenant. Without it the tenant-scope extension threw "tenant context

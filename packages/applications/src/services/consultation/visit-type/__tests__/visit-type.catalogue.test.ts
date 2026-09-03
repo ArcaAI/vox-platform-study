@@ -1,7 +1,7 @@
 /**
  * The VISIT-TYPE CATALOGUE — the pure half.
  *
- * Owner ruling (TASK-815 §11 row 3): "Visit type is tenant-admin defined and
+ * Owner ruling: "Visit type is tenant-admin defined and
  * controlled. Two defaults ship: New patient (new visit, new referral) and
  * Revisit (follow-up same-day, review same-day, revisit same-day)."
  *
@@ -150,7 +150,7 @@ describe('visitTypeCatalogueProblem — what a tenant may NOT save', () => {
 });
 
 /**
- * SECOND OWNER DIRECTIVE ON THE VOCABULARY (2026-08-29) — closes §16c.
+ * SECOND OWNER DIRECTIVE ON THE VOCABULARY (2026-08-29) — closes
  *
  *   "visit-type labels must be easy for user/developer/admins to understand:
  *    * new-visit: new patient, new visit, new referral

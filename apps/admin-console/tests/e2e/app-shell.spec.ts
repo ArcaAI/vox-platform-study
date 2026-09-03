@@ -39,15 +39,15 @@ test.describe('app shell chrome (frame 07)', () => {
   });
 
   test('collapsing hides the sidebar off-canvas and leaves the domain rail', async ({ page }) => {
-    // TASK-788 changed this behaviour deliberately. The sidebar was
+    // changed this behaviour deliberately. The sidebar was
     // `collapsible="icon"`; with a permanent 56px domain rail beside it, an
     // icon-collapsed sidebar is a SECOND column of unlabelled icons — the exact
-    // defect the domain rail exists to remove (HOPE-16: 56 routes, collapsed to
+    // defect the domain rail exists to remove (56 routes, collapsed to
     // 56 unlabelled icons). Collapsed now means "rail only".
     await page.setViewportSize({ width: 1280, height: 480 });
     await page.goto('/dashboard');
 
-    // Scope by data-slot, not by landmark name: TASK-788 names the sidebar's nav
+    // Scope by data-slot, not by landmark name: names the sidebar's nav
     // after the ACTIVE DOMAIN ("Overview navigation", "Tenancy navigation", …) so
     // it is distinguishable from the rail's "Capability domains". The name is
     // therefore route-dependent and not a stable test handle.
@@ -83,7 +83,7 @@ test.describe('app shell chrome (frame 07)', () => {
   });
 
   test('the domain rail gates on ability: Playground is reachable and holds Workbench', async ({ page }) => {
-    // Moved here from workbench.spec.ts (TASK-788). It guards the domain rail's
+    // Moved here from workbench.spec.ts. It guards the domain rail's
     // ability gating, not any Workbench feature, and gating it on the harness
     // service — as its old home is — would silently drop that coverage whenever
     // the service is down.

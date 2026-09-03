@@ -48,7 +48,7 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
       expect(providers.has(p), `llm connection for '${p}' must seed`).toBe(true);
     }
     // No VENDOR credential is ever seeded. The four self-hosted ENGINE rows do carry the
-    // non-secret `not-needed` placeholder (TASK-799 lane B — the `provider_overrides` fold drops
+    // non-secret `not-needed` placeholder (lane B — the `provider_overrides` fold drops
     // a keyless row, so without it the engine resolves and then serves nothing); `built-in` runs
     // in-process and has no endpoint to authenticate to. Either way the ciphertext column never
     // reaches the wire, which is what this route's masking contract is about.

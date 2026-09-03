@@ -334,7 +334,7 @@ export class AiModelDiscoveryService {
    * former `GET` because the body can carry a keyed self-hosted engine's
    * credential, which must never travel in a URL or query string.
    *
-   * `X-Tenant-Id` is MANDATORY here (TASK-839): it was omitted UNCONDITIONALLY,
+   * `X-Tenant-Id` is MANDATORY here: it was omitted UNCONDITIONALLY,
    * so TEXT's own `ServiceAuthMiddleware` 428'd every probe (`/api/v1/providers/probe`
    * is not in TEXT's `EXEMPT_PATHS`) — and the catch below turned that 428 into a
    * false "Unreachable" for every engine, even ones never actually contacted. A

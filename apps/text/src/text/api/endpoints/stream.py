@@ -1,8 +1,8 @@
 """SSE subscription endpoints — the reader half of the producer/subscriber split.
 
-TASK-818 Lane B (§3C.3(5)). Every response here is a *subscriber*: it attaches to
+( Every response here is a *subscriber*: it attaches to
 a producer that is already running, replays whatever the caller has not seen, then
-tails. Closing one changes nothing about the generation (§3C.4).
+tails. Closing one changes nothing about the generation.
 
 Two routes, one handler:
 
@@ -46,10 +46,10 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(tags=["stream"])
 
 #: sse-starlette emits a comment frame on this interval. Mandatory, not optional
-#: (§3C.4): a silent LLM plus an idle-timeout proxy — Cloudflare 100 s, AWS ALB
+#: a silent LLM plus an idle-timeout proxy — Cloudflare 100 s, AWS ALB
 #: 60 s — kills a long clinical generation's connection without it. It is also
 #: the ONLY reliable disconnect signal: the write that fails is what tells us the
-#: peer is gone, which is where the §3C.5 grace timer starts.
+# peer is gone, which is where the grace timer starts.
 _PING_SECONDS = 15
 
 #: SSE hop headers. ``X-Accel-Buffering: no`` stops nginx buffering the stream
@@ -69,7 +69,7 @@ def parse_cursor(generation_id: str, last_event_id: str | None, from_seq: int | 
     while FastAPI bound only ``from_seq`` (``from`` is a Python keyword, and no
     alias was declared). A client following the documentation was silently
     ignored and resumed from **0** — which looks like success until a clinician
-    sees a duplicated prefix. Found by TASK-818 Lane E-stream.
+    sees a duplicated prefix. Found by -stream.
 
     ``?from=`` exists because header-stripping proxies are real and
     ``Last-Event-ID`` does not survive a page reload — the SSE spec gives each new
@@ -98,7 +98,7 @@ def parse_cursor(generation_id: str, last_event_id: str | None, from_seq: int | 
 
 
 def _frame(generation_id: str, event: GenerationEvent) -> dict[str, str]:
-    """One SSE frame. ``id: {generation_id}:{seq}`` per §3C.3(4)."""
+    """One SSE frame. id: {generation_id}:{seq} per"""
     return {
         "event": event.event,
         "data": event.payload,
@@ -254,7 +254,7 @@ async def stream_generation(
     1. **Attach first.** Anything published from now on is queued for us.
     2. **Then read the backlog** — the durable prefix from Redis, plus whatever
        the producer's ring still holds (which covers deltas delivered but not yet
-       flushed, the dual-write race §3C.3(5) calls out).
+       flushed, the dual-write race calls out).
     3. **Then drain the queue**, discarding anything at or below the high-water
        mark the backlog already reached.
 
@@ -268,7 +268,7 @@ async def stream_generation(
     producer = hub.get(generation_id)
     policy = policy or GenerationPolicy()
 
-    # The client must be able to persist the id BEFORE any token arrives (§3C.3(4)),
+    # The client must be able to persist the id BEFORE any token arrives
     # so it can reconnect to a generation it has not yet seen output from.
     yield {
         "event": "meta",

@@ -18,7 +18,7 @@ import { CONNECTION_ENABLED_SEMANTICS, PROVIDER_SERVICES, ProviderService } from
 import { PROVIDER_EXTRA_LIMITS, validateProviderExtras } from '../provider-extras';
 
 /**
- * TASK-799 P1-C.2 — `extraJson` was a bare `@IsObject()`, so anything at all
+ * C.2 — `extraJson` was a bare `@IsObject()`, so anything at all
  * could be stored and then silently dropped in transit. It is now shape-checked
  * on the way IN, which is what makes the read-side passthrough safe: the wire
  * envelope stays flat and bounded, and the keys the connection row itself owns

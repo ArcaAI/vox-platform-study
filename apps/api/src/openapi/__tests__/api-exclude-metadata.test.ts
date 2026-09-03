@@ -10,7 +10,7 @@ import {
 } from '../api-exclude-metadata';
 
 /**
- * TASK-783 — regression lock on the `apiExcluded` readers.
+ * regression lock on the `apiExcluded` readers.
  *
  * These tests apply the REAL `@nestjs/swagger` decorators rather than writing
  * the metadata by hand, so they fail if that package ever changes either the
@@ -63,7 +63,7 @@ describe('isControllerApiExcluded', () => {
     const stored: unknown = Reflect.getMetadata(API_EXCLUDE_CONTROLLER_KEY, ExcludedController);
 
     expect(stored).toEqual([true]);
-    // The pre-TASK-783 read. Documented here so the reason for the helper is
+    // The earlier read. Documented here so the reason for the helper is
     // visible at the point of failure if this ever regresses.
     expect(stored === true).toBe(false);
   });

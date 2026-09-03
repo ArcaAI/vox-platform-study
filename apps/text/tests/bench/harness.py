@@ -1,4 +1,4 @@
-"""Lane H benchmark harness — TASK-818 §4.8 / §5 (AC-1..AC-4, AC-7).
+"""Lane H benchmark harness — / (AC-1..AC-4, AC-7).
 
 Drives the REAL `apps/text` service (`text_service_process.py`, unmodified
 `text.main.create_app`) against the mock upstream (`mock_upstream.py`) in
@@ -102,7 +102,7 @@ _BENCH_DIR = Path(__file__).parent
 _TEXT_ENTRYPOINT = _BENCH_DIR / "text_service_process.py"
 _MOCK_ENTRYPOINT = _BENCH_DIR / "mock_upstream.py"
 
-# README §4.8: "(2) a latency-injecting mock (e.g. 800 ms TTFT, 30 tok/s)".
+# "(2) a latency-injecting mock (e.g. 800 ms TTFT, 30 tok/s)".
 # 1000/30 ≈ 33ms/token.
 _MODE_PRESETS: dict[str, dict[str, str]] = {
     "zero-latency": {"BENCH_MOCK_TTFT_MS": "0", "BENCH_MOCK_TOKEN_INTERVAL_MS": "0"},
@@ -288,7 +288,7 @@ async def _run_stream(
 ) -> None:
     """Drive one streaming generation under the requested client protocol.
 
-    Two protocols, because TASK-818 changed the wire contract and an honest
+    Two protocols, because changed the wire contract and an honest
     before/after has to separate two different wins:
 
     ``sse`` (default, the shipped contract)
@@ -341,7 +341,7 @@ async def sample_rss(pid: int) -> float | None:
 
     Shells out to `ps` rather than adding a `psutil` dependency: `apps/text`'s
     `pyproject.toml`/`uv.lock` are shared surfaces this lane does not own
-    (EXECUTION-PLAN §4 — `uv lock` is orchestrator-only), and `ps -o rss=` is
+    (EXECUTION-PLAN — `uv lock` is orchestrator-only), and `ps -o rss=` is
     POSIX-portable (verified on this machine's Darwin `ps`).
     """
     try:
@@ -632,7 +632,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--levels",
         type=lambda s: [int(x) for x in s.split(",")],
         default=[10, 25, 50, 100],
-        help="Comma-separated concurrency levels to sweep (README §5 AC-1: >=100).",
+        help="Comma-separated concurrency levels to sweep ( AC-1: >=100).",
     )
     parser.add_argument(
         "--duration",
@@ -667,7 +667,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Serve the mock upstream over HTTPS with a self-signed cert generated at "
         "start-up, and trust it in the real text-service via SSL_CERT_FILE — a "
         "benchmark-only affordance, never a production pattern (see module docstring). "
-        "Closes the harness gap in docs/implementation/TASK-818-Text-LLM-Router/baseline.md: "
+        "Closes the harness gap in : "
         "a plain-HTTP loopback mock gives connection pooling nothing to save.",
     )
     parser.add_argument(

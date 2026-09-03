@@ -1,5 +1,5 @@
 /**
- * Workbench client (TASK-721 Phase C). Gateway-relative paths under the /api/hope BFF proxy.
+ * Workbench client. Gateway-relative paths under the /api/hope BFF proxy.
  */
 
 import { deleteJson, getJson, patchJson, postJson } from '@/shared/api';
@@ -51,7 +51,7 @@ export function cancelSandboxRun(definitionId: string, runId: string): Promise<{
   return postJson(`${WORKFLOW_DEFINITIONS}/${encodeURIComponent(definitionId)}/sandbox-runs/${encodeURIComponent(runId)}/cancel`);
 }
 
-/** The Workbench's per-node inspector reuses TASK-723's bounded trace read verbatim (README §2.5/Task 8). */
+/** The Workbench's per-node inspector reuses bounded trace read verbatim ( 8). */
 export function getRunTrace(runId: string): Promise<RunTrace> {
   return getJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}/trace`);
 }

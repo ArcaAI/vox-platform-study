@@ -1,7 +1,7 @@
 import { BadRequestException, CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 
 /**
- * The dedicated guard on `POST /api/v1/auth/service-token` (TASK-762 §5.7 F).
+ * The dedicated guard on `POST /api/v1/auth/service-token` ( F).
  *
  * The route is `@Public()` because it is the route that ESTABLISHES a
  * credential — there is nothing for `UnifiedAuthGuard` to authenticate. Public

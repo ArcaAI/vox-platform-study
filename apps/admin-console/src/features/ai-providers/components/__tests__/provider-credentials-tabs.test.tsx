@@ -1,5 +1,5 @@
 /**
- * Provider credential tabs — the widened capability plane (TASK-799 Phase 4, E.3).
+ * Provider credential tabs — the widened capability plane.
  *
  * Before this, three of the six capabilities the gateway serves had no tab at
  * all: a tenant's Qdrant Cloud key and the platform's embeddings connections

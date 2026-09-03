@@ -1,5 +1,5 @@
 /**
- * TASK-847 §5, RISK 1 — **the single most important review item in Track D.**
+ * RISK 1 — **the single most important review item in Track D.**
  *
  * > *A node schema stores a model id, endpoint or key in graph JSON — silently bypassing the
  * > tenant→SYSTEM cascade AND BYOK funding derivation.*
@@ -32,7 +32,7 @@ import { AGENTIC_PALETTE_KEY, nodeInfo, registryChecksum } from '../node-registr
 
 const { FORBIDDEN_CONFIG_KEYS, compiledGraphLeakProblems, forbiddenSchemaKeyProblems } = agenticContract;
 
-describe('TASK-847 — direction 1: no schema can HOLD a resolved value', () => {
+describe('direction 1: no schema can HOLD a resolved value', () => {
   it('declares a forbidden vocabulary covering credentials, endpoints and wire model ids', () => {
     // Stored lower-cased, because the check is case-insensitive: `apiKey`, `ApiKey` and
     // `api_key` are the same smuggling attempt wearing three hats.
@@ -128,7 +128,7 @@ function compiledConfigOrThrow(graph: WorkflowGraph) {
   return result.config;
 }
 
-describe('TASK-847 — direction 2: nothing resolved reaches the COMPILED graph', () => {
+describe('direction 2: nothing resolved reaches the COMPILED graph', () => {
   it('compiles a graph using every one of the eight new node types', () => {
     const config = compiledConfigOrThrow(everyAgenticNodeGraph());
     expect(config.formatVersion).toBe(1);

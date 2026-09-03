@@ -2,7 +2,7 @@
  * The AI task-key registry — the console mirror of `AI_TASK_KEYS` in
  * `packages/applications/src/services/ai-task-default/constants.ts`.
  *
- * It lives in `shared/catalog` rather than in one feature because TASK-845
+ * It lives in `shared/catalog` rather than in one feature because
  * gave it a SECOND reader: the unified AI-platform screen resolves routing
  * policies per task key, alongside the task-default surface that declared it
  * first. Rule 13 forbids one feature importing another, and `document-templates.ts`
@@ -22,7 +22,7 @@ export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
   'guardrail.groundedness',
-  // TASK-799 R6: the platform's PII redaction selections. SUPER_ADMIN-only on
+  // the platform's PII redaction selections. SUPER_ADMIN-only on
   // write, so they are read-only wherever a tenant can see them.
   'guardrail.pii',
   'guardrail.pii.spans',

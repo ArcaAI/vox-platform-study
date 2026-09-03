@@ -1,5 +1,5 @@
 /**
- * TASK-858 Lane E (E1) — `verifyWebhookSignature`.
+ * (E1) — `verifyWebhookSignature`.
  *
  * The implementation under test is a zero-dependency, pure-TypeScript
  * HMAC-SHA256. These tests verify it INDEPENDENTLY, two ways:
@@ -17,7 +17,7 @@
  *
  * The wire contract is fixed by the SIGNING side —
  * `packages/applications/src/services/webhook/webhook-delivery.processor.ts`:
- *   - header name  `X-Hope-Webhook-Signature`               (line 82)
+ *   - header name `X-Hope-Webhook-Signature` (line 82)
  *   - header value `sha256=${createHmac('sha256', rawSecret).update(body).digest('hex')}`
  *                                                            (lines 307, 318)
  *   - `body` is `JSON.stringify(payload)` — so the receiver must verify the

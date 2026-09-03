@@ -4,7 +4,7 @@ Unlike the pure/deterministic computational sensors
 (:mod:`harness.sensors.computational`), these call models: ``groundedness`` does
 per-claim entailment via the calibrated LM Studio judge, and ``safety`` screens
 the note through ``apps/guardrail``'s outbound screen — harness hosts no guardian
-engine of its own (TASK-799 A.1 / F-02). They implement the async
+engine of its own ( A.1 / F-02). They implement the async
 :class:`~harness.sensors.inferential.base.InferentialSensor` protocol
 (``arun(ctx, *, judge)``) and run inside the ``run_inferential_sensors`` Temporal
 activity (model calls never run in the deterministic workflow body).

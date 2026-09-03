@@ -82,13 +82,13 @@ test.describe('Health & Monitoring', () => {
     });
   });
 
-  // TASK-759 (rule P2): the controller moved from the business prefix
+  // The controller moved from the business prefix
   // `api/v1/monitoring` to the admin plane `api/v1/admin/monitoring`. HARD
   // MOVE — there is no redirect or deprecation convention anywhere in
   // `apps/api`, and no consumer outside this repo. The pre-move paths must be
   // GONE, not merely un-preferred: an alias would leave an admin-shaped route
   // on a business prefix, which is the exact defect the move removes.
-  test.describe('Retired pre-TASK-759 monitoring paths', () => {
+  test.describe('Retired pre-existing monitoring paths', () => {
     for (const path of ['/api/v1/monitoring/uptime', '/api/v1/monitoring/sessions', '/api/v1/monitoring/heartbeats/stt'] as const) {
       test(`${path} is gone (404, no alias)`, async ({ request }) => {
         test.skip(!authToken, 'Requires seeded admin user — run pnpm test:db:seed first');

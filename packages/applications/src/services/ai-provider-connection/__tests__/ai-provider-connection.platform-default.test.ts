@@ -162,7 +162,7 @@ describe('resolveTenantCloudOverrides — SYSTEM-tenant cascade (R1)', () => {
   });
 
   it('6b. a KEYED self-host SYSTEM row IS injected — platform infrastructure is deliverable', async () => {
-    // TASK-799 P1-C. This tier used to be filtered by `isCloudByoProvider`,
+    // C. This tier used to be filtered by `isCloudByoProvider`,
     // which conflated two different rules: "a TENANT may not OWN this provider"
     // is not "the PLATFORM may not SERVE it". The filter meant a super admin
     // could store a key for a self-hosted engine behind an auth proxy (an

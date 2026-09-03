@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useSelectableConsultationWorkflows Hook (TASK-813 §8)
+ * @arcaai/vox - useSelectableConsultationWorkflows Hook
  *
  * Answers "which workflows may I pass to `session.open({ workflowDefinitionSlug })`?" — the
  * discovery side of the selector, and the half that shipped missing: selection was authorized
@@ -17,8 +17,8 @@
  * screen. But failing open must not manufacture an answer either, so the two "no workflows on
  * screen" outcomes stay different values:
  *
- *   * `null`  — we could not ask (offline, 503, unauthorized). Render nothing, or a retry.
- *   * `[]`    — we asked, and the tenant has published no consultation workflow. The platform
+ *   * `null` — we could not ask (offline, 503, unauthorized). Render nothing, or a retry.
+ *   * `[]` — we asked, and the tenant has published no consultation workflow. The platform
  *               default engine governs; there is genuinely nothing to choose.
  *
  * Collapsing those would tell a clinician their tenant has no workflows because a request

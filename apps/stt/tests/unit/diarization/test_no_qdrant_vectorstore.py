@@ -61,6 +61,6 @@ def test_session_scoped_diarization_does_not_import_qdrant_client() -> None:
 
     assert result.returncode == 0, (
         "The session-scoped diarization import path pulled in qdrant_client; "
-        "speaker identity must stay in-memory + DB voice profiles (TASK-330). "
+        "speaker identity must stay in-memory + DB voice profiles . "
         f"stderr: {result.stderr}"
     )

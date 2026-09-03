@@ -9,7 +9,6 @@
  * GLOBAL customer tenant (`DEFAULT_TENANT_ID`), NOT a SYSTEM tenant — see the
  * NOTE above the constant's declaration in `07-prompt-template.ts` and B-10 /
  * OD-4 in
- * docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md.
  *
  * This body is a HAND-MAINTAINED NEAR-DUPLICATE of the v1-parity ArcaAI
  * pre-summary (`PRE_SUMMARY_CONTENT` in `07b-arcaai-clinical-content.ts`,
@@ -54,7 +53,7 @@ describe('SYSTEM default pre-summary content drift lock', () => {
         `  actual sha256:            ${actualSha256}\n` +
         'If this is an intentional, reviewed content change, update PINNED_SHA256 above and ' +
         'consciously decide whether PRE_SUMMARY_CONTENT (07b-arcaai-clinical-content.ts) needs the ' +
-        'same change (TASK-635 B-10) — the two bodies are hand-maintained near-duplicates.',
+        'same change (B-10) — the two bodies are hand-maintained near-duplicates.',
     ).toBe(PINNED_SHA256);
   });
 });

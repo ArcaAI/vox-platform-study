@@ -1,5 +1,5 @@
 /**
- * TASK-776 F-07 — sub-collection routes must 404 when the PARENT is missing.
+ * sub-collection routes must 404 when the PARENT is missing.
  *
  * Nine routes returned `200` with an empty sub-collection for a NONEXISTENT
  * parent id, because the only existence signal each relied on doubled as a
@@ -49,7 +49,7 @@ const bearer = (token: string, tenantId?: string) => ({
 const ARCAAI_TENANT_ID = '50000000-0000-0000-0000-000000000001';
 const BOGUS_ID = '00000000-dead-4000-8000-000000000776';
 
-test.describe('TASK-776 F-07 — sub-collection parent-existence guard', () => {
+test.describe(' F-07 — sub-collection parent-existence guard', () => {
   let superAdminToken: string;
   let tenantAdminToken: string; // __GLOBAL__ tenant — NOT ArcaAI
   let arcaaiUserId: string;

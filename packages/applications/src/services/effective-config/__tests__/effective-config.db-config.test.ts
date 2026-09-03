@@ -1,4 +1,4 @@
-// TASK-799 lane A.1 — the LOAD-BEARING test.
+// lane A.1 — the LOAD-BEARING test.
 //
 // Not "the resolver returns a value" (that is
 // `platform-storage-settings.resolver.test.ts`) and not "the facade dispatches"
@@ -51,7 +51,7 @@ function pullService(rows: TenantStorageConfigEntity[]): EffectiveConfigService 
   return new EffectiveConfigService(settings);
 }
 
-describe('the pull payload carries db-config keys (TASK-799 A.1)', () => {
+describe('the pull payload carries db-config keys (A.1)', () => {
   it('serves storage.platformDefault.* to harness with real values and a db source', async () => {
     const payload = await pullService([systemRow()]).resolveForService('harness');
 

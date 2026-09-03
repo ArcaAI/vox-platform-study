@@ -1,4 +1,4 @@
-"""TASK-816 Phase 4 — `HarnessPolicy.safetyProvider` / `.safetyModel` are RETIRED.
+"""`HarnessPolicy.safetyProvider` / `.safetyModel` are RETIRED.
 
 Phase 2 proved by grep-gate (mutation-verified) that no harness module read either field off
 the policy object, and recorded them as the only two `HarnessPolicy` columns Phase 4 could
@@ -9,13 +9,13 @@ Why nothing was lost. The real safety screen is built from ``settings.guardrail_
 alone (``activities.py::_safety_screen_client``) and ``GuardrailClient.analyze`` POSTs only
 ``{text, guardrail_type, request_id}``. ``apps/guardrail`` resolves its own provider and model
 tenant-first from the ``guardrail.safety`` ``AiTaskDefault``, fail-closed — the correct home for
-that selection since TASK-735/736, and precisely why these two had nothing left to do.
+that selection since /736, and precisely why these two had nothing left to do.
 
 Why the fields could not simply be left in place. Their defaults were the literal engine name
 ``lm-studio`` and the literal model id ``granite-guardian-4.1-8b``. With the API no longer
 sending the keys, ``from_api``'s fallback would have resolved to those literals on every run —
 a hardcoded engine/model selection with no reader, which is exactly what
-``00-project-context.md`` §Configuration Principles rule 1 forbids.
+00-project-context.md Principles rule 1 forbids.
 
 Replay safety. ``HarnessPolicy`` carries ``ConfigDict(extra="ignore")``, so a recorded history
 that still contains ``safety_provider`` / ``safety_model`` decodes cleanly against the current
@@ -38,7 +38,7 @@ def test_the_retired_field_is_no_longer_a_policy_field(field: str) -> None:
     from harness.temporal.models import HarnessPolicy
 
     assert field not in HarnessPolicy.model_fields, (
-        f"`HarnessPolicy.{field}` was retired in TASK-816 Phase 4 together with its Prisma "
+        f"`HarnessPolicy.{field}` was retired in  Phase 4 together with its Prisma "
         "column. Re-adding it re-creates a hardcoded engine/model selection with no reader — "
         "the guardrail selection lives in the `guardrail.safety` AiTaskDefault, resolved by "
         "apps/guardrail tenant-first. If this is deliberate wiring, delete this test WITH the "

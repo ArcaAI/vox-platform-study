@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — the SHA-256 gate required by TASK-796's contract.
+ * the SHA-256 gate required by contract.
  *
  * `corrections.textSha256` pins the exact text the proposals' byte offsets were computed
  * against. Applying a proposal to text with a different digest would splice the replacement

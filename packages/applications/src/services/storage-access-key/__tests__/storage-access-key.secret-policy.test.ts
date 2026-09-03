@@ -1,5 +1,5 @@
 /**
- * TASK-786 — an issued storage secret access key follows the SUPER_ADMIN-managed
+ * an issued storage secret access key follows the SUPER_ADMIN-managed
  * `security.secret.*` policy.
  *
  * This is the surface where generation had to MOVE layers: it lived in

@@ -13,7 +13,7 @@ flat-``runningSummary`` reconstitution are all copied deliberately.
 
 ## The section titles are NOT resolved per tenant, and that is a verified decision
 
-TASK-796's brief asked to "respect the tenant's ``ConsultationContextSchema`` where the existing
+brief asked to "respect the tenant's ConsultationContextSchema where the existing
 path already does". Checked against source on 2026-08-23: **the existing path does not.**
 ``soap-parser.ts:13`` hardcodes ``['Subjective','Objective','Assessment','Plan']`` and
 ``live-documentation.service.ts:86`` hardcodes the matching prompt instruction; no

@@ -4,7 +4,7 @@ import { WorkflowRunController } from './workflow-run.controller';
 
 /**
  * WorkflowRunModule — the `/admin/workflow-runs/*` tenant-scoped
- * runs/observability read plane (TASK-723).
+ * runs/observability read plane.
  *
  * `WorkflowRunServiceModule` supplies `IWorkflowRunService`. `ClsService` is
  * global.

@@ -10,7 +10,7 @@ export interface CreateTenantSttConfigProps extends BaseEntityFactoryCreateProps
   fallbackPipelineId?: ITenantSttConfigEntity['fallbackPipelineId'];
   autoSwitchEnabled?: ITenantSttConfigEntity['autoSwitchEnabled'];
   configJson?: ITenantSttConfigEntity['configJson'];
-  // TASK-843 — constant for the model; the entity supplies SPEECH_TO_TEXT when
+  // constant for the model; the entity supplies SPEECH_TO_TEXT when
   // omitted, matching the DB default.
   taskKind?: ITenantSttConfigEntity['taskKind'];
 

@@ -16,7 +16,7 @@ import {
 } from './dto';
 
 /**
- * TASK-712 Phase 5 — SHADOW-ONLY subject instance for `Role`.
+ * SHADOW-ONLY subject instance for `Role`.
  *
  * The seeded `rbac-tenant-manage` rules are `isSystemRole`-shaped:
  * `create/read/update/delete/list:Role { isSystemRole: false }` plus
@@ -26,7 +26,7 @@ import {
  * that happens (`casl_shadow_divergence_total{subject="Role"}`).
  *
  * `Role` is deliberately NOT in `CASL_ENFORCED_PAIRS`: `casl-blast-radius.md`
- * §7 step 3 puts it behind the "own resource" subjects precisely because it is
+ * step 3 puts it behind the "own resource" subjects precisely because it is
  * the most heavily decorated hazard subject, and enforcing it before the
  * counter has run in a real environment is the R1 risk this rollout exists to
  * avoid. Wiring shadow is what makes that measurement possible at all.
@@ -37,10 +37,10 @@ const resolveRoleInstance = async (request: any, ctx: SubjectResolverContext): P
   if (typeof id !== 'string' || id.length === 0) return undefined;
   const role = await ctx.get<IRbacRoleService>(IRbacRoleService).findOne(id);
   if (!role) return undefined;
-  // TASK-766 OD-1 closed the hazard this NOTE used to record. `Role` now has a
+  // closed the hazard this NOTE used to record. `Role` now has a
   // real `tenantId` and `RbacRoleRecord` surfaces it, so a `{ tenantId }`
   // condition evaluates against a real value instead of silently DENYing on an
-  // absent one — which `casl-blast-radius.md` §3 names as the way a
+  // absent one — which `casl-blast-radius.md` names as the way a
   // shadow-mode divergence turns into a wrongful 403 once enforced.
   return { id: role.id, tenantId: role.tenantId, isSystemRole: role.isSystemRole };
 };
@@ -196,7 +196,7 @@ export class RolesController {
   /**
    * Update a role
    */
-  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // AUTH-NOTE:. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
   // rather than the class-level `@CanManage('Role')`, mirroring what the read
   // routes above already do. A tenant admin holds the DECOMPOSED
   // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT
@@ -228,7 +228,7 @@ export class RolesController {
   /**
    * Partially update a role
    */
-  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // AUTH-NOTE:. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
   // rather than the class-level `@CanManage('Role')`, mirroring what the read
   // routes above already do. A tenant admin holds the DECOMPOSED
   // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT
@@ -261,7 +261,7 @@ export class RolesController {
   /**
    * Delete a role (soft delete)
    */
-  // AUTH-NOTE: TASK-766 OD-1. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
+  // AUTH-NOTE:. Declared `@CanAny([<verb>,'Role'], ['manage','Role'])`
   // rather than the class-level `@CanManage('Role')`, mirroring what the read
   // routes above already do. A tenant admin holds the DECOMPOSED
   // `update`/`delete:Role` from the seeded `rbac-tenant-manage` policy but NOT

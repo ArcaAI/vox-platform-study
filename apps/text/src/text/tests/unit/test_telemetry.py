@@ -273,7 +273,7 @@ class TestBedrockGenAISpans:
         # Stub the SDK CALL, not asyncio. This used to patch
         # `text.providers.bedrock.asyncio` wholesale and swap in a fake
         # `to_thread`, which coupled a span-attribute test to the precise
-        # mechanism by which the adapter offloads blocking work. TASK-818 Lane A
+        # mechanism by which the adapter offloads blocking work.
         # changed that mechanism (`asyncio.to_thread` runs on the DEFAULT
         # executor, which a Bedrock generation holds for seconds - B-3), so the
         # test now stubs the boto3 client it is actually standing in for and no

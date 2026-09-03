@@ -1,5 +1,5 @@
 /**
- * TASK-742 — the platform-wide API-key surface invariant.
+ * the platform-wide API-key surface invariant.
  *
  * `UnifiedAuthGuard` now DENIES an API-key caller on any route that declares no
  * `@RequiredScopes(...)`. This audit is the static half of that rule: at boot,
@@ -62,14 +62,14 @@ function buildFakeAppFromRealControllers(
   } as unknown as Parameters<typeof auditEveryApiKeyReachableRouteDeclaresScopes>[0];
 }
 
-describe('boot-time API-key surface audit (TASK-742)', () => {
+describe('boot-time API-key surface audit ', () => {
   /**
    * The three surfaces the gateway conformance review named as reachable with
-   * NO authorization check (§6.1 — `transcription-job`, `stt-compat`,
+   * NO authorization check — `transcription-job`, `stt-compat`,
    * `speech-proxy`), plus one of each closure mechanism. Uses the REAL
    * production classes: a synthetic controller can only prove the audit's
    * logic, this proves the tree actually satisfies it.
-   */
+ */
   it('passes against the real controllers this ticket closed', () => {
     const app = buildFakeAppFromRealControllers([
       TranscriptionJobController,

@@ -1,5 +1,5 @@
 /**
- * TASK-812 (D-10) — the CONSULTATION ENDPOINT SEQUENCE.
+ * (D-10) — the CONSULTATION ENDPOINT SEQUENCE.
  *
  * The endpoint stage is the ordered list of actions that runs before a consultation session
  * closes. Until this module it was a literal, four lines into a private method:
@@ -62,7 +62,7 @@ export const CONSULTATION_ENDPOINT_ACTIONS_KEY = 'consultation.endpoint.actions'
  * reach `ConsultationLoopWorkflow._run_lifecycle_actions`, find no `LOOP_ACTION_REGISTRY` entry,
  * and be reported as `unsupported_action` — a step that looks configured and does nothing.
  *
- * The first two are the pre-TASK-812 stage. The last three are the node types this ticket adds
+ * The first two are the earlier stage. The last three are the node types adds
  * (`session.timeout`, `summary.finalize`, `feedback.capture`), which are deliberately the SAME
  * strings as the `trigger: 'on-end'` node keys in `@arcaai/workflow-contract` — one vocabulary
  * whether the consultation runs on the legacy loop or on an authored graph.
@@ -90,7 +90,7 @@ const AUDIO_ONLY_ENDPOINT_ACTIONS = new Set<string>(['livedoc.stop']);
  * 2. `session.timeout` — stamp HOW the session ended, before anything acts on it. A note produced
  *    from a timed-out consultation must be identifiable as one.
  * 3. `harness.finalize` — the existing child workflow that generates and delivers the note.
- * 4. `summary.finalize` — LOCK every document (DD-3). After the note exists, and before feedback.
+ * 4. `summary.finalize` — LOCK every document. After the note exists, and before feedback.
  * 5. `feedback.capture` — last, deliberately. It is the step most likely to degrade (it depends
  *    on a clinician having acted), and placing it after finalize means a feedback failure can
  *    never cost a clinician their locked note.

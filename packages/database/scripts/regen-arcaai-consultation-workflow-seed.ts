@@ -1,5 +1,5 @@
 /**
- * TASK-798 — regenerate the ArcaAI consultation `WorkflowDefinition` seed blobs from the REAL
+ * regenerate the ArcaAI consultation `WorkflowDefinition` seed blobs from the REAL
  * `validate()` / `compile()` engine.
  *
  * A committed, re-runnable script rather than a throwaway, for the reason

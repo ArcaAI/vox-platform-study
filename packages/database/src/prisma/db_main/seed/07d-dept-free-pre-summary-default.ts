@@ -121,7 +121,7 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE = {
   tenantId: SYSTEM_TENANT_ID,
   name: 'Pre-Summary Default Template (Department-Free)',
   description:
-    'Native-only department-free pre-summary template (TASK-635 D2 / OD-1b / RF-1). No {current_department} or ' +
+    'Native-only department-free pre-summary template (D2 / OD-1b / RF-1). No {current_department} or ' +
     '{visit_type} placeholder and no "(Latest Dept Note)" heading; served to native callers via ' +
     "preSummaryVariant: 'dept-free'. The v1-compat surface never resolves this row — it keeps the v1-parity body " +
     'forever (RF-1 wire contract, PRE_SUMMARY_DISPLAY_TITLES title-match).',
@@ -154,7 +154,7 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION = {
   promptTemplateId: SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID,
   versionNumber: 1,
   content: SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT,
-  changeReason: 'Initial version — department-free fork of SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT (TASK-635 D2)',
+  changeReason: 'Initial version — department-free fork of SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT (D2)',
   changedBy: SYSTEM_USER_ID,
 };
 
@@ -166,7 +166,7 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION = {
  * reach.
  */
 export const seedDeptFreePreSummaryDefault = async (client: CorePrismaClient) => {
-  console.log('Seeding SYSTEM department-free pre-summary default (TASK-635 D2)...');
+  console.log('Seeding SYSTEM department-free pre-summary default (D2)...');
 
   const { variables, ...rest } = SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE;
   const templateData = { ...rest, variables };

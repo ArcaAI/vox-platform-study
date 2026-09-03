@@ -122,7 +122,7 @@ describe('SettingDetailDrawer', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('marks a feature-flags row with no runtime consumer as advisory (F-23 / TASK-852 item 7)', async () => {
+  it('marks a feature-flags row with no runtime consumer as advisory (F-23 / item 7)', async () => {
     const advisory = setting({ id: 's-5', key: 'enable-ner-extraction', namespace: 'feature-flags', name: 'NER Extraction' });
     stubFetch({
       custom: (call) => {

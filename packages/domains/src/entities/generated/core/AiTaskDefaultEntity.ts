@@ -16,9 +16,9 @@ export interface IAiTaskDefaultEntity extends IBaseTenantEntity {
   taskKey: string;
   modelSlug: string;
   configJson?: Record<string, unknown> | null;
-  // TASK-843 — the canonical task taxonomy `taskKey` belongs to, DERIVED from
+  // the canonical task taxonomy `taskKey` belongs to, DERIVED from
   // it via `AI_TASK_KIND_BY_TASK_KEY` in the applications layer. Optional here
-  // because Phase 1 is additive and no writer sets it yet; TASK-844 makes it
+  // because Phase 1 is additive and no writer sets it yet; makes it
   // required once `AiTaskDefaultService.upsertRow` does.
   taskKind?: AiTaskKind | null;
 }

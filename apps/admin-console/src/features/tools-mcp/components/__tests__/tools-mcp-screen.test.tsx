@@ -5,7 +5,7 @@
  * GET/POST/PATCH/DELETE /admin/mcp-servers (+ GET /admin/harness/policy for the
  * MCP master gate).
  *
- * TASK-846 / OD-7 (2026-09-01): the screen-wide SUPER_ADMIN gate this file used
+ * / OD-7 (2026-09-01): the screen-wide SUPER_ADMIN gate this file used
  * to assert is GONE — tenant admins may configure MCP connectors. The boundary
  * moved to the ROW: own-tenant rows are writable, SYSTEM-registry rows are
  * read-only for a tenant admin (matching the gateway's 403). OD-11 adds the
@@ -157,7 +157,7 @@ describe('ToolsMcpScreen', () => {
     expect(screen.queryByText('Entity faithfulness')).toBeNull();
   });
 
-  // ── TASK-846 / OD-7 (2026-09-01) ────────────────────────────────────────
+  // ── / OD-7 (2026-09-01) ────────────────────────────────────────
   // This block REPLACES "gates non-elevated sessions behind the Super Admins
   // only empty state". Tenant admins may configure MCP connectors, so the
   // screen-wide gate is gone; the boundary is now per ROW.

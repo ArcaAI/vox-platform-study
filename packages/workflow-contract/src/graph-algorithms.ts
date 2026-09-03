@@ -1,12 +1,12 @@
 /**
  * Pure, total, allocation-bounded graph algorithms over a `WorkflowGraph`. Every function
  * runs in O(V + E) — never path enumeration, which is exponential on a 256-node graph and
- * would hang the publish request (TASK-716 §6 Risk #3). No graph code existed in this repo
- * before this file (TASK-716 §2.1).
+ * would hang the publish request ( Risk #3). No graph code existed in this repo
+ * before this file
  *
  * Nothing here throws on a malformed graph: dangling edge endpoints are silently ignored (the
  * shape-level check that reports them lives in `workflowGraphProblems`), so an evaluator built
- * on these primitives stays total per §3.5's "a validator that is not total is a validator
+ * on these primitives stays total per 's "a validator that is not total is a validator
  * that can be bypassed".
  */
 
@@ -144,7 +144,7 @@ export function pathExists(
 /**
  * True iff EVERY path from `fromIds` to `toIds` passes through at least one node in
  * `throughIds` — implemented as a cut-set / dominator check (remove `throughIds`, ask whether
- * any path survives), not path enumeration, per TASK-716 §6 Risk #3: enumeration is
+ * any path survives), not path enumeration, per Risk #3: enumeration is
  * exponential and a 256-node graph would hang the publish request.
  *
  * Vacuously true when no `fromIds → toIds` path exists at all in the original graph — there

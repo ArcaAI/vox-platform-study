@@ -115,7 +115,7 @@ class TestSafetyScreenScopingReusesCache:
     async def test_unchanged_note_content_not_rescreened(self):
         if not _has_kwarg(SafetySensor.arun, "screen_cache"):
             pytest.fail(
-                "WS-3 (TASK-363): SafetySensor.arun(..., screen_cache=dict) not implemented "
+                "WS-3 : SafetySensor.arun(..., screen_cache=dict) not implemented "
                 "yet (TDD RED) — no content-addressed safety-screen cache to scope a regen"
             )
 

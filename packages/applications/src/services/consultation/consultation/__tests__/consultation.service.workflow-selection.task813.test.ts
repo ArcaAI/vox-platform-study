@@ -1,5 +1,5 @@
 /**
- * TASK-813 OD-1 — workflow SELECTION at consultation open, and DISCOVERY of the
+ * workflow SELECTION at consultation open, and DISCOVERY of the
  * workflow that ended up governing.
  *
  * The load-bearing property here is ORDER: the selector is authorized BEFORE any
@@ -208,7 +208,7 @@ describe('ConsultationService.getGoverningWorkflow — discovery (D-20)', () => 
 });
 
 /**
- * TASK-813 §8 — the selectable-set route's service half.
+ * the selectable-set route's service half.
  *
  * `ConsultationService` owns exactly two things here, and both are about the REQUEST rather
  * than about workflows: the tenant comes from CLS and never from the caller, and a deployment

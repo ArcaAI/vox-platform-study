@@ -11,7 +11,7 @@ import {
 import { ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arcaai-clinical-templates';
 
 /**
- * TASK-702 golden test — register invariants INV-065/066/071/231/233/373/432/449
+ * golden test — register invariants INV-065/066/071/231/233/373/432/449
  * (`docs/programs/agentic-workflow-platform/design.md`, `01-invariant-register.md`,
  * category `terminology`): no seeded prompt may instruct the model to
  * free-write an ICD-10 diagnosis code. Verification, not the prompt, is the
@@ -49,7 +49,7 @@ import { ARCAAI_CLINICAL_TEMPLATES, ARCAAI_CLINICAL_VERSIONS } from '../07b-arca
  *    and are fully clean. Rolling `ARCAAI_CLINICAL_APPROVED_VERSION` back to
  *    1 would re-expose the v1 wording; closing that gap requires a follow-up
  *    ticket with clinical/product sign-off to update the pinned fixture (see
- *    Implementation Summary / Risks).
+ * / Risks).
  *
  * No other row of either kind is ever exempted.
  */
@@ -88,7 +88,7 @@ const findIcd10 = (source: string, id: string, field: string, value: string | nu
   }
 };
 
-describe('ICD-10 prompt containment (TASK-702)', () => {
+describe('ICD-10 prompt containment ', () => {
   it('never instructs the model to free-write an ICD-10 code, in any seeded prompt, live or historical', () => {
     const violations: Violation[] = [];
 

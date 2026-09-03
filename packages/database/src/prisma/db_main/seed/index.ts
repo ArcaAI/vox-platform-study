@@ -153,7 +153,7 @@ export const seed = async () => {
     // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
     await seedAiTaskDefault(client);
     console.log('');
-    // SYSTEM config-plane rows. Seed-authoritative Day-1 (OD-1):
+    // SYSTEM config-plane rows. Seed-authoritative Day-1 :
     // the built-in-local llm connections (ollama/lm-studio/built-in/vllm/
     // llama-cpp) seed ENABLED, so `resolveConnection('llm', …)` returns the
     // SYSTEM row and env is a pure fallback; cloud-BYO rows stay inert until a
@@ -179,7 +179,7 @@ export const seed = async () => {
     // pre-summary, all APPROVED and owned by the ArcaAI tenant. The ArcaAI
     // departments (04-department) reference these via their legacy prompt-id
     // columns. (A parallel set of per-visit-type `DepartmentAgent` bindings
-    // pointed at exactly the same 14 templates until TASK-815 retired them.)
+    // pointed at exactly the same 14 templates until retired them.)
     await seedArcaaiClinicalTemplates(client);
     console.log('');
     // SYSTEM live-summarization default: one SYSTEM-tenant
@@ -200,7 +200,7 @@ export const seed = async () => {
     console.log('');
     // Golden Prompt Library: SYSTEM golden departments + APPROVED prompt
     // templates + their v1 version snapshots. (It also seeded one default agent
-    // per department and two fixture tenants' locked clones until TASK-815
+    // per department and two fixture tenants' locked clones until
     // retired `DepartmentAgent`.) Idempotent upsert-by-id.
     await seedAgentGoldenLibrary(client);
     console.log('');
@@ -209,7 +209,7 @@ export const seed = async () => {
     // `enabled: true` on a fresh install — the SIGNALLING gate is on, but the
     // workflow's own gate is DERIVED, and before this row nothing satisfied it.
     // (Its other source used to be the loop configuration on a seeded default
-    // agent; since TASK-815 it is the tenant's governing WorkflowDefinition,
+    // agent; since it is the tenant's governing WorkflowDefinition,
     // which a fresh install does not have.) CREATE-ONLY.
     await seedConsultationLoopDefaults(client);
     console.log('');
@@ -229,7 +229,7 @@ export const seed = async () => {
       await seedUser(client);
       console.log('');
     }
-    // TASK-763 — the env-driven first SUPER_ADMIN. Runs in EVERY seeding mode
+    // the env-driven first SUPER_ADMIN. Runs in EVERY seeding mode
     // (deliberately NOT on the `safe` deny-list): `91-user` is skipped in
     // `safe`, which left a production bootstrap with zero users and therefore
     // no way to log in. No-op unless BOOTSTRAP_SUPER_ADMIN_EMAIL +
@@ -238,7 +238,7 @@ export const seed = async () => {
     // account is detected rather than raced.
     await seedBootstrapAdmin(client);
     console.log('');
-    // TASK-766 — the env-driven first TENANT_ADMIN, for the same reason and in
+    // the env-driven first TENANT_ADMIN, for the same reason and in
     // every seeding mode: `91-user` is skipped in `safe`, which left the fully
     // configured ArcaAI tenant with nobody able to administer it. No-op unless
     // BOOTSTRAP_TENANT_ADMIN_EMAIL + _PASSWORD are set; CREATE-ONLY. Ordered
@@ -246,7 +246,7 @@ export const seed = async () => {
     // bootstrap accounts is detected in a deterministic order.
     await seedBootstrapTenantAdmin(client);
     console.log('');
-    // TASK-766 — the ArcaAI tenant's machine identity (TASK-762 credential
+    // the ArcaAI tenant's machine identity ( credential
     // class). Runs in EVERY seeding mode: outside development/test the row is
     // seeded INERT (a verifier with no preimage) and becomes usable through
     // `POST /admin/service-accounts/:id/rotate`, so no secret ever reaches a
@@ -306,10 +306,10 @@ export const seed = async () => {
     await seedAiPriceBook(client);
     console.log('');
     // Platform-default Summarization WorkflowDefinition — the row the dispatcher falls
-    // back to when a tenant has authored none (TASK-720). SYSTEM-tenant, CREATE-ONLY.
+    // back to when a tenant has authored none. SYSTEM-tenant, CREATE-ONLY.
     await seedWorkflowDefinition(client);
     console.log('');
-    // The tenant-authored consultation workflows (TASK-798) — ArcaAI-owned,
+    // The tenant-authored consultation workflows — ArcaAI-owned,
     // PUBLISHED, on the real `consultation` palette. Runs after 21 so the
     // platform default exists first. Its WorkflowAssignment rows are GATED on
     // the Substrate-A exclusivity mechanism and print a loud warning when they
@@ -318,7 +318,7 @@ export const seed = async () => {
       await seedArcaaiWorkflowAuthoring(client);
       console.log('');
     }
-    // TASK-858 D2/D3 — the realtime transcription AGENT (stt palette) and the
+    // /D3 — the realtime transcription AGENT (stt palette) and the
     // three example consultation workflows, each seeded twice.
     //
     // The SYSTEM halves are platform configuration: SYSTEM-tenant, createdBy
@@ -359,7 +359,7 @@ export const seed = async () => {
     if (isPhaseEnabled('09-consultation', mode)) {
       await seedConsultation(client);
       console.log('');
-      // TASK-712 (consent-abac Phase 6): EXTERNAL_TOOL_LOOKUP/STYLE_LEARNING/
+      // (consent-abac Phase 6): EXTERNAL_TOOL_LOOKUP/STYLE_LEARNING/
       // QUALITY_REVIEW grants for the demo patients above. Gated on the SAME
       // phase (not its own) — these rows exist only to make the just-seeded
       // synthetic patients usable, so they carry the same "never outside

@@ -65,7 +65,7 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // TASK-858 — translates the provider-native model id a TEXT request carries
+    // translates the provider-native model id a TEXT request carries
     // (`AiModel.sourceUri`) to the catalog `slug` that keys a profile row. Optional
     // so hosts without the catalog (tests, tools) still resolve raw-keyed rows.
     @Optional() private readonly aiModelRepository?: AiModelRepository,
@@ -192,7 +192,7 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
       this.profileRepository.findByTenantProviderAndModel(SYSTEM_TENANT_ID, provider, PROVIDER_DEFAULT_SLUG, tx),
       hasModel ? this.catalogSlugFor(provider, modelSlug, tx) : Promise.resolve(null),
     ]);
-    // TASK-858 — `modelSlug` is documented as an `AiModel.slug` (schema, seed,
+    // `modelSlug` is documented as an `AiModel.slug` (schema, seed,
     // console), but every TEXT caller resolves `model` to the row's `sourceUri`
     // before the profile is applied, so a console-authored row never matched.
     // Consult the slug-keyed row too; it outranks a raw-id row per field, and a

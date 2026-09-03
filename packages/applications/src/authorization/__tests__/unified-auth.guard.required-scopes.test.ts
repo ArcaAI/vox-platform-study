@@ -1,7 +1,7 @@
 /**
  * UnifiedAuthGuard + @RequiredScopes — regression.
  *
- * G1 (docs/implementation/TASK-632-HOPE-Node-SDK/README.md): `API_KEY_SCOPE_REGISTRY`
+ * G1: `API_KEY_SCOPE_REGISTRY`
  * and `enforceApiKeyScopes` both existed, but no decorator ever SET
  * `API_KEY_REQUIRED_SCOPES` metadata, so `requiredScopes` was always
  * `undefined` and any valid API key reached every route RBAC permitted.

@@ -57,7 +57,7 @@ export const SYSTEM_ROLES = [
       'api-key-own-manage',
       'storage-upload',
       'prompt-template-read',
-      // TASK-783: this role already holds `api-key-own-manage`, so it can mint
+      // this role already holds `api-key-own-manage`, so it can mint
       // a credential and integrate against the business plane. Reading the
       // reference for the API it may already call is the matching privilege —
       // the portal exposes the contract's SHAPE, never tenant data, and the
@@ -152,7 +152,7 @@ export const seedRole = async (client: CorePrismaClient) => {
 
   // Seed roles in order: system first, then extendable (which have parents), then legacy
   //
-  // TASK-766 OD-1: `Role` is tenant-scoped now. EVERY role seeded here is a
+  // `Role` is tenant-scoped now. EVERY role seeded here is a
   // platform/built-in role (SYSTEM_ROLES, GLOBAL_ROLES, TENANT_EXTENDABLE_ROLES
   // — the last are platform-provided TEMPLATES a tenant clones, not per-tenant
   // rows), so every row belongs to the SYSTEM tenant and every tenant reads

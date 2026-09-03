@@ -18,7 +18,7 @@ export class ValidScopesConstraint implements ValidatorConstraintInterface {
 }
 
 /**
- * TASK-757 (policy A2) — refuse to GRANT a reserved scope.
+ * (policy A2) — refuse to GRANT a reserved scope.
  *
  * Deliberately a SECOND constraint rather than a tightening of
  * `ValidScopesConstraint`, because the two answer different questions and only

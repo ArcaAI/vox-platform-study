@@ -1,6 +1,6 @@
 /**
  * PHI redaction seam — shared by the gate-edit mining store and the other
- * redaction hops wired in TASK-710 (NER pre-processing, the DNA corpus).
+ * redaction hops wired in (NER pre-processing, the DNA corpus).
  *
  * Deliberately a narrow port rather than a direct dependency on the guardrail
  * client: every consumer's contract is "redacted text or nothing", and none
@@ -26,7 +26,7 @@ export interface IPhiRedactor {
    *    label leaks. Use for retained / derived / cross-patient artifacts (the
    *    gate-edit exemplar bank, the DNA writing-style corpus).
    *
-   * Mechanism CONFIRMED (TASK-710 §6 Decision #12) against `apps/nlp`'s actual
+   * Mechanism CONFIRMED ( Decision #12) against `apps/nlp`'s actual
    * entity-linking behavior — see `redact.py`'s module docstring for the full
    * rationale: clinical-term preservation is structural (GLiNER's PII taxonomy
    * never covers clinical entities, in either mode); stable per-entity tokens

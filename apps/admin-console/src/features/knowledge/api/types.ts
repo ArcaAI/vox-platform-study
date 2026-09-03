@@ -1,6 +1,6 @@
 /**
  * Types for institutional-RAG knowledge-document administration
- * (`/admin/knowledge/documents`, TASK-728). Mirrors the response DTOs in
+ * (`/admin/knowledge/documents`). Mirrors the response DTOs in
  * `packages/applications/src/services/knowledge/dto/` — kept hand-written
  * (not imported) because `apps/admin-console` does not depend on
  * `@arcaai/applications` (a server-side package).

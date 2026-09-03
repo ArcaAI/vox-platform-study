@@ -1,4 +1,4 @@
-"""TASK-829 C-4 — output-side checks, mandatory and independent of the input verdict.
+"""output-side checks, mandatory and independent of the input verdict.
 
 *Input validation covers **zero** output risk.* A transcript can be entirely
 benign and the derivation over it still wrong in a way that matters clinically:
@@ -10,7 +10,7 @@ Independence is enforced structurally rather than by convention: nothing in
 `output_checks` knows what a verdict is, so no future edit can make an output
 check conditional on the input having passed.
 
-The third row of §7 — sentence-level groundedness for generative summaries — is
+The third row of — sentence-level groundedness for generative summaries — is
 deliberately NOT reimplemented here. `/guardrail/groundedness` already owns it
 over the NLI selection in `apps/nlp`, and a second copy would be a second
 inference stack.

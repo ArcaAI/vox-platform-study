@@ -6,7 +6,7 @@ import { Label as LabelPrimitive } from 'radix-ui';
 import { cn } from '@/lib/utils';
 
 /**
- * TASK-787 J-18 — a label is a DESCRIPTOR, so it renders at 400; a heading is a
+ * a label is a DESCRIPTOR, so it renders at 400; a heading is a
  * TITLE and keeps 500. The Geometry Contract caps text at weights 400/500, which
  * had collapsed every `text-sm font-medium` section heading onto this primitive's
  * exact class string — a card header and a form label inside it were pixel-

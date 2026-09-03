@@ -1,5 +1,5 @@
 /**
- * TASK-766 OD-1 — `Role` is tenant-scoped, so a tenant admin can manage its
+ * `Role` is tenant-scoped, so a tenant admin can manage its
  * OWN tenant's custom roles without being able to touch anybody else's.
  *
  * This file covers the three boundaries the owner decision names, and nothing
@@ -119,7 +119,7 @@ function roleRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('TASK-766 OD-1 — Role tenancy boundary', () => {
+describe(' OD-1 — Role tenancy boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

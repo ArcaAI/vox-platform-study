@@ -1,18 +1,18 @@
 // ============================================================================
-// Workflow Run — the read model for runs/observability (TASK-723), scoped per
+// Workflow Run — the read model for runs/observability, scoped per
 // D6's "CQRS-lite: commands+events on definition mutations, read models for
 // runs/observability" (design.md). One row per workflow-substrate run.
 //
 // Why a new table rather than widening AgentTrajectoryStep (agent-trajectory.prisma):
 // that table is high-volume, hard-retention, per-STEP operational telemetry
-// (design.md, TASK-510) with no definition/version column at all — see
-// docs/implementation/TASK-723-Runs-Observability/README.md §2.1/§3.2. Adding
+// (design.md) with no definition/version column at all — see
+// Adding
 // per-run columns to a per-step table is the wrong grain, forces a migration on
 // the hot telemetry table, and still leaves the runs list doing a DISTINCT ON
 // over steps. This table is the run-grain identity: one row per run, joined to
 // its trajectory steps by `sessionId` (see Task 1's contract,
-// docs/implementation/TASK-723-Runs-Observability/contracts/run-read-model.contract.md
-// §2, for exactly how `sessionId = "workflow-interpreter-" + runId` correlates
+
+// for exactly how `sessionId = "workflow-interpreter-" + runId` correlates
 // to AgentTrajectoryStep rows — NOT AgentTrajectoryStep.runId, which is
 // Temporal's execution-attempt id, a different value).
 //
@@ -31,9 +31,9 @@
 //     a manageable resource. No `resourceStatus` column; listed in
 //     MODELS_WITHOUT_SOFT_DELETE (packages/database/src/client.ts).
 //   - NO sys-events on write: same telemetry exemption as AgentTrajectoryStep
-//     (recordRunStarted/recordRunFinished are the write contract TASK-718's
+// (recordRunStarted/recordRunFinished are the write contract
 //     dispatcher — or a future gateway controller — calls; see the ticket's
-//     R2 and the Task 1 contract §7 for the current wiring gap). Because it
+// R2 and the Task 1 contract for the current wiring gap). Because it
 //     emits no sys-events, it deliberately carries NO `ResourceType` entry —
 //     rule 03 step 4 conditions that entry on sys-event emission. Do not "fix"
 //     this by adding one.
@@ -42,10 +42,10 @@
 //     BaseTenantEntity / Repository machinery, exactly like AgentTrajectoryStep.
 //
 // `status` deliberately has NO `DEGRADED` member (README pitfall 6 /
-// design.md §Error handling / the session-state-machine epic's decision):
+// handling / the session-state-machine epic's decision):
 // "degraded" is a per-run FLAG (`degradedNodeCount`), never a run STATE. The
 // interpreter's own ephemeral `RunStatus` Python literal DOES include
-// "DEGRADED" (interpreter/models.py:26) — that is TASK-718's in-Temporal-only
+// "DEGRADED" (interpreter/models.py:26) — that is in-Temporal-only
 // value; a run finishing DEGRADED there is recorded here as COMPLETED with
 // degradedNodeCount > 0, never as a distinct persisted status.
 // ============================================================================
@@ -76,7 +76,7 @@ model WorkflowRun {
   definitionName        String // WorkflowDefinition.name, denormalized — renders even after a later rename (R7)
 
   // The AgentTrajectoryStep join key for this run's trace — the DERIVED
-  // "workflow-interpreter-{runId}" string (Task 1 contract §2), NOT the raw
+  // "workflow-interpreter-{runId}" string (Task 1 contract, NOT the raw
   // request-body sessionId the dispatcher's caller happened to pass.
   sessionId String
   // The domain run id (== the interpreter's InterpreterInput.run_id). Mirrors
@@ -91,8 +91,8 @@ model WorkflowRun {
 
   status WorkflowRunStatus @default(RUNNING)
 
-  // TASK-721's single filter point for excluding sandbox runs from tenant-
-  // facing reads (Task 1 contract §4) — never persisted anywhere else.
+  // single filter point for excluding sandbox runs from tenant-
+  // facing reads (Task 1 contract — never persisted anywhere else.
   isSandbox Boolean @default(false)
 
   startedAt  DateTime
@@ -104,8 +104,8 @@ model WorkflowRun {
   degradedNodeCount Int    @default(0)
   firstErrorCode    String?
 
-  // The run's delivered OUTPUT — closing TASK-789 finding M-2, requested by
-  // TASK-791. `output.deliver` performs a real external write and then had
+  // The run's delivered OUTPUT — closing finding M-2, requested by
+  // `output.deliver` performs a real external write and then had
   // nowhere to record what it wrote, so a run's generated content was
   // unrecoverable once the run finished and `getRunStatus` could only ever
   // return Temporal state.
@@ -116,7 +116,7 @@ model WorkflowRun {
   // `{ "outputs": {...} }` inline (deliver.py:104-110). A column recording
   // only the pointer would silently lose the inline branch, which is the
   // common one for a short note — so this stores the node's `output` object
-  // VERBATIM and the reader discriminates. The name is TASK-791's requested
+  // VERBATIM and the reader discriminates. The name is requested
   // one, kept so the two tickets code against the same identifier.
   //
   // Null while RUNNING, and null for any graph with no `output.deliver` node.

@@ -1,4 +1,4 @@
-"""TASK-830 — the peer client reads the new `scores` field, additively.
+"""the peer client reads the new `scores` field, additively.
 
 `classify()` keeps its exact signature and return shape: `safety_analyzer`'s
 `analyze_content` and `services/screening.py` both parse it as

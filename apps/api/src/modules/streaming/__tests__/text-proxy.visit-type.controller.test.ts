@@ -1,6 +1,6 @@
 /**
  * `POST /text-generations/generate/assembled` — `visit_type` is the TENANT's
- * vocabulary now (TASK-815 §11 row 3).
+ * vocabulary now.
  *
  * This route used to carry `type VisitType = 'new_visit' | 'referral'` and a
  * hardcoded allow-list that returned 400 for anything else, which made

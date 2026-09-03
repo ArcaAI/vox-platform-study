@@ -1,6 +1,6 @@
 /**
  * The SERVICE ACCOUNT — HOPE's third credential class, and the only machine
- * path to the `/api/v1/admin/*` plane (TASK-762 issued it; TASK-757 closed the
+ * path to the `/api/v1/admin/*` plane ( issued it; closed the
  * API-key path to administration for good).
  *
  * ─── What an integrator actually has to know ────────────────────────────────

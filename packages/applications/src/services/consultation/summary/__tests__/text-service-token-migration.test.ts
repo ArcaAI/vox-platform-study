@@ -13,7 +13,7 @@ const SOURCES = [
   // service-layer call sites (async — getSecretOptional)
   'src/services/consultation/summary/summary.service.ts',
   'src/services/consultation/summary/chain-summary.service.ts',
-  // TASK-732 — 'jobs/processors/summary.processor.ts' deleted (legacy
+  // 'jobs/processors/summary.processor.ts' deleted (legacy
   // signable generator); 'pre-summary'/'comprehensive-summary' survive.
   'src/services/consultation/jobs/processors/pre-summary.processor.ts',
   'src/services/consultation/jobs/processors/comprehensive-summary.processor.ts',

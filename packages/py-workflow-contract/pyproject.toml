@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hope-workflow-contract"
 version = "0.1.0"
-description = "TASK-716 Task 7b: the Python mirror of @arcaai/workflow-contract's compiledConfig contract (CompiledWorkflowConfig models, checksum verification, formatVersion guard) — the interpreter's read-only consumer half"
+description = " Task 7b: the Python mirror of @arcaai/workflow-contract's compiledConfig contract (CompiledWorkflowConfig models, checksum verification, formatVersion guard) — the interpreter's read-only consumer half"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11,<3.12"
@@ -22,7 +22,7 @@ dependencies = ["pydantic>=2.12.5"]
 where = ["src"]
 
 # PEP 561 — ship inline types, or every `from hope_workflow_contract import ...` in
-# the interpreter (TASK-718) degrades to `Any` under mypy, which is exactly the
+# the interpreter degrades to `Any` under mypy, which is exactly the
 # `no-any-return` noise hope-runtime-models' own marker was added to stop.
 [tool.setuptools.package-data]
 hope_workflow_contract = ["py.typed"]

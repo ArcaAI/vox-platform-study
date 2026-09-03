@@ -63,7 +63,7 @@ async def test_wav_is_single_chunk_with_riff_header():
 async def test_passes_requested_voice_to_pipeline():
     """The catalog binding on the request is the ONLY source of the voice.
 
-    `KokoroConfig` no longer carries a `voice` (TASK-799 lane C): it held
+    `KokoroConfig` no longer carries a `voice` ( lane C): it held
     `af_heart`, which is already the catalog's kokoro binding for `en-female-1`,
     and the router passes that binding as `req.provider_voice` on every request.
     """

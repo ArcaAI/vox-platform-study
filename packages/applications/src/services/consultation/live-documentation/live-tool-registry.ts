@@ -72,7 +72,7 @@ export interface ExtractionToolInput {
   /** The raw transcript delta (`delta || transcript`) — never generated text. */
   sourceText: string;
   /**
-   * The consultation's tenant. REQUIRED (TASK-737): every internal call carrying
+   * The consultation's tenant. REQUIRED: every internal call carrying
    * tenant-scoped work must identify its tenant, and a per-flush value cannot
    * live on the constructor deps. Widening this with tenant identity does NOT
    * breach the anti-laundering guarantee above — it is not derived from
@@ -92,7 +92,7 @@ export interface GroundednessToolInput {
   summary: string;
   /** Transcript (∪ clinician notes) the note is checked against. */
   sourceText: string;
-  /** The consultation's tenant. REQUIRED (TASK-737) — see {@link ExtractionToolInput}. */
+  /** The consultation's tenant. REQUIRED — see {@link ExtractionToolInput}. */
   tenantId: string;
 }
 
@@ -199,7 +199,7 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // extraction was rejected and the live note silently lost its highlights —
     // the NLP twin of the TEXT defect in `callText`.
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`, `NLP_SERVICE_TOKEN` only as the
-    // migration fallback. TASK-737: `X-Tenant-Id` is MANDATORY on this hop — a live
+    // migration fallback.: `X-Tenant-Id` is MANDATORY on this hop — a live
     // flush always has a tenant, so there is no tenant-less branch to declare here.
     const serviceToken = await resolveInternalAccessToken(this.deps.secretsService, 'NLP_SERVICE_TOKEN');
     const response = await this.deps.httpService.axiosRef.post(
@@ -297,7 +297,7 @@ export class GuardrailGroundednessTool implements GroundednessToolExecutor {
     const attempts = Math.max(1, this.deps.maxRetries + 1);
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        // D-D shared token + TASK-737 mandatory tenant header. Guardrail resolves
+        // D-D shared token + mandatory tenant header. Guardrail resolves
         // per-tenant safety configuration from this header; a dropped one silently
         // downgrades a tenant that chose a stricter posture to the platform floor.
         const token = await resolveInternalAccessToken(this.deps.secretsService, 'GUARDRAIL_SERVICE_TOKEN');

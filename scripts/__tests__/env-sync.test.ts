@@ -68,7 +68,7 @@ describe('env:sync — managed artifacts', () => {
         '.env.sample',
         'apps/admin-console/.env.sample',
         'apps/api/.env.sample',
-        // TASK-799 Phase 1.5: the six Python samples are GENERATED now, not
+        // the six Python samples are GENERATED now, not
         // inlined verbatim. That inlining is why 243 of 297 Python env vars were
         // invisible to this gate — the generator could not validate what it only
         // copied. Adding them here is the point of that change, not drift.
@@ -260,10 +260,10 @@ describe('env:sync — rendered documentation is not a read', () => {
 
 describe('env:sync — dead keys stay dead', () => {
   // Verified 2026-07-25: no reader in any TS/Python/shell/compose source.
-  //   TENANT_IDP_ENABLED        — no reader at all (see feature-flags.descriptors.ts)
-  //   AZURE_OPENAI_API_KEY      — only an TEXT e2e conftest fixture; the real key is TEXT_AZURE_API_KEY
+  //   TENANT_IDP_ENABLED — no reader at all (see feature-flags.descriptors.ts)
+  //   AZURE_OPENAI_API_KEY — only an TEXT e2e conftest fixture; the real key is TEXT_AZURE_API_KEY
   //   TEXT_OPENAI_COMPAT_ENABLED — TEXT gates providers by config presence, it has no `enabled` field
-  //   TEXT_V2_* / STT_V2_URL     — the retired rename shims
+  //   TEXT_V2_* / STT_V2_URL — the retired rename shims
   const DEAD = [
     'TENANT_IDP_ENABLED',
     'AZURE_OPENAI_API_KEY',
@@ -300,10 +300,10 @@ describe('env:sync — the declared surface stays small', () => {
     // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
     // Bumped 144 -> 145 for 1 legitimate addition (secrets rewarm interval —
     // verified via `pnpm env:sync --check`, no drift): SECRETS_REWARM_INTERVAL_SEC.
-    // Bumped 145 -> 147 for 2 legitimate additions (TASK-722's exposure-plane
+    // Bumped 145 -> 147 for 2 legitimate additions ( exposure-plane
     // kill-switches — verified via `pnpm env:sync --check`, no drift):
     // WORKFLOW_EXPOSURE_ENABLED, WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS.
-    // Bumped 147 -> 148 for 1 legitimate addition (TASK-727's dedicated
+    // Bumped 147 -> 148 for 1 legitimate addition ( dedicated
     // webhook-signing encryption key, deliberately NOT reusing API_KEY_PEPPER
     // — verified via `pnpm env:sync`, no drift): WEBHOOK_SECRET_PEPPER.
     // Bumped 148 -> 149 for 1 legitimate addition (owner decision D-D,
@@ -323,7 +323,7 @@ describe('env:sync — the declared surface stays small', () => {
     //     SERVICE_VERSION. `OTEL_*` is named as env-tier by
     //     09-infrastructure-devops.md; SERVICE_VERSION is a LOG LABEL only —
     //     its descriptor says build identity comes from the image's
-    //     build-info.json, never from env, so it does not reopen TASK-648.
+    // build-info.json, never from env, so it does not reopen.
     //   -14 vendor credentials/endpoints that moved OFF env to the BYOK
     //     db-config/vault tier, which is the direction the config rules want:
     //     AZURE_FOUNDRY_API_KEY, GUARDRAIL_VLLM_API_KEY,
@@ -363,7 +363,7 @@ describe('env:sync — no drift on disk', () => {
 describe('generate-env-file.sh — every declared secret is accounted for', () => {
   const script = readFileSync(join(ROOT, 'scripts/generate-env-file.sh'), 'utf8');
 
-  /** Keys in a `_NAME=( ... )` bash array literal. */
+  /** Keys in a `_NAME=( ...)` bash array literal. */
   function bashArray(name: string): Set<string> {
     const body = new RegExp(`${name}=\\(([^)]*)\\)`, 's').exec(script);
     if (!body) throw new Error(`${name} not found in generate-env-file.sh`);
@@ -388,7 +388,7 @@ describe('generate-env-file.sh — every declared secret is accounted for', () =
     const generated = generatedKeys();
     const external = bashArray('_EXTERNAL_SECRET_KEYS');
     const minted = bashArray('_MINTED_LATER_KEYS');
-    // TASK-799: a fourth category. The legacy per-service tokens are SUPERSEDED
+    // a fourth category. The legacy per-service tokens are SUPERSEDED
     // by the one shared INTERNAL_ACCESS_TOKEN (owner decision D-D), so a fresh
     // environment must leave them unset — `generate-env-file.sh` blanks them.
     // They are neither generated, nor external, nor minted: telling a developer

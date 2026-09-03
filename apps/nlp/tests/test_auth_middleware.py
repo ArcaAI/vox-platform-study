@@ -43,7 +43,7 @@ def _set_token(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     """Point the module-singleton config at ``value``; the auth code reads it at dispatch.
 
     There is exactly ONE accepted token to pin. `accepted_service_tokens` admits
-    only the canonical shared `internal_access_token`; TASK-799 lane D removed
+    only the canonical shared `internal_access_token`; lane D removed
     the legacy per-service `NLP_SERVICE_TOKEN` alongside it.
 
     That removal is what makes this helper reliable. While both existed, pinning
@@ -207,7 +207,7 @@ def test_real_ws_classify_endpoints_enforced(client, monkeypatch):
 
 def test_service_token_binds_from_env(client, monkeypatch):
     """The shared INTERNAL_ACCESS_TOKEN binds to the config and drives HTTP
-    enforcement. It is the ONE accepted credential since TASK-799 lane D removed
+    enforcement. It is the ONE accepted credential since lane D removed
     the legacy per-service `NLP_SERVICE_TOKEN`."""
     from nlp.core.config import NLPServiceConfig
 

@@ -1,5 +1,5 @@
 /**
- * TASK-810 carry-over A — the FINAL-summary edit-capture plane is shape-driven.
+ * carry-over A — the FINAL-summary edit-capture plane is shape-driven.
  *
  * `content-diff.util.ts` no longer owns a private four-key SOAP tuple; the
  * section vocabulary arrives as a compiled document template. This suite proves
@@ -197,7 +197,7 @@ const draftItem = (content: string) => ({
   changes: {},
 });
 
-describe('SummaryService — shape-driven edit capture (TASK-810 carry-over A)', () => {
+describe('SummaryService — shape-driven edit capture (carry-over A)', () => {
   let m: ReturnType<typeof makeMocks>;
 
   beforeEach(() => {

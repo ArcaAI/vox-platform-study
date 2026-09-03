@@ -1,22 +1,22 @@
-// TASK-846 D-3 — the injectable that binds the pure egress guard to the governed
+// the injectable that binds the pure egress guard to the governed
 // config tier and to real DNS.
 //
 // `egress-guard.ts` is deliberately pure (no DI, no I/O, no clock) so it can be driven
 // by the shared vector fixture. This class is the thin adapter around it:
 //
-//   allow-list  ← `mcp.egress.allowedHosts` (`global-kv`, read through AppSettings)
-//   addresses   ← `dns.lookup(all)`
-//   verdict     → `evaluateEgress`
-//   denial      → a 400 the admin can act on + one attributable WARN line
+//   allow-list ← `mcp.egress.allowedHosts` (`global-kv`, read through AppSettings)
+//   addresses ← `dns.lookup(all)`
+//   verdict → `evaluateEgress`
+//   denial → a 400 the admin can act on + one attributable WARN line
 //
 // FAIL CLOSED, everywhere. `mcp.egress.allowedHosts` declares `failMode: 'closed'`
 // because a SECURITY control has only one default it could fall back to, and that
 // default is "allow". Every read failure here therefore collapses to the same
 // `null` the guard already treats as `allowlist_unavailable`:
-//   • the key is unset            → `getValueFromCache` returns null   → deny
-//   • the stored value is junk    → not an array                       → deny
-//   • the settings cache THROWS   → caught, returned as null           → deny
-//   • DNS fails                   → the guard's `unresolvable`         → deny
+//   • the key is unset → `getValueFromCache` returns null → deny
+//   • the stored value is junk → not an array → deny
+//   • the settings cache THROWS → caught, returned as null → deny
+//   • DNS fails → the guard's `unresolvable` → deny
 // Nothing in this file can turn any of those into an allow.
 //
 // WHY WRITE TIME AT ALL, given the harness re-checks at call time? Feedback. This is

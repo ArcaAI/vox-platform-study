@@ -1,4 +1,4 @@
-"""Cross-language parity guard (TASK-734 Task 3).
+"""Cross-language parity guard.
 
 `NODE_REGISTRY` (this package) and `WORKFLOW_NODE_REGISTRY`
 (`packages/workflow-contract/src/node-registry.ts`) must agree on every key, or a definition
@@ -33,7 +33,7 @@ def _load_fixture_entries() -> list[dict]:
 def _project_registry() -> list[dict]:
     """Mirrors what the TS test's `projectRegistry()` does to `WORKFLOW_NODE_REGISTRY`.
 
-    `outputKeys` (TASK-809 OD-15) is the ONE port field that is shared rather than TS-only —
+    `outputKeys` is the ONE port field that is shared rather than TS-only
     see `NodeSpec.output_keys`' docstring for why the interpreter cannot do its job without it,
     and `node-registry-parity.test.ts` for the other half of this guard. A `None` value marks a
     `control` port: ordering only, no payload.
@@ -67,13 +67,13 @@ class TestNodeRegistryParity:
 
     def test_carries_exactly_the_seed_stt_consultation_and_agentic_keys(self):
         assert sorted(NODE_REGISTRY.keys()) == [
-            # TASK-806 lane A — the target catalogue (DD-6/DD-9) and the guards (DD-7).
+            # lane A — the target catalogue and the guards.
             "agent.discharge_summary",
             "agent.dna_redaction",
             "agent.feedback",
             # Lane R (R1) — the realtime grammar/spelling pass.
             "agent.grammar",
-            # Lane N (TASK-815 §14a) — the one catalogue entry that is not a delegation:
+            # Lane N — the one catalogue entry that is not a delegation:
             # important findings had no engine anywhere to delegate to.
             "agent.important_findings",
             "agent.ner",
@@ -82,7 +82,7 @@ class TestNodeRegistryParity:
             "agent.retrieval",
             "agent.summarization",
             "agent.transcription",
-            # TASK-847 - the GENERIC (`agentic`) catalogue: the eight node types of the
+            # the GENERIC (`agentic`) catalogue: the eight node types of the
             # owner's specification, closing program finding F-12's have/missing table.
             # Sorted position, not catalogue position -- Python's `sorted` puts `agentic.*`
             # after every `agent.*` because "." sorts before "i".
@@ -112,7 +112,7 @@ class TestNodeRegistryParity:
             "consultation.synthesize",
             "core.end",
             "core.start",
-            # TASK-812 — the endpoint stage.
+            # the endpoint stage.
             "feedback.capture",
             "generate.text",
             "guard.groundedness",

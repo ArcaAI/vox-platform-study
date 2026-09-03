@@ -31,7 +31,7 @@ export interface IStreamingSessionService {
    *
    * @param sessionId - The session identifier
    * @param tenantId - Owning tenant, threaded by callers that hold one so the
-   *   internal hop carries `X-Tenant-Id` (TASK-737). Omit ONLY on paths whose
+   * internal hop carries `X-Tenant-Id`. Omit ONLY on paths whose
    *   envelope genuinely has no tenant — those declare `tenantless:job-queue`.
    * @returns Session status or null if not found
    */

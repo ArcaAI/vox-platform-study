@@ -1,4 +1,4 @@
-"""TASK-799 — model-registry credentials, resolved tenant -> SYSTEM.
+"""model-registry credentials, resolved tenant -> SYSTEM.
 
 WHAT MOVED, AND WHY IT HAD NOWHERE ELSE TO GO.
 

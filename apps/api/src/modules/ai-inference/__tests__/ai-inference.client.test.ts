@@ -124,7 +124,7 @@ describe('AiInferenceClient — URL resolution', () => {
   });
 
   it('DECLARES tenant-less-ness instead of omitting X-Tenant-Id when there is no CLS tenant', async () => {
-    // TASK-737 — this test previously asserted the exact ambiguity the ticket removes.
+    // this test previously asserted the exact ambiguity the ticket removes.
     // An omitted header was indistinguishable from one dropped in transit, so the
     // receiving service had to guess; and because tenants may only TIGHTEN relative to
     // SYSTEM, guessing silently downgraded a stricter tenant to the platform floor.

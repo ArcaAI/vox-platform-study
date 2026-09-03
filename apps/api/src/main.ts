@@ -308,12 +308,12 @@ async function bootstrap() {
 
   // Refuses to start if any `/internal/*` route is reachable through
   // UnifiedAuthGuard's ordinary JWT/API-key auth path instead of a dedicated
-  // platform service-token guard — closes G2 (TASK-708: any active API key
+  // platform service-token guard — closes G2 (any active API key
   // could reach SttInternalController) and guards against a future
   // `/internal/*` controller forgetting the guard.
   auditInternalRoutesOffApiKeySurface(app);
 
-  // Policy A2 (TASK-757): `/api/v1/admin/*` is JWT-only. The DERIVED sweep is
+  // Policy A2: `/api/v1/admin/*` is JWT-only. The DERIVED sweep is
   // the gate that survives new controllers — it fails the boot when any
   // admin-prefixed route declares `@RequiredScopes`, with no list to maintain.
   auditAdminControllersDeclareNoApiKeyScopes(app);
@@ -324,7 +324,7 @@ async function bootstrap() {
   auditAdminScopedControllers();
 
   // Refuses to start if ANY non-`@Public()` route declares neither
-  // `@RequiredScopes(...)` nor `@ForbidApiKey()` (TASK-742). The two audits
+  // `@RequiredScopes(...)` nor `@ForbidApiKey()`. The two audits
   // above pin that a NAMED surface keeps a NAMED scope; this one pins that no
   // route ANYWHERE is left undeclared. `UnifiedAuthGuard`'s API-key path now
   // fails closed, so an undeclared route already refuses every API key at
@@ -333,44 +333,44 @@ async function bootstrap() {
   auditEveryApiKeyReachableRouteDeclaresScopes(app);
 
   // Refuses to start if a NON-`admin/` route forbids API keys without being a
-  // named, reasoned exemption (TASK-758, policy A1). The audit above pins that
+  // named, reasoned exemption (policy A1). The audit above pins that
   // every route DECLARES something; this pins that what the business plane
   // declares is JWT + API key, and that each `@ForbidApiKey()` surviving there
   // (auth, voice biometrics, personal writing model) is an owner decision
-  // recorded in `BUSINESS_PLANE_KEY_FORBIDDEN`, not TASK-742's pending default.
+  // recorded in `BUSINESS_PLANE_KEY_FORBIDDEN`, not pending default.
   auditBusinessPlaneApiKeyExemptions(app);
 
   // Refuses to start if any route taking a `:patientId` route param lacks
-  // both `@RequiresConsent(...)` and `@ConsentExempt(...)` (TASK-712,
-  // consent-abac). `PatientConsentGuard` (APP_GUARD) makes the same
+  // both `@RequiresConsent(...)` and `@ConsentExempt(...)`
+  // (consent-abac). `PatientConsentGuard` (APP_GUARD) makes the same
   // predicate authoritative at request time; this surfaces a forgotten
   // decorator at boot instead of a silent enforcement gap in production.
   auditConsentRouteCoverage(app);
 
-  // Refuses to start if the THIRD credential class (TASK-762) has leaked into
+  // Refuses to start if the THIRD credential class has leaked into
   // either of the other two planes, or has lost its own gates:
-  //   B  no /admin/* controller uses a peer-service token guard — the owner's
-  //      TASK-708 §6 non-mixing ruling made MECHANICAL rather than left as an
-  //      accident of implementation (§2.1 verified it holds today; nothing
+  //   B no /admin/* controller uses a peer-service token guard — the owner's
+  // non-mixing ruling made MECHANICAL rather than left as an
+  // accident of implementation ( verified it holds today; nothing
   //      stopped it from changing tomorrow);
-  //   C  no /internal/* route declares a svc:* scope — the mirror of B;
-  //   D  every svc:* scope maps to a live admin area and vice-versa;
-  //   E  /admin/service-accounts carries BOTH @ForbidApiKey() and
+  //   C no /internal/* route declares a svc:* scope — the mirror of B;
+  //   D every svc:* scope maps to a live admin area and vice-versa;
+  //   E /admin/service-accounts carries BOTH @ForbidApiKey() and
   //      @ForbidServiceAccount() — no key-path escalation into machine
   //      issuance, and no self-replication;
-  //   F  POST /auth/service-token is @Public() AND guarded;
-  //   G  every admin/ route declares EITHER a svc:* scope OR
+  //   F POST /auth/service-token is @Public() AND guarded;
+  //   G every admin/ route declares EITHER a svc:* scope OR
   //      @ForbidServiceAccount() — never both, never a scope outside the
   //      registry, and never one that resolves to no CASL ability. The business
   //      plane is exempt: its default never changed, so silence there still
-  //      means the implicit deny-by-default (TASK-773 A3/A5);
-  //   H  each of the 64 swept admin controllers declares exactly the svc: twin
-  //      of the admin:* scope TASK-757 removed from it — the MIS-assignment G
-  //      structurally cannot see (TASK-773 A4).
+  // means the implicit deny-by-default (/A5);
+  //   H each of the 64 swept admin controllers declares exactly the svc: twin
+  // of the admin:* scope removed from it — the MIS-assignment G
+  // structurally cannot see.
   auditServiceAccountSurface(app);
 
   // Refuses to start if a `@WebSocketGateway()` class is not classified in
-  // `WS_OWNER_BOUND_GATEWAYS` (TASK-761 G4). Structural note: this is the ONLY
+  // `WS_OWNER_BOUND_GATEWAYS`. Structural note: this is the ONLY
   // audit here that walks `moduleRef.providers` — Nest registers gateways as
   // providers, so every `.controllers` sweep above is blind to all three of
   // them, and always has been. It pins the DECLARATION (a WS surface cannot
@@ -379,12 +379,12 @@ async function bootstrap() {
   auditWebSocketGatewayOwnerBinding(app);
 
   // Refuses to start if a pair listed in `CASL_ENFORCED_PAIRS` cannot actually
-  // produce the 403 it claims (TASK-781). TASK-712 listed three `ApiKey` pairs
+  // produce the 403 it claims. listed three `ApiKey` pairs
   // whose resolver loads its row through a 404-throwing accessor, so on the
   // deny case the resolver threw, the guard failed open, and
   // `casl_enforce_denial_total` could never move — a counter reading zero
   // because it CANNOT fire is indistinguishable from one reading zero because
-  // nothing diverged (TASK-779 F-1). Also refuses an enforced pair on an
+  // nothing diverged. Also refuses an enforced pair on an
   // OR-mode route, where an enforced denial would override an allow earned by
   // another alternative. Passes vacuously while the enforce list is empty.
   auditCaslEnforcePairReachability(app);

@@ -1,7 +1,7 @@
 """C-4 — the checks that only exist on the way OUT.
 
 Input validation covers **zero** output risk, and layered input + output is the
-OWASP-aligned minimum. The two checks here are the deterministic half of §7's
+OWASP-aligned minimum. The two checks here are the deterministic half of 's
 table; the generative half (sentence-level groundedness for summaries) already
 exists as ``/guardrail/groundedness`` over the NLI selection in ``apps/nlp`` and
 is deliberately not duplicated — a second copy would be a second inference stack.

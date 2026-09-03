@@ -1,5 +1,5 @@
 /**
- * TDD for the assignment matrix's client-side cascade derivation (TASK-733 half (a) Task 6):
+ * TDD for the assignment matrix's client-side cascade derivation ( half (a) Task 6):
  * department override -> tenant default -> platform default, mirroring
  * `WorkflowAssignmentService.resolve()`'s tier order without re-querying a resolve endpoint
  * that the admin controller does not expose.

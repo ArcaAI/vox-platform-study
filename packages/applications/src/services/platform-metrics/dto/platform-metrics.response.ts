@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Per-service HTTP health row (sourced from Prometheus via the
- * canonical PromQL in METRIC-CONTRACT.md §9). `null` = the metric is not
+ * canonical PromQL in METRIC-CONTRACT.md `null` = the metric is not
  * available for that service (e.g. Prometheus unreachable, or guardrail which
  * exposes no `http_*` series).
  */

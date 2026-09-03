@@ -1,4 +1,4 @@
-"""apps/nlp's peer-service client to `text` (TASK-729).
+"""apps/nlp's peer-service client to `text`.
 
 This is apps/nlp's FIRST outbound call to a peer AI service — every prior
 `httpx` call site targets the gateway (`lifespan.py`'s fire-and-forget
@@ -52,7 +52,7 @@ class ExternalTextClient:
         self.base_url = settings.base_url.rstrip("/")
         # Owner decision D-D (2026-08-17): the caller resolves the ONE shared
         # `INTERNAL_ACCESS_TOKEN` and passes it here. The legacy per-pair
-        # `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` fallback is gone (TASK-799 lane D) —
+        # `NLP_EXTERNAL_TEXT_SERVICE_TOKEN` fallback is gone 
         # the migration it covered is complete, and a second accepted credential
         # is a second thing to rotate. `None` ⇒ no header, which is the
         # dev / hermetic-CI bypass the middleware already recognises.
@@ -72,9 +72,9 @@ class ExternalTextClient:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
-        # TASK-737 — MANDATORY, and keyword-only above so it cannot be forgotten.
+        # MANDATORY, and keyword-only above so it cannot be forgotten.
         # `text` resolves the tenant's BYOK provider/credential from this header and
-        # TASK-735 derives funding/cost_basis from whichever tier supplied it, so a
+        # derives funding/cost_basis from whichever tier supplied it, so a
         # silently-omitted tenant mis-configures AND mis-bills the call. The former
         # `if tenant_id:` guard made exactly that outcome invisible.
         # Tenant-less internal work declares itself with a `tenantless:<reason>`
@@ -82,7 +82,7 @@ class ExternalTextClient:
         resolved_tenant = (tenant_id or "").strip()
         if not resolved_tenant:
             raise ValueError(
-                "external text generate_label requires a tenant_id (TASK-737): the "
+                "external text generate_label requires a tenant_id : the "
                 "gateway must inject it, or the caller must declare "
                 "'tenantless:<reason>'. An absent tenant is a caller defect."
             )

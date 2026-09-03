@@ -8,7 +8,7 @@
 // no key table of its own.
 //
 // CLASSIFICATION RULES APPLIED HERE
-//   - tier `vault-kv`     ⇒ the secret ALREADY resolves through SecretsService
+//   - tier `vault-kv` ⇒ the secret ALREADY resolves through SecretsService
 //                           today (a Vault-backed `SECRETS_PROVIDER=vault`
 //                           deployment reads it from Vault; `env` provider reads
 //                           the same NAME from the process environment — that is
@@ -17,17 +17,17 @@
 //   - sensitivity `secret`⇒ `failMode: 'closed'` is MANDATORY and enforced by
 //                           `SettingsRegistry.register`. A credential that fell
 //                           back to a default would authenticate as someone else.
-//   - maxScope `system`   ⇒ platform-wide. PER-TENANT credentials are a different
+//   - maxScope `system` ⇒ platform-wide. PER-TENANT credentials are a different
 //                           data class (`db-secret`, Vault-Transit ciphertext in
 //                           a DB column — see `tts.descriptors.ts`), never here.
-//   - `globalOnly: true`  ⇒ operator/SUPER_ADMIN surface only.
+//   - `globalOnly: true` ⇒ operator/SUPER_ADMIN surface only.
 //
 // NOTHING IS MIGRATED BY THIS FILE. A descriptor is metadata: it states where the
 // value lives, who may set it, and how it fails. Moving values into Vault is the
 // operator step performed by `scripts/vault-seed-secrets.sh`.
 //
 // DELIBERATELY NOT REGISTERED (verified 2026-07-25):
-//   - `QDRANT_API_KEY`      — NOT a runtime credential, but NOT dead either. No
+//   - `QDRANT_API_KEY` — NOT a runtime credential, but NOT dead either. No
 //                             application service authenticates to Qdrant (the
 //                             harness retrieval config, `HARNESS_RETRIEVAL_` prefix,
 //                             has only `qdrant_url` and `qdrant_timeout_s`). Its one
@@ -45,7 +45,7 @@
 //                             (`TEXT_AZURE_API_KEY`) is no longer a platform-secret
 //                             either — it is BYOK-only (`db-secret`, resolved from
 //                             `AiProviderConnection`), so nothing is registered here.
-//   - `STT_SERVICE_TOKEN`   — does not exist. STT authenticates to the gateway
+//   - `STT_SERVICE_TOKEN` — does not exist. STT authenticates to the gateway
 //                             with `X-Internal-Service-Key` + `API_GATEWAY_KEY`
 //                             (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`),
 //                             so `API_GATEWAY_KEY` is registered in its place.
@@ -224,7 +224,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
   {
     ...platformSecret('webhook.secretPepper', 'Webhook signing-secret encryption key', '', 'Authentication'),
-    // TASK-727 decision (owner directive, 2026-08-16): DEDICATED pepper, deliberately
+    // decision (owner directive, 2026-08-16): DEDICATED pepper, deliberately
     // NOT falling back to `API_KEY_PEPPER` the way `storageAccessKey.pepper` does.
     description:
       'Key-derivation material for the REVERSIBLE AES-256-GCM encryption `WebhookService` applies to every server-generated ' +
@@ -255,7 +255,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   //
   // `azure.foundryApiKey` (AZURE_FOUNDRY_API_KEY) is REMOVED TOO. It was kept as
   // "a disabled-by-default preview engine, out of that credential-move's scope" —
-  // but its scope exemption stopped being true when Phase 0 closed the env
+  // but its scope exemption stopped being true when the env fallback closed
   // fallback in `apps/stt/src/stt/models/azure_foundry_loader.py`: the key now
   // comes ONLY from a tenant / SYSTEM `AiProviderConnection` override, exactly
   // like every other cloud vendor above.
@@ -266,12 +266,12 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // provider that is BYO-only — telling an operator to paste a vendor key that
   // can no longer reach the code. Same defect, and same fix, as
   // `harnessJudgeOpenaiCompat.apiKey`.
-  // `guardrailVllm.apiKey` (GUARDRAIL_VLLM_API_KEY) was REMOVED by TASK-735 Phase
+  // `guardrailVllm.apiKey` (GUARDRAIL_VLLM_API_KEY) was REMOVED by Phase
   // 2b/5: `apps/guardrail` no longer hosts an LLM engine, so it holds no vendor
   // credential of any kind. Judgement is delegated to `apps/text`, which resolves
   // the tenant's own key from `AiProviderConnection` (BYOK) or the platform tier.
   // `harnessJudgeOpenaiCompat.apiKey` (HARNESS_JUDGE_OPENAI_COMPAT_API_KEY) was
-  // REMOVED by TASK-799 lane B, for exactly the reason the block above gives for
+  // REMOVED by lane B, for exactly the reason the block above gives for
   // the STT/TTS/TEXT keys. The harness judge credential moved to the `db-secret`
   // tier — `AiProviderConnection(service='llm', provider='openai-compat')`,
   // tenant → SYSTEM — and `apps/harness` reads NO env fallback for it any more

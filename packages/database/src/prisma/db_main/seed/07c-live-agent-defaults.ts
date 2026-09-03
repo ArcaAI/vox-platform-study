@@ -6,7 +6,7 @@
  * prompt constants in
  * `packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts`:
  *
- *   content                            ← `LIVE_SOAP_STABLE_SYSTEM_PREFIX`
+ *   content ← `LIVE_SOAP_STABLE_SYSTEM_PREFIX`
  *   metaData.promptConfig.systemPrompt ← the `system_prompt` literal in `callText`
  *
  * WHY BYTE-IDENTICAL MATTERS. Lane C3 turns the live prompt into a resolved,
@@ -58,7 +58,7 @@ import { SYSTEM_LIVE_SOAP_TEMPLATE_ID, SYSTEM_LIVE_SOAP_VERSION_ID, SYSTEM_TENAN
  * flush of a session; freezing it per session is what keeps a vLLM /
  * llama.cpp KV cache warm across flushes.
  *
- * TASK-810 CHANGED THESE BYTES, deliberately. Two things moved:
+ * CHANGED THESE BYTES, deliberately. Two things moved:
  *
  *  1. The four SOAP headings are no longer written out here. The live loop now
  *     COMPILES its instruction from the document-shape catalog
@@ -92,7 +92,7 @@ export const SYSTEM_LIVE_SOAP_TEMPLATE = {
   description:
     'Platform default prompt for the live-summarization loop. Byte-identical to the in-code ' +
     "LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX constant, so the live chain's code-default fail-open tier " +
-    'degrades to identical behavior (TASK-635 C1 §4.4).',
+    'degrades to identical behavior (C1 §4.4).',
   content: SYSTEM_LIVE_SOAP_PROMPT_CONTENT,
   category: 'SYSTEM' as PromptTemplateCategory,
   status: 'APPROVED' as PromptTemplateStatus,
@@ -124,7 +124,7 @@ export const SYSTEM_LIVE_SOAP_VERSION = {
  * this row yet (the live chain resolves it by explicit id in C3).
  */
 export const seedLiveAgentDefaults = async (client: CorePrismaClient) => {
-  console.log('Seeding SYSTEM live-agent defaults (TASK-635)...');
+  console.log('Seeding SYSTEM live-agent defaults ...');
 
   const { metaData, variables, ...rest } = SYSTEM_LIVE_SOAP_TEMPLATE;
   const templateData = {

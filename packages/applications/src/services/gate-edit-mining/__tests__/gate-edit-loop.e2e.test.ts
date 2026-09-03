@@ -1,5 +1,5 @@
 /**
- * TASK-792 — the feedback loop, end to end, in one spec.
+ * the feedback loop, end to end, in one spec.
  *
  * Every stage of this loop already existed and was individually correct. What did
  * not exist was any path CONNECTING them: the queue had no call site, the
@@ -12,11 +12,11 @@
  * `GateEditMiningProcessor`, the real `GateEditMiningService` and the real
  * `PromptAssemblyService` against each other:
  *
- *   clinician signs  ->  approveSummary enqueues
- *                    ->  processor reads the ai_draft_v1 baseline + signed note
- *                    ->  mining service redacts BOTH halves and persists
- *                    ->  retriever serves the APPROVED_CLEAN exemplar
- *                    ->  prompt assembly injects it as a few-shot example
+ *   clinician signs -> approveSummary enqueues
+ *                    -> processor reads the ai_draft_v1 baseline + signed note
+ *                    -> mining service redacts BOTH halves and persists
+ *                    -> retriever serves the APPROVED_CLEAN exemplar
+ *                    -> prompt assembly injects it as a few-shot example
  *
  * The two assertions that matter are the ticket's definition of done: the mined
  * row carries BOTH `redactedBefore` and `redactedAfter` (a half-redacted or
@@ -62,7 +62,7 @@ const cls = () => ({
   run: vi.fn(async (cb: () => unknown) => cb()),
 });
 
-describe('TASK-792 — clinician edit -> mined exemplar -> assembled prompt', () => {
+describe('clinician edit -> mined exemplar -> assembled prompt', () => {
   it('runs the whole loop: a signed edit becomes a redacted exemplar that reaches a prompt', async () => {
     // ── the store the loop writes into and later reads back out of ──────────
     const persisted: Record<string, unknown>[] = [];

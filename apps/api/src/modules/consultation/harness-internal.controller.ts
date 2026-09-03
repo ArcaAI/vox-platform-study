@@ -83,9 +83,9 @@ import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
 
 /**
- * TASK-724 Task 5 — the harness batch-trigger activity's request/response shapes.
+ * the harness batch-trigger activity's request/response shapes.
  *
- * The STT palette's central design decision (README §1) is that a published `stt`
+ * The STT palette's central design decision ( is that a published `stt`
  * `WorkflowDefinition` compiles into an `AsrPipeline` id; batch execution dispatches
  * through ONE harness Temporal activity that calls the EXISTING
  * `TranscriptionJobService`/`TranscriptionRealtimeService` write path — the SAME two
@@ -101,7 +101,7 @@ class HarnessCreateSttBatchJobRequest {
   @IsNotEmpty()
   tenantId: string;
 
-  @ApiProperty({ description: 'Resolved AsrPipeline id (TASK-724 Task 4 compiler output).' })
+  @ApiProperty({ description: 'Resolved AsrPipeline id (Task 4 compiler output).' })
   @IsString()
   @IsNotEmpty()
   pipelineId: string;
@@ -259,7 +259,7 @@ class HarnessExtractedTextResponse {
 }
 
 /**
- * The summarization palette's `prompt.template_ref` node (TASK-720 N-2) read — the pinned
+ * The summarization palette's `prompt.template_ref` node read — the pinned
  * APPROVED `PromptVersion` snapshot, never the mutable `PromptTemplate.content` column
  * (`prompt-template.prisma:65-70` — resolution serves the version an approval pinned, not the
  * latest edit). `found: false` covers a missing/cross-tenant id (404-over-403: the tenant-scope
@@ -330,20 +330,20 @@ export class HarnessInternalController {
     // through these two routes rather than importing service internals
     // directly (the harness is a separate deployable).
     private readonly liveDocumentationService: LiveDocumentationService,
-    // The summarization palette's `prompt.template_ref` node (TASK-720 N-2) resolves a
+    // The summarization palette's `prompt.template_ref` node resolves a
     // template's pinned APPROVED version through this worker callback — the harness has no DB
     // client of its own (rule 06 — gateway-resolved injection is the default for a stateless
     // Python service).
     @Inject(IPromptManagementService) private readonly promptManagementService: IPromptManagementService,
-    // TASK-795 RC-2 — live clinician-assist feed (suggestions + correction
+    // live clinician-assist feed (suggestions + correction
     // proposals). Ephemeral Redis publish; DECLARED PHI-carrying, which is why it
     // is its OWN channel and not a rider on the loop event plane.
     private readonly harnessLiveAssistService: HarnessLiveAssistService,
-    // TASK-812 — the ENDPOINT STAGE. The loop's `session.timeout` / `summary.finalize` /
+    // the ENDPOINT STAGE. The loop's `session.timeout` / `summary.finalize` /
     // `feedback.capture` actions call through the three routes below rather than importing
     // service internals, exactly as `livedoc.start`/`livedoc.stop` already do.
     private readonly consultationEndpointService: ConsultationEndpointService,
-    // TASK-724 Task 5 — batch-trigger binding. `@Optional()` so existing
+    // batch-trigger binding. `@Optional()` so existing
     // positional test construction keeps its arity and a stack without the
     // STT batch modules wired still boots; the two new routes below throw a
     // clear 500 (never a silent no-op) if these are absent when called.
@@ -363,7 +363,7 @@ export class HarnessInternalController {
     required: false,
     description: 'Optional — overlay the consultation department default agent tenant-tier harnessOverrides.',
   })
-  // TASK-740 D-1 — the `generate.text` interpreter node passes its
+  // the `generate.text` interpreter node passes its
   // `config.taskKey` so the AiTaskDefault row for THAT key (tenant → SYSTEM)
   // selects `textProvider`/`textModel`. Before this, every workflow node
   // resolved the same model regardless of task key and the seeded rows were
@@ -373,7 +373,7 @@ export class HarnessInternalController {
     required: false,
     description: 'Optional — resolve textProvider/textModel from the AiTaskDefault row for this task key (e.g. `text.live`).',
   })
-  // TASK-816 (DD-10) — the executing node's OWN `config.llmBinding.modelSlug`. It OUTRANKS
+  //  — the executing node's OWN `config.llmBinding.modelSlug`. It OUTRANKS
   // `taskKey`: a node that names a model has stated something no tenant-level row can, which is
   // the whole point of moving selection onto the graph. Unlike `taskKey` it is fail-CLOSED — a
   // slug that resolves to no ENABLED model 400s rather than quietly serving the task default,
@@ -469,7 +469,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-799 lane B — resolve ONE BYO provider credential for the harness worker.
+   * lane B — resolve ONE BYO provider credential for the harness worker.
    *
    * The SAME reasoning as `mcp-token` above, generalised to the
    * `AiProviderConnection` plane: the worker's judge and retriever run inside a
@@ -597,9 +597,9 @@ export class HarnessInternalController {
   // publishes to `consultation:harness-progress:{id}` for the browser SSE
   // relay. Best-effort by contract: always acks ({ ok: boolean }), never 5xxs
   // the workflow over a progress hiccup.
-  // ── TASK-795 RC-1 / RC-2 — the realtime DELIVERY plane ────────────────────
+  // ── / RC-2 — the realtime DELIVERY plane ────────────────────
   //
-  // TASK-796 enumerated all 18 routes on this controller and found none that
+  // enumerated all 18 routes on this controller and found none that
   // accepts clinical summary text: the only text-accepting write is
   // `.../draft`, which creates a `RAW_SUMMARY` ContextItem — the FINAL note, the
   // wrong kind for a mid-consultation snapshot, and the very row the
@@ -813,7 +813,7 @@ export class HarnessInternalController {
   }
 
   // =========================================================================
-  // TASK-812 — the ENDPOINT STAGE (three routes, one per `trigger: 'on-end'` node type)
+  // the ENDPOINT STAGE (three routes, one per `trigger: 'on-end'` node type)
   //
   // None of the three takes an `Idempotency-Key`, and that is deliberate. Each is idempotent by
   // CONSTRUCTION in the service (a converging upsert, a state transition, a deterministic
@@ -872,7 +872,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-724 Task 5 — the harness batch-trigger activity's dispatch call.
+   * the harness batch-trigger activity's dispatch call.
    *
    * Calls the EXACT SAME two application-layer calls
    * `TranscriptionJobController`'s own batch/upload handlers already make —
@@ -881,7 +881,7 @@ export class HarnessInternalController {
    * job-processing logic. Idempotent: a retried Temporal activity attempt
    * (same `consultationId` + `pipelineId`) finds and returns the existing
    * non-terminal BATCH job instead of dispatching a second one, per the
-   * ticket's own documented fallback (README §6 — TASK-717's platform-wide
+   * ticket's own documented fallback — platform-wide
    * envelope, once a caller here threads one through, supersedes this
    * consultation-scoped check without changing the route's shape).
    */
@@ -926,7 +926,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-724 Task 5 — the harness batch-trigger activity's poll call. Bounded,
+   * the harness batch-trigger activity's poll call. Bounded,
    * terminal-state polling (never SSE — a Temporal activity is not a
    * long-lived stream); the activity itself owns the poll interval/timeout.
    */

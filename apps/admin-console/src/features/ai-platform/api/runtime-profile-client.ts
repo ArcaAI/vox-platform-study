@@ -6,7 +6,7 @@
  * A deliberate, minimal copy of one GET — the same posture `model-store-client.ts`
  * and `shared/catalog/document-templates.ts` take, and for the same reason
  * (rule 13: features never import each other). `features/ai-runtime-profiles`
- * remains the one authoritative EDITOR; TASK-845 step 4 only retires it as a
+ * remains the one authoritative EDITOR; step 4 only retires it as a
  * top-level rail entry and re-homes its entry point inside the provider
  * configuration it tunes. This module never writes.
  */

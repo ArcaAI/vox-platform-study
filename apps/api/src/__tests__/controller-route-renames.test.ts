@@ -97,8 +97,8 @@ describe('@ApiTags alignment with new routes', () => {
 describe('Unchanged controller paths (no rename needed)', () => {
   const unchanged: [string, string][] = [
     ['auth/auth.controller.ts', 'auth'],
-    // `health` stays put — it is the PUBLIC k8s-probe prefix. TASK-759 moved
-    // only the two CASL-gated `/services` routes off it, into
+    // `health` stays put — it is the PUBLIC k8s-probe prefix. The move
+    // only took the two CASL-gated `/services` routes off it, into
     // `AdminHealthServicesController` (asserted below).
     ['health/health.controller.ts', 'health'],
     ['storage/storage.controller.ts', 'storage'],
@@ -190,7 +190,7 @@ describe('Complete controller inventory', () => {
     ['pstudio/pstudio.controller.ts', 'admin/pstudio'],
     ['auth/auth.controller.ts', 'auth'],
     ['health/health.controller.ts', 'health'],
-    // TASK-759 (rule P2) — administrative capabilities moved onto the admin
+    // administrative capabilities moved onto the admin
     // plane. HARD MOVE: the pre-move prefixes are gone, not aliased.
     ['monitoring/monitoring.controller.ts', 'admin/monitoring'],
     ['health/admin-health-services.controller.ts', 'admin/health/services'],
@@ -232,13 +232,13 @@ describe('Complete controller inventory', () => {
   });
 });
 
-// ─── TASK-760 — business-plane URI normalization ─────────────────────────
+// ─── business-plane URI normalization ─────────────────────────
 //
 // Every entry here is a BREAKING wire change. The old prefix must be gone
 // from the moved controller (it survives only on a dedicated 308 shim
 // controller, asserted separately below).
 
-describe('TASK-760 business-plane route renames', () => {
+describe(' business-plane route renames', () => {
   const cases: [string, string, string][] = [
     ['user/controllers/user-preferences.controller.ts', 'users/me/preferences', 'user/me/preferences'],
     ['user/controllers/user-settings.controller.ts', 'users/me/settings', 'user/me/settings'],
@@ -285,7 +285,7 @@ describe('TASK-760 business-plane route renames', () => {
   });
 });
 
-describe('TASK-760 redirect shims answer 308 on every retired prefix', () => {
+describe(' redirect shims answer 308 on every retired prefix', () => {
   const shims: [string, string][] = [
     ['user/controllers/user-me-redirect.shim.controller.ts', 'user/me'],
     ['tenant/my-tenant-redirect.shim.controller.ts', 'tenant'],
@@ -316,7 +316,7 @@ describe('TASK-760 redirect shims answer 308 on every retired prefix', () => {
   });
 });
 
-describe('TASK-760 class rename — AudioPipelinePublicController lied about @Public()', () => {
+describe(' class rename — AudioPipelinePublicController lied about @Public()', () => {
   it('exports AudioPipelineCatalogController, not AudioPipelinePublicController', () => {
     const source = readController('pipeline/audio-pipeline-catalog.controller.ts');
     expect(source).toContain('export class AudioPipelineCatalogController');
@@ -329,7 +329,7 @@ describe('TASK-760 class rename — AudioPipelinePublicController lied about @Pu
   });
 });
 
-describe('TASK-760 scope fence — compat surfaces are untouched', () => {
+describe(' scope fence — compat surfaces are untouched', () => {
   const frozen: [string, string][] = [
     ['text-compat/text-compat.controller.ts', 'api/smr/api/v1'],
     ['stt-compat/stt-compat.controller.ts', 'api/stt'],

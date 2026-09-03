@@ -1,5 +1,5 @@
 /**
- * `StudioToolbar` + `PublishDialog` (TASK-719 Task 15) — smoke + behavior coverage.
+ * `StudioToolbar` + `PublishDialog` — smoke + behavior coverage.
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
@@ -91,7 +91,7 @@ describe('PublishDialog', () => {
   });
 });
 
-describe('StudioToolbar undo/redo (TASK-719 UX pass)', () => {
+describe('StudioToolbar undo/redo (UX pass)', () => {
   it('exposes labelled undo/redo buttons, disabled until there is history', () => {
     const onUndo = vi.fn();
     render(

@@ -1,7 +1,7 @@
 /**
- * TASK-821 — the two REGISTERED-BUT-UNSEEDED realtime capabilities, as they are actually SEEDED.
+ * the two REGISTERED-BUT-UNSEEDED realtime capabilities, as they are actually SEEDED.
  *
- * TASK-815 §17e reported both, and §14a had already recorded the first as *"Made to work"*. It was
+ * reported both, and had already recorded the first as *"Made to work"*. It was
  * made POSSIBLE. This suite is what makes it HAPPEN, and it is written against the two properties
  * that were actually false rather than against a shape:
  *
@@ -101,7 +101,7 @@ describe('§17e — `agent.grammar` is SEEDED, so the live grammar pass runs for
   });
 
   it.each(GRAPHS)('%s: the durable correction sibling is NOT deleted by seeding the realtime one', (_label, graph) => {
-    // Lane R §14c(3): flipping `consultation.proposeCorrections` to realtime would have removed
+    // Lane R: flipping `consultation.proposeCorrections` to realtime would have removed
     // the note-level pass from every graph. The two coexist, over different inputs.
     expect(nodeOf(graph, 'n_correct')?.type).toBe('consultation.proposeCorrections');
     expect(edge(graph, 'n_synth', 'n_correct')).toMatchObject({ fromPort: 'out', toPort: 'in' });
@@ -136,7 +136,7 @@ describe('the COMPILED, COMMITTED artifact yields a realtime lane that can actua
   });
 
   it.each(COMPILED)('%s: the lane binds `realtimeSummary.in` — the port the handler reads', (_label, compiled) => {
-    // THE §17e DEFECT, as a test. `RealtimeSummaryHandler` reads exactly one input,
+    // THE DEFECT, as a test. `RealtimeSummaryHandler` reads exactly one input,
     // `boundText(ctx, 'in')`; with no surviving binding for it the running note was generated
     // from `''` on every flush of every graph-mode session.
     expect(laneBound(compiled, 'consultation.realtimeSummary', 'in')).toBe(true);

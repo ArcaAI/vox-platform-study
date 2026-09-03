@@ -1,5 +1,5 @@
 /**
- * TASK-820 — an EMPTY section write must clear the persisted body.
+ * an EMPTY section write must clear the persisted body.
  *
  * ## The defect this file pins
  *
@@ -11,7 +11,7 @@
  * `_version` are real columns and have ALREADY moved by then. So the write
  * commits, the clinician gets `200`, and on reload the deleted text is back.
  *
- * TASK-819 fixed the adjacent failure (an encryptor that is DOWN). This one
+ * fixed the adjacent failure (an encryptor that is DOWN). This one
  * needs no outage at all: it reproduces against a fully working encryptor,
  * which is why the harness below uses `workingTransit()` throughout.
  *
@@ -169,7 +169,7 @@ const write = (over: Partial<SectionWriteInput> = {}): SectionWriteInput => ({
 
 // ---------------------------------------------------------------------------
 
-describe('TASK-820 — an empty write clears the persisted body', () => {
+describe('an empty write clears the persisted body', () => {
   it('CLINICIAN: emptying a section clears the ciphertext, not just the state', async () => {
     const { repo, store, updateWithVersion } = repositoryWithFakeDb();
 
@@ -178,7 +178,7 @@ describe('TASK-820 — an empty write clears the persisted body', () => {
     );
 
     // The write is ACCEPTED — a clinician emptying their own section is
-    // authorized, and refusing it would be the wrong fix (TASK-811 §8b).
+    // authorized, and refusing it would be the wrong fix
     expect(result.applied).toBe(true);
     expect(updateWithVersion).toHaveBeenCalledTimes(1);
 

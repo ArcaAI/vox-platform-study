@@ -6,7 +6,7 @@ import type { ClsService } from 'nestjs-cls';
  * Shared body behind `GET /internal/model-registry-credential`
  * (`ModelRegistryInternalController`, generic — every backend service) and
  * the superseded `GET /internal/stt/model-registry-credential`
- * (`SttInternalController.getModelRegistryCredential`, TASK-799, kept for
+ * (`SttInternalController.getModelRegistryCredential`,, kept for
  * the STT worker). Both routes validate the caller and delegate here so the
  * resolution logic — and its tenant→SYSTEM/four-outcome contract — exists in
  * exactly one place.

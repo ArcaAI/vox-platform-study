@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 2 / D-24 — the two policy WORM change logs are soft-delete exempt.
+ * / D-24 — the two policy WORM change logs are soft-delete exempt.
  *
  * `HarnessPolicyChange` and `PipelinePolicyChange` are identity-only, append-only WORM tables:
  * their Prisma models declare "Identity only — NO `_version` / `_metadata` / `updatedAt` /

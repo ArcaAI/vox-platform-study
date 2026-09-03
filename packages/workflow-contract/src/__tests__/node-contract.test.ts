@@ -1,5 +1,5 @@
 /**
- * TASK-809 Tasks 1/3/4/7 — the `WorkflowNodeDescriptor` contract, closing D-4
+ * Tasks 1/3/4/7 — the `WorkflowNodeDescriptor` contract, closing D-4
  * ("`WorkflowNodeDescriptor` declares no `inputs`/`outputs`", `node-registry.ts:46-80`).
  *
  * Two things are asserted here and nowhere else:
@@ -44,7 +44,7 @@ function descriptorFixture(overrides: Partial<WorkflowNodeDescriptor> = {}): Wor
   };
 }
 
-describe('every registry descriptor declares the TASK-809 contract (D-4)', () => {
+describe('every registry descriptor declares the  contract (D-4)', () => {
   it.each(DESCRIPTORS.map((d) => [d.key, d] as const))('%s declares inputs and outputs', (_key, descriptor) => {
     expect(Array.isArray(descriptor.inputs)).toBe(true);
     expect(Array.isArray(descriptor.outputs)).toBe(true);
@@ -107,8 +107,8 @@ describe('publish-time rule 3 — EVERY node MUST be idempotent, in either lane'
     expect(problems[0]).toContain('idempotent');
   });
 
-  // TASK-806 lane A, item 7. The rule used to exempt the realtime lane, which was wrong for the
-  // same reason it was wrong for the durable one: TASK-811's realtime executor retries a node up
+  // lane A, item 7. The rule used to exempt the realtime lane, which was wrong for the
+  // same reason it was wrong for the durable one: realtime executor retries a node up
   // to its compiled `retry.maximumAttempts` (`realtime-lane.ts`'s `RealtimeNode.maxAttempts`), so
   // a non-idempotent realtime node double-writes on a retry nobody sees.
   it('REJECTS a realtime node that is not idempotent — the realtime executor retries too', () => {
@@ -119,12 +119,12 @@ describe('publish-time rule 3 — EVERY node MUST be idempotent, in either lane'
 });
 
 /**
- * TASK-806 lane A, item 7 — the rule TASK-809 §2b wrote as "a realtime-lane node MUST NOT be
+ * lane A, item 7 — the rule wrote as "a realtime-lane node MUST NOT be
  * `externalWrite`" is GONE, and its removal is asserted rather than merely done: a rule that is
  * silently dropped comes back.
  *
  * It was written before a realtime runtime existed and the runtime falsified it. Two of the three
- * node types TASK-811's executor implements write — `consultation.realtimeSummary` publishes each
+ * node types executor implements write — `consultation.realtimeSummary` publishes each
  * interim summary to the live consultation feed, which IS the realtime lane's product. See
  * `port-validation.ts`'s `nodeDescriptorContractProblems` docstring for the full argument,
  * including why the hazard it was reaching for (two runtimes executing one node) is now closed
@@ -141,7 +141,7 @@ describe('a realtime-lane node MAY declare externalWrite', () => {
 });
 
 describe('evalGate (OD-11) — optional, and shape-checked when present', () => {
-  it('is undefined on every node today; the binding TASK-815 migrates off DepartmentAgent', () => {
+  it('is undefined on every node today; the binding  migrates off DepartmentAgent', () => {
     for (const descriptor of DESCRIPTORS) {
       expect(descriptor.evalGate).toBeUndefined();
     }
@@ -159,7 +159,7 @@ describe('evalGate (OD-11) — optional, and shape-checked when present', () => 
 });
 
 /**
- * TASK-809 OD-15 (option A) — every DATA output socket declares the runtime key it carries.
+ * (option A) — every DATA output socket declares the runtime key it carries.
  *
  * This is the invariant that lets `_resolve_bound_inputs` stop threading the whole upstream
  * output object. A socket without an `outputKey` is unresolvable at runtime, so the interpreter

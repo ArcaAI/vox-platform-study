@@ -1,9 +1,9 @@
 /**
- * Guards `workbench-fixture-examples.ts` (TASK-721 Phase C): the Workbench's example
- * `WorkflowTestFixture.input` payloads must stay synthetic — reuses TASK-700's
+ * Guards `workbench-fixture-examples.ts`: the Workbench's example
+ * `WorkflowTestFixture.input` payloads must stay synthetic — reuses
  * `dna-phi-scan.ts` heuristics (MRN-shaped tokens, DOB-shaped dates, drug+dose
  * co-occurrence, a two-capitalized-word name proxy) rather than a second, drifting scanner.
- * `WorkflowTestFixture.input` is a PLAIN, unencrypted JsonB column (README §6/R4) — "synthetic"
+ * `WorkflowTestFixture.input` is a PLAIN, unencrypted JsonB column — "synthetic"
  * is a contract, not a server-side enforcement, so this is the automated check standing in for
  * one until R4's encryption/redaction decision is made.
  */

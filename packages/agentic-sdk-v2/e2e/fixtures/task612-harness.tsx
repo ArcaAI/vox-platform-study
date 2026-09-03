@@ -190,7 +190,7 @@ function Harness(): React.ReactElement {
     audioApi = audio;
     (window as unknown as { __T612_READY?: boolean }).__T612_READY = true;
   });
-  return React.createElement('div', { id: 'harness-mounted' }, 'TASK-612 harness mounted');
+  return React.createElement('div', { id: 'harness-mounted' }, 'harness mounted');
 }
 
 type CallResult = { ok: true } | { ok: false; name: string; code: string | null; message: string };

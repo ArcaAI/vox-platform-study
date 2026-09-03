@@ -32,7 +32,7 @@ Design constraints (rule 06):
   atomic ``os.replace``, so a crashed or checksum-failed download is invisible
   to readers and leaves only sweepable temp debris.
 
-Where this differs from stt / harness (TASK-855 L6 scope)
+Where this differs from stt / harness ( scope)
 ===========================================================
 `apps/tts` has no `AiModel`-driven per-request model selection for its
 self-hosted local engines (Kokoro / Indic Parler / IndicF5) — `IndicParlerConfig
@@ -46,7 +46,7 @@ UNCHANGED, so the existing local-mirror behaviour is byte-for-byte preserved.
 Nothing in stt/harness has an equivalent function; it exists here because tts's
 "Mode M" field is a bare string an operator sets, not a resolved `AiModelConfig`.
 
-Credentials (TASK-855 L6 follow-on)
+Credentials ( follow-on)
 ====================================
 A GENERIC gateway route, ``GET /internal/model-registry-credential``, now
 backs ``s3://`` credential resolution for every service that is not the STT
@@ -133,7 +133,7 @@ def config_from_settings() -> ModelSourceConfig:
 
 
 async def config_for_model() -> ModelSourceConfig:
-    """Resolver config INCLUDING the S3 credential (TASK-855 L6 follow-on).
+    """Resolver config INCLUDING the S3 credential ( follow-on).
 
     Resolves against `SYSTEM_TENANT_ID` (see the module docstring — every tts
     model-source override is process-wide, so this is not an approximation).
@@ -334,7 +334,7 @@ async def _resolve_hf(
     # IS the "pre-populate the hub cache" path the error below recommends —
     # raising before the call made that advice impossible to follow, and turned
     # every hub-sourced load into a hard failure on a pod whose weights are
-    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # mounted read-only from the model bucket. The offline case is
     # still reported distinctly, but only once a cache MISS has actually
     # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}

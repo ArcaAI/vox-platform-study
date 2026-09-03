@@ -106,7 +106,7 @@ nlp_metrics = NLPMetrics()
 # Usage-metering counters
 # ---------------------------------------------------------------------------
 # Prometheus-scrapable counterparts of NLPMetrics.entity_count/inference_count
-# (current-state-review §2.4: those are OTel-only). record_entities() (above)
+# (current-state-review: those are OTel-only). record_entities() (above)
 # writes both; TokenClassifier.process() increments the documents counter once
 # per call — see services/token_classifier.py, the shared call site behind
 # both the REST and WebSocket token-classification routes.
@@ -232,14 +232,14 @@ def build_model_cache_metrics_sink() -> PrometheusMetricsSink:
 
 
 # ---------------------------------------------------------------------------
-# Inference queue / backpressure metrics (TASK-778)
+# Inference queue / backpressure metrics
 # ---------------------------------------------------------------------------
 # The platform target is >= 100 concurrent consultation sessions. Batching and
 # bounded queues only hold that target if the bounds can be TUNED FROM EVIDENCE,
 # so the three numbers an operator needs are Prometheus-scrapable here:
-#   * how deep the queue is right now  (are we saturated?)
-#   * how long items wait in it        (is the ceiling right?)
-#   * what we shed and why             (is shedding load, or is a bound wrong?)
+#   * how deep the queue is right now (are we saturated?)
+#   * how long items wait in it (is the ceiling right?)
+#   * what we shed and why (is shedding load, or is a bound wrong?)
 # Batch size is included because a batcher that never coalesces is a batcher
 # whose linger window is too short — invisible without this histogram.
 
@@ -266,7 +266,7 @@ NLP_INFERENCE_BATCH_SIZE = Histogram(
 NLP_INFERENCE_REJECTIONS_TOTAL = Counter(
     "nlp_inference_rejections",
     "Inference requests SHED rather than served, by route, lane and declared reason.",
-    # `lane` (TASK-782) is a third dimension rather than a suffix on `route`,
+    # `lane` is a third dimension rather than a suffix on `route`,
     # because the two service classes shed for DIFFERENT reasons: the
     # interactive wait ceiling is short on purpose, so its timeouts are an
     # expected, declared outcome and must be alertable separately from bulk

@@ -6,7 +6,6 @@ import { ConsultationTimeoutSweepService } from './consultation-timeout-sweep.se
 
 /**
  * Registers the self-scheduling {@link ConsultationTimeoutSweepService}
- * (TASK-711 state-machine.md §1a).
  *
  * Relies on the app-level globals `ScheduleModule.forRoot()`
  * (`SchedulerRegistry`), `EventEmitterModule.forRoot()` (`@OnEvent` +

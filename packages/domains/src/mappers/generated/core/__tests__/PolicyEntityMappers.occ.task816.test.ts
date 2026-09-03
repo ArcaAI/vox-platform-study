@@ -1,5 +1,5 @@
 /**
- * TASK-816 Phase 2 / D-23 — the two policy mappers must strip the OCC token.
+ * / D-23 — the two policy mappers must strip the OCC token.
  *
  * `HarnessPolicy` and `PipelinePolicy` are both OCC-WRITTEN models: their services call
  * `repository.updateWithVersion(...)` on versioned PATCH routes (`harness-policy.service.ts:705`,

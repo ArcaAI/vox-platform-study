@@ -1,12 +1,12 @@
 /**
- * TASK-811 task 13 — THE SUBSTRATE GATE, and tasks 3/15 — graph mode + parity.
+ * task 13 — THE SUBSTRATE GATE, and tasks 3/15 — graph mode + parity.
  *
  * ## The defect
  *
  * `startRecording` called `liveDocumentationService.start()` after only an
  * ownership and a status check, so the hardcoded flush ran for EVERY recording
  * session regardless of what the tenant had authored. That is the root cause
- * TASK-806 §2.1 names, and it is the reason this whole programme exists.
+ * names, and it is the reason this whole programme exists.
  *
  * ## The parity claim
  *

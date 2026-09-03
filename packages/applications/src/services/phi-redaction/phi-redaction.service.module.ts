@@ -5,7 +5,7 @@ import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { GuardrailPhiRedactor } from './guardrail-phi-redactor.service';
 
 /**
- * DI module for the `IPhiRedactor` port (TASK-710). Binds it to
+ * DI module for the `IPhiRedactor` port. Binds it to
  * `GuardrailPhiRedactor`, an HTTP client over the guardrail service's
  * `POST /api/guardrail/redact`. `SecretsService` (for `GUARDRAIL_SERVICE_TOKEN`)
  * comes from the `@Global` `SecretsModule` and needs no explicit import here.

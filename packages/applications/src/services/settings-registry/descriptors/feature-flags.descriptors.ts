@@ -74,20 +74,19 @@ const FLAGS: FlagSpec[] = [
     key: 'workflowExposure.enabled',
     label: 'Workflow exposure plane (public invoke)',
     description:
-      "R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface (TASK-722). Design.md's precondition: TASK-708's API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== \"true\"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`.",
+      "R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface. Design.md's precondition: API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== \"true\"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`.",
     default: false,
     killSwitch: true,
   },
-  // `workflowExposure.allowCloudProviders` (decision #6, R-8) REMOVED by owner decision,
-  // TASK-720 R-4 (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
-  // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture. See
-  // `docs/implementation/TASK-720-Palette-Summarization/README.md` R-4 and
-  // `docs/implementation/TASK-722-Exposure-V1/README.md`'s Change History.
+  // `workflowExposure.allowCloudProviders` (decision #6, R-8) REMOVED by owner decision
+  // (2026-08-20): a publicly-exposed workflow MAY select a cloud AI provider — the
+  // tenant carries the risk (BYOK), consistent with the platform's BYO-first posture.
+
   {
     key: 'entitlements.enabledDefault',
     label: 'Entitlements enforcement seed default',
     description:
-      'SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): quota enforcement is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets ENTITLEMENTS_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set), so a developer never fights quota locally and the shared E2E baseline stays deterministic. Keep this LOCAL default false; an operator flips it live via `PUT /admin/entitlements/enabled`. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment.',
+      'SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. POLICY: quota enforcement is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets ENTITLEMENTS_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set), so a developer never fights quota locally and the shared E2E baseline stays deterministic. Keep this LOCAL default false; an operator flips it live via `PUT /admin/entitlements/enabled`. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment.',
     default: false,
   },
   {
@@ -116,8 +115,8 @@ const FLAGS: FlagSpec[] = [
     default: false,
     killSwitch: true,
   },
-  // `text.externalGuardrail.enabled` MOVED to `text-provider-connections.descriptors.ts`
-  // (TASK-799 lane B). This family is uniformly `tier: 'env'` — every flag here
+  // `text.externalGuardrail.enabled` MOVED to `text-provider-connections.descriptors.ts`.
+  // This family is uniformly `tier: 'env'` — every flag here
   // is still read from a process environment variable — and
   // `TEXT_EXTERNAL_GUARDRAIL_ENABLED` no longer exists, so leaving it would have
   // left a phantom declaration that `pnpm env:sync --check` exists to catch. It
@@ -144,7 +143,7 @@ const FLAGS: FlagSpec[] = [
     key: 'semanticEndpoint.enabled',
     label: 'STT semantic endpointing',
     description:
-      'Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the plan §3.3 rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard.',
+      'Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard.',
     default: false,
     killSwitch: true,
   },

@@ -1,17 +1,17 @@
 /**
- * TASK-693 §4.6.1 — npm publish policy.
+ * npm publish policy.
  *
  * Owner decision, 2026-08-13: every `@arcaai/*` package publishes PRIVATE, to
  * GitHub Packages, under the `ArcaAI` org.
  *
  * These are the three ways that decision gets silently violated:
  *
- *   P-1  `publishConfig.access: "public"`. Every package carried it before this
+ *   P-1 `publishConfig.access: "public"`. Every package carried it before this
  *        ticket. A public publish cannot be un-published — npm unpublish is
  *        time-boxed and GitHub Packages is stricter still. This is the only
  *        assertion here that guards an IRREVERSIBLE mistake.
  *
- *   P-2  `repository.url` drift. GitHub Packages binds a package to a repo, and
+ *   P-2 `repository.url` drift. GitHub Packages binds a package to a repo, and
  *        `GITHUB_TOKEN` from repo X cannot publish a package bound to repo Y —
  *        it 403s at the LAST step of a release, after the version bumps, the
  *        tags and the merged Version PR. docs/operations/vox-sdk-release
@@ -23,7 +23,7 @@
  *
  * Registry auth, package visibility settings, and org membership are NOT
  * assertable from the repo. They are lane D's runtime checks (the
- * consume-from-clean smoke test, TASK-693 §4.6.3).
+ * consume-from-clean smoke test,
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -38,7 +38,7 @@ const GITHUB_PACKAGES_REGISTRY = 'https://npm.pkg.github.com';
 
 /**
  * The vox family versions in lockstep, mirroring the `linked` group that
- * Changesets will own (TASK-693 §4.6.3).
+ * Changesets will own
  *
  * `@arcaai/pipeline` is deliberately EXCLUDED: it is not a `vox` dependency and
  * the release runbook publishes it separately, which is why it legitimately
@@ -100,7 +100,7 @@ describe('npm publish policy — P-1: nothing publishes public', () => {
     // Deliberately spans EVERY package, not just the publishable ones. A
     // `private: true` package carrying `access: "public"` is a contradiction
     // waiting for someone to flip `private` — which is exactly the state
-    // @arcaai/config-ts was in before TASK-693.
+    // @arcaai/config-ts was in before.
     const offenders = allPackages.filter((p) => p.publishConfig?.access === 'public').map((p) => p.path);
     expect(offenders, `these would publish PUBLIC under a private-only policy: ${offenders.join(', ')}`).toEqual([]);
   });

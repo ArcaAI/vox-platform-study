@@ -1,5 +1,5 @@
 /**
- * `CloneDefinitionDialog` (TASK-856) — the Studio's entry point for "make a new workflow from
+ * `CloneDefinitionDialog` — the Studio's entry point for "make a new workflow from
  * this one", and for "start from a platform template".
  *
  * Presentational by design (the same shape as `PublishDialog`): the list screen owns the hooks
@@ -124,11 +124,11 @@ describe('CloneDefinitionDialog — starting from a platform template', () => {
   });
 
   /**
-   * TASK-858 Lane D — the library now holds templates from DIFFERENT palettes: three
+   * the library now holds templates from DIFFERENT palettes: three
    * `consultation` example workflows and the `stt` transcription agent. Cloning an `stt`
    * definition when you wanted a consultation one produces a workflow that cannot govern a
    * consultation at all, so the palette has to be scannable, not buried in a mono line.
-   */
+ */
   it('badges each template with its palette so an stt agent is not mistaken for a consultation workflow', () => {
     render(
       <CloneDefinitionDialog

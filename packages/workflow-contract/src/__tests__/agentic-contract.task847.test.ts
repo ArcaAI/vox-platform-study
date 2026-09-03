@@ -1,14 +1,14 @@
 /**
- * TASK-847 steps 3, 5 and 6 — the checks a JSON Schema cannot express.
+ * steps 3, 5 and 6 — the checks a JSON Schema cannot express.
  *
- *  - **Hyper-parameter CAPABILITY gating** (step 3). Not every provider accepts
+ *  - **Hyper-parameter CAPABILITY gating**. Not every provider accepts
  *    `presencePenalty`, and most of those that do not IGNORE it rather than erroring. Silently
  *    dropping a parameter a clinician tuned is worse than refusing it, so a declared capability
  *    set that omits a parameter the node sets is an ERROR at publish.
  *  - **Exactly one selection source** (step 5's neighbour). `providerConfigRef` offers two shapes
  *    and the graph must pick one; JSON Schema's `oneOf` needs a discriminator the authorable
  *    subset requires and neither shape has one, so the rule lives here.
- *  - **Loop bounds** (step 6), including the cost ceiling the owner's specification did not name
+ *  - **Loop bounds** , including the cost ceiling the owner's specification did not name
  *    and the no-progress check.
  */
 import { describe, expect, it } from 'vitest';
@@ -19,7 +19,7 @@ const { GENERATION_HYPERPARAMETERS, agenticNodeConfigProblems, hyperparameterCap
 
 const ROUTING_POLICY_ID = '018f3a7c-5b84-7d19-9e63-0a2c8d5f7b41';
 
-describe('TASK-847 step 3 — hyper-parameter capability gating', () => {
+describe(' step 3 — hyper-parameter capability gating', () => {
   it('names all seven hyper-parameters, including the two F-12 recorded as absent', () => {
     expect([...GENERATION_HYPERPARAMETERS].sort()).toEqual(
       ['frequencyPenalty', 'maxTokens', 'presencePenalty', 'seed', 'stopSequences', 'temperature', 'topP'].sort(),
@@ -60,7 +60,7 @@ describe('TASK-847 step 3 — hyper-parameter capability gating', () => {
   });
 });
 
-describe('TASK-847 — exactly one provider-configuration selection source', () => {
+describe('exactly one provider-configuration selection source', () => {
   it('accepts a pinned routing policy', () => {
     expect(agenticNodeConfigProblems({ id: 'a', type: 'agentic.agent', config: { providerConfigRef: { routingPolicyId: ROUTING_POLICY_ID } } })).toEqual([]);
   });
@@ -91,7 +91,7 @@ describe('TASK-847 — exactly one provider-configuration selection source', () 
   });
 });
 
-describe('TASK-847 step 6 — loop bounds', () => {
+describe(' step 6 — loop bounds', () => {
   const BOUNDS = { maxIterations: 5, maxDurationSeconds: 300, maxTotalTokens: 100000 };
 
   it('accepts a fully bounded loop', () => {
@@ -123,7 +123,7 @@ describe('TASK-847 step 6 — loop bounds', () => {
   });
 });
 
-describe('TASK-847 — guard references are checked against the graph', () => {
+describe('guard references are checked against the graph', () => {
   it('REFUSES a guard reference naming a node that is not in the graph', () => {
     const problems = agenticNodeConfigProblems(
       { id: 'a', type: 'agentic.agent', config: { providerConfigRef: { taskKey: 'text.finalize' }, guards: { output: ['ghost'] } } },
@@ -156,7 +156,7 @@ describe('TASK-847 — guard references are checked against the graph', () => {
   });
 });
 
-describe('TASK-847 — the per-node checks are WIRED into the publish gate', () => {
+describe('the per-node checks are WIRED into the publish gate', () => {
   // An exported helper nobody calls is not a gate. `workflowPublishProblems` is the publish
   // boundary, so these tests are what turn `agenticNodeConfigProblems` from a function into a
   // rule — and they use the REAL graph shape (`from`/`to`), not a hand-rolled context.

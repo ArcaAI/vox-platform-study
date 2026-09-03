@@ -1,6 +1,6 @@
-"""TASK-796 — the three realtime capabilities must actually REACH the clinician.
+"""the three realtime capabilities must actually REACH the clinician.
 
-TASK-791 built the three R3 nodes and they work: they generate. But nothing they generate is
+built the three R3 nodes and they work: they generate. But nothing they generate is
 ever displayed. ``consultation.realtimeSummary`` announces ``{ordinal, total, chars}`` on the
 loop plane and the console renders a progress bar; the summary TEXT lives and dies as node
 output. ``consultation.suggestions`` and ``consultation.proposeCorrections`` have no delivery at
@@ -57,9 +57,9 @@ def _payload(node_type: str, **overrides: Any) -> NodeActivityInput:
     return NodeActivityInput(**base)
 
 
-#: TASK-826 — the correction node's bound instruction template.
+# — the correction node's bound instruction template.
 _CORRECTION_TEMPLATE = "11111111-1111-1111-1111-111111111111"
-#: TASK-827 — `consultation.suggestions` resolves its system prompt from a bound template too, so
+# — `consultation.suggestions` resolves its system prompt from a bound template too, so
 #: a delivery test that omits it degrades before it ever publishes.
 _SUGGESTION_TEMPLATE = "22222222-2222-2222-2222-222222222222"
 
@@ -75,7 +75,7 @@ class _RecordingApi:
         self.assists: list[dict[str, Any]] = []
 
     async def get_resolved_prompt_template(self, template_id, tenant_id=None):
-        """TASK-826 — `consultation.proposeCorrections` resolves its system prompt from the
+        """`consultation.proposeCorrections` resolves its system prompt from the
         node's `promptTemplateId`. Delivery is what these tests are about, so the instruction
         resolves cleanly here; the degrade paths are specified in
         `test_realtime_capability_nodes.py::TestCorrectionInstructionIsGoverned`."""

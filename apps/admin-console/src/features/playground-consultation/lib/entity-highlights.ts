@@ -1,5 +1,5 @@
 /**
- * TASK-797 W3 — turning NLP entity offsets into safe, renderable text segments.
+ * turning NLP entity offsets into safe, renderable text segments.
  *
  * `LiveSummaryEntityDto` carries `start`/`end` character offsets into
  * `runningSummary` (`packages/applications/.../live-summary.dto.ts:32-36`). Splicing

@@ -1,12 +1,12 @@
 """Tests for the SSE subscription endpoints (api/endpoints/stream.py).
 
-**Rewritten for TASK-818 Lane B.** The endpoint is no longer a poller over
+**Rewritten for ** The endpoint is no longer a poller over
 ``read_chunk_entries_blocking``; it is a *subscriber* onto a producer that is
-already running (§3C.3). What is exercised here therefore changed shape:
+already running ( What is exercised here therefore changed shape:
 
 * the cursor is a **sequence number**, not a Redis message id — the id a client
   holds must survive a router restart, and a Redis id does not;
-* the ``id:`` is ``{generation_id}:{seq}`` (§3C.3(4)), replacing the TASK-717
+* the id: is {generation_id}:{seq} (replacing the
   opaque resume token on this path, because that token wrapped a Redis cursor
   which is no longer what a client resumes from;
 * the backlog comes from batched entries via ``TaskManager.read_events``.
@@ -155,7 +155,7 @@ class TestStreamEndpointReplay:
 
     @pytest.mark.asyncio
     async def test_ids_are_generation_id_and_sequence(self, settings):
-        """§3C.3(4). The cursor is a sequence number, so it survives a restart."""
+        """The cursor is a sequence number, so it survives a restart."""
         events = [_chunk(1, "a"), GenerationEvent(7, "done", "{}")]
         app = _build_app(settings, _task_manager(events, state=_running()))
         resp = await _get(app, "/api/v1/tasks/t1/stream")
@@ -187,7 +187,7 @@ class TestUnknownIdStatus:
 
     @pytest.mark.asyncio
     async def test_generation_route_returns_204(self, settings):
-        """§3C.3(5): nothing to stream is not an error."""
+        """nothing to stream is not an error."""
         app = _build_app(settings, _task_manager([], state=None))
         resp = await _get(app, "/api/v1/generations/nope/stream")
         assert resp.status_code == 204
@@ -227,7 +227,7 @@ class TestCursorParsing:
         client following the documentation was silently ignored and resumed from 0.
         A resume that quietly restarts looks like success until a clinician sees a
         duplicated prefix, which is why this is pinned rather than left to the
-        docstring. Found by TASK-818 Lane E-stream.
+        docstring. Found by -stream.
         """
         import inspect
 

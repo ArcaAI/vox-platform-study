@@ -5,7 +5,7 @@ import { SessionDataDto } from './session-data.dto';
 
 /**
  * v1 `SyncSummaryRequest` for `POST /api/smr/api/v1/summary/sync`.
- * (TEXT_Summary_Endpoints.md §3.1; frozen)
+ * (TEXT_Summary_Endpoints.md; frozen)
  *
  * Strict DTO — the global `ValidationPipe` runs `whitelist +
  * forbidNonWhitelisted + forbidUnknownValues`, so every accepted field is
@@ -67,7 +67,7 @@ export class SyncSummaryRequest {
 
   @ApiPropertyOptional({
     description:
-      "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
+      "Requesting doctor id . When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
   })
   @IsOptional()
   @IsString()
@@ -103,7 +103,7 @@ export class SyncSummaryRequest {
 
   @ApiPropertyOptional({
     description:
-      'true → translate the transcript to English via Sarvam BEFORE summarizing (TASK-600). Fail-open: on a translation error the original transcript is summarized. Default false.',
+      'true → translate the transcript to English via Sarvam BEFORE summarizing . Fail-open: on a translation error the original transcript is summarized. Default false.',
     default: false,
   })
   @IsOptional()

@@ -2,7 +2,7 @@
  * WorkflowDefinitionEntity.validate() Unit Tests
  *
  * Invariants under test (derived from `workflow-definition.prisma` + the
- * TASK-722 exposure plane's slug contract):
+ * exposure plane's slug contract):
  *   - slug: required, `^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$`
  *   - name, paletteKey, graphChecksum: required non-empty
  *   - versionNumber: positive integer

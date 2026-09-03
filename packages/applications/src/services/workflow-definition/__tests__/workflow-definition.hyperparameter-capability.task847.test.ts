@@ -1,14 +1,14 @@
 /**
- * TASK-847 follow-up, finding F-32 — the hyper-parameter capability gate, WIRED.
+ * follow-up, finding F-32 — the hyper-parameter capability gate, WIRED.
  *
- * TASK-847 built `hyperparameterCapabilityProblems` in `@arcaai/workflow-contract`, exported it,
+ * built `hyperparameterCapabilityProblems` in `@arcaai/workflow-contract`, exported it,
  * and unit-tested it. Nothing called it. The consequence is the one the ticket's own verification
  * criterion names: *"a provider that rejects `presencePenalty` produces a clear validation error,
  * not a silent drop"* — which was true in that package's unit tests and false at publish, so a
  * tenant could publish an agent node tuned with a parameter its bound provider configuration
  * drops on the wire, and find out during a clinical consultation.
  *
- * The severity split under test is TASK-847's, preserved verbatim:
+ * The severity split under test is, preserved verbatim:
  *
  * | Capability set on the resolved configuration | Verdict |
  * |---|---|
@@ -40,7 +40,7 @@ const PINNED_POLICY_ID = '3f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8';
 
 /**
  * An agent node that TUNES `presencePenalty` — the exact parameter F-12 recorded as
- * not-universally-supported and the one TASK-847's criterion names.
+ * not-universally-supported and the one criterion names.
  */
 const AGENT_GRAPH = {
   version: 1,
@@ -218,7 +218,7 @@ describe('F-32 — publish must refuse a hyper-parameter the bound provider conf
   });
 });
 
-describe('F-32 — ABSENT capability set is a WARNING, not an error (TASK-847`s considered split)', () => {
+describe('F-32 — ABSENT capability set is a WARNING, not an error (`s considered split)', () => {
   let service: WorkflowDefinitionService;
 
   beforeEach(() => {

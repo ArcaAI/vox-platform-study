@@ -12,7 +12,7 @@ import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, ForbidServiceAccount
 
 /**
  * `admin/service-accounts` — issuance and lifecycle of the platform-issued
- * machine identity (TASK-762).
+ * machine identity.
  *
  * ─── AUTH-NOTE: the decorators UNDERSTATE the real gate, deliberately ───────
  *
@@ -23,7 +23,7 @@ import { CanManage, CanRead, ExpectedVersion, ForbidApiKey, ForbidServiceAccount
  * on a resource whose ability tenant admins could otherwise hold" pattern from
  * `05-nestjs-api.md` §"Imperative Privilege Checks".
  *
- * This matters because it is exactly the TASK-756 defect it avoids: the API-key
+ * This matters because it is exactly the defect it avoids: the API-key
  * minting route is `@CanManage('ApiKey')`, a TENANT-ADMIN-reachable ability, and
  * that is how a tenant admin could mint a key carrying `admin:*`. Issuing a
  * machine identity must be strictly stricter than that ceiling — not equal to

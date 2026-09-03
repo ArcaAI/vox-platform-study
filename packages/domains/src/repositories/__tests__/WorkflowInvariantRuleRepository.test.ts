@@ -1,5 +1,5 @@
 /**
- * WorkflowInvariantRuleRepository — unit tests (TASK-716 Task 3b).
+ * WorkflowInvariantRuleRepository — unit tests (b).
  *
  * The two methods that are not plain CRUD, and the reasons each exists:
  *

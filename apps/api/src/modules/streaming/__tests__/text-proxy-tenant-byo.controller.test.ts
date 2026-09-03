@@ -6,7 +6,7 @@
  *
  * The contract:
  *   1. Injected when the resolver returns an entry for the RESOLVED provider.
- *      TASK-799: this is NO LONGER gated on the provider being cloud-BYO. That
+ * this is NO LONGER gated on the provider being cloud-BYO. That
  *      predicate answers "may a TENANT OWN a row?" and was being used to answer
  *      "may the PLATFORM SERVE it?" — so a super-admin-keyed self-host engine
  *      (vLLM, openai-compat, the TEI reranker) could never reach any tenant,
@@ -117,7 +117,7 @@ describe('TEXT proxy — tenant BYO credential injection', () => {
   });
 
   it('CONSULTS the resolver for a self-host provider, and injects a keyed platform row', async () => {
-    // TASK-799 — inverted, not deleted. This previously asserted the resolver
+    // inverted, not deleted. This previously asserted the resolver
     // was SKIPPED for a self-host provider; that short-circuit is the defect
     // that made a keyed SYSTEM row for vLLM/openai-compat undeliverable.
     const { ctrl, http, connections } = build({ overrides: { ollama: { api_key: 'not-needed', funding: 'platform' } } });

@@ -27,9 +27,9 @@ import type { IngestKnowledgeDocumentJobPayload } from './ingest-knowledge-docum
  *
  * Admin-side CRUD + governance for the institutional knowledge corpus:
  * register/approve (worker-triggering ingest, unchanged in shape), plus
- * TASK-728's tenant-admin governance surface — inspect (`getDocument`,
+ * tenant-admin governance surface — inspect (`getDocument`,
  * `listChunks`), and manual archive/delete now that nothing auto-expires
- * this content (see `docs/implementation/TASK-728-Memory-Management-Screens`).
+ * this content (see).
  *
  * ## `deleteDocument` is FAIL-CLOSED on the Qdrant vector cleanup
  *
@@ -41,7 +41,7 @@ import type { IngestKnowledgeDocumentJobPayload } from './ingest-knowledge-docum
  * retrievable behind a "deleted" label is the worse failure mode on a
  * healthcare platform, so this ticket picks fail-closed. This is verified
  * SAFE to do synchronously: a live local Qdrant instance was probed directly
- * (TASK-728 research) and `client.delete()`'s default `wait=True` makes the
+ * ( research) and `client.delete()`'s default `wait=True` makes the
  * delete-by-filter call block until the removal is actually applied —
  * `points_count` reflected the removal before the call returned, and a
  * compound `(tenant_id, knowledge_document_id)` filter left a same-document

@@ -65,17 +65,17 @@ const PIPELINE_CONFIGS = {
   // High-quality production pipeline (v2.0 — whisper.cpp GGUF)
   production: `version: "2.0"
 
-# TASK-507 matrix #1 — [whisper-large-v3-turbo gguf] Full features.
+#  matrix #1 — [whisper-large-v3-turbo gguf] Full features.
 # All stages on: normalize/denoise(dual-path, DeepFilterNet3)/resample/VAD/diar-FE,
 # whisper.cpp GGUF ASR + 2-spk diarization + LocalAgreement-2 stabilizer, full post.
-# No longer the tenant default (TASK-507) — see PIPELINE_CONFIGS.whisper_turbo_gguf_default.
+# No longer the tenant default  — see PIPELINE_CONFIGS.whisper_turbo_gguf_default.
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
   vad: "silero-vad"
   denoise: "deepfilternet3"
   embedding:
-    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept)
     engine: "pytorch"
 
 preprocessing:
@@ -86,7 +86,7 @@ preprocessing:
     enabled: true
     strength: 0.7
     scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
-    engine: deepfilternet3   # TASK-507
+    engine: deepfilternet3   # 
   resample:
     enabled: true
     target_sample_rate: 16000
@@ -135,7 +135,7 @@ postprocessing:
   // artifact, resolvable). Carries diarization + dual_capture.
   faster_whisper_turbo_int8: `version: "2.0"
 
-# TASK-505 matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
+#  matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
 
 models:
   asr: "faster-whisper-large-v3-turbo-int8"
@@ -175,7 +175,7 @@ postprocessing:
   // below (the new default).
   turbo: `version: "2.0"
 
-# TASK-505 matrix #9 (was #2) — [whisper-large-v3-turbo] Transcription only.
+#  matrix #9 (was #2) — [whisper-large-v3-turbo] Transcription only.
 # No pre-processing stages, ASR + diarization + stabilizer, no post.
 
 models:
@@ -227,7 +227,7 @@ postprocessing:
   // platform default (isDefault flip in DEFAULT_ASR_PIPELINES etc.).
   whisper_turbo_gguf_default: `version: "2.0"
 
-# TASK-507 matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
+#  matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
 # VAD pre-processing enabled (Silero); whisper.cpp GGUF ASR + diarization + stabilizer, no post.
 
 models:
@@ -257,7 +257,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null          # Auto-detect. Language is a runtime choice (end-user/dev languageMode, TASK-587); an unset pipeline lets whisper.cpp detect and code-switch natively.
+  language: null          # Auto-detect. Language is a runtime choice (end-user/dev languageMode); an unset pipeline lets whisper.cpp detect and code-switch natively.
   prev_text_context_words: 0   # NO carry-forward prompt — priming whisper.cpp with prior text propagates/compounds errors over a long session
 
 diarization:
@@ -317,7 +317,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -375,7 +375,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -434,7 +434,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -507,7 +507,7 @@ postprocessing:
 
   whisper_no_postprocessing: `version: "2.0"
 
-# TASK-507 matrix #3 — [whisper-large-v3-turbo gguf] No postprocessing.
+#  matrix #3 — [whisper-large-v3-turbo gguf] No postprocessing.
 # Full pre-processing (DeepFilterNet3 denoise) + whisper.cpp GGUF ASR +
 # diarization + stabilizer; post off.
 
@@ -516,7 +516,7 @@ models:
   vad: "silero-vad"
   denoise: "deepfilternet3"
   embedding:
-    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept, TASK-507)
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"   # D1 — ECAPA feature extractor (kept)
     engine: "pytorch"
 
 preprocessing:
@@ -527,7 +527,7 @@ preprocessing:
     enabled: true
     strength: 0.7
     scope: vad_only          # D2 dual-path: denoise gates VAD; ASR gets raw audio
-    engine: deepfilternet3   # TASK-507
+    engine: deepfilternet3   # 
   resample:
     enabled: true
     target_sample_rate: 16000
@@ -571,7 +571,7 @@ postprocessing:
 
   whisper_no_preprocessing: `version: "2.0"
 
-# TASK-507 matrix #4 — [whisper-large-v3-turbo gguf] No preprocessing.
+#  matrix #4 — [whisper-large-v3-turbo gguf] No preprocessing.
 # Pre off, whisper.cpp GGUF ASR + diarization + stabilizer, full post-processing.
 
 models:
@@ -623,7 +623,7 @@ postprocessing:
 
   azure_speech_transcription: `version: "2.0"
 
-# TASK-505 matrix #5 — [azure] Azure Speech-to-Text, bare.
+#  matrix #5 — [azure] Azure Speech-to-Text, bare.
 # Cloud engine; credentials via AZURE_SPEECH_KEY/AZURE_SPEECH_REGION.
 
 models:
@@ -660,7 +660,7 @@ postprocessing:
 
   azure_foundry_mai: `version: "2.0"
 
-# TASK-505 matrix #6 — [azure] MAI-Transcribe 1.5, bare.
+#  matrix #6 — [azure] MAI-Transcribe 1.5, bare.
 # PREVIEW (D4): batch-only; engine disabled unless AZURE_FOUNDRY_ENABLED.
 
 models:
@@ -697,10 +697,9 @@ postprocessing:
 
   sarvam_transcription: `version: "2.0"
 
-# TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v4), cloud REST.
+# [sarvam] Sarvam AI speech-to-text (saaras:v4), cloud REST.
 # BYOK-ONLY: the credential resolves tenant -> SYSTEM through
-# AiProviderConnection. There is NO env fallback. TASK-586:
-# SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
+# AiProviderConnection. There is NO env fallback. # SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
 # "sarvam-saaras-v4" catalog row — identical in shape to the Azure Speech pipeline
 # (no inline engine block or provider shorthand needed).
 
@@ -738,7 +737,7 @@ postprocessing:
 
   openai_transcription: `version: "2.0"
 
-# TASK-567 — [openai] OpenAI speech-to-text (gpt-4o-transcribe), cloud REST.
+# [openai] OpenAI speech-to-text (gpt-4o-transcribe), cloud REST.
 # BYOK-ONLY: the credential resolves tenant -> SYSTEM through
 # AiProviderConnection. There is NO env fallback. The ASR
 # ref is an INLINE definition binding the OPENAI engine (equivalent to the
@@ -780,7 +779,7 @@ postprocessing:
 
   parakeet_nemotron_streaming: `version: "2.0"
 
-# TASK-505 matrix #8 — [parakeet.cpp] nemotron-3.5-asr-streaming-0.6b, bare.
+#  matrix #8 — [parakeet.cpp] nemotron-3.5-asr-streaming-0.6b, bare.
 # ggml runtime; per-utterance integration (native stateful streaming is a
 # separate ticket).
 
@@ -892,7 +891,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null           # Auto-detect. Language is a runtime choice (languageMode, TASK-587); not pinned in the pipeline definition.
+  language: null           # Auto-detect. Language is a runtime choice (languageMode); not pinned in the pipeline definition.
   beam_size: 1
   temperature: 0
 postprocessing:
@@ -936,7 +935,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null           # Auto-detect. Language is a runtime choice (languageMode, TASK-587); not pinned in the pipeline definition.
+  language: null           # Auto-detect. Language is a runtime choice (languageMode); not pinned in the pipeline definition.
 
 postprocessing:
   timestamps:
@@ -979,7 +978,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     name: '[whisper-large-v3-turbo gguf] Full Features',
     slug: 'production-whisper-large-v3',
     description:
-      'TASK-507 matrix #1 — full pipeline: normalize + dual-path denoise (DeepFilterNet3) + resample + VAD + diarization feature extraction, whisper.cpp GGUF ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
+      ' matrix #1 — full pipeline: normalize + dual-path denoise (DeepFilterNet3) + resample + VAD + diarization feature extraction, whisper.cpp GGUF ASR, 2-speaker diarization, LocalAgreement-2 stabilizer, full post-processing. Slug kept for setting/FK continuity.',
     configYaml: PIPELINE_CONFIGS.production,
     // No longer the tenant default (flipped to
     // production-whisper-large-v3-turbo-gguf below). seedAsrPipelines
@@ -995,7 +994,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     name: '[whisper-large-v3-turbo] Transcription Only',
     slug: 'turbo-whisper-large-v3',
     description:
-      'TASK-505 matrix #9 (was #2) — no pre-processing, whisper-large-v3-turbo (safetensor) ASR + diarization + stabilizer, no post-processing. Slug kept for tenant-clone/test continuity.',
+      ' matrix #9 (was #2) — no pre-processing, whisper-large-v3-turbo (safetensor) ASR + diarization + stabilizer, no post-processing. Slug kept for tenant-clone/test continuity.',
     configYaml: PIPELINE_CONFIGS.turbo,
     tags: ['streaming', 'real-time', 'fast'],
   },
@@ -1006,7 +1005,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     name: '[whisper-large-v3-turbo gguf] Transcription Only',
     slug: 'production-whisper-large-v3-turbo-gguf',
     description:
-      'TASK-507 matrix #2 — no pre-processing, whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. Registered but NO LONGER the platform default: the generic whisper-turbo GGUF pinned to ml produces garbage Malayalam, so the ArcaAI ml-en GGUF fine-tune (arcaai-whisper-large-ml-en-gguf) is the default.',
+      ' matrix #2 — no pre-processing, whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. Registered but NO LONGER the platform default: the generic whisper-turbo GGUF pinned to ml produces garbage Malayalam, so the ArcaAI ml-en GGUF fine-tune (arcaai-whisper-large-ml-en-gguf) is the default.',
     configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
     isDefault: false,
     tags: ['production', 'streaming', 'real-time', 'fast'],
@@ -1025,7 +1024,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     name: '[faster-whisper] deepdml CT2 int8',
     slug: 'production-faster-whisper-turbo-int8',
     description:
-      'TASK-505 matrix #7 — bare faster-whisper transcription (deepdml/faster-whisper-large-v3-turbo-ct2, int8). Slug kept for tenant-clone continuity.',
+      ' matrix #7 — bare faster-whisper transcription (deepdml/faster-whisper-large-v3-turbo-ct2, int8). Slug kept for tenant-clone continuity.',
     configYaml: PIPELINE_CONFIGS.faster_whisper_turbo_int8,
     // Registered + catalog-visible, not the default (resolvable
     // via deepdml; default flip deferred to future benchmarks).
@@ -1040,7 +1039,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[whisper-large-v3-turbo] No Postprocessing',
     slug: 'whisper-turbo-no-postprocessing',
-    description: 'TASK-505 matrix #3 — full pre-processing + ASR + diarization + stabilizer; post-processing disabled.',
+    description: ' matrix #3 — full pre-processing + ASR + diarization + stabilizer; post-processing disabled.',
     configYaml: PIPELINE_CONFIGS.whisper_no_postprocessing,
     tags: ['matrix', 'whisper-turbo'],
   },
@@ -1049,7 +1048,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[whisper-large-v3-turbo] No Preprocessing',
     slug: 'whisper-turbo-no-preprocessing',
-    description: 'TASK-505 matrix #4 — no pre-processing; ASR + diarization + stabilizer + full post-processing.',
+    description: ' matrix #4 — no pre-processing; ASR + diarization + stabilizer + full post-processing.',
     configYaml: PIPELINE_CONFIGS.whisper_no_preprocessing,
     tags: ['matrix', 'whisper-turbo'],
   },
@@ -1058,7 +1057,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[azure] Azure Speech-to-Text',
     slug: 'azure-speech-transcription',
-    description: 'TASK-505 matrix #5 — bare Azure Cognitive Services Speech transcription (cloud).',
+    description: ' matrix #5 — bare Azure Cognitive Services Speech transcription (cloud).',
     configYaml: PIPELINE_CONFIGS.azure_speech_transcription,
     tags: ['matrix', 'cloud', 'azure'],
   },
@@ -1067,7 +1066,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[azure] MAI-Transcribe 1.5',
     slug: 'azure-foundry-mai-transcribe',
-    description: 'TASK-505 matrix #6 — bare MAI-Transcribe 1.5 via Azure AI Foundry (PREVIEW, D4: batch-only, engine off by default).',
+    description: ' matrix #6 — bare MAI-Transcribe 1.5 via Azure AI Foundry (PREVIEW, D4: batch-only, engine off by default).',
     configYaml: PIPELINE_CONFIGS.azure_foundry_mai,
     tags: ['matrix', 'cloud', 'azure-foundry', 'preview'],
   },
@@ -1076,7 +1075,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[parakeet.cpp] Nemotron 3.5 ASR Streaming',
     slug: 'parakeet-nemotron-streaming',
-    description: 'TASK-505 matrix #8 — bare nemotron-3.5-asr-streaming-0.6b transcription via the parakeet.cpp ggml runtime.',
+    description: ' matrix #8 — bare nemotron-3.5-asr-streaming-0.6b transcription via the parakeet.cpp ggml runtime.',
     configYaml: PIPELINE_CONFIGS.parakeet_nemotron_streaming,
     tags: ['matrix', 'streaming', 'parakeet.cpp'],
   },
@@ -1089,7 +1088,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[sarvam] Sarvam Speech-to-Text',
     slug: 'sarvam-transcription',
-    description: 'TASK-567 — bare Sarvam AI speech-to-text (saaras:v4, cloud REST). Tenant BYOK fallback candidate.',
+    description: 'bare Sarvam AI speech-to-text (saaras:v4, cloud REST). Tenant BYOK fallback candidate.',
     configYaml: PIPELINE_CONFIGS.sarvam_transcription,
     tags: ['cloud', 'sarvam', 'byok', 'fallback'],
   },
@@ -1099,7 +1098,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[openai] OpenAI Speech-to-Text',
     slug: 'openai-transcription',
-    description: 'TASK-567 — bare OpenAI speech-to-text (gpt-4o-transcribe, cloud REST). Tenant BYOK fallback candidate.',
+    description: 'bare OpenAI speech-to-text (gpt-4o-transcribe, cloud REST). Tenant BYOK fallback candidate.',
     configYaml: PIPELINE_CONFIGS.openai_transcription,
     tags: ['cloud', 'openai', 'byok', 'fallback'],
   },
@@ -1556,7 +1555,7 @@ export const GLOBAL_MANUAL_ASR_PIPELINES: AsrPipelineSeed[] = [
       'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
     configYaml: `version: "2.0"
 
-# TASK-505 matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
+#  matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
 
 models:
   asr: "arcaai-whisper-large-ml-en-ct2"
@@ -1655,7 +1654,7 @@ export const DEFAULT_STT_SETTINGS = [
     namespace: 'platform',
     name: 's3',
     key: 'S3_ENDPOINT',
-    // TASK-858 — derived exactly like the SYSTEM `TenantStorageConfig` row (scheme + host from
+    // derived exactly like the SYSTEM `TenantStorageConfig` row (scheme + host from
     // `MINIO_ENDPOINT`/`MINIO_USE_SSL`); the old `http://localhost:<port>` literal dialled nothing in-cluster.
     value: platformStorageEndpoint(),
     defaultValue: 'http://localhost:9000',
@@ -1825,7 +1824,7 @@ export const seedAiModels = async (client: CorePrismaClient) => {
           source: modelData.source,
           sourceUri: modelData.sourceUri,
           sourceRevision: modelData.sourceRevision,
-          // TASK-855: keep the operator-override path in sync on re-seed,
+          // keep the operator-override path in sync on re-seed,
           // same as every other source-resolution field above.
           localPath: modelData.localPath ?? null,
           format: modelData.format,
@@ -1932,7 +1931,7 @@ export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) =
  * pure helper `shouldRetireAiModelSlug` (seed/ai-models/retired.ts).
  */
 export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ retired: number; skipped: string[] }> => {
-  console.log('Retiring legacy AI models (TASK-506 consolidation)...');
+  console.log('Retiring legacy AI models (consolidation)...');
 
   // Guard input: every non-deleted pipeline's YAML, ANY tenant.
   const activePipelines = await client.asrPipeline.findMany({
@@ -2082,7 +2081,7 @@ const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [
  * performs no writes once converged.
  */
 export const switchDefaultSttPipelineToGgufTurbo = async (client: CorePrismaClient) => {
-  console.log('Reconciling default ASR pipeline (TASK-507)...');
+  console.log('Reconciling default ASR pipeline ...');
   let switched = 0;
   let skipped = 0;
 
@@ -2159,7 +2158,7 @@ export const PURGED_PLAINTEXT_SECRET_KEYS: readonly string[] = ['S3_ACCESS_KEY',
  * Rows already scrubbed are excluded, so a re-run writes nothing.
  */
 export const purgePlaintextSecretSettings = async (client: CorePrismaClient): Promise<{ purged: number }> => {
-  console.log('Purging superseded plaintext secret Global Settings (TASK-558 M10)...');
+  console.log('Purging superseded plaintext secret Global Settings (M10)...');
 
   const SCRUBBED = '__MOVED_TO_VAULT__';
   let purged = 0;
@@ -2170,7 +2169,7 @@ export const purgePlaintextSecretSettings = async (client: CorePrismaClient): Pr
       data: {
         value: SCRUBBED,
         defaultValue: SCRUBBED,
-        description: 'Superseded by Vault kv-v2 (TASK-558). Resolved via SecretsService, never from this row.',
+        description: 'Superseded by Vault kv-v2 . Resolved via SecretsService, never from this row.',
         resourceStatus: ResourceStatusType.DELETED,
         resourceStatusUpdatedAt: new Date(),
         resourceStatusUpdatedBy: SYSTEM_USER_ID,

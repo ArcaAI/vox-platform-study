@@ -1,6 +1,6 @@
 """Every migrated stt knob has a descriptor, and its default matches VERBATIM.
 
-This is the gate that makes TASK-799 lane C behaviour-neutral, and it is the one
+This is the gate that makes lane C behaviour-neutral, and it is the one
 thing a reviewer cannot check by eye across 72 keys in two languages.
 
 The failure it prevents is quiet and expensive. With no ``GlobalSetting`` row the

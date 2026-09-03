@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Definitions list (TASK-719 Task 16, frame `NN.4 - Workflow Studio — Definitions List`).
+ * Definitions list (frame `NN.4 - Workflow Studio — Definitions List`).
  * Follows `features/workflow-runs/components/workflow-runs-screen.tsx` closely (same
  * `ScreenTemplate` + `VirtualizedDataGrid` + `WorkingTenantGate` shape) — the sibling ticket in
  * the same program, already built against a real `admin/workflow-*` endpoint.
@@ -41,11 +41,11 @@ function DefinitionsListBody() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [page, setPage] = useState(0);
-  // TASK-812 (D-10) — the endpoint sequence opens in the console-wide detail surface rather than
+  // (D-10) — the endpoint sequence opens in the console-wide detail surface rather than
   // taking a slot on this page: the screen is `contentMode="fill"` (the grid owns the height), so
   // an inline panel would either nest a second scroll container or squeeze the grid.
   const [endpointOpen, setEndpointOpen] = useState(false);
-  // TASK-856 — one dialog, two entry points. `cloneSource` null WITH the dialog open is
+  // one dialog, two entry points. `cloneSource` null WITH the dialog open is
   // "start from a platform template" (the dialog renders the library picker); a row's Clone
   // action sets the source, so no picker is shown.
   const [cloneOpen, setCloneOpen] = useState(false);

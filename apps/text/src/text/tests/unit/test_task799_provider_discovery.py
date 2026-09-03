@@ -1,4 +1,4 @@
-"""TASK-799 A.2 — the probe listens to the connection it is GIVEN.
+"""A.2 — the probe listens to the connection it is GIVEN.
 
 Before this lane every adapter's ``get_info()`` probed ``self._last_base_url``:
 the endpoint THIS PROCESS happened to serve a generation from last. That memo is
@@ -200,7 +200,7 @@ class TestOpenAiWireDiscovery:
                 self.models = AsyncMock()
                 self.models.list = AsyncMock(return_value=_List())
 
-        # `**_` absorbs `http_client`: TASK-818 Lane A hands every OpenAI-wire
+        # `**_` absorbs `http_client`: hands every OpenAI-wire
         # client this upstream's pooled transport (B-2/B-8). This test is about
         # WHICH ENDPOINT the probe reaches, which is unchanged.
         def _fake_openai(*, api_key: str, base_url: str, timeout: float, **_: Any) -> Any:

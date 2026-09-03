@@ -1,5 +1,5 @@
 /**
- * TASK-811 §2b — RE-ANCHORING: global document offsets → section-local ones.
+ * RE-ANCHORING: global document offsets → section-local ones.
  *
  * ## The problem, precisely
  *

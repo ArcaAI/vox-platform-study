@@ -1,4 +1,4 @@
-"""Unit tests for the streaming draining HTTP surface (TASK-726 Task 3).
+"""Unit tests for the streaming draining HTTP surface.
 
 Mirrors the fixture shape of test_streaming_api.py's TestCreateSession /
 capacity-rejection tests, scoped to a new file so it never collides with

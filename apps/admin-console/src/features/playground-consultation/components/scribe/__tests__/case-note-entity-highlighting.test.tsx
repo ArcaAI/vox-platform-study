@@ -1,5 +1,5 @@
 /**
- * TASK-797 W3 — the case note must MARK detected entities in the running summary,
+ * the case note must MARK detected entities in the running summary,
  * not merely list them as chips underneath it.
  */
 import { cleanup, render } from '@testing-library/react';
@@ -47,7 +47,7 @@ function props(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> =
   };
 }
 
-describe('CaseNoteColumn — entity highlighting (TASK-797 W3)', () => {
+describe('CaseNoteColumn — entity highlighting (W3)', () => {
   it('marks detected entities inside the live running summary', () => {
     const { container } = render(<CaseNoteColumn {...props()} />);
     expect([...container.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual(['chest pain', 'metformin']);

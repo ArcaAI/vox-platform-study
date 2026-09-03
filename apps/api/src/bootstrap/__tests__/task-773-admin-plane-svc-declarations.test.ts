@@ -1,5 +1,5 @@
 /**
- * TASK-773 — the admin-plane sweep, checked against the REAL controller classes.
+ * the admin-plane sweep, checked against the REAL controller classes.
  *
  * `service-account-surface-audit.test.ts` proves boot audit H is correct, using
  * synthetic controllers. This file proves the SWEEP is correct, using the
@@ -35,7 +35,7 @@ async function loadController(file: string, controllerClass: string): Promise<ne
   return ControllerClass as new (...args: never[]) => unknown;
 }
 
-describe('TASK-773: every swept admin controller declares its svc:admin:* twin', () => {
+describe('every swept admin controller declares its svc:admin:* twin', () => {
   it('the fixture is non-empty (a silently emptied fixture would make every assertion below vacuous)', () => {
     expect(TASK_773_ADMIN_SCOPE_MAP.length).toBeGreaterThan(0);
   });

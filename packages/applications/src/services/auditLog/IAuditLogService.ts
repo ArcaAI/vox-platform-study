@@ -135,7 +135,7 @@ export interface IAuditLogService {
    *
    * Counterpart to `handleUserAuthenticatedEvent` (which is success-only).
    * Writes a LOGIN row with `success: false` so rejected access is reviewable
-   * alongside granted access, per HIPAA §164.312(b). Triggered by
+   * alongside granted access, per HIPAA Triggered by
    * `EventTypes.UserAuthenticationFailed`.
    *
    * `userId` is absent when the attempt matched no account — `attemptedUsername`

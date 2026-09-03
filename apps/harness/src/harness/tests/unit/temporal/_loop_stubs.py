@@ -84,7 +84,7 @@ class LoopStubConfig:
     # Force a degraded planner answer (dispatches nothing).
     plan_degrades: bool = False
 
-    # -- endpoint stage (TASK-812) ------------------------------------------
+    # endpoint stage
     # Endpoint action names whose stub RAISES, so a test can prove the loop
     # reports a failed endpoint action as an OBSERVABLE skip and still runs the
     # rest of the sequence.
@@ -189,7 +189,7 @@ def make_loop_stub_activities(
         await _delay()
         return LiveDocControlResult(ok=True)
 
-    # -- endpoint stage (TASK-812) ------------------------------------------
+    # endpoint stage
 
     @activity.defn(name="record_session_endpoint")
     async def record_session_endpoint_stub(

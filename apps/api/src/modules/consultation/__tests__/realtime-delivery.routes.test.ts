@@ -1,7 +1,7 @@
 /**
- * TASK-795 RC-1 / RC-2 — the gateway routes that let interpreter output reach a clinician.
+ * / RC-2 — the gateway routes that let interpreter output reach a clinician.
  *
- * TASK-796 enumerated all 18 `/internal/harness/*` routes and found NONE accepting
+ * enumerated all 18 `/internal/harness/*` routes and found NONE accepting
  * clinical summary text; the only text-accepting write is `.../draft`, which creates
  * the FINAL `RAW_SUMMARY` ContextItem. These two routes are the missing plane, and
  * the harness client is already built against these exact paths

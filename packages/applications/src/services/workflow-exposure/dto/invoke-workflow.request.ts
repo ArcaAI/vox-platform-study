@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsObject } from 'class-validator';
 
 /**
- * Body of `POST /api/v1/workflows/:slug/invoke` (TASK-722 Task 6).
+ * Body of `POST /api/v1/workflows/:slug/invoke`.
  *
  * Deliberately the ONLY field. `tenantId` is NEVER accepted here (S-3 —
  * resolved from the authenticated principal); the global `ValidationPipe`
@@ -11,8 +11,8 @@ import { IsObject } from 'class-validator';
  *
  * There is currently no per-definition declared input JSON Schema to
  * validate `input` against — `WorkflowDefinition` has no
- * `input`/`context_binding` column anywhere in the schema, and TASK-734's
- * own contract audit (§7) found no delivered `configSchema` contract in
+ * `input`/`context_binding` column anywhere in the schema, and
+ * own contract audit found no delivered `configSchema` contract in
  * either language to build one against. `input` is therefore accepted as an
  * opaque object and forwarded verbatim; schema validation is a follow-on
  * once a node type that actually declares an input contract exists.

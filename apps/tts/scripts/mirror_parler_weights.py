@@ -21,7 +21,7 @@ Output layout (sha-scoped for reproducible rollback):
 Usage:
   export HF_TOKEN=hf_...            # operator token WITH gate access — never committed/shipped
   python mirror_parler_weights.py --out ./mirror
-  # then: mc cp --recursive ./mirror/ myminio/models/   (see runbook for upload + verify)
+  # then: mc cp --recursive ./mirror/ myminio/models/ (see runbook for upload + verify)
 
 This script needs ``huggingface_hub`` (not a service runtime dep); run it in the
 operator's env, not in CI or the cluster.
@@ -80,12 +80,12 @@ def _write_checksums(root: Path) -> Path:
 
 
 def _write_notice(root: Path, sha: str) -> None:
-    """Author the Apache-2.0 §4 attribution NOTICE (upstream ships none).
+    """Author the Apache-2.0 attribution NOTICE (upstream ships none).
 
     The canonical LICENSE text is added by the operator per the runbook.
     """
     (root / "NOTICE").write_text(
-        "Indic Parler-TTS (mirrored internally — TASK-495)\n"
+        "Indic Parler-TTS (mirrored internally)\n"
         "==================================================\n\n"
         f"Source     : https://huggingface.co/{PARLER_REPO}\n"
         f"Revision   : {sha}\n"
@@ -101,7 +101,7 @@ def _write_notice(root: Path, sha: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Mirror gated Indic Parler-TTS weights (TASK-495)")
+    parser = argparse.ArgumentParser(description="Mirror gated Indic Parler-TTS weights ")
     parser.add_argument("--out", type=Path, default=Path("./mirror"), help="output directory")
     parser.add_argument(
         "--parler-revision", default=None, help="pin a specific commit sha (default: current main)"
@@ -130,7 +130,7 @@ def main() -> int:
     _snapshot(FLAN_REPO, flan_sha, flan_dir, allow_patterns=FLAN_TOKENIZER_PATTERNS)
     _write_checksums(flan_dir)
 
-    print("\nDone. Record these pins in the TASK-495 README, then upload per the runbook:")
+    print("\nDone. Record these pins in the README, then upload per the runbook:")
     print(f"  TTS_PARLER_MODEL_PATH        → .../indic-parler-tts/{parler_sha}")
     print(f"  TTS_PARLER_DESC_ENCODER_PATH → .../flan-t5-large/{flan_sha}")
     return 0

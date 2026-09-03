@@ -63,7 +63,7 @@ import { AI_TASK_KIND_BY_TASK_KEY } from '../ai-task-default/constants';
  */
 const ROUTING_CONNECTION_SERVICE: ProviderService = 'llm';
 
-/** Machine-readable refusals a caller can branch on (§3A.4). */
+/** Machine-readable refusals a caller can branch on */
 const REJECTION = {
   providerUnavailable: 'provider_unavailable',
   providerNotInPolicy: 'provider_not_in_policy',
@@ -73,7 +73,7 @@ const REJECTION = {
 } as const;
 
 /**
- * Provider ROUTING POLICY service — TASK-818 §3A.
+ * Provider ROUTING POLICY service
  *
  * ## Resolution is tenant → SYSTEM, and there is no third tier
  *
@@ -107,14 +107,14 @@ const REJECTION = {
  * Which tier supplied a candidate's credential decides `BYOK` vs `CLOUD`, and
  * that answer comes from `IProviderConnectionService.resolveConnection` — the
  * one cascade that already knows it (`row.tenantId === SYSTEM_TENANT_ID`).
- * This service maps its `'tenant' | 'system'` source onto the §3A.4 wire
+ * This service maps its `'tenant' | 'system'` source onto the wire
  * labels and does not re-derive it.
  */
 @Injectable()
 export class AiRoutingPolicyService extends BaseService implements IAiRoutingPolicyService {
   constructor(
     private readonly aiRoutingPolicyRepository: AiRoutingPolicyRepository,
-    // TASK-844 — the two FKs that replaced F-6's string joins are read back
+    // the two FKs that replaced F-6's string joins are read back
     // through their own repositories. Both reads are by PRIMARY KEY, so neither
     // re-implements a cascade; the tenant → SYSTEM cascade stays in exactly one
     // place per plane (`readCandidateRows` here, `resolveConnection` there).
@@ -164,7 +164,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
    *   2. pick the winning TIER — tenant on presence, SYSTEM only on absence;
    *   3. within that tier pick the most-specific `match`, ties by `priority`
    *      then by authored `policyVersion`;
-   *   4. honour an explicitly named provider under §3A.4's STRICT ruling;
+   * 4. honour an explicitly named provider under 's STRICT ruling;
    *   5. derive each candidate's funding from its connection row;
    *   6. run the three hard gates on every hop and bound the chain by
    *      `fallback.maxDepth`.
@@ -190,7 +190,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     const tier = tenantRows.length > 0 ? tenantRows : systemRows;
     const source = tenantRows.length > 0 ? 'tenant' : systemRows.length > 0 ? 'system' : null;
 
-    // STEP 3 — per-ROW match. At the TASK-844 grain each row carries its own
+    // STEP 3 — per-ROW match. At the grain each row carries its own
     // `matchJson`, so a narrowing predicate drops that CANDIDATE rather than
     // the whole policy. Order: most-specific first, then `priority` ASC (lower
     // serves first), then the newest authored revision.
@@ -276,7 +276,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-847 finding F-32 — what GENERATION hyper-parameters the configuration a workflow node
+   * finding F-32 — what GENERATION hyper-parameters the configuration a workflow node
    * binds to actually accepts.
    *
    * Answers the authoring-time question the workflow publish gate asks: *"this node tunes
@@ -365,7 +365,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   async create(tenantId: string, dto: CreateAiRoutingPolicyRequest): Promise<AiRoutingPolicyResponse> {
     this.assertSuperAdmin('author a routing policy');
     this.assertKnownTaskKey(dto.taskKey);
-    // TASK-844 — a configuration must name a model. `candidates` is still
+    // a configuration must name a model. `candidates` is still
     // accepted for a pre-844 chain revision, and validated the old way when it
     // is the only thing supplied, so an existing caller is not broken.
     this.assertBindingUsable(dto);
@@ -416,8 +416,8 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     });
 
     const saved = await this.aiRoutingPolicyRepository.create(entity, this.crossTenantLane(tenantId));
-    // §3A.8 — a routing-policy change can redirect PHI to a different vendor,
-    // so HIPAA §164.312(b) audit controls apply. `before` is null on a create;
+    // a routing-policy change can redirect PHI to a different vendor,
+    // so HIPAA audit controls apply. `before` is null on a create;
     // `after` is the full authored revision.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -483,7 +483,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     if (draft.status !== AiRoutingPolicyStatus.DRAFT) {
       throw new ArgumentInvalidException(`Routing policy '${id}' is ${draft.status}; only a DRAFT revision can be activated.`);
     }
-    // TASK-844 — a revision is activatable when it names something to route TO.
+    // a revision is activatable when it names something to route TO.
     // Before the re-grain this asserted the `candidatesJson` chain; at this
     // grain the row IS the candidate, so the binding is what must be present.
     this.assertBindingUsable({ modelId: draft.modelId, modelRef: draft.modelRef, candidates: draft.candidatesJson ?? undefined });
@@ -491,7 +491,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
 
     const tx = this.crossTenantLane(tenantId);
     // The revision being superseded: the newest ACTIVE one for the same
-    // (tenant, taskKey). It is ARCHIVED, never deleted — §3A.8 requires the
+    // (tenant, taskKey). It is ARCHIVED, never deleted — requires the
     // previous version to stay addressable for a one-click rollback.
     const superseded = (await this.readPolicies([tenantId], { tenantId, taskKey: draft.taskKey, status: AiRoutingPolicyStatus.ACTIVE })).sort(
       (a, b) => b.policyVersion - a.policyVersion,
@@ -539,7 +539,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-844 — ELECT a configuration as the default for its `(tenant, taskKey)`.
+   * ELECT a configuration as the default for its `(tenant, taskKey)`.
    *
    * ## Why this is one call and not two
    *
@@ -596,8 +596,8 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       return { entity: saved, unseated };
     });
 
-    // §3A.8 — a routing change can redirect PHI to a different vendor, so
-    // HIPAA §164.312(b) audit controls apply. The event names how many rows
+    // a routing change can redirect PHI to a different vendor, so
+    // HIPAA audit controls apply. The event names how many rows
     // were unseated so the audit trail records the whole election, not just the
     // winner.
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -615,7 +615,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-844 — PROMOTE a configuration from one tenant to another.
+   * PROMOTE a configuration from one tenant to another.
    *
    * ## Secrets are never copied, and that is the whole design
    *
@@ -713,7 +713,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-844 — EXPORT selected configurations as a portable, secret-free JSON
+   * EXPORT selected configurations as a portable, secret-free JSON
    * artifact.
    *
    * The artifact is built by `toExportedConfiguration` and then re-checked by
@@ -762,7 +762,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-844 — IMPORT configurations from an artifact produced by
+   * IMPORT configurations from an artifact produced by
    * {@link exportConfigurations}.
    *
    * ## An import can never restore a credential
@@ -936,7 +936,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
       const resolved = await this.providerConnectionService.resolveConnection(service, refs.connectionProvider, tenantId);
       if (!resolved) return { candidate, funding: null };
       // 'tenant' = the tenant's own BYO row paid; 'system' = the platform
-      // default did. These are the §3A.4 wire labels for the same two facts.
+      // default did. These are the wire labels for the same two facts.
       return { candidate, funding: resolved.source === 'system' ? 'CLOUD' : 'BYOK' };
     } catch {
       return { candidate, funding: null };
@@ -1001,7 +1001,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * The three §3A.4 hard gates, applied to every hop against the primary and
+   * The three hard gates, applied to every hop against the primary and
    * bounded by `fallback.maxDepth`. A refused hop is recorded with its reason
    * and the walk CONTINUES — a later candidate may still be legal — but the
    * depth cap counts only ADMITTED hops, so a chain can never exceed it.
@@ -1034,7 +1034,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * §3A.4 — an explicitly named provider.
+   * an explicitly named provider.
    *
    * `STRICT` (the platform default) closes the chain outright: the named
    * provider serves or the request is refused with `provider_unavailable`.
@@ -1187,7 +1187,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
   }
 
   /**
-   * TASK-844 — a configuration must name something to route TO.
+   * a configuration must name something to route TO.
    *
    * `modelId` (the catalogue FK) or `modelRef` (a provider-side id for a model
    * the catalogue does not carry) satisfies it. A pre-844 body that supplies
@@ -1251,7 +1251,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
 
     const semanticKeys = [
       'candidates',
-      // TASK-844 binding fields are SEMANTIC: changing which model or which
+      // binding fields are SEMANTIC: changing which model or which
       // connection serves is precisely the kind of edit a served revision must
       // not absorb in place, because it redirects PHI to a different vendor
       // while keeping the revision id an auditor already signed off.
@@ -1277,7 +1277,7 @@ export class AiRoutingPolicyService extends BaseService implements IAiRoutingPol
     const semanticEdits = semanticKeys.filter((key) => dto[key] !== undefined);
 
     if (semanticEdits.length > 0 && existing.status !== AiRoutingPolicyStatus.DRAFT) {
-      // §3A.8 — a served revision is a rollback target and an audit "before".
+      // a served revision is a rollback target and an audit "before".
       // Rewriting it in place destroys both.
       throw new BadRequestException(
         `Routing policy '${existing.id}' is ${existing.status}; only \`killSwitch\` may change on a revision that is not a DRAFT. ` +

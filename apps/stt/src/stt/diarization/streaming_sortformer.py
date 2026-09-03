@@ -268,7 +268,7 @@ def load_default_backend(config: DiarizationConfig) -> SortformerBackend:
             f"loaded on this host ({type(exc).__name__}): it needs the ~471 MB .nemo "
             "weights staged + the NeMo/PyTorch GPU runtime. Diarization degrades to "
             "'no labels'. See "
-            "docs/implementation/TASK-475-Streaming-2Speaker-Diarization/README.md "
+            " "
             "for the model-staging ask."
         ) from exc
     return NemoSortformerBackend(model, config)

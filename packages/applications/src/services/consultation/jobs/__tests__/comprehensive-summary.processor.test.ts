@@ -1141,9 +1141,9 @@ describe('ComprehensiveSummaryProcessor', () => {
     });
   });
 
-  // ── TASK-704 — comprehensive-summary has no harness equivalent; the seam
+  // ── — comprehensive-summary has no harness equivalent; the seam
   // call is logging-only and never blocks/short-circuits generation ──
-  describe('TASK-704 NoteGenerationService seam', () => {
+  describe(' NoteGenerationService seam', () => {
     const buildProcessorWithSeam = (noteGenerationService: { generate: ReturnType<typeof vi.fn> } | undefined) => {
       const jobService = createMockJobService();
       const chainSummaryService = createMockChainSummaryService();
@@ -1204,7 +1204,7 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(result.contextItemId).toBe('ctx-comprehensive-1');
     });
 
-    it('falls back to legacy generation when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+    it('falls back to legacy generation when noteGenerationService is not wired (pre-fixtures)', async () => {
       const seamMocks = buildProcessorWithSeam(undefined);
       primeLegacyGeneration(seamMocks);
 

@@ -1,9 +1,9 @@
 /**
- * The golden suite (TASK-716 Task 6): table-driven over `__tests__/golden/<ruleId>/`. Each
- * rule in `DRAFT_SUMMARIZATION_RULE_SET` (and, since TASK-724 Task 3, `DRAFT_STT_RULE_SET`) gets
+ * The golden suite: table-driven over `__tests__/golden/<ruleId>/`. Each
+ * rule in `DRAFT_SUMMARIZATION_RULE_SET` (and, since, `DRAFT_STT_RULE_SET`) gets
  * a `pass.graph.json` (no finding for that ruleId) and a `fail.graph.json` (at least one finding
  * for that ruleId, right severity). This is the audit artifact turned into executable tests, per
- * design.md §Testing strategy — but see `rule-catalogue.ts`'s module docstring: the rule SETs
+ * strategy — but see `rule-catalogue.ts`'s module docstring: the rule SETs
  * themselves remain DRAFT/unreviewed. A passing golden suite proves the ENGINE evaluates these
  * rule instances correctly; it does not prove the rule instances are the clinically-correct ones.
  *

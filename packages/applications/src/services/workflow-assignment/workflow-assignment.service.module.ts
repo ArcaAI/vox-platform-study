@@ -5,11 +5,11 @@ import { IWorkflowAssignmentService } from './IWorkflowAssignmentService';
 import { WorkflowAssignmentService } from './workflow-assignment.service';
 
 /**
- * WorkflowAssignmentService DI module (TASK-733).
+ * WorkflowAssignmentService DI module.
  *
  * - CommonServiceModule -> `CORE_DATABASE_SERVICE` (the row edit + its WORM
  *   change row commit in one `baseClient.$transaction`).
- * - CoreDatabaseModule  -> `WorkflowAssignment*` + `WorkflowDefinition` +
+ * - CoreDatabaseModule -> `WorkflowAssignment*` + `WorkflowDefinition` +
  *   `Department` repositories.
  */
 @Module({

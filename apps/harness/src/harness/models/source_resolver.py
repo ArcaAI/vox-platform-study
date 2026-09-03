@@ -108,8 +108,8 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
     if not config.s3_endpoint or not config.s3_access_key or not config.s3_secret_key:
         # This message used to read "Set the *_MODEL_S3_ENDPOINT / _ACCESS_KEY /
         # _SECRET_KEY environment variables", which was two lies in one breath:
-        # TASK-799 removed the env-credential model platform-wide (`apps/stt`
-        # renamed its aliases to `..._ENV_REMOVED_TASK_799` so the old names can
+        # removed the env-credential model platform-wide (`apps/stt`
+        # renamed its aliases to `..._ENV_REMOVED` so the old names can
         # never bind again), and `HARNESS_MODEL_S3_*` never existed in this repo
         # at all. An S3 credential is `vault-kv`/`db-secret` behind an
         # `AiProviderConnection` — never `env` (rule 09 §Configuration Tiers).
@@ -124,7 +124,7 @@ def _make_s3_client(config: ModelSourceConfig) -> Any:
             "every model that has no owner of its own. (harness cannot READ that "
             "credential yet: it ships no `core/model_credentials.py` and builds "
             "ModelSourceConfig with the cache dir alone, so an s3:// source "
-            "cannot resolve from harness today — see the TASK-855 L6 follow-on.)"
+            "cannot resolve from harness today — see the  L6 follow-on.)"
         )
 
     # boto3 is already a harness dependency (claim-check) and is imported
@@ -283,7 +283,7 @@ async def _resolve_hf(
     # IS the "pre-populate the hub cache" path the error below recommends —
     # raising before the call made that advice impossible to follow, and turned
     # every AiModel-driven load into a hard failure on a pod whose weights are
-    # mounted read-only from the model bucket (TASK-855 L1). The offline case is
+    # mounted read-only from the model bucket. The offline case is
     # still reported distinctly, but only once a cache MISS has actually
     # happened; `offline` is captured here because the message depends on it.
     offline = os.environ.get("HF_HUB_OFFLINE", "").strip().lower() in {"1", "true", "yes"}

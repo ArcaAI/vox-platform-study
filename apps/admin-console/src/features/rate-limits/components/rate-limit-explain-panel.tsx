@@ -13,7 +13,7 @@ import { useExplainRateLimit, useRouteCatalog } from '../api/hooks';
 import { RATE_LIMIT_LEVEL_LABELS } from '../api/types';
 
 /**
- * Explain tab (TASK-785 AC-8).
+ * Explain tab.
  *
  * With five levels and two match kinds, "why is this tenant getting 429s?" is
  * not answerable by reading the rules list — the winner depends on the tenant,

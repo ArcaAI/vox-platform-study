@@ -246,7 +246,7 @@ test.describe('Consultation-loop SSE, delivery', () => {
       data: {
         tenantId: '50000000-0000-0000-0000-000000000000',
         kind: 'action.started',
-        label: 'TASK-675 live relay probe',
+        label: ' live relay probe',
         data: { marker },
       },
     });
@@ -256,7 +256,7 @@ test.describe('Consultation-loop SSE, delivery', () => {
     const { matched } = await streamed;
     expect(matched, 'the published loop event never arrived on the SSE stream').not.toBeNull();
     expect(matched!.consultationId).toBe(GLOBAL_CONSULTATION_ID);
-    expect(matched!.label).toBe('TASK-675 live relay probe');
+    expect(matched!.label).toBe('live relay probe');
   });
 
   test('an idle stream still emits a heartbeat', async ({ request: _request }) => {

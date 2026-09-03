@@ -1,4 +1,4 @@
-// Harness clinical-assurance gate thresholds — the PLATFORM defaults (TASK-799 A.2).
+// Harness clinical-assurance gate thresholds — the PLATFORM defaults.
 //
 // These seven values decide whether a generated clinical note PASSES its assurance gate,
 // is sent back for regeneration, or is escalated to a clinician. Before this they were
@@ -14,7 +14,7 @@
 // exactly what the PULL route carries: platform scope, one cached snapshot per service
 // process, TTL plus push invalidation. So the effective precedence in harness is
 //
-//     tenant policy (PUSH)  ->  these keys (PULL)  ->  the service's env bootstrap
+//     tenant policy (PUSH) -> these keys (PULL) -> the service's env bootstrap
 //
 // and registering them takes nothing away from a tenant: a policy value still wins
 // outright and never reaches the resolver these feed.
@@ -27,13 +27,13 @@
 // (`SensorThresholds`, verified 2026-08-23), so registering them changes ZERO runtime
 // behaviour: a read that misses the DB resolves to exactly the value in force today.
 //
-//   entityFaithfulness  1.0   zero-tolerance: any note entity ungrounded in the transcript fails
-//   coverage            0.8   >= 80% of transcript entities reflected in the note
-//   citationPresence    1.0   every provenance claim carries >= 1 evidence span
-//   numericDose         1.0   zero-tolerance: every numeric/dose value matches the transcript
-//   groundedness        0.8   >= 80% of claims entailed per the judge (graded, not exact-match)
-//   citationVerify      0.8   >= 80% of CITED claims entailed by their cited chunk(s)
-//   atomicFact          0.8   >= 80% of atomic claims entailed per the deterministic NLI
+//   entityFaithfulness 1.0 zero-tolerance: any note entity ungrounded in the transcript fails
+//   coverage 0.8 >= 80% of transcript entities reflected in the note
+//   citationPresence 1.0 every provenance claim carries >= 1 evidence span
+//   numericDose 1.0 zero-tolerance: every numeric/dose value matches the transcript
+//   groundedness 0.8 >= 80% of claims entailed per the judge (graded, not exact-match)
+//   citationVerify 0.8 >= 80% of CITED claims entailed by their cited chunk(s)
+//   atomicFact 0.8 >= 80% of atomic claims entailed per the deterministic NLI
 
 import { SettingDescriptor } from '../registry.types';
 

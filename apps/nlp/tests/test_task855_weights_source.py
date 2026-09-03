@@ -1,4 +1,4 @@
-"""`nlp.dependencies._weights_source` s3:// / file:// wiring (TASK-855 L6 +
+"""`nlp.dependencies._weights_source` s3:// / file:// wiring ( +
 follow-on).
 
 Two things pinned here that the resolver's own conformance suite
@@ -79,7 +79,7 @@ async def test_file_uri_never_touches_the_credentialed_config_builder(monkeypatc
 
 
 async def test_hf_bare_id_never_touches_the_resolver_at_all(monkeypatch) -> None:
-    """Unchanged pre-TASK-855 behaviour: a hub id passes straight through."""
+    """Unchanged earlier behaviour: a hub id passes straight through."""
 
     def _explode(settings):  # pragma: no cover
         raise AssertionError("a bare hub id must never invoke the resolver")

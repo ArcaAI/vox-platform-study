@@ -126,7 +126,7 @@ class RetrievalConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
-    # ── Why the ENDPOINTS below are still env, and stay env (TASK-799 A.2) ─────────
+    # ── Why the ENDPOINTS below are still env, and stay env ─────────
     #
     # A.2 recorded that there was NO delivery path for an `AiProviderConnection` row
     # into this process, on three grounds: harness holds no DB handle (so
@@ -134,8 +134,8 @@ class RetrievalConfig(BaseSettings):
     # ACTIVITY with no gateway request to inject into; and `EffectiveConfigResponse`
     # carries `settings` + `modelWeights` only, with no `connections` block.
     #
-    # THE THIRD GROUND STILL HOLDS AND THE FIRST TWO ARE NOW ROUTED AROUND
-    # (TASK-799 lane B). The worker asks the gateway for ONE credential from inside
+    # THE THIRD GROUND STILL HOLDS AND THE FIRST TWO ARE NOW ROUTED AROUND.
+    # The worker asks the gateway for ONE credential from inside
     # the activity that uses it — `GET /internal/harness/provider-credential`,
     # generalising the shipped `mcp-token` precedent — so a `vector:qdrant` row DOES
     # reach this process now. See `harness/core/provider_credentials.py` for why that
@@ -146,7 +146,7 @@ class RetrievalConfig(BaseSettings):
     #
     #   * `qdrant_api_key` (below) is now BYO-only — its env path is CLOSED, and the
     #     value arrives from the connection row, tenant → SYSTEM.
-    #   * The ENDPOINTS stay env. Rule 09 §Configuration Tiers puts a transport
+    # * The ENDPOINTS stay env. Rule 09 Tiers puts a transport
     #     address in the `env` tier by name, and rule 06 calls a `*_URL` default "the
     #     ONE sanctioned kind of hardcoded default" (see `guardrail_base_url` below).
     #     These are one platform Qdrant and one platform TEI reranker; where a TENANT
@@ -167,7 +167,7 @@ class RetrievalConfig(BaseSettings):
     # object is logged at startup. Default None, not "" — an empty string is
     # itself a credential to Qdrant, so absent must mean absent.
     #
-    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # ── BYO-only credential ─────────────────────────────
     # The key moved onto `AiProviderConnection(service='vector',
     # provider='qdrant')` — Qdrant Cloud is a real per-tenant subscription, so
     # `vector:qdrant` is listed in `CLOUD_BYO_PROVIDERS` and a tenant may point
@@ -186,7 +186,7 @@ class RetrievalConfig(BaseSettings):
     # absent must mean absent (the `KnowledgeQdrantStore` unauthenticated path).
     qdrant_api_key: SecretStr | None = Field(
         default=None,
-        validation_alias="HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED_TASK_799",
+        validation_alias="HARNESS_RETRIEVAL_QDRANT_API_KEY__ENV_REMOVED",
     )
     collection: str = "knowledge_chunks"
     # LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings
@@ -308,7 +308,7 @@ class ClaimCheckConfig(BaseSettings):
     # `test_task799_claim_check_config.py` keeps it gone.
     #
     # `bucket` / `endpoint_url` / `region` / `secure` above are the storage LOCATION and
-    # are now BOOTSTRAP FLOOR ONLY (TASK-799 A.2). The admin-managed source of truth is
+    # are now BOOTSTRAP FLOOR ONLY. The admin-managed source of truth is
     # the `storage.platformDefault.*` cascade (the SYSTEM `TenantStorageConfig` row) —
     # the claim-check store IS platform object storage, so it must not be described a
     # second time here (D-2). `temporal/claim_check.py:resolve_claim_check_location`
@@ -445,7 +445,7 @@ class Settings(BaseSettings):
 
     # Redis — ONE job: the `arca:config:invalidate` subscriber that makes a
     # control-plane write reach this process without waiting out the 60s TTL
-    # (TASK-799 A.3 / owner decision D-5). harness stores nothing in Redis and queues
+    # ( A.3 / owner decision D-5). harness stores nothing in Redis and queues
     # nothing through it; its durable state is Temporal's.
     #
     # ENV-TIER and staying that way: this is how the process REACHES Redis, which is
@@ -472,10 +472,10 @@ class Settings(BaseSettings):
     # INTERNAL_ACCESS_TOKEN; before D-D this hop wrongly presented HARNESS_SERVICE_TOKEN,
     # which apps/guardrail never accepts.
     guardrail_service_token: SecretStr = SecretStr("")
-    # Peer service — the summarization palette's `guardrail.check` node (TASK-720) calls
+    # Peer service — the summarization palette's `guardrail.check` node calls
     # apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap-
     # floor pattern (rule 09 §Configuration Tiers: a `*_URL` transport address is the ONE
-    # sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call (TASK-737).
+    # sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call.
     guardrail_base_url: str = "http://localhost:8863"
     # apps/api internal-harness mount. ``HarnessInternalController`` sits
     # under the global ``/api/v1`` prefix (``@Controller('internal/harness')``), so
@@ -483,7 +483,7 @@ class Settings(BaseSettings):
     # ``HARNESS_API_INTERNAL_PREFIX`` if the gateway prefix ever changes.
     api_internal_prefix: str = "/api/v1/internal/harness"
 
-    # TASK-712 (consent-abac Phase 4) — gateway-internal consent-assert mount.
+    # Gateway-internal consent-assert mount.
     # A SIBLING of api_internal_prefix (``ConsentInternalController`` is
     # `@Controller('internal/consent')`, not nested under `internal/harness`),
     # so it gets its own prefix rather than reusing the harness one.
@@ -503,7 +503,7 @@ class Settings(BaseSettings):
 
     # Optimistic two-phase delivery kill-switch. The FIRST
     # key of the two-key optimistic gate; the second is the durable
-    # ``workflow.patched("task-355-optimistic-delivery")`` marker (permanent in code).
+    # ``workflow.patched`` marker (permanent in code).
     # Read here, in NON-workflow settings, and snapshotted into ``HarnessGateConfig``
     # at workflow start (document:start + the policy merge), so it stays deterministic
     # across replay — never read from env inside the workflow body. Default OFF ⇒ the
@@ -704,7 +704,7 @@ class Settings(BaseSettings):
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
     # Fail-closed PHI redaction. There is deliberately NO `safety` sub-config: the
     # content-safety screen is DELEGATED to `apps/guardrail` over `guardrail_base_url`
-    # (TASK-799 A.1 / F-02), so harness holds no guardian provider, endpoint, model id
+    # ( A.1 / F-02), so harness holds no guardian provider, endpoint, model id
     # or harm-criteria taxonomy of its own. Do not reintroduce one — rule 06,
     # "Do not grow a second inference stack".
     phi: PhiConfig = Field(default_factory=PhiConfig)

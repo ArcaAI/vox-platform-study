@@ -1,7 +1,7 @@
 {
   "name": "@arcaai/async-contract",
   "version": "0.1.0",
-  "description": "TASK-717: the normative async task/event envelope (identity, tenancy, type, payload-or-claim-check, correlation, causation, idempotency key, schema version), the idempotency-key and resume-token conventions, and a reusable conformance suite. Zero runtime dependencies.",
+  "description": "the normative async task/event envelope (identity, tenancy, type, payload-or-claim-check, correlation, causation, idempotency key, schema version), the idempotency-key and resume-token conventions, and a reusable conformance suite. Zero runtime dependencies.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

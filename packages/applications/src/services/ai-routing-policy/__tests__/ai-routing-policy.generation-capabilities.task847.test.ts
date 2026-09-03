@@ -1,5 +1,5 @@
 /**
- * TASK-847 finding F-32 — `resolveGenerationCapabilities`, against mocked REPOSITORIES.
+ * finding F-32 — `resolveGenerationCapabilities`, against mocked REPOSITORIES.
  *
  * The workflow-definition suite mocks this service at the seam; this file exercises the thing
  * that seam stands for. What is pinned here:

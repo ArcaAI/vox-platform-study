@@ -9,7 +9,7 @@ import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 /**
- * TASK-811 (OD-7) — per-section rows of a live-generated clinical document.
+ *  — per-section rows of a live-generated clinical document.
  *
  * POSTURE, deliberately mirroring `TranscriptSegmentRepository`:
  * `DocumentSection` is TENANT-SCOPED per-consultation annotation and is EXEMPT
@@ -98,7 +98,7 @@ export class DocumentSectionRepository extends Repository<DocumentSectionEntity,
    *    be recorded. Returning early here would leave the OLD ciphertext on a row
    *    whose `state`, `revision` and `_version` have already advanced past it —
    *    the clinician gets `200` and their deleted text reappears on reload
-   *    (TASK-820). So the columns are cleared, as a matching pair: a null body
+   * So the columns are cleared, as a matching pair: a null body
    *    with a stale key version is incoherent, and `decryptCiphertextToString`
    *    reads nothing from an empty ciphertext anyway.
    *
@@ -113,7 +113,7 @@ export class DocumentSectionRepository extends Repository<DocumentSectionEntity,
    * Fixing it in `DocumentSectionStore` would close one lane and leave the other
    * open. It does NOT touch who is ALLOWED to delete: `deletion-without-
    * contradiction` still guards the machine writer, upstream and unchanged.
-   */
+ */
   async encryptContentIntoEntity(entity: DocumentSectionEntity, secrets: SecretsServiceLike): Promise<void> {
     const result = await encryptStringToCiphertext(secrets, entity.content);
     if (result) {

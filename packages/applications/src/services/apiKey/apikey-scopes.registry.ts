@@ -13,7 +13,7 @@ export interface ScopeDefinition {
   description: string;
   category: string;
   /**
-   * TASK-756 — the privilege CEILING on minting: the CASL ability a holder of
+   * the privilege CEILING on minting: the CASL ability a holder of
    * this scope may exercise. `ApiKeyService.assertScopeCeiling` refuses to mint
    * (or widen) a key carrying a scope whose implications the CALLER does not
    * itself hold, so a credential can never out-rank the human who created it.
@@ -44,7 +44,7 @@ export interface ScopeDefinition {
   implies: ImpliedPermission[];
 
   /**
-   * TASK-757 (policy A2) — this scope may no longer be GRANTED, but is still a
+   * (policy A2) — this scope may no longer be GRANTED, but is still a
    * KNOWN string.
    *
    * `/api/v1/admin/*` is a JWT-only plane: all 65 admin controllers carry
@@ -57,7 +57,7 @@ export interface ScopeDefinition {
    *   1. `isValidScope` is what makes a STORED scope array readable. Deleting
    *      the strings would make every pre-existing key carrying one fail
    *      validation on an unrelated `PATCH`.
-   *   2. They are the vocabulary TASK-762's service-account plane reuses.
+   * 2. They are the vocabulary service-account plane reuses.
    *
    * What `reserved` changes: the scope is refused at GRANT time
    * (`NoReservedScopesConstraint` on the create DTO; the widening-delta check
@@ -90,7 +90,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   },
   'stt:model:read': { description: 'View available STT models', category: 'STT', implies: [{ action: 'read', subject: 'Consultation' }] },
 
-  // TTS Service (TASK-742). The `/speech/*` proxy was one of the surfaces the
+  // TTS Service. The `/speech/*` proxy was one of the surfaces the
   // gateway conformance review named as reachable with NO authorization check
   // at all, because the API-key path permitted any route declaring no scopes.
   // Follows the same `<area>:<resource>:<action>` grammar as the `stt:*` family
@@ -126,7 +126,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'user:profile:read': { description: 'Read own user profile', category: 'User', implies: [{ action: 'read', subject: 'UserProfile' }] },
   'user:preferences:read': { description: 'Read own preferences', category: 'User', implies: [{ action: 'read', subject: 'UserSettings' }] },
   'user:preferences:write': { description: 'Update own preferences', category: 'User', implies: [{ action: 'update', subject: 'UserSettings' }] },
-  // TASK-758 — the raw key/value sibling of `user:preferences:*`
+  // the raw key/value sibling of `user:preferences:*`
   // (`/user/me/settings`, which the typed preferences surface is an
   // aggregation over). Split read/write rather than following
   // `UserPreferencesController`'s single write scope, so a read-only
@@ -135,10 +135,10 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'user:settings:read': { description: 'Read own raw settings', category: 'User', implies: [{ action: 'read', subject: 'UserSettings' }] },
   'user:settings:write': { description: 'Update own raw settings', category: 'User', implies: [{ action: 'update', subject: 'UserSettings' }] },
 
-  // Business plane (TASK-758 — policy A1: a non-`admin` route is JWT + API
+  // Business plane — policy A1: a non-`admin` route is JWT + API
   // key, so an integrator holding a scoped tenant key can drive the platform's
   // business capabilities without a human session). These 9 scopes replace the
-  // conservative `@ForbidApiKey()` default TASK-742 applied to 13 controllers
+  // conservative `@ForbidApiKey()` default applied to 13 controllers
   // that had DECLARED NOTHING — the classification those `API-KEY-NOTE` blocks
   // explicitly deferred to an owner ruling, not a reversal of one.
   //
@@ -201,7 +201,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     category: 'Tenant',
     implies: [{ action: 'read', subject: 'ConsultationContextSchema' }],
   },
-  // TASK-810 — the sibling discovery scope: context-schema answers "what may I
+  // the sibling discovery scope: context-schema answers "what may I
   // submit", this answers "what document will come back". A client that renders
   // a generated note needs its section list before the first token arrives, and
   // hardcoding them client-side is the mistake this ticket removed server-side.
@@ -219,7 +219,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:user:read': {
     description: 'Read user information',
     category: 'Admin',
-    // TASK-773 / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
+    // / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
     // minted so a read-only machine grant can clear the admin routes' CASL gate
     // WITHOUT widening a subject humans already hold. Route decorators are
     // shared by every principal class, so accepting `read:User` on those
@@ -241,7 +241,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:tenant:read': {
     description: 'Read tenant configuration',
     category: 'Admin',
-    // TASK-773 / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
+    // / O-4 — `read:Admin<X>Directory` is an ADMIN-PLANE-ONLY subject,
     // minted so a read-only machine grant can clear the admin routes' CASL gate
     // WITHOUT widening a subject humans already hold. Route decorators are
     // shared by every principal class, so accepting `read:Tenant` on those
@@ -276,7 +276,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'webhook:event:read': {
     description: 'Read webhook events',
     category: 'Webhook',
-    // TASK-773 / O-2 — `read:WebhookRunHistory` belongs here. The scope is named
+    // / O-2 — `read:WebhookRunHistory` belongs here. The scope is named
     // "read webhook EVENTS" and the delivery log IS the event record
     // (`GET admin/webhooks/:id/deliveries`, `@Authorize(['read','WebhookRunHistory'])`),
     // so a holder that could read the subscription but not its deliveries was
@@ -324,13 +324,13 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   },
 
   // Admin (platform/tenant-admin surface, `/admin/*`). One scope per admin
-  // controller area — TASK-708 Task 4 gap closure. Coarse-grained by design
+  // controller area — gap closure. Coarse-grained by design
   // (one scope per controller, not per read/write method) so the sweep is
   // mechanically verifiable across every `/admin/*` controller in one pass
   // without risking a missed-method gap; `admin:tenant:*`, `admin:user:*`,
   // `admin:apikey:*`, `admin:audit:read`, `admin:role:*` above predate this
   // pass and are reused where a controller's whole surface maps cleanly onto
-  // one of them. See the ticket README's Task 3/4 tables for the full
+  // one of them. See Task 3/4 tables for the full
   // controller → scope mapping and the sensitivity notes per area.
   'admin:rate-limit:manage': {
     description: 'Manage platform rate-limit configuration',
@@ -347,7 +347,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:agent-promotion:manage': {
     description: 'Manage cross-tenant workflow promotions',
     category: 'Admin',
-    // TASK-815 repointed this implication with the promotable itself: promotion
+    // repointed this implication with the promotable itself: promotion
     // moved from a `DepartmentAgentVersion` to a `WorkflowDefinition` version,
     // and `AgentPromotionService.assertManagesBothTenants` now asks for
     // `manage:WorkflowDefinition` in both tenants. A scope that still implied
@@ -418,7 +418,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'ConsultationContextSchema' }],
     reserved: true,
   },
-  // TASK-810 — the clinical-document SHAPE catalog. RESERVED like every other
+  // the clinical-document SHAPE catalog. RESERVED like every other
   // `admin:*` scope (an API key can never reach an admin route — policy A2),
   // but the vocabulary still has to exist here: `SERVICE_ACCOUNT_SCOPE_REGISTRY`
   // DERIVES `svc:admin:document-template:manage` from this row rather than
@@ -628,12 +628,12 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     reserved: true,
   },
 
-  // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
+  // Workflow exposure plane. Prefix-matching (apikey.service.ts's
   // hasScope) means a key holding the bare `"workflow"` scope would grant all
   // three below — that is the existing prefix semantics, not new behavior.
   // NOTE: these scopes exist so `@RequiredScopes(...)` can be declared once
   // the gateway controller lands; the surface itself ships OFF (kill-switch)
-  // per TASK-722 R-1 until TASK-708's scope-narrowing exit criterion is met.
+  // per until scope-narrowing exit criterion is met.
   'workflow:definition:read': {
     description: 'List published workflows and their input schemas',
     category: 'Workflow',
@@ -653,7 +653,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'read', subject: 'WorkflowRun' }],
   },
 
-  // TASK-850 lane A — the CONSULTATION-BOUND invocation plane
+  // lane A — the CONSULTATION-BOUND invocation plane
   // (`POST /consultations/:consultationId/workflows/:slug/runs`).
   //
   // Deliberately `workflows:` (plural) and NOT under the `workflow:` prefix the three scopes
@@ -697,7 +697,7 @@ export function isValidScope(scope: string): boolean {
 }
 
 /**
- * TASK-757 (policy A2) — is this scope RESERVED, i.e. known but no longer
+ * (policy A2) — is this scope RESERVED, i.e. known but no longer
  * grantable?
  *
  * Deliberately NOT folded into `isValidScope`: the two answer different
@@ -715,14 +715,14 @@ export function isReservedScope(scope: string): boolean {
 }
 
 /**
- * TASK-756 — resolve the full set of CASL permissions a scope implies.
+ * resolve the full set of CASL permissions a scope implies.
  *
  * Wildcards resolve by EXPANSION, not by a literal permission of their own,
  * because that is exactly what they buy at request time (`ApiKeyService.hasScope`:
  * `'*'` grants everything, `'<ns>:*'` grants the whole namespace):
  *
  * - `'<ns>:*'` → the union across every registry key starting `'<ns>:'`
- * - `'*'`      → the union across the whole registry (so only `manage:all`
+ * - `'*'` → the union across the whole registry (so only `manage:all`
  *                satisfies it)
  *
  * Enumeration is by KEY, never by position: `'admin:*'` does not sit inside the
@@ -765,7 +765,7 @@ export function resolveImpliedPermissions(scope: string): ImpliedPermission[] {
 }
 
 /**
- * The GRANTABLE catalog. Reserved scopes (TASK-757) are omitted: the platform
+ * The GRANTABLE catalog. Reserved scopes are omitted: the platform
  * will always refuse to mint a key carrying one, so advertising them would
  * offer access that can never be issued.
  */

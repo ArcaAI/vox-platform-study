@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { API_TAGS, API_TAGS_BY_NAME, planeForTag } from '../tags';
 
 /**
- * TASK-783 — the tag taxonomy is a CLOSED SET.
+ * the tag taxonomy is a CLOSED SET.
  *
  * Tags are the only grouping an OpenAPI renderer has, so an undeclared tag is
  * a section of the developer reference that nobody wrote a description for. It

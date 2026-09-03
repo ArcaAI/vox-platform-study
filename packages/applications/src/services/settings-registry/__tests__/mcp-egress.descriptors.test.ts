@@ -1,4 +1,4 @@
-// TASK-846 D-3 — the egress allow-list's CONFIG-TIER contract.
+// the egress allow-list's CONFIG-TIER contract.
 //
 // The tier here is not a detail; it is most of the control. This key decides which hosts
 // a tenant-authored connector may reach, so the two properties that must never regress

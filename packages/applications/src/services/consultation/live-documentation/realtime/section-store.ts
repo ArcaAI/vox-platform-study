@@ -1,5 +1,5 @@
 /**
- * TASK-811 (OD-7) — per-section writes, with the state machine and the OCC that
+ *  — per-section writes, with the state machine and the OCC that
  * make them safe while a clinician is editing.
  *
  * ## The rule this file enforces
@@ -39,7 +39,7 @@ export interface SectionSecretsLike {
 }
 
 /**
- * A deletion reason. §2d: "a later flush removing content must point at a
+ * A deletion reason.: "a later flush removing content must point at a
  * transcript contradiction, otherwise the patch is refused."
  *
  * A model silently emptying a section it filled two turns ago is
@@ -270,7 +270,7 @@ export class DocumentSectionStore {
     }
   }
 
-  /** The `section.patch` event for one section — the SSE wire shape (§2b). */
+  /** The `section.patch` event for one section — the SSE wire shape */
   toPatch(section: DocumentSectionEntity, consultationId: string): SectionPatchDto {
     return {
       event: 'section.patch',
@@ -310,7 +310,7 @@ export class DocumentSectionStore {
   /**
    * Encrypt the transient plaintext into `encryptedContent` before persistence.
    *
-   * TASK-819 — THIS MUST NOT CATCH. `content` has no column: `encryptedContent`
+   * THIS MUST NOT CATCH. `content` has no column: `encryptedContent`
    * is the only persisted form of the body, while `revision`, `state`,
    * `confirmedAt`/`confirmedBy` and `_version` are real columns that both
    * `applyMachineContent` and `applyClinicianContent` have ALREADY moved by the

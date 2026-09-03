@@ -1,9 +1,9 @@
 /**
- * Workflow Runs client (TASK-723, Phase C). Gateway-relative paths under the
+ * Workflow Runs client. Gateway-relative paths under the
  * /api/hope BFF proxy. `admin/workflow-runs` is the tenant-scoped
  * DEFINITION-scoped runs plane (distinct from `/admin/agent-trajectory`, the
  * tier 10-19 cross-tenant platform-ops plane `ai-operations-runs` already
- * covers — README §2.4, cross-linked not forked).
+ * covers —, cross-linked not forked).
  */
 
 import { getJson, postJson } from '@/shared/api';
@@ -35,7 +35,7 @@ export function getRunTrace(runId: string): Promise<RunTrace> {
 /**
  * The pinned, immutable `WorkflowDefinition` version a run executed against
  * (Task 8's read-only deep link). `admin/workflow-definitions/:id` is
- * TASK-734's definition CRUD surface — read-only here, only the fields
+ * definition CRUD surface — read-only here, only the fields
  * `WorkflowDefinitionSlice` declares are consumed.
  */
 export function getWorkflowDefinitionVersion(workflowVersionId: string): Promise<WorkflowDefinitionSlice> {
@@ -57,7 +57,7 @@ export function approveRunGate(runId: string, body: ApproveRunGateBody): Promise
 }
 
 /**
- * The run-event SSE endpoint (TASK-849 lane A/C). Lives on a DIFFERENT controller
+ * The run-event SSE endpoint. Lives on a DIFFERENT controller
  * (`WorkflowsController`, `@Controller('workflows')`) than the rest of this client —
  * the tenant-scoped runs/observability plane above reads the trajectory-backed trace,
  * this one is the interpreter's own snapshot-then-delta push. `slug` (not just `runId`)

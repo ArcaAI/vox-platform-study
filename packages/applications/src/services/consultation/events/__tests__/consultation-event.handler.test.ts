@@ -4,7 +4,7 @@
  * Tests the auto-pipeline event handler that drives:
  *   TranscriptionCreated → seam (harness | visible failure) → SummaryGenerated → auto-NER skip (unconditional) → NerExtracted → PipelineCompleted
  *
- * TASK-732 — the legacy `SUMMARY_REGENERATE`/NER BullMQ dispatch
+ * the legacy `SUMMARY_REGENERATE`/NER BullMQ dispatch
  * (`createSummaryJob`/`createNerJob`, and the doctor-preferred-prompt
  * threading that fed it) was deleted along with `summary.processor.ts` /
  * `ner.processor.ts`. `IConsultationJobService` is no longer a constructor
@@ -55,8 +55,8 @@ const createMockEventEmitter = () => ({
   emit: vi.fn(),
 });
 
-// TASK-704 — the single seam the handler routes note-generation decisions
-// through. `generate` defaults to the harness decision (the post-TASK-732
+// the single seam the handler routes note-generation decisions
+// through. `generate` defaults to the harness decision (the post-
 // steady state — harnessEnabled is true for every migrated tenant) so the
 // base suite is a no-op unless a test overrides it. `resolveConfig`'s default
 // implementation mirrors the REAL NoteGenerationService.resolveConfig's
@@ -325,7 +325,7 @@ describe('ConsultationEventHandler', () => {
       );
     });
 
-    // TASK-732 regression lock — the auto-NER skip was PREVIOUSLY conditional
+    // regression lock — the auto-NER skip was PREVIOUSLY conditional
     // on harnessEnabled (skip only when true; dispatch legacy `createNerJob`
     // when false). The legacy NER generator no longer exists, so this must
     // now be unconditional regardless of harnessEnabled.
@@ -392,7 +392,7 @@ describe('ConsultationEventHandler', () => {
     });
   });
 
-  // resolvePipelineConfig was MOVED (verbatim, TASK-704) to
+  // resolvePipelineConfig was MOVED (verbatim) to
   // `NoteGenerationService.resolveConfig` — its behavior is covered by
   // `note-generation/__tests__/note-generation.service.test.ts`'s
   // `resolveConfig` describe block; it no longer exists on this handler.
@@ -614,7 +614,7 @@ describe('ConsultationEventHandler', () => {
   });
 
   // =========================================================================
-  // (Lane G / TASK-704, hardened by TASK-732) — harness flag routing
+  // (Lane G /, hardened by) — harness flag routing
   //
   // The handler no longer reads harnessEnabled itself — it delegates the
   // decision (and, on 'harness', the harness-start side effect) to
@@ -623,12 +623,12 @@ describe('ConsultationEventHandler', () => {
   // cascade/harnessEnabled resolution logic itself is unit-tested in
   // `note-generation/__tests__/note-generation.service.test.ts`.
   //
-  // TASK-732 — a 'legacy' decision no longer has anywhere to dispatch to
+  // a 'legacy' decision no longer has anywhere to dispatch to
   // (the legacy `SUMMARY_REGENERATE` generator was deleted). It is now a
   // VISIBLE queued failure (PipelineStepFailed), never a silent fallback.
   // =========================================================================
 
-  describe('harness flag routing (Lane G / TASK-704 / TASK-732)', () => {
+  describe('harness flag routing (Lane G)', () => {
     const withHarnessConfig = (harnessEnabled: boolean) => {
       mockNoteGenerationService.resolveConfig.mockResolvedValue({ ...DEFAULT_PIPELINE_CONFIG, autoSummaryEnabled: true, harnessEnabled });
       mockNoteGenerationService.generate.mockResolvedValue(
@@ -795,7 +795,7 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
       mockSecretsService as any,
     );
 
-    // TASK-704 — the consultation metadata sets harnessEnabled=true (above),
+    // the consultation metadata sets harnessEnabled=true (above),
     // but the DECISION now comes from the (independently mocked) seam, not
     // from that metadata directly. Drive it explicitly so this block still
     // exercises the harness branch — the seam's OWN derivation from
@@ -828,7 +828,7 @@ describe('ConsultationEventHandler — DNA redaction wiring', () => {
     expect(params.redactionRules ?? []).toEqual([]);
   });
 
-  // TASK-815: the handler used to resolve the department's default
+  // the handler used to resolve the department's default
   // `DepartmentAgent` and pass `departmentAgentDnaDisabled` as a THIRD gate that
   // could force redaction OFF. Both the lookup and the flag are gone; what the
   // handler passes is exactly the subject of the two surviving gates.

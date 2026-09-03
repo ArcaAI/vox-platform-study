@@ -1,5 +1,5 @@
 /**
- * Settings registry screen + editor (TASK-799 Phase 4, E.1).
+ * Settings registry screen + editor.
  *
  * `GET admin/settings/catalog` and `PUT admin/settings/registry/:key` have been
  * fully functional with exactly ONE console consumer, so 210 descriptors had an

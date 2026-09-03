@@ -1,7 +1,7 @@
 """N-9 ``consultation.sensors`` and N-10 ``consultation.inferentialSensors`` — the verifier
 stage.
 
-Compile targets per ``contracts/palette-contract.md`` §1 rows 8a/8b: ``run_sensors`` (the
+Compile targets per contracts/palette-contract.md rows 8a/8b: run_sensors (the
 computational pass) and ``run_inferential_sensors`` (the LLM-as-judge pass).
 
 Both are non-critical by CR-14 — "a failing sensor ... must not fail the whole run". They
@@ -68,7 +68,7 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
             status="DEGRADED", reason="no draft note bound from an upstream node to verify"
         )
 
-    # TASK-816 Phase 2 — the tenant's clinical gates, which this lane used to DROP.
+    # the tenant's clinical gates, which this lane used to DROP.
     #
     # `HarnessPolicy`'s five threshold columns are the tenant tier of a gate whose platform tier
     # is the settings registry (`harness.sensor.*`, resolved by `resolve_sensor_thresholds`).
@@ -113,7 +113,7 @@ async def interpreter_consultation_sensors(payload: NodeActivityInput) -> NodeAc
     await record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(
         status="SUCCEEDED",
-        # TASK-809 OD-15 — the assurance record travels as ONE object on the `verdict` socket.
+        # the assurance record travels as ONE object on the `verdict` socket.
         #
         # Not cosmetic. Under strict per-key binding a socket carries exactly one output key, so a
         # flat `{scores, citationsMap, verdicts}` would have handed `persistDraft` whichever single
@@ -193,7 +193,7 @@ async def interpreter_consultation_inferential_sensors(
         )
         return NodeActivityResult(status="DEGRADED", reason=f"inferential pass failed: {exc}")
 
-    # TASK-809 OD-15 — one `verdict` object on the socket, `text` passing through at the top
+    # one `verdict` object on the socket, `text` passing through at the top
     # level. See `interpreter_consultation_sensors` above for why a flat shape loses data.
     output: dict[str, Any] = {
         "text": note_text,

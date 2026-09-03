@@ -7,7 +7,7 @@ import { ApiHealthController } from './health.controller';
 @Module({
   imports: [HealthCheckServiceModule, HttpModule],
   // Two controllers, one module: the public k8s probes (`health`) and the
-  // admin-plane downstream probes (`admin/health/services`) split by TASK-759
+  // admin-plane downstream probes (`admin/health/services`) split by
   // but still share this module's `HttpModule` + config wiring.
   controllers: [ApiHealthController, AdminHealthServicesController],
   // `BuildInfoService` is a plain class (no `@Injectable()` — its constructor

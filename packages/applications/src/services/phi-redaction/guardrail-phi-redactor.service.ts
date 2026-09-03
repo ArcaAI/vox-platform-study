@@ -30,7 +30,7 @@ const DEFAULT_REDACT_TIMEOUT_MS = 120_000;
 
 /**
  * `IPhiRedactor` implementation backed by the guardrail service's
- * `POST /api/guardrail/redact` (TASK-710). A pure HTTP client — structurally
+ * `POST /api/guardrail/redact`. A pure HTTP client — structurally
  * identical to `GuardrailGroundednessTool` (`live-tool-registry.ts`), which is
  * the exemplar this follows for URL/token resolution.
  *
@@ -56,7 +56,7 @@ export class GuardrailPhiRedactor implements IPhiRedactor {
     // Optional + trailing so existing positional fixtures keep their arity.
     // Absent ⇒ the code default below applies.
     @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
-    // TASK-737 — the tenant for the outbound `X-Tenant-Id`. `IPhiRedactor.redact`
+    // the tenant for the outbound `X-Tenant-Id`. `IPhiRedactor.redact`
     // deliberately keeps its `(text, mode)` signature: this port has callers in
     // three unrelated features (sync NER, DNA reports, exemplar mining), and
     // widening the interface would ripple through all of them for a value every
@@ -72,7 +72,7 @@ export class GuardrailPhiRedactor implements IPhiRedactor {
 
   async redact(text: string, mode: 'pseudonymize' | 'full'): Promise<string> {
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`GUARDRAIL_SERVICE_TOKEN` is
-    // only the migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — this
+    // only the migration fallback).: `X-Tenant-Id` is MANDATORY — this
     // hop had no tenant on the wire at all, so guardrail resolved SYSTEM. Because
     // tenants may only TIGHTEN relative to SYSTEM, that silently redacted a
     // stricter tenant's PHI at the platform FLOOR, with nothing logged.

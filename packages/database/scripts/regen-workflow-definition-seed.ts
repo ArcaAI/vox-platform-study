@@ -1,5 +1,5 @@
 /**
- * TASK-790 W6 — regenerate the platform-default Summarization seed blobs from the REAL
+ * regenerate the platform-default Summarization seed blobs from the REAL
  * `compile()` / `validate()` engine.
  *
  * ## Why this exists as a committed script rather than a one-off
@@ -8,7 +8,7 @@
  * `packages/workflow-contract`'s real `validate()`/`compile()` engine, run against this exact node
  * set via a THROWAWAY script and pasted here verbatim". A throwaway script cannot be re-run, so
  * the blobs drifted the moment either the registry or the service's compile constants moved — and
- * they did, silently, in three separate ways (TASK-789 H-2 / TASK-790 W6):
+ * they did, silently, in three separate ways :
  *
  *   - `compiledConfig.caps.maxNodeSeconds` = 900, while `WorkflowDefinitionService.DEFAULT_CAPS`
  *     stamps 600.
@@ -28,7 +28,7 @@
  *
  * ## Usage
  *
- *   pnpm --filter @arcaai/workflow-contract build     # the dist this reads
+ *   pnpm --filter @arcaai/workflow-contract build # the dist this reads
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-workflow-definition-seed.ts
  *
  * It PRINTS the regenerated literals and a drift verdict; it never rewrites the seed itself, so a
@@ -38,7 +38,7 @@
  * ## IMPORTANT — when to run it
  *
  * `registryChecksum()` covers the WHOLE node registry, so ANY node added by any ticket changes it.
- * Run this AFTER the node registry is final for a release (e.g. after TASK-791's consultation
+ * Run this AFTER the node registry is final for a release (e.g. after consultation
  * nodes land), never in the middle of a merge train — otherwise you are pasting a value that is
  * knowably stale before it is committed, which is exactly how the current drift happened.
  */
@@ -88,7 +88,7 @@ function main(): void {
     ruleSetVersion: RULE_SET_VERSION,
     caps: DEFAULT_CAPS,
     policyBindings: DEFAULT_POLICY_BINDINGS,
-    // PINNED (TASK-809 OD-15). `compile()` defaults `compiledAt` to the wall clock AND hashes it
+    // PINNED. `compile()` defaults `compiledAt` to the wall clock AND hashes it
     // into `checksum`, so omitting it made this script print a config whose `compiledAt` was then
     // overridden to the seed constant below while its `checksum` still covered a wall-clock value
     // — a config that could never be reproduced, and a `compiledConfig.checksum` drift line that

@@ -137,7 +137,7 @@ def _app(
         app.state.effective_config_client = FakeEffectiveConfigClient(chunk_chars)
 
     if not resolve_from_db:
-        # TASK-735 Phase 3 — the models run in `apps/nlp`; the analyzer is the
+        # the models run in `apps/nlp`; the analyzer is the
         # seam the endpoint now depends on, so tests inject it there instead of
         # seeding a local model cache (guardrail has none).
         stub = provider if provider is not None else FakeGlinerRedactor(entities)
@@ -265,7 +265,7 @@ async def test_redact_rejects_unknown_mode() -> None:
 
 # ── Bounded-input chunking (GLiNER cost is super-linear in input length) ──
 #
-# Measured in TASK-710 §7 Task 6: 20,000 chars → 3.6s / 5.2GB peak RSS but
+# Measured in Task 6: 20,000 chars → 3.6s / 5.2GB peak RSS but
 # 50,000 chars → 17.5s / 17.8GB. A single `extract_entities` call over a
 # 100,000-char DNA corpus would exceed both the caller's HTTP timeout and a
 # worker container's memory limit. The endpoint therefore splits the input into

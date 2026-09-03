@@ -8,8 +8,8 @@
  *
  * Pipeline flow:
  *   TranscriptionCreated → auto-generate summary (if enabled)
- *   SummaryGenerated     → auto-extract NER (if enabled)
- *   NerExtracted         → emit PipelineCompleted
+ *   SummaryGenerated → auto-extract NER (if enabled)
+ *   NerExtracted → emit PipelineCompleted
  *
  * Pipeline configuration is resolved from the consultation's metadata
  * JSON field (`metadata.pipelineConfig`), falling back to system defaults.
@@ -44,7 +44,7 @@ export class ConsultationEventHandler {
     private readonly consultationRepository: ConsultationRepository,
     private readonly eventEmitter: EventEmitter2,
     private readonly cls: ClsService<IActiveUserContext>,
-    // TASK-704 — the single seam every note-generation entry point routes
+    // the single seam every note-generation entry point routes
     // through. Owns pipeline-config resolution (moved verbatim from this
     // handler's former `resolvePipelineConfig`) and the harnessEnabled read +
     // harness-vs-legacy decision (formerly inline here against
@@ -130,7 +130,7 @@ export class ConsultationEventHandler {
           return;
         }
 
-        // TASK-704 — trigger-specific request assembly (transcript-loading +
+        // trigger-specific request assembly (transcript-loading +
         // DNA-redaction resolution) stays here; it is passed to the seam as
         // params rather than decided here. Prepared unconditionally so it is
         // ready regardless of which generator the seam picks — the seam owns
@@ -162,7 +162,7 @@ export class ConsultationEventHandler {
         const redactionRules = await this.resolveRedactionRulesForHarness(consultationId, tenantId);
 
         // The single seam every note-generation entry point routes through
-        // (TASK-704). It reads harnessEnabled, and — when routing to
+        // It reads harnessEnabled, and — when routing to
         // harness — starts the workflow itself; a missing HarnessGatewayService
         // on a harness-enabled trigger THROWS (surfaces below as
         // PipelineStepFailed) rather than silently no-op'ing.
@@ -187,7 +187,7 @@ export class ConsultationEventHandler {
           return;
         }
 
-        // TASK-732 — the legacy `SUMMARY_REGENERATE` async generator
+        // the legacy `SUMMARY_REGENERATE` async generator
         // (`summary.processor.ts` / `createSummaryJob`) that used to run here
         // on `decision.generator === 'legacy'` was deleted along with the
         // rest of the signable generator path. `TRANSCRIPTION_CREATED` is a
@@ -197,7 +197,7 @@ export class ConsultationEventHandler {
         // migrated (Phase 2 exit criterion), but a stale per-consultation
         // `metadata.pipelineConfig.harnessEnabled` override (pitfall 9) or a
         // not-yet-migrated tenant could still produce it. Per `design.md`
-        // §Error handling, the post-deletion behavior for that edge is a
+        // handling, the post-deletion behavior for that edge is a
         // VISIBLE queued failure — never a silent no-op, and never a
         // resurrection of the legacy generator.
         this.logger.error({
@@ -302,10 +302,10 @@ export class ConsultationEventHandler {
         // (F-22, Lane G) — the harness workflow persists its own
         // NamedEntity rows for the same content (server-side NER inside the
         // durable workflow), so a legacy BullMQ NER job would be duplicate
-        // work. TASK-732 deleted the legacy NER generator (`ner.processor.ts`
+        // work. deleted the legacy NER generator (`ner.processor.ts`
         // / `createNerJob`) entirely — this is now an UNCONDITIONAL skip
         // rather than a `harnessEnabled` branch. This was the seam's second,
-        // deliberate `harnessEnabled` reader (the TASK-704 grep-gate
+        // deliberate `harnessEnabled` reader (the grep-gate
         // allow-listed it by name); collapsing it to unconditional removes
         // that second reader, per this ticket's own "expand/contract on the
         // flag" principle applied a second time — see
@@ -425,7 +425,7 @@ export class ConsultationEventHandler {
    *
    * Double-gated: the TENANT gate is now the presence of an ACTIVE
    * `agent.dna_redaction` node in the tenant's governing consultation graph
-   * (TASK-806 lane A item 2 — the owner's rider on the TASK-815 delta), and the
+   * (lane A item 2 — the owner's rider on the delta), and the
    * DOCTOR gate is the clinician's own DNA opt-in. The department default-agent
    * `dnaStylePolicy=DISABLED` veto that used to sit alongside them is gone and
    * stays gone. When effective, the rules are read from the doctor's latest DNA
@@ -451,7 +451,7 @@ export class ConsultationEventHandler {
 
       // A THIRD gate used to sit here: the department's default
       // `DepartmentAgent.dnaStylePolicy = DISABLED` forced redaction OFF for the
-      // whole department. It retired with `DepartmentAgent` (TASK-815) and stays
+      // whole department. It retired with `DepartmentAgent` and stays
       // retired by owner ruling. What DID get a successor is the tenant gate: it
       // is no longer a `dnaRedactionEnabled` boolean but the presence of an ACTIVE
       // `agent.dna_redaction` node in this tenant's governing consultation graph.

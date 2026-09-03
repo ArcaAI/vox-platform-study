@@ -12,30 +12,30 @@ import { SttPipelineResolverService } from './resolvers/stt-pipeline-resolver.se
 import { WorkflowDefinitionService } from './workflow-definition.service';
 
 /**
- * WorkflowDefinitionService DI module (TASK-734).
+ * WorkflowDefinitionService DI module.
  *
- * - CommonServiceModule       -> config + globals + `CORE_DATABASE_SERVICE` (the version-mint
+ * - CommonServiceModule -> config + globals + `CORE_DATABASE_SERVICE` (the version-mint
  *   transaction in `create()` needs `databaseService.baseClient.$transaction`).
- * - CoreDatabaseModule        -> `WorkflowDefinitionRepository`.
+ * - CoreDatabaseModule -> `WorkflowDefinitionRepository`.
  * - EntitlementsServiceModule -> `IEntitlementsService`, the `maxWorkflowDefinitions` quota
  *   precheck on `create()`.
- * - PipelineServiceModule     -> `PipelineService`, TASK-724 Task 4's `SttPipelineCompilerService`
+ * PipelineServiceModule -> `PipelineService`, 's `SttPipelineCompilerService`
  *   writes an `stt`-palette publish's compiled graph through it (never a raw repository call);
  *   Task 6's `SttPipelineResolverService` reads it back the same way.
  *
- * - WorkflowValidatorServiceModule -> `WorkflowValidatorService` (TASK-790 W3a). Resolves the
+ * WorkflowValidatorServiceModule -> `WorkflowValidatorService` (a). Resolves the
  *   SYSTEM ∪ tenant `WorkflowInvariantRule` rows and applies the one-way-strictness merge, so
  *   `validateGraph()` evaluates the rule set that actually applies to the tenant rather than only
  *   the bundled code catalogue. Before this import the service was constructed nowhere outside
- *   its own module (TASK-789 H-1).
+ * its own module.
  *
- * - ConsultationContextSchemaServiceModule -> `IConsultationContextSchemaService` (TASK-810 D-7).
+ * ConsultationContextSchemaServiceModule -> `IConsultationContextSchemaService`.
  *   `publish()` resolves the tenant's SERVABLE context-schema version through it and pins that id
  *   into `compiledConfig.policyBindings`, replacing the hardcoded `contextSchemaVersionId: null`
  *   every compile used to carry. That module imports only `CommonServiceModule` +
  *   `CoreDatabaseModule`, so this import closes no cycle.
  *
- * - AiRoutingPolicyServiceModule -> `IAiRoutingPolicyService` (TASK-847 F-32). `validateGraph()`
+ * AiRoutingPolicyServiceModule -> `IAiRoutingPolicyService`. `validateGraph()`
  *   asks it what generation hyper-parameters each agent node's bound provider configuration
  *   accepts, so a node tuning one the provider drops is refused at publish instead of being
  *   silently ignored at runtime. That module imports `CommonServiceModule` + `CoreDatabaseModule`
@@ -43,7 +43,7 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
  *
  * `SttPipelineResolverService` is exported (not just provided) because its consumer — the
  * session/consultation-open call site that resolves `pipelineId` — is a FUTURE, separate wiring
- * pass (README §4 Task 6; deliberately not this ticket's diff, proved by
+ * pass ( Task 6; deliberately not diff, proved by
  * `task-724-stt-realtime-untouched.grep-gate.test.ts`), likely from a module outside this one.
  */
 @Module({

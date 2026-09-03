@@ -9,7 +9,7 @@
  *
  *     const enabled = workflowDefinition !== null || contextSchemaVersionId !== null;
  *
- * TASK-815 retired the FIRST source's old form — a seeded default
+ * retired the FIRST source's old form — a seeded default
  * `DepartmentAgent` carrying loop configuration — and replaced it with the
  * tenant's governing `WorkflowDefinition`. The seeded context schema is
  * unchanged, and it is what this suite pins:
@@ -180,7 +180,7 @@ describe('LoopConfigService against the seeded rows', () => {
     const result = await service.resolveForConsultation(TENANT_ID, CONSULTATION_ID);
 
     expect(result.startActions).toEqual([]);
-    // TASK-812 (D-10): the day-1 tenant has no `consultation.endpoint.actions` row, so the stage
+    // (D-10): the day-1 tenant has no `consultation.endpoint.actions` row, so the stage
     // resolves to the platform default — minus `livedoc.stop`, because the loop never drives the
     // LiveDoc lifecycle. `harness.finalize` is still there and still in the same relative
     // position; what is new is the stage AROUND it.

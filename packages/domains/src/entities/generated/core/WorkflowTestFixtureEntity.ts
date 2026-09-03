@@ -4,9 +4,9 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity, Secret } from '../../../common';
 
-// Per-tenant saved synthetic Workbench test input (TASK-721). `input` is
-// Vault-Transit encrypted exactly like `GoldenCase.transcript` (README §6/R4,
-// RESOLVED): the plaintext column was DROPPED, so `input` survives only as a
+// Per-tenant saved synthetic Workbench test input. `input` is
+// Vault-Transit encrypted exactly like `GoldenCase.transcript` (RESOLVED):
+// the plaintext column was DROPPED, so `input` survives only as a
 // TRANSIENT in-memory field, repopulated from `encryptedInput` by repository
 // decrypt-on-read (`common/phi-read-decrypt.ts`). See
 // packages/database/src/prisma/db_main/workflow-test-fixture.prisma.

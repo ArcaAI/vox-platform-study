@@ -1,5 +1,5 @@
 /**
- * TASK-719 UX pass — the store-side halves of the editor affordances added on 2026-08-19:
+ * UX pass — the store-side halves of the editor affordances added on 2026-08-19:
  * `canConnect` (the drag-time guard the canvas asks BEFORE a drop is committed) and
  * `duplicateNode`. Undo/redo already existed on the store; the tests here pin that the new
  * mutations participate in it, because a duplicate that cannot be undone is worse than no

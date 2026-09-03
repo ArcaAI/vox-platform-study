@@ -1,4 +1,4 @@
-"""Shared helpers for the summarization-palette node activities (TASK-720 Task 5).
+"""Shared helpers for the summarization-palette node activities.
 
 Not itself an activity module — imported by the five ``interpreter.*`` activities under this
 package. Keeps the trajectory-recording boilerplate (identical to
@@ -69,7 +69,7 @@ def resolve_dotted_path(root: dict[str, Any], path: str) -> Any:
 
 
 def read_model_slug(config: Any) -> str | None:
-    """TASK-816 (DD-10) — the node's OWN ``llmBinding.modelSlug``, or ``None`` when unbound.
+    """(DD-10) — the node's OWN llmBinding.modelSlug, or None when unbound.
 
     The Python mirror of ``packages/applications``' ``readLlmBindingFromConfig``, and it must stay
     one: both read the SAME authored key off the SAME compiled node config, and the gateway

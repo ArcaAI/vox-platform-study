@@ -39,7 +39,7 @@ export class ListWorkflowRunsQuery {
   @IsISO8601()
   to?: string;
 
-  @ApiPropertyOptional({ description: 'Include TASK-721 Workbench sandbox runs. Defaults to false.', type: Boolean })
+  @ApiPropertyOptional({ description: 'Include Workbench sandbox runs. Defaults to false.', type: Boolean })
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()

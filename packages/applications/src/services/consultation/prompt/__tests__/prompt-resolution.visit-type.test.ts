@@ -1,5 +1,5 @@
 /**
- * Tier-1b's VISIT-TYPE AXIS is tenant-configured data (TASK-815 §11 row 3).
+ * Tier-1b's VISIT-TYPE AXIS is tenant-configured data.
  *
  * `PromptResolutionService` used to pick the department prompt column with a
  * literal — `params.promptType === 'revisit' ? revisitPromptId :

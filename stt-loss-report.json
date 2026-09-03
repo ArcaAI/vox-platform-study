@@ -1,5 +1,5 @@
 {
-  "harness": "TASK-455 S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
+  "harness": " S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
   "generated_at": "2026-08-23T13:36:38.258359+00:00",
   "target": {
     "api_url": "http://localhost:8868",
@@ -94,7 +94,7 @@
     "loss.audio_coverage_ratio": "max final endTime / audio seconds sent",
     "loss.seq": "gaps in the gateway monotonic transcript seq = dropped captions"
   },
-  "baseline_contract_for_TASK_457": "This is the BASELINE only (no thresholds asserted). TASK-457 (Redis consumer-groups migration) must show NO REGRESSION vs these numbers: commit_latency_ms P50/P99 not materially higher, partial_revision.rate not higher, loss.seq.gap_count and audio_coverage_ratio not worse, on the same fixture + pipeline + frame_ms.",
+  "baseline_contract_for_TASK_457": "This is the BASELINE only (no thresholds asserted).  (Redis consumer-groups migration) must show NO REGRESSION vs these numbers: commit_latency_ms P50/P99 not materially higher, partial_revision.rate not higher, loss.seq.gap_count and audio_coverage_ratio not worse, on the same fixture + pipeline + frame_ms.",
   "events": [
     {
       "recv_ms": 1.5,

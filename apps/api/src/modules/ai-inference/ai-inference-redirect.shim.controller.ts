@@ -5,7 +5,7 @@ import { redirect308 } from '../../common';
 import { Authorize, RequiredScopes } from '../../decorators';
 
 /**
- * TASK-760 redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
+ * redirect shim — DELETE IN ALL-2.0.0. Old paths retired 2026-08-18.
  *
  * The `ai` prefix is split (decision D-2): `ai/guardrail/analyze` →
  * `safety-checks`, `ai/nlp/*` → `text-analyses/*`.

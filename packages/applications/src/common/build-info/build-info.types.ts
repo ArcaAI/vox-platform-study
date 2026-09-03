@@ -1,7 +1,7 @@
 /**
  * Shape of the baked build-info contract.
  *
- * Mirrors `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json`.
+ * Mirrors.
  * Kept hand-in-sync with that JSON Schema rather than generated from it —
  * the schema is the frozen source of truth; this is its TS projection.
  */

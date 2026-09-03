@@ -1,5 +1,5 @@
 {
-  "harness": "TASK-470 Theme-F streaming quality scorecard — through the WS gateway",
+  "harness": " Theme-F streaming quality scorecard — through the WS gateway",
   "thresholds_source": "streaming_thresholds.json",
   "clips": [
     {

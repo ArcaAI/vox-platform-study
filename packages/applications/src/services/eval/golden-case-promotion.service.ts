@@ -37,7 +37,7 @@ function looksLikeDirectIdentifier(text: string): boolean {
 }
 
 /**
- * The automated `GoldenCase` producer (TASK-792 W3 / TASK-789 C-5).
+ * The automated `GoldenCase` producer.
  *
  * `GoldenCase` previously had exactly one write path — a manual admin POST — so
  * no eval result in this system was derived from real clinician behaviour.

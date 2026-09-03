@@ -9,7 +9,7 @@ export {
 } from './policy.engine';
 export type { AppAbility, PolicyRule, PolicyContext, ShadowVerdict } from './policy.engine';
 
-// Enforce-pair reachability (TASK-781) — the boot gate that keeps
+// Enforce-pair reachability — the boot gate that keeps
 // `CASL_ENFORCED_PAIRS` from listing a pair that can never fire.
 export { assertCaslEnforcePairReachability } from './enforce-reachability';
 export type { EnforceRouteDescriptor } from './enforce-reachability';
@@ -24,13 +24,13 @@ export {
   JWT_AUTH_GUARD,
   API_KEY_REQUIRED_SCOPES,
   API_KEY_FORBIDDEN,
-  // Machine identity for administration (TASK-762) — the third credential
+  // Machine identity for administration — the third credential
   // class. Separate metadata keys, separate header, separate authenticator.
   SERVICE_ACCOUNT_REQUIRED_SCOPES,
   SERVICE_ACCOUNT_FORBIDDEN,
   SERVICE_ACCOUNT_TOKEN_HEADER,
   SERVICE_ACCOUNT_AUTHENTICATOR,
-  // CASL shadow mode (TASK-712 Phase 5 Task 14)
+  // CASL shadow mode
   SUBJECT_INSTANCE_RESOLVER_KEY,
   ResolveSubjectInstance,
 } from './unified-auth.guard';
@@ -63,7 +63,7 @@ export {
   CanManage,
   CanAny,
   CanAll,
-  // Consent (TASK-712, consent-abac)
+  // Consent (consent-abac)
   RequiresConsent,
   ConsentExempt,
   REQUIRES_CONSENT_KEY,

@@ -23,7 +23,7 @@ export interface UseModelDownloadResult {
 /**
  * Orchestrates the Download action against the FROZEN contract:
  *   POST :id/download -> 202 { jobId, status: 'DOWNLOADING' }
- *   GET  :id/download -> 200 { status, startedAt, finishedAt, fileSizeMb, sha256, localPath, error }
+ *   GET :id/download -> 200 { status, startedAt, finishedAt, fileSizeMb, sha256, localPath, error }
  * Polls while DOWNLOADING, stops on a terminal state, toasts the outcome
  * exactly once per transition, and refreshes the registry list so the grid's
  * `downloadStatus`/`localPath`/`fileSizeMb` pick up the finished row.
@@ -140,7 +140,7 @@ export function ModelDownloadPanel({ model }: { model: AiModel }) {
           {busy ? <Spinner /> : <IconCloudDownload aria-hidden />}
           {status === 'DOWNLOADING' ? 'Downloading…' : label}
         </Button>
-        {/* Rule 11 §5: a disabled control must state its reason, visibly. */}
+        {/* Rule 11 : a disabled control must state its reason, visibly. */}
         {disabledReason ? (
           <p id={reasonId} className="text-muted-foreground text-xs">
             {disabledReason}

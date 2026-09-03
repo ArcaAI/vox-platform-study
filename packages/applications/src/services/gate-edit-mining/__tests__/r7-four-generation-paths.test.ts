@@ -1,5 +1,5 @@
 /**
- * TASK-795 W2 — R7's definition of done, per PATH.
+ * R7's definition of done, per PATH.
  *
  * `gate-edit-loop.e2e.test.ts` already proves the loop end to end ONCE. What it
  * cannot show is that the loop is reachable from every place the product actually
@@ -9,11 +9,11 @@
  * There are exactly four modules that provide `PromptAssemblyService` for live
  * generation, and they are DISCOVERED here rather than listed:
  *
- *   SummaryServiceModule          — the legacy synchronous generate/approve path
- *   ChainSummaryServiceModule     — the pre-summary / comprehensive chain
- *   ConsultationJobServiceModule  — the ASYNC job path; since TASK-793 this is the
+ *   SummaryServiceModule — the legacy synchronous generate/approve path
+ *   ChainSummaryServiceModule — the pre-summary / comprehensive chain
+ * ConsultationJobServiceModule — the ASYNC job path; since this is the
  *                                   PRIMARY "Generate" route in the console
- *   HarnessInternalServiceModule  — the harness gate-adapter path
+ *   HarnessInternalServiceModule — the harness gate-adapter path
  *
  * For each one this suite asserts BOTH halves of "an exemplar reaches the prompt":
  *

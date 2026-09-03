@@ -1,7 +1,7 @@
 /**
- * TASK-797 W2 — interim summaries.
+ * interim summaries.
  *
- * TASK-796 routes interpreter-produced interim summaries onto the EXISTING live-summary plane
+ * routes interpreter-produced interim summaries onto the EXISTING live-summary plane
  * rather than inventing a channel, so there is no new consumer surface: the panel that already
  * renders `sections` renders these too. What the payload gains is PROVENANCE —
  * `source: "interpreter"`, `nodeType`, `ordinal`/`total`, and `metadata.stats.task_key` — and a
@@ -56,7 +56,7 @@ function props(overrides: Partial<React.ComponentProps<typeof CaseNoteColumn>> =
 
 const INTERIM = live({ source: 'interpreter', nodeType: 'consultation.realtimeSummary', ordinal: 2, total: 3 });
 
-describe('CaseNoteColumn — interim summaries (TASK-797 W2)', () => {
+describe('CaseNoteColumn — interim summaries (W2)', () => {
   it('renders the SOAP sections, not a blob', () => {
     render(<CaseNoteColumn {...props({ live: INTERIM })} />);
     expect(screen.getByRole('heading', { name: 'Subjective' })).toBeTruthy();

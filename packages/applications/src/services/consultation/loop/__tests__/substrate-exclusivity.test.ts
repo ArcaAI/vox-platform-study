@@ -1,5 +1,5 @@
 /**
- * TASK-795 W1 — SUBSTRATE EXCLUSIVITY, read side.
+ * SUBSTRATE EXCLUSIVITY, read side.
  *
  * The platform has two agentic-loop engines and, until this ticket, nothing
  * stopped them governing the same consultation at once:

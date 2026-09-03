@@ -1,6 +1,6 @@
-"""TASK-782 — two service classes over one weight slot.
+"""two service classes over one weight slot.
 
-TASK-778 shipped ONE queue geometry for both the asynchronous per-utterance
+shipped ONE queue geometry for both the asynchronous per-utterance
 redaction pass and a synchronous inline gate, and measured p95 ~1.7 s at 100
 concurrent. That is the right number for the first job and the wrong one for the
 second. These tests pin the split: separate queues with separate geometry AND
@@ -34,7 +34,7 @@ TENANT = "11111111-1111-1111-1111-111111111111"
 
 
 def test_an_absent_class_is_the_bulk_lane() -> None:
-    """The TASK-778 caller named no class; it must keep its exact behaviour."""
+    """The caller named no class; it must keep its exact behaviour."""
     assert normalize_lane(None) == LANE_BULK
     assert normalize_lane("") == LANE_BULK
 

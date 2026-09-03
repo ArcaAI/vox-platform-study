@@ -96,7 +96,7 @@ async function pollAuditRows(
 async function createPolicy(request: APIRequestContext, name: string): Promise<PolicyDto> {
   const res = await request.post('/api/v1/admin/rbac/policies', {
     headers: bearer(saToken),
-    data: { name, description: 'TASK-409 e2e throwaway', scope: 'TENANT', rules: [{ action: 'read', subject: 'Consultation' }] },
+    data: { name, description: ' e2e throwaway', scope: 'TENANT', rules: [{ action: 'read', subject: 'Consultation' }] },
   });
   expect(res.status(), `create policy ${name}`).toBe(201);
   return (await res.json()) as PolicyDto;
@@ -105,7 +105,7 @@ async function createPolicy(request: APIRequestContext, name: string): Promise<P
 async function createRole(request: APIRequestContext, name: string): Promise<RoleDto> {
   const res = await request.post('/api/v1/admin/rbac/roles', {
     headers: bearer(saToken),
-    data: { name, description: 'TASK-409 e2e throwaway' },
+    data: { name, description: ' e2e throwaway' },
   });
   expect(res.status(), `create role ${name}`).toBe(201);
   return (await res.json()) as RoleDto;
@@ -317,7 +317,7 @@ test.describe.serial('C — multi-role rule-edit gating', () => {
     expect(sharedId, 'C1 created the shared policy').toBeTruthy();
     const descriptionEdit = await request.patch(`/api/v1/admin/rbac/policies/${sharedId}`, {
       headers: bearer(saToken),
-      data: { description: 'TASK-409 metadata-only edit (no rules touched)' },
+      data: { description: ' metadata-only edit (no rules touched)' },
     });
     expect(descriptionEdit.status(), 'metadata-only edit of a 2-role policy needs no break-glass').toBe(200);
   });

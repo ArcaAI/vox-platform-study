@@ -1,13 +1,13 @@
 /**
- * TASK-736 (REVISED) — Ollama provider logic stays; Ollama model CATALOG goes.
+ * (REVISED) — Ollama provider logic stays; Ollama model CATALOG goes.
  *
  * The ticket's original R1 read "Ollama is removed completely, including its
  * model catalog rows". The owner REVERSED that on 2026-08-17
  * (`docs/programs/agentic-workflow-platform/owner-decisions-2026-08-17.md`
- * §2, row 736):
+ * row 736):
  *
  *   > "ollama provider logic must be available, however, model catalog related
- *   >  to ollama must be removed."
+ *   > to ollama must be removed."
  *
  * So the seed plane has to hold two facts at once, and this file pins both so
  * neither half can drift back:
@@ -47,7 +47,7 @@ const PURGED_OLLAMA_SLUGS = [
   'ollama-qwen3.5-2b',
 ] as const;
 
-describe('TASK-736 (revised) — Ollama provider retained, Ollama catalog purged', () => {
+describe(' (revised) — Ollama provider retained, Ollama catalog purged', () => {
   describe('provider logic stays selectable', () => {
     it('lists `ollama` as a canonical serving provider', () => {
       expect(AI_MODEL_PROVIDERS).toContain('ollama');

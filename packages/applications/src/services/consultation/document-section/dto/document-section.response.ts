@@ -56,8 +56,7 @@ export class DocumentSectionResponse {
   revision: number;
 
   @ApiProperty({
-    description:
-      "The row's `_version`, and the ONLY value valid as this section's `If-Match` precondition. Also emitted as the response `ETag`.",
+    description: "The row's `_version`, and the ONLY value valid as this section's `If-Match` precondition. Also emitted as the response `ETag`.",
   })
   version: number;
 

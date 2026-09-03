@@ -1,16 +1,16 @@
 """Consultation-palette node activities — the consent gate, the PHI hop, and the HITL-gate
-placeholder (TASK-731 Task 4/9).
+placeholder (/9).
 
 ``consultation.consentGate`` and ``consultation.phiHop`` are real: they wrap the existing
 ``_check_consent`` helper and ``GuardrailClient.redact()`` respectively, per
-`contracts/palette-contract.md` §4a/§4b. ``consultation.hitlGate``'s activity here is deliberately NOT its
+`contracts/palette-contract.md`consultation.hitlGate's activity here is deliberately NOT its
 execution path: Phase B landed the durable wait as a child workflow
 (`interpreter/gate_workflow.py`), and the compiler lifts every `gate`-classed node out of
 `stages` into `gates`, so the interpreter starts `ConsultationGateWorkflow` for it instead of
 dispatching an activity. The callable below stays because `NodeSpec.activity` requires one and
 because `activity_name` is the S-4 cross-check anchor — reaching it means a routing bug.
 
-The palette's other ten node types were left unwired by TASK-731 and are now implemented in
+The palette's other ten node types were left unwired by and are now implemented in
 `consultation_{capture,nlp,compose,verify,persist}.py`, grouped by pipeline stage — each a thin
 `NodeActivityInput -> NodeActivityResult` wrapper over the already-shipped activity
 `contracts/node-types.md`'s node table names as its compile target, following the two real
@@ -45,8 +45,8 @@ async def interpreter_consultation_consent_gate(payload: NodeActivityInput) -> N
     """N-1 ``consultation.consentGate`` (mandatory, critical — CR-01/CR-04).
 
     Thin wrapper over the EXISTING, already-tested `_check_consent()` helper
-    (`harness.temporal.activities`, TASK-712 consent-abac Phase 4) — see
-    `contracts/palette-contract.md` §4a. Reads `externalPatientId`/`consultationId` from
+    (`harness.temporal.activities`, consent-abac Phase 4) — see
+    `contracts/palette-contract.md` Reads `externalPatientId`/`consultationId` from
     `payload.run_payload` (the generic, palette-agnostic invocation payload — NOT palette-specific
     config, since consent identity is a property of the RUN, not something a tenant authors on
     the node). Fail-closed: any non-allowed decision (denial OR lookup-unavailable) DEGRADES this
@@ -87,8 +87,8 @@ async def interpreter_consultation_consent_gate(payload: NodeActivityInput) -> N
 async def interpreter_consultation_phi_hop(payload: NodeActivityInput) -> NodeActivityResult:
     """N-5 ``consultation.phiHop`` (mandatory — CR-15's structural half, WF-CONS-009).
 
-    Thin wrapper over `GuardrailClient.redact()` (TASK-731, calling TASK-710's
-    `POST /guardrail/redact` peer-to-peer) — see `contracts/palette-contract.md` §4b. `config.mode`
+    Thin wrapper over `GuardrailClient.redact` (calling
+    `POST /guardrail/redact` peer-to-peer) — see `contracts/palette-contract.mdconfig.mode`
     is `'pseudonymize' | 'full'` (the same two-mode vocabulary `IPhiRedactor.redact()` uses on the
     gateway side). The text to redact is read generically from `bound_inputs` (same pattern
     `nodes/guardrail_check.py`'s `_extract_text` uses) — never re-derives it from a fixed port

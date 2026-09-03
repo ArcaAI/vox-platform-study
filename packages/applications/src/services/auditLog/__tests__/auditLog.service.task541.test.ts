@@ -3,7 +3,7 @@
  *
  * Gap under test: `EventTypes.UserAuthenticated` is a SUCCESS-ONLY bracket
  * (noted at auth.controller.ts), so a rejected login produced structured warn
- * logs and nothing queryable. HIPAA §164.312(b) access auditing expects
+ * logs and nothing queryable. HIPAA access auditing expects
  * rejected access to be reviewable alongside granted access — that is how
  * credential stuffing and post-termination access attempts get spotted.
  *

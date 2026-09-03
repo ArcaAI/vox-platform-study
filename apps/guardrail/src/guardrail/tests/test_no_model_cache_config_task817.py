@@ -1,6 +1,6 @@
-"""TASK-817 (F-2) — guardrail's image must not advertise a model cache it has no use for.
+"""(F-2) — guardrail's image must not advertise a model cache it has no use for.
 
-Guardrail hosted a GLiNER ONNX runtime and MiniCheck weights until TASK-735
+Guardrail hosted a GLiNER ONNX runtime and MiniCheck weights until
 Phase 3 moved both to `apps/nlp`. The move took the models, the engines and the
 dependencies — `pyproject.toml` no longer installs `transformers`,
 `huggingface_hub`, `torch`, `onnxruntime` or `gliner2-onnx` — but it left the
@@ -12,7 +12,7 @@ re-downloading".
 Nothing in the image can read any of it. `core/dependencies.py` states the
 post-move position outright: "Guardrail holds ZERO resident model weights."
 
-This is not cosmetic. TASK-817 exists because `hope-nlp` — the service that DOES
+This is not cosmetic. exists because `hope-nlp` — the service that DOES
 load weights — has no persistent cache, and the single most likely way to get
 that wrong is to wire a volume to the wrong place (F-4: three services already
 use three different env vars and three mount paths for one shared directory).
@@ -63,7 +63,7 @@ def test_dockerfile_declares_no_huggingface_cache_env() -> None:
     found = [name for name in HF_CACHE_ENV_VARS if re.search(rf"\b{name}\b", text)]
     assert not found, (
         f"apps/guardrail/Dockerfile still declares {', '.join(found)}. Guardrail has "
-        "held zero model weights since TASK-735 Phase 3 and installs no huggingface "
+        "held zero model weights since  Phase 3 and installs no huggingface "
         "library, so nothing in the image can read these. They imply a model cache "
         "that does not exist."
     )

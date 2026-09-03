@@ -4,7 +4,7 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import type { RunNodeRollup } from '../api/types';
 
 /**
- * One node's attempt-sequence detail (Task 9 "Retries"). §2.1 / the Task 1
+ * One node's attempt-sequence detail (Task 9 "Retries"). / the Task 1
  * contract: there is no attempt column anywhere in `AgentTrajectoryStep` —
  * a consecutive run of same-`name` steps is folded into ONE group and the
  * grouping is ALWAYS labelled derived (`attemptGroupingIsDerived`), never

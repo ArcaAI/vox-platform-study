@@ -12,7 +12,7 @@ import { ModelSourceFetcherService } from './model-source-fetcher.service';
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken } from './model-version.util';
 
 /**
- * The `hope-models` bucket — see `infrastructure/docker/minio/README.md` §3.
+ * The `hope-models` bucket — see `infrastructure/docker/minio/README.md`
  * A bucket name, not tenant/environment config: every other consumer of this
  * bucket (STT's `StoragePathResolver`, harness) hardcodes the same literal
  * (`model_bucket: str = "hope-models"`), and MinIO credentials/endpoint —
@@ -44,7 +44,7 @@ export interface DownloadAiModelResult {
  * AiModelDownloadProcessor — fetches a model's weights from its current
  * `sourceUri`, verifies + content-addresses them, publishes them into
  * `hope-models`, and writes the `AiModel` row back to point at the
- * published copy (TASK-855 lane L3).
+ * published copy.
  *
  * Mirrors `IngestKnowledgeDocumentProcessor`/`DirectorySyncProcessor`: a
  * fail-closed `tenantId` guard, a CLS rebind via `createWorkerSession`

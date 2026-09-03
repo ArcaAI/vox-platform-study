@@ -3,7 +3,7 @@
  *
  * The finalize prompt must be decided by whatever actually RAN the live
  * session, not by whatever the tenant's configuration happens to say at
- * finalize time. That is contract R-N2, and it survives TASK-815 unchanged —
+ * finalize time. That is contract R-N2, and it survives unchanged
  * only its SUBJECT moved. The pin used to name a `DepartmentAgent` row; it now
  * names a NODE in the governing workflow definition's graph. The PARAMETER
  * keeps its name because `resolve()`'s signature is a frozen v1-compat

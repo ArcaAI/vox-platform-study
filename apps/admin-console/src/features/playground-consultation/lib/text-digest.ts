@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — SHA-256 of a note's text, for TASK-796's `corrections.textSha256` gate.
+ * SHA-256 of a note's text, for `corrections.textSha256` gate.
  *
  * The correction proposals index BYTE OFFSETS into one exact revision of the text. If the note
  * has moved since, those offsets address characters that are no longer there, and applying a

@@ -80,7 +80,7 @@ export function getModelDownloadState(id: string): Promise<ModelDownloadState> {
 
 /**
  * Read-only status of the platform's S3 model-registry connection (the
- * SYSTEM row — TASK-799 owner ruling: the weight-fetch plane is
+ * SYSTEM row — owner ruling: the weight-fetch plane is
  * platform-managed, so this is pinned to SYSTEM regardless of the caller's
  * working tenant). `features/ai-providers` owns the editor for this row.
  */

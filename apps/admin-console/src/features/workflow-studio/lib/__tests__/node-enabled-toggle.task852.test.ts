@@ -1,5 +1,5 @@
 /**
- * TASK-852 item 3 — the `enabled` toggle renders as a CONTROL, with no Studio code change.
+ * item 3 — the `enabled` toggle renders as a CONTROL, with no Studio code change.
  *
  * The claim the ticket rests on is that declaring `enabled` on the node config schemas is
  * sufficient: the inspector builds its form from `Object.entries(schema.properties)` alone

@@ -144,7 +144,7 @@ export function useArcaSummary() {
       store.setSummaryGenerating(true);
       store.setSummaryError(null);
 
-      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // the route is `@RequiresIfMatch()` — send the strong
       // validator AND the body-field fallback, and surface 412 distinctly.
       const { expectedVersion: explicitVersion, ...changeOptions } = options ?? {};
       const expectedVersion = requireExpectedVersion(id, explicitVersion, findSummaryVersion(store.summaries, id));
@@ -338,7 +338,7 @@ export function useArcaSummary() {
         attributes: { contextItemId },
       });
 
-      // TASK-709: approve is a POST, so the If-Match header rides on
+      // approve is a POST, so the If-Match header rides on
       // `postWithHeaders` (no POST-specific helper exists); the body carries
       // the same version as the documented fallback.
       const expectedVersion = requireExpectedVersion(contextItemId, options?.expectedVersion, findSummaryVersion(store.summaries, contextItemId));

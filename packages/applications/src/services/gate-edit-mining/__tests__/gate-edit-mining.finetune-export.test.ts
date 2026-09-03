@@ -1,5 +1,5 @@
 /**
- * TASK-792 W4 (C-6) — the fine-tuning export.
+ * (C-6) — the fine-tuning export.
  *
  * R7's second clause is *"those will be used for fine-tuning and training
  * models"*. Before this ticket nothing anywhere assembled `(original, edited,

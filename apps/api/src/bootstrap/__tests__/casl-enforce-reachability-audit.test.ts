@@ -1,10 +1,10 @@
 /**
- * TASK-781 — the boot gate for `CASL_ENFORCED_PAIRS`.
+ * the boot gate for `CASL_ENFORCED_PAIRS`.
  *
  * `assertCaslEnforcePairReachability` (unit-tested in `@arcaai/applications`)
  * decides reachability from a route table. THIS suite proves the audit builds
  * that table correctly from the live Nest container — the half that made
- * TASK-779 F-1 possible was not the rule, it was that nobody ever compared
+ * possible was not the rule, it was that nobody ever compared
  * the enforce list against the routes.
  *
  * The shipped enforce list is EMPTY, so the audit passes vacuously against the
@@ -49,7 +49,7 @@ class ReachableController {
   fetchAll() {}
 }
 
-/** The TASK-779 F-1 shape: route + resolver present, resolver NOT enforce-grade. */
+/** The shape: route + resolver present, resolver NOT enforce-grade. */
 @Controller('admin/api-keys')
 class F1ShapedController {
   @Get(':id')
@@ -66,7 +66,7 @@ class OrModeController {
   update() {}
 }
 
-describe('auditCaslEnforcePairReachability (TASK-781)', () => {
+describe('auditCaslEnforcePairReachability ', () => {
   it('the REAL app passes — the shipped enforce list is empty, so nothing is claimed', async () => {
     // Imported lazily: the barrel pulls the whole applications package in.
     const { CASL_ENFORCED_PAIRS } = await import('@arcaai/applications');

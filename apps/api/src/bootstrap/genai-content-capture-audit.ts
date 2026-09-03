@@ -7,7 +7,7 @@ import { Logger } from '@nestjs/common';
  * capturing prompt/completion content, but the opt-in switch —
  * `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` — is an
  * instrumentation-library convention, absent from the official OTel SDK
- * env-var spec (research-findings.md §2): a library that ignores it captures
+ * env-var spec (research-findings.md: a library that ignores it captures
  * content anyway, which for HOPE means PHI (prompts/completions/transcripts)
  * landing in spans. Layer 1 of the 4-layer PHI-safe telemetry defense
  * (docs/operations/telemetry-phi-guardrails.md) is pinning this switch to

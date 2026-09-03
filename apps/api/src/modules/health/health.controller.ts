@@ -16,7 +16,7 @@ const SERVICE_NAME = 'api';
  *   /health/startup
  * - Consistent response shape with service, version, timestamp, checks
  *
- * TASK-759 (rule P2): the consolidated downstream-service probes that used to
+ * The consolidated downstream-service probes that used to
  * live here (`/health/services{,/:serviceKey}`) were CASL-gated ops telemetry
  * on a public prefix. They moved to `AdminHealthServicesController`
  * (`api/v1/admin/health/services`) unchanged. This class is now PUBLIC-ONLY —
@@ -29,11 +29,11 @@ const SERVICE_NAME = 'api';
 // schedules sit well below 30/min.
 @Throttle({ default: { limit: 30, ttl: 60000 } })
 @Controller('health')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Since the TASK-759 split every route on this class is `@Public()`, so
+// API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
+// Since the split every route on this class is `@Public()`, so
 // `UnifiedAuthGuard` short-circuits before any API-key check and this
 // declaration covers nothing at runtime. It is kept rather than removed
-// because dropping it is an auth-posture change owned by TASK-757's A2 sweep,
+// because dropping it is an auth-posture change owned by sweep,
 // not by a route-taxonomy ticket: a future non-public route added here would
 // otherwise be silently undeclared instead of failing boot.
 @ForbidApiKey()
@@ -50,7 +50,7 @@ export class ApiHealthController {
     private readonly buildInfoService: BuildInfoService,
   ) {}
 
-  // TASK-808 — the three KUBELET probes are exempt from the class cap above.
+  // the three KUBELET probes are exempt from the class cap above.
   //
   // `TieredThrottlerGuard` is GLOBAL and runs FIRST, ahead of
   // `UnifiedAuthGuard`, so `@Public()` exempts these routes from AUTH but NOT

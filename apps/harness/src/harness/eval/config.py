@@ -47,7 +47,7 @@ class OpenAICompatJudgeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_OPENAI_COMPAT_")
 
     base_url: str = "http://localhost:1234/v1"  # LM Studio default
-    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # ── BYO-only credential ─────────────────────────────
     # The judge key is a PROVIDER CREDENTIAL and now lives on the
     # `AiProviderConnection(service='llm', provider='openai-compat')` row —
     # tenant → SYSTEM, Vault-encrypted at rest, changeable without a redeploy.
@@ -66,7 +66,7 @@ class OpenAICompatJudgeConfig(BaseSettings):
     # which bypasses validation and therefore this guard.
     api_key: SecretStr = Field(
         default=SecretStr("lm-studio"),
-        validation_alias="HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED_TASK_799",
+        validation_alias="HARNESS_JUDGE_OPENAI_COMPAT_API_KEY__ENV_REMOVED",
     )
     organization: str | None = None
     # ``response_format.type`` sent on json_mode calls (claim extraction / verify).
@@ -85,7 +85,7 @@ class AzureJudgeConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_AZURE_")
 
-    # ── BYO-only credential (TASK-799 lane B) ─────────────────────────────
+    # ── BYO-only credential ─────────────────────────────
     # Azure OpenAI is a CLOUD vendor account: the key belongs on
     # `AiProviderConnection(service='llm', provider='azure')`, tenant → SYSTEM,
     # never in env. Closed with the same dead-alias guard as the
@@ -98,7 +98,7 @@ class AzureJudgeConfig(BaseSettings):
     # rescued by an environment variable.
     api_key: SecretStr = Field(
         default=SecretStr(""),
-        validation_alias="HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED_TASK_799",
+        validation_alias="HARNESS_JUDGE_AZURE_API_KEY__ENV_REMOVED",
     )
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
@@ -251,7 +251,7 @@ class EvalConfig(BaseSettings):
     # rather than blocking a promotion for minutes.
     max_cases_per_run: int = 50
 
-    # TASK-713: how many golden-set cases GoldenSetRunner scores concurrently.
+    # How many golden-set cases GoldenSetRunner scores concurrently.
     # ``1`` (default) is the original strictly-sequential behaviour — safe for
     # any backend, including a single-slot local server. CI raises this (see
     # ``HARNESS_EVAL_CASE_CONCURRENCY`` in ``harness-eval-gate``) to match the
@@ -261,7 +261,7 @@ class EvalConfig(BaseSettings):
     # so raising this alone can never burst past what the endpoint allows.
     case_concurrency: int = 1
 
-    # TASK-713: whether the judge↔clinician ICC calibration check gates the
+    # Whether the judge↔clinician ICC calibration check gates the
     # run at all. Default True (unchanged behaviour for every existing
     # caller/test). A small non-reasoning CI judge can be prone to a ceiling
     # effect — scoring every quality dimension near-identically across cases —
@@ -278,11 +278,11 @@ class EvalConfig(BaseSettings):
     icc_gate_enabled: bool = True
 
     # Release-gate thresholds.
-    # OWNER RULING 2026-08-20 (TASK-713): lowered 0.80 -> 0.73 to the MEASURED
+    # OWNER RULING 2026-08-20: lowered 0.80 -> 0.73 to the MEASURED
     # baseline (icc=0.7306, Gwet AC2=0.9196, n=288, golden set curated-v2.0.0,
     # reproduced 2026-08-18). This is a recorded baseline, not a target: the
-    # shortfall against the 0.80 literature bar is accepted as debt and tracked
-    # in TASK-780, which restores 0.80 once a clinician-authored golden set or a
+    # shortfall against the 0.80 literature bar is accepted as debt.
+    # Restore 0.80 once a clinician-authored golden set or a
     # higher-dynamic-range judge is available. Do not raise this value without
     # re-measuring; do not lower it further without a new owner ruling.
     icc_threshold: float = 0.73

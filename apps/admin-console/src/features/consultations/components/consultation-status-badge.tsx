@@ -8,7 +8,7 @@ import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/
  * color-only — the label always rides along). Unknown values fall back to a
  * neutral badge with the raw label.
  *
- * TASK-711 — session state machine (state-machine.md §1/§2). `CLOSED` is
+ * session state machine ( `CLOSED` is
  * SUPERSEDED (never written by any live path) but kept mapped since a stale
  * historical row could in principle still carry it. `PRIMED`/`DRAINING` are
  * new mid-session phases; `TIMED_OUT` is the "clock never signs" terminal

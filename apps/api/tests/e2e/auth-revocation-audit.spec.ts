@@ -17,7 +17,7 @@
  *   C. **Failed attempts are queryable** (B1) — a rejected login writes an
  *      AuditLog row with `success: false` and a machine-readable reason, so
  *      credential stuffing and post-termination access attempts are
- *      reviewable per HIPAA §164.312(b). Previously success-only.
+ * reviewable per HIPAA Previously success-only.
  *
  * TEST DATA MANAGEMENT:
  *   - A and C use seeded users read-only (transient Redis writes + audit rows).

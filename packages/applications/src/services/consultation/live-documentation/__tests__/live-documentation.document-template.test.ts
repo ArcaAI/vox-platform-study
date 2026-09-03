@@ -1,5 +1,5 @@
 /**
- * TASK-810 — the live loop actually serves the tenant's DOCUMENT TEMPLATE.
+ * the live loop actually serves the tenant's DOCUMENT TEMPLATE.
  *
  * The compiler and the parser are unit-tested in isolation elsewhere; this
  * suite proves the seam between them and the running loop, which is where a
@@ -98,7 +98,7 @@ function buildService(httpMock: unknown, documentTemplateService?: unknown) {
   );
 }
 
-describe('TASK-810 — the live loop serves the tenant’s document template', () => {
+describe('the live loop serves the tenant’s document template', () => {
   it('sends the TENANT’s compiled schema as `response_format`, not a hardcoded SOAP literal', async () => {
     const calls: TextCall[] = [];
     const templateService = { resolveForGeneration: vi.fn().mockResolvedValue(DISCHARGE) };

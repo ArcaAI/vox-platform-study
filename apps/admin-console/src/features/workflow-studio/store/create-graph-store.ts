@@ -1,5 +1,5 @@
 /**
- * The graph-editing store (TASK-719 Task 11). Imitates the SDK's per-mount store discipline
+ * The graph-editing store. Imitates the SDK's per-mount store discipline
  * (rule 08 §Store): built with `createStore` from `zustand/vanilla`, one instance per editor
  * mount, published through React context (`graph-store-provider.tsx`) — never a module
  * singleton, never exported as an object.
@@ -15,10 +15,12 @@ import type { ActionResult, AutosaveState, ConnectRequest, GraphStoreEdge, Graph
 import { checkPortCompatibility } from '../lib/port-compatibility';
 import type { WorkflowNodeDescriptor } from '../api/types';
 
-/** Node-type -> descriptor lookup for the port-compatibility check (TASK-809 Task 12). Passed
+/**
+* Node-type -> descriptor lookup for the port-compatibility check. Passed
  *  in at call time, never stored as state — the registry stays in TanStack Query per this
  *  file's own header comment ("Server data ... is NOT mirrored into this store"). Optional so
- *  the topology-only tests below keep working unchanged; the Studio always supplies it. */
+ *  the topology-only tests below keep working unchanged; the Studio always supplies it. 
+ */
 type PortLookup = ReadonlyMap<string, WorkflowNodeDescriptor>;
 
 interface GraphSnapshot {
@@ -54,11 +56,13 @@ export interface GraphActions {
    *  authoring decision, and silently re-pointing edges would be a guess. */
   duplicateNode: (nodeId: string) => ActionResult;
   moveNode: (nodeId: string, position: { x: number; y: number }) => void;
-  /** Pure predicate behind `connect` — the SAME rules, evaluated without mutating, so the
+  /**
+* Pure predicate behind `connect` — the SAME rules, evaluated without mutating, so the
    *  canvas can refuse an invalid connection while the pointer is still dragging (React Flow
    *  `isValidConnection`) instead of only after the drop. `portLookup`, when supplied, adds the
-   *  TASK-809 port-type check (topology rules alone otherwise) — `connect` forwards it to this
-   *  SAME function, which is what keeps drag-time and commit-time from ever disagreeing. */
+   * port-type check (topology rules alone otherwise) — `connect` forwards it to this
+   *  SAME function, which is what keeps drag-time and commit-time from ever disagreeing. 
+ */
   canConnect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
   connect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
   disconnectEdge: (edgeId: string) => void;

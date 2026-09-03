@@ -1,6 +1,6 @@
 """LM Studio is a FIRST-CLASS engine, not the generic OpenAI-compatible adapter.
 
-RED-first (TASK-818 D-5, "LM Studio needs its own identity").
+RED-first ("LM Studio needs its own identity").
 
 Before this file, `main.py` registered ONE `OpenAICompatProvider` instance under
 BOTH `lm-studio` and `openai_compat`, built with the DEFAULT

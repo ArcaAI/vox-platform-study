@@ -96,7 +96,7 @@ export interface UpdateModelRequest {
 }
 
 // =============================================================================
-// Download (POST/GET admin/ai-models/:id/download) — FROZEN contract (TASK-855)
+// Download (POST/GET admin/ai-models/:id/download) — FROZEN contract
 // =============================================================================
 
 /** POST /admin/ai-models/:id/download — 202 body. 409 = a download is already in flight. */

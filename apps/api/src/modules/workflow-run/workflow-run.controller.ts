@@ -16,7 +16,7 @@ import { ListWorkflowRunsQuery } from './dto';
 
 /**
  * WorkflowRunController — the tenant-scoped runs/observability read plane
- * (TASK-723), mounted at `/admin/workflow-runs/*` (global prefix →
+ * mounted at `/admin/workflow-runs/*` (global prefix →
  * `/api/v1/admin/workflow-runs/*`).
  *
  * Tier 30–49 (rule 13): requires a working tenant. Tenant admins are pinned
@@ -36,8 +36,8 @@ import { ListWorkflowRunsQuery } from './dto';
  * Distinct from `/admin/agent-trajectory` (tier 10-19, super-admin
  * cross-tenant platform ops — see `AgentTrajectoryController`) and from the
  * existing `/ai-operations/runs` admin-console screen it backs: this
- * controller is the DEFINITION-scoped tenant view TASK-723 adds (README
- * §2.4) — cross-linked, not a fork.
+ * controller is the DEFINITION-scoped tenant view adds (README
+ * cross-linked, not a fork.
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-runs')
@@ -137,7 +137,7 @@ export class WorkflowRunController {
    */
   @Post(':runId/gate/approve')
   @Authorize(['update', 'Consultation'])
-  // SVC-NOTE (TASK-773) — CLOSED to the machine class, OVERRIDING the class-level
+  // SVC-NOTE — CLOSED to the machine class, OVERRIDING the class-level
   // `@RequiredSvcScopes('svc:admin:workflow-run:read')`. Reading a runs list must
   // never imply the authority to sign, as the AUTH-NOTE above already says; a
   // clinician decision on clinical content is the same category of act that keeps

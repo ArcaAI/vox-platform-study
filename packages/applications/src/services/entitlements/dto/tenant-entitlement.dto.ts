@@ -28,7 +28,7 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override max API keys; null = inherit', nullable: true })
   maxApiKeys?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions (TASK-722); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions ; null = inherit', nullable: true })
   maxWorkflowDefinitions?: number | null;
 
   @ApiPropertyOptional({ description: 'Override storage quota bytes; null = inherit', nullable: true })
@@ -46,22 +46,22 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override monthly summaries; null = inherit', nullable: true })
   monthlySummaries?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations ; null = inherit', nullable: true })
   monthlyWorkflowInvocations?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (D11); null = inherit', nullable: true })
   monthlySttSessionSeconds?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (D11); null = inherit', nullable: true })
   monthlyLlmTokens?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (D11); null = inherit', nullable: true })
   monthlyTtsCharacters?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (D11); null = inherit', nullable: true })
   monthlyNlpTextUnits?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (D11); null = inherit', nullable: true })
   monthlyEmbeddingTokens?: number | null;
 
   @ApiPropertyOptional({ description: 'Override DNA reports feature; null = inherit', nullable: true })
@@ -130,7 +130,7 @@ export class UpsertTenantEntitlementRequest {
   @Min(0)
   maxApiKeys?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions (TASK-722); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions ; null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -166,37 +166,37 @@ export class UpsertTenantEntitlementRequest {
   @Min(0)
   monthlySummaries?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations ; null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyWorkflowInvocations?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (D11); null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlySttSessionSeconds?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (D11); null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyLlmTokens?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (D11); null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyTtsCharacters?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (D11); null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyNlpTextUnits?: number | null;
 
-  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (D11); null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -228,7 +228,7 @@ export class UpsertTenantEntitlementRequest {
 
   @ApiPropertyOptional({
     description:
-      'Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant (TASK-705). Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide.',
+      'Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant . Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide.',
     nullable: true,
   })
   @IsOptional()

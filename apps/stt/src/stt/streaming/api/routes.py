@@ -143,7 +143,7 @@ async def create_streaming_session(
             channel_count=request.channel_count,
         )
     except SessionManagerDrainingError as exc:
-        # PLANNED scale-down (TASK-726 design-notes.md §(a)) — distinct from
+        # PLANNED scale-down — distinct from
         # the ordinary at-capacity 503 below so an operator reading logs
         # (or a smarter future caller) can tell them apart, even though a
         # dumb caller just sees "503, retry" either way, which is the safe
@@ -456,7 +456,6 @@ async def begin_streaming_drain() -> dict[str, Any]:
     served exactly as before; `/health/ready` starts returning 503 on the
     same flag, which is the ACTUAL "stop routing here" mechanism (k8s
     removes this pod from the Service Endpoints). See
-    docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
     """
     mgr = _require_session_manager()
     mgr.begin_drain()

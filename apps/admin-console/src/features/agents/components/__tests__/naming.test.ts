@@ -6,9 +6,9 @@
  * never render as "NER agent" on a clinician-visible playground surface. Family 6
  * (admin vocabulary): the per-tenant container is "Agent Catalog".
  *
- * AMENDED by TASK-858 Lane D: the ASR pipeline's "Listener" label is RETIRED. The
+ * The ASR pipeline's "Listener" label is RETIRED. The
  * platform now ships a single-task realtime TRANSCRIPTION AGENT (an `stt`-palette
- * workflow definition compiled into an `AsrPipeline`, TASK-858 R1), and the Scribe
+ * workflow definition compiled into an `AsrPipeline`), and the Scribe
  * offers a second, different choice next to it — the consultation WORKFLOW selected
  * at session-open. Calling one of them "Listener" hid exactly the distinction the
  * clinician now has to make, so the ASR selector reads "Transcription agent (STT
@@ -49,7 +49,7 @@ describe('naming rollout (Family 2/6)', () => {
     expect(source).not.toContain('Transcription Listener');
   });
 
-  // The Agent Catalog screen's own vocabulary case lived here until TASK-815
+  // The Agent Catalog screen's own vocabulary case lived here until
   // retired `DepartmentAgent` and the screen with it. Every other case in this
   // file is about a DIFFERENT feature and is untouched.
 });

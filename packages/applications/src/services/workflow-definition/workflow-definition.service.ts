@@ -59,11 +59,11 @@ import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
 
 /** `WorkflowFinding.ruleId` `validate()` stamps when `workflowGraphProblems` short-circuits the
- *  rule catalogue (`validate.ts`) — the ONLY finding source that is always publish/write-blocking. */
+ *  rule catalogue (`validate().ts`) — the ONLY finding source that is always publish()/write-blocking. */
 const SHAPE_FINDING_RULE_ID = 'WF-SHAPE';
 
 /**
- * TASK-847 finding F-32 — the rule id every hyper-parameter capability finding carries.
+ * finding F-32 — the rule id every hyper-parameter capability finding carries.
  *
  * Distinct from the DRAFT rule catalogue so `publish()` can tell "a clinically-unreviewed rule
  * fired" (never blocking, decision #3) from "this graph tunes a parameter that reaches nothing"
@@ -71,9 +71,11 @@ const SHAPE_FINDING_RULE_ID = 'WF-SHAPE';
  */
 const HYPERPARAMETER_CAPABILITY_RULE_ID = 'WF-CAP-001';
 
-/** Server-authored compile/validate metadata (TASK-716's design.md §Data flow). Bumping either
+/**
+ * Server-authored compile()/validate() metadata ( flow). Bumping either
  *  is a deliberate release event, not tenant-configurable — same posture as
- *  `WORKFLOW_NODE_REGISTRY`'s `critical`/`externalWrite` fields. */
+ *  `WORKFLOW_NODE_REGISTRY`'s `critical`/`externalWrite` fields.
+ */
 const COMPILER_VERSION = '0.1.0';
 const RULE_SET_VERSION = 1;
 const DEFAULT_CAPS = { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 };
@@ -81,9 +83,9 @@ const DEFAULT_CAPS = { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 
 /**
  * The two `policyBindings` fields that are NOT derivable from the graph.
  *
- * This constant used to carry all five, and every compile passed it verbatim — which is what
+ * This constant used to carry all five, and every compile() passed it verbatim — which is what
  * D-7 recorded: a published graph pinned NOTHING. `contextSchemaVersionId`, `promptTemplateRefs`
- * and `entitlementKeys` are now derived per compile (see `buildCompilerContext`), leaving only
+ * and `entitlementKeys` are now derived per compile() (see `buildCompilerContext`), leaving only
  * the two below, whose values genuinely have no source in the graph yet.
  *
  * `guardrailProfile` selects PLACEMENT, not permission — the actual clinical-safety enforcement
@@ -96,45 +98,51 @@ const NON_DERIVABLE_POLICY_BINDINGS = {
   redactionRuleSetId: null,
 };
 
-/** TASK-810 DD-2 — the two config keys a generation node carries its DOCUMENT-SHAPE binding in.
+/**
+ * the two config keys a generation node carries its DOCUMENT-SHAPE binding in.
  *  Declared as schema properties by `DOCUMENT_BINDING_PROPERTIES` in `@arcaai/workflow-contract`'s
  *  `node-config-schemas.ts`; named here for the same reason `PROMPT_TEMPLATE_ID_KEY` is named in
  *  `node-prompt-binding.ts` — the derivation below reads raw node config, and a re-typed string
- *  literal is how the two sides drift apart. */
+ *  literal is how the two sides drift apart.
+ */
 const DOCUMENT_TEMPLATE_ID_KEY = 'documentTemplateId';
 const DOCUMENT_VERSION_NUMBER_KEY = 'documentVersionNumber';
 
-/** TASK-724: the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
+/**
+ * the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
  *  enum in this package (`paletteKey` is a free string on the entity) — a single named constant
- *  so the publish-time entitlement check below and any future STT-specific branch share one
- *  literal, never a re-typed `'stt'` string. */
+ *  so the publish()-time entitlement check below and any future STT-specific branch share one
+ *  literal, never a re-typed `'stt'` string.
+ */
 const STT_PALETTE_KEY = 'stt';
 
-/** The entitlement capability key `mapQuotaCapabilityToHttp` keys its `startsWith('feature') ->
+/**
+ * The entitlement capability key `mapQuotaCapabilityToHttp` keys its `startsWith('feature') ->
  *  403` branch off — matches `ResolvedFeatures.paletteStt`'s column name `featurePaletteStt`
  *  exactly, mirroring `PLATFORM_DEFAULT_CAPABILITY` in
  *  `ai-provider-connection/assert-provider-available.ts` (the "first ENFORCED boolean
- *  entitlement" precedent this ticket's README §4 Task 7 names). */
+ * entitlement" precedent Task 7 names).
+ */
 const PALETTE_STT_CAPABILITY = 'featurePaletteStt';
 
 /** Whether ANY finding in a report is the hard shape-level short-circuit. When true, `validate()`
- *  evaluated NO rule-catalogue rules at all (`validate.ts`'s early return) — the report carries
- *  only structural-shape problems, always write/publish-blocking. */
+ *  evaluated NO rule-catalogue rules at all (`validate().ts`'s early return) — the report carries
+ *  only structural-shape problems, always write/publish()-blocking. */
 function reportIsShapeBroken(report: WorkflowValidationReport): boolean {
   return report.findings.some((finding) => finding.ruleId === SHAPE_FINDING_RULE_ID);
 }
 
 /**
- * `WorkflowDefinition` CRUD + the compile/validate/publish lifecycle (TASK-734).
+ * `WorkflowDefinition` CRUD + the compile()/validate()/publish() lifecycle.
  *
- * See `IWorkflowDefinitionService` for the create/update/validate/publish contract and why a
+ * See `IWorkflowDefinitionService` for the create/update()/validate()/publish() contract and why a
  * row IS a version. Two engines from `@arcaai/workflow-contract` are wired here, not one:
  *
  * - `compile()` is the ENGINE gate — a cycle or an unregistered node type is a genuine defect
- *   in the authored graph and is ALWAYS rejected (create/update/publish all 400 on it).
- * - `validate()`'s `DRAFT_SUMMARIZATION_RULE_SET` (TASK-716's 22 not-yet-clinically-reviewed
+ *   in the authored graph and is ALWAYS rejected (create/update()/publish() all 400 on it).
+ * `validate()`'s `DRAFT_SUMMARIZATION_RULE_SET` ( 22 not-yet-clinically-reviewed
  *   rules, `status: 'DRAFT'` on every rule) is recorded on `validationReport` for visibility
- *   but NEVER blocks a write — decision #3 (TASK-734 §2 Risks & Open Questions): wiring the
+ * but NEVER blocks a write — decision #3 ( Risks & Open Questions): wiring the
  *   engine is not the same as enforcing unreviewed clinical rules. The one exception is a
  *   MALFORMED graph (`workflowGraphProblems`), which `validate()` also short-circuits into —
  *   `reportIsShapeBroken` is how this service tells "genuinely broken" from "a DRAFT rule
@@ -147,21 +155,21 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // Optional so unit fixtures can construct without it; production DI
+    // Optional() so unit fixtures can construct without it; production DI
     // (EntitlementsServiceModule) always supplies it.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-724 Task 4 — optional for the same reason (unit-fixture construction); production DI
+    // optional for the same reason (unit-fixture construction); production DI
     // (WorkflowDefinitionServiceModule importing PipelineServiceModule) always supplies it. A
     // publish() of an `stt`-palette workflow with this undefined is a MISCONFIGURATION, not a
     // silently-skipped feature — see the doc comment on `compileSttPipelineIfNeeded` below.
     @Optional() private readonly sttPipelineCompiler?: SttPipelineCompilerService,
-    // TASK-790 W3(a) — the rule-row resolver. `@Optional()` for the same reason as the two
+    // (a) — the rule-row resolver. `@Optional()` for the same reason as the two
     // above (unit-fixture construction); production DI always supplies it via
     // `WorkflowValidatorServiceModule`. When absent, `validateGraph` falls back to the bundled
     // code-owned DRAFT catalogue — the behaviour that was UNIVERSAL before this ticket, so the
     // fallback cannot be less safe than the previous state.
     @Optional() private readonly workflowValidator?: WorkflowValidatorService,
-    // DD-11 — the prompt plane. Optional + trailing so existing positional unit
+    // DD-11 — the prompt plane. Optional() + trailing so existing positional unit
     // fixtures keep their arity; production DI (WorkflowDefinitionServiceModule
     // importing CoreDatabaseModule) always supplies both. Absent ⇒ the two
     // prompt-binding surfaces below refuse rather than half-work.
@@ -170,15 +178,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // D-7 — the tenant's context-schema pin. `@Optional()` + trailing for the same reason as
     // the four above (positional unit fixtures); production DI supplies it via
     // `ConsultationContextSchemaServiceModule`. Absent ⇒ the pin resolves to `null` and the
-    // publish still succeeds: an unpinned artifact is worse than a pinned one, but refusing to
-    // publish at all would be worse than both, and the graph-derived bindings do not need it.
+    // publish() still succeeds: an unpinned artifact is worse than a pinned one, but refusing to
+    // publish() at all would be worse than both, and the graph-derived bindings do not need it.
     @Optional() @Inject(IConsultationContextSchemaService) private readonly contextSchemaService?: IConsultationContextSchemaServicePort,
-    // TASK-847 F-32 — the provider plane, for the hyper-parameter capability gate.
+    // the provider plane, for the hyper-parameter capability gate.
     // `@Optional()` + trailing for the same reason as the five above (positional unit fixtures);
     // production DI supplies it via `AiRoutingPolicyServiceModule`. Absent ⇒ no capability set
-    // resolves, so every tuned node reports the UNKNOWN warning and publish still succeeds —
+    // resolves, so every tuned node reports the UNKNOWN warning and publish() still succeeds —
     // which is the same posture as an unprofiled configuration, and strictly safer than a gate
-    // that fails a publish because its own dependency was missing.
+    // that fails a publish() because its own dependency was missing.
     @Optional() @Inject(IAiRoutingPolicyService) private readonly routingPolicyService?: IAiRoutingPolicyServicePort,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
@@ -296,7 +304,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-856 — seed a NEW lineage from an existing definition. See
+   * seed a NEW lineage from an existing definition. See
    * `IWorkflowDefinitionService.clone` for the contract; the two things worth reading in the
    * code below are WHERE the slug-collision check sits (inside the transaction, fused with the
    * version mint) and WHAT is deliberately not carried over from the source row.
@@ -370,7 +378,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         createdBy: this.requestUserId ?? undefined,
       });
 
-      // Every server-owned publish column is left at its factory default: `compiledConfig` +
+      // Every server-owned publish() column is left at its factory default: `compiledConfig` +
       // both checksums null, `publishedAt`/`deprecatedAt` null, `status` DRAFT, `isActive`
       // false, `tags` empty. A clone has been reviewed by nobody, and the SYSTEM template's
       // `['platform-default', …]` tags would assert something false about a tenant row.
@@ -394,7 +402,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     return WorkflowDefinitionDtoMapper.toResponse(saved);
   }
 
-  /** TASK-856 — the SYSTEM template library, read-only. */
+  /** the SYSTEM template library, read-only. */
   async listTemplates(): Promise<WorkflowDefinitionResponse[]> {
     const templates = await this.workflowDefinitionRepository.findSystemTemplates(this.databaseService.baseClient);
 
@@ -465,7 +473,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   // ============================================================
-  // Validate / publish
+  // Validate / publish()
   // ============================================================
 
   async validate(id: string): Promise<WorkflowDefinitionResponse> {
@@ -476,7 +484,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const graph = entity.graph as unknown as WorkflowGraph;
     const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
     // Same bindings publish() will stamp — a validate() that compiled against different
-    // policyBindings would greenlight an artifact the publish then produces differently.
+    // policyBindings would greenlight an artifact the publish() then produces differently.
     const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId()));
     const engineClean = !reportIsShapeBroken(report) && !('findings' in compileResult);
 
@@ -513,12 +521,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
     }
 
-    // TASK-847 F-32 — the gate, at the moment it matters. A node that tunes a parameter its bound
+    // the gate, at the moment it matters. A node that tunes a parameter its bound
     // provider configuration does not accept is refused HERE, at authoring time, rather than
     // having the value silently dropped on the wire during a clinical consultation. WARNING-level
     // capability findings (an unprofiled configuration) are recorded on the report and do NOT
     // block — "unknown" is not "unsupported", and blocking on it would gate the platform on data
-    // entry. Runs BEFORE compile and before any entity mutation, so a refusal writes nothing.
+    // entry. Runs BEFORE compile() and before any entity mutation, so a refusal writes nothing.
     const capabilityErrors = report.findings.filter(
       (finding) => finding.ruleId === HYPERPARAMETER_CAPABILITY_RULE_ID && finding.severity === 'ERROR',
     );
@@ -533,10 +541,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // records WHICH schema version it was built against instead of a hardcoded null.
     const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
 
-    // TASK-724 Task 4 — an `stt`-palette publish ALSO compiles the graph into an
-    // `AsrPipeline`/`AsrPipelineVersion` row (README §1's central design decision). Runs BEFORE
+    // an `stt`-palette publish() ALSO compiles the graph into an
+    // `AsrPipeline`/`AsrPipelineVersion` row ( central design decision). Runs BEFORE
     // any entity mutation below: a failure here (e.g. no `stt.asrEngine` node) must abort the
-    // publish with nothing written, exactly like the engine gate above.
+    // publish() with nothing written, exactly like the engine gate above.
     const asrPipeline = await this.compileSttPipelineIfNeeded(entity, compiled);
 
     entity.validationReport = report as unknown as JsonValue;
@@ -554,7 +562,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     }
 
     // Publish is not a CAS (`consultation-context-schema.service.ts`'s discipline) — an
-    // unrelated concurrent metadata edit must not 412 the publish.
+    // unrelated concurrent metadata edit must not 412 the publish().
     const updated = await this.workflowDefinitionRepository.update(id, entity);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -586,7 +594,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   // ============================================================
-  // Sandbox compile (TASK-721 Workbench — read, never a lifecycle transition)
+  // Sandbox compile() ( Workbench — read, never a lifecycle transition)
   // ============================================================
 
   async getCompiledConfigForSandboxRun(id: string): Promise<SandboxCompileResult> {
@@ -594,7 +602,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     assertEqualTenants(entity, { tenantId: this.tenantId });
 
     const graph = entity.graph as unknown as WorkflowGraph;
-    // The sandbox must preview exactly what publish would stamp, bindings included.
+    // The sandbox must preview exactly what publish() would stamp, bindings included.
     const compiledConfig = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId());
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
@@ -612,11 +620,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   // Internals
   // ============================================================
 
-  /** PUBLISHED/DEPRECATED rows are hard-immutable by SERVICE convention
-   *  (`workflow-definition.prisma`'s file header §3.4) — modelled on
-   *  `prompt-management.service.ts`'s `assertCanMutate`. */
+  /**
+   * PUBLISHED/DEPRECATED rows are hard-immutable by SERVICE convention
+   * (`workflow-definition.prisma`'s file header — modelled on
+   *  `prompt-management.service.ts`'s `assertCanMutate`.
+   */
   // ============================================================
-  // DD-11 — prompt binding, and its two update paths
+  // DD-11 — prompt binding, and its two update() paths
   // ============================================================
 
   /**
@@ -628,7 +638,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * at, or a node's pin names a version the second write never created — and
    * the second failure mode is a workflow that cannot resolve its own prompt.
    *
-   * Note that the `ConsultationContextSchema` publish flow this ticket's
+   * Note that the `ConsultationContextSchema` publish() flow this ticket's
    * catalog otherwise copies has NO transaction (its version insert and its pin
    * move are two independent writes). That is survivable there because a
    * dangling pin degrades to "fall through to the next tier". It is not
@@ -679,7 +689,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const userId = this.requestUserId ?? null;
     const previousVersionNumber = binding.pinnedVersionNumber;
 
-    // §7b item 1 — ADOPT vs AUTHOR.
+    // item 1 — ADOPT vs AUTHOR.
     //
     // DD-11 PATH 2 leaves node pins alone when a template is edited out of band,
     // which makes ADOPTION the common path, not the rare one. Minting a
@@ -699,7 +709,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     //     matching row would either strand the head ahead of the pin or silently
     //     rewrite a template every other node reads — exactly what DD-11 forbids;
     //   * both in-repo precedents compare against latest only
-    //     (`ConsultationContextSchemaService.publish`, and `approve`'s
+    //     (`ConsultationContextSchemaService.publish()`, and `approve`'s
     //     `latestMatchesLiveContent` in `PromptManagementService`).
     // The corollary is intended: submitting an OLDER body while the template sits
     // on a newer one is a REVERT — a fresh decision about a shared template — and
@@ -792,7 +802,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       entity.graph = moved as unknown as JsonValue;
       entity.updatedBy = userId ?? undefined;
 
-      // CAS, not a bare `update`: the route is `@RequiresIfMatch()`-gated, so the
+      // CAS, not a bare `update()`: the route is `@RequiresIfMatch()`-gated, so the
       // definition write must both re-check the version and ADVANCE it — a graph
       // rewrite that left `_version` (and therefore the ETag) untouched would let
       // a client blind-write the same validator again. Throwing from inside the
@@ -823,7 +833,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * The "new version available" surface (DD-11).
+   * The "new version available" surface.
    *
    * PATH 2 — an edit made on the Prompt management screen — creates a version
    * and moves NO node's pin, which is exactly what stops a shared template from
@@ -871,21 +881,21 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-790 W1 (TASK-789 C-5/D-5) — `paletteKey` must name a palette the node registry actually
+   * (/D-5) — `paletteKey` must name a palette the node registry actually
    * declares. The DTO only constrains it to a string of at most 80 chars, and Workflow Studio's
    * palette field is a free-text `<Input>`, so a typo ('summarisation', 'Consultation') would
    * otherwise produce a row that is published-looking but permanently inert: `validate()` skips
-   * every rule whose `paletteKey` does not match (`validate.ts`), so NO palette rule set ever
+   * every rule whose `paletteKey` does not match (`validate().ts`), so NO palette rule set ever
    * applies, and the Assignment Matrix has no column to offer it under.
    *
    * Create-only by design: `UpdateWorkflowDefinitionRequest` carries no `paletteKey`, so a
-   * definition's palette is immutable after creation and there is no update path to guard.
+   * definition's palette is immutable after creation and there is no update() path to guard.
    *
    * The valid set is DERIVED from `WORKFLOW_NODE_REGISTRY` (see `KNOWN_PALETTE_KEYS`), never
    * re-typed here — a palette added to the registry is accepted with no edit to this service.
    */
   /**
-   * TASK-856 — refuse to clone a SYSTEM template that pins a catalog ROW the destination tenant
+   * refuse to clone a SYSTEM template that pins a catalog ROW the destination tenant
    * cannot resolve.
    *
    * A node may bind a prompt (`promptTemplateId`) or a document shape (`documentTemplateId`) by
@@ -931,7 +941,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-724 Task 7 — publish-time-only entitlement gate, imitating
+   * publish()-time-only entitlement gate, imitating
    * `assertProviderAvailable`'s `QuotaExceededException` call site (the "first ENFORCED boolean
    * entitlement" precedent). Checked ONLY here, never at runtime: an already-published
    * `stt`-palette workflow keeps running its compiled `AsrPipeline` even if the tenant's grant
@@ -954,12 +964,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-724 Task 4 — an `stt`-palette publish compiles the graph into an `AsrPipeline` +
-   * `AsrPipelineVersion` row (README §1). No-op (`null`) for every other palette. When the
+   * an `stt`-palette publish() compiles the graph into an `AsrPipeline` +
+   * `AsrPipelineVersion` row ( No-op (`null`) for every other palette. When the
    * palette IS `stt` but `sttPipelineCompiler` was never wired, this is a deployment
    * misconfiguration, not a case to skip quietly — `WorkflowDefinitionServiceModule` always
    * supplies it in production; only unit fixtures construct without it (and none of them
-   * publish an `stt`-palette graph without also stubbing this).
+   * publish() an `stt`-palette graph without also stubbing this).
    */
   private async compileSttPipelineIfNeeded(
     entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'name' | 'paletteKey'>,
@@ -984,7 +994,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-790 W3(a) (TASK-789 H-1) — resolve the rule set through `WorkflowValidatorService` so a
+   * (a) — resolve the rule set through `WorkflowValidatorService` so a
    * tenant's `WorkflowInvariantRule` rows actually participate.
    *
    * Before this, every call went straight to `validate()` against the bundled, code-owned DRAFT
@@ -1007,9 +1017,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           { ruleSetVersion: RULE_SET_VERSION, registryChecksum: registryChecksum() },
         );
 
-    // TASK-847 F-32 — merged into the SAME report rather than reported through a second channel,
+    // merged into the SAME report rather than reported through a second channel,
     // so the Studio maps a capability problem onto a canvas node exactly like every other
-    // finding, and a draft save records it as authoring feedback long before publish refuses it.
+    // finding, and a draft save records it as authoring feedback long before publish() refuses it.
     const capability = await this.hyperparameterCapabilityFindings(graph, tenantId);
     if (capability.length === 0) return report;
 
@@ -1021,10 +1031,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
-   * TASK-847 finding F-32 — the gate the ticket built and never wired.
+   * finding F-32 — the gate the ticket built and never wired.
    *
    * `hyperparameterCapabilityProblems` is a PURE function: it compares what a node tuned against
-   * what the bound configuration declares it accepts. TASK-847 could not call it because the
+   * what the bound configuration declares it accepts. could not call it because the
    * capability set is DATA — it comes off the `AiModel` row the node's `providerConfigRef`
    * resolves to — and that read lives outside a package with no database. This is that read.
    *
@@ -1045,7 +1055,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const resolved = await Promise.all(
       bindings.map(async (binding) => ({
         binding,
-        // A resolution failure is an UNKNOWN capability set, never a failed publish — the
+        // A resolution failure is an UNKNOWN capability set, never a failed publish() — the
         // service already contracts not to throw, and this is the belt to that suspenders.
         capabilities: await routingPolicyService.resolveGenerationCapabilities(tenantId, binding.providerConfigRef).catch(() => undefined),
       })),
@@ -1071,7 +1081,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * be a second, silently-diverging copy of a resolution the platform already has one answer for.
    *
    * Never throws: `getEffectiveBundle` returns nulls (not an error) for a tenant that has
-   * configured no schema, and a lookup failure must not be the thing that fails a publish. A
+   * configured no schema, and a lookup failure must not be the thing that fails a publish(). A
    * `null` pin from here is an honest "this tenant pinned nothing" — which is exactly what D-7's
    * hardcoded `null` could not distinguish itself from.
    */
@@ -1089,7 +1099,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * added to the registry later is picked up here for free, instead of being silently omitted
    * from the compiled artifact.
    *
-   * `documentTemplateRefs` (TASK-810 DD-2) is the same derivation over the SHAPE binding a
+   * `documentTemplateRefs` is the same derivation over the SHAPE binding a
    * generation node carries in its own config (`documentTemplateId` + `documentVersionNumber`,
    * declared by `DOCUMENT_BINDING_PROPERTIES` in `node-config-schemas.ts`). It is read off ANY
    * node carrying the key, for the same reason `collectPromptBindings` is: a node-TYPE allow-list
@@ -1129,7 +1139,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       .sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
     // Distinct + SORTED: `compiledConfig` is checksummed over its canonical JSON, so an
-    // order that followed node authoring order would make the same graph compile to two
+    // order that followed node authoring order would make the same graph compile() to two
     // different checksums depending on how the author happened to lay it out.
     const entitlementKeys = [
       ...new Set(

@@ -1,9 +1,9 @@
 /**
- * TASK-806 lane A — the TARGET NODE CATALOGUE (TASK-809 DD-6/DD-9), the `guard.*` node types
- * (DD-7) and the four contract corrections that ride with them.
+ * lane A — the TARGET NODE CATALOGUE (/DD-9), the `guard.*` node types
+ *  and the four contract corrections that ride with them.
  *
- * Everything asserted here was an OPEN ITEM at the end of TASK-809 (§2z "Open owner decisions
- * surfaced") or a §10 lane-status gap. Each `describe` names the item it closes so a reader can
+ * Everything asserted here was an OPEN ITEM at the end of ( "Open owner decisions
+ * surfaced") or a lane-status gap. Each `describe` names the item it closes so a reader can
  * go back to the ticket rather than guess why the assertion exists.
  */
 import { describe, expect, it } from 'vitest';
@@ -14,8 +14,10 @@ import { TERMINOLOGY_PURPOSE_SCOPES } from '../node-config-schemas';
 
 const REGISTRY = WORKFLOW_NODE_REGISTRY;
 
-/** DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
- *  DNA-redaction node TASK-815 §11 turns from a resolver flag into a node. */
+/**
+* DD-9's target catalogue, verbatim, plus DD-6's pre-summarization entry and the
+ * DNA-redaction node turns from a resolver flag into a node.
+ */
 const AGENT_CATALOGUE = [
   'agent.transcription',
   'agent.normalization',
@@ -123,8 +125,8 @@ describe('item 7 — descriptor.lane tells the truth about which runtime execute
   });
 
   it('a realtime node MAY declare externalWrite — publishing the running note IS its product', () => {
-    // The TASK-809 rule "a realtime node MUST NOT be externalWrite" was falsified by the
-    // runtime TASK-811 shipped: two of the three nodes the realtime executor implements write.
+    // The rule "a realtime node MUST NOT be externalWrite" was falsified by the
+    // runtime shipped: two of the three nodes the realtime executor implements write.
     expect(REGISTRY['consultation.realtimeSummary'].externalWrite).toBe(true);
     expect(nodeDescriptorContractProblems(REGISTRY['consultation.realtimeSummary'])).toEqual([]);
   });

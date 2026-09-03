@@ -11,7 +11,7 @@ import { Slider } from '@arcaai/ui/components/shadcn/slider';
 const AUTO_ADVANCE_MS = 900;
 
 /**
- * Replay/scrub for a COMPLETED run (TASK-849 lane C, step 7). "Free" per the ticket: it reads
+ * Replay/scrub for a COMPLETED run. "Free": it reads
  * only the durable REST trace (`RunNodeRollup[]`, already fetched by `useRunTrace`) already on
  * screen — no additional live connection, no new endpoint. `step` is the count of trace steps
  * REVEALED so far, in `order`; the caller slices its own node/rollup list to `step` and feeds

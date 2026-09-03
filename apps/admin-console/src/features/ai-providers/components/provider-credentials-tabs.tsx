@@ -37,7 +37,7 @@ const DEFAULT_SERVICE: ProviderService = 'llm';
  * per-capability credential tabs on `/stt-config`, `/tts-config` and the
  * read-only summary on `/ai-configuration` were removed in favour of it.
  *
- * TASK-799 Phase 4 (E.3): the tab list was a hand-typed `['llm','stt','tts']`
+ * The tab list was a hand-typed `['llm','stt','tts']`
  * that had been stale since P1-C.1 widened the plane to six capabilities. It
  * now iterates the derived list, so `embeddings`, `rerank` and `vector` — which
  * had a working API and no button — are reachable, and the next widening

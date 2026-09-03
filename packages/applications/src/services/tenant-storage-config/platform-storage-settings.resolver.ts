@@ -1,4 +1,4 @@
-// TASK-799 lane A.1 — the `db-config` READ lane for `storage.platformDefault.*`.
+// lane A.1 — the `db-config` READ lane for `storage.platformDefault.*`.
 //
 // WHAT THIS IS, AND WHAT IT DELIBERATELY IS NOT.
 //

@@ -10,7 +10,7 @@ import { TenantNlpTaskInstructionsEntityMapper } from '../../../mappers';
 import { TenantNlpTaskInstructions } from '../../../models';
 
 /**
- * Tenant-writable topic/intent instruction content repository (TASK-729).
+ * Tenant-writable topic/intent instruction content repository.
  *
  * One row per (tenant, taskKey) — enforced by the
  * `TenantNlpTaskInstructions_tenant_task_unique` index. Unlike `AiTaskDefault`

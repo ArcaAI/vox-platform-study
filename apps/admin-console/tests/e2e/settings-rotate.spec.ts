@@ -33,7 +33,7 @@ async function createFixtureSecret(page: Page): Promise<{ id: string; key: strin
         value: 'initial-secret-value',
         dataType: 'String',
         namespace: 'secrets',
-        description: 'Temporary fixture for the TASK-445 rotate e2e — safe to delete.',
+        description: 'Temporary fixture for the  rotate e2e — safe to delete.',
       }),
     });
     if (!response.ok) {

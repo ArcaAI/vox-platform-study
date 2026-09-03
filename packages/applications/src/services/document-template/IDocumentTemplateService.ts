@@ -25,7 +25,7 @@ export interface ResolvedDocumentTemplate {
 }
 
 /**
- * The tenant's clinical-document SHAPE catalog (TASK-810).
+ * The tenant's clinical-document SHAPE catalog.
  *
  * ## The three surfaces, and who calls them
  *

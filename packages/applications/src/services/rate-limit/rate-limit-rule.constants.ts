@@ -1,5 +1,5 @@
 /**
- * Rate-limit RULE constants (TASK-785).
+ * Rate-limit RULE constants.
  *
  * Deliberately separate from `rate-limit.constants.ts`, which is the registry
  * of `GlobalSetting` KEYS for the named tier baselines (rank 5). Rules are rows
@@ -13,7 +13,7 @@ export { ALL_ROUTES_PATTERN };
 
 /**
  * The reserved SYSTEM tenant — a rule owned by it is a PLATFORM rule (rank 4).
- * The SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1);
+ * The SOLE platform-configuration tier (owner ruling 2026-08-20);
  * NEVER the GLOBAL/default tenant `50000000-…`, which is a CUSTOMER tenant.
  */
 export const RATE_LIMIT_RULE_SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';

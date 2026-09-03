@@ -1,5 +1,5 @@
 /**
- * The unified AI Platform screen (TASK-845).
+ * The unified AI Platform screen.
  *
  * These cases pin the DECISIONS the ticket made, not the markup:
  *   * five tabs cut by user intent, all reachable;
@@ -363,7 +363,7 @@ describe('AiPlatformScreen — model store and HuggingFace acquisition', () => {
     stubFetch();
     renderWithProviders(<AiPlatformScreen />, { searchParams: '?tab=store' });
 
-    expect(await screen.findByRole('button', { name: /whisper-large-v3\//i })).toBeDefined();
+    expect(await screen.findByRole('button', { name: /whisper-large-v3\//i })).toBeDefined;
     expect(screen.getByText('README.md')).toBeDefined();
   });
 

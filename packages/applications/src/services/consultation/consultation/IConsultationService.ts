@@ -33,14 +33,14 @@ export abstract class IConsultationService {
   abstract getById(id: string): Promise<ConsultationResponse | null>;
 
   /**
-   * TASK-813 — which engine governs this consultation, and the identity of the
+   * which engine governs this consultation, and the identity of the
    * tenant-authored graph when one does. `NotFoundException` for an unknown or
    * cross-tenant id (404-over-403).
    */
   abstract getGoverningWorkflow(consultationId: string): Promise<ConsultationWorkflowResponse>;
 
   /**
-   * TASK-813 §8 — the workflows the CLS-resolved tenant may name in
+   * the workflows the CLS-resolved tenant may name in
    * `OpenConsultationRequest.workflowDefinitionSlug`. Same predicate as the
    * selection gate, so the list and the gate cannot disagree. An empty set is a
    * real answer; a deployment with no dispatcher raises `ServiceUnavailable`
@@ -124,8 +124,8 @@ export abstract class IConsultationService {
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
 
   /**
-   * TASK-711 — `OPEN → PRIMED`, the session state machine's first
-   * checkpoint (the state TASK-712 consent enforcement hangs on).
+   * `OPEN → PRIMED`, the session state machine's first
+   * checkpoint (the state consent enforcement hangs on).
    * Idempotent: a no-op when already `PRIMED`. `expectedVersion` is the
    * `@RequiresIfMatch()`/`@ExpectedVersion()` OCC CAS predicate; absent ⇒
    * falls back to the freshly-read row version.
@@ -135,7 +135,7 @@ export abstract class IConsultationService {
   /**
    * Close a consultation. The terminal is derived from the current status
    * (`SIGNED → CLOSED_COMPLETE`, `TIMED_OUT → CLOSED_INCOMPLETE` —
-   * state-machine.md §2); any other predecessor is illegal (409).
+   * any other predecessor is illegal (409).
    * Idempotent: a no-op when already terminal. `expectedVersion` — see
    * `primeConsultation`.
    */
@@ -157,7 +157,7 @@ export abstract class IConsultationService {
   abstract updateConsultation(id: string, request: UpdateConsultationRequest, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — `PRIMED → RECORDING` (TASK-711;
+   * Clinical Workflow Playground (WS2) — `PRIMED → RECORDING` (;
    * the one flagged precondition in the whole matrix — see
    * `consultation.state.requirePrimedBeforeRecording`). The harness later
    * promotes a drained consult to PENDING_REVIEW once a draft note is
@@ -167,7 +167,7 @@ export abstract class IConsultationService {
   abstract startRecording(id: string): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — `RECORDING → DRAINING` (TASK-711)
+   * Clinical Workflow Playground (WS2) — `RECORDING → DRAINING`
    * when recording stops (the harness later promotes it to
    * DRAFT_PENDING_SENSORS/PENDING_REVIEW via `persistDraft`).
    */

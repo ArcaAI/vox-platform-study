@@ -1,7 +1,7 @@
 {
   "name": "@arcaai/vox-codegen",
   "version": "0.1.0",
-  "description": "Build-time TypeScript codegen CLI for a tenant's consultation context schema (TASK-668) — an accessory to @arcaai/vox's runtime discovery, never a replacement.",
+  "description": "Build-time TypeScript codegen CLI for a tenant's consultation context schema  — an accessory to @arcaai/vox's runtime discovery, never a replacement.",
   "type": "commonjs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

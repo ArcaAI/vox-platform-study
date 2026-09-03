@@ -64,7 +64,7 @@
           "secret": false,
           "dataType": "number",
           "default": 4,
-          "description": "Concurrent async analyse jobs \u2014 the ONLY field here with a reader (`main.py`). Lived on the deleted engine sub-config (`settings.engine.max_concurrent`), which made a queue bound look like an engine knob; it is the job queue's own limit. The wait/retry/backoff/batch quartet that sat alongside it had no reader at all (TASK-799 F-13); admission waiting is `transport.max_queue_wait_s`, which IS read."
+          "description": "Concurrent async analyse jobs \u2014 the ONLY field here with a reader (`main.py`). Lived on the deleted engine sub-config (`settings.engine.max_concurrent`), which made a queue bound look like an engine knob; it is the job queue's own limit. The wait/retry/backoff/batch quartet that sat alongside it had no reader at all. admission waiting is `transport.max_queue_wait_s`, which IS read."
         },
         {
           "name": "GUARDRAIL_REDIS_URL",
@@ -78,7 +78,7 @@
           "secret": false,
           "dataType": "string",
           "default": "redis://localhost:6379/0",
-          "description": "The alias is not decoration. `env_prefix=\"GUARDRAIL_REDIS_\"` + a field named `redis_url` resolves to `GUARDRAIL_REDIS_REDIS_URL` \u2014 a stuttering name nothing sets. Every operator-facing file says `GUARDRAIL_REDIS_URL` (`.gitlab/ci/test.yml:695` even wires it to `$CI_REDIS_URL`), so the documented name has never actually reached this service and CI has been silently testing against the localhost default. Found by the Python drift gate added in TASK-799 Phase 1.5; the stuttering form stays accepted so nothing that DID set it breaks."
+          "description": "The alias is not decoration. `env_prefix=\"GUARDRAIL_REDIS_\"` + a field named `redis_url` resolves to `GUARDRAIL_REDIS_REDIS_URL` \u2014 a stuttering name nothing sets. Every operator-facing file says `GUARDRAIL_REDIS_URL` (`.gitlab/ci/test.yml:695` even wires it to `$CI_REDIS_URL`), so the documented name has never actually reached this service and CI has been silently testing against the localhost default. Found by the Python drift gate; the stuttering form stays accepted so nothing that DID set it breaks."
         },
         {
           "name": "GUARDRAIL_PORT",
@@ -92,7 +92,7 @@
           "secret": false,
           "dataType": "number",
           "default": 8863,
-          "description": "`GUARDRAIL_PORT` is the fleet-wide name for this concept: it is what `scripts/dev-service.sh:267` passes to uvicorn, what `.env.test` sets to 8963, and what `apps/api/src/__tests__/env-port-standardization.test.ts` pairs with `GUARDRAIL_URL`. Only `GUARDRAIL_V2_PORT` was ever readable here, so every one of those declarations reached the launcher and not the app \u2014 harmless while uvicorn always wins, and wrong the moment anything reads `settings.port`. Accept both; the fleet name first (TASK-799 B.3)."
+          "description": "`GUARDRAIL_PORT` is the fleet-wide name for this concept: it is what `scripts/dev-service.sh:267` passes to uvicorn, what `.env.test` sets to 8963, and what `apps/api/src/__tests__/env-port-standardization.test.ts` pairs with `GUARDRAIL_URL`. Only `GUARDRAIL_V2_PORT` was ever readable here, so every one of those declarations reached the launcher and not the app \u2014 harmless while uvicorn always wins, and wrong the moment anything reads `settings.port`. Accept both; the fleet name first."
         },
         {
           "name": "GUARDRAIL_SERVICE_TOKEN",
@@ -238,7 +238,7 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:8864",
-          "description": "Where `apps/nlp` lives \u2014 guardrail's classification/NER executor after TASK-735 Phase 3. BOOTSTRAP TRANSPORT (an address), not config authority: read from the repo-wide `NLP_URL`, so guardrail adds no env var of its own."
+          "description": "Where `apps/nlp` lives \u2014 guardrail's classification/NER executor after BOOTSTRAP TRANSPORT (an address), not config authority: read from the repo-wide `NLP_URL`, so guardrail adds no env var of its own."
         },
         {
           "name": "TEXT_URL",
@@ -440,7 +440,7 @@
           "secret": false,
           "dataType": "number",
           "default": 1,
-          "description": "TASK-713: how many golden-set cases GoldenSetRunner scores concurrently. ``1`` (default) is the original strictly-sequential behaviour \u2014 safe for any backend, including a single-slot local server. CI raises this (see ``HARNESS_EVAL_CASE_CONCURRENCY`` in ``harness-eval-gate``) to match the judge service container's parallel slot count; actual in-flight network concurrency to the judge endpoint is still bounded by the separate ``HARNESS_LLM_MAX_CONCURRENCY`` governor (``harness.core.llm_concurrency``), so raising this alone can never burst past what the endpoint allows."
+          "description": "How many golden-set cases GoldenSetRunner scores concurrently. ``1`` (default) is the original strictly-sequential behaviour \u2014 safe for any backend, including a single-slot local server. CI raises this (see ``HARNESS_EVAL_CASE_CONCURRENCY`` in ``harness-eval-gate``) to match the judge service container's parallel slot count; actual in-flight network concurrency to the judge endpoint is still bounded by the separate ``HARNESS_LLM_MAX_CONCURRENCY`` governor (``harness.core.llm_concurrency``), so raising this alone can never burst past what the endpoint allows."
         },
         {
           "name": "HARNESS_EVAL_FAITHFULNESS_THRESHOLD",
@@ -476,7 +476,7 @@
           "secret": false,
           "dataType": "boolean",
           "default": "true",
-          "description": "TASK-713: whether the judge\u2194clinician ICC calibration check gates the run at all. Default True (unchanged behaviour for every existing caller/test). A small non-reasoning CI judge can be prone to a ceiling effect \u2014 scoring every quality dimension near-identically across cases \u2014 which drives ICC(2,1) to ~0 regardless of whether its underlying agreement (Gwet AC2, computed and reported alongside it) is actually strong; `icc_threshold` is validated to [0, 1] (see `_unit_interval` below), so a near-zero-but-technically-negative ICC reading from that ceiling effect can never be recalibrated into passing by lowering the threshold alone. CI sets `HARNESS_EVAL_ICC_GATE_ENABLED=false` for its specific small judge rather than silently widening `icc_threshold` outside its valid range or forcing a pass on a statistic that is structurally uninformative for that model \u2014 see harness-eval-gate's env-var comment in `.gitlab/ci/test.yml` for the measured numbers."
+          "description": "Whether the judge\u2194clinician ICC calibration check gates the run at all. Default True (unchanged behaviour for every existing caller/test). A small non-reasoning CI judge can be prone to a ceiling effect \u2014 scoring every quality dimension near-identically across cases \u2014 which drives ICC(2,1) to ~0 regardless of whether its underlying agreement (Gwet AC2, computed and reported alongside it) is actually strong; `icc_threshold` is validated to [0, 1] (see `_unit_interval` below), so a near-zero-but-technically-negative ICC reading from that ceiling effect can never be recalibrated into passing by lowering the threshold alone. CI sets `HARNESS_EVAL_ICC_GATE_ENABLED=false` for its specific small judge rather than silently widening `icc_threshold` outside its valid range or forcing a pass on a statistic that is structurally uninformative for that model \u2014 see harness-eval-gate's env-var comment in `.gitlab/ci/test.yml` for the measured numbers."
         },
         {
           "name": "HARNESS_EVAL_ICC_THRESHOLD",
@@ -488,7 +488,7 @@
           "secret": false,
           "dataType": "number",
           "default": 0.73,
-          "description": "Release-gate thresholds. OWNER RULING 2026-08-20 (TASK-713): lowered 0.80 -> 0.73 to the MEASURED baseline (icc=0.7306, Gwet AC2=0.9196, n=288, golden set curated-v2.0.0, reproduced 2026-08-18). This is a recorded baseline, not a target: the shortfall against the 0.80 literature bar is accepted as debt and tracked in TASK-780, which restores 0.80 once a clinician-authored golden set or a higher-dynamic-range judge is available. Do not raise this value without re-measuring; do not lower it further without a new owner ruling."
+          "description": "Release-gate thresholds. OWNER RULING 2026-08-20: lowered 0.80 -> 0.73 to the MEASURED baseline (icc=0.7306, Gwet AC2=0.9196, n=288, golden set curated-v2.0.0, reproduced 2026-08-18). This is a recorded baseline, not a target: the shortfall against the 0.80 literature bar is accepted as debt. Restore 0.80 once a clinician-authored golden set or a higher-dynamic-range judge is available. Do not raise this value without re-measuring; do not lower it further without a new owner ruling."
         },
         {
           "name": "HARNESS_EVAL_MAX_CASES_PER_RUN",
@@ -1232,7 +1232,7 @@
           "secret": false,
           "dataType": "string",
           "default": "/api/v1/internal/consent",
-          "description": "TASK-712 (consent-abac Phase 4) \u2014 gateway-internal consent-assert mount. A SIBLING of api_internal_prefix (``ConsentInternalController`` is `@Controller('internal/consent')`, not nested under `internal/harness`), so it gets its own prefix rather than reusing the harness one."
+          "description": "Gateway-internal consent-assert mount. A SIBLING of api_internal_prefix (``ConsentInternalController`` is `@Controller('internal/consent')`, not nested under `internal/harness`), so it gets its own prefix rather than reusing the harness one."
         },
         {
           "name": "HARNESS_CONVERSATION_LANGUAGE",
@@ -1328,7 +1328,7 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:8863",
-          "description": "Peer service \u2014 the summarization palette's `guardrail.check` node (TASK-720) calls apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap floor pattern (rule 09 \u00a7Configuration Tiers: a `*_URL` transport address is the ONE sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call (TASK-737)."
+          "description": "Peer service \u2014 the summarization palette's `guardrail.check` node calls apps/guardrail directly, mirroring the established `text_base_url`/`nlp_base_url` bootstrap floor pattern (rule 09 \u00a7Configuration Tiers: a `*_URL` transport address is the ONE sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call."
         },
         {
           "name": "HARNESS_GUARDRAIL_SERVICE_TOKEN",
@@ -1840,7 +1840,7 @@
           "secret": false,
           "dataType": "string",
           "default": "http://localhost:8862",
-          "description": "`TEXT_URL` is the repo-wide name for this address \u2014 `apps/guardrail` already reads it under the same alias, and `turbo.json#globalEnv` declares it once for the whole fleet. `NLP_EXTERNAL_TEXT_BASE_URL` was a second name for the same endpoint (TASK-799 lane D): two names for one address is how half a fleet ends up pointed at a decommissioned host."
+          "description": "`TEXT_URL` is the repo-wide name for this address \u2014 `apps/guardrail` already reads it under the same alias, and `turbo.json#globalEnv` declares it once for the whole fleet. `NLP_EXTERNAL_TEXT_BASE_URL` was a second name for the same endpoint: two names for one address is how half a fleet ends up pointed at a decommissioned host."
         },
         {
           "name": "MEDICAL_SUGGESTER_USE_GPU",
@@ -2004,7 +2004,7 @@
           "secret": false,
           "dataType": "number",
           "default": 2,
-          "description": "`latency_class` on the request selects the lane; absent \u21d2 bulk, so an existing caller keeps byte-identical behaviour. 2, not 4: the lane exists for latency, and the measured cost of a wider gate batch is paid by the request that is waiting for the verdict (TASK-782 \u00a75.4)."
+          "description": ""
         },
         {
           "name": "NLP_INFERENCE_INTERACTIVE_QUEUE_MAX_DEPTH",
@@ -2088,7 +2088,7 @@
           "secret": false,
           "dataType": "number",
           "default": 20,
-          "description": "Typed `int` (a `logging` level number) but written by operators as a NAME \u2014 `apps/nlp/.env.sample` shipped `LOG_LEVEL=info`, and every other service in the fleet takes a name. So `NLP_LOG_LEVEL=INFO` used to be a boot-time ValidationError while `NLP_LOG_LEVEL=20` was undocumented anywhere. Accept both spellings of the ONE name (TASK-799 B.3); `core/logging.py` reads the same variable and resolves it the same way."
+          "description": "Typed `int` (a `logging` level number) but written by operators as a NAME \u2014 `apps/nlp/.env.sample` shipped `LOG_LEVEL=info`, and every other service in the fleet takes a name. So `NLP_LOG_LEVEL=INFO` used to be a boot-time ValidationError while `NLP_LOG_LEVEL=20` was undocumented anywhere. Accept both spellings of the ONE name ; `core/logging.py` reads the same variable and resolves it the same way."
         },
         {
           "name": "NLP_METRICS_ENABLED",
@@ -2179,7 +2179,7 @@
           "secret": false,
           "dataType": "number",
           "default": 8,
-          "description": "Owner decision (2026-08-20, TASK-729 \u00a76): outbound peer HTTP (the `nlp` \u2192 `text` delegation behind `/classify/topic`/`/classify/intent`) gets its OWN bound, never `inference_max_concurrent`. That semaphore protects local GPU/CPU inference slots; a slow HTTP round-trip to `text` is a completely different resource (this process's own outbound connection/concurrency budget) and must not be able to starve \u2014 or be starved by \u2014 local classification. Bootstrap fallback only; the runtime value comes from the control plane (`nlp.peerCall.maxConcurrent`), configured the exact same way as `inference_max_concurrent` above."
+          "description": "Owner decision (2026-08-20): outbound peer HTTP (the `nlp` \u2192 `text` delegation behind `/classify/topic`/`/classify/intent`) gets its OWN bound, never `inference_max_concurrent`. That semaphore protects local GPU/CPU inference slots; a slow HTTP round-trip to `text` is a completely different resource (this process's own outbound connection/concurrency budget) and must not be able to starve \u2014 or be starved by \u2014 local classification. Bootstrap fallback only; the runtime value comes from the control plane (`nlp.peerCall.maxConcurrent`), configured the exact same way as `inference_max_concurrent` above."
         },
         {
           "name": "NLP_PORT",
@@ -2418,7 +2418,7 @@
           "description": "Internal service authentication key"
         },
         {
-          "name": "API_GATEWAY_TIMEOUT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "API_GATEWAY_TIMEOUT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "api_gateway_timeout",
@@ -2442,7 +2442,7 @@
           "description": "Internal API Gateway URL"
         },
         {
-          "name": "APP_NAME__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "APP_NAME__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "app_name",
@@ -2451,10 +2451,10 @@
           "secret": false,
           "dataType": "string",
           "default": "stt",
-          "description": "The prefixed name is listed FIRST so it wins, and the bare name stays accepted so existing deployments keep working (TASK-799 B.3). Fields that name genuinely SHARED infrastructure \u2014 `DATABASE_URL`, `REDIS_URL`, `MINIO_*` \u2014 are deliberately left bare: one address, one value, every service. BUILD IDENTITY, not configuration \u2014 and therefore not settable from env (rule 09 \u00a7Release Versioning: build identity \"must never be made settable from a Deployment manifest, an env file, or `turbo.json#globalEnv`\"). The authoritative version is the release tag baked into the image's `build-info.json`, which `hope_env.BuildInfoReader` reads; these two are only the in-process labels used before that file is consulted. They were bare fields, so `APP_VERSION=9.9.9` in the shared env file would have made this service report a version nobody built \u2014 the exact defect that had `apps/api` reporting `0.1.0` in every deployed environment."
+          "description": "The prefixed name is listed FIRST so it wins, and the bare name stays accepted so existing deployments keep working. Fields that name genuinely SHARED infrastructure \u2014 `DATABASE_URL`, `REDIS_URL`, `MINIO_*` \u2014 are deliberately left bare: one address, one value, every service. BUILD IDENTITY, not configuration \u2014 and therefore not settable from env (rule 09 \u00a7Release Versioning: build identity \"must never be made settable from a Deployment manifest, an env file, or `turbo.json#globalEnv`\"). The authoritative version is the release tag baked into the image's `build-info.json`, which `hope_env.BuildInfoReader` reads; these two are only the in-process labels used before that file is consulted. They were bare fields, so `APP_VERSION=9.9.9` in the shared env file would have made this service report a version nobody built \u2014 the exact defect that had `apps/api` reporting `0.1.0` in every deployed environment."
         },
         {
-          "name": "APP_VERSION__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "APP_VERSION__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "app_version",
@@ -2466,7 +2466,7 @@
           "description": ""
         },
         {
-          "name": "AZURE_FOUNDRY_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "AZURE_FOUNDRY_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "azure_foundry_enabled",
@@ -2478,7 +2478,7 @@
           "description": "Enable the Azure AI Foundry MAI-Transcribe engine (preview, off by default)"
         },
         {
-          "name": "AZURE_FOUNDRY_ENDPOINT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "AZURE_FOUNDRY_ENDPOINT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "azure_foundry_endpoint",
@@ -2490,7 +2490,7 @@
           "description": "Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com"
         },
         {
-          "name": "AZURE_SPEECH_REGION__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "AZURE_SPEECH_REGION__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "azure_speech_region",
@@ -2598,7 +2598,7 @@
           "description": "PostgreSQL connection string (read-only access)"
         },
         {
-          "name": "DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "DIARIZATION_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "diarization_device",
@@ -2610,7 +2610,7 @@
           "description": "Device for pyannote inference (auto, cuda, cpu)"
         },
         {
-          "name": "DIARIZATION_HF_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "DIARIZATION_HF_MODEL_ID__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "diarization_hf_model_id",
@@ -2630,7 +2630,7 @@
           "required": false,
           "secret": false,
           "dataType": "string",
-          "default": "<home>/.cache/huggingface/hub",
+          "default": "/Volumes/aillusion/huggingface",
           "description": "HuggingFace model cache directory"
         },
         {
@@ -2742,7 +2742,7 @@
           "description": ""
         },
         {
-          "name": "MODEL_CACHE_MAX_MODELS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "MODEL_CACHE_MAX_MODELS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "model_cache_max_models",
@@ -2754,7 +2754,7 @@
           "description": "Maximum number of models in LRU cache. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config)."
         },
         {
-          "name": "MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "model_cache_ttl_seconds",
@@ -2766,7 +2766,7 @@
           "description": "Idle TTL for cached models in seconds (product clamp: min 60s / max 3600s). Active sessions pin models so TTL applies only after the last release. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config); the clamp is re-applied to whatever is served."
         },
         {
-          "name": "ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "ONNX_NUM_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "onnx_num_threads",
@@ -2778,7 +2778,7 @@
           "description": "Number of threads for ONNX Runtime intra_op parallelism. 0 = auto (recommended): ONNX Runtime auto-sizes to physical CPU core count with proper thread affinity. Set explicitly only if profiling shows benefit."
         },
         {
-          "name": "OPENAI_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "OPENAI_BASE_URL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "openai_base_url",
@@ -2814,7 +2814,7 @@
           "description": "OTLP gRPC collector endpoint"
         },
         {
-          "name": "PARAKEET_CPP_LIBRARY_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PARAKEET_CPP_LIBRARY_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "parakeet_cpp_library_path",
@@ -2826,7 +2826,7 @@
           "description": "Path to libparakeet shared library (env PARAKEET_CPP_LIBRARY_PATH)"
         },
         {
-          "name": "PARAKEET_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PARAKEET_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "parakeet_cpp_num_threads",
@@ -2838,7 +2838,7 @@
           "description": "CPU threads for parakeet.cpp inference"
         },
         {
-          "name": "PUBSUB_CHANNEL_PREFIX__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUBSUB_CHANNEL_PREFIX__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "pubsub_channel_prefix",
@@ -2850,7 +2850,7 @@
           "description": "Redis Pub/Sub channel prefix for real-time transcription events. Full channel: {prefix}{job_id}. The NestJS subscriber listens on the same channel to relay events via SSE."
         },
         {
-          "name": "PUBSUB_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUBSUB_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "pubsub_enabled",
@@ -2862,7 +2862,7 @@
           "description": "Enable Redis Pub/Sub publishing for real-time transcription events. When disabled, the worker skips event publishing but still calls the gateway API for job lifecycle updates."
         },
         {
-          "name": "PUNCTUATION_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUNCTUATION_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "punctuation_device",
@@ -2874,7 +2874,7 @@
           "description": "Device for punctuation inference: 'cpu', 'cuda', 'auto'"
         },
         {
-          "name": "PUNCTUATION_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUNCTUATION_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "punctuation_enabled",
@@ -2886,7 +2886,7 @@
           "description": "Enable Cadence punctuation restoration at startup and runtime. Default false: the production Whisper ASR pipelines already emit punctuation and casing, so Cadence is redundant for them, and cadence-punctuation 1.1.0 cannot load under the pinned transformers 5.5.4 (its tied-weights finalization raises 'Sequential has no attribute weight'). Enable only with a transformers/cadence combination that is known to load the model \u2014 e.g. an Indic ASR path whose engine does not self-punctuate, running transformers <5 in a dedicated environment \u2014 or with the direct-load 'cadence-fast' option, which works under the pinned transformers 5.x."
         },
         {
-          "name": "PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUNCTUATION_MAX_LENGTH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "punctuation_max_length",
@@ -2898,7 +2898,7 @@
           "description": "Max sequence length / sliding window width for punctuation model"
         },
         {
-          "name": "PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUNCTUATION_MODEL_CACHE_DIR__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "punctuation_model_cache_dir",
@@ -2910,7 +2910,7 @@
           "description": "Cache dir for punctuation model weights (None = HF default cache)"
         },
         {
-          "name": "PUNCTUATION_MODEL_NAME__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "PUNCTUATION_MODEL_NAME__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "punctuation_model_name",
@@ -2934,7 +2934,7 @@
           "description": "Redis connection string for Dramatiq"
         },
         {
-          "name": "SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "sarvam_base_url",
@@ -2946,7 +2946,7 @@
           "description": "Sarvam AI API base URL"
         },
         {
-          "name": "SEGMENT_MERGE_GAP_THRESHOLD_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEGMENT_MERGE_GAP_THRESHOLD_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "segment_merge_gap_threshold_s",
@@ -2958,7 +2958,7 @@
           "description": "Maximum gap (seconds) between adjacent VAD speech segments that allows merging into a single inference chunk.  Merging reduces the number of Whisper generate() calls, each of which incurs ~6s encoder overhead on CPU.  Default 2.0s works well for conversational audio with natural pauses.  Set to 0 to disable merging entirely."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_CONFIDENCE_THRESHOLD__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_confidence_threshold",
@@ -2970,7 +2970,7 @@
           "description": "Minimum decision confidence (0\u20131) to cut a final early. Raise it if measurement shows early cuts truncating clinical content (measure-first; the fixed backstop always still fires)."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_enabled",
@@ -2982,7 +2982,7 @@
           "description": "Enable content-driven semantic end-of-utterance detection on the streaming hot path. Default OFF \u2014 the preprocessor keeps the fixed Silero-VAD silence offset until this is enabled and measured against the accuracy/latency scorecard. Env: SEMANTIC_ENDPOINT_ENABLED."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_MAX_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_MAX_SILENCE_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_max_silence_ms",
@@ -2994,7 +2994,7 @@
           "description": "Target-max EOU latency band (ms) \u2014 informational; the fixed VAD silence offset remains the true upper bound / backstop."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_MIN_SILENCE_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_min_silence_ms",
@@ -3006,7 +3006,7 @@
           "description": "Trailing-silence floor (ms) before a semantic early cut is allowed (target-min EOU latency, 160\u2013500 ms band). Kept below the fixed VAD backstop so a semantic cut is genuinely earlier."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_MIN_WORDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_min_words",
@@ -3018,7 +3018,7 @@
           "description": "Minimum running-hypothesis word count before a semantic early cut; tiny fragments defer to the fixed silence timer."
         },
         {
-          "name": "SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "SEMANTIC_ENDPOINT_MODEL_ID__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "semantic_endpoint_model_id",
@@ -3030,7 +3030,7 @@
           "description": "OPTIONAL self-hosted turn/EOU model id. Empty = model-free heuristic only. A staged model can endpoint on unpunctuated complete text; an un-staged id degrades to the heuristic (no cloud vendor ever \u2014 track guardrail)."
         },
         {
-          "name": "STORAGE_PROVIDER__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STORAGE_PROVIDER__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "storage_provider",
@@ -3042,7 +3042,7 @@
           "description": "Default object-storage provider when no per-tenant storage descriptor is supplied. The default keeps using the global MinIO client unless set to 'azure_blob'. Set it on the platform storage row, not in env \u2014 STORAGE_PROVIDER no longer reaches this field."
         },
         {
-          "name": "STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_AUDIO_IDLE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_audio_idle_timeout_s",
@@ -3054,7 +3054,7 @@
           "description": "Seconds of no audio data before STT auto-stops a streaming session (default 5 min)."
         },
         {
-          "name": "STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_AUDIO_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_audio_stream_maxlen",
@@ -3066,7 +3066,7 @@
           "description": "Approximate MAXLEN for Redis audio streams (per-session). The SINGLE source of truth for the audio-stream bound: kept equal to the TS gateway bridge's XADD MAXLEN (the sole production writer of stt:audio). At ~30-80ms/frame this retains minutes of audio, comfortably ahead of the consumer group."
         },
         {
-          "name": "STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_AUDIO_TRIM_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_audio_trim_interval_s",
@@ -3078,7 +3078,7 @@
           "description": "Minimum interval (seconds) between XTRIM MINID calls on the consumed portion of stt:audio:{session_id}. 0 disables consumed-portion trimming (MAXLEN bound still applies)."
         },
         {
-          "name": "STREAMING_BATCH_WAIT_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_BATCH_WAIT_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_batch_wait_ms",
@@ -3090,7 +3090,7 @@
           "description": "Maximum time (ms) the batch scheduler waits before dispatching an incomplete batch. 0 = auto-detect from ExecutionProfile."
         },
         {
-          "name": "STREAMING_EMBEDDING_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_EMBEDDING_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_embedding_device",
@@ -3102,7 +3102,7 @@
           "description": "Device for speaker embedding extraction during streaming. 'auto' selects based on hardware profile (e.g. cuda:1, cpu, mps)."
         },
         {
-          "name": "STREAMING_EXTRA_FILLER_PATTERNS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_EXTRA_FILLER_PATTERNS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_extra_filler_patterns",
@@ -3114,7 +3114,7 @@
           "description": "Pipe-separated extra regex alternates appended to the streaming hallucination filler pattern. Default empty \u2014 built-in English + Malayalam filler forms only."
         },
         {
-          "name": "STREAMING_INFERENCE_DRAIN_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_INFERENCE_DRAIN_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_inference_drain_timeout_s",
@@ -3126,7 +3126,7 @@
           "description": "Max seconds finalize waits for the inference queue to drain before building the transcript. On timeout (e.g. GPU backlog) the still-queued tail utterances are transcribed inline rather than dropped, so the last utterance is never lost."
         },
         {
-          "name": "STREAMING_INFERENCE_QUEUE_MAXSIZE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_INFERENCE_QUEUE_MAXSIZE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_inference_queue_maxsize",
@@ -3138,7 +3138,7 @@
           "description": "Bound on the per-session in-process inference queue (SessionManager._register_inference_runtime). F-08: the steady-state enqueue is a bounded wait_for (not a blocking put) \u2014 once the queue is full for longer than the bounded wait, the utterance is DROPPED (with a structured warning + counter) rather than blocking the single ingestion dispatch loop, which would otherwise stop XACK'ing Redis audio frames and let stt:audio's MAXLEN trim unread raw audio. The finalize-path drain uses the separate streaming_inference_drain_timeout_s bound and is unaffected."
         },
         {
-          "name": "STREAMING_INFERENCE_STOP_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_INFERENCE_STOP_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_inference_stop_timeout_s",
@@ -3150,7 +3150,7 @@
           "description": "Seconds to wait for a session's inference worker task to drain/stop before giving up (used both on graceful session removal and when force-finalizing on session-end)."
         },
         {
-          "name": "STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_MAX_AUDIO_BUFFER_BYTES__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_max_audio_buffer_bytes",
@@ -3162,7 +3162,7 @@
           "description": "Hard cap (bytes) on the in-memory audio buffer per session. Once exceeded, new frames are silently dropped and a warning is logged. Default ~500 MB \u2248 ~87 min of 16 kHz mono s16le audio."
         },
         {
-          "name": "STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_MAX_BATCH_SIZE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_max_batch_size",
@@ -3174,7 +3174,7 @@
           "description": "Maximum batch size for the dynamic batch scheduler (GPU inference). 0 = auto-detect from ExecutionProfile based on hardware."
         },
         {
-          "name": "STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_max_concurrent",
@@ -3186,7 +3186,7 @@
           "description": "Maximum number of concurrent streaming sessions. 0 = auto-detect from ExecutionProfile based on hardware. Bootstrap fallback \u2014 the runtime value comes from the control plane (effective-config), applied after hardware detection."
         },
         {
-          "name": "STREAMING_MULTI_GPU_STRATEGY__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_MULTI_GPU_STRATEGY__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_multi_gpu_strategy",
@@ -3198,7 +3198,7 @@
           "description": "Multi-GPU strategy for streaming: 'auto' (detect), 'replicate' (same model on each GPU), 'split' (ASR on GPU 0, embeddings on GPU 1), or 'none' (single GPU / CPU)."
         },
         {
-          "name": "STREAMING_PARTIAL_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_PARTIAL_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_partial_interval_s",
@@ -3210,7 +3210,7 @@
           "description": "Minimum wall-clock interval (seconds) between successive PARTIAL transcript emissions for a live utterance. Lowered from the legacy hardcoded 1.0 s so newly-spoken words surface in near-real-time as a tentative tail; the LocalAgreement-2 commit policy still governs when a word is *committed* (unchanged). The streaming_partial_window_s tail bound and the 0.5 s minimum-buffered-audio floor are unaffected. The Settings class has NO env_prefix, so the env var is the bare STREAMING_PARTIAL_INTERVAL_S."
         },
         {
-          "name": "STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_PARTIAL_WINDOW_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_partial_window_s",
@@ -3222,7 +3222,7 @@
           "description": "Tail window (seconds) of the current utterance decoded for PARTIAL transcripts. Set to the whisper.cpp force-emit window (~6 s) so the last partial and the final decode the SAME audio \u2014 decoding is deterministic, so matched windows converge and the final stops visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
         },
         {
-          "name": "STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_PUNCTUATION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_punctuation_timeout_s",
@@ -3234,7 +3234,7 @@
           "description": "Max seconds a streaming FINAL waits for Cadence-Fast punctuation before the raw text is published (0.3-0.5 s recommended). Applies only when the punctuation model resolves to 'cadence-fast'."
         },
         {
-          "name": "STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_REAPER_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_reaper_interval_s",
@@ -3246,7 +3246,7 @@
           "description": "Interval (seconds) between background reaper scans for expired sessions."
         },
         {
-          "name": "STREAMING_RESULT_STREAM_EXPIRE_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_RESULT_STREAM_EXPIRE_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_result_stream_expire_s",
@@ -3258,7 +3258,7 @@
           "description": "TTL (seconds) for Redis stream keys after session closes (1 hour)."
         },
         {
-          "name": "STREAMING_RESULT_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_RESULT_STREAM_MAXLEN__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_result_stream_maxlen",
@@ -3270,7 +3270,7 @@
           "description": "Approximate MAXLEN for the per-session Redis result stream (stt:result). Bounds the stream DURING an active session (previously unbounded until the post-close EXPIRE). High enough that a keeping-up bridge/consumer never misses a result; overflowed finals remain in the durable transcript."
         },
         {
-          "name": "STREAMING_SESSION_METADATA_EXPIRE_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_SESSION_METADATA_EXPIRE_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_session_metadata_expire_s",
@@ -3282,7 +3282,7 @@
           "description": "TTL (seconds) for Redis session metadata keys after session closes (24 hours)."
         },
         {
-          "name": "STREAMING_SESSION_PERSIST_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_SESSION_PERSIST_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_session_persist_interval_s",
@@ -3294,7 +3294,7 @@
           "description": "How often (seconds) to persist session metadata to Redis."
         },
         {
-          "name": "STREAMING_SESSION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_SESSION_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_session_timeout_s",
@@ -3306,7 +3306,7 @@
           "description": "Seconds of inactivity before a streaming session is auto-finalized by the reaper."
         },
         {
-          "name": "STREAMING_SNAPSHOT_INTERVAL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_SNAPSHOT_INTERVAL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_snapshot_interval_s",
@@ -3318,7 +3318,7 @@
           "description": "Interval (seconds) between audio snapshot uploads to S3 during active streaming sessions."
         },
         {
-          "name": "STREAMING_TRANSCRIPT_OUTBOX_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_TRANSCRIPT_OUTBOX_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_transcript_outbox_max_attempts",
@@ -3330,7 +3330,7 @@
           "description": "Max re-drive attempts for a transcript in the durable Redis outbox before it is dropped with a loud alert. When the inline persist exhausts its retries on a TRANSIENT error the transcript is enqueued to a shared Redis outbox and re-driven by the reaper loop (any worker) with an idempotency key; a PERMANENT (4xx) error is dropped immediately rather than retried."
         },
         {
-          "name": "STREAMING_TRANSCRIPT_PERSIST_BACKOFF_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_TRANSCRIPT_PERSIST_BACKOFF_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_transcript_persist_backoff_s",
@@ -3342,7 +3342,7 @@
           "description": "Base backoff (seconds) between durable-transcript persist retries; the delay scales with the attempt number. 0 disables the wait (used in tests)."
         },
         {
-          "name": "STREAMING_TRANSCRIPT_PERSIST_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_TRANSCRIPT_PERSIST_MAX_ATTEMPTS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_transcript_persist_max_attempts",
@@ -3354,7 +3354,7 @@
           "description": "Max attempts to persist the durable streaming transcript to the gateway during finalize. The transcript is the clinical system of record AND the harness auto-draft trigger, so a transient gateway blip is retried rather than silently swallowed. The persist endpoint is idempotent, so retries never double-create the transcript or re-trigger the harness. Must be >= 1."
         },
         {
-          "name": "STREAMING_WORKER_HEARTBEAT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_WORKER_HEARTBEAT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_worker_heartbeat_s",
@@ -3366,7 +3366,7 @@
           "description": "Interval (seconds) between worker heartbeat extensions in Redis."
         },
         {
-          "name": "STREAMING_WORKER_HEARTBEAT_TTL_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "STREAMING_WORKER_HEARTBEAT_TTL_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "streaming_worker_heartbeat_ttl_s",
@@ -3460,7 +3460,7 @@
           "description": ""
         },
         {
-          "name": "TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TORCH_NUM_INTEROP_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "torch_num_interop_threads",
@@ -3472,7 +3472,7 @@
           "description": "Number of threads for PyTorch inter-op parallelism (torch.set_num_interop_threads). Default 1 is optimal for single-request inference. Increase only for concurrent batch processing."
         },
         {
-          "name": "TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TORCH_NUM_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "torch_num_threads",
@@ -3484,7 +3484,7 @@
           "description": "Number of threads for PyTorch intra-op parallelism (torch.set_num_threads). 0 = auto: uses the number of physical CPU cores. In K8s, set this to match the CPU request/limit (e.g. 8 for 8-core pods) to avoid under- or over-subscribing."
         },
         {
-          "name": "TRANSCRIPTION_CHUNK_LENGTH_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TRANSCRIPTION_CHUNK_LENGTH_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "transcription_chunk_length_s",
@@ -3496,7 +3496,7 @@
           "description": "Audio chunk length (seconds) for Whisper inference. Whisper's feature extractor truncates audio to its context window (30s max). Audio longer than this value is split into overlapping chunks with configurable stride. Default 15s provides ~2x lower TTFW latency vs 30s while maintaining good accuracy. Set to 30 for maximum accuracy, 10 for ultra-low latency."
         },
         {
-          "name": "TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TRANSCRIPTION_STRIDE_LENGTH_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "transcription_stride_length_s",
@@ -3508,7 +3508,7 @@
           "description": "Left and right overlap (seconds) between consecutive chunks, as a comma-separated pair. The HF pipeline uses these overlaps to avoid cutting words at chunk boundaries. Default '4,2' means 4s left overlap and 2s right overlap."
         },
         {
-          "name": "TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TRANSCRIPTION_TIMEOUT_SECONDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "transcription_timeout_seconds",
@@ -3520,7 +3520,7 @@
           "description": "Maximum transcription job timeout in seconds (default: 10 min)"
         },
         {
-          "name": "VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VAD_MIN_SILENCE_DURATION_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "vad_min_silence_duration_ms",
@@ -3532,7 +3532,7 @@
           "description": "Minimum silence to end speech segment in ms"
         },
         {
-          "name": "VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VAD_MIN_SPEECH_DURATION_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "vad_min_speech_duration_ms",
@@ -3544,7 +3544,7 @@
           "description": "Minimum speech segment length in ms (100 so short clinical confirmations survive)"
         },
         {
-          "name": "VAD_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VAD_MODEL_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "vad_model_path",
@@ -3556,7 +3556,7 @@
           "description": "Path to Silero VAD ONNX model (auto-downloaded if None)"
         },
         {
-          "name": "VAD_SPEECH_PAD_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VAD_SPEECH_PAD_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "vad_speech_pad_ms",
@@ -3568,7 +3568,7 @@
           "description": "Padding applied to both segment ends in ms (200 per production ASR guidance)"
         },
         {
-          "name": "VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VAD_THRESHOLD__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "vad_threshold",
@@ -3580,7 +3580,7 @@
           "description": "Silero VAD speech detection threshold (0.0\u20131.0)"
         },
         {
-          "name": "VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "VOICE_PROFILE_MIN_SIMILARITY__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "voice_profile_min_similarity",
@@ -3592,7 +3592,7 @@
           "description": "Minimum acceptable pairwise cosine similarity between per-sample embeddings during enrollment. Below this, the enrollment is rejected as inconsistent. Lower this (~0.3) for dev with consumer-grade microphones; keep >=0.6 in production."
         },
         {
-          "name": "WHISPER_CPP_CONSULTATION_PROMPT_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WHISPER_CPP_CONSULTATION_PROMPT_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "whisper_cpp_consultation_prompt_enabled",
@@ -3604,7 +3604,7 @@
           "description": "Whether the whisper.cpp adapter prepends its language-derived clinical-consultation initial_prompt (exemplar prior-context, not an instruction). Default OFF \u2014 measured to inject spurious tokens and break grapheme clusters on the ml-en code-switch fine-tune. Toggle on only if an eval shows it helps. env WHISPER_CPP_CONSULTATION_PROMPT_ENABLED"
         },
         {
-          "name": "WHISPER_CPP_MAX_AUDIO_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WHISPER_CPP_MAX_AUDIO_SECONDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "whisper_cpp_max_audio_seconds",
@@ -3616,7 +3616,7 @@
           "description": "Max audio length (s) fed to whisper.cpp in one decode. The ml-en code-switch fine-tune is accurate up to ~6-7s but truncates/garbles on longer audio (VAD does not segment continuous clinical speech), so longer utterances are split into <=this-many-second chunks at silence troughs, decoded independently, and stitched. 0 disables chunking. env WHISPER_CPP_MAX_AUDIO_SECONDS"
         },
         {
-          "name": "WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WHISPER_CPP_NUM_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "whisper_cpp_num_threads",
@@ -3628,7 +3628,7 @@
           "description": "CPU threads for whisper.cpp inference"
         },
         {
-          "name": "WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WORKER_MAX_RETRIES__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "worker_max_retries",
@@ -3640,7 +3640,7 @@
           "description": "Maximum job retry attempts"
         },
         {
-          "name": "WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WORKER_POLL_TIMEOUT_MS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "worker_poll_timeout_ms",
@@ -3652,7 +3652,7 @@
           "description": "Dramatiq consumer poll interval max-backoff in milliseconds"
         },
         {
-          "name": "WORKER_THREADS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "WORKER_THREADS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "worker_threads",
@@ -3800,7 +3800,7 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_AZURE_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "AzureSpeechConfig",
           "field": "max_concurrent",
@@ -3812,7 +3812,7 @@
           "description": ""
         },
         {
-          "name": "TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_AZURE_REGION__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "AzureSpeechConfig",
           "field": "region",
@@ -3821,10 +3821,10 @@
           "secret": false,
           "dataType": "string",
           "default": "eastus",
-          "description": "The REGION moved to the control plane with the rest of the connection (TASK-799). Same mechanism as the key above, different reason: the key is closed because it is a secret, the region because it is config an admin must be able to change without a redeploy."
+          "description": "The REGION moved to the control plane with the rest of the connection. Same mechanism as the key above, different reason: the key is closed because it is a secret, the region because it is config an admin must be able to change without a redeploy."
         },
         {
-          "name": "TTS_AZURE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_AZURE_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "AzureSpeechConfig",
           "field": "timeout_s",
@@ -3836,7 +3836,7 @@
           "description": "There are deliberately NO `voice_en` / `voice_ml` fields. They held `en-IN-NeerjaNeural` / `ml-IN-SobhanaNeural` \u2014 the SAME two strings the voice catalog already binds for `en-female-1` / `ml-female-1`. Worse, they were unreachable: the router resolves `req.provider_voice` from the catalog on every request and `candidates()` skips any provider the voice is not bound to, so these could never be consulted. One fact, one place: the catalog (`catalog/voices.py`)."
         },
         {
-          "name": "TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_INDICF5_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicF5Config",
           "field": "device",
@@ -3857,10 +3857,10 @@
           "secret": false,
           "dataType": "boolean",
           "default": "false",
-          "description": "RESOLVED for this flag (lane H): the licensing gate above used to be enforced by the docstring alone. `tts.indicf5.enabled` is now a `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so enabling it is a SUPER_ADMIN write with an audit trail rather than an unreviewed env edit. The docstring warning stands as the REASON; the row is the enforcement. All five moved together \u2014 splitting one out of a family of five is how the \"configured in two places\" defect starts."
+          "description": "RESOLVED for this flag: the licensing gate above used to be enforced by the docstring alone. `tts.indicf5.enabled` is now a `globalOnly` registry key on a `locked` SYSTEM row seeded `'false'`, so enabling it is a SUPER_ADMIN write with an audit trail rather than an unreviewed env edit. The docstring warning stands as the REASON; the row is the enforcement. All five moved together \u2014 splitting one out of a family of five is how the \"configured in two places\" defect starts."
         },
         {
-          "name": "TTS_INDICF5_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_INDICF5_HF_MODEL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicF5Config",
           "field": "hf_model",
@@ -3872,7 +3872,7 @@
           "description": ""
         },
         {
-          "name": "TTS_INDICF5_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_INDICF5_MODEL_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicF5Config",
           "field": "model_path",
@@ -3884,7 +3884,7 @@
           "description": "local mirror dir; gated hub repo otherwise"
         },
         {
-          "name": "TTS_INDICF5_REF_AUDIO_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_INDICF5_REF_AUDIO_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicF5Config",
           "field": "ref_audio_path",
@@ -3896,7 +3896,7 @@
           "description": "voice-clone reference wav + its transcript. NOT catalog data: these are deployment PATHS to a reference recording, not a voice name."
         },
         {
-          "name": "TTS_INDICF5_REF_TEXT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_INDICF5_REF_TEXT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicF5Config",
           "field": "ref_text",
@@ -3908,7 +3908,7 @@
           "description": ""
         },
         {
-          "name": "TTS_PARLER_DESC_ENCODER_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_PARLER_DESC_ENCODER_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicParlerConfig",
           "field": "desc_encoder_path",
@@ -3920,7 +3920,7 @@
           "description": ""
         },
         {
-          "name": "TTS_PARLER_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_PARLER_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicParlerConfig",
           "field": "device",
@@ -3944,7 +3944,7 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_PARLER_HF_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_PARLER_HF_MODEL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicParlerConfig",
           "field": "hf_model",
@@ -3956,7 +3956,7 @@
           "description": ""
         },
         {
-          "name": "TTS_PARLER_MODEL_PATH__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_PARLER_MODEL_PATH__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "IndicParlerConfig",
           "field": "model_path",
@@ -3968,7 +3968,7 @@
           "description": "Internal-mirror overrides. The HF repo is click-through gated, so prod loads from an ungated local mirror instead of hf.co. When model_path is set the model + prompt tokenizer load from it (local_files_only); when desc_encoder_path is set the description tokenizer (google/flan-t5-large, baked into config as a Hub id) loads from it instead of fetching. Empty dev fallback to the gated hub pull. Pair with HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE."
         },
         {
-          "name": "TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_KOKORO_DEVICE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "KokoroConfig",
           "field": "device",
@@ -3992,7 +3992,7 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_BASE_URL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "base_url",
@@ -4016,7 +4016,7 @@
           "description": "These fields are read ONLY by boot registration in `main.py`, so a served value converges on the next restart and can never deregister a live provider mid-process."
         },
         {
-          "name": "TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_MAX_CONCURRENT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "max_concurrent",
@@ -4028,7 +4028,7 @@
           "description": ""
         },
         {
-          "name": "TTS_SARVAM_MODEL__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_MODEL__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "model",
@@ -4040,7 +4040,7 @@
           "description": "A model id that REACHES THE WIRE (`providers/sarvam.py` sends it as the request's `model`), so it is a SELECTION, not a tuning knob \u2014 assessment F-11 names this field specifically."
         },
         {
-          "name": "TTS_SARVAM_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "sample_rate",
@@ -4052,7 +4052,7 @@
           "description": "No `voice_ml` / `voice_en`: both held `ishita`, which is the catalog's sarvam binding for `ml-female-1`. The router passes it as `req.provider_voice`, so the fallback was unreachable."
         },
         {
-          "name": "TTS_SARVAM_TIMEOUT_S__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_TIMEOUT_S__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "timeout_s",
@@ -4064,7 +4064,7 @@
           "description": ""
         },
         {
-          "name": "TTS_SARVAM_USE_STREAMING__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SARVAM_USE_STREAMING__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "SarvamConfig",
           "field": "use_streaming",
@@ -4136,7 +4136,7 @@
           "description": ""
         },
         {
-          "name": "TTS_DEFAULT_FORMAT__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_DEFAULT_FORMAT__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "default_format",
@@ -4184,7 +4184,7 @@
           "description": ""
         },
         {
-          "name": "TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_MAX_INPUT_CHARS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "max_input_chars",
@@ -4193,7 +4193,7 @@
           "secret": false,
           "dataType": "number",
           "default": 4096,
-          "description": "Synthesis limits / defaults \u2014 control-plane owned (TASK-799)."
+          "description": "Synthesis limits / defaults \u2014 control-plane owned."
         },
         {
           "name": "TTS_METRICS_ENABLED",
@@ -4208,7 +4208,7 @@
           "description": ""
         },
         {
-          "name": "TTS_MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_MODEL_CACHE_TTL_SECONDS__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "model_cache_ttl_seconds",
@@ -4328,7 +4328,7 @@
           "description": "This does NOT make tts stateful. The connection subscribes to one pub/sub channel and evicts a cache; it reads no keys, writes none, and holds no tenant state. `apps/tts` stays the \"genuine stateless, gateway-injected service\" the assessment records \u2014 adding Redis for invalidation must never become a route to local tenant resolution."
         },
         {
-          "name": "TTS_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_SAMPLE_RATE__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "sample_rate",
@@ -4340,7 +4340,7 @@
           "description": ""
         },
         {
-          "name": "TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE_TASK_799",
+          "name": "TTS_WARMUP_ENABLED__MOVED_TO_CONTROL_PLANE",
           "aliases": [],
           "class": "Settings",
           "field": "warmup_enabled",

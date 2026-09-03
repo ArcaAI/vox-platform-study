@@ -216,7 +216,7 @@ class TestEnsureEgressSafe:
             )
 
     def test_unknown_provider_is_redacted_not_passed_through(self) -> None:
-        # TASK-706: an unlisted provider string must default to redact-and-confirm
+        # an unlisted provider string must default to redact-and-confirm
         # (the chokepoint's own delegation to PhiRedactor.ensure_safe_for_cloud),
         # never to the local pass-through branch.
         redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
@@ -232,7 +232,7 @@ class TestEnsureEgressSafe:
         assert redactor.calls == [(_PHI_TEXT, "some-new-cloud-provider")]
 
     def test_ollama_provider_is_redacted_not_passed_through(self) -> None:
-        # TASK-736 R1: Ollama is removed entirely, so it is no longer a known-local
+        # Ollama is removed entirely, so it is no longer a known-local
         # provider — an ollama-routed call must default-deny into redact-and-confirm,
         # never the local pass-through branch (asserts the fail-closed direction).
         redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))

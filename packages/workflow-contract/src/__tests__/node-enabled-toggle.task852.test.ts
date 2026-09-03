@@ -1,5 +1,5 @@
 /**
- * TASK-852 item 3 — the per-node `enabled` toggle is DECLARED, so it is reachable.
+ * item 3 — the per-node `enabled` toggle is DECLARED, so it is reachable.
  *
  * The realtime consultation executor has always honoured a per-node kill switch
  * (`enabled: node.config?.enabled !== false`, `realtime-lane.ts`), but `enabled` was not a
@@ -69,7 +69,7 @@ const TOGGLEABLE_SAMPLE = [
 
 const MANDATORY_SAMPLE = ['consultation.consentGate', 'consultation.phiHop', 'consultation.hitlGate'] as const;
 
-describe('TASK-852 — every non-mandatory node type declares the `enabled` toggle', () => {
+describe('every non-mandatory node type declares the `enabled` toggle', () => {
   it.each(TOGGLEABLE_KEYS)('%s declares `enabled` as a boolean defaulting to on', (key) => {
     const enabled = propertiesOf(key).enabled;
 
@@ -89,7 +89,7 @@ describe('TASK-852 — every non-mandatory node type declares the `enabled` togg
   });
 });
 
-describe('TASK-852 — a mandatory node type has no disable toggle at all', () => {
+describe('a mandatory node type has no disable toggle at all', () => {
   it('withholds `enabled` from exactly the registry`s mandatory-class node types', () => {
     expect(SCHEMA_KEYS.filter((key) => !declaresEnabled(key))).toEqual(MANDATORY_KEYS);
   });
@@ -116,7 +116,7 @@ describe('TASK-852 — a mandatory node type has no disable toggle at all', () =
   });
 });
 
-describe('TASK-852 — the toggle survives the round trip that used to strip it', () => {
+describe('the toggle survives the round trip that used to strip it', () => {
   it.each(TOGGLEABLE_SAMPLE)('%s: the value evaluator accepts `enabled: false`', (key) => {
     expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS[key], { ...BASE_CONFIG[key], enabled: false })).toEqual([]);
   });

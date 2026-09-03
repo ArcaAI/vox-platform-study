@@ -34,13 +34,13 @@ declare module './ContextItemRepository' {
      * AGREES with `content`. `encryptStringToCiphertext` collapses three
      * different meanings into a single `null`, so they are separated here:
      *
-     *   - a non-empty string  → new body: encrypt and store.
+     *   - a non-empty string → new body: encrypt and store.
      *   - `undefined` / `null` → the caller has no opinion about the body: no-op.
      *     This is how a row reconstituted from columns arrives (the plaintext
      *     `content` column was DROPPED, so there is nothing to hydrate), and
      *     treating it as a deletion would blank the body of every item touched
      *     by a write that never mentioned it.
-     *   - `''`                 → the body is now empty: CLEAR `encryptedContent`
+     *   - `''` → the body is now empty: CLEAR `encryptedContent`
      *     and `contentKeyVersion` as a pair.
      *
      * The old contract — *"no-op when `content` is empty/null, so it is safe to
@@ -50,7 +50,7 @@ declare module './ContextItemRepository' {
      * `entity.changes` and the UPDATE simply omitted the only column that holds
      * the body — while `currentVersionNumber`/`updatedBy` had already advanced
      * and an immutable `ContextItemVersion` snapshot recording the empty body had
-     * already been inserted (TASK-825; same defect as TASK-820 on
+     * already been inserted (; same defect as on
      * `DocumentSection`).
      *
      * WHETHER an empty write is ALLOWED is a separate question, answered above
@@ -59,7 +59,7 @@ declare module './ContextItemRepository' {
      * `HarnessInternalService.persistDraft` skips an empty adoption. This
      * function only guarantees that an empty write which IS allowed is actually
      * PERSISTED.
-     */
+ */
     encryptContentIntoEntity(this: ContextItemRepository, entity: ContextItemEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**

@@ -1,14 +1,14 @@
 /**
- * TASK-732 Phase 3 Task 11 — option (b) is not "do nothing."
+ * option (b) is not "do nothing."
  *
- * The R-2 boundary (owner decision, recorded in `go-no-go-thresholds.md` §7
- * and `deletion-manifest.md` §5) keeps `PreSummaryProcessor`,
+ * The R-2 boundary (owner decision, recorded in `go-no-go-thresholds.md`
+ * and `deletion-manifest.md` keeps `PreSummaryProcessor`,
  * `ComprehensiveSummaryProcessor`, and `SummaryService.generateSummary`'s
- * sync body un-gated, as the ticket's own §2.6 option (b). This test makes
+ * sync body un-gated, as the option (b). This test makes
  * each generator's actual reachability of `approveSummary`'s
  * `contextItem.isFinalSummary` gate an asserted, checked FACT rather than an
  * assumption — including where that fact turned out to differ from the
- * ticket's own draft framing (§2.6's example only verified PRE_SUMMARY).
+ * ticket's own draft framing (example only verified PRE_SUMMARY).
  *
  * `isFinalSummary` (`ContextItemEntity.ts`) is `true` for `RAW_SUMMARY` OR
  * `MODIFIED_SUMMARY`, `false` otherwise. `ContextItemFactory.CreateRawSummary`
@@ -18,15 +18,15 @@
  *   - PRE_SUMMARY (`ContextItemFactory.CreatePreSummary`): sets `type:
  *     PRE_SUMMARY`, which is NEITHER `RAW_SUMMARY` NOR `MODIFIED_SUMMARY` —
  *     structurally excluded, confirmed below. This is the one case the
- *     ticket's §2.6 checked.
+ * checked.
  *   - Sync `SummaryService.generateSummary` (`SUMMARY_REGENERATE`): calls
  *     `CreateRawSummary`, so its output DOES satisfy `isFinalSummary` — and
  *     this is CORRECT, not a gap: this generator's entire purpose is to
  *     (re)produce the consultation's actual clinical note, which must remain
  *     signable exactly like the harness-produced note it stands in for on
- *     this one permanently-legacy trigger (deletion-manifest.md §0.1). It
+ * this one permanently-legacy trigger ( It
  *     is "kept" (not deleted) but was never meant to be non-signable — the
- *     ticket's own §2.6 lumps it into "option (b)" as a KEEP decision, not
+ * lumps it into "option (b)" as a KEEP decision, not
  *     a signability claim.
  *   - `ComprehensiveSummaryProcessor`: ALSO calls `CreateRawSummary` (against
  *     the root consultationId the job was created for), so its output ALSO
@@ -48,7 +48,7 @@
  *     make that rollup this consultation's note — the same product decision
  *     `SummaryService.generateSummary` implements for a single consultation.
  *     Locked below as confirmed, intentional behavior (see
- *     `deletion-manifest.md` §5 and README.md §7A/Change History for the
+ * `deletion-manifest.md` and README.md for the
  *     correction).
  */
 import { describe, expect, it } from 'vitest';
@@ -57,7 +57,7 @@ import { ContextItemFactory } from '@arcaai/domains';
 const TENANT_ID = 'tenant-1';
 const CONSULTATION_ID = 'consultation-1';
 
-describe('TASK-732 Task 11 — kept-generator output reachability of approveSummary.isFinalSummary', () => {
+describe(' Task 11 — kept-generator output reachability of approveSummary.isFinalSummary', () => {
   it('PreSummaryProcessor / generatePreSummary output (PRE_SUMMARY) is structurally NON-signable', () => {
     const preSummaryItem = ContextItemFactory.CreatePreSummary(TENANT_ID, CONSULTATION_ID, 'draft text', 'system');
     expect(preSummaryItem.isFinalSummary, 'PRE_SUMMARY must never satisfy isFinalSummary — this is the structural non-signability the R-2 boundary relies on').toBe(false);

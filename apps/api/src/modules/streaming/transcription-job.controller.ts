@@ -72,15 +72,15 @@ import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 @Authorize()
 @ApiTags('transcription-jobs')
 @Controller('audio/transcription-jobs')
-// TASK-742: the STT job surface the gateway conformance review named as
+// the STT job surface the gateway conformance review named as
 // reachable with no authorization check at all (21 routes, 0 scopes). ONE
 // class-level scope, deliberately the STRONGER of the declared `stt:*` pair —
-// the same coarse-grained choice TASK-708 made for `/admin/*`: a uniformly
+// the same coarse-grained choice made for `/admin/*`: a uniformly
 // scoped class is mechanically exhaustive, where a per-verb read/write split
 // across 20 methods risks leaving one silently ungated. Splitting the GETs onto
 // `stt:transcription:read` is a precision follow-up, never a widening.
 @RequiredScopes('stt:transcription:write')
-// TASK-767 — the standalone speech-to-text feature, reachable by the THIRD
+// the standalone speech-to-text feature, reachable by the THIRD
 // credential class as well. The `svc:` scope is renamespaced from the very
 // `stt:transcription:write` above (`STANDALONE_FEATURE_SCOPE_SOURCES`), so a
 // machine identity reaches exactly the routes a scoped tenant key does.
@@ -89,14 +89,14 @@ import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 // `stream/session/:sessionId/{DELETE,refresh-ticket,switch-to-fallback,
 // switch-to-primary}` carry `@TenantOwnedResource('StreamSession')`, whose
 // `assertStreamSessionOwnership` requires a CLS `user.id` and compares it to
-// the session's owning clinician (TASK-754, fail-closed on an ownerless
+// the session's owning clinician (fail-closed on an ownerless
 // binding). A service-account principal deliberately sets no CLS `user` — the
 // whole point of the class is that a machine's actions are not recorded against
 // a person — so it can never satisfy that check, and the WS handshake refuses
 // the socket for the same reason (`stt-ws.gateway.ts`: ticket user must equal
 // the binding owner). Creating a session and driving BATCH transcription work;
 // the live WebSocket lifecycle does not. Giving machines an owner identity is
-// an owner decision, recorded in the TASK-767 README, not something to paper
+// an owner decision, recorded in the README, not something to paper
 // over here.
 @RequiredSvcScopes('svc:stt:transcription:write')
 export class TranscriptionJobController {
@@ -388,7 +388,7 @@ export class TranscriptionJobController {
     // limit. Without it "5 per batch" is bypassed by sending five batches.
     await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
 
-    // 1c. Resolve the pipeline. `pipelineId` is optional since : omitting
+    // 1c. Resolve the pipeline. `pipelineId` is optional since: omitting
     //     it means "use the tenant's default", the same intent a live session has
     //     always been able to express. Resolution order — the pipeline the tenant
     //     marked default, then the configured STT fallback. If the tenant has
@@ -584,7 +584,7 @@ export class TranscriptionJobController {
   }
 
   @Get('language-modes')
-  @ApiOperation({ summary: 'List selectable STT language modes + per-mode supported engines (TASK-587)' })
+  @ApiOperation({ summary: 'List selectable STT language modes + per-mode supported engines ' })
   @ApiResponse({ status: 200, description: 'Language-mode catalog' })
   async getLanguageModes(): Promise<SttLanguageModeCatalog> {
     // Backend-authoritative catalog (STT owns the capability matrix). Read-only,
@@ -748,7 +748,7 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Close a WebSocket streaming session' })
   @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
   async closeStreamSession(@Param('sessionId') sessionId: string): Promise<void> {
-    // TASK-737: the CLS tenant this route already authorised against is the
+    // the CLS tenant this route already authorised against is the
     // session's owner — thread it so the internal DELETE is attributable.
     await this.sessionService.removeSession(sessionId, false, this.getTenantId());
     await this.streamSessionTenantBinding.clear(sessionId);

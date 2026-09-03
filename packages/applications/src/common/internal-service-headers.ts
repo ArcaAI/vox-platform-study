@@ -1,5 +1,5 @@
 /**
- * The internal service-to-service call contract (TASK-737 + TASK-738).
+ * The internal service-to-service call contract ( +).
  *
  * ONE place that answers both halves of "how does an internal HTTP hop identify
  * itself", so a tenth caller cannot reintroduce the gap the first nine had:

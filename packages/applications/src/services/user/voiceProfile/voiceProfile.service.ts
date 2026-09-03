@@ -161,7 +161,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN`. `apps/stt` now runs
     // `ServiceAuthMiddleware` and `/internal/voice-profile/extract` is NOT in its
     // exempt set, so an unauthenticated enrolment 401s in any deployed
-    // environment. TASK-737: `X-Tenant-Id` too — enrolment is a JWT-authenticated
+    // environment.: `X-Tenant-Id` too — enrolment is a JWT-authenticated
     // user self-service route, so the CLS tenant is populated and authoritative.
     //
     // Built by hand rather than through `internalServiceHeaders()` for ONE
@@ -193,10 +193,10 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
    * opaque 500/AxiosError dump.
    *
    * STT-v2 returns `{ detail: string }` for 4xx/5xx (FastAPI default). We map:
-   *   - network failure (no response)        → 503 ServiceUnavailable
-   *   - 400 with `detail`                    → 400 BadRequest(detail)
-   *   - 503 with `detail`                    → 503 ServiceUnavailable(detail)
-   *   - everything else                      → 500 InternalServerError
+   *   - network failure (no response) → 503 ServiceUnavailable
+   *   - 400 with `detail` → 400 BadRequest(detail)
+   *   - 503 with `detail` → 503 ServiceUnavailable(detail)
+   *   - everything else → 500 InternalServerError
    */
   private translateExtractionError(error: unknown): Error {
     if (!isAxiosError(error)) {

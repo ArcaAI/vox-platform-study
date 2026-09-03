@@ -13,7 +13,7 @@ export enum EventTypes {
 
   UserAuthenticated = 'user.authenticated',
   // The success-only `UserAuthenticated` bracket left failed
-  // attempts with no persisted trail; HIPAA §164.312(b) access auditing wants
+  // attempts with no persisted trail; HIPAA access auditing wants
   // rejected access reviewable, not just granted access.
   UserAuthenticationFailed = 'user.authentication_failed',
   UserCreated = 'user.created',

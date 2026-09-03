@@ -8,7 +8,7 @@ import { join } from 'path';
  */
 
 const mainTsSource = readFileSync(join(__dirname, '..', 'main.ts'), 'utf-8');
-// The literal prefix + exclude list live in `global-prefix.config.ts` (TASK-773
+// The literal prefix + exclude list live in `global-prefix.config.ts`
 // B1) so `scripts/emit-openapi.ts` can reuse them without duplicating —
 // and therefore without risking drift from — what `main.ts` passes to
 // `setGlobalPrefix`. Source-level regression guards for those literals

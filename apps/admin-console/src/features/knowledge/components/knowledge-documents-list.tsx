@@ -3,7 +3,7 @@
 /**
  * Knowledge documents list — `GET admin/knowledge/documents`, offset
  * paginated. Follows `features/workflow-studio/components/definitions-list-screen.tsx`
- * closely (same `ScreenTemplate` + `VirtualizedDataGrid` shape, TASK-719/TASK-734
+ * closely (same `ScreenTemplate` + `VirtualizedDataGrid` shape, /
  * in the same program).
  */
 

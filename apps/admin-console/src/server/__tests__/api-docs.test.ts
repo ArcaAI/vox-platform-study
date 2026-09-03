@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { docsAccessFromRules, isSpecPlane, NO_DOCS_ACCESS, specForPlane } from '../api-docs';
 
 /**
- * TASK-783 — the documentation access gate.
+ * the documentation access gate.
  *
  * The business projection is served to tenant developers and the admin
  * projection describes every `/api/v1/admin/**` route, so "which document does

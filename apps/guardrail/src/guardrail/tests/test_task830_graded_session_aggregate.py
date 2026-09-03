@@ -1,23 +1,23 @@
-"""TASK-830 — the session aggregate becomes a graded mean when scores exist.
+"""the session aggregate becomes a graded mean when scores exist.
 
-TASK-829 shipped its §5.1 aggregation with an honest limit recorded against it:
+shipped its aggregation with an honest limit recorded against it:
 `apps/nlp`'s `/guard/classify` answered with LABELS only, so `observe()` could
 only ever be fed `1.0` or `0.0` and the session mean was a flag RATE. Every
 verdict therefore carried `scoreCalibration: "categorical"`, and Phase 4 —
 "calibrate θ and Θ per tenant on real clinical text" — was blocked, because a
 threshold calibrated for a confidence mean is meaningless against a flag rate.
 
-`apps/nlp` now returns per-label confidences (TASK-830). This suite pins what
+`apps/nlp` now returns per-label confidences. This suite pins what
 guardrail does with them, and — just as importantly — what it refuses to claim
 when they are absent.
 
-**Why a benign window must not contribute zero.** §2.1's measurement is that
+**Why a benign window must not contribute zero.** 's measurement is that
 detector confidence collapses 0.99 → 0.03 as malicious density per window falls.
 Under a flag rate, every one of those sub-threshold windows contributes exactly
 0.0 and the aggregate is blind to the dispersal that IS the attack. Under a
 graded score the same windows contribute 0.03 each, and a dispersed payload
 separates from genuinely benign traffic. That separation is the whole reason
-§5.1 specifies an aggregate at all.
+specifies an aggregate at all.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from guardrail.realtime.store import InMemoryRealtimeStore
 
 
 class LabelOnlyAnalyzer:
-    """The pre-TASK-830 peer: labels, no scores. Must stay categorical."""
+    """The earlier peer: labels, no scores. Must stay categorical."""
 
     async def classify_tasks(self, task_names, text):  # noqa: ANN001, ANN201
         return {"prompt_safety": "benign", "jailbreak_detection": "benign"}
@@ -134,7 +134,7 @@ def _validator(analyzer: object, policy: RealtimePolicy) -> RealtimeValidator:
 
 
 async def test_a_label_only_peer_still_reports_a_categorical_aggregate() -> None:
-    """The TASK-829 posture is preserved exactly where nothing backs a score."""
+    """The posture is preserved exactly where nothing backs a score."""
     verdict = await _validator(LabelOnlyAnalyzer(), _policy()).validate_segment(
         session_id="s1", segment_id="a", text="chest pain on exertion"
     )

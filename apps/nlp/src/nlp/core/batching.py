@@ -58,7 +58,7 @@ class InflightGate(Protocol):
     """Whatever bounds concurrent forward passes against the underlying weights.
 
     Injectable because the bound belongs to the MODEL, not to the queue: once
-    TASK-782 split the interactive and bulk lanes into two batchers over one
+    split the interactive and bulk lanes into two batchers over one
     weight slot, a per-batcher semaphore would let total in-flight passes
     DOUBLE, and would give the inline gate no way to overtake a bulk pass that
     is merely queued. `nlp.core.priority_gate.PriorityGate` is the shared,

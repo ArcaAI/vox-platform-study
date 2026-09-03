@@ -12,14 +12,14 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
-  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722).
+  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs.
   maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  // Fourth business-object meter — PUBLISHED-workflow invocations (TASK-722).
+  // Fourth business-object meter — PUBLISHED-workflow invocations.
   monthlyWorkflowInvocations?: number | null;
   // Per-capability included allowances over the UTC-calendar-month window
   // BigInt: enterprise token/character counts exceed Int32.
@@ -37,7 +37,7 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   featureAgenticLoop: boolean;
   modelTier: string;
   rateLimitTier: string;
-  // TASK-785 rank 3 — an ABSOLUTE per-plan limit. Null keeps the indirect
+  // rank 3 — an ABSOLUTE per-plan limit. Null keeps the indirect
   // behaviour: the plan names a `rateLimitTier` whose baseline supplies the number.
   rateLimitPerMinute?: number | null;
   rateLimitWindowMs?: number | null;

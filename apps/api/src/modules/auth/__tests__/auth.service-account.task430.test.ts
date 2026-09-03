@@ -4,9 +4,9 @@
  * A service account authenticates with an API key; it must never obtain an
  * interactive session. Three interactive doors are closed here:
  *
- *   1. `POST /auth/login`                       — 401 even with valid credentials
- *   2. `POST /auth/impersonate` (legacy)        — 400 + TARGET_IS_SERVICE_ACCOUNT
- *   3. `POST /admin/users/:id/impersonate`      — 400 + TARGET_IS_SERVICE_ACCOUNT
+ *   1. `POST /auth/login` — 401 even with valid credentials
+ *   2. `POST /auth/impersonate` (legacy) — 400 + TARGET_IS_SERVICE_ACCOUNT
+ *   3. `POST /admin/users/:id/impersonate` — 400 + TARGET_IS_SERVICE_ACCOUNT
  *
  * Harness mirrors auth.controller.task401.test.ts (pure unit, no container).
  */
@@ -80,7 +80,7 @@ function buildAuthController(fixture: AuthFixture) {
     eventEmitter as never,
     {} as never,
     { lookup: vi.fn().mockResolvedValue(null) } as never,
-    {} as never, // workflowRunService (TASK-722)
+    {} as never, // workflowRunService
   );
 
   return { controller, eventEmitter, userRepository };

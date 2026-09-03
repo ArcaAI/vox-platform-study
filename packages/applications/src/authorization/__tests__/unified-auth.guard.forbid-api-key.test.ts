@@ -1,9 +1,9 @@
 /**
- * UnifiedAuthGuard + @ForbidApiKey() (TASK-708 Task 3 bucket (c)).
+ * UnifiedAuthGuard + @ForbidApiKey() ( bucket (c)).
  *
  * `@ForbidApiKey()` is an UNCONDITIONAL deny for any API-key-authenticated
  * caller, independent of scopes — including a key holding the bare `'*'`
- * wildcard, which `@RequiredScopes` alone can never deny (§`API_KEY_FORBIDDEN`'s
+ * wildcard, which `@RequiredScopes` alone can never deny (`API_KEY_FORBIDDEN`'s
  * doc comment on why a reserved-scope trick is unsafe against wildcard
  * grants). Mirrors `unified-auth.guard.required-scopes.test.ts`'s pattern:
  * a real decorator on a dummy handler, read back by a real `Reflector`.
@@ -23,7 +23,7 @@ class DummyImpersonationController {
   @Authorize(['read', 'User'])
   ordinaryRoute() {}
 
-  /** Same controller, but an explicitly declared API-key surface (TASK-742). */
+  /** Same controller, but an explicitly declared API-key surface. */
   @RequiredScopes('user:profile:read')
   scopedSibling() {}
 }
@@ -80,7 +80,7 @@ describe('UnifiedAuthGuard + @ForbidApiKey()', () => {
   });
 
   /**
-   * TASK-742 — this assertion CHANGED, and the product changed with it.
+   * this assertion CHANGED, and the product changed with it.
    *
    * `ordinaryRoute` carries `@Authorize(['read','User'])` and NO
    * `@RequiredScopes(...)`. It used to resolve `true` for any authenticated key,
@@ -94,7 +94,7 @@ describe('UnifiedAuthGuard + @ForbidApiKey()', () => {
    * denies only because nothing was declared — grant it a scope and it opens
    * again, as `scopedSibling` proves. That distinction is what would be lost if
    * someone deleted `@ForbidApiKey()` believing deny-by-default subsumes it.
-   */
+ */
   it('denies a route WITHOUT @ForbidApiKey() that also declares no scopes (deny-by-default, a different mechanism)', async () => {
     await expect(guard.canActivate(createMockContext(DummyImpersonationController.prototype.ordinaryRoute))).rejects.toThrow(ForbiddenException);
   });

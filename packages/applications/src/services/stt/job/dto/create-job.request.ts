@@ -27,7 +27,7 @@ export class CreateJobRequest {
   @IsString()
   @IsNotEmpty()
   @Matches(PIPELINE_ID_PATTERN, {
-    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
+    message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
   })
   pipelineId: string;
 

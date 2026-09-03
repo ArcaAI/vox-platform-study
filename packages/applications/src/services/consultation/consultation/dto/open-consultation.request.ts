@@ -35,7 +35,7 @@ export class OpenConsultationRequest {
   parentConsultationId?: string;
 
   /**
-   * TASK-813 OD-1 — the caller's workflow SELECTION for this consultation.
+   * the caller's workflow SELECTION for this consultation.
    *
    * Declared here because it has to be: the gateway's global pipe runs
    * `forbidNonWhitelisted`, so an undeclared selector does not fall through to
@@ -43,7 +43,7 @@ export class OpenConsultationRequest {
    * the @deprecated `department` field still does.
    *
    * Absent ⇒ the `department → tenant → platform-default` assignment cascade
-   * decides, which is the pre-TASK-813 behaviour and stays the default.
+   * decides, which is the earlier behaviour and stays the default.
    * Present ⇒ it is AUTHORIZED against the caller's own published, active,
    * `consultation`-palette definitions before anything is written
    * (`ConsultationWorkflowDispatchService.assertSelectableForConsultation`):
@@ -52,7 +52,7 @@ export class OpenConsultationRequest {
    *
    * Grammar is `WORKFLOW_DEFINITION_SLUG_PATTERN` — the same one
    * `CreateWorkflowDefinitionRequest.slug` enforces, so a value that could
-   * never name a real row is refused at the edge. AMENDED (TASK-858): the node-id
+   * never name a real row is refused at the edge. AMENDED: the node-id
    * grammar this used to reuse admits no hyphen, and every seeded slug has one.
    *
    * Honoured by `POST /consultations/open` ONLY. Consultation-open dispatch
@@ -66,7 +66,9 @@ export class OpenConsultationRequest {
   })
   @IsOptional()
   @IsString()
-  @Matches(WORKFLOW_DEFINITION_SLUG_PATTERN, { message: 'workflowDefinitionSlug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric' })
+  @Matches(WORKFLOW_DEFINITION_SLUG_PATTERN, {
+    message: 'workflowDefinitionSlug must be 2-80 lowercase alphanumerics, - or _, starting and ending alphanumeric',
+  })
   workflowDefinitionSlug?: string;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })

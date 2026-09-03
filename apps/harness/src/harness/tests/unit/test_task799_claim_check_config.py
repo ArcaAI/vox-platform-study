@@ -1,11 +1,11 @@
-"""TASK-799 A.2 — the claim-check TUNING knobs.
+"""A.2 — the claim-check TUNING knobs.
 
 The brief asks for `min_bytes` and `ttl_seconds` to move to `global-kv`. Only one of them
 could: **`ttl_seconds` has no reader anywhere in `apps/harness`**. Its own comment says
 so — *"Advisory blob lifetime (a bucket lifecycle rule enforces expiry out-of-band)"* —
 i.e. the expiry is enforced by object-store infrastructure, and the field is documentation
 wearing a config costume. Migrating it would have moved a phantom onto the control plane
-and given an admin a slider wired to nothing, so it is DELETED instead (plan §3.3).
+and given an admin a slider wired to nothing, so it is DELETED instead (plan
 
 `min_bytes` is real: it is read at `temporal/activities.py` `_offload_text` and decides
 whether a clinical blob is written out-of-band or left inline in Temporal history. It must

@@ -3,7 +3,7 @@
  * machine-readable `ValidationReport`, persisted with the version." This EXTENDS the house
  * `problems: string[]` idiom (see `packages/json-schema-subset`) rather than replacing it —
  * `message` is exactly the string those functions already produce, wrapped with
- * `nodeId`/`ruleId`/`severity`/`path` so the Studio (TASK-719) can map a finding back onto a
+ * `nodeId`/`ruleId`/`severity`/`path` so the Studio can map a finding back onto a
  * canvas node.
  */
 
@@ -11,7 +11,7 @@ export type WorkflowFindingSeverity = 'ERROR' | 'WARNING';
 export type WorkflowRuleClass = 'structural' | 'invariant' | 'schema';
 
 export interface WorkflowFinding {
-  /** e.g. 'WF-S-001' | 'WF-I-006' | 'WF-C-004' | 'WF-INTERNAL' (see §3.5 — never "ok" on a throw). */
+  /** e.g. 'WF-S-001' | 'WF-I-006' | 'WF-C-004' | 'WF-INTERNAL' (see — never "ok" on a throw). */
   ruleId: string;
   ruleClass: WorkflowRuleClass;
   severity: WorkflowFindingSeverity;
@@ -58,9 +58,9 @@ export function buildValidationReport(
 
 /**
  * The synthetic finding an orchestrator MUST emit when an evaluator throws unexpectedly
- * (§3.5: "the orchestrator catches and converts an unexpected throw into a synthetic ERROR
+ * ("the orchestrator catches and converts an unexpected throw into a synthetic ERROR
  * finding, never into 'ok'"). Exported so both the pure `validate()` orchestrator and the
- * impure service (Task 8) produce byte-identical shapes for this case.
+ * impure service produce byte-identical shapes for this case.
  */
 export function internalErrorFinding(ruleId: string, ruleClass: WorkflowRuleClass, error: unknown): WorkflowFinding {
   const message = error instanceof Error ? error.message : String(error);

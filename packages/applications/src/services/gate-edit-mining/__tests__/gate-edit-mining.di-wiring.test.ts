@@ -24,7 +24,7 @@ import { ConsultationJobServiceModule } from '../../consultation/jobs/consultati
 import { HarnessInternalServiceModule } from '../../consultation/harness/harness-internal.service.module';
 
 /**
- * DI wiring guard for the gate-edit learning loop (TASK-792 W1 + W2).
+ * DI wiring guard for the gate-edit learning loop ( + W2).
  *
  * The same class of defect as `usage-ledger.di-wiring.task615.test.ts`, in two
  * places at once — and for the same reason: every existing unit test constructs
@@ -39,8 +39,8 @@ import { HarnessInternalServiceModule } from '../../consultation/harness/harness
  *    with `@Optional()`, but none of the four modules that PROVIDE
  *    `PromptAssemblyService` for live generation imported the module that
  *    exports that token. So even with rows present, generation saw `undefined`
- *    and silently degraded to zero-shot. TASK-792 closed two of the four;
- *    TASK-795 W2 closed the remaining two (the async job path and the harness
+ * and silently degraded to zero-shot. closed two of the four;
+ * closed the remaining two (the async job path and the harness
  *    path), so all four now resolve the token.
  *
  * These assertions check the tokens NestJS actually resolves — no container, no
@@ -119,18 +119,18 @@ describe('Gate-edit learning loop — NestJS DI wiring', () => {
     /**
      * ALL FOUR modules that provide `PromptAssemblyService` for live generation.
      *
-     * TASK-792 wired the first two and could not reach the other two (they sat
+     * wired the first two and could not reach the other two (they sat
      * outside its ownership boundary), so it pinned their absence as a FAILING-
-     * on-close assertion rather than a skip. TASK-795 W2 owns
+     * on-close assertion rather than a skip. owns
      * `consultation/**` and applied both imports; this list is the closed form
      * of that pin.
      *
      * A FIFTH provider is not this list's problem: `prompt-assembly.retriever-
-     * reachability.test.ts` (TASK-795 W3) DISCOVERS every provider from the
+     * reachability.test.ts` DISCOVERS every provider from the
      * filesystem and computes token reachability, so a new one is covered the
      * moment it exists. This list stays as the named, readable statement of
      * which four they are today.
-     */
+ */
     it.each([
       ['SummaryServiceModule', SummaryServiceModule],
       ['ChainSummaryServiceModule', ChainSummaryServiceModule],

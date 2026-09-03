@@ -1,4 +1,4 @@
-"""TASK-799 lane H — the five engine/provider `*_ENABLED` flags, half-migrated.
+"""lane H — the five engine/provider `*_ENABLED` flags, half-migrated.
 
 WHAT "HALF-MIGRATED" MEANS HERE, AND WHY IT IS THE CORRECT END STATE FOR NOW
 -----------------------------------------------------------------------------

@@ -368,7 +368,7 @@ export function RateLimitsScreen() {
         while the panels are `children` — the shared-context shape
         `11-ux-ui-principles.md` §Screen Template requires. `variant="line"` is
         the console standard; the bare default renders a segmented pill.
-      */}
+*/}
       <Tabs defaultValue="policy">
         <ScreenTemplate
           header={

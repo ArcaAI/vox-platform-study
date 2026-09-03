@@ -7,7 +7,7 @@ micro-cases (see ``apps/harness/eval/README.md``), not a corpus. This module run
 the SAME two inferential sensors over EVERY case of a golden set (e.g.
 ``curated_v1.json``) using the live calibrated judge (LM Studio
 ``google/gemma-4-e4b`` via :func:`harness.core.config.get_runtime_judge_config`)
-and the live ``apps/guardrail`` outbound safety screen (TASK-799 A.1 — harness holds no
+and the live apps/guardrail outbound safety screen ( A.1 — harness holds no
 guardian engine of its own), then aggregates a corpus-level delta: the
 ``groundedness`` + ``ragTriadScore`` distribution, the safety PASS/FLAG tally, and
 the agreement of each live signal against the fixture's curated PDSQI reference

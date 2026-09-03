@@ -220,7 +220,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).
    *
-   * Reuses the SAME `workflow_run:<runId>` ticket namespace and mint-time ownership assertion TASK-722 registered (AuthController.assertWorkflowRunScopeOwnership) — a sandbox run is a `WorkflowRun` row like any other, just isSandbox: true. Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet); every reconnect resyncs from the CURRENT live status rather than resuming a gap.
+   * Reuses the SAME `workflow_run:<runId>` ticket namespace and mint-time ownership assertion registered (AuthController.assertWorkflowRunScopeOwnership) — a sandbox run is a `WorkflowRun` row like any other, just isSandbox: true. Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet); every reconnect resyncs from the CURRENT live status rather than resuming a gap.
    *
    * `GET /api/v1/admin/workflow-definitions/{definitionId}/sandbox-runs/{runId}/stream` — `WorkflowSandboxRunController.stream`.
    */
@@ -346,7 +346,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * Compile the graph and publish this version
    *
-   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice (TASK-720 R-4 owner ruling, 2026-08-20): the tenant carries that risk.
+   * Rejected 400 if the engine gate is not clean (a cycle, an unregistered node type, or malformed shape) — the sole publish-blocking predicate; DRAFT rule-catalogue findings never block publish. `activate` (default true) makes this the version the dispatcher resolves for new runs, demoting the slug’s previous active version. Once published (and WORKFLOW_EXPOSURE_ENABLED), this version becomes invokable through the public exposure plane (`POST /workflows/:slug/invoke`) — if its resolved AI task default (e.g. `smr.finalize`, set under AI Task Defaults) selects a cloud provider, public invocations send this tenant's data to that vendor. Public exposure does NOT restrict provider choice ( owner ruling, 2026-08-20): the tenant carries that risk.
    *
    * `POST /api/v1/admin/workflow-definitions/{id}/publish` — `WorkflowDefinitionController.publish`.
    */
@@ -363,7 +363,7 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   /**
    * Re-run shape + engine + DRAFT rule-catalogue validation and persist the report
    *
-   * Advances DRAFT -> VALIDATED when the engine gate (shape + compile()) is clean. DRAFT rule-catalogue findings (TASK-716’s not-yet-clinically-reviewed rules) are recorded on the report but never block this.
+   * Advances DRAFT -> VALIDATED when the engine gate (shape + compile()) is clean. DRAFT rule-catalogue findings (’s not-yet-clinically-reviewed rules) are recorded on the report but never block this.
    *
    * `POST /api/v1/admin/workflow-definitions/{id}/validate` — `WorkflowDefinitionController.validate`.
    */

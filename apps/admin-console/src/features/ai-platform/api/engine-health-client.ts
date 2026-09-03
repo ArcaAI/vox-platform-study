@@ -9,7 +9,7 @@
  * so the unified screen can answer "are my engines up?" in one place without
  * depending on either feature. It never writes.
  *
- * The engine ROUTES are deliberately NOT retired by TASK-845:
+ * The engine ROUTES are deliberately NOT retired by :
  * `inference-engines/components/engine-meta.ts` records why an engine's status
  * needs its own URL, and that reasoning is unaffected by consolidation. This
  * tab is the inventory-level view; the routes stay the depth.

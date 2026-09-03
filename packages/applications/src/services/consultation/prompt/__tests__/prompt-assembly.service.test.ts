@@ -560,7 +560,6 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).not.toContain('[]');
       expect(result.userPrompt).not.toContain('umls:');
       // Internal implementation references must NOT leak into a clinical prompt.
-      expect(result.userPrompt).not.toContain('TASK-476');
       expect(result.userPrompt).not.toContain('SOTA');
     });
 

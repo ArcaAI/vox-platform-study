@@ -65,7 +65,7 @@ _TENANT_REQUIRED_DETAIL = (
 class ServiceAuthMiddleware:
     """Enforce the service token and the tenant precondition for non-exempt routes.
 
-    **Pure ASGI, not `BaseHTTPMiddleware`** (TASK-818 Lane C) — see
+    **Pure ASGI, not `BaseHTTPMiddleware`** — see
     `request_id.py`'s docstring for the measurement. The checks below are
     unchanged, in the same order, with the same statuses and log events; only the
     transport differs. A `Request` is still constructed, because it is a lazy

@@ -6,7 +6,7 @@
  *
  * The fixture is the ONE artifact both `node-registry-parity.test.ts` (TS) and
  * `test_node_registry_parity.py` (Python) assert against — neither runtime can import the
- * other's module, so the file IS the contract. Before TASK-847 it was maintained by hand, and
+ * other's module, so the file IS the contract. Before it was maintained by hand, and
  * hand-maintaining a 56-entry projection of a 56-entry table is how the two drift.
  *
  * This script only ever regenerates the TypeScript PROJECTION. It cannot make the Python side
@@ -43,7 +43,7 @@ const entries = Object.values(WORKFLOW_NODE_REGISTRY)
     outputKeys: Object.fromEntries(descriptor.outputs.map((port) => [port.name, port.outputKey ?? null])),
     lane: descriptor.lane,
   }))
-  // `localeCompare`, matching BOTH parity tests' own sort. Not `.sort()` — the two disagree on
+  // `localeCompare`, matching BOTH parity tests' own sort(). Not `.sort` — the two disagree on
   // where `agentic.*` falls relative to `agent.*`, and a fixture sorted the other way fails the
   // "sorted by key" assertion rather than the content one, which reads like an unrelated bug.
   .sort((a, b) => a.key.localeCompare(b.key));

@@ -1,5 +1,5 @@
 /**
- * `useFocusNode` (TASK-719 Task 14) — selects AND moves DOM focus, in both view modes.
+ * `useFocusNode` — selects AND moves DOM focus, in both view modes.
  */
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';

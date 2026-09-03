@@ -1,6 +1,6 @@
 """Peer client for `apps/nlp` — guardrail's classification/NER executor.
 
-TASK-735 Phases 3 & 6. `apps/guardrail` used to host a GLiNER ONNX runtime and a
+Phases 3 & 6. `apps/guardrail` used to host a GLiNER ONNX runtime and a
 MiniCheck GGUF scorer. Both moved to `apps/nlp`, which already owns NER and
 token/text classification (rule 06: "a service that needs NER / token- or
 text-classification calls `apps/nlp`"). Guardrail keeps POLICY — which taxonomy,
@@ -58,8 +58,8 @@ ENTAILMENT_PATH = "/api/v1/guard/entailment"
 class ClassifiedTasks:
     """One moderation call's answer: the labels, and the confidences behind them.
 
-    TASK-830. `apps/nlp` used to answer `/guard/classify` with labels alone, which
-    is why TASK-829's session aggregate could only ever be a flag RATE. The
+    `apps/nlp` used to answer `/guard/classify` with labels alone, which
+    is why session aggregate could only ever be a flag RATE. The
     confidences now ride along in the SAME response, so a graded score costs no
     extra inference pass.
 
@@ -170,7 +170,7 @@ class NlpGuardClient:
         self._retry_backoff_s = retry_backoff_s
         # Optional so unit tests and one-shot callers need not build one; when
         # present it sheds load for a peer that is already down instead of paying
-        # `max_attempts × timeout` on every request (TASK-777 B-3).
+        # `max_attempts × timeout` on every request.
         self._breaker = breaker
 
     # ── transport ────────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ class NlpGuardClient:
         return (await self.classify_scored(tasks, text)).labels
 
     async def classify_scored(self, tasks: dict[str, Any], text: str) -> ClassifiedTasks:
-        """The same one call, with the per-label confidences kept (TASK-830)."""
+        """The same one call, with the per-label confidences kept."""
         payload = await self._post(CLASSIFY_PATH, {"text": text, "tasks": tasks}, "classify")
         results = payload.get("results")
         labels = results if isinstance(results, dict) else {}

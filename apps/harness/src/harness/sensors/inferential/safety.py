@@ -9,7 +9,7 @@ site but is unused — safety screens through guardrail, not the judge).
 Harness used to build an IBM Granite Guardian client and post at an engine itself, from a
 provider/endpoint/model/taxonomy plane in env. It does not any more: ``apps/guardrail``
 owns the safety POLICY, the tenant-resolved label taxonomy, and the delegation of the
-engine to text/nlp (TASK-799 A.1, F-02). The sensor's own contract is unchanged.
+engine to text/nlp ( A.1, F-02). The sensor's own contract is unchanged.
 
 ``passed`` is False if **any** harm dimension is flagged unsafe — unsafe content is
 never auto-regenerated, it escalates to a clinician — and the triggered dimensions

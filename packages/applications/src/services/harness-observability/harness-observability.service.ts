@@ -161,7 +161,7 @@ export class HarnessObservabilityService {
    * deadlines computed from the effective policy timers, each clocked from its
    * latest GENERATE audit event (fallback: consultation `updatedAt`).
    *
-   * TASK-711 — also surfaces `TIMED_OUT` rows (gate SLA already exhausted,
+   * also surfaces `TIMED_OUT` rows (gate SLA already exhausted,
    * `recordEscalation`'s terminal path). They must not silently drop out of
    * this queue just because the clock moved them past PENDING_REVIEW — a
    * TIMED_OUT item is, definitionally, already `slaBreached`/`escalated`,
@@ -186,7 +186,7 @@ export class HarnessObservabilityService {
       if (e.action !== HarnessAuditAction.GENERATE) continue;
       // Every GENERATE event carries a consultationId — only
       // CONSENT_GIVEN/CONSENT_WITHDRAWN (excluded above) can lack one
-      // (TASK-712, consent-abac Phase 4). Narrows the type for the Map<string, …> below.
+      // (consent-abac Phase 4). Narrows the type for the Map<string, …> below.
       if (!e.consultationId) continue;
       const prev = generates.get(e.consultationId);
       const createdAt = toDate(e.createdAt);

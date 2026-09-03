@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://arcaai.dev/schemas/async-envelope.v1.json",
   "title": "AsyncEnvelope",
-  "description": "TASK-717: the normative async task/event envelope. See docs/programs/agentic-workflow-platform/async-contract.md for prose and per-transport delivery semantics. Copied byte-for-byte by both the TypeScript (@arcaai/async-contract) and Python (hope_async_contract) packages' parity tests -- this file is the single source of truth for the wire shape.",
+  "description": "the normative async task/event envelope. See docs/programs/agentic-workflow-platform/async-contract.md for prose and per-transport delivery semantics. Copied byte-for-byte by both the TypeScript (@arcaai/async-contract) and Python (hope_async_contract) packages' parity tests -- this file is the single source of truth for the wire shape.",
   "type": "object",
   "additionalProperties": false,
   "required": [

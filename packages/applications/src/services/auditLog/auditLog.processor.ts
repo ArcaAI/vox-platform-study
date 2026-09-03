@@ -62,7 +62,7 @@ export class AuditLogProcessor extends WorkerHost {
 
       const entity = AuditLogFactory.CreateAuditLog({
         action,
-        // TASK-762 — exactly one actor reaches the row. When the job names a
+        // exactly one actor reaches the row. When the job names a
         // service account the factory leaves `responsibleUserId` NULL, so a
         // machine action is never recorded against a person.
         responsibleUserId,

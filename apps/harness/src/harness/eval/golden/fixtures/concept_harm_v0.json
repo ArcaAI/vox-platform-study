@@ -1,7 +1,7 @@
 {
   "version": "concept-harm-v0.1.0",
   "name": "synthetic-concept-harm-golden-set",
-  "description": "SYNTHETIC, NON-CLINICAL golden case for TASK-482 E3 (concept-F1 + harm-weight) wiring + CI only. No PHI. The generated note deliberately OMITS a reference medication (metformin, CUI C0025598) so concept-F1 recall < 1.0. MUST be replaced by real clinician-authored references before gating any clinical claim.",
+  "description": "SYNTHETIC, NON-CLINICAL golden case for  E3 (concept-F1 + harm-weight) wiring + CI only. No PHI. The generated note deliberately OMITS a reference medication (metformin, CUI C0025598) so concept-F1 recall < 1.0. MUST be replaced by real clinician-authored references before gating any clinical claim.",
   "cases": [
     {
       "case_id": "synthetic-e3-001-omitted-med",

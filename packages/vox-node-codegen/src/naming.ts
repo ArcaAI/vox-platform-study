@@ -3,7 +3,6 @@
  * facts in the two input artifacts. None is transcribed, and none is
  * configurable — a lookup table of hand-chosen names would be exactly the
  * thing the ticket's "derive, don't transcribe" rule exists to prevent
- * (`docs/implementation/TASK-773-.../README.md` §3).
  *
  * The rules, in one place so a reader can predict any generated name:
  *

@@ -73,7 +73,7 @@ class AzureSpeechProvider:
 
         Returns ``None`` for a KEYLESS override. That guard - not the provider
         list - is what stops a SYSTEM row's endpoint from being mistaken for a
-        credential (TASK-799 plan, "Phase 2 landmines"): a keyless row injects on
+        credential ( plan, "Phase 2 landmines"): a keyless row injects on
         NEITHER tier.
 
         `model_copy` clones the platform config rather than mutating it, so two

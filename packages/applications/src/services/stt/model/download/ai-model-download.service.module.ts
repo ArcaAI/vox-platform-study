@@ -11,7 +11,7 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
 
 /**
  * AiModelDownloadServiceModule — the model download/publish action
- * (TASK-855 lane L3). Wires the `DownloadAiModel` BullMQ queue, the
+ * . Wires the `DownloadAiModel` BullMQ queue, the
  * enqueue+status-poll service, the fetch/verify/publish worker, and the
  * HuggingFace/S3 source-fetching helpers.
  *
@@ -21,7 +21,7 @@ import { HuggingFaceModelSourceClient } from './huggingface-model-source.client'
  * is imported directly (not inherited from `CommonServiceModule`) for the
  * HuggingFace client, mirroring `KnowledgeServiceModule`.
  *
- * `AiProviderConnectionServiceModule` (TASK-855 L8) supplies
+ * `AiProviderConnectionServiceModule` supplies
  * `IProviderConnectionService`, which `HuggingFaceModelSourceClient` uses to
  * resolve the platform's HuggingFace token — Nest DI is resolved per-module,
  * so this import is required even though `AiModelModule` (apps/api) already

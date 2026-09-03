@@ -106,7 +106,7 @@ export interface ServiceStatusBarProps {
 }
 
 /**
- * Footer service-health strip (PHASE-2-PLAN §3.2). A polite `role="status"` live
+ * Footer service-health strip (PHASE-2-PLAN A polite `role="status"` live
  * region listing every service (`ServiceStatusItem`) with session/job counts, an
  * environment badge and a ≥44px refresh button. On narrow widths it collapses to a
  * single "N/M healthy" summary chip that expands the full list in a `Popover`.

@@ -1,5 +1,5 @@
 /**
- * TASK-795 W1 — the exclusivity gate must not be able to go SILENTLY INERT.
+ * the exclusivity gate must not be able to go SILENTLY INERT.
  *
  * `LoopContextSignalService` injects `ConsultationRepository` with `@Optional()`,
  * matching this file's existing convention and its declared fail-safe direction

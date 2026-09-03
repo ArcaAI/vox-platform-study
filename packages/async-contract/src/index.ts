@@ -1,7 +1,7 @@
 /**
  * @arcaai/async-contract
  *
- * TASK-717: the normative async task/event envelope, plus the idempotency-key
+ * the normative async task/event envelope, plus the idempotency-key
  * and resume-token conventions, plus a reusable conformance suite. Zero
  * runtime dependencies. Full prose contract:
  * docs/programs/agentic-workflow-platform/async-contract.md.

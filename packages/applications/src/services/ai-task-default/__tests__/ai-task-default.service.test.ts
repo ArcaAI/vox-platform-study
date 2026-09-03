@@ -61,7 +61,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
   };
   // r2605 Finding A — the UNSCOPED base client the cross-tenant lane routes through.
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  // TASK-844 write-through — `upsertRow` now writes the retired projection and
+  // write-through — `upsertRow` now writes the retired projection and
   // its authoritative `AiRoutingPolicy` counterpart in ONE transaction.
   const routingRepo = {
     findCandidates: vi.fn().mockResolvedValue([]),
@@ -201,7 +201,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
 });
 
 describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
-  // TASK-735 Phase 0 (owner decision 2026-08-16) reversed the 2026-07-17
+  // (owner decision 2026-08-16) reversed the 2026-07-17
   // super-admin-only directive for guardrail.*: it is now tenant-admin
   // configurable, subject to the D2 platform-approved-list floor (see the
   // "guardrail.* platform floor" describe block below), NOT a blanket
@@ -248,7 +248,7 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
 
     expect(res.tenantId).toBe(TENANT);
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    // TASK-844 — the write-through runs BOTH tables in one transaction, so
+    // the write-through runs BOTH tables in one transaction, so
     // every write now carries the transaction client rather than `undefined`.
     // `runInTransaction` opens it on `databaseService.baseClient`, so the
     // client is still UNSCOPED; the entity's own `tenantId` (pinned to the
@@ -268,11 +268,11 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
     expect(ctx.repo.create).toHaveBeenCalledTimes(1);
   });
 
-  // Regression lock — TASK-735 Phase 0 touched ONLY guardrail.*'s governance.
-  // nlp.*/harness.* must keep the exact pre-TASK-735 behaviour: blanket
+  // Regression lock — touched ONLY guardrail.*'s governance.
+  // nlp.*/harness.* must keep the exact earlier behaviour: blanket
   // ForbiddenException for a tenant admin, success for SUPER_ADMIN, no
   // approved-list floor involved (that floor is guardrail-specific).
-  it('nlp.*/harness.* governance is unchanged by TASK-735 (still blanket super-admin-only, no approved-list floor)', async () => {
+  it('nlp.*/harness.* governance is unchanged by  (still blanket super-admin-only, no approved-list floor)', async () => {
     const tenantAdminCtx = makeService({ roles: ['TENANT_ADMIN'] });
     tenantAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
     await expect(
@@ -292,7 +292,7 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
 });
 
 /**
- * TASK-735 Phase 0 (owner decision 2026-08-16, D2 "tighten-only"). Guardrail
+ * (owner decision 2026-08-16, D2 "tighten-only"). Guardrail
  * left `SUPER_ADMIN_ONLY_TASK_PREFIXES`, so `upsertRow`'s blanket
  * super-admin-only check no longer fires for `guardrail.*` — but a
  * SEPARATE, guardrail-specific platform floor still applies: a binding for a
@@ -304,9 +304,9 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
  * `featureGuardrailModelSelection` entitlement gate (see
  * `settings-registry/descriptors/entitlements.descriptors.ts`); that half is
  * NOT enforced yet — it needs a DB column outside this ticket's file scope
- * (ticket README §7). These tests cover the half that IS enforced today.
+ * ( These tests cover the half that IS enforced today.
  */
-describe('AiTaskDefaultService — guardrail.* platform floor (TASK-735 Phase 0, D2)', () => {
+describe('AiTaskDefaultService — guardrail.* platform floor (Phase 0, D2)', () => {
   it('accepts a guardrail.* write from a TENANT ADMIN when the slug is on the platform-approved (SYSTEM) list', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
@@ -365,7 +365,7 @@ describe('AiTaskDefaultService — guardrail.* platform floor (TASK-735 Phase 0,
   });
 });
 
-describe('AiTaskDefaultService — getEffective cascade for guardrail.* (TASK-735 Phase 0)', () => {
+describe('AiTaskDefaultService — getEffective cascade for guardrail.* (Phase 0)', () => {
   it('the tenant row wins over the SYSTEM row for guardrail.validate (no longer SYSTEM-only)', async () => {
     const ctx = makeService();
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
@@ -436,7 +436,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
 
     await ctx.svc.upsertRow('nlp.classification', { modelSlug: 'symps-disease-bert-v3-c41', expectedVersion: 1 });
 
-    // TASK-844 write-through — see the create-path note above.
+    // write-through — see the create-path note above.
     expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
     expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
   });
@@ -548,7 +548,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
     const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
 
     expect(res.tenantId).toBe(SYSTEM_TENANT_ID);
-    // TASK-844 — still the UNSCOPED client, now reached through the
+    // still the UNSCOPED client, now reached through the
     // transaction `runInTransaction` opens on it. The cross-tenant lane
     // guarantee this test exists for is intact.
     expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }), ctx.trx);
@@ -563,7 +563,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
 
     await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 1 }, SYSTEM_TENANT_ID);
 
-    // TASK-844 — unscoped, and now transactional. See the note above.
+    // unscoped, and now transactional. See the note above.
     expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
   });
 
@@ -586,7 +586,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   });
 });
 
-describe('AiTaskDefaultService — TASK-844 write-through to AiRoutingPolicy', () => {
+describe('AiTaskDefaultService —  write-through to AiRoutingPolicy', () => {
   /**
    * The invariant this suite exists for: `AiTaskDefault` is RETIRED but still
    * read (by ~11 TypeScript resolvers and by `apps/guardrail`'s direct SQL), so
@@ -609,7 +609,7 @@ describe('AiTaskDefaultService — TASK-844 write-through to AiRoutingPolicy', (
   });
 
   it('projects the row as an ELECTED default carrying the catalogue FK, not the slug', async () => {
-    // The point of the projection: the by-slug join (finding F-6) is performed
+    // The point of the projection: the by-slug join is performed
     // ONCE at write time and stored as `modelId`, so the authoritative table
     // never has to repeat it.
     const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });

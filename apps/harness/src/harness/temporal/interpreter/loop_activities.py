@@ -1,4 +1,4 @@
-"""The ONE activity an ``agentic.loop`` iteration runs besides its own nodes (TASK-848).
+"""The ONE activity an agentic.loop iteration runs besides its own nodes.
 
 ``AgenticLoopWorkflow`` runs exactly one iteration per generation and then
 ``continue_as_new``s, so everything it needs on the next iteration must be carried forward as
@@ -70,7 +70,7 @@ def extract_tokens(output: Any) -> int:
     return 0
 
 
-# TASK-848b step 6 — the carry-forward offload threshold.
+# b step 6 — the carry-forward offload threshold.
 #
 # Temporal's ceiling is 2 MB per payload / 4 MB per gRPC message, and the loop carries its ENTIRE
 # memory as input on every generation. A clinical deliberation that accumulates transcript across
@@ -164,7 +164,7 @@ async def loop_state_checkpoint(payload: LoopCheckpointInput) -> LoopStateCheckp
     if payload.termination_key:
         terminated = bool(payload.orchestrator_output.get(payload.termination_key))
 
-    # TASK-848b step 6 — offload the carry-forward when it outgrows the inline budget.
+    # b step 6 — offload the carry-forward when it outgrows the inline budget.
     #
     # The digest is computed over `combined` either way, so the no-progress bound compares the
     # same value whether the state travelled inline or by reference. Offloading must never change

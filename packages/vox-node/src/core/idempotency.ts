@@ -5,7 +5,7 @@
  *
  * HOPE's async summary/pre-summary routes take `idempotencyKey` as a BODY
  * field on `GenerateSummaryRequest`/`GeneratePreSummaryRequest` (not a
- * header) — see `docs/implementation/TASK-632-HOPE-Node-SDK/README.md`.
+ * header) — see.
  * This module only generates the value; the resources layer is
  * responsible for placing it in the request body.
  */

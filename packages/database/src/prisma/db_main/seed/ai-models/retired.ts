@@ -2,7 +2,7 @@
  * Retired AI-model slug ledger + pipeline-reference guard.
  *
  * The 50 slugs of the previous 60-row `DEFAULT_AI_MODELS` catalog that the
- * consolidation retires, PLUS 3 more added by the TASK-736 Ollama model-catalog
+ * consolidation retires, PLUS 3 more added by the Ollama model-catalog
  * purge (soft-`DELETED`, never hard-deleted — recoverable). Note the purge is
  * of CATALOG ROWS ONLY: the `ollama` PROVIDER remains selectable (owner
  * decision 2026-08-17), so these slugs are retired because the platform no
@@ -48,7 +48,7 @@ export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
   'ollama-gemma3n-latest',
   'ollama-granite4-tiny-h',
   'ollama-granite4-latest',
-  // Ollama LLMs (TASK-736 — Ollama MODEL CATALOG purged; the provider itself
+  // Ollama LLMs — Ollama MODEL CATALOG purged; the provider itself
   // stays selectable, owner decision 2026-08-17)
   'ollama-gemma4-12b-mlx',
   'ollama-gemma4-e2b-it-qat',
@@ -91,8 +91,8 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 /**
  * Characters that may legally appear INSIDE a slug / model identifier. An
  * occurrence only counts as a reference when it is NOT flanked by these, so:
- *   - `asr: "whisper-large-v3"`            → references `whisper-large-v3`
- *   - `asr: "whisper-large-v3-turbo"`      → does NOT reference `whisper-large-v3`
+ *   - `asr: "whisper-large-v3"` → references `whisper-large-v3`
+ *   - `asr: "whisper-large-v3-turbo"` → does NOT reference `whisper-large-v3`
  *   - `hf_model_id: "openai/whisper-tiny"` → does NOT reference the `whisper-tiny`
  *     slug (path segment of an inline hf id, not a registry slug reference)
  * A plain substring check would permanently block the retirement of

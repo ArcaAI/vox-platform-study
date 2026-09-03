@@ -1,5 +1,5 @@
 /**
- * TASK-845 — the unified AI Platform console (`/ai-platform`) against a RUNNING
+ * the unified AI Platform console (`/ai-platform`) against a RUNNING
  * stack.
  *
  * WHY THIS FILE EXISTS. The consolidation's central claim is that tenancy is a

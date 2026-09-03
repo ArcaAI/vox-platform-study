@@ -65,7 +65,7 @@ export class ConsultationResponse {
 
   @ApiPropertyOptional({
     description:
-      'Clinical lifecycle status — the single-sourced ConsultationStatus column (TASK-711 session state machine; docs/implementation/TASK-711-Session-State-Machine/state-machine.md).',
+      'Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).',
     enum: ConsultationStatus,
     example: ConsultationStatus.OPEN,
   })
@@ -78,7 +78,7 @@ export class ConsultationResponse {
     description:
       'Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header ' +
       '(`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ' +
-      'TASK-711). `ETagInterceptor` also mirrors this value onto the response `ETag` header.',
+      '). `ETagInterceptor` also mirrors this value onto the response `ETag` header.',
   })
   version?: number;
 

@@ -1,18 +1,18 @@
 /**
  * The two DELIVERY PATHS a connection row can take, pinned on ONE row.
  *
- * This is the landmine TASK-799 Round 2 recorded and lane H was asked to make
+ * This is the landmine Round 2 recorded and lane H was asked to make
  * un-trippable. Stated plainly:
  *
- *   | Path                                   | Keyless row?                    |
+ *   | Path | Keyless row? |
  *   |----------------------------------------|---------------------------------|
- *   | `resolveConnection(service, provider,  | RESOLVES. A direct TypeScript   |
- *   |  tenantId)`                            | call; returns the row, key or   |
- *   |                                        | no key.                         |
- *   | `resolveTenantCloudOverrides(...)`     | DROPPED. The fold skips         |
+ *   | `resolveConnection(service, provider, | RESOLVES. A direct TypeScript |
+ *   | tenantId)` | call; returns the row, key or |
+ *   | | no key. |
+ *   | `resolveTenantCloudOverrides(...)` | DROPPED. The fold skips |
  *   | → the `provider_overrides` FOLD, which | `!enabled \|\| !encryptedApiKey` |
- *   | is what `apps/text` / `apps/tts` / the | on BOTH tiers, by design.       |
- *   | STT config service actually read       |                                 |
+ *   | is what `apps/text` / `apps/tts` / the | on BOTH tiers, by design. |
+ *   | STT config service actually read | |
  *
  * Both halves are already asserted elsewhere — `resolveTenantCloudOverrides`
  * cases 5/6 in `ai-provider-connection.platform-default.test.ts`, and
@@ -28,8 +28,8 @@
  * (so there is no gateway request to inject into), and `EffectiveConfigResponse`
  * carries no `connections` block. Seeding a keyless row there would look correct
  * in the seed, resolve correctly in a REPL, and deliver nothing — a silent no-op
- * that reads as done. See `seed/17-ai-provider-connection.ts` §"Why a keyless
- * row is not enough" and `apps/harness/src/harness/core/config.py` §"Why the
+ * that reads as done. See `seed/17-ai-provider-connection.ts` "Why a keyless
+ * row is not enough" and `apps/harness/src/harness/core/config.py` "Why the
  * endpoints below are still env".
  *
  * So: one row, both questions, one file. Read the table above before adding a

@@ -5,7 +5,7 @@ a TTL:
 
 * **Task state** — ``text:task:{id}``, the lifecycle record. Unchanged.
 * **The replay buffer** — ``text:stream:{id}``, from which a reconnecting client
-  resumes. TASK-818 Lane B restructured this half (§3C): a durable entry is now a
+  resumes. restructured this half : a durable entry is now a
   **coalesced batch** of deltas rather than one entry per token, and the batch
   readers hand back the producer's already-encoded wire JSON instead of
   re-validating every delta through pydantic on the way out.
@@ -81,7 +81,7 @@ class TaskManager:
         self._redis = redis
         self._task_ttl = task_ttl
         self._stream_max_len = stream_max_len
-        # TASK-717: per-task chunk sequence counter, for the enveloped write's
+        # per-task chunk sequence counter, for the enveloped write's
         # idempotency key (`text:task:<taskId>:chunk:<sequence>`). Scoped to this
         # instance/process, matching the existing per-request TaskManager lifecycle
         # (see `core/dependencies.py:get_task_manager`) — a chunk stream is always
@@ -165,9 +165,9 @@ class TaskManager:
         tenant_id: str | None,
         correlation_id: str | None,
     ) -> str:
-        """Envelope the chunk (TASK-717) when a tenant is resolved; bare JSON otherwise.
+        """Envelope the chunk when a tenant is resolved; bare JSON otherwise.
 
-        Additive and backward compatible (design doc §3.7): a caller with no
+        Additive and backward compatible : a caller with no
         resolved tenant (an untenanted internal caller) keeps writing the bare
         ``StreamChunk`` exactly as before — the envelope's ``tenantId`` is
         mandatory, so there is nothing sound to write without one.
@@ -200,11 +200,11 @@ class TaskManager:
 
     @staticmethod
     def _decode_chunk_data(raw: str) -> StreamChunk:
-        """Parse a stream entry's ``data`` field — enveloped (TASK-717) or legacy bare.
+        """Parse a stream entry's data field — enveloped or legacy bare.
 
         A `schemaVersion` probe distinguishes the two. An enveloped entry whose
         `schemaVersion` this reader does not understand is REFUSED, never
-        best-effort parsed (design doc §3.2) — cutover of the acceptance path to
+        best-effort parsed  — cutover of the acceptance path to
         require the envelope is a follow-up, not this ticket.
         """
         doc = json.loads(raw)
@@ -219,7 +219,7 @@ class TaskManager:
             return StreamChunk.model_validate(envelope.payload)
         return StreamChunk.model_validate_json(raw)
 
-    # ── The replay buffer (TASK-818 Lane B, §3C.2) ───────────────────────
+    # ── The replay buffer (───────────────────────
     #
     # One entry per coalesced BATCH. Everything below is on the resume path or
     # the flush task — never between the provider and the client.
@@ -406,11 +406,11 @@ class TaskManager:
         """Whether any replay buffer exists for this id.
 
         Distinguishes "finished a while ago, here is the backlog" from "never
-        heard of it", which is the **204** in §3C.3(5).
+        heard of it", which is the **204** in
         """
         return bool(await self._redis.exists(self._stream_key(task_id)))
 
-    # ── Explicit cancellation (§3C.4) ────────────────────────────────────
+    # ── Explicit cancellation ( ────────────────────────────────────
     #
     # Persisted, so a producer on another pod (or after a restart) observes it.
     # A dropped socket never writes this flag.

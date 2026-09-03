@@ -90,7 +90,7 @@ async def test_declared_tenantless_marker_is_accepted() -> None:
     """Genuinely tenant-less internal work DECLARES itself and is let through."""
     request = _request({"X-Tenant-Id": TENANTLESS})
     # No resolver wired — the same fail-closed path the retired
-    # `db_config_enabled=False` flag used to reach (TASK-799 lane D).
+    # `db_config_enabled=False` flag used to reach.
     request.app.state.tenant_config_resolver = None
 
     # The marker passes the 428 gate; the call then fails CLOSED on SELECTION

@@ -1,19 +1,18 @@
 # =============================================================================
-# TASK-823 — vLLM inference image with OUT-OF-TREE GGUF support
+# vLLM inference image with OUT-OF-TREE GGUF support
 # =============================================================================
 # OWNER DECISION (implemented here, not relitigated): serve GGUF weights through
 # the out-of-tree plugin. The owner was shown both sides — that vLLM removed its
 # in-tree GGUF loader, and that Google publishes vLLM-native `w4a16`
 # compressed-tensors builds of the same models that need no plugin at all — and
 # chose the plugin path. The trade-offs are recorded factually in
-# docs/implementation/TASK-823-vLLM-Inference-Service/README.md §13.
 #
 # -----------------------------------------------------------------------------
 # THE VERSION PINCER THIS FILE EXISTS TO RESOLVE
 # -----------------------------------------------------------------------------
 #   v0.11.0 (what the dev compose `inference` profile runs today) HAS the
 #           in-tree GGUF loader but does NOT know Gemma 4.
-#   v0.28.0 (2026-08-26, current)  KNOWS Gemma 4 but has NO in-tree GGUF loader.
+#   v0.28.0 (2026-08-26, current) KNOWS Gemma 4 but has NO in-tree GGUF loader.
 #
 # There is no vLLM release that has both. GGUF moved out-of-tree under RFC
 # vllm-project/vllm#39583, and vLLM's own documentation states it verbatim:
@@ -37,7 +36,7 @@
 # 2. GRANITE IS UNVERIFIED. Granite / Granite Guardian appear nowhere in the
 #    plugin's tested set. Its own README: "A model appearing in vLLM's general
 #    supported-model list does not by itself guarantee GGUF compatibility."
-# 3. `s3://` CANNOT REACH THIS LOADER. See the manifest note in §13 of the
+# 3. `s3://` CANNOT REACH THIS LOADER. See the manifest note in of the
 #    ticket: GGUF `--model` resolution accepts a LOCAL FILE PATH or a Hugging
 #    Face `<repo_id>:<quant>`, and nothing else — so the shipped
 #    `--load-format runai_streamer` + `s3://hope-models/...` design cannot serve
@@ -124,10 +123,10 @@ RUN set -eu; \
 #
 # `--no-deps` IS ALSO USED, and here is the evidence for it. The plugin declares
 # four runtime dependencies:
-#     vllm                    (NO version specifier)
-#     torch>=2.9              base has torch==2.13.0  -> satisfied
-#     huggingface_hub>=1.26.0 vLLM pins >=1.27.0      -> satisfied
-#     gguf>=0.17.0            NOT a vLLM 0.28.0 dep   -> genuinely absent
+#     vllm (NO version specifier)
+#     torch>=2.9 base has torch==2.13.0 -> satisfied
+#     huggingface_hub>=1.26.0 vLLM pins >=1.27.0 -> satisfied
+#     gguf>=0.17.0 NOT a vLLM 0.28.0 dep -> genuinely absent
 # Three of the four are already satisfied, so a resolving install would add
 # exactly one package — but it would do so with a resolver that has an
 # UNPINNED `vllm` requirement and full freedom over the transitive set. vLLM

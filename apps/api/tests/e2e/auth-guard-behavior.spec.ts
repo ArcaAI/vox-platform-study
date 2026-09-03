@@ -40,7 +40,7 @@ test.describe('UnifiedAuthGuard Behavior', () => {
     const probe = await request.get(PROTECTED_ROUTE, {
       headers: { 'X-API-Key': SEEDED_API_KEY, Accept: 'application/json' },
     });
-    expect(probe.status(), 'Seeded API key was rejected — API-key authentication is broken (TASK-539 S-3)').not.toBe(401);
+    expect(probe.status(), 'Seeded API key was rejected — API-key authentication is broken (S-3)').not.toBe(401);
   });
 
   // ==========================================================================

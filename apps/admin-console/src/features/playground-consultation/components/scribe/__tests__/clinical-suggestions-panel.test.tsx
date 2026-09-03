@@ -1,5 +1,5 @@
 /**
- * TASK-797 W2 — intelligent suggestions, against TASK-796's brokered shape.
+ * intelligent suggestions, against brokered shape.
  *
  * The harness node's system prompt constrains these to "next questions, checks or omissions to
  * consider", grounded in the supplied text, never a diagnosis stated as fact. The surface must
@@ -20,7 +20,7 @@ const SUGGESTIONS: ClinicalSuggestion[] = [
   { suggestionId: 's2', text: 'Consider checking renal function before increasing the ACE inhibitor.', category: 'investigation', status: 'PROPOSED' },
 ];
 
-describe('ClinicalSuggestionsPanel (TASK-797 W2)', () => {
+describe('ClinicalSuggestionsPanel (W2)', () => {
   it('lists every suggestion', () => {
     render(<ClinicalSuggestionsPanel suggestions={SUGGESTIONS} nodeType="consultation.suggestions" />);
     expect(screen.getByText('Ask about orthopnoea and ankle swelling.')).toBeTruthy();

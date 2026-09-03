@@ -1,27 +1,27 @@
 /**
- * TASK-858 lane A (gap G1) — the REALTIME lane honours the consultation's own workflow selection.
+ * lane A (gap G1) — the REALTIME lane honours the consultation's own workflow selection.
  *
  * ## The defect
  *
- * TASK-813 lets a clinician choose `workflowDefinitionSlug` at session open. The choice is
+ * lets a clinician choose `workflowDefinitionSlug` at session open. The choice is
  * authorized (`assertSelectableForConsultation`) and honoured by the DURABLE dispatcher, which
  * records it on the consultation. `resolveTenantLane` — the one function that decides which graph
  * the realtime executor walks — consulted ONLY `workflowAssignments.resolve(tenant, 'consultation',
  * department)`. So a clinician who selected workflow B got workflow A's realtime nodes: live NER,
  * partial summarization and grammar came from the tenant DEFAULT, silently, while
- * `GET /consultations/:id/workflow` reported B. TASK-858 seeds three selectable example
+ * `GET /consultations/:id/workflow` reported B. seeds three selectable example
  * consultation workflows; without this they can never run live.
  *
  * ## Two recorded selections, and why both are read
  *
- * `governingEngine` (TASK-795) requires a non-empty `workflowRunId`, so it exists only when the
+ * `governingEngine` requires a non-empty `workflowRunId`, so it exists only when the
  * durable dispatch SUCCEEDED. `workflowSelection` (this ticket) is written at consultation CREATE,
  * before and regardless of dispatch. They are read in that order.
  *
  * The interaction below is asserted rather than assumed, because it decides which of the two is
  * load-bearing in practice.
  *
- * AMENDED by TASK-858 lane A2: this used to read "a well-formed `governingEngine` marker ALSO
+ * AMENDED by lane A2: this used to read "a well-formed `governingEngine` marker ALSO
  * makes the substrate gate stand this whole engine down, so on a live session it is
  * `workflowSelection` that actually steers the lane". That relaxation of the gate has now
  * HAPPENED — it is mode-aware, so in GRAPH mode a governed session stays up and walks the
@@ -117,7 +117,7 @@ const snapshot = (): FrozenLiveAgentSnapshot => ({
   frozenAt: '2026-08-28T00:00:00.000Z',
 });
 
-/** A well-formed TASK-795 marker — only written when the durable dispatch actually started a run. */
+/** A well-formed marker — only written when the durable dispatch actually started a run. */
 const governedBy = (slug: string) => ({
   [GOVERNING_ENGINE_METADATA_KEY]: {
     engine: TENANT_WORKFLOW_GOVERNS_MARKER,
@@ -127,7 +127,7 @@ const governedBy = (slug: string) => ({
   },
 });
 
-/** The TASK-858 selection marker — written at consultation CREATE, dispatch or no dispatch. */
+/** The selection marker — written at consultation CREATE, dispatch or no dispatch. */
 const selected = (slug: string) => ({
   [WORKFLOW_SELECTION_METADATA_KEY]: { workflowDefinitionSlug: slug, selectedAt: '2026-09-03T00:00:00.000Z' },
 });
@@ -199,7 +199,7 @@ function buildService(opts: BuildOpts = {}) {
 // (a) the selection WINS over the cascade
 // =============================================================================
 
-describe('TASK-858 G1 — the consultation’s own selection resolves the realtime lane', () => {
+describe(' G1 — the consultation’s own selection resolves the realtime lane', () => {
   it('a governing-engine marker naming a published consultation graph supplies the lane, not the tenant default', async () => {
     const { service, assignments, definitions } = buildService({ consultationMetadata: governedBy(SELECTED_SLUG) });
 
@@ -220,7 +220,7 @@ describe('TASK-858 G1 — the consultation’s own selection resolves the realti
     const caps = await service.getRealtimeCapabilities(ARCAAI, null, CID);
 
     // `workflowSelection` survives a failed dispatch (no run, so no `governingEngine` marker) and
-    // this engine keeps running. Since TASK-858 A2 the marker path steers a live session too, in
+    // this engine keeps running. Since the marker path steers a live session too, in
     // graph mode — but this is the path that works when the durable dispatch never started.
     expect(caps.assignmentSource).toBe('consultation');
     expect(caps.definitionSlug).toBe(SELECTED_SLUG);
@@ -253,7 +253,7 @@ describe('TASK-858 G1 — the consultation’s own selection resolves the realti
 // (b) every unresolvable selection falls back to the EXISTING cascade
 // =============================================================================
 
-describe('TASK-858 G1 — an unresolvable selection degrades to the cascade, never to no lane', () => {
+describe(' G1 — an unresolvable selection degrades to the cascade, never to no lane', () => {
   it('an UNPUBLISHED / unknown slug falls back to the tenant assignment', async () => {
     const { service, assignments } = buildService({ consultationMetadata: selected('slug-that-was-never-published') });
 
@@ -292,7 +292,7 @@ describe('TASK-858 G1 — an unresolvable selection degrades to the cascade, nev
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
 
-    // The substrate gate fails open on an unreadable row (TASK-811), and so does this: a store
+    // The substrate gate fails open on an unreadable row, and so does this: a store
     // outage must cost the clinician the SELECTED graph, never the documentation.
     expect(assignments.resolve).toHaveBeenCalledWith(ARCAAI, 'consultation', null);
     expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(ARCAAI, ASSIGNED_SLUG);
@@ -321,7 +321,7 @@ describe('TASK-858 G1 — an unresolvable selection degrades to the cascade, nev
 // (c) no selection — byte-for-byte today's behaviour
 // =============================================================================
 
-describe('TASK-858 G1 — a consultation with no selection is unchanged', () => {
+describe(' G1 — a consultation with no selection is unchanged', () => {
   it('resolves the cascade, and does not read the consultation when no id is supplied', async () => {
     const { service, consultationRepository } = buildService({ consultationMetadata: null });
 
@@ -355,7 +355,7 @@ describe('TASK-858 G1 — a consultation with no selection is unchanged', () => 
 // (d) the read-out is addressable per consultation, with the same 404 posture
 // =============================================================================
 
-describe('TASK-858 — `GET admin/harness/live/capabilities?consultationId=` reports what THAT session would get', () => {
+describe('`GET admin/harness/live/capabilities?consultationId=` reports what THAT session would get', () => {
   it('echoes the consultation it resolved for', async () => {
     const { service } = buildService({ consultationMetadata: selected(SELECTED_SLUG) });
 
@@ -388,7 +388,7 @@ describe('TASK-858 — `GET admin/harness/live/capabilities?consultationId=` rep
 // The SESSION path — the reason any of this matters
 // =============================================================================
 
-describe('TASK-858 G1 — a live session freezes the SELECTED lane', () => {
+describe(' G1 — a live session freezes the SELECTED lane', () => {
   it('start() resolves the selected definition, not the tenant assignment', async () => {
     const { service, assignments, definitions } = buildService({ consultationMetadata: selected(SELECTED_SLUG) });
 
@@ -405,15 +405,15 @@ describe('TASK-858 G1 — a live session freezes the SELECTED lane', () => {
   });
 
   /**
-   * AMENDED by TASK-858 lane A2. This test previously asserted that a `governingEngine` marker
+   * AMENDED by lane A2. This test previously asserted that a `governingEngine` marker
    * stands the WHOLE engine down on a live session, which made the marker path above serve only
    * the capabilities read-out. That premise was wrong once the graph executor was on: the
    * durable interpreter SKIPS every `lane: 'realtime'` node, so the stand-down left realtime NER
    * / partial summary / grammar running in neither engine. The gate is now MODE-AWARE — the two
    * tests below replace the one, and the full contract lives in
    * `live-documentation.governed-graph-mode.task858.test.ts`.
-   */
-  it('AMENDED (TASK-858 A2): in GRAPH mode a governing marker keeps the session and steers its lane', async () => {
+ */
+  it('AMENDED (A2): in GRAPH mode a governing marker keeps the session and steers its lane', async () => {
     const { service, definitions, assignments } = buildService({ consultationMetadata: governedBy(SELECTED_SLUG) });
 
     service.start({ consultationId: CID, tenantId: ARCAAI });
@@ -426,7 +426,7 @@ describe('TASK-858 G1 — a live session freezes the SELECTED lane', () => {
     await service.stop(CID, { persistSnapshot: false });
   });
 
-  it('AMENDED (TASK-858 A2): with the graph executor OFF the marker still stands the whole engine down', async () => {
+  it('AMENDED (A2): with the graph executor OFF the marker still stands the whole engine down', async () => {
     const { service } = buildService({ graphEnabled: false, consultationMetadata: governedBy(SELECTED_SLUG) });
 
     service.start({ consultationId: CID, tenantId: ARCAAI });
@@ -434,7 +434,7 @@ describe('TASK-858 G1 — a live session freezes the SELECTED lane', () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     // There is no lane in legacy mode, so the only thing this engine could run is the hardcoded
-    // flush — which would write a second document beside the durable run's. TASK-811 task 13,
+    // flush — which would write a second document beside the durable run's. task 13,
     // unchanged.
     expect(service.isActive(CID)).toBe(false);
   });

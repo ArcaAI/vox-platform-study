@@ -21,7 +21,7 @@
 #   `sum by (service) (...)` queries correct without a job→service naming
 #   coincidence (job name != service name is fine now).
 #
-# Canonical contract: docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md
+# Canonical contract:
 # ============================================================================
 
 global:
@@ -31,8 +31,8 @@ global:
   external_labels:
     cluster: hope-dev
 
-# TASK-730: local dev previously had no rule_files/alerting block at all — this
-# was itself the finding (README.md §2.4/§2.10.6): no alert could exist here
+# local dev previously had no rule_files/alerting block at all — this
+# was itself the finding (README.md: no alert could exist here
 # regardless of what rule content was authored. This wires the mechanism only;
 # there is no Alertmanager service in this compose file, so rules evaluate and
 # are visible under Prometheus's own /alerts UI but are not routed/paged
@@ -136,8 +136,8 @@ scrape_configs:
         target_label: service
         replacement: harness
 
-  # ---- Temporal server (TASK-730) ------------------------------------------
-  # Was entirely unscraped locally (README.md §2.10.6): no job targeted the
+  # Temporal server
+  # Was entirely unscraped locally (README.md: no job targeted the
   # dev-stack Temporal container at all, unlike every other in-network
   # service. Requires PROMETHEUS_ENDPOINT to be set on the `temporal` compose
   # service (docker-compose.dev.yml) — added alongside this job in the same
@@ -146,7 +146,7 @@ scrape_configs:
   # `temporal:9090`; NOT the unmanaged-VM production instance
   # (arca/hope-v2-deployment's harness.env: TEMPORAL_ADDRESS=10.10.1.10:7233)
   # — that instance has no local-dev equivalent and is out of this repo's
-  # reach entirely (see README.md §2.10 finding 1/5).
+  # reach entirely (.md finding 1/5).
   - job_name: temporal
     metrics_path: /metrics
     static_configs:

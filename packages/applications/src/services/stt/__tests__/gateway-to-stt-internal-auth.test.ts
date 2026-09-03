@@ -1,5 +1,5 @@
 /**
- * Gateway → `apps/stt` internal-call contract (TASK-737 + TASK-738 / owner D-D).
+ * Gateway → `apps/stt` internal-call contract ( + / owner D-D).
  *
  * `apps/stt` used to have NO inbound authentication: every `/internal/*` route
  * was open. `ServiceAuthMiddleware` closed that, with a dev bypass while no
@@ -11,9 +11,9 @@
  * These tests pin BOTH halves of the internal-call contract on every
  * non-exempt gateway→stt hop:
  *   1. `X-Service-Token` — the ONE shared `INTERNAL_ACCESS_TOKEN` (D-D).
- *   2. `X-Tenant-Id`     — always present; tenant-less work DECLARES itself
+ *   2. `X-Tenant-Id` — always present; tenant-less work DECLARES itself
  *                          with the `tenantless:<reason>` sentinel rather than
- *                          omitting the header (TASK-737).
+ * omitting the header.
  *
  * stt's own `EXEMPT_PATHS` (`apps/stt/src/stt/core/middleware/auth.py`) covers
  * `/metrics`, the docs routes and the health/live/ready probes ONLY — every

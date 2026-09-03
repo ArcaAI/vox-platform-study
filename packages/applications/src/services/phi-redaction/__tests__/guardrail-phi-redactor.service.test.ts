@@ -1,6 +1,6 @@
 /**
  * GuardrailPhiRedactor — the IPhiRedactor implementation over the guardrail
- * POST /api/guardrail/redact endpoint (TASK-710).
+ * POST /api/guardrail/redact endpoint.
  *
  * Mirrors GuardrailGroundednessTool's test shape (mock HttpService.axiosRef,
  * assert request wire shape + token header) plus IPhiRedactor's own contract:
@@ -15,7 +15,7 @@ function makeService(opts?: {
   useDefaultUrl?: boolean;
   secretsService?: { getSecretOptional: ReturnType<typeof vi.fn> };
   timeoutSetting?: number;
-  /** TASK-737 — the CLS tenant this hop must put on the wire. */
+  /** the CLS tenant this hop must put on the wire. */
   clsTenantId?: string | null;
 }) {
   const post = opts?.post ?? vi.fn().mockResolvedValue({ data: { sanitized_text: '[PERSON_1] has a cough.' } });
@@ -26,7 +26,7 @@ function makeService(opts?: {
   const secretsService = opts?.secretsService ?? { getSecretOptional: vi.fn().mockResolvedValue('svc-token-abc') };
   const appSettingsService =
     opts?.timeoutSetting === undefined ? undefined : ({ getValueWithDefault: vi.fn().mockReturnValue(opts.timeoutSetting) } as never);
-  // `clsTenantId: undefined` ⇒ no ClsService at all (the pre-TASK-737 fixture
+  // `clsTenantId: undefined` ⇒ no ClsService at all (the earlier fixture
   // arity), which must still produce a DECLARED marker rather than no header.
   const clsService =
     opts?.clsTenantId === undefined ? undefined : ({ get: vi.fn((key: string) => (key === 'tenantId' ? opts.clsTenantId : null)) } as never);
@@ -109,10 +109,10 @@ describe('GuardrailPhiRedactor', () => {
     );
   });
 
-  // TASK-737 — this hop carried NO tenant at all, so guardrail resolved SYSTEM.
+  // this hop carried NO tenant at all, so guardrail resolved SYSTEM.
   // Because tenants may only TIGHTEN relative to SYSTEM, that silently redacted a
   // stricter tenant's PHI at the platform FLOOR with nothing logged anywhere.
-  describe('X-Tenant-Id (TASK-737)', () => {
+  describe('X-Tenant-Id ', () => {
     it('sends the CLS tenant on the redact hop', async () => {
       const { service, post } = makeService({ clsTenantId: 'tenant-alpha' });
 

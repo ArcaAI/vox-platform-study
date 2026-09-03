@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-849 lane C — the run-trace screen's PUSH transport. Replaces the 5 s
+ * lane C — the run-trace screen's PUSH transport. Replaces the 5 s
  * `refetchInterval` poll (`polling.ts`'s own doc: "the run list/detail is a
  * snapshot, so it polls... while anything shown is still live") with the
  * ticket-authenticated SSE stream lane A built
@@ -37,10 +37,12 @@ export const WORKFLOW_GUARDRAIL_VERDICT = 'workflow.guardrail.verdict';
  *  appended to the control-event log below; see `tokensByNodeId`'s own doc comment. */
 export const WORKFLOW_TOKEN_DELTA = 'workflow.token.delta';
 
-/** Every type name this hook subscribes to — kept as one list so the `eventNames`
+/**
+* Every type name this hook subscribes to — kept as one list so the `eventNames`
  *  passed to `useEventStream` and the switch below can never drift apart. All SEVEN
- *  wire event types the run stream can carry (TASK-849 lane C contract reconciliation —
- *  see `WorkflowRunEventType` in `api/types.ts`). */
+ * wire event types the run stream can carry (lane C contract reconciliation
+ *  see `WorkflowRunEventType` in `api/types.ts`). 
+ */
 const RUN_STREAM_EVENT_NAMES = [
   WORKFLOW_RUN_PROGRESS,
   WORKFLOW_RUN_COMPLETED,

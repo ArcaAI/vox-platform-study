@@ -55,10 +55,10 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // NEVER calls (double-bill guard; see the
     // service's constructor doc comment).
     UsageLedgerServiceModule,
-    // TASK-711 — supplies the @Optional INotificationService the TIMED_OUT
+    // supplies the @Optional INotificationService the TIMED_OUT
     // path uses for the clinician notification (best-effort).
     NotificationServiceModule,
-    // TASK-795 W2 (finishing TASK-792's R7) — supplies `IGateEditExemplarRetriever` for the
+    // (finishing) — supplies `IGateEditExemplarRetriever` for the
     // `PromptAssemblyService` provided below; `@Optional()` there, so absent ⇒ this path
     // silently produced a zero-shot prompt.
     //
@@ -68,7 +68,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
     // branch now throws 503), which comes back through `HarnessInternalService.assemble`. So the
     // product's primary generation path was one of the two that could not see an exemplar.
     GateEditMiningServiceModule,
-    // TASK-799 lane B — supplies `IProviderConnectionService` for
+    // lane B — supplies `IProviderConnectionService` for
     // `resolveProviderCredential`, the harness worker's ONLY route to a BYO
     // credential. `@Optional()` in the service, so an unwired plane degrades to
     // the fail-closed `unavailable` outcome rather than a DI error; wiring it

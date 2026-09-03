@@ -285,7 +285,7 @@ describe('DnaWritingStyleAdminController', () => {
     });
   });
 
-  // TASK-733 Task 10 — the admin half of INV-240's "deletable" requirement.
+  // the admin half of INV-240's "deletable" requirement.
   // Literal `doctor/` prefix so it never collides with the `:reportId` routes,
   // matching the existing `generate/:doctorId` idiom on this controller.
   describe('DELETE /admin/dna-writing-styles/doctor/:doctorId (resetDoctorProfile)', () => {

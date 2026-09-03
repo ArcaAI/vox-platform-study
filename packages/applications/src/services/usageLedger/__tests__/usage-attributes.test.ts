@@ -1,10 +1,10 @@
 /**
  * `attributesJson` allow-list enforcement (deliverable 5,
- * moved here from ).
+ * moved here from).
  *
  * The usage ledger is the ONE data plane in this platform that must stay
  * provably PHI-free: it is the only plane the billing pipeline reads, and D17
- * keeps that pipeline outside 45 CFR §164.312(b) precisely because no PHI can
+ * keeps that pipeline outside 45 CFR precisely because no PHI can
  * reach it. `attributesJson` is the only free-shaped column on the row, so it
  * is the only place PHI could get in — and an allow-list is the only control
  * that fails CLOSED against a key nobody thought to forbid.

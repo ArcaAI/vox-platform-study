@@ -44,7 +44,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_data, ensure_ascii=False)
 
 
-#: The declared default for every log SINK knob (TASK-799 lane D).
+# The declared default for every log SINK knob.
 #:
 #: These were twelve scattered `os.getenv` / `_get_env_bool` calls with their
 #: defaults inlined at the call site, which is how the two sibling JSON switches
@@ -153,7 +153,7 @@ class LoggingConfig:
         # for one concept and the documented one did nothing. Since every
         # deployable now shares a single `.env.<NODE_ENV>`, the bare name is
         # also whatever the gateway last set. Prefixed first, bare as the
-        # fallback (TASK-799 B.3).
+        # fallback.
         # `NLPServiceConfig.log_level` is typed `int`, so the same variable is
         # legitimately written as `20` or as `INFO`. Both resolve here, exactly
         # as they now do in the settings class.

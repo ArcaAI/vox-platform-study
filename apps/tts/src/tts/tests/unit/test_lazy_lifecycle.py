@@ -52,7 +52,7 @@ def test_warmup_can_be_re_enabled_for_fail_at_boot_operators(
 ) -> None:
     """The switch moved to the control plane, so `TTS_WARMUP_ENABLED` is inert.
 
-    TASK-799 lane C. It is still fully available to an operator — as
+    lane C. It is still fully available to an operator — as
     `tts.warmupEnabled`, written once through the settings registry rather than
     per deployment in an env file — and it still defaults OFF. What changed is
     only which lane sets it, so the assertion tests the new lane rather than

@@ -1,5 +1,5 @@
 /**
- * TASK-768 — regression sweep.
+ * regression sweep.
  *
  * The `host:port` leak reached production because each downstream call site
  * built its OWN client-facing message out of the caught error. Fixing the four
@@ -102,7 +102,7 @@ describe('no downstream call site builds a client-facing message from a caught e
 
 describe('the fixed call sites stay fixed', () => {
   // Named-site guards. The sweep above is the general rule; these pin the four
-  // sites the TASK-764 evidence actually reproduced, so a revert is unambiguous.
+  // sites the evidence actually reproduced, so a revert is unambiguous.
   const FIXED = [
     'packages/applications/src/services/consultation/summary/summary.service.ts',
     'packages/applications/src/services/prompt-management/prompt-management.service.ts',
@@ -124,7 +124,7 @@ describe('the fixed call sites stay fixed', () => {
 describe('containsTopology is strict enough to be worth asserting on', () => {
   // A sweep is only as good as its predicate — pin that the predicate would
   // actually have caught the observed production body.
-  it('would have failed the TASK-764 production body', () => {
+  it('would have failed the  production body', () => {
     const observed = 'Failed to call TEXT service: AggregateError: connect ECONNREFUSED ::1:8862; connect ECONNREFUSED 127.0.0.1:8862';
     expect(containsTopology(observed)).toBe(true);
   });

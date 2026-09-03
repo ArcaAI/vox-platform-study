@@ -48,7 +48,7 @@ export function forbiddenNodeTypeConfigProblems(config: unknown): string[] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// REQUIRED_PATH_THROUGH  ("nothing routes around a gate")
+// REQUIRED_PATH_THROUGH ("nothing routes around a gate")
 // ---------------------------------------------------------------------------------------------
 export interface RequiredPathThroughConfig {
   fromType?: string;
@@ -108,7 +108,7 @@ export function forbiddenPathConfigProblems(config: unknown): string[] {
 // ORDERED_BEFORE
 //
 // DRAFT SEMANTIC DECISION (flag for clinical/architecture review — see
-// `contracts/rule-model.md` §Open questions): this predicate forbids an ORDER INVERSION (a
+// `contracts/rule-model.md` questions): this predicate forbids an ORDER INVERSION (a
 // path from an "after"-class node back to a "before"-class node) — it does NOT by itself
 // require that a "before" node exist on every path to an "after" node. A rule author who needs
 // mandatory presence (e.g. "every generation is preceded by a consent gate") must pair this

@@ -1,10 +1,10 @@
 /**
- * TASK-858 lane A step 2 — the authorized selection is DURABLE from the moment the
+ * lane A step 2 — the authorized selection is DURABLE from the moment the
  * consultation exists, not only when the durable dispatch succeeds.
  *
  * ## The gap
  *
- * TASK-813 authorizes `workflowDefinitionSlug` at open and threads it into
+ * authorizes `workflowDefinitionSlug` at open and threads it into
  * `dispatchForConsultation`. The only place it was ever written down is
  * `Consultation.metadata.governingEngine`, and `governing-engine.ts` requires a non-empty
  * `workflowRunId` — which exists ONLY after Temporal actually started a run. Every other outcome
@@ -101,7 +101,7 @@ function createdMetadata(m: ReturnType<typeof makeMocks>): Record<string, unknow
   return created?.metadata;
 }
 
-describe('TASK-858 — the authorized workflow selection is persisted on the consultation', () => {
+describe('the authorized workflow selection is persisted on the consultation', () => {
   let m: ReturnType<typeof makeMocks>;
   beforeEach(() => {
     m = makeMocks();

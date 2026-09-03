@@ -5,9 +5,9 @@ import { useSidebar } from '@arcaai/ui/components/shadcn/sidebar';
 import { useViewportTier } from './use-viewport-tier';
 
 /**
- * Tablet auto-collapse (redesign build spec §2). Collapses the scoped sidebar
+ * Tablet auto-collapse (redesign build spec Collapses the scoped sidebar
  * on the tablet tier (768–1279) and keeps it expanded on desktop. Since
- * TASK-788 the sidebar is `collapsible="offcanvas"`, so collapsed means
+ * the sidebar is `collapsible="offcanvas"`, so collapsed means
  * "capability rail only" — the rail keeps every domain reachable, which is why
  * this no longer costs the tablet tier its navigation. The
  * user's manual toggle wins for the rest of the session — once they change the

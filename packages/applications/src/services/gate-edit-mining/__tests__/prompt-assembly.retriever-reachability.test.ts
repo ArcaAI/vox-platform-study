@@ -1,5 +1,5 @@
 /**
- * TASK-795 W3 — the regression guard for R7.
+ * the regression guard for R7.
  *
  * R7 shipped half-done TWICE for the same reason: the list of modules that
  * provide `PromptAssemblyService` for live generation was a four-line MANUAL

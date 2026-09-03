@@ -13,18 +13,18 @@ import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { WorkflowSandboxStreamService } from './workflow-sandbox-stream.service';
 
 /**
- * `WorkflowSandboxRunController` — the Workbench's run surface (TASK-721 Phase C), mounted at
+ * `WorkflowSandboxRunController` — the Workbench's run surface, mounted at
  * `admin/workflow-definitions/:definitionId/sandbox-runs` (global prefix ->
  * `/api/v1/admin/workflow-definitions/:definitionId/sandbox-runs`).
  *
- * Session-JWT admin console ONLY — unlike `WorkflowsController` (TASK-722's exposure plane,
+ * Session-JWT admin console ONLY — unlike `WorkflowsController` ( exposure plane,
  * `/workflows/:slug/…`, API-key or JWT, published-only, always `sandbox: false`), this surface
  * runs ANY (DRAFT or published) version of the tenant's OWN `WorkflowDefinition`, always
  * `sandbox: true`.
  *
  * The class-level `@RequiredScopes('admin:workflow-definition:manage')` it used to carry
  * contradicted that "Session-JWT ONLY" claim outright — the conformance review named it as
- * unenforced drift. Policy A2 (TASK-757) makes the whole `/api/v1/admin/*` plane JWT-only, so
+ * unenforced drift. Policy A2 makes the whole `/api/v1/admin/*` plane JWT-only, so
  * `@ForbidApiKey()` now MEANS what the sentence above always said.
  *
  * Tenancy is service-enforced (rule 04): `WorkflowSandboxRunService` resolves `tenantId`
@@ -82,7 +82,7 @@ export class WorkflowSandboxRunController {
   @ApiOperation({
     summary: 'SSE progress + result. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` (scope `workflow_run:<runId>`).',
     description:
-      'Reuses the SAME `workflow_run:<runId>` ticket namespace and mint-time ownership assertion TASK-722 registered (AuthController.assertWorkflowRunScopeOwnership) — a sandbox run is a `WorkflowRun` row like any other, just isSandbox: true. Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet); every reconnect resyncs from the CURRENT live status rather than resuming a gap.',
+      'Reuses the SAME `workflow_run:<runId>` ticket namespace and mint-time ownership assertion  registered (AuthController.assertWorkflowRunScopeOwnership) — a sandbox run is a `WorkflowRun` row like any other, just isSandbox: true. Bridges from a POLLING read of the harness dispatcher (no live event-stream producer exists on the interpreter yet); every reconnect resyncs from the CURRENT live status rather than resuming a gap.',
   })
   @ApiParam({ name: 'definitionId' })
   @ApiParam({ name: 'runId' })

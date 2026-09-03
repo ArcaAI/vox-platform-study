@@ -1,6 +1,6 @@
 {
   "version": "retrieval_synthetic_v0",
-  "description": "Synthetic institutional-RAG retrieval wiring fixture (TASK-330 Phase 3). A small single-tenant clinical corpus + entity-style queries with gold-relevant chunks, plus one cross-tenant distractor chunk that must never be retrieved. Drives a deterministic recall / citation-validity sanity check of the real hybrid retriever (real BM25 sparse + real Qdrant engine); the dense channel + cross-encoder reranker are stubbed (the BAAI/bge-m3 + TEI models are the documented prerequisite handoff). Replace with the real clinician-curated golden set (N=132) for a release-grade retrieval eval.",
+  "description": "Synthetic institutional-RAG retrieval wiring fixture (Phase 3). A small single-tenant clinical corpus + entity-style queries with gold-relevant chunks, plus one cross-tenant distractor chunk that must never be retrieved. Drives a deterministic recall / citation-validity sanity check of the real hybrid retriever (real BM25 sparse + real Qdrant engine); the dense channel + cross-encoder reranker are stubbed (the BAAI/bge-m3 + TEI models are the documented prerequisite handoff). Replace with the real clinician-curated golden set (N=132) for a release-grade retrieval eval.",
   "tenant_id": "tenant-synthetic",
   "corpus": [
     { "doc_id": "sepsis", "chunk_index": 0, "tenant_id": "tenant-synthetic", "text": "Sepsis bundle: administer broad-spectrum antibiotics within one hour of recognition." },

@@ -52,7 +52,7 @@ export interface UseArcaSessionReturn extends SessionState, SessionActions {
  * function ConsultationPage({ patientId }: { patientId: string }) {
  *   const session = useArcaSession();
  *
- *   useEffect(() => {
+ *   useEffect( => {
  *     // Open session when page loads
  *     session.open({ patientId });
  *   }, [patientId]);
@@ -60,10 +60,10 @@ export interface UseArcaSessionReturn extends SessionState, SessionActions {
  *   if (session.isLoading) return <Loading />;
  *   if (!session.consultation) return null;
  *
- *   return (
+ *   return
  *     <div>
  *       <ContextList items={session.context} />
- *       <button onClick={() => session.addContext({
+ *       <button onClick={ => session.addContext({
  *         type: 'CASE_NOTE',
  *         content: 'Patient reports...',
  *       })}>
@@ -302,7 +302,7 @@ export function useArcaSession(): UseArcaSessionReturn {
   );
 
   /**
-   * Shared body of the three session-state transitions (TASK-858 G1).
+   * Shared body of the three session-state transitions.
    *
    * `POST :id/prime`, `:id/close` and `:id/reopen` all carry
    * `@RequiresIfMatch()` + `@ExpectedVersion()` on the gateway, so a

@@ -1436,7 +1436,7 @@ class TestSessionManager:
         This knob has a history of being unreachable: it was once a phantom —
         `streaming_inference_stop_timeout_s` was not declared on `Settings` at
         all, so `getattr()` always fell back to a hardcoded 30.0 whatever the
-        env said. TASK-799 moves it to `stt.streaming.inferenceStopTimeoutS`,
+        env said. moves it to `stt.streaming.inferenceStopTimeoutS`,
         so this asserts the NEW delivery path end-to-end rather than the
         settings field in isolation — the same class of "the knob is declared
         but nothing reads it" bug is what the assertion is here to catch.
@@ -1508,7 +1508,7 @@ class TestStreamingSettings:
         assert s.streaming_session_metadata_expire_s == 86400
 
     def test_env_no_longer_overrides_the_streaming_knobs(self, monkeypatch):
-        """TASK-799: the streaming knobs are control-plane owned.
+        """the streaming knobs are control-plane owned.
 
         Streaming capacity and timeouts are exactly the values an operator needs
         to retune while sessions are live, which is what makes them wrong as env

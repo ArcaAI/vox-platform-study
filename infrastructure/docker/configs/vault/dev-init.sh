@@ -81,10 +81,10 @@ echo "[vault-init] creating hope-app role"
 # DEV-MODE config. Production overlay
 # tightens to secret_id_num_uses=1, secret_id_ttl=24h. Dev posture below
 # trades single-use for daily-iteration ergonomics (laptop threat model):
-#   secret_id_ttl=720h        — one wrapped secret_id lasts 30 days
-#   secret_id_num_uses=0      — unlimited reuse within that window
-#   token_ttl=1h              — short access tokens (Phase B adds renewal)
-#   token_max_ttl=24h         — cap; renewal loop keeps long-running pods alive
+#   secret_id_ttl=720h — one wrapped secret_id lasts 30 days
+#   secret_id_num_uses=0 — unlimited reuse within that window
+#   token_ttl=1h — short access tokens (Phase B adds renewal)
+#   token_max_ttl=24h — cap; renewal loop keeps long-running pods alive
 # DO NOT copy these settings to any production AppRole role.
 vault write auth/approle/role/hope-app \
   token_policies="hope-app" \
@@ -148,18 +148,18 @@ vault kv put secret/hope/API_GATEWAY_KEY value="dev-api-gateway-key-not-for-prod
 
 # Remaining SELF-HOSTED vault-kv descriptors, so the dev
 # Vault covers every path a cluster Vault Agent will render for guardrail and
-# harness (deployment/vault-agent/README.md § Per-service secret sets).
+# harness (deployment/vault-agent/README.md secret sets).
 #
 # The harness claim-check store is self-hosted by contract (PHI blobs must not
 # egress), so in dev it aliases the MinIO credential exactly as S3_* does.
-# (guardrail no longer appears here: TASK-735 left it with no vendor credential.)
+# (guardrail no longer appears here: left it with no vendor credential.)
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_ACCESS_KEY value="minio_admin" >/dev/null
 vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/dev/null
 
 # DELIBERATELY NOT SEEDED — the two remaining EXTERNAL provider credentials:
-#   AZURE_FOUNDRY_API_KEY  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+#   AZURE_FOUNDRY_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
 # (AZURE_SPEECH_KEY, TEXT_AZURE_API_KEY and TTS_SARVAM_API_KEY are gone:
-#  TASK-602 made them BYOK-only db-secrets delivered per request, so their
+# made them BYOK-only db-secrets delivered per request, so their
 #  env/Vault names now match no field at all and seeding one would be inert.)
 # A placeholder would make an unconfigured provider look configured and turn a
 # clean "not configured" into a remote 401 that costs an afternoon to diagnose.
@@ -172,10 +172,10 @@ vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/de
 # the first call, 400 if it already exists which we swallow). Config:
 #   min_decryption_version=1 — keeps historical ciphertexts decryptable
 #                              after rotation (forward-compat with Phase 6).
-#   deletion_allowed=false   — prevents accidental destructive ops; the
+#   deletion_allowed=false — prevents accidental destructive ops; the
 #                              policy that owns the key must explicitly
 #                              flip this before delete is even possible.
-#   exportable=false         — production posture; the key material never
+#   exportable=false — production posture; the key material never
 #                              leaves Vault. Encryption happens server-side.
 echo "[vault-init] creating transit key 'hope-globalsetting'"
 vault write -f transit/keys/hope-globalsetting 2>/dev/null || true
@@ -191,8 +191,8 @@ vault write transit/keys/hope-globalsetting/config \
 # rotation cadence and Transit policy blast radius are independent from the
 # secrets-encryption key. Same hardened config as above:
 #   min_decryption_version=1 — historical ciphertexts stay decryptable post-rotation.
-#   deletion_allowed=false   — destructive key delete must be explicitly enabled first.
-#   exportable=false         — key material never leaves Vault (server-side crypto).
+#   deletion_allowed=false — destructive key delete must be explicitly enabled first.
+#   exportable=false — key material never leaves Vault (server-side crypto).
 echo "[vault-init] creating transit key 'hope-phi'"
 vault write -f transit/keys/hope-phi 2>/dev/null || true
 

@@ -1,4 +1,4 @@
-"""Cycle guard for the internal judge lane (TASK-735 Phase 2).
+"""Cycle guard for the internal judge lane.
 
 `apps/text` gates every PUBLIC `/generate` on `apps/guardrail`, fail-closed.
 Guardrail, in turn, is being rebuilt to delegate its LLM judgement calls back to

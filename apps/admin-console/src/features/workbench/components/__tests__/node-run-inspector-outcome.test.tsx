@@ -1,7 +1,7 @@
 /**
- * TASK-797 W1 (R2) — "show per-node outcome, not just a final verdict".
+ * (R2) — "show per-node outcome, not just a final verdict".
  *
- * The per-node list already existed (TASK-721 Task 8). What it did NOT show is the
+ * The per-node list already existed. What it did NOT show is the
  * run-level DEGRADED/FAILED node counts, even though `GET admin/workflow-runs/:id/trace`
  * returns them: `RunTraceResponse.run` is the full `WorkflowRunResponse`, which carries
  * `nodeCount` / `failedNodeCount` / `degradedNodeCount` / `firstErrorCode`. The Workbench's
@@ -63,7 +63,7 @@ function stubTrace(run: Record<string, unknown>) {
   );
 }
 
-describe('NodeRunInspector — run outcome summary (TASK-797 W1)', () => {
+describe('NodeRunInspector — run outcome summary (W1)', () => {
   it('reports the degraded node count, which has no per-node representation', async () => {
     stubTrace({ nodeCount: 4, failedNodeCount: 1, degradedNodeCount: 2, firstErrorCode: 'TEXT_TIMEOUT' });
     renderWithProviders(<NodeRunInspector runId="run-1" />);

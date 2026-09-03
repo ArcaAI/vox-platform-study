@@ -1,13 +1,13 @@
 /**
- * The TASK-785 precedence contract, as executable spec (P0).
+ * The precedence contract, as executable spec (P0).
  *
  * `resolveRateLimit` is pure — no Nest, no DB, no Redis — precisely so the
  * five-level cascade can be pinned exhaustively here rather than through an
  * HTTP fixture. The guard's own tests then only have to cover wiring and
  * bucket keying.
  *
- * Declared order (OD-1):
- *   1. tenant × route   2. tenant   3. plan   4. platform route   5. platform base
+ * Declared order :
+ *   1. tenant × route 2. tenant 3. plan 4. platform route 5. platform base
  */
 import { describe, it, expect } from 'vitest';
 import { ALL_ROUTES_PATTERN, RateLimitRuleSnapshot, resolveRateLimit } from '../rate-limit-resolver';

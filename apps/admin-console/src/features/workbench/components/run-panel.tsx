@@ -36,9 +36,9 @@ interface SandboxRunEventEnvelope {
 }
 
 /**
- * The run/progress panel (TASK-721 Task 7): starting a run is a TanStack mutation through the
+ * The run/progress panel: starting a run is a TanStack mutation through the
  * BFF; live progress is `useEventStream` (ticket-authenticated, direct-to-gateway — rule 13
- * §Auth). Feedback within 100ms (rule 11 §5): the Run button shows a `Spinner` immediately, and
+ * Feedback within 100ms (rule 11 §5): the Run button shows a `Spinner` immediately, and
  * a terminal `toast.success`/`toast.error` fires once the stream reports COMPLETED/FAILED/etc.
  */
 export function RunPanel({

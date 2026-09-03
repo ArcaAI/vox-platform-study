@@ -34,7 +34,7 @@ export interface RouteCatalogEntry {
 }
 
 /**
- * The gateway's own route inventory (TASK-785).
+ * The gateway's own route inventory.
  *
  * A super admin writing a rate-limit rule needs to pick from the real routes,
  * not type a pattern and hope. This walks the SAME `ModulesContainer` the route

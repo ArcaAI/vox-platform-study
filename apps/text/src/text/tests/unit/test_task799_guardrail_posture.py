@@ -1,4 +1,4 @@
-"""TASK-799 lane B — the guardrail posture resolves, it is not read from env.
+"""lane B — the guardrail posture resolves, it is not read from env.
 
 `core/guardrail_posture.py` is where six `TEXT_EXTERNAL_GUARDRAIL_*` env vars
 landed after being split by CARDINALITY (owner decision D-1). The split is the

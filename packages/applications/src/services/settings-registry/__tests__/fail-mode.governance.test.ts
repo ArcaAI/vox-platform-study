@@ -1,8 +1,8 @@
 // `failMode` semantics + the taxonomy governance invariants.
 //
 // `failMode` answers ONE question: what happens when NO tier supplies a value?
-//   - `closed`          → throw. Never substitute a default. (secrets, provider/model SELECTION)
-//   - `open-to-default` → fall back to `descriptor.default`.  (tuning knobs, feature flags)
+//   - `closed` → throw. Never substitute a default. (secrets, provider/model SELECTION)
+//   - `open-to-default` → fall back to `descriptor.default`. (tuning knobs, feature flags)
 //
 // The reference behaviour being generalised is
 // `apps/guardrail/src/guardrail/core/tenant_config.py` — "Selection is DB-only
@@ -176,7 +176,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
     'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',
     'storageAccessKey.pepper': 'STORAGE_ACCESS_KEY_PEPPER',
-    // TASK-727: dedicated webhook-signing pepper — deliberately separate
+    // dedicated webhook-signing pepper — deliberately separate
     // from `api.keyPepper` (see platform-secrets.descriptors.ts).
     'webhook.secretPepper': 'WEBHOOK_SECRET_PEPPER',
     'azureStorage.connectionString': 'AZURE_STORAGE_CONNECTION_STRING',
@@ -191,7 +191,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // textAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
     // STT/TTS/TEXT cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
-    // `azure.foundryApiKey` REMOVED: Phase 0 closed the env fallback in
+    // `azure.foundryApiKey` REMOVED: the env fallback closed in
     // `azure_foundry_loader.py`, so the key now comes only from a tenant / SYSTEM
     // AiProviderConnection override. Registering it kept `vault-seed-secrets.sh`
     // provisioning a Vault secret nothing reads, and advertised a platform tier
@@ -204,7 +204,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
     // TEXT's cloud-provider connection config (`textOpenai.*`, `textAnthropic.*`,
-    // `textVertex.*`) is GONE from the registry — TASK-799 lane B deleted the env
+    // `textVertex.*`) is GONE from the registry — lane B deleted the env
     // vars behind it. "The platform default for a provider" and "the tenant's own
     // connection" were two data classes describing one thing, with only the
     // tenant half governable; there is one now (`AiProviderConnection`, whose
@@ -260,7 +260,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
     'guardrailV2.groundedness.enabled': 'GUARDRAIL_V2_GROUNDEDNESS_ENABLED',
     'liveDoc.groundedness.enabled': 'LIVE_DOC_GROUNDEDNESS_ENABLED',
-    // `text.externalGuardrail.enabled` is no longer env-tier: TASK-799 lane B
+    // `text.externalGuardrail.enabled` is no longer env-tier: lane B
     // deleted `TEXT_EXTERNAL_GUARDRAIL_ENABLED` and made it a `global-kv`
     // kill-switch served on the effective-config pull route, so a clinical
     // deployment turns moderation on without a redeploy.

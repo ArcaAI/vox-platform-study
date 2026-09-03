@@ -10,7 +10,7 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/nlp/Dockerfile --target production -t nlp .
+#   docker build -f apps/nlp/Dockerfile --target production -t nlp.
 #
 # CPU-ONLY TORCH. The locked torch 2.8.0 PyPI wheel for linux/amd64
 # drags in the whole nvidia-cu12 + triton stack (~2.7 GB). `hope-nlp` requests NO
@@ -134,7 +134,7 @@ ENV PYTHONPATH="/app/src" \
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/nlp/src ./src
 
-# TASK-808 — HF_HOME must point somewhere the non-root `hope` user can write.
+# HF_HOME must point somewhere the non-root `hope` user can write.
 # `hope-python-base` creates that user with `--no-create-home`, so $HOME
 # (/home/hope) does NOT EXIST, and huggingface_hub's default
 # `~/.cache/huggingface` therefore resolved to an uncreatable path: every token
@@ -153,7 +153,6 @@ RUN mkdir -p /app/.cache/huggingface && chown -R hope:hope /app/.cache
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 ARG BUILD_SERVICE
 ARG BUILD_VERSION
 ARG BUILD_RELEASE_TAG

@@ -1,5 +1,5 @@
 /**
- * TASK-797 W3 — inline entity highlighting in the case note.
+ * inline entity highlighting in the case note.
  *
  * Requirement: "highlight detected details/entities/important information". Before this
  * the console listed entities as chips only; the offsets needed to mark them in the text
@@ -31,7 +31,7 @@ const ENTITIES = [
   { text: 'metformin', type: 'MEDICATION', start: 36, end: 45 },
 ];
 
-describe('HighlightedNoteText (TASK-797 W3)', () => {
+describe('HighlightedNoteText (W3)', () => {
   it('renders every character of the source text exactly once', () => {
     const { container } = render(<HighlightedNoteText text={TEXT} entities={ENTITIES} label="Live running summary" />);
     expect(visibleText(container)).toBe(TEXT);

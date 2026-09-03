@@ -1,4 +1,4 @@
-"""TASK-799 lane A.2 — the claim-check storage LOCATION comes from the cascade.
+"""lane A.2 — the claim-check storage LOCATION comes from the cascade.
 
 WHAT CHANGED AND WHY. The claim-check store IS platform object storage: the same
 self-hosted MinIO/S3 backend `TenantStorageConfig` already describes. Before this,

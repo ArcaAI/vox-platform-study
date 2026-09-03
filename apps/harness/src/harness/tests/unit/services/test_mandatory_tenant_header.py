@@ -1,4 +1,4 @@
-"""TASK-737 — `X-Tenant-Id` is MANDATORY on every harness peer call.
+"""`X-Tenant-Id` is MANDATORY on every harness peer call.
 
 The audit's single highest-leverage finding was that `TextClient.generate()` had no
 `tenant_id` parameter AT ALL, so all five `activities.py` call sites reached

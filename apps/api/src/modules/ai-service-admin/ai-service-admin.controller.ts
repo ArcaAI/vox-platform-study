@@ -19,7 +19,7 @@ import { MlflowProxyClient, MlflowStatusResponse } from './mlflow-proxy.client';
  * changes are deploy-time env/settings changes on those services). For MLflow
  * that omission is load-bearing rather than incidental — `mlflow gc` is its
  * only hard-delete path and therefore its right-to-erasure mechanism
- * (TASK-822 §5A.5/F-5); erasure belongs to the CronJob that owns it, never to
+ * (; erasure belongs to the CronJob that owns it, never to
  * a console button.
  *
  * The MLflow routes join THIS controller rather than a new `admin/mlflow`

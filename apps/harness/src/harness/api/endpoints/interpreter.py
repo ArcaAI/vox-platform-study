@@ -1,5 +1,5 @@
-"""The interpreter's dispatcher API (TASK-718 Task 10) — the single HTTP entry point the
-exposure plane (TASK-722) and the Workbench (TASK-721) call to start a WorkflowInterpreter run,
+"""The interpreter's dispatcher API — the single HTTP entry point the
+exposure plane and the Workbench call to start a WorkflowInterpreter run,
 plus the status/result read surface and cancel.
 
 Guarded by the shared ``X-Service-Token`` (``require_service_token``, reused from
@@ -39,7 +39,7 @@ async def _temporal_client_or_503(request: Request) -> Client:
     """Lazily connect (cached on ``app.state``, same pattern as ``internal.py``), but convert a
     connect failure into an explicit 503 rather than letting it propagate as a generic 500 or —
     worse — being swallowed into a false-success response. Per the ticket's infrastructure
-    caveat (README §2): "every interpreter run must fail *visibly* when Temporal is unreachable
+    caveat : "every interpreter run must fail *visibly* when Temporal is unreachable
     — never a success log with no run."
     """
     client = getattr(request.app.state, "temporal_client", None)
@@ -68,7 +68,7 @@ class StartWorkflowRunRequest(BaseModel):
 
     ``config_ref`` is a pre-minted :class:`ClaimCheckRef` to the version's ``compiledConfig`` —
     this endpoint never accepts a raw compiled config or a graph; producing/storing the ref is
-    the caller's (TASK-722's gateway controller, or TASK-721's Workbench sandbox controller) job.
+    the caller's ( gateway controller, or Workbench sandbox controller) job.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -79,13 +79,13 @@ class StartWorkflowRunRequest(BaseModel):
     tenant_id: str = Field(alias="tenantId")
     config_ref: ClaimCheckRef = Field(alias="configRef")
     sandbox: bool = Field(default=False)
-    # Additive-optional (TASK-721 Workbench, closing the gap `InterpreterInput.payload`'s own
+    # Additive-optional ( Workbench, closing the gap `InterpreterInput.payload`'s own
     # docstring named): the raw invocation/test payload. NO LONGER forwarded verbatim — as of
-    # TASK-850 lane A it is passed through `sanitize_run_payload`, which removes every
+    # lane A it is passed through `sanitize_run_payload`, which removes every
     # `RESERVED_RUN_IDENTITY_KEYS` entry before the workflow starts. Never required — a real
     # (non-sandbox) exposure-plane invoke may still omit it and get `{}`.
     payload: dict[str, Any] = Field(default_factory=dict)
-    # TASK-850 lane A. The run's SERVER-RESOLVED clinical subject, on its own channel so a
+    # lane A. The run's SERVER-RESOLVED clinical subject, on its own channel so a
     # caller-composed `payload` cannot impersonate one. See `RunSubject` for why this is a
     # separate field rather than a convention about `payload`'s contents.
     subject: RunSubject | None = Field(default=None)
@@ -111,7 +111,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         tenant_id=body.tenant_id,
         run_id=body.run_id,
         sandbox=body.sandbox,
-        # TASK-850 lane A (C-8 link 1). The caller's payload is stripped of every
+        # lane A (C-8 link 1). The caller's payload is stripped of every
         # `RESERVED_RUN_IDENTITY_KEYS` entry and the SERVER-resolved subject is stamped in its
         # place. Unconditional: no branch on sandbox, palette or caller — a strip with a branch
         # is a strip somebody eventually reasons their way around.
@@ -126,7 +126,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
             wf_input,
             id=workflow_id,
             task_queue=settings.temporal.task_queue,
-            # TASK-850 lane A step 6 — the two policies that make a RETRY join rather than
+            # lane A step 6 — the two policies that make a RETRY join rather than
             # double-bill, and they cover DIFFERENT cases:
             #   * `USE_EXISTING` — the prior execution is still RUNNING. Temporal returns a
             #     handle to it instead of raising, so a retried webhook attaches to the run
@@ -149,7 +149,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
     except WorkflowAlreadyStartedError:
         # A CLOSED prior execution under this workflow id (`REJECT_DUPLICATE`), or a server that
         # does not honour the conflict policy. Either way: return the existing run, HTTP 200,
-        # never a second execution (ticket §4 Task 10).
+        # never a second execution.
         status = "already_running"
 
     handle = client.get_workflow_handle(workflow_id)
@@ -282,7 +282,7 @@ async def approve_workflow_run_gate(
     """Release the run's HITL gate with a clinician decision.
 
     Signals the GATE CHILD workflow, not the interpreter: the interpreter's own signal surface
-    is deliberately ``cancel``-only (TASK-718 R-2), and the durable wait lives in
+    is deliberately cancel-only, and the durable wait lives in
     ``ConsultationGateWorkflow`` — see its module docstring. The child id is derived from the run
     id alone (`gate_workflow_id`), which is what lets this route address it without reading run
     state. Like ``:cancel``, the signal is a code allow-list, never a caller-supplied

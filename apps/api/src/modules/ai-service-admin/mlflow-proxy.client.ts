@@ -6,7 +6,7 @@ import { isAxiosError } from 'axios';
 
 import { describeCauseForOperator } from '../../filters/downstream-error';
 
-/** TASK-768 — opaque stand-ins. The cause goes to the log; the client gets these. */
+/** opaque stand-ins. The cause goes to the log; the client gets these. */
 const UPSTREAM_ERROR_MESSAGE = 'The MLflow tracking server returned an error.';
 const TRANSPORT_ERROR_MESSAGE = 'The MLflow tracking server is temporarily unavailable. Please retry.';
 
@@ -24,7 +24,7 @@ export const MLFLOW_BASE_URL_SETTING = 'MLFLOW_URL';
  * WHERE A BROWSER reaches the MLflow UI, when such an address exists at all.
  * Deliberately a SECOND key rather than a reuse of {@link MLFLOW_BASE_URL_SETTING}:
  * the gateway's address is an in-cluster Service name that no browser can
- * resolve, and TASK-822 §9.4 shipped MLflow with NO Ingress, so on a stock
+ * resolve, and shipped MLflow with NO Ingress, so on a stock
  * deployment there is no browser-reachable URL and this key is legitimately
  * absent. Absent ⇒ the console renders no deep link, rather than a dead one.
  */
@@ -70,7 +70,7 @@ export class MlflowStatusResponse {
 
   @ApiPropertyOptional() latencyMs?: number;
 
-  @ApiPropertyOptional({ description: 'Operator-facing failure summary. Never carries the internal host:port (TASK-768).' })
+  @ApiPropertyOptional({ description: 'Operator-facing failure summary. Never carries the internal host:port .' })
   error?: string;
 
   @ApiPropertyOptional({ description: 'MLflow `GET /version`, when the server answered it.' })
@@ -103,14 +103,14 @@ export class MlflowStatusResponse {
  *     (`MLFLOW_SERVER_X_FRAME_OPTIONS`, default `"SAMEORIGIN"`, applied in an
  *     `after_request` hook). The deployed image is `v3.15.2-full`, so the header
  *     is on and a frame from the console's origin is blocked by the browser.
- *  2. **MLflow has no authentication of its own** (TASK-822 §9.4 —
+ * 2. **MLflow has no authentication of its own**
  *     `--app-name basic-auth` is deliberately off), and the console's session is
  *     an httpOnly cookie on the CONSOLE's origin that does not extend to a
- *     different-origin frame. The ruling in §9.4c fronts MLflow with Cloudflare
+ * different-origin frame. The ruling in fronts MLflow with Cloudflare
  *     Access (`originRequest.access.required = true`), whose IdP redirect cannot
  *     complete inside a third-party frame.
- *  3. **There is no browser-reachable URL yet.** §9.4 shipped MLflow without an
- *     Ingress; §9.4c's tunnel route, DNS record and Access application are
+ * 3. **There is no browser-reachable URL yet.** shipped MLflow without an
+ * Ingress; 's tunnel route, DNS record and Access application are
  *     operator steps, not code.
  *
  * The gateway has none of those problems: it reaches the tracking server
@@ -124,7 +124,7 @@ export class MlflowStatusResponse {
  * model and model-version searches each register a GET endpoint, so the entire
  * surface the console needs is reachable without a single state-changing verb.
  * MLflow's own destructive verbs (delete, transition-stage, `mlflow gc`) are
- * deliberately not proxied: erasure is a PHI control (TASK-822 §5A.5/F-4/F-5)
+ * deliberately not proxied: erasure is a PHI control
  * and belongs to the CronJob that owns it, not to a console button.
  */
 @Injectable()
@@ -176,7 +176,7 @@ export class MlflowProxyClient {
         reachable: false,
         probeStatus,
         latencyMs: Date.now() - startedAt,
-        // TASK-768: the cause went to the log; the client gets a capability
+        // the cause went to the log; the client gets a capability
         // statement, never the internal address the gateway dialled.
         error: probeStatus === 'timeout' ? 'The MLflow tracking server did not answer within the probe timeout.' : TRANSPORT_ERROR_MESSAGE,
         ...this.describeEmbeddability(null, uiUrl),

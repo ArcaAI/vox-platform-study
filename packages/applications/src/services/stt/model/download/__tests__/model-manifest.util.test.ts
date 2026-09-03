@@ -1,6 +1,6 @@
 /**
  * `manifest.json` — the Merkle-root record published alongside a model's
- * weights (`infrastructure/docker/minio/README.md` §5.3). Only the fields
+ * weights (`infrastructure/docker/minio/README.md` Only the fields
  * derivable from the `AiModel` row + the fetched file set are populated;
  * `contextLength` / `engine.minVersion` / `license` / upstream revision have
  * no source in this lane's inputs and are deliberately omitted rather than

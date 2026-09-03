@@ -78,7 +78,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-766 OD-1 — which tenant OWNS a role this caller is creating.
+   * which tenant OWNS a role this caller is creating.
    *
    * A tenant admin always has a CLS tenant, so their roles are theirs. A super
    * admin with a working tenant selected creates a role FOR that tenant (the
@@ -92,7 +92,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-766 OD-1 — the cross-tenant WRITE lane (mirrors
+   * the cross-tenant WRITE lane (mirrors
    * `AiTaskDefaultService.crossTenantLane`).
    *
    * `Role` is tenant-scoped, so the extended client pins every write to the
@@ -115,7 +115,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   /**
-   * TASK-766 OD-1 — the write gate, applied by `update` / `patch` /
+   * the write gate, applied by `update` / `patch` /
    * `softDelete` after the row has been loaded.
    *
    * Three outcomes, and the status codes are deliberate:
@@ -256,7 +256,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
-    // TASK-766 OD-1: a role this caller's tenant does not own is off limits.
+    // a role this caller's tenant does not own is off limits.
     // Another tenant's id never reaches here (the read above already 404'd);
     // this refuses the SYSTEM-owned platform rows with a 403.
     this.assertMutable(existing);
@@ -297,7 +297,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException(`Cannot modify system role '${existing.name}'. System roles are protected from modification.`);
     }
 
-    // TASK-766 OD-1: a role this caller's tenant does not own is off limits.
+    // a role this caller's tenant does not own is off limits.
     // Another tenant's id never reaches here (the read above already 404'd);
     // this refuses the SYSTEM-owned platform rows with a 403.
     this.assertMutable(existing);
@@ -340,7 +340,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new BadRequestException('Cannot delete system role');
     }
 
-    // TASK-766 OD-1: refuse a SYSTEM-owned platform row (403). A foreign
+    // refuse a SYSTEM-owned platform row (403). A foreign
     // tenant's id already 404'd on the read above.
     this.assertMutable(role);
 
@@ -381,7 +381,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
-    // TASK-766 OD-1: `RolePolicy` is a GLOBAL join table, so attaching a policy
+    // `RolePolicy` is a GLOBAL join table, so attaching a policy
     // to a SYSTEM-owned role would change the grant for EVERY tenant. Same
     // ownership boundary as update/delete, applied to the policy plane too.
     this.assertMutable(role);
@@ -435,7 +435,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
-    // TASK-766 OD-1 — see assignPolicy: detaching from a SYSTEM-owned role
+    // see assignPolicy: detaching from a SYSTEM-owned role
     // would strip the grant platform-wide.
     this.assertMutable(role);
 
@@ -496,7 +496,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
     }
 
     const user = this.requestUser;
-    // TASK-766 OD-1: the clone belongs to the CALLER's tenant, never the
+    // the clone belongs to the CALLER's tenant, never the
     // source's. Cloning a SYSTEM built-in into your own tenant is exactly the
     // supported way for a tenant admin to get an editable role, which is why
     // `clone` carries no isSuperAdmin gate.

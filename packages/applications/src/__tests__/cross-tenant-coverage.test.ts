@@ -58,7 +58,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'auditLog',
     file: 'services/auditLog/__tests__/auditLog.service.test.ts',
     minTests: 10,
-    marker: /TASK-305 D\.8|Multi-tenant scoping/,
+    marker: /D\.8|Multi-tenant scoping/,
   },
   {
     name: 'audit/authorization-audit',
@@ -104,13 +104,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'consultation/summary',
     file: 'services/consultation/summary/__tests__/summary.service.test.ts',
     minTests: 3,
-    marker: /TASK-305 D\.4|cross-aggregate tenant/i,
+    marker: /D\.4|cross-aggregate tenant/i,
   },
   {
     name: 'consultation/summary/chain-summary',
     file: 'services/consultation/summary/__tests__/chain-summary.service.test.ts',
     minTests: 1,
-    marker: /TASK-305 D\.4|cross-aggregate tenant/i,
+    marker: /D\.4|cross-aggregate tenant/i,
   },
   {
     // The harness callback receiver's recordEscalation
@@ -127,13 +127,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'department',
     file: 'services/department/__tests__/department.service.test.ts',
     minTests: 4,
-    marker: /TASK-305 D\.6|cross-tenant parent/i,
+    marker: /D\.6|cross-tenant parent/i,
   },
   {
     name: 'dna-writing-style',
     file: 'services/dna-writing-style/__tests__/dna-writing-style.service.test.ts',
     minTests: 5,
-    marker: /TASK-305 D\.5|Cross-Tenant Isolation|Multi-tenant scoping/,
+    marker: /D\.5|Cross-Tenant Isolation|Multi-tenant scoping/,
   },
   {
     name: 'notification',
@@ -163,7 +163,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     name: 'user/userRoleAssignment',
     file: 'services/user/userRoleAssignment/__tests__/userRoleAssignment.service.test.ts',
     minTests: 3,
-    marker: /TASK-305 D\.7|tenantId pinning/i,
+    marker: /D\.7|tenantId pinning/i,
   },
   /*
    * Services that previously had no cross-tenant
@@ -261,10 +261,10 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
  * live in the dedicated `describe('CLS rebind ...')` /
  * `describe('AuditLogProcessor — CLS rebind ...')` blocks.
  */
-// TASK-732 — `summary.processor` and `ner.processor` (the legacy signable
+// `summary.processor` and `ner.processor` (the legacy signable
 // generator + its NER companion) were deleted along with their test files;
 // their coverage rows are removed here in the same commit as the deletion,
-// per this file's own §"Deletion hazard" rule. `pre-summary.processor` and
+// per this file's own rule. `pre-summary.processor` and
 // `comprehensive-summary.processor` survive per the R-2 boundary (kept,
 // non-signable helper generators).
 const PROCESSOR_COVERAGE: readonly CoverageEntry[] = [
@@ -272,25 +272,25 @@ const PROCESSOR_COVERAGE: readonly CoverageEntry[] = [
     name: 'pre-summary.processor',
     file: 'services/consultation/jobs/__tests__/pre-summary.processor.test.ts',
     minTests: 3,
-    marker: /CLS rebind|TASK-305 D\.9/,
+    marker: /CLS rebind|D\.9/,
   },
   {
     name: 'comprehensive-summary.processor',
     file: 'services/consultation/jobs/__tests__/comprehensive-summary.processor.test.ts',
     minTests: 3,
-    marker: /CLS rebind|TASK-305 D\.9/,
+    marker: /CLS rebind|D\.9/,
   },
   {
     name: 'auditLog.processor',
     file: 'services/auditLog/__tests__/auditLog.processor.test.ts',
     minTests: 3,
-    marker: /CLS rebind|TASK-305 D\.9/,
+    marker: /CLS rebind|D\.9/,
   },
   {
     name: 'consultation-event.handler',
     file: 'services/consultation/events/__tests__/consultation-event.handler.test.ts',
     minTests: 6,
-    marker: /CLS rebind|TASK-305 D\.9/,
+    marker: /CLS rebind|D\.9/,
   },
 ];
 
@@ -360,7 +360,7 @@ function readSource(relativePath: string): string {
  * matches if ANY of these tokens appears anywhere in its source.
  */
 const TENANT_SCOPED_DETECTION =
-  /assertEqualTenants|assertParentInScope|assertUserBelongsToTenant|assertCrossAggregateRefsInTenant|resolveEffectiveTenantId|TASK-305 D\.|TASK-306|Multi-tenant scoping|Cross-Tenant Isolation|cross-aggregate tenant|DEF-C2/;
+  /assertEqualTenants|assertParentInScope|assertUserBelongsToTenant|assertCrossAggregateRefsInTenant|resolveEffectiveTenantId|Multi-tenant scoping|Cross-Tenant Isolation|cross-aggregate tenant|DEF-C2/;
 
 /**
  * Recursively walk `dir`, collecting absolute paths of files whose
@@ -434,7 +434,7 @@ describe('Cross-tenant test coverage aggregator', () => {
 
   it('introspection counter handles brace-tracked nested describes', () => {
     const sample = `
-      describe('TASK-305 D.x — sample outer', () => {
+      describe('D.x — sample outer', () => {
         describe('inner unrelated', () => {
           it('should be counted because outer matches', () => {});
         });
@@ -443,7 +443,7 @@ describe('Cross-tenant test coverage aggregator', () => {
         it('should NOT be counted', () => {});
       });
     `;
-    expect(countItInMatchingDescribes(sample, /TASK-305 D\.x/)).toBe(1);
+    expect(countItInMatchingDescribes(sample, /D\.x/)).toBe(1);
   });
 
   it('returns 0 when the marker never matches', () => {
@@ -453,7 +453,7 @@ describe('Cross-tenant test coverage aggregator', () => {
         it('bar', () => {});
       });
     `;
-    expect(countItInMatchingDescribes(sample, /TASK-305 D\.x/)).toBe(0);
+    expect(countItInMatchingDescribes(sample, /D\.x/)).toBe(0);
   });
 
   /*
@@ -528,8 +528,6 @@ describe('Cross-tenant test coverage aggregator', () => {
         'assertUserBelongsToTenant',
         'assertCrossAggregateRefsInTenant',
         'resolveEffectiveTenantId',
-        'TASK-305 D.7',
-        'TASK-306 P2.1',
         'Multi-tenant scoping',
         'Cross-Tenant Isolation',
         'cross-aggregate tenant',

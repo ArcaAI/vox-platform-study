@@ -2,7 +2,7 @@
  * PromptResolutionService Unit Tests
  *
  * Tests BOTH capability chains (DNA resolution removed):
- *  - summary  (`new-patient` / `revisit`): preferred → agent → department
+ *  - summary (`new-patient` / `revisit`): preferred → agent → department
  *    column → SYSTEM default;
  *  - pre-summary: tenant TENANT_DEFAULT → SYSTEM pre-summary default → fail
  *    closed. It consults neither the preferred tier, nor the department default
@@ -38,7 +38,7 @@ const mockPromptTemplateRepository = {
   findAll: vi.fn(),
 };
 
-// Tier-1a (TASK-815: workflow node config). Default: no governing definition →
+// Tier-1a (workflow node config). Default: no governing definition →
 // the node tier is skipped and resolution is byte-identical to the pre-change
 // behaviour (this is the regression lock; tests that exercise the node tier
 // override these).
@@ -489,7 +489,7 @@ describe('PromptResolutionService', () => {
   });
 
   // =========================================================================
-  // Tier-1a: the governing workflow definition's finalize node (TASK-815)
+  // Tier-1a: the governing workflow definition's finalize node
   // =========================================================================
   describe('resolve — governing workflow node (tier-1a)', () => {
     it('regression: with NO governing definition the output is byte-identical to the legacy chain', async () => {
@@ -671,8 +671,8 @@ describe('PromptResolutionService', () => {
       // not fall through: a note node yields NO pre-summary candidate, so a note prompt can never
       // be served for a pre-summary request.
       await expect(service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' })).rejects.toThrow(/agent\.presummarization/);
-      // TASK-806 lane A item 1 — the pre-summary chain DOES consult tier-1a again, now that
-      // `agent.presummarization` exists (DD-6). What this case pins is the property that
+      // lane A item 1 — the pre-summary chain DOES consult tier-1a again, now that
+      // `agent.presummarization` exists. What this case pins is the property that
       // survives every rewrite of that tier: a graph carrying only a clinical NOTE node yields
       // NO pre-summary candidate, so the chain falls through to the tenant template instead of
       // serving a note prompt for a pre-summary request. The cascade is consulted with a NULL

@@ -6,7 +6,7 @@ import type { IServiceAccountPrincipal } from './IServiceAccountPrincipal';
 export interface IActiveUserContext extends ClsStore {
   user: UserSession;
   /**
-   * TASK-762 — the MACHINE principal, on its own key. Never overloaded onto
+   * the MACHINE principal, on its own key. Never overloaded onto
    * `user`: every `requestUser?.id` read in the codebase would otherwise
    * attribute a machine action to a person.
    */

@@ -66,7 +66,7 @@ class TestFetch:
         assert snapshot.max_concurrent() == 9
 
     async def test_reads_the_served_peer_call_bound(self) -> None:
-        """TASK-729 §6 — a SEPARATE field in the SAME `concurrency` group."""
+        """a SEPARATE field in the SAME `concurrency` group."""
         payload = {
             "service": "nlp",
             "concurrency": {"maxConcurrent": 9, "peerCallMaxConcurrent": 25, "source": "db"},

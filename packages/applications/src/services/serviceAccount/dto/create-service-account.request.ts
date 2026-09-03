@@ -8,7 +8,7 @@ import { isValidServiceAccountScope } from '../service-account-scopes.registry';
  *
  * Registry membership is only half the gate — it proves the string is
  * meaningful, never that the caller is entitled to grant it. The privilege
- * CEILING (TASK-756's rule, applied to this class from day one rather than
+ * CEILING ( rule, applied to this class from day one rather than
  * retrofitted) lives in `ServiceAccountService.assertScopeCeiling`.
  */
 @ValidatorConstraint({ name: 'ValidServiceAccountScopes', async: false })

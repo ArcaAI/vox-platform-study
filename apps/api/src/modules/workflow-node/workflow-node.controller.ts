@@ -6,7 +6,7 @@ import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 /**
  * WorkflowNodeController — read-only projection of `WORKFLOW_NODE_REGISTRY`
  * (`@arcaai/workflow-contract`), mounted at `/admin/workflow-nodes` (global prefix ->
- * `/api/v1/admin/workflow-nodes`). TASK-734: closes the gap TASK-715 §6 risk #4 named — "the
+ * `/api/v1/admin/workflow-nodes`).: closes the gap risk #4 named — "the
  * registry endpoint is a new public-ish surface" — the platform's whole node vocabulary,
  * tenant-visible by design, no table, no migration (see `IWorkflowDefinitionService.listNodes`).
  *

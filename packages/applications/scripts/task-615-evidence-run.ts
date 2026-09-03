@@ -18,7 +18,7 @@
  * CLEAN UP every row this script created and restore the tenant to its
  * original state.
  *
- * Run:  cd hope-v2-wt-ws-k && npx dotenv -e .env.dev -- npx tsx scripts/task-615-evidence-run.ts
+ * Run: cd hope-v2-wt-ws-k && npx dotenv -e .env.dev -- npx tsx scripts/task-615-evidence-run.ts
  *
  * Safety: only ever INSERTs/UPDATEs/DELETEs rows this script itself owns
  * (all requestIds/idempotencyKeys are prefixed `task615-evidence-`, and the
@@ -144,7 +144,7 @@ async function main() {
 
     // ── 1. Seed one synthetic batch covering every capability ────────────
     events = [
-      // STT — streaming session (both units, per ws-b-contract.md §9)
+      // STT — streaming session (both units, per ws-b-contract.md
       {
         common: {
           tenantId: ARCAAI_TENANT_ID,
@@ -345,7 +345,7 @@ async function main() {
     const currentUsage = await meteringService.getCurrentUsage(ARCAAI_TENANT_ID, now);
     log('3. MeteringService.getCurrentUsage (current month, includes pre-existing dev usage)', currentUsage);
 
-    // ── 4a. Draft with the tenant's ACTUAL current state (expect zero overage: allowances are NULL — ) ──
+    // ── 4a. Draft with the tenant's ACTUAL current state (expect zero overage: allowances are NULL —) ──
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
     const draftBefore = await billingService.computeDraft(ARCAAI_TENANT_ID, period);
     createdInvoiceId = draftBefore.id;

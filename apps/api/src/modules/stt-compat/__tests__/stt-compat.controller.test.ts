@@ -141,7 +141,7 @@ describe('SttCompatController streaming integration', () => {
       bit_depth: 16,
     });
 
-    // TASK-737: the tenant comes from the session's own binding, not CLS — this
+    // the tenant comes from the session's own binding, not CLS — this
     // compat surface is API-key authenticated.
     expect(sessionService.removeSession).toHaveBeenCalledWith('session_123456789', false, 'tenant-1');
     expect(sessionBinding.clear).toHaveBeenCalledWith('session_123456789');

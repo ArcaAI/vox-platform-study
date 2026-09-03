@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The `raw-json` degradation (TASK-719 Task 9 / lib/schema-form.ts) — rule 11 forbids editing
+ * The `raw-json` degradation ( / lib/schema-form.ts) — rule 11 forbids editing
  * JSON in a bare `<Textarea>`, so this is `CodeEditor` (`@arcaai/ui`), never a hand-rolled one.
  * Used both for a genuinely unrepresentable schema SUBTREE and — the common case against the
  * real, delivered registry today — a node type with NO config schema at all

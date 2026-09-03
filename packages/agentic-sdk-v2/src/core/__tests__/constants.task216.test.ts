@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { SERVICE_HEALTH_ENDPOINTS } from '../constants';
 
 describe('SERVICE_HEALTH_ENDPOINTS (consolidated health check)', () => {
-  it('should have SERVICES pointing to /admin/health/services (moved by TASK-759)', () => {
+  it('should have SERVICES pointing to /admin/health/services (moved by)', () => {
     expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/admin/health/services');
   });
 

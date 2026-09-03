@@ -1,7 +1,7 @@
 /**
- * `DefinitionMetadataForm` (TASK-719 Task 15 remainder — README §7 "Honesty gap: only the
+ * `DefinitionMetadataForm` — "Honesty gap: only the
  * `graph` field autosaves in this pass"). A short Dialog (rule 11 §1) over the name/description
- * pair — controlled state, no `react-hook-form` (README §2.5) — that calls back on every
+ * pair — controlled state, no `react-hook-form` — that calls back on every
  * keystroke so the caller can drive the SAME debounced autosave the graph uses.
  */
 import { fireEvent, render, screen } from '@testing-library/react';

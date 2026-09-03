@@ -154,7 +154,7 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
         apply_model_cache_retention(snapshot.retention())
 
         # Same refresh, same fail-safe posture, for the two other groups the
-        # control plane now serves (TASK-799 lane D). Both are no-ops when the
+        # control plane now serves. Both are no-ops when the
         # served values match what is already running, which is every request but
         # the first after a write.
         from nlp.core.logging import apply_log_sinks
@@ -187,7 +187,7 @@ _peer_call_semaphore: ResizableSemaphore | None = None
 
 
 def get_peer_call_semaphore() -> ResizableSemaphore:
-    """The process-wide OUTBOUND PEER HTTP bound (TASK-729 §6, owner decision 2026-08-20).
+    """The process-wide OUTBOUND PEER HTTP bound (owner decision 2026-08-20).
 
     A SEPARATE singleton from `get_inference_semaphore`: it bounds this
     process's own concurrent calls to `text` (the `/classify/topic` and

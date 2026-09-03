@@ -192,7 +192,7 @@ function TranscriptionJobsBody() {
           meta={
             <>
               {stats ? <span>{formatNumber(statsTotal(stats))} jobs</span> : <Skeleton className="h-4 w-16" />}
-              <span className="text-xs">read-only ops surface {'\u2014'} job creation = SDK plane (TASK-420)</span>
+              <span className="text-xs">read-only ops surface {'\u2014'} job creation = SDK plane </span>
             </>
           }
           actions={

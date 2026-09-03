@@ -107,9 +107,9 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // Optional (append-only DI) so legacy fixtures keep the pre-policy 32-byte
     // hex behaviour exactly as it was.
     @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
-    // TASK-785 O-4 — the key→tenant hint cache read by `TieredThrottlerGuard`.
+    // the key→tenant hint cache read by `TieredThrottlerGuard`.
     // Optional (append-only DI): without it the throttler simply never sees a
-    // tenant for API-key traffic, which is exactly the pre-TASK-785 behaviour.
+    // tenant for API-key traffic, which is exactly the earlier behaviour.
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
@@ -339,12 +339,12 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       }
     }
 
-    // TASK-757 (policy A2) — reserved scopes are never grantable. Checked
+    // (policy A2) — reserved scopes are never grantable. Checked
     // BEFORE the ceiling, because it is unconditional: the ceiling has a
     // SUPER_ADMIN fast path and this deliberately does not.
     this.assertNoReservedScopes(request.scopes);
 
-    // TASK-756 — privilege ceiling. Runs BEFORE any key material exists: a
+    // privilege ceiling. Runs BEFORE any key material exists: a
     // refused mint must leave nothing behind.
     this.assertScopeCeiling(request.scopes);
 
@@ -562,7 +562,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       environment: apiKey.environment,
     };
 
-    // TASK-756 — privilege ceiling, applied to the WIDENING DELTA only. A PATCH
+    // privilege ceiling, applied to the WIDENING DELTA only. A PATCH
     // that renames the key, or that narrows an existing scope array, must not
     // fail because the key already carries something broad; a PATCH that omits
     // `scopes` is not checked at all. Only newly ADDED scopes are gated.
@@ -572,7 +572,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       const alreadyHeld = new Set<string>(Array.isArray(apiKey.scopes) ? apiKey.scopes.filter((s): s is string => typeof s === 'string') : []);
       const added = (request.scopes ?? []).filter((scope) => !alreadyHeld.has(scope));
 
-      // TASK-757 (policy A2) — the reserved-scope rule on UPDATE is a WIDENING
+      // (policy A2) — the reserved-scope rule on UPDATE is a WIDENING
       // rule, applied to `added` only. A membership rule would reject a rename
       // `PATCH` on any pre-existing key whose stored array already contains
       // `admin:*` (the dev-seeded SERVICE_ACCOUNT shape), on a field the caller
@@ -974,7 +974,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   private static readonly RATE_LIMIT_TENANT_TTL_SECONDS = 300;
 
   /**
-   * The tenant an API key belongs to, for RATE LIMITING ONLY (TASK-785 O-4).
+   * The tenant an API key belongs to, for RATE LIMITING ONLY.
    * `null` on a miss.
    *
    * Reads a Redis hint written by {@link authenticateByRawKey}; it NEVER falls
@@ -1046,7 +1046,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
     this.updateUsage(apiKeyEntity.id, ipAddress).catch(() => {});
 
-    // TASK-785 O-4 — publish the key→tenant hint for the NEXT request's
+    // publish the key→tenant hint for the NEXT request's
     // throttler. Written only after every validity check above has passed, so a
     // revoked, expired or IP-blocked key never seeds the cache.
     this.publishRateLimitTenantHint(await this.hashKeyForStorage(rawKey), apiKeyEntity.tenantId);
@@ -1243,7 +1243,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-757 (policy A2) — refuse to GRANT a reserved scope.
+   * (policy A2) — refuse to GRANT a reserved scope.
    *
    * `/api/v1/admin/*` is JWT-only: every admin controller carries
    * `@ForbidApiKey()`, which `UnifiedAuthGuard` checks BEFORE the scope check,
@@ -1256,13 +1256,13 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * asks "may this caller grant this much power?" — a question a super admin
    * legitimately answers yes to. A2 asks "may a long-lived static bearer
    * credential reach the admin plane at all?", and the answer is no for
-   * everyone until TASK-762 lands a real machine-credential class. A super
+   * everyone until lands a real machine-credential class. A super
    * admin who could opt out would be re-creating exactly the credential class
    * this policy removes.
    *
    * The registry entries are RESERVED, not deleted: `isValidScope` still
    * recognises them so stored keys stay readable, and they remain the
-   * vocabulary TASK-762 reuses.
+   * vocabulary reuses.
    *
    * Throws `ForbiddenException` (403) — a policy boundary, not the
    * cross-tenant 404-over-403 posture.
@@ -1280,7 +1280,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * TASK-756 — the privilege CEILING on minting.
+   * the privilege CEILING on minting.
    *
    * `ValidScopesConstraint` only proves a requested scope is a REGISTRY MEMBER.
    * Nothing proved the caller was entitled to grant it, so a tenant admin —
@@ -1307,7 +1307,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    *   several services read its absence as "not privileged"), so a caller who
    *   authenticated WITH an API key has no `userAbility` and cannot mint a
    *   scoped key at all. That is the correct posture and the direction
-   *   TASK-757 takes `/admin/api-keys` (JWT-only).
+   * takes `/admin/api-keys` (JWT-only).
    * - **Unknown scope → refuse.** Resolving an unrecognized string to "no
    *   requirement" would turn a typo into a ceiling bypass.
    *

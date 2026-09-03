@@ -1,6 +1,6 @@
-"""N-3 — ``generate.text`` (TASK-720 Task 5, safety class: mandatory, critical).
+"""N-3 — generate.text (safety class: mandatory, critical).
 
-**Correction to this ticket's own README §2** (recorded here, not silently applied): README §2
+**Correction to ** (recorded here, not silently applied):
 reads N-3 as required to call the gateway's JWT-guarded, tenant-scoped
 ``POST /api/v1/text/generate``. Verified at implementation time that no such call path exists
 from a Python harness activity (the existing ``ApiClient`` only reaches the
@@ -10,7 +10,7 @@ activity (the one ``HarnessDocWorkflow`` uses for the exact same purpose) alread
 sanctioned pattern: fetch the effective policy via ``ApiClient.get_policy``, then call
 ``TextClient.generate`` DIRECTLY — never through the gateway.
 
-**``config.taskKey`` SELECTS the model (TASK-740 D-1).** This node used to validate ``taskKey``
+**config.taskKey SELECTS the model .** This node used to validate taskKey
 and then ignore it, resolving from the ``HarnessPolicy`` provider/model columns — so every
 ``generate.text`` node in every workflow resolved the SAME model whatever its task key, and the
 seeded ``AiTaskDefault`` rows were inert on this path (they were honoured only on the TypeScript
@@ -21,7 +21,7 @@ pattern rather than a second, gateway-routed one. Rule `06-python-services.md` �
 Integration sanctions direct peer calls to `apps/text` from a Python service.
 
 **No default provider/model** — mirrors the text service's own fail-closed 422 (`generate.py:315-320`,
-cited in README §2): an unresolved ``textProvider``/``textModel`` degrades this node rather than
+cited in : an unresolved textProvider/textModel degrades this node rather than
 guessing one.
 
 **Prompt assembly** reads ``bound_inputs`` (threaded from upstream nodes via the compiled
@@ -118,7 +118,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     settings = get_settings()
     api_client = _api_client(settings)
     try:
-        # TASK-816 (DD-10) — the node's OWN model binding, when it declares one. Read off the
+        #  — the node's OWN model binding, when it declares one. Read off the
         # SAME `payload.config` `task_key` comes from, and threaded to the gateway rather than
         # resolved here so one model resolution serves both runtimes. Unbound ⇒ `None` ⇒ the
         # tenant's `taskKey` AiTaskDefault, byte-identical to every run before this ticket.
@@ -176,7 +176,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
     text_client = _text_client(settings)
     try:
         result = await text_client.generate(
-            # TASK-737 — `NodeActivityInput.tenant_id` is required on the interpreter's
+            # `NodeActivityInput.tenant_id` is required on the interpreter's
             # own input model, so it is always available here; forwarding it is the
             # whole fix. The client raises on a blank value.
             tenant_id=payload.tenant_id,

@@ -118,11 +118,11 @@ export interface OpenSessionInput {
    * declares no `department` field and the global validation pipe runs
    * `forbidNonWhitelisted`, so sending this REJECTS the open with HTTP 400.
    * Use {@link OpenSessionInput.departmentId}. Retained only so the v1-compat
-   * lane (`useArcaSessionManager`) keeps compiling; see TASK-793 notes.
+   * lane (`useArcaSessionManager`) keeps compiling; see notes.
    */
   department?: string;
   /**
-   * TASK-813 OD-1 — pick the tenant-authored workflow that GOVERNS this
+   * pick the tenant-authored workflow that GOVERNS this
    * consultation, overriding the `department → tenant → platform-default`
    * assignment cascade.
    *

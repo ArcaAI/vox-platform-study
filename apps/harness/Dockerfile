@@ -10,7 +10,7 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/harness/Dockerfile --target production -t harness .
+#   docker build -f apps/harness/Dockerfile --target production -t harness.
 #
 # NOTE: This service hosts BOTH the FastAPI HTTP surface (default ENTRYPOINT)
 #       and a Temporal worker (override the command to run the worker):
@@ -60,12 +60,12 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
-# Async task/event envelope (`hope-async-contract`, TASK-717). Same workspace
+# Async task/event envelope (`hope-async-contract`). Same workspace
 # path-dependency rule: harness declares it (pyproject `hope-async-contract =
 # { workspace = true }`), so `uv sync` needs it on disk or layer 1 fails with
 # "Distribution not found at: file:///app/packages/py-async-contract" — which
 # is exactly how pipeline #1100's build-harness / build-harness-worker failed
-# (TASK-858). Zero runtime deps.
+# Zero runtime deps.
 COPY packages/py-async-contract ./packages/py-async-contract
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package harness --no-dev --extra rag --extra guardrails --extra atomic-fact \
@@ -108,7 +108,6 @@ COPY --chown=hope:hope apps/harness/src ./src
 # ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
-# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
 # NOTE: this stage is shared by BOTH build-harness (SERVICE_NAME=harness,
 # --target production) and build-harness-worker (SERVICE_NAME=harness-worker,
 # --target worker, which FROMs this stage). Each is a separate CI build

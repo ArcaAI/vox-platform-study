@@ -22,9 +22,9 @@ import { WorkflowSandboxRunDtoMapper } from './workflow-sandbox-run.dto.mapper';
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
 /**
- * The Workbench's sandbox-run application service (TASK-721 Phase C). See
+ * The Workbench's sandbox-run application service. See
  * `IWorkflowSandboxRunService` for the per-method contract and how this differs from the
- * exposure plane (TASK-722).
+ * exposure plane.
  */
 @Injectable()
 export class WorkflowSandboxRunService extends BaseService implements IWorkflowSandboxRunService {

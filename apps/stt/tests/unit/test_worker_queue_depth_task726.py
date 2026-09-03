@@ -1,9 +1,9 @@
-"""STT batch worker queue-depth metric (TASK-726 Task 2).
+"""STT batch worker queue-depth metric.
 
 The metric a KEDA `ScaledObject` in the deployment repo would read for the
 `stt_batch` queue. Computed lazily via `Gauge.set_function` reading
 `RedisBroker.do_qsize()` (Dramatiq's own pending-message primitive), wired
-inside the existing `_add_prometheus_middleware` — see design-notes.md §(d).
+inside the existing `_add_prometheus_middleware` — see
 """
 
 from __future__ import annotations

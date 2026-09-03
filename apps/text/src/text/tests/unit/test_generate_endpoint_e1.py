@@ -166,7 +166,7 @@ class TestGenerateEndpointTokenUsage:
 
     @pytest.mark.asyncio
     async def test_streaming_generate_returns_sse_immediately(self, client):
-        """TASK-818 §3C.3(1): the 202-and-poll indirection is gone."""
+        """the 202-and-poll indirection is gone."""
         resp = await client.post(
             "/api/v1/generate", json={"prompt": "hello", "model": "test-model", "stream": True}
         )

@@ -1,7 +1,7 @@
 /**
- * TASK-732 Phase 4 Task 13 — Grep-gate: no legacy generator remains.
+ * Grep-gate: no legacy generator remains.
  *
- * The permanence mechanism for this ticket's deletion. Follows TASK-704 Task
+ * The permanence mechanism for deletion. Follows Task
  * 6's pattern exactly (`settings-registry/__tests__/consultation-gate-seed-parity.test.ts`
  * and `note-generation/__tests__/harness-enabled-single-reader.grep-gate.test.ts`):
  * reads source with `node:fs`, never imports, so a reintroduction is caught
@@ -19,7 +19,7 @@
  * that would reintroduce the deleted path, not prose that mentions its name.
  * Every assertion below therefore scans comment-stripped source.
  *
- * Assertions (README §4 Task 13):
+ * Assertions :
  *   1. zero files named `summary.processor.ts` / `ner.processor.ts` under
  *      `consultation/jobs/processors/`
  *   2. zero CODE occurrences of `SummaryProcessor`, `NerProcessor`,
@@ -28,7 +28,7 @@
  *   4. the seam (`note-generation.service.ts`) has no `createSummaryJob`-shaped
  *      dispatch — restated here even though #2 already covers it, because the
  *      ticket names it as its own acceptance line
- *   5. zero CODE references to TASK-714's floor utility (`legacy-dosage-check`,
+ * 5. zero CODE references to floor utility (`legacy-dosage-check`,
  *      `checkDosageParity`, `applyLegacySafetyFloor`)
  *
  * Every assertion message names this ticket, so a future reintroduction
@@ -85,7 +85,7 @@ function collectMatches(files: string[], pattern: RegExp): Array<{ file: string;
   return violations;
 }
 
-describe('TASK-732 — legacy signable generator is absent (grep-gate)', () => {
+describe('legacy signable generator is absent (grep-gate)', () => {
   const applicationsFiles = listTsFiles(APPLICATIONS_SRC);
   const apiFiles = listTsFiles(API_SRC);
   const allFiles = [...applicationsFiles, ...apiFiles];
@@ -97,7 +97,7 @@ describe('TASK-732 — legacy signable generator is absent (grep-gate)', () => {
 
   it('1. summary.processor.ts and ner.processor.ts no longer exist under consultation/jobs/processors/', () => {
     const entries = readdirSync(PROCESSORS_DIR).filter((e) => statSync(join(PROCESSORS_DIR, e)).isFile());
-    expect(entries, 'TASK-732 deleted these two files — a reintroduction under this exact name is the regression this row catches').not.toContain(
+    expect(entries, 'deleted these two files — a reintroduction under this exact name is the regression this row catches').not.toContain(
       'summary.processor.ts',
     );
     expect(entries).not.toContain('ner.processor.ts');
@@ -107,7 +107,7 @@ describe('TASK-732 — legacy signable generator is absent (grep-gate)', () => {
     const violations = collectMatches(allFiles, /\b(SummaryProcessor|NerProcessor|createSummaryJob|createNerJob)\b/);
     expect(
       violations,
-      `TASK-732 deleted the legacy signable generator (summary.processor.ts/ner.processor.ts) and its ` +
+      ` deleted the legacy signable generator (summary.processor.ts/ner.processor.ts) and its ` +
         `ConsultationJobService methods. A live-code reference below means the deletion was (partially) reverted:\n${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);
   });
@@ -116,7 +116,7 @@ describe('TASK-732 — legacy signable generator is absent (grep-gate)', () => {
     const violations = collectMatches(allFiles, /JobQueue\.(GenerateSummary|ExtractNamedEntities)\b/);
     expect(
       violations,
-      `TASK-732 removed every runtime reader of these two BullMQ queues ahead of the enum-member deletion ` +
+      ` removed every runtime reader of these two BullMQ queues ahead of the enum-member deletion ` +
         `(the enum members themselves stay, pending the R-5 drain confirmation — see deletion-manifest.md §2). ` +
         `A live-code reference below means a new reader was reintroduced:\n${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);
@@ -130,11 +130,11 @@ describe('TASK-732 — legacy signable generator is absent (grep-gate)', () => {
     );
   });
 
-  it('5. zero live-code references to TASK-714 floor utility (legacy-dosage-check / checkDosageParity / applyLegacySafetyFloor)', () => {
+  it('5. zero live-code references to  floor utility (legacy-dosage-check / checkDosageParity / applyLegacySafetyFloor)', () => {
     const violations = collectMatches(allFiles, /legacy-dosage-check|checkDosageParity|applyLegacySafetyFloor/);
     expect(
       violations,
-      `TASK-714's legacy safety floor was throwaway by its own ticket's design, deleted by TASK-732 in the ` +
+      ` legacy safety floor was throwaway by its own ticket's design, deleted by  in the ` +
         `same epic that retires legacy. A live-code reference below means it (or a shared abstraction it grew) ` +
         `survived:\n${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);

@@ -131,7 +131,7 @@ describe('SettingsScreen', () => {
     renderWithProviders(<SettingsScreen />);
 
     expect(await screen.findByText('enable-ner-extraction')).toBeDefined();
-    // F-23 / TASK-852 item 7: the hint is sr-only text next to the advisory key only.
+    // F-23 / item 7: the hint is sr-only text next to the advisory key only.
     expect(screen.getAllByText('Advisory only — no runtime path reads this flag today')).toHaveLength(1);
     const enforcedRow = screen.getByText('enable-consultation-sharing').closest('[role="row"]') as HTMLElement;
     expect(within(enforcedRow).queryByText('Advisory only — no runtime path reads this flag today')).toBeNull();

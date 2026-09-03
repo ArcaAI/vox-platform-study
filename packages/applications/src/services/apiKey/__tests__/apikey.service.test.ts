@@ -459,7 +459,7 @@ describe('ApiKeyService', () => {
             return null;
           case 'tenantId':
             return 'tenant-1';
-          // TASK-756 — the minting ceiling reads the compiled CASL ability off
+          // the minting ceiling reads the compiled CASL ability off
           // CLS and fails CLOSED when it is absent. These cases exercise the
           // SERVICE_ACCOUNT user/tenant exemptions, not privilege, so present a
           // permissive ability.
@@ -495,7 +495,7 @@ describe('ApiKeyService', () => {
             return null;
           case 'tenantId':
             return 'tenant-1';
-          // TASK-756 — the minting ceiling reads the compiled CASL ability off
+          // the minting ceiling reads the compiled CASL ability off
           // CLS and fails CLOSED when it is absent. These cases exercise the
           // SERVICE_ACCOUNT user/tenant exemptions, not privilege, so present a
           // permissive ability.
@@ -531,7 +531,7 @@ describe('ApiKeyService', () => {
             return null;
           case 'tenantId':
             return 'tenant-1';
-          // TASK-756 — the minting ceiling reads the compiled CASL ability off
+          // the minting ceiling reads the compiled CASL ability off
           // CLS and fails CLOSED when it is absent. These cases exercise the
           // SERVICE_ACCOUNT user/tenant exemptions, not privilege, so present a
           // permissive ability.
@@ -586,7 +586,7 @@ describe('ApiKeyService', () => {
             return { id: 'current-user-id' };
           case 'tenantId':
             return null;
-          // TASK-756 — see the note above: permissive ability, so the minting
+          // see the note above: permissive ability, so the minting
           // ceiling is not what this SERVICE_ACCOUNT case exercises.
           case 'userAbility':
             return { can: () => true };
@@ -620,7 +620,7 @@ describe('ApiKeyService', () => {
             return { id: 'current-user-id' };
           case 'tenantId':
             return null;
-          // TASK-756 — see the note above: permissive ability, so the minting
+          // see the note above: permissive ability, so the minting
           // ceiling is not what this SERVICE_ACCOUNT case exercises.
           case 'userAbility':
             return { can: () => true };
@@ -1773,7 +1773,7 @@ describe('ApiKeyService', () => {
         mockClsService.get.mockImplementation((key: string) => {
           if (key === 'user') return { id: 'current-user-id' };
           if (key === 'tenantId') return null;
-          // TASK-756 — permissive ability: this case is about the
+          // permissive ability: this case is about the
           // UserRoleAssignment exemption, not the minting ceiling.
           if (key === 'userAbility') return { can: () => true };
           return null;

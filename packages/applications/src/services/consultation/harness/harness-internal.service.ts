@@ -126,7 +126,7 @@ export class HarnessInternalService {
   //
   // Other production paths create NamedEntity rows — `ContextService`,
   // `SummaryService`, and `ChainSummaryService`'s NER writes (the legacy
-  // BullMQ NER generator's own writes were removed with it, TASK-732) — all
+  // BullMQ NER generator's own writes were removed with it) — all
   // through `namedEntityPropsFromNlp`, which sets NO `aiModelId`. They routinely
   // cover the SAME transcript ContextItem and the same spans, so scoping by
   // `contextItemId` alone would let this path rewrite rows it never authored.
@@ -139,7 +139,7 @@ export class HarnessInternalService {
   // content label) is folded verbatim into the prompt with only a
   // `[highlight]`-style label prefix — no other transformation. This caps the
   // per-attachment contribution so one oversized upload can't dominate the
-  // context window / injection surface (SOTA §5.1/§5.2); the explicit suffix
+  // context window / injection surface (SOTA; the explicit suffix
   // marker keeps the truncation visible in the assembled prompt rather than
   // silently cutting the text.
   private static readonly ATTACHMENT_TEXT_MAX_LENGTH = 20_000;
@@ -232,21 +232,21 @@ export class HarnessInternalService {
     // `harness-internal.service.test.ts`'s double-bill-guard test can assert
     // `recordUsage` is never called — see that test for the regression net.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
-    // TASK-711 — clinician notification on TIMED_OUT (the terminal gate-SLA
+    // clinician notification on TIMED_OUT (the terminal gate-SLA
     // abandonment). Optional + trailing so existing positional unit fixtures
     // keep their arity; production DI supplies it via NotificationServiceModule.
     // Best-effort: a notification-send failure must NEVER roll back the
     // TIMED_OUT transition or its WORM append — the record is the WORM row,
-    // the notification is the courtesy (README §4 Task 7).
+    // the notification is the courtesy.
     @Optional() @Inject(INotificationService) private readonly notificationService?: INotificationService,
-    // TASK-799 lane B — THE BYO provider plane, used ONLY by
+    // lane B — THE BYO provider plane, used ONLY by
     // `resolveProviderCredential`. Optional + trailing so existing positional
     // unit fixtures keep their arity; absent ⇒ every resolve is `unavailable`,
     // which is the FAIL-CLOSED direction (never `absent`, which would let a
     // consumer proceed unauthenticated because the gateway was misconfigured).
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
-    // TASK-815 §11 row 3 — the tenant's VISIT-TYPE catalogue, which replaces the
-    // `parentConsultationId ? 'revisit' : 'new-patient'` literal below. Optional
+    // the tenant's VISIT-TYPE catalogue, which replaces the
+    // `parentConsultationId ? 'revisit': 'new-patient'` literal below. Optional
     // + trailing so existing positional fixtures keep their arity; an unwired
     // resolver serves the two shipped visit types, whose keys and follow-up rule
     // are byte-identical to the ternary it replaces.
@@ -303,7 +303,7 @@ export class HarnessInternalService {
   }
 
   /**
-   * TASK-799 lane B — resolve ONE `AiProviderConnection` credential for the
+   * lane B — resolve ONE `AiProviderConnection` credential for the
    * harness worker, tenant → SYSTEM.
    *
    * WHY THIS EXISTS AT ALL. `apps/harness` reaches neither of the two shipped
@@ -354,7 +354,7 @@ export class HarnessInternalService {
     const typedService = service as ProviderService;
     let resolved: Awaited<ReturnType<IProviderConnectionService['resolveTenantCloudOverrides']>>;
     try {
-      // TASK-858 — a service-token request carries NO tenant on the CLS store,
+      // a service-token request carries NO tenant on the CLS store,
       // and the cascade reads tenant-scoped `AiProviderConnection` rows, which
       // the tenant-scope extension refuses without one. Re-establish the tenant
       // from the query, exactly as `assemble` / `getEffectivePolicy` do; without
@@ -437,7 +437,7 @@ export class HarnessInternalService {
    * opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward its
    * configured value because losing it only costs quality, whereas carrying a
    * PRIOR VISIT's content into a new note on the back of a failed governance read
-   * is a clinical-safety regression (SOTA §4.5).
+   * is a clinical-safety regression (SOTA
    */
   private async resolveRevisitCarryForwardEnabled(tenantId: string): Promise<boolean> {
     if (!this.effectiveSettings) {
@@ -782,7 +782,7 @@ export class HarnessInternalService {
         // The visit type comes from the TENANT's catalogue now, not a literal:
         // `parentConsultationId` still supplies the follow-up signal, but WHICH
         // visit type that selects — and what it is called — is tenant-configured
-        // (TASK-815 §11 row 3).
+        // .
         promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
           isFollowUp: Boolean(consultation?.parentConsultationId),
         }).key,
@@ -897,13 +897,13 @@ export class HarnessInternalService {
         const existingDraft = await this.findOwnHarnessDraft(consultationId);
         let contextItemId: string;
         if (existingDraft) {
-          // TASK-709: capture the CAS predicate BEFORE mutating the entity —
+          // capture the CAS predicate BEFORE mutating the entity
           // `entity.version` is the OCC compare-and-set counter (DB-owned),
           // distinct from `currentVersionNumber` (the content-revision
           // pointer `updateSummary` bumps on every clinician edit).
           const expectedVersion = existingDraft.version;
           contextItemId = existingDraft.id;
-          // TASK-825 — an EMPTY re-delivery must not touch the row at all.
+          // an EMPTY re-delivery must not touch the row at all.
           // `HarnessDraftRequest.content` is `@IsString()` with no
           // `@IsNotEmpty()`, and `stripSegmentCitationMarkers` can reduce a
           // marker-only note to `''`, so this is reachable. Pre-fix it committed
@@ -1077,10 +1077,10 @@ export class HarnessInternalService {
           await this.summaryMetaRepository.create(summaryMeta);
         }
 
-        // 3. Lifecycle (TASK-711). EARLY -> DRAFT_PENDING_SENSORS (readable,
+        // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable,
         // assurance pending, NOT signable). LEGACY -> PENDING_REVIEW
         // (clinician confirm-before-commit). Legal predecessor is now
-        // DRAINING (state-machine.md §2) — a draft arriving while the
+        // DRAINING — a draft arriving while the
         // consultation is still RECORDING is a real ordering bug and
         // `transitionTo` throws rather than papering over it.
         if (consultation) {
@@ -1227,11 +1227,11 @@ export class HarnessInternalService {
         // right place to back off.
         await this.applyAssuranceBackfillWithCas(consultationId, tenantId, dto);
 
-        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (TASK-711;
+        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (;
         // idempotent — a retry after the flip is a no-op, never regressing a
         // signed/closed consultation). The guard is kept as an EXPLICIT
         // status check (not the broader `entity.canTransitionTo(PENDING_REVIEW)`
-        // README §4 Task 7 sketches) — the matrix also legally reaches
+        // Task 7 sketches) — the matrix also legally reaches
         // PENDING_REVIEW from DRAINING and REOPENED, and `finalizeAssurance`
         // is specifically the second phase of an EARLY draft; silently
         // promoting a DRAINING/REOPENED consultation here would be exactly
@@ -1503,8 +1503,8 @@ export class HarnessInternalService {
           createdBy: null,
         });
 
-        // TASK-711 — the TERMINAL abandon additionally drives the session
-        // state machine: PENDING_REVIEW -> TIMED_OUT (state-machine.md §2).
+        // the TERMINAL abandon additionally drives the session
+        // state machine: PENDING_REVIEW -> TIMED_OUT
         // A distinct, persisted, visibly-unsigned TIMED_OUT + notification
         // (INV-177/181/182/183/413/255/147) — "the clock never signs".
         // Non-terminal GATE_ESCALATED writes no status, as before.
@@ -1540,7 +1540,7 @@ export class HarnessInternalService {
               } as CreateNotificationRequest);
             } catch (error) {
               this.logger.warn({
-                message: 'TASK-711: TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
+                message: 'TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
                 consultationId,
                 error: error instanceof Error ? error.message : String(error),
               });

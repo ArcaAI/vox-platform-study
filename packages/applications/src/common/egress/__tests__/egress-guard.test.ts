@@ -1,4 +1,4 @@
-// TASK-846 D-3 — the SSRF egress guard, driven by the SHARED vector fixture.
+// the SSRF egress guard, driven by the SHARED vector fixture.
 //
 // This suite and `apps/harness/src/harness/tests/unit/test_egress_guard.py` load the
 // SAME file (`tests/fixtures/egress-vectors.json`) and assert the same verdict and the

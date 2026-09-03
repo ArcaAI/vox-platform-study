@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * TASK-787 Phase 2 · THE contrast gate.
+ * · THE contrast gate.
  *
  * Why this file exists at all: before it, a palette change passed CI while
  * silently regressing contrast across every screen. The 67 `vitest-axe` suites
@@ -290,7 +290,7 @@ const EXEMPTIONS: Exemption[] = [
   // (b) J-11 — the sidebar active-item FILL. EX-12's own >=3:1 guardrail is
   //     unachievable with an achromatic palette on a white sidebar, so the fill
   //     is never the sole signal: font-weight 500 plus a 2px --foreground left
-  //     rule are the second and third signals, and they land in TASK-788 AC-5.
+  // rule are the second and third signals, and they land in.
   //     Until that ships, this exemption is carrying an OPEN a11y debt, not a
   //     closed decision. Do not "fix" it by darkening the fill in isolation —
   //     that changes the surface without adding a signal.
@@ -299,7 +299,7 @@ const EXEMPTIONS: Exemption[] = [
     bg: 'sidebar',
     themes: ['light', 'dark'],
     ratio: { light: 1.14, dark: 1.34 },
-    why: 'J-11 — active-item fill is one of three signals; second/third land in TASK-788 AC-5',
+    why: 'J-11 — active-item fill is one of three signals; second/third land in  AC-5',
   },
 
   // (c) FILL, NOT INK. --warning (#c08827) and --hope (#e6651b) are fill values:

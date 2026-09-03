@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * TASK-765 · Design-system conformance guard for the shadcn primitives.
+ * · Design-system conformance guard for the shadcn primitives.
  *
  * These are source-text assertions rather than rendered-DOM assertions on
  * purpose: the thing being protected is the CLASS STRING an author types, and
@@ -29,7 +29,7 @@ describe('shadcn primitives · focus indicator canon', () => {
   });
 
   // ring-ring/50 halves the indicator's contrast against the page background.
-  // WCAG 2.2 SC 1.4.11 requires 3:1. Under the TASK-787 Tatva palette --ring is
+  // WCAG 2.2 SC 1.4.11 requires 3:1. Under the Tatva palette --ring is
   // the near-black/near-white ink (#141414 light / #e4e4e4 dark) and reaches
   // 17.65:1 on --background in light and 12.21:1 in dark at FULL opacity —
   // headroom that only exists while the alpha stays off it. (The retired teal

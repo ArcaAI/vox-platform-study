@@ -29,7 +29,7 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })
   maxApiKeys?: number | null;
 
-  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions (TASK-722); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions ; null = unlimited', nullable: true })
   maxWorkflowDefinitions?: number | null;
 
   @ApiPropertyOptional({ description: 'Storage quota in bytes; null = unlimited', nullable: true })
@@ -48,24 +48,24 @@ export class PlanEntitlementResponse {
   monthlySummaries?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited',
+    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited',
     nullable: true,
   })
   monthlyWorkflowInvocations?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (D11); null = unlimited', nullable: true })
   monthlySttSessionSeconds?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited', nullable: true })
   monthlyLlmTokens?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (D11); null = unlimited', nullable: true })
   monthlyTtsCharacters?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (D11); null = unlimited', nullable: true })
   monthlyNlpTextUnits?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (D11); null = unlimited', nullable: true })
   monthlyEmbeddingTokens?: number | null;
 
   @ApiProperty({ description: 'DNA writing-style + reports enabled' })
@@ -91,7 +91,7 @@ export class PlanEntitlementResponse {
 
   @ApiPropertyOptional({
     description:
-      'TASK-785 — ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.',
+      'ABSOLUTE requests-per-window for every tenant on this plan. Null = the plan expresses its limit through `rateLimitTier`.',
     nullable: true,
   })
   rateLimitPerMinute?: number | null;
@@ -139,7 +139,7 @@ export class UpdatePlanEntitlementRequest {
   @Min(0)
   maxApiKeys?: number | null;
 
-  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions (TASK-722); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions ; null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -176,7 +176,7 @@ export class UpdatePlanEntitlementRequest {
   monthlySummaries?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited',
+    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited',
     nullable: true,
   })
   @IsOptional()
@@ -184,31 +184,31 @@ export class UpdatePlanEntitlementRequest {
   @Min(0)
   monthlyWorkflowInvocations?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (D11); null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlySttSessionSeconds?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyLlmTokens?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (D11); null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyTtsCharacters?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (D11); null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
   monthlyNlpTextUnits?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (D11); null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -239,7 +239,7 @@ export class UpdatePlanEntitlementRequest {
 
   @ApiPropertyOptional({
     description:
-      'Does this plan include the harness AGENTIC LOOP (TASK-705)? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.',
+      'Does this plan include the harness AGENTIC LOOP ? ENFORCED, not display-only — LoopContextSignalService resolves it before every loop signal. false on STARTER, true on TRIAL/PRO/ENTERPRISE.',
   })
   @IsOptional()
   @IsBoolean()
@@ -258,7 +258,7 @@ export class UpdatePlanEntitlementRequest {
   rateLimitTier?: string;
 
   @ApiPropertyOptional({
-    description: 'TASK-785 — ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.',
+    description: 'ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`.',
     minimum: 1,
     nullable: true,
   })

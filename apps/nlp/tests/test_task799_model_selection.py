@@ -1,4 +1,4 @@
-"""TASK-799 lane C.2 (F-04) — no hardcoded model ids, anywhere.
+"""lane C.2 (F-04) — no hardcoded model ids, anywhere.
 
 `core/config.py` defaulted `TokenClassificationConfig` to a real NER checkpoint
 and `MedicalSuggesterConfig` to a real disease-classification checkpoint. Both
@@ -69,7 +69,7 @@ class TestNoZeroArgumentClassifierConstructors:
 
 
 class TestNoModelIdLiteralInShippedPython:
-    """The two ids TASK-778's guard deliberately excluded are now in scope.
+    """The two ids guard deliberately excluded are now in scope.
 
     That guard covered the safety-plane vendors only, and said so; the NER and
     diagnosis planes were recorded as a pre-existing finding. This closes them,

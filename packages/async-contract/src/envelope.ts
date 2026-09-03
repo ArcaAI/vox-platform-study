@@ -1,6 +1,6 @@
 /**
- * The async task/event envelope (TASK-717). Normative prose + rationale:
- * docs/programs/agentic-workflow-platform/async-contract.md §3.2.
+ * The async task/event envelope. Normative prose + rationale:
+ * docs/programs/agentic-workflow-platform/async-contract.md
  * Normative machine artifact: schema/async-envelope.v1.json (draft 2020-12).
  *
  * This module is a HAND-WRITTEN validator, not a JSON Schema interpreter —
@@ -123,7 +123,7 @@ export function asyncEnvelopeProblems(value: unknown): string[] {
 
 /**
  * Refuse-if-unknown parse. Returns `null` for ANY conformance problem
- * (including, per §3.2, an unknown `schemaVersion`) — the caller MUST NOT
+ * (including, per, an unknown `schemaVersion`) — the caller MUST NOT
  * proceed on `null`, exactly as `UsageOutboxPayload`'s drainer refuses a
  * shape it does not understand rather than best-effort reading it.
  */

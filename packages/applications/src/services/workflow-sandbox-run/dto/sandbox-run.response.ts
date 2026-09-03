@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * `202 Accepted` body of `POST .../sandbox-runs` — mirrors `WorkflowInvokeResponse`'s shape
- * (TASK-722), definitionId-keyed instead of slug-keyed since a sandbox run may target a DRAFT
+ * definitionId-keyed instead of slug-keyed since a sandbox run may target a DRAFT
  * version that has no public slug-invocable surface at all.
  */
 export class SandboxRunResponse {

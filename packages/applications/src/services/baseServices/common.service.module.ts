@@ -76,7 +76,7 @@ const imports = [
     JobQueue.SysEvent,
     JobQueue.WebCrawler,
     JobQueue.SpeechToText,
-    // Consultation AI Processing Queues. TASK-732 — `GenerateSummary` /
+    // Consultation AI Processing Queues. — `GenerateSummary` /
     // `ExtractNamedEntities` (the legacy signable generator + its NER
     // companion) removed here; `GeneratePreSummary` survives per the R-2
     // boundary (`GenerateComprehensiveSummary` was never registered on this

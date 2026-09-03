@@ -95,7 +95,7 @@ class KokoroProvider:
         self._config = config
         # The voice used ONLY by the boot-time `warmup()` call. It comes from the
         # voice catalog at construction (`main.create_app`), which is the single
-        # source of provider voice names since TASK-799 lane C — the `voice`
+        # source of provider voice names since lane C — the `voice`
         # settings field that used to hold `af_heart` a second time is gone.
         # None ⇒ the catalog binds no English voice to kokoro, so there is
         # nothing to warm; inventing a name here would put a voice into the

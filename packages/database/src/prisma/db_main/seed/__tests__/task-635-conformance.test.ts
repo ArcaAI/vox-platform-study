@@ -2,7 +2,6 @@
  * Conformance regression suite (DATABASE / seed layer).
  *
  * Locks the seed- and scoping-side properties of the conformance scorecard
- * in `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling files carry the other layers:
  *   - apps/api/src/modules/text-compat/__tests__/task-635-conformance.test.ts (R-C1/R-C2/R-C3)
  *   - packages/applications/src/services/consultation/prompt/__tests__/task-635-conformance.test.ts (R-T1/R-T2)
@@ -147,7 +146,7 @@ describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenan
     }
   });
 
-  it('the SYSTEM catch-all SOAP fallback (…036) is owned by the SYSTEM tenant and pinned APPROVED v1 (TASK-858)', () => {
+  it('the SYSTEM catch-all SOAP fallback (…036) is owned by the SYSTEM tenant and pinned APPROVED v1 ', () => {
     const row = ALL_SEEDED_TEMPLATES.find((t) => t.id === TEMPLATE_IDS.CATCHALL_SOAP) as
       | (SeedTemplateLike & { approvedVersionNumber?: number })
       | undefined;

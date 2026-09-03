@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { cx } from '@/shared/cx';
 
 /**
- * The console-wide detail surface (redesign build spec §3). One right slide-over
+ * The console-wide detail surface (redesign build spec One right slide-over
  * on desktop that becomes a full-screen sheet below the `md` breakpoint (~768px),
  * replacing the per-feature hand-rolled Sheets. Ad-hoc record dialogs are retired
  * — dialogs remain only for short confirmations and break-glass step-up.
@@ -14,7 +14,7 @@ import { cx } from '@/shared/cx';
  * Region contract (top → bottom): header (title · badges · close) → optional meta
  * line → optional tabs → scrollable body (`children`) → pinned footer actions.
  * The header and footer are `shrink-0`; only the body scrolls (one scroll
- * container per panel, per §1 of the UX principles). Focus is managed by Radix.
+ * container per panel, per of the UX principles). Focus is managed by Radix.
  *
  * Tabs: this component does NOT own the `Tabs` context. To use tabs, wrap the
  * `DetailDrawer` in `<Tabs>` and pass a `<TabsList variant="line">` as `tabs`
@@ -53,7 +53,7 @@ export interface DetailDrawerProps {
    * Passing a reason disables the control properly — `disabled` + `aria-disabled`
    * + an accessible name carrying the reason — so its state is legible rather
    * than mysterious (rule 11 §5: "disabled buttons need a visible reason").
-   */
+ */
   closeBlockedReason?: string;
   className?: string;
   children: ReactNode;

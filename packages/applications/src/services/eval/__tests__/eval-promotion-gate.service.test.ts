@@ -7,7 +7,7 @@
  * promotion on failure. Mode comes from the `agentic.eval.promotionGate`
  * registry setting.
  *
- * TASK-815 / OD-11 moved DISCOVERY only. It used to find golden sets through
+ * / OD-11 moved DISCOVERY only. It used to find golden sets through
  * `DepartmentAgentRepository.findByBoundTemplate`; it now walks the tenant's
  * ACTIVE PUBLISHED workflow definitions and reads the `evalGate` on any node
  * whose config binds the template. The gate itself, its three modes, its 409

@@ -42,7 +42,7 @@ export interface DnaProfileRetentionResult {
 }
 
 /**
- * TASK-733 Task 10 (owner ruling, 2026-08-20) — the "purge later" half of DNA
+ * (owner ruling, 2026-08-20) — the "purge later" half of DNA
  * writing-style profile governance.
  *
  * `DnaWritingStyleService.resetMyDnaProfile()` / `.deleteReport()` already
@@ -57,7 +57,7 @@ export interface DnaProfileRetentionResult {
  * `DnaWritingStyleReport` rows already soft-deleted for longer than the
  * configured retention window, together with every `DnaWritingStyleVersion`
  * row that belongs to them. Hard delete here is the ONE sanctioned exception
- * to rule 03's soft-delete default (`03-domain-layer.md`: "delete() ...
+ * to rule 03's soft-delete() default (`03-domain-layer.md`: "delete ...
  * reserved for genuinely immutable cleanup") — a retention purge past an
  * already-soft-deleted, already-audited row is exactly that case, and it is
  * the same exception `AuditRetentionService`/`AgentTrajectoryRetentionService`

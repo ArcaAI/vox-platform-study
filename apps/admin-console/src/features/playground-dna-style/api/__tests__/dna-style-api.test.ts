@@ -96,7 +96,7 @@ describe('playground dna style client', () => {
     expect(calls[0].body).toEqual({ styleText: 'Concise clinical prose.', changeReason: 'tone fix', expectedVersion: 3 });
   });
 
-  // TASK-776 H-1 phase 2: `PATCH :reportId/default` now requires `If-Match`.
+  // phase 2: `PATCH :reportId/default` now requires `If-Match`.
   // The validator is the report row's `version` from the list read — the
   // console echoes it rather than inventing one.
   it('promotes a report to default under If-Match', async () => {
@@ -160,7 +160,7 @@ describe('playground dna style client', () => {
     expect(calls[0].body).toEqual({ enabled: false, expectedVersion: 2 });
   });
 
-  // TASK-776 H-1 phase 2: `PUT settings` now requires `If-Match`, so the FIRST
+  // phase 2: `PUT settings` now requires `If-Match`, so the FIRST
   // write carries the gateway's create-intent validator `"0"` — the value
   // `GET settings` actually returned — instead of omitting the header. The body
   // field is still withheld, because its validator rejects 0.

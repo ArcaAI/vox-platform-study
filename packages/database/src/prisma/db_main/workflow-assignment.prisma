@@ -1,10 +1,10 @@
 // =============================================================================
 // Workflow assignment — WHICH workflow definition governs a given scope
-// (TASK-733 half (a)).
+// .
 //
-// `WorkflowDefinition` (TASK-715) says WHAT a workflow is; this table says WHO
+// `WorkflowDefinition` says WHAT a workflow is; this table says WHO
 // uses it. Deliberately a SEPARATE row rather than a `departmentId` column on
-// `WorkflowDefinition` (TASK-733 §1.3): a definition would otherwise need one
+// `WorkflowDefinition`: a definition would otherwise need one
 // row per department, defeating the `(tenantId, slug, versionNumber)` lineage,
 // and a department reassignment would become a definition EDIT — which the
 // published-row immutability the whole substrate rests on forbids.
@@ -16,7 +16,7 @@
 // `ConfigResolver.resolveOne` already performs. One shape, one resolution
 // semantics, one audit pattern. This ticket exposes the DEPARTMENT and TENANT
 // tiers only; DOCTOR is expressible but is a product decision nobody has made
-// (TASK-733 §1.4), and the service rejects it.
+// (and the service rejects it.
 //
 //   department override → tenant default → platform default (SYSTEM tenant)
 //
@@ -53,7 +53,7 @@ model WorkflowAssignment {
 
   // The lineage key of the assigned definition. The ACTIVE PUBLISHED version is
   // resolved at dispatch; validated at WRITE time against a PUBLISHED definition
-  // for this tenant on this palette (TASK-733 §3.2 — references get referential
+  // for this tenant on this palette — references get referential
   // validation).
   workflowDefinitionSlug String
 

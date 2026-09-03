@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { checkExampleHygiene, checkOpenApiCoverage, QUALITY_RATCHET, type OpenApiDocument, type RouteManifest } from '../check-openapi-coverage';
 
 /**
- * TASK-783 — the coverage gate must go RED on each failure mode it claims to
+ * the coverage gate must go RED on each failure mode it claims to
  * catch. A gate nobody has watched fail is a gate that might be asserting
  * nothing; that is precisely how `apiExcluded` stayed broken for 657 routes.
  */
@@ -57,7 +57,7 @@ describe('checkOpenApiCoverage', () => {
 
   it('FAILS on a spec operation with no manifest route — the stale-artifact case', () => {
     // The real occurrence: openapi.json lagged one commit behind
-    // route-manifest.json after TASK-733 and nothing noticed.
+    // route-manifest.json after and nothing noticed.
     const report = checkOpenApiCoverage(documentWith({ '/api/v1/ghosts': { delete: DOCUMENTED_OPERATION } }), { routes: [] });
 
     expect(report.failures).toHaveLength(1);

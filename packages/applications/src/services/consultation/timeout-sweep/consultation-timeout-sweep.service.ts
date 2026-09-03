@@ -30,14 +30,14 @@ export interface ConsultationTimeoutSweepResult {
 }
 
 /**
- * TASK-711 (state-machine.md §1a) — the session-timeout sweep.
+ *  — the session-timeout sweep.
  *
  * Transitions consultations that have sat in a sweep-eligible state
  * (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `REOPENED`)
  * with no clinician activity past `consultation.state.sessionTimeoutMinutes`
  * to `CLOSED_INCOMPLETE` — the record closed with no human sign-off ever
  * recorded. `OPEN`, `RECORDING`, and `PENDING_REVIEW` are deliberately never
- * swept here (state-machine.md §1a; `PENDING_REVIEW` has its own narrower
+ * swept here (; `PENDING_REVIEW` has its own narrower
  * gate-SLA path, `HarnessInternalService.recordEscalation` →
  * `PENDING_REVIEW → TIMED_OUT`, which this sweep leaves untouched).
  *
@@ -60,7 +60,7 @@ export interface ConsultationTimeoutSweepResult {
  * 'system', 'session-timeout-sweep')` → `ConsultationRepository.updateWithVersion`
  * → `ResourceUpdated` sys-event → WORM `SESSION_CLOSED_INCOMPLETE` append —
  * exactly the persistence chain `ConsultationService.closeConsultation`
- * already uses for a manual close (state-machine.md §2 matrix rows).
+ * already uses for a manual close ( matrix rows).
  *
  * The eligibility QUERY (`ConsultationRepository.findTimeoutSweepEligible`)
  * runs cross-tenant with no CLS context active (a platform-wide maintenance
@@ -244,7 +244,7 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         // a WORM-append failure is logged but never rolls back the
         // already-persisted status write.
         this.logger.warn({
-          message: 'TASK-711: WORM append failed for a session-timeout-sweep transition (non-fatal, status write not rolled back)',
+          message: 'WORM append failed for a session-timeout-sweep transition (non-fatal, status write not rolled back)',
           consultationId: consultation.id,
           error: error instanceof Error ? error.message : String(error),
         });

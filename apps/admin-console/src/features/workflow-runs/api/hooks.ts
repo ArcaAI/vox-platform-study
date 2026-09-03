@@ -26,9 +26,9 @@ export function useWorkflowRun(runId: string | null) {
 }
 
 /**
- * The CQRS-lite trace read: run row + per-node rollup in one call (Task 5).
+ * The CQRS-lite trace read: run row + per-node rollup in one call.
  *
- * TASK-849 lane C: the primary transport for a LIVE run is the SSE push
+ * lane C: the primary transport for a LIVE run is the SSE push
  * (`useRunLiveEvents`, `live-events.ts`) re-fetching this query on a control
  * frame — never a fixed interval. `pollAsFallback` mirrors
  * `useTranscriptionJob`'s own documented fallback (`transcription-jobs/api/hooks.ts`):
@@ -57,7 +57,7 @@ export function useWorkflowDefinitionVersion(workflowVersionId: string | null) {
 }
 
 /**
- * Live HITL-gate state for a run (TASK-731 Phase B).
+ * Live HITL-gate state for a run.
  *
  * Polls on the same cadence as the run itself while the run is live, because a run can ENTER
  * its gate at any point during execution — a one-shot read taken when the screen mounted would

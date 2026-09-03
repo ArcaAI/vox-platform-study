@@ -1,15 +1,15 @@
 /**
- * `hope.workflows` — the WORKFLOW INVOCATION plane (TASK-850 lane B).
+ * `hope.workflows` — the WORKFLOW INVOCATION plane.
  *
  * The surface a developer writes against to run a tenant's published
  * workflows as products. Backed by the routes lane A shipped:
  *
  * ```
- * GET  /api/v1/workflows                                  -> list()
- * POST /api/v1/workflows/{slug}/runs                      -> run() / runAndWait() / runAndStream()
- * GET  /api/v1/workflows/{slug}/runs/{runId}              -> getRun()
- * POST /api/v1/workflows/{slug}/runs/{runId}/cancel       -> cancelRun()
- * GET  /api/v1/workflows/{slug}/runs/{runId}/stream       -> streamRun() / waitForRun()
+ * GET /api/v1/workflows -> list()
+ * POST /api/v1/workflows/{slug}/runs -> run() / runAndWait() / runAndStream()
+ * GET /api/v1/workflows/{slug}/runs/{runId} -> getRun()
+ * POST /api/v1/workflows/{slug}/runs/{runId}/cancel -> cancelRun()
+ * GET /api/v1/workflows/{slug}/runs/{runId}/stream -> streamRun() / waitForRun()
  * ```
  *
  * The consultation-bound half lives on {@link ConsultationWorkflowsResource}
@@ -328,7 +328,7 @@ abstract class WorkflowInvocationBase {
         headers: {
           Accept: 'text/event-stream',
           // Omitted entirely on a first connect: an empty header would name a
-          // cursor the gateway cannot resolve, and §3.6 forbids inventing one.
+          // cursor the gateway cannot resolve, and forbids inventing one.
           ...(state.lastEventId === undefined ? {} : { 'Last-Event-ID': state.lastEventId }),
         },
         signal: options.signal,

@@ -1,5 +1,5 @@
 /**
- * SDK Exports Verification — audio-shaped public types (TASK-858 G3).
+ * SDK Exports Verification — audio-shaped public types.
  *
  * `AudioStartOptions`, `AudioProcessingConstraints`, `DualCaptureResult`,
  * `ActivePipelineInfo` and `SttConnectionState` are the argument/return shapes

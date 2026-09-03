@@ -2,7 +2,7 @@
 
 /**
  * "Which engine is writing this note?" — the read-back of the workflow chosen at open
- * (TASK-858 Lane D, over TASK-813's `useConsultationWorkflow`).
+ * (over `useConsultationWorkflow`).
  *
  * Selecting a workflow at open does not GUARANTEE it runs: consultation-open dispatch is
  * best-effort by design, so a harness outage degrades to the platform's default engine rather

@@ -5,7 +5,7 @@ import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { CONSENT_EXEMPT_KEY, REQUIRES_CONSENT_KEY, SKIP_AUTH_KEY } from '@arcaai/applications';
 
 /**
- * Boot-time consent-coverage audit (TASK-712, consent-abac — README §4
+ * Boot-time consent-coverage audit (consent-abac
  * Task 11).
  *
  * Walks every controller registered on the Nest application context and
@@ -13,8 +13,8 @@ import { CONSENT_EXEMPT_KEY, REQUIRES_CONSENT_KEY, SKIP_AUTH_KEY } from '@arcaai
  * segment declares NEITHER `@RequiresConsent(...)` NOR `@ConsentExempt(...)`.
  *
  * Scope note (a deliberate, disclosed narrowing from the ticket's original
- * Task 11 predicate — see docs/implementation/TASK-712-Consent-Abac/README.md
- * §7): the full predicate is "every route in the consultation module AND
+ * Task 11 predicate — see
+ * the full predicate is "every route in the consultation module AND
  * every route with a `patientId` parameter". This audit checks the
  * `:patientId`-parameter half only. Decorating every one of the consultation
  * module's ~60 other routes (PATCH/close/reopen/tags/highlights/etc., none
@@ -77,7 +77,7 @@ export function auditConsentRouteCoverage(app: INestApplicationContext): void {
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(`TASK-712: refused to start — ${offenders.length} :patientId route(s) lack consent coverage:\n${list}`);
+    throw new Error(`refused to start — ${offenders.length} :patientId route(s) lack consent coverage:\n${list}`);
   }
 }
 

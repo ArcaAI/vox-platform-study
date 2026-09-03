@@ -29,7 +29,7 @@ export interface MeterUsage {
   consultations: number;
   transcriptionMinutes: number;
   summaries: number;
-  /** WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window) (TASK-722), the same business-object shape as the other three. */
+  /** WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window), the same business-object shape as the other three. */
   workflowInvocations: number;
   /** STT_SESSION_SECONDS — `SESSION_SECOND` under capability `STT` (OQ1: session, not audio, seconds). */
   sttSessionSeconds: number;

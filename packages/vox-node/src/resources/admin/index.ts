@@ -9,7 +9,7 @@
  */
 
 /**
- * Barrel for `@arcaai/vox-node`'s `/api/v1/admin/**` surface (TASK-773).
+ * Barrel for `@arcaai/vox-node`'s `/api/v1/admin/**` surface.
  *
  * The hand-authored {@link AdminResource} base — the part that holds judgment
  * (pagination, `If-Match` plumbing, scope-aware error mapping) — is
@@ -21,7 +21,7 @@
  * generated. Each carries `@ForbidServiceAccount()` or simply declares no
  * `svc:*` scope on the gateway, so a generated method would always 403 — and a
  * method that always 403s is worse than no method. Re-opening any of them is an
- * owner decision, not a code-review call (ticket §2.6 / §2.8):
+ * owner decision, not a code-review call ( / :
  *
  * | Controller | Decision |
  * |---|---|

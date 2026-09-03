@@ -114,7 +114,7 @@ class TextClient:
         self._timeout = timeout
         self._service_token = service_token
         self._transport = transport
-        # TASK-858 — resolves the ``(provider, tenant_id)`` AiProviderConnection the
+        # resolves the (provider, tenant_id) AiProviderConnection the
         # request must carry (see ``generate``). ``None`` keeps the bare client for
         # callers that inject the envelope themselves or run against a Text that
         # still accepts a connection-less request (unit fixtures).
@@ -137,9 +137,9 @@ class TextClient:
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
-        ``tenant_id`` is MANDATORY (TASK-737 owner directive, 2026-08-16). Text
+        tenant_id is MANDATORY ( owner directive, 2026-08-16). Text
         resolves the tenant's BYOK provider/credential from ``X-Tenant-Id`` and
-        TASK-735 derives ``funding``/``cost_basis`` from whichever tier supplied
+        derives funding/cost_basis from whichever tier supplied
         that credential — so a dropped tenant mis-CONFIGURES *and* mis-BILLS the
         call, with nothing thrown or logged anywhere. It is passed positionally
         by nobody: every caller must name it.
@@ -150,7 +150,7 @@ class TextClient:
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
-                "text generate requires a tenant_id (TASK-737): pass the consultation's "
+                "text generate requires a tenant_id : pass the consultation's "
                 "tenant, or an explicit 'tenantless:<reason>' marker for genuinely "
                 "tenant-less work. An absent tenant is a caller defect."
             )
@@ -173,7 +173,7 @@ class TextClient:
         if context is not None:
             body["context"] = context
 
-        # TASK-858 — Text holds no endpoint or credential of its own (TASK-735/736):
+        # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and
         # answers a 503 ``PROVIDER_CREDENTIALS_MISSING`` without it. The gateway injects
         # that envelope on its own proxied calls; this client calls Text DIRECTLY, so it
@@ -200,7 +200,7 @@ class TextClient:
         # is configured — omitted when unset so local dev-bypass keeps working.
         if self._service_token:
             headers["X-Service-Token"] = self._service_token
-        # MANDATORY tenant identity (TASK-737). Unconditional by construction —
+        # MANDATORY tenant identity. Unconditional by construction
         # the guard above already rejected a blank value.
         headers["X-Tenant-Id"] = tenant_id.strip()
 

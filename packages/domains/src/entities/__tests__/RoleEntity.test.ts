@@ -19,7 +19,7 @@ import { ResourceStatusType } from '../../enums';
 function createValidInit(overrides: Partial<IRoleEntity> = {}): IRoleEntity {
   return {
     id: 'role-test-id',
-    // TASK-766 OD-1: `RoleEntity` extends `BaseTenantEntity` now, whose
+    // `RoleEntity` extends `BaseTenantEntity` now, whose
     // `validate()` is a hard backstop for the schema NOT NULL — every fixture
     // must carry a tenant. SYSTEM here, since ADMIN is a platform built-in.
     tenantId: '00000000-0000-0000-0000-000000000000',
@@ -45,13 +45,13 @@ function createValidInit(overrides: Partial<IRoleEntity> = {}): IRoleEntity {
 
 describe('RoleEntity.validate()', () => {
   /**
-   * TASK-766 OD-1 — `Role` is tenant-scoped, so `RoleEntity` extends
+   * `Role` is tenant-scoped, so `RoleEntity` extends
    * `BaseTenantEntity` and its `validate()` MUST chain to `super.validate()`.
    * That chain is the runtime backstop for the schema-level NOT NULL, and it
    * is easy to lose: an override that forgets the `super` call silently
    * disables the tenant guard for every hydration path. These cases fail if
    * the chain is dropped.
-   */
+ */
   describe('tenant guard (BaseTenantEntity)', () => {
     it('throws when tenantId is missing', () => {
       const entity = new RoleEntity({ ...createValidInit(), tenantId: undefined } as unknown as IRoleEntity);

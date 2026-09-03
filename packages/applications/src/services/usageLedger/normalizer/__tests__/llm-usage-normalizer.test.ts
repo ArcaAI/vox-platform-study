@@ -2,7 +2,7 @@
  * Provider usage-object normalizer — golden tests.
  *
  * These are the FROZEN semantics wave-1 emitters code against.
- * Every case below is one of the five defects research-findings.md §3 ranks as
+ * Every case below is one of the five defects research-findings.md ranks as
  * most likely to corrupt a meter; a green suite here is the only thing standing
  * between a cached Anthropic request and a 10x mis-bill.
  *

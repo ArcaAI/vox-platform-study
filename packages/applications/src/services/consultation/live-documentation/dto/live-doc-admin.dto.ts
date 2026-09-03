@@ -98,7 +98,7 @@ export class LiveDocEngineConfigResponse {
 }
 
 /**
- * TASK-852 item 6 — ONE realtime node, as it will actually be executed.
+ * item 6 — ONE realtime node, as it will actually be executed.
  *
  * Every field is READ OFF the resolved lane, never restated from a catalogue: `enabled` is the
  * node's own authored config (items 3-4), `togglable` is whether the contract offers `enabled` on
@@ -147,7 +147,7 @@ export type LiveDocRealtimeLaneSource = 'platform-default' | 'tenant-graph';
  * WHICH tier supplied the definition — a different question from {@link LiveDocRealtimeLaneSource},
  * which says whether that tier produced an executable lane.
  *
- * `consultation` (TASK-858) is the tier ABOVE the assignment cascade: the workflow this
+ * `consultation` is the tier ABOVE the assignment cascade: the workflow this
  * consultation itself selected at open. It exists because a per-consultation choice and a
  * per-tenant assignment are not the same decision, and reporting the tenant tier for a
  * clinician-selected workflow is precisely the misattribution this field exists to prevent.
@@ -155,7 +155,7 @@ export type LiveDocRealtimeLaneSource = 'platform-default' | 'tenant-graph';
 export type LiveDocRealtimeAssignmentSource = 'consultation' | 'department' | 'tenant' | 'platform-default';
 
 /**
- * TASK-852 item 6 — which realtime capabilities are actually live for a tenant
+ * item 6 — which realtime capabilities are actually live for a tenant
  * (`GET /admin/harness/live/capabilities`).
  *
  * Activation was previously unobservable: the lane source, definition and per-node state existed

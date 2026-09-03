@@ -204,7 +204,7 @@ describe('WebhookDeliveryDispatchProcessor (sender — @Processor(JobQueue.Webho
     expect(url).toBe('https://receiver.example.com/hook');
 
     const parsedBody = JSON.parse(body);
-    // Reference-not-content contract (§3): never SysEvent.data / resource content.
+    // Reference-not-content contract: never SysEvent.data / resource content.
     expect(parsedBody).toEqual({
       eventType: 'SysEvent.ResourceUpdated',
       resourceType: 'Consultation',

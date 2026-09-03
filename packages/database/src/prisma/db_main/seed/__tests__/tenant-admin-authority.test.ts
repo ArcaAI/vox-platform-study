@@ -3,7 +3,7 @@ import { DEFAULT_POLICIES } from '../01-policy';
 import { DEFAULT_ROLES } from '../03-role';
 
 /**
- * TASK-766 — "the ArcaAI tenant admin genuinely holds ALL rights within the
+ * "the ArcaAI tenant admin genuinely holds ALL rights within the
  * ArcaAI tenant", turned into a checked fact.
  *
  * ## What was measured
@@ -45,7 +45,7 @@ import { DEFAULT_ROLES } from '../03-role';
  * (`read:Role` via `rbac-tenant-manage`, `read`/`list:Policy`, `manage:RolePolicy`,
  * `create:Role`), which is what makes `GET /admin/rbac/roles`, role CLONE and
  * policy attach/detach reachable. Full custom-role mutation is not — see the
- * ticket README §Owner Decisions.
+ * Decisions.
  *
  * ## Why this test exists rather than a one-off audit
  *

@@ -1,5 +1,5 @@
 /**
- * TASK-858 — the consent register READ is clinician-reachable.
+ * the consent register READ is clinician-reachable.
  *
  * `admin/consent-grants` is class-gated `@CanManage('ConsentGrant')` (the PHI
  * authorization root: recording and revoking a grant stay tenant-admin work).
@@ -18,7 +18,7 @@ import { ConsentGrantController } from '../consent.controller';
 
 const methodMeta = (method: string) => Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (ConsentGrantController.prototype as any)[method]);
 
-describe('ConsentGrantController — authorization metadata (TASK-858)', () => {
+describe('ConsentGrantController — authorization metadata ', () => {
   it('list (GET) requires only read:ConsentGrant so clinicians can pre-flight consent', () => {
     expect(methodMeta('list')).toEqual([{ action: 'read', subject: 'ConsentGrant' }]);
   });

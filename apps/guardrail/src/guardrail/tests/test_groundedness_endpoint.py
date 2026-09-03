@@ -85,7 +85,7 @@ def _app(
             app.state.settings.groundedness, scorer=KeywordOverlapScorer()
         )
     elif seed_scorerless_verifier:
-        # TASK-735 Phase 6 — the "model unavailable" state is no longer "the local
+        # the "model unavailable" state is no longer "the local
         # GGUF is unstaged" (guardrail hosts no weights): it is a verifier that
         # ended up with no usable scorer. Seeded explicitly so this test still
         # exercises the DEGRADE path; a MISSING registry selection is a different

@@ -1,7 +1,7 @@
 /**
  * ConsultationService — recording lifecycle (Clinical Workflow Playground WS2)
  *
- * TASK-711 — verifies `startRecording`/`stopRecording` route through
+ * verifies `startRecording`/`stopRecording` route through
  * `ConsultationEntity.transitionTo` (`PRIMED → RECORDING`,
  * `RECORDING → DRAINING`), persist via `updateWithVersion`, broadcast
  * `ResourceUpdated`, and surface the column value via
@@ -66,7 +66,7 @@ function makeService(tenantSettings?: { resolvePlatform: (key: string) => { valu
   );
 }
 
-describe('ConsultationService — recording lifecycle (WS2, TASK-711)', () => {
+describe('ConsultationService — recording lifecycle (WS2)', () => {
   let service: ConsultationService;
 
   beforeEach(() => {

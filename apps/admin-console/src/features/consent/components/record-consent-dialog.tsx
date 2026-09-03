@@ -24,7 +24,7 @@ export interface RecordConsentDialogProps {
 }
 
 /**
- * Records a `ConsentGrant` (TASK-805).
+ * Records a `ConsentGrant`.
  *
  * The attestation line is not decoration. This dialog is the only place a
  * human asserts that a patient authorized a use of their data — the gateway

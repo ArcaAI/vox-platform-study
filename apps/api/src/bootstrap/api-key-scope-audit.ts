@@ -2,7 +2,7 @@
  * Boot-time audit: the HOPE Node SDK's day-1 summarization surface
  * must never silently lose API-key scope enforcement.
  *
- * (docs/implementation/TASK-632-HOPE-Node-SDK/README.md): previously,
+ * previously,
  * `API_KEY_SCOPE_REGISTRY` and `UnifiedAuthGuard.enforceApiKeyScopes` both
  * existed, but no decorator ever SET `API_KEY_REQUIRED_SCOPES` metadata, so
  * `requiredScopes` was always `undefined` and any valid API key reached
@@ -60,9 +60,9 @@ export const SDK_DAY1_SCOPED_ROUTES: ScopedRoute[] = [
   { controller: ConsultationJobController, method: 'getJob' },
   { controller: ConsultationJobController, method: 'cancelJob' },
   { controller: ConsultationJobController, method: 'streamJob' },
-  // TASK-722's exposure plane — the surface S-2/R-1 exist to gate. Every route reaches this
+  // exposure plane — the surface S-2/R-1 exist to gate. Every route reaches this
   // audit (not `admin-scope-audit.ts`'s ADMIN_SCOPED_CONTROLLERS list — `/workflows/*` is not
-  // an `/admin/*` route). Coordinate with TASK-708, which hardens this same list.
+  // an `/admin/*` route). Coordinate with, which hardens this same list.
   { controller: WorkflowsController, method: 'list' },
   { controller: WorkflowsController, method: 'invoke' },
   { controller: WorkflowsController, method: 'getRunStatus' },
@@ -78,7 +78,7 @@ export function auditApiKeyRequiredScopes(routes: ScopedRoute[] = SDK_DAY1_SCOPE
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- indexing the prototype by a dynamic method name; the typeof check right below is the real guard
     const handler = (controller.prototype as any)[method];
     if (typeof handler !== 'function') {
-      offenders.push(`${controller.name}.${method} does not exist — TASK-632 B1 audit target is stale, update SDK_DAY1_SCOPED_ROUTES.`);
+      offenders.push(`${controller.name}.${method} does not exist — B1 audit target is stale, update SDK_DAY1_SCOPED_ROUTES.`);
       continue;
     }
 
@@ -96,13 +96,13 @@ export function auditApiKeyRequiredScopes(routes: ScopedRoute[] = SDK_DAY1_SCOPE
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
     throw new Error(
-      `TASK-632 B1: refused to start — ${offenders.length} API-key-reachable summarization route(s) lack API_KEY_REQUIRED_SCOPES metadata:\n${list}`,
+      ` B1: refused to start — ${offenders.length} API-key-reachable summarization route(s) lack API_KEY_REQUIRED_SCOPES metadata:\n${list}`,
     );
   }
 }
 
 /**
- * Boot-time audit (TASK-708): every `/internal/*` route must be fully OFF
+ * Boot-time audit: every `/internal/*` route must be fully OFF
  * the API-key (and JWT) auth surface — gated by a dedicated platform
  * service-token guard instead, never by `@RequiredScopes`.
  *
@@ -158,7 +158,7 @@ export const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set
  * BUG-013 requires to be the RAW value of a registered ACTIVE SERVICE_ACCOUNT
  * `ApiKey` row. The live send sites are `apps/stt/src/stt/core/api_client/gateway.py`
  * (`"X-Internal-Service-Key": self.api_key`) and
- * `apps/stt/src/stt/core/effective_config.py` — corrected by TASK-759 (D-3):
+ * `apps/stt/src/stt/core/effective_config.py` — corrected by (D-3):
  * the previous citation `apps/stt/src/stt/worker.py:209` now points at
  * SERVICE-RELEASE REGISTRATION, not the STT internal callback path. It presents
  * an API KEY, not a service token, so pulling this controller off the API-key
@@ -169,7 +169,7 @@ export const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set
  * tenant SDK/WEBHOOK/INTEGRATION key is ever issued and which prefix matching
  * cannot cross. Removing that decorator fails boot exactly like the guard case.
  *
- * FROZEN AT ONE MEMBER (TASK-761 gate G2, decision D-3). Policing the exemption
+ * FROZEN AT ONE MEMBER ( gate G2, decision D-3). Policing the exemption
  * never constrained its SIZE: adding a second name here is a one-line change
  * that silently re-opens the API-key path under `/internal/*` for that
  * controller, with no boot failure and nothing in the diff louder than a
@@ -231,7 +231,7 @@ export function auditInternalRoutesOffApiKeySurface(app: INestApplicationContext
         if (skipAuth !== true) {
           offenders.push(
             `Route ${fullPath} on ${ControllerClass.name}.${methodName} is under /internal/* but is not @Public() — it is ` +
-              `still reachable through UnifiedAuthGuard's JWT/API-key auth path, exactly the gap TASK-708 closed for ` +
+              `still reachable through UnifiedAuthGuard's JWT/API-key auth path, exactly the gap  closed for ` +
               `SttInternalController. Mark it @Public() and gate it with a dedicated platform service-token guard instead.`,
           );
           continue;
@@ -253,7 +253,7 @@ export function auditInternalRoutesOffApiKeySurface(app: INestApplicationContext
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
     throw new Error(
-      `TASK-708: refused to start — ${offenders.length} /internal/* route(s) are reachable off a platform service-token guard:\n${list}`,
+      `refused to start — ${offenders.length} /internal/* route(s) are reachable off a platform service-token guard:\n${list}`,
     );
   }
 }

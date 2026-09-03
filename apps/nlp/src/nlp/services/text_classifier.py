@@ -76,7 +76,7 @@ class TransformerTextClassifier(TextClassifier):
                     "classifier model_name was provided (the current default is a non-functional "
                     "placeholder). /classify/text requires a DB-configured, "
                     "gateway-injected model_name and stays unavailable (HTTP 503) until one is "
-                    "set. See the open decision in nlp.core.config (TASK-330 §3.4)."
+                    "set. See the open decision in nlp.core.config (§3.4)."
                 )
                 self._unconfigured_warning_emitted = True
             self.is_initialized = False

@@ -71,7 +71,6 @@ import { extractExpectedVersion } from '../decorators/expectedVersion.decorator'
  *     ack, is invisible here even when the underlying row is version-bearing.
  *     Sub-resource writes that return the child rather than the versioned
  *     parent are the systematic case. The published inventory
- *     (`docs/implementation/TASK-776-API-Contract-Test-Suite/occ-coverage-inventory.md`)
  *     is the human-reviewed superset and is authoritative where the two differ.
  *   - **False negative.** A response DTO that carries `version` through
  *     inheritance from a base class NOT decorated with `@ApiProperty()` (plain
@@ -250,7 +249,7 @@ function emit(report: OccCoverageReport, logger: Pick<Logger, 'warn' | 'log'>): 
       `  Evidence keys: responseDtoVersion = the response DTO declares a version property (ETagInterceptor fires); ` +
       `expectedVersionParam = the handler already takes @ExpectedVersion() but never makes it mandatory.\n` +
       `  Adding the decorator is BREAKING (missing header ⇒ 428). Inventory and phased migration: ` +
-      `docs/implementation/TASK-776-API-Contract-Test-Suite/occ-coverage-inventory.md. ` +
+      ` ` +
       `Deliberate exceptions declare @NoOptimisticConcurrency('<reason>').`,
   );
 }

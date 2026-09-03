@@ -25,7 +25,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../settings-registry-write.service';
 
-/** The SOLE platform-configuration tier (owner ruling 2026-08-20, TASK-763 OD-1). */
+/** The SOLE platform-configuration tier (owner ruling 2026-08-20). */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /** GLOBAL — a CUSTOMER tenant (the platform-admin playground), never a config tier. */
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
@@ -128,7 +128,7 @@ describe('tenant-scope write persists under the caller tenant', () => {
   });
 
   it('ALLOWS a tenant-scope write whose working tenant is GLOBAL — GLOBAL is an ordinary CUSTOMER tenant, not a platform tier', async () => {
-    // Owner ruling 2026-08-20 (TASK-763 OD-1): the runtime cascade is request
+    // Owner ruling 2026-08-20: the runtime cascade is request
     // tenant → SYSTEM, full stop. GLOBAL (`50000000-…`) is the platform-admin
     // playground tenant, and must be free to set its OWN tenant-scope rows
     // exactly like any other customer tenant — that is the whole point of the

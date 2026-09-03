@@ -1,7 +1,6 @@
 /**
- * `WorkflowDefinition` + node-registry API module (TASK-719 Task 10). Paths and OCC posture
+ * `WorkflowDefinition` + node-registry API module. Paths and OCC posture
  * verified against the DELIVERED `WorkflowDefinitionController`/`WorkflowNodeController`
- * (TASK-734) — see `docs/implementation/TASK-719-Workflow-Studio-V1/contracts/definition-api.contract.md`:
  * PATCH is If-Match OCC; `validate` and `publish` are confirmed NOT If-Match gated (the service
  * either self-CASes with the version it just read, or is not a CAS at all).
  */
@@ -133,7 +132,7 @@ describe('workflow-studio client', () => {
   });
 });
 
-describe('workflow-assignment client (TASK-733 half (a) Task 6)', () => {
+describe('workflow-assignment client ( half (a) Task 6)', () => {
   it('lists one palette’s assignments via a paletteKey query param', async () => {
     const calls = installFetchMock();
     await listWorkflowAssignments('consultation');

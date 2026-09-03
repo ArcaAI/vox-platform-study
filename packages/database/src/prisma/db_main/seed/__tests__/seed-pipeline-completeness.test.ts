@@ -3,7 +3,7 @@
  *
  * `index.ts` orchestrates ~35 phase functions (`seedXxx`/`provisionXxx`)
  * imported from the numbered `NN-name.ts` files in this directory. The
- * TASK-686 commit added a new phase (`seedConsultationLoopDefaults`) by
+ * commit added a new phase (`seedConsultationLoopDefaults`) by
  * REPLACING the existing `await seedAgentGoldenLibrary(client);` call instead
  * of adding the new call alongside it — the import stayed, the invocation
  * silently disappeared, and every fresh seed produced zero SYSTEM-tenant

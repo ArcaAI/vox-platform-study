@@ -173,7 +173,7 @@ class TestGenerateEndpoint:
 
     @pytest.mark.asyncio
     async def test_generate_streaming_returns_sse_immediately(self, client):
-        """TASK-818 §3C.3(1): 200 + SSE, not a 202 pointing at a second request.
+        """200 + SSE, not a 202 pointing at a second request.
 
         The generation id the caller needs to reconnect arrives in the FIRST
         event rather than in a JSON envelope — that is what lets a client

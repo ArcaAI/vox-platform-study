@@ -1,4 +1,4 @@
-"""The ``guard.*`` node types (TASK-809 DD-7) — TASK-806 lane A, item 17.
+"""The guard.* node types — lane A, item 17.
 
 A guard is the thing ``WorkflowNodeDescriptor.requires`` names: a node type that must be wired to
 EVERY INSTANCE of the node that requires it before a graph containing it can be published
@@ -169,7 +169,7 @@ async def _evaluate_policy(
 
 @activity.defn(name="interpreter.guard_groundedness")
 async def interpreter_guard_groundedness(payload: NodeActivityInput) -> NodeActivityResult:
-    """Groundedness guard over a GENERATED document, and — TASK-815 §14b — over the tenant's own
+    """Groundedness guard over a GENERATED document, and — — over the tenant's own
     grounding POLICIES.
 
     Its ``in`` input is typed ``document`` rather than ``text``, and that is load-bearing:

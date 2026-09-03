@@ -52,8 +52,10 @@ export function RegistryValueEditor({
     return (
       <div className="flex items-center gap-3">
         <Switch id={id} checked={checked} disabled={disabled} aria-describedby={describedBy} onCheckedChange={(next) => onChange(String(next))} />
-        {/* The state is stated in words, not carried by the switch position
-            alone — rule 11 §10, never meaning by appearance alone. */}
+        {/*
+ The state is stated in words, not carried by the switch position
+            alone — rule 11 §10, never meaning by appearance alone.
+*/}
         <Label htmlFor={id} className="font-mono text-xs">
           {checked ? 'true' : 'false'}
         </Label>

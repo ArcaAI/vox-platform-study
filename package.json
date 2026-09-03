@@ -356,7 +356,7 @@
     "clean:cache": "./scripts/clean.sh cache",
     "clean:deps": "./scripts/clean.sh deps",
     "clean:all": "./scripts/clean.sh all",
-    "── PGBOUNCER VALIDATION (TASK-302 Stream C) ──────": "",
+    "── PGBOUNCER VALIDATION (Stream C) ──────": "",
     "pgbv:up": "docker compose -f packages/database/tests/pgbouncer-validation/docker-compose.yml up -d",
     "pgbv:down": "docker compose -f packages/database/tests/pgbouncer-validation/docker-compose.yml down -v",
     "pgbv:logs": "docker compose -f packages/database/tests/pgbouncer-validation/docker-compose.yml logs -f",

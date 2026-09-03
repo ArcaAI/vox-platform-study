@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         warmup = settings.warmup_enabled
         # Warm-up voices come from the VOICE CATALOG, the single source of
-        # provider voice names since TASK-799 lane C. The per-provider `voice` /
+        # provider voice names since lane C. The per-provider `voice` /
         # `speaker_*` settings that held the same strings a second time are gone,
         # and on the request path the router already resolves these bindings into
         # `req.provider_voice`; warm-up is the one path with no request to

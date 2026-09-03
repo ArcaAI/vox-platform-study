@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import nextConfig from '../../next.config';
 
 /**
- * TASK-838: baseline security headers must be present on every response.
+ * baseline security headers must be present on every response.
  * `frame-ancestors 'self'` (not 'none'/DENY) is required so the Database
  * Studio same-origin iframe embed
  * (src/features/db-studio/components/db-studio-screen.tsx, which loads
