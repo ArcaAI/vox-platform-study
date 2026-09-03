@@ -149,7 +149,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (88): AiRoutingPolicy — the config-plane routing policy.
     // SYSTEM row = platform default, tenant row wins on presence; also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    expect(TENANT_SCOPED_MODELS.size).toBe(92);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -481,6 +481,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // PipelinePolicy above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
+        // TASK-863 — platform-default agents + assignments resolve tenant → SYSTEM.
+        'Agent',
+        'AgentAssignment',
       ]),
     );
   });

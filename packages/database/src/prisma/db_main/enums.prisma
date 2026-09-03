@@ -915,3 +915,18 @@ enum AiTaskKind {
 
   @@schema("core")
 }
+
+// ── AgentTask (TASK-863) ──────────────────────────────────────────────────────
+// The ONE task an `Agent` performs. Deliberately three members (owner directive
+// 2026-09-04: "Agent is only based on LLM/ASR/TTS models"); classification is
+// a workflow node (`core.classify`, TASK-864), not an agent. Distinct from
+// `AiTaskKind` (the routing-policy taxonomy) and `ModelTaskType` (the HF
+// registry taxonomy): AGENT_TASK_MODEL_TASK_TYPE in @arcaai/workflow-contract
+// maps each member to the registry task type a backing model must carry.
+enum AgentTask {
+  SPEECH_TO_TEXT
+  TEXT_GENERATION
+  TEXT_TO_SPEECH
+
+  @@schema("core")
+}
