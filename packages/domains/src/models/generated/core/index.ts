@@ -1,3 +1,7 @@
+export * from './AgentAssignmentChangeModel';
+export * from './AgentAssignmentModel';
+export * from './AgentModel';
+export * from './AgentModelFallbackModel';
 export * from './AgentPromotionModel';
 export * from './AgentTrajectoryStepModel';
 export * from './AiModelModel';
