@@ -25,7 +25,7 @@
  *      every `ollama-*` slug the platform ever shipped is in the retired
  *      ledger. Seeds are create-only, so deleting a row is not enough: the
  *      ledger is what sweeps a slug out of a tenant's already-materialised
- *      catalog (`retireLegacyAiModels`, `06-stt.ts`).
+ *      catalog (`retireLegacyAiModels`, `06-ai-models.ts`).
  *
  * The pair is the whole point. A provider with no catalog rows is not a
  * contradiction here — it is BYO: the model id arrives from the tenant's own
@@ -34,7 +34,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { DEFAULT_AI_MODELS } from '../06-stt';
+import { DEFAULT_AI_MODELS } from '../06-ai-models';
 import { AI_MODEL_PROVIDERS } from '../ai-models/shared';
 import { RETIRED_AI_MODEL_SLUGS } from '../ai-models/retired';
 import { SYSTEM_AI_PROVIDER_CONNECTIONS } from '../17-ai-provider-connection';

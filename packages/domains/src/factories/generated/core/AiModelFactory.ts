@@ -18,6 +18,19 @@ export interface CreateAiModelProps extends BaseEntityFactoryCreateProps {
   sourceUri: IAiModelEntity['sourceUri'];
   sourceRevision?: IAiModelEntity['sourceRevision'];
   format: IAiModelEntity['format'];
+  // TASK-860 registry identity — the three required facets + card metadata.
+  libraryName: IAiModelEntity['libraryName'];
+  servedBy: IAiModelEntity['servedBy'];
+  deploymentKind: IAiModelEntity['deploymentKind'];
+  wireModelId?: IAiModelEntity['wireModelId'];
+  license?: IAiModelEntity['license'];
+  gated?: IAiModelEntity['gated'];
+  baseModel?: IAiModelEntity['baseModel'];
+  languages?: IAiModelEntity['languages'];
+  hfRevision?: IAiModelEntity['hfRevision'];
+  bucketPrefix?: IAiModelEntity['bucketPrefix'];
+  primaryObject?: IAiModelEntity['primaryObject'];
+  isPlatformDefaultFor?: IAiModelEntity['isPlatformDefaultFor'];
   // Canonical runtime provider + architecture family.
   provider?: IAiModelEntity['provider'];
   architecture?: IAiModelEntity['architecture'];
@@ -62,6 +75,24 @@ export class AiModelFactory {
       provider: props.provider ?? null,
       architecture: props.architecture ?? null,
       metaData: props.metaData ?? undefined,
+      libraryName: props.libraryName,
+      servedBy: props.servedBy,
+      deploymentKind: props.deploymentKind,
+      wireModelId: props.wireModelId ?? null,
+      license: props.license ?? null,
+      gated: props.gated ?? false,
+      baseModel: props.baseModel ?? null,
+      languages: props.languages ?? [],
+      hfRevision: props.hfRevision ?? null,
+      bucketPrefix: props.bucketPrefix ?? null,
+      primaryObject: props.primaryObject ?? null,
+      manifestDigest: null,
+      // A cloud row has nothing to inventory; everything else starts UNKNOWN
+      // until the inventory job measures it.
+      availability: props.deploymentKind === Enums.AiDeploymentKind.CLOUD ? Enums.AiModelAvailability.NOT_APPLICABLE : Enums.AiModelAvailability.UNKNOWN,
+      availabilityCheckedAt: null,
+      availabilityDetail: null,
+      isPlatformDefaultFor: props.isPlatformDefaultFor ?? [],
       memorySizeMb: props.memorySizeMb ?? null,
       computeType: props.computeType ?? null,
       downloadStatus: Enums.AiModelDownloadStatus.NOT_DOWNLOADED,

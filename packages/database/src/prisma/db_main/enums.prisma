@@ -347,7 +347,9 @@ enum HighlightTargetKind {
 
 enum AiModelSource {
   HUGGINGFACE // HuggingFace Hub
+  /// @deprecated TASK-860 — removed in R3. Unused; no resolver dispatches on it.
   GITHUB // GitHub releases/raw files
+  /// @deprecated TASK-860 — removed in R3. Unused; no resolver dispatches on it.
   MLFLOW // Self-hosted MLFlow registry
   LOCAL // Local filesystem
   S3 // S3/MinIO-compatible object storage (s3://bucket/prefix; s3:// only)
@@ -367,22 +369,53 @@ enum AiModelFormat {
   // Prisma↔Python enum sync — the DB rows and the Python dto.py enum must stay
   // aligned or config_reader crashes on an unrecognized value.
   ONNX_OPTIMUM // HuggingFace Optimum ONNX (ORTModelForSpeechSeq2Seq)
+  // The five cloud PSEUDO-formats below describe no artifact at all. Since
+  // TASK-860 a registry row states `deploymentKind = CLOUD` + `libraryName`
+  // (`azure-speech`, `azure-foundry`, `sarvam`, `openai`, `azure-openai`) and
+  // the vendor wire id in `wireModelId`; the STT pipeline surface still binds
+  // engines by these values until TASK-861 retires it, which is why they stay.
+  /// @deprecated TASK-860 — removed in R3. Use `deploymentKind = CLOUD` + `libraryName = azure-speech`.
   AZURE_SPEECH // Cloud — Azure Cognitive Services Speech
+  /// @deprecated TASK-860 — removed in R3. Use `deploymentKind = CLOUD` + `libraryName = azure-foundry`.
   AZURE_FOUNDRY // Cloud, Azure AI Foundry MAI-Transcribe (preview)
   PARAKEET_CPP // parakeet.cpp ggml runtime (Parakeet/Nemotron)
+  /// @deprecated TASK-860 — removed in R3. Use `deploymentKind = CLOUD` + the vendor `libraryName`.
   CLOUD_API // Generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
   WHISPER_CPP // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
+  /// @deprecated TASK-860 — removed in R3. Use `deploymentKind = CLOUD` + `libraryName = sarvam`.
   SARVAM // Cloud — Sarvam AI speech-to-text (saaras family, code-switch). First-class so a slug ref binds it like AZURE_SPEECH.
+  /// @deprecated TASK-860 — removed in R3. Use `deploymentKind = CLOUD` + `libraryName = openai`.
   OPENAI // Cloud — OpenAI speech-to-text (gpt-4o-transcribe). First-class so a slug ref binds it like AZURE_SPEECH.
 
   @@schema("core")
 }
 
+/// @deprecated TASK-860 — removed in R3. `AiModel.downloadStatus` is superseded by
+/// `AiModel.availability` (measured by the inventory job, not declared by an admin).
 enum AiModelDownloadStatus {
   NOT_DOWNLOADED
   DOWNLOADING
   DOWNLOADED
   DOWNLOAD_FAILED
+
+  @@schema("core")
+}
+
+// Measured presence of a registry row's weights in the shared `hope-models`
+// bucket (TASK-860 R-2). Written by the inventory job and the publish
+// processor only — an admin edit never sets it, because availability is a
+// FACT about the bucket, not an opinion about the row.
+//   UNKNOWN        never inventoried (fresh row, or the bucket was unreachable)
+//   AVAILABLE      every object the manifest lists is present with the right digest
+//   MISSING        the prefix (or its manifest) is not in the bucket
+//   PARTIAL        the manifest is there but at least one object is absent/mismatched
+//   NOT_APPLICABLE the row has no weights to inventory (cloud rows, pyrnnoise)
+enum AiModelAvailability {
+  UNKNOWN
+  AVAILABLE
+  MISSING
+  PARTIAL
+  NOT_APPLICABLE
 
   @@schema("core")
 }

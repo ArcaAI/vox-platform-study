@@ -6,7 +6,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AiModelFactory, CreateAiModelProps } from '../AiModelFactory';
-import { AiModelSource, AiModelFormat, AiModelDownloadStatus, ModelCategory, ModelTaskType, ModelType } from '../../../../enums';
+import {
+  AiModelSource,
+  AiModelFormat,
+  AiModelDownloadStatus,
+  AiModelAvailability,
+  AiDeploymentKind,
+  ModelCategory,
+  ModelTaskType,
+  ModelType,
+} from '../../../../enums';
 
 // tenantId is now required at the factory layer.
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -32,6 +41,9 @@ describe('AiModelFactory', () => {
       source: AiModelSource.HUGGINGFACE,
       sourceUri: 'openai/whisper-large-v3',
       format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
     };
 
     it('should create an AI model with required fields', () => {
@@ -201,6 +213,9 @@ describe('AiModelFactory', () => {
       source: AiModelSource.HUGGINGFACE,
       sourceUri: 'openai/whisper-tiny',
       format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
     };
 
     it('should create an ASR model with AUDIO category', () => {
@@ -249,6 +264,9 @@ describe('AiModelFactory', () => {
       source: AiModelSource.GITHUB,
       sourceUri: 'snakers4/silero-vad',
       format: AiModelFormat.PYTORCH,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
     };
 
     it('should create a VAD model with AUDIO category', () => {
@@ -336,6 +354,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'test/model',
         format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.hasChanges).toBe(false);
@@ -353,6 +374,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'test/model',
         format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isNotDownloaded).toBe(true);
@@ -373,6 +397,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'organization/model',
         format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isHuggingFace).toBe(true);
@@ -389,6 +416,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.MLFLOW,
         sourceUri: 'models:/my-model/1',
         format: AiModelFormat.PYTORCH,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.isMLFlow).toBe(true);
@@ -405,6 +435,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.LOCAL,
         sourceUri: '/models/model.onnx',
         format: AiModelFormat.ONNX,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.format).toBe(AiModelFormat.ONNX);
@@ -421,6 +454,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'nvidia/stt_en_conformer',
         format: AiModelFormat.NEMO,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
 
       expect(model.format).toBe(AiModelFormat.NEMO);
@@ -438,6 +474,9 @@ describe('AiModelFactory', () => {
         source: AiModelSource.LOCAL,
         sourceUri: 'gemma-4-e2b-it-qat',
         format: AiModelFormat.GGUF,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
         provider: 'lm-studio',
         architecture: 'gemma4',
         metaData: { voices: [{ id: 'en-female-1', locale: 'en-IN' }] },
@@ -459,9 +498,82 @@ describe('AiModelFactory', () => {
         source: AiModelSource.HUGGINGFACE,
         sourceUri: 'openai/whisper-large-v3',
         format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'stt',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
       });
       expect(model.provider).toBeNull();
       expect(model.architecture).toBeNull();
+    });
+  });
+
+  // ==========================================================================
+  // TASK-860 — registry defaults
+  // ==========================================================================
+  describe('registry defaults (TASK-860)', () => {
+    const registryProps: CreateAiModelProps = {
+      tenantId: TEST_TENANT_ID,
+      name: 'Medical NER',
+      slug: 'medical-ner',
+      category: ModelCategory.NLP,
+      taskType: ModelTaskType.TOKEN_CLASSIFICATION,
+      modelType: ModelType.FINETUNED_MODEL,
+      source: AiModelSource.HUGGINGFACE,
+      sourceUri: 'blaze999/Medical-NER',
+      format: AiModelFormat.SAFETENSOR,
+      libraryName: 'transformers',
+      servedBy: 'nlp',
+      deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    };
+
+    it('carries libraryName / servedBy / deploymentKind and defaults the card + bucket fields', () => {
+      const model = AiModelFactory.CreateAiModel(registryProps);
+
+      expect(model.libraryName).toBe('transformers');
+      expect(model.servedBy).toBe('nlp');
+      expect(model.deploymentKind).toBe(AiDeploymentKind.SELF_HOSTED);
+      expect(model.gated).toBe(false);
+      expect(model.languages).toEqual([]);
+      expect(model.isPlatformDefaultFor).toEqual([]);
+      expect(model.wireModelId).toBeNull();
+      expect(model.license).toBeNull();
+      expect(model.baseModel).toBeNull();
+      expect(model.hfRevision).toBeNull();
+      expect(model.bucketPrefix).toBeNull();
+      expect(model.primaryObject).toBeNull();
+      expect(model.manifestDigest).toBeNull();
+      expect(model.availabilityCheckedAt).toBeNull();
+      expect(model.availabilityDetail).toBeNull();
+    });
+
+    it('starts a self-hosted row UNKNOWN and a cloud row NOT_APPLICABLE for availability', () => {
+      expect(AiModelFactory.CreateAiModel(registryProps).availability).toBe(AiModelAvailability.UNKNOWN);
+      const cloud = AiModelFactory.CreateAiModel({ ...registryProps, deploymentKind: AiDeploymentKind.CLOUD, wireModelId: 'gpt-transcribe' });
+      expect(cloud.availability).toBe(AiModelAvailability.NOT_APPLICABLE);
+      expect(cloud.wireModelId).toBe('gpt-transcribe');
+    });
+
+    it('accepts the card metadata + bucket identity when supplied', () => {
+      const model = AiModelFactory.CreateAiModel({
+        ...registryProps,
+        license: 'mit',
+        gated: true,
+        baseModel: 'google/flan-t5-large',
+        languages: ['en'],
+        hfRevision: 'sha1',
+        bucketPrefix: 'medical-ner/abc/',
+        primaryObject: 'model.safetensors',
+        isPlatformDefaultFor: ['NAMED_ENTITY_RECOGNITION' as never],
+      });
+
+      expect(model.license).toBe('mit');
+      expect(model.gated).toBe(true);
+      expect(model.baseModel).toBe('google/flan-t5-large');
+      expect(model.languages).toEqual(['en']);
+      expect(model.hfRevision).toBe('sha1');
+      expect(model.bucketPrefix).toBe('medical-ner/abc/');
+      expect(model.primaryObject).toBe('model.safetensors');
+      expect(model.isPlatformDefaultFor).toEqual(['NAMED_ENTITY_RECOGNITION']);
     });
   });
 });

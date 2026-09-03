@@ -3,7 +3,8 @@
  *
  * The 50 slugs of the previous 60-row `DEFAULT_AI_MODELS` catalog that the
  * consolidation retires, PLUS 3 more added by the Ollama model-catalog
- * purge (soft-`DELETED`, never hard-deleted — recoverable). Note the purge is
+ * purge, PLUS the 11 rows TASK-860 retires to land on the owner's 35-row
+ * catalogue (64 total; soft-`DELETED`, never hard-deleted — recoverable). Note the purge is
  * of CATALOG ROWS ONLY: the `ollama` PROVIDER remains selectable (owner
  * decision 2026-08-17), so these slugs are retired because the platform no
  * longer ships an opinion about which Ollama model to run — not because the
@@ -84,6 +85,21 @@ export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
   'whisper-tiny-en',
   'whisper-base-en',
   'whisper-small-en',
+  // TASK-860 — not in the owner's 35-row catalogue (README §2.5). The three
+  // whisper rows are still referenced by seeded ASR pipeline YAML, so the
+  // pipeline-reference guard SKIPS them on an existing database until
+  // TASK-861 retires the pipeline surface; a fresh seed never creates them.
+  'whisper-small',
+  'whisper-large-v3-turbo',
+  'whisper-large-v3-turbo-gguf',
+  'lms-gemma-4-12b-qat',
+  'lms-medgemma-1.5-4b-it',
+  'lms-medgemma-1.5-4b-it-vision',
+  'vllm-medgemma-1.5-27b-it',
+  'llama-cpp-medgemma-1.5-4b-it',
+  'bedrock-claude-3.5-haiku',
+  'nlp-doc-type-classifier',
+  'indic-f5',
 ];
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
