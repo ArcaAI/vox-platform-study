@@ -29869,7 +29869,7 @@
     },
     "/api/v1/admin/consent-grants": {
       "get": {
-        "description": "Paginated register of `ConsentGrant` rows in the caller tenant. Filter by `externalPatientId` (trim-normalized, exact-case — Q3), `purpose`, and `state`. `state=ACTIVE` applies the SAME predicate the ABAC choke point evaluates (not revoked and not expired as of now), so an Active row here is exactly a row `assertConsent` would allow at that instant.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `manage:ConsentGrant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Paginated register of `ConsentGrant` rows in the caller tenant. Filter by `externalPatientId` (trim-normalized, exact-case — Q3), `purpose`, and `state`. `state=ACTIVE` applies the SAME predicate the ABAC choke point evaluates (not revoked and not expired as of now), so an Active row here is exactly a row `assertConsent` would allow at that instant.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:ConsentGrant`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsentGrantController_list",
         "parameters": [
           {
@@ -29997,6 +29997,9 @@
           },
           {
             "bearer": []
+          },
+          {
+            "bearer": []
           }
         ],
         "summary": "List consent grants for the caller tenant",
@@ -30004,7 +30007,7 @@
           "admin-consent-grants"
         ],
         "x-hope-abilities": [
-          "manage:ConsentGrant"
+          "read:ConsentGrant"
         ],
         "x-hope-api-key-scopes": [],
         "x-hope-credentials": [

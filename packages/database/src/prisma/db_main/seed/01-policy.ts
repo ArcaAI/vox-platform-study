@@ -376,6 +376,12 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
     rules: [
       // Can create consultations
       { action: 'create', subject: 'Consultation', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-858 — can READ the tenant's consent register. The Consultation
+      // Scribe pre-flights the patient's AI_DOCUMENTATION consent through
+      // `GET /admin/consent-grants` before Start; without `read` every clinician
+      // session (or a super admin impersonating one) surfaced a 403 there.
+      // Recording/revoking a grant stays `manage` (tenant-full-access only).
+      { action: 'read', subject: 'ConsentGrant', conditions: { tenantId: '${context.tenantId}' } },
       // Can read/update/delete/list own consultations (where doctorId matches)
       {
         action: ['read', 'update', 'delete', 'list'],

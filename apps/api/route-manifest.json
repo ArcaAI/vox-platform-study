@@ -2164,7 +2164,7 @@
       "apiKeyScopes": [],
       "requiredPermissions": [
         [
-          "manage",
+          "read",
           "ConsentGrant"
         ]
       ],
