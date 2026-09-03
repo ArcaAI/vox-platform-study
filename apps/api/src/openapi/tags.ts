@@ -189,12 +189,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The model catalog: which models exist, their metadata, and their label taxonomies.',
   },
   {
-    name: 'admin-ai-provider-connections-legacy',
-    displayName: 'Provider Connections (legacy alias)',
-    plane: 'admin',
-    description: 'Deprecated alias of the provider-connection routes. Use admin-provider-connections.',
-  },
-  {
     name: 'admin-ai-runtime-profiles',
     displayName: 'AI Runtime Profiles',
     plane: 'admin',

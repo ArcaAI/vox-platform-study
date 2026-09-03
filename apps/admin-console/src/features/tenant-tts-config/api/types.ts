@@ -83,20 +83,3 @@ export interface TtsCatalogProvider {
 export interface TtsPlatformCatalog {
   providers: TtsCatalogProvider[];
 }
-
-/** Masked credential view — never carries the key. */
-export interface TtsCredential {
-  provider: string;
-  endpoint?: string | null;
-  enabled: boolean;
-  hasKey: boolean;
-  keyVersion?: number | null;
-  updatedAt?: string;
-}
-
-/** Write-only credential set/rotate body. */
-export interface SetTtsCredentialRequest {
-  apiKey: string;
-  endpoint?: string;
-  enabled?: boolean;
-}

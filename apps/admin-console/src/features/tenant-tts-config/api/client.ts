@@ -1,21 +1,18 @@
 /**
- * Tenant TTS-config client. Two sub-resources:
- *  - the versioned config ROW (OCC If-Match; expectedVersion required, 0=create),
- *  - the non-versioned BYO CREDENTIALS (write-only key, masked reads).
+ * Tenant TTS-config client — the versioned config ROW (OCC If-Match;
+ * expectedVersion required, 0=create) and the platform catalog.
+ *
+ * @deprecated TASK-862 — removed in R3 with `TenantTtsConfig` (replacement: the
+ * TTS Agent + assignment, TASK-863). The BYO credential hooks that used to sit
+ * here were DEAD (no component called them) and their gateway facade
+ * (`admin/tts-config/credentials/**`) is gone; credentials are edited on
+ * `/ai-providers` (`features/ai-providers`).
  * Paths are gateway-relative; the shared core prepends the BFF proxy mount.
  */
 
-import { deleteJson, getJson, getWithEtag, putJson, request, versionFromEtag } from '@/shared/api';
+import { getJson, getWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type {
-  EffectiveTtsConfig,
-  SetTtsCredentialRequest,
-  TtsConfigRow,
-  TtsCredential,
-  TtsPlatformCatalog,
-  TtsProvider,
-  UpdateTtsConfigRequest,
-} from './types';
+import type { EffectiveTtsConfig, TtsConfigRow, TtsPlatformCatalog, UpdateTtsConfigRequest } from './types';
 
 const BASE = 'admin/tts-config';
 
@@ -49,19 +46,4 @@ export function putTtsRow(patch: Omit<UpdateTtsConfigRequest, 'expectedVersion'>
 /** Registry-derived platform catalog: providers + voices (tenant-agnostic). */
 export function getTtsCatalog(): Promise<TtsPlatformCatalog> {
   return getJson(`${BASE}/catalog`);
-}
-
-/** Masked BYO credentials for every provider (never the key). */
-export function getTtsCredentials(): Promise<TtsCredential[]> {
-  return getJson(`${BASE}/credentials`);
-}
-
-/** Set or rotate a provider's write-only BYO key (not versioned). */
-export function setTtsCredential(provider: TtsProvider, body: SetTtsCredentialRequest): Promise<TtsCredential> {
-  return putJson(`${BASE}/credentials/${provider}`, body);
-}
-
-/** Remove a provider's BYO credential (soft delete → 204). */
-export function removeTtsCredential(provider: TtsProvider): Promise<void> {
-  return deleteJson(`${BASE}/credentials/${provider}`);
 }

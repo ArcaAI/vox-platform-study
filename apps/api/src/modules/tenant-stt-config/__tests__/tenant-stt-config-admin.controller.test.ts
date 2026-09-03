@@ -4,8 +4,8 @@
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ the cross-tenant e2e spec). These specs cover the
  * controller's OWN logic: tenant vs. super-admin scoping, and the
- * If-Match-over-body version precedence forwarded to the service on BOTH the
- * fallback row and the OCC-guarded credential write.
+ * If-Match-over-body version precedence forwarded to the service on the
+ * fallback row. (The credential facade routes were removed by TASK-862.)
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -21,10 +21,6 @@ function makeController(ctx: Ctx) {
     getRow: vi.fn(),
     setFallbackPipeline: vi.fn(),
     getFallbackCandidates: vi.fn(),
-    getCredentials: vi.fn(),
-    setCredential: vi.fn(),
-    removeCredential: vi.fn(),
-    testCredential: vi.fn(),
     resolveProviderOverrides: vi.fn(),
   };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
@@ -87,59 +83,5 @@ describe('TenantSttConfigAdminController — fallback candidates', () => {
     service.getFallbackCandidates.mockResolvedValue(candidates);
     await expect(controller.getFallbackCandidates()).resolves.toBe(candidates);
     expect(service.getFallbackCandidates).toHaveBeenCalledWith('t1');
-  });
-});
-
-describe('TenantSttConfigAdminController — BYO credentials', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('setCredential prefers the If-Match header version over the body expectedVersion', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.setCredential.mockResolvedValue({ provider: 'sarvam', hasKey: true });
-    await controller.setCredential('sarvam', { apiKey: 'k', expectedVersion: 0 }, 4, undefined);
-    expect(service.setCredential).toHaveBeenCalledWith('t1', 'sarvam', expect.objectContaining({ apiKey: 'k', expectedVersion: 4 }));
-  });
-
-  it('setCredential falls back to the body expectedVersion when no If-Match header', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.setCredential.mockResolvedValue({ provider: 'azure-speech', hasKey: true });
-    await controller.setCredential('azure-speech', { apiKey: 'k', region: 'eastus', expectedVersion: 0 }, undefined, undefined);
-    expect(service.setCredential).toHaveBeenCalledWith('t1', 'azure-speech', expect.objectContaining({ region: 'eastus', expectedVersion: 0 }));
-  });
-
-  it('removeCredential delegates scoped to the caller tenant', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.removeCredential.mockResolvedValue(undefined);
-    await controller.removeCredential('openai', undefined);
-    expect(service.removeCredential).toHaveBeenCalledWith('t1', 'openai');
-  });
-
-  it('rejects a tenant admin managing credentials for another tenant', async () => {
-    const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    await expect(controller.getCredentials('t2')).rejects.toBeInstanceOf(ForbiddenException);
-  });
-});
-
-describe('TenantSttConfigAdminController — test connection (ephemeral, no OCC)', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('delegates to testCredential scoped to the caller tenant', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.testCredential.mockResolvedValue({ ok: true, message: 'Connected — key accepted' });
-    const result = await controller.testCredential('openai', { apiKey: 'sk-test' }, undefined);
-    expect(result).toEqual({ ok: true, message: 'Connected — key accepted' });
-    expect(service.testCredential).toHaveBeenCalledWith('t1', 'openai', { apiKey: 'sk-test' });
-  });
-
-  it('rejects a tenant admin testing a credential for another tenant', async () => {
-    const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    await expect(controller.testCredential('openai', { apiKey: 'sk-test' }, 't2')).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  it('lets a super admin test a credential for any tenant via ?tenantId=', async () => {
-    const { controller, service } = makeController({ user: SUPER });
-    service.testCredential.mockResolvedValue({ ok: false, message: 'Rejected — invalid API key' });
-    await controller.testCredential('azure-speech', { apiKey: 'bad', region: 'eastus' }, 't9');
-    expect(service.testCredential).toHaveBeenCalledWith('t9', 'azure-speech', { apiKey: 'bad', region: 'eastus' });
   });
 });

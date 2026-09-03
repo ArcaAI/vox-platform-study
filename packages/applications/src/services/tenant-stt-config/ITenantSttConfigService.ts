@@ -1,17 +1,15 @@
 import { PipelineResponse } from '../stt/pipeline';
-import {
-  EffectiveSttConfigResponse,
-  SetSttCredentialRequest,
-  SetSttFallbackRequest,
-  SttCredentialResponse,
-  TenantSttConfigResponse,
-  TestSttCredentialRequest,
-  TestSttCredentialResponse,
-} from './dto';
+import { EffectiveSttConfigResponse, SetSttFallbackRequest, TenantSttConfigResponse } from './dto';
 import { SttProviderOverrides } from './platform-limits';
 
 /**
- * Per-tenant STT fallback + BYOK configuration service.
+ * Per-tenant STT fallback configuration service.
+ *
+ * TASK-862 removed the BYO credential facade (`getCredentials` /
+ * `setCredential` / `removeCredential` / `testCredential`): credentials are
+ * edited on `admin/providers/:service/:provider` and probed on its `/test`
+ * route. Only `resolveProviderOverrides` (the gateway injection path) survives
+ * here. The rest of this service retires under TASK-861.
  *
  * `tenantId` is resolved by the controller (a tenant admin is pinned to their
  * CLS tenant; a platform admin may target another tenant or the SYSTEM default).
@@ -38,23 +36,6 @@ export abstract class ITenantSttConfigService {
    * write). Backs the admin picker so it only offers valid targets.
    */
   abstract getFallbackCandidates(tenantId: string): Promise<PipelineResponse[]>;
-
-  /** Masked list of a tenant's BYO provider credentials (never the key). */
-  abstract getCredentials(tenantId: string): Promise<SttCredentialResponse[]>;
-
-  /** Set or rotate a tenant's BYO key for a provider (encrypted at rest, OCC-guarded). */
-  abstract setCredential(tenantId: string, provider: string, dto: SetSttCredentialRequest): Promise<SttCredentialResponse>;
-
-  /** Remove a tenant's BYO credential for a provider. */
-  abstract removeCredential(tenantId: string, provider: string): Promise<void>;
-
-  /**
-   * Ephemeral "Test connection" probe: validates an apiKey/region/endpoint
-   * combination BEFORE it is saved (or independent of whether it ever is —
-   * the saved key is write-only and never returned for re-testing). Never
-   * persisted, never logged, never touches Vault.
-   */
-  abstract testCredential(tenantId: string, provider: string, dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse>;
 
   /** Decrypt enabled BYO credentials into the gateway-injectable overrides map. */
   abstract resolveProviderOverrides(tenantId: string): Promise<SttProviderOverrides>;
