@@ -136,9 +136,25 @@ def identity_from_model_config(model_config: Any) -> ModelWeightIdentity:
 async def resolve_for_model_config(
     model_config: Any, settings: Any, *, allow_network: bool = True
 ) -> Path:
-    """Convenience seam used by the loaders: `AiModelConfig` -> weights dir."""
+    """Convenience seam used by the loaders: `AiModelConfig` -> weights dir.
+
+    ``local_path`` is honoured BEFORE any credential is resolved (TASK-858). This
+    seam used to call :func:`config_for_model` eagerly, which asks the gateway for
+    the HuggingFace and S3 credentials of the model's owner tenant and FAILS CLOSED
+    when it cannot — so a model read in place (Mode M: a bucket mount, an
+    admin-staged directory) could not load while the credential plane was down or
+    refusing, even though it needed no credential at all. Observed live: the
+    ArcaAI default ASR pipeline 500ed on session create with
+    "no usable model-registry credential for 'huggingface'".
+    ``weights_source_for`` already applied this rule; the two must agree.
+    """
+    identity = identity_from_model_config(model_config)
+    if identity.local_path and Path(identity.local_path).exists():
+        return await resolve_model_dir(
+            identity, config=config_from_settings(settings), allow_network=False
+        )
     return await resolve_model_dir(
-        identity_from_model_config(model_config),
+        identity,
         config=await config_for_model(model_config, settings),
         allow_network=allow_network,
     )
