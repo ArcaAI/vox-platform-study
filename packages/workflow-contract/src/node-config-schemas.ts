@@ -1559,6 +1559,374 @@ const AGENTIC_TTS_SCHEMA: NodeConfigSchema = Object.freeze({
   }),
 });
 
+// ===========================================================================================
+// TASK-864 — the `core` vocabulary's config schemas.
+//
+// One palette, nine primitives, behaviour as CONFIGURATION. The same reference-only discipline
+// the `agentic` catalogue set applies here without exception: an Agent node names a published
+// Agent by SLUG, a Classify node names a registry model by SLUG, a Trigger names a context-schema
+// row by id. Nothing here is a provider, a model id, an endpoint or a credential
+// (`reference-only.task847.test.ts` sweeps these too).
+// ===========================================================================================
+
+/** A tenant-authored slug (`WORKFLOW_DEFINITION_SLUG_PATTERN`, mirrored for the schema). */
+const SLUG_PATTERN = '^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$';
+
+/** An authoring KEY — the same grammar as a node id (`WORKFLOW_NODE_ID_PATTERN`). */
+const KEY_PATTERN = '^[a-z0-9_]{2,48}$';
+
+/** A CEL expression (TASK-864 §3.2). Parse-checked at publish by `expressionProblems`. */
+const CEL_EXPRESSION_PROPERTY = Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength: 2000,
+  description:
+    'A CEL expression over the run context — `trigger.*`, `vars.*`, `nodes.<id>.*`. Deterministic and side-effect free; type-checked at publish and evaluated by the interpreter.',
+});
+
+const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.trigger.schema.json',
+  title: 'core.trigger node config — the graph`s ONE entry point',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['kinds']),
+  properties: Object.freeze({
+    kinds: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      items: Object.freeze({ type: 'string', enum: Object.freeze(['consultation', 'api', 'webhook', 'schedule']) }),
+      description:
+        'Which trigger kinds may start this workflow. `consultation` = the clinical plane (session open); `api` = POST /workflows/{slug}/runs; `webhook` = POST /hooks/workflows/{slug}; `schedule` is reserved.',
+    }),
+    contextSchema: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        inline: TENANT_IO_SCHEMA_PROPERTY,
+        contextSchemaId: Object.freeze({
+          ...ROW_REFERENCE_PROPERTY,
+          description: 'A `ConsultationContextSchema` row — a REFERENCE; the schema body lives on the row.',
+        }),
+        versionNumber: Object.freeze({ type: 'integer', minimum: 1 }),
+      }),
+      description:
+        'The consultation-context object schema available to the whole session, authored inline or referenced by row. The run payload is validated against it before any node runs.',
+    }),
+    sampleInput: Object.freeze({ type: 'object', description: 'An example payload for the Studio and the generated docs. Never executed.' }),
+  }),
+});
+
+/**
+ * `core.agent` — ONE task, by REFERENCE to a published Agent (TASK-863). Ports are the union of
+ * every task's sockets (`node-ports.ts`); `overrides` are bounded by the agent's own declared
+ * ranges at publish (`coreNodeConfigProblems`, once the agent row is resolvable), and
+ * `execution` is what used to be the registry's per-TYPE `lane`/`trigger`: it is now per
+ * INSTANCE, so one summarizer can run live and at finalization without two node types.
+ */
+const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.agent.schema.json',
+  title: 'core.agent node config — one task, one published Agent, by reference',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['agentRef']),
+  properties: Object.freeze({
+    agentRef: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['slug']),
+      properties: Object.freeze({
+        slug: Object.freeze({
+          type: 'string',
+          pattern: SLUG_PATTERN,
+          description: 'The published Agent`s slug, resolved [tenant, SYSTEM] preferring tenant. A REFERENCE — never a model, provider or endpoint.',
+        }),
+        versionNumber: Object.freeze({
+          type: 'integer',
+          minimum: 1,
+          description: 'Pin one published version. Absent means the agent`s ACTIVE version.',
+        }),
+      }),
+    }),
+    overrides: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        promptVariables: Object.freeze({
+          type: 'object',
+          additionalProperties: Object.freeze({ type: 'string', maxLength: 4000 }),
+          description:
+            'Values for the agent`s instruction-template variables. `{{vars.key}}` / `{{nodes.id.key}}` / `{{trigger.key}}` interpolate from the run context.',
+        }),
+        generation: GENERATION_HYPERPARAMETERS_PROPERTY,
+      }),
+      description: 'Per-node overrides, limited to prompt variables and hyper-parameters within the agent`s declared ranges.',
+    }),
+    execution: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        lane: Object.freeze({
+          type: 'string',
+          enum: Object.freeze(['durable', 'realtime']),
+          default: 'durable',
+          description:
+            'WHICH RUNTIME executes this instance. `realtime` = the gateway`s live executor (the durable interpreter skips it, reason `realtime_lane`).',
+        }),
+        cadence: Object.freeze({
+          type: 'string',
+          enum: Object.freeze(['once', 'perTurn', 'onEnd']),
+          default: 'once',
+          description: 'WHEN it runs — once at start, per live turn, or once at the close.',
+        }),
+      }),
+    }),
+    ...DOCUMENT_BINDING_PROPERTIES,
+    onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
+  }),
+});
+
+const CORE_CLASSIFY_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.classify.schema.json',
+  title: 'core.classify node config — route text into one of the declared classes',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['modelSlug', 'classes']),
+  properties: Object.freeze({
+    modelSlug: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 128,
+      description:
+        'An `AiModel.slug` whose task is TEXT_CLASSIFICATION or TOKEN_CLASSIFICATION (TASK-860 registry). A REFERENCE — never an engine or a model id.',
+    }),
+    classes: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 32,
+      items: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['key', 'label']),
+        properties: Object.freeze({
+          key: Object.freeze({ type: 'string', pattern: KEY_PATTERN, description: 'The branch handle name. One output handle per class.' }),
+          label: Object.freeze({ type: 'string', minLength: 1, maxLength: 200 }),
+          description: Object.freeze({ type: 'string', maxLength: 2000 }),
+          labels: Object.freeze({
+            type: 'array',
+            maxItems: 32,
+            items: Object.freeze({ type: 'string', minLength: 1, maxLength: 128 }),
+            description: 'Which of the model`s own labels map onto this class. Absent means the class key is the label.',
+          }),
+        }),
+      }),
+    }),
+    mode: Object.freeze({ type: 'string', enum: Object.freeze(['single', 'multi']), default: 'single' }),
+    threshold: Object.freeze({ type: 'number', minimum: 0, maximum: 1, description: 'Below it, no class is taken and `otherwise` fires.' }),
+    spans: Object.freeze({ type: 'boolean', default: false, description: 'Token-classification models: also emit the matched spans.' }),
+    onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
+  }),
+});
+
+const CORE_HUMAN_REVIEW_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.humanReview.schema.json',
+  title: 'core.humanReview node config — a durable hold-out for a human decision',
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    reviewType: Object.freeze({ type: 'string', minLength: 1, maxLength: 64, default: 'approval' }),
+    instructions: Object.freeze({ type: 'string', maxLength: 4000, description: 'Shown to the reviewer. Never a prompt.' }),
+    assignRole: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 64,
+      description: 'The role whose members may decide (TASK-859 OD-9: role only, today).',
+    }),
+    timeoutSeconds: Object.freeze({
+      type: 'integer',
+      minimum: 1,
+      maximum: 604800,
+      description: 'How long the run waits before `timedOut` fires. A timeout NEVER approves.',
+    }),
+    escalation: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        afterSeconds: Object.freeze({ type: 'integer', minimum: 1, maximum: 604800 }),
+        maxEscalations: Object.freeze({ type: 'integer', minimum: 0, maximum: 10 }),
+      }),
+    }),
+    allowEdit: Object.freeze({
+      type: 'boolean',
+      default: false,
+      description: 'Whether the reviewer may return an edited payload with the decision.',
+    }),
+  }),
+});
+
+const CORE_VARIABLE_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.variable.schema.json',
+  title: 'core.variable node config — declare run variables with defaults',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['variables']),
+  properties: Object.freeze({
+    variables: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 64,
+      items: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['key']),
+        properties: Object.freeze({
+          key: Object.freeze({ type: 'string', pattern: KEY_PATTERN, description: 'Readable as `vars.<key>` everywhere.' }),
+          schema: TENANT_IO_SCHEMA_PROPERTY,
+          // `default` may be any JSON value; the authorable subset expresses that as an
+          // unconstrained schema (`{}` accepts anything, per JSON Schema).
+          default: Object.freeze({ description: 'The initial value. Any JSON value.' }),
+        }),
+      }),
+    }),
+  }),
+});
+
+const CORE_CONDITION_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.condition.schema.json',
+  title: 'core.condition node config — If/Else routing over CEL expressions',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['branches']),
+  properties: Object.freeze({
+    branches: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 16,
+      items: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        required: Object.freeze(['key', 'when']),
+        properties: Object.freeze({
+          key: Object.freeze({ type: 'string', pattern: KEY_PATTERN, description: 'The branch handle name.' }),
+          label: Object.freeze({ type: 'string', maxLength: 200 }),
+          when: CEL_EXPRESSION_PROPERTY,
+        }),
+      }),
+      description: 'Evaluated in order; the FIRST true branch is taken, else the `else` handle.',
+    }),
+  }),
+});
+
+const CORE_LOOP_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.loop.schema.json',
+  title: 'core.loop node config — repeat a sub-graph, bounded on every axis',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['mode', 'bounds']),
+  properties: Object.freeze({
+    mode: Object.freeze({ type: 'string', enum: Object.freeze(['foreach', 'while']) }),
+    over: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 256,
+      description: '`foreach`: a dotted path into the run context naming the array to iterate (`nodes.split.items`, `trigger.documents`).',
+    }),
+    until: Object.freeze({
+      ...CEL_EXPRESSION_PROPERTY,
+      description: '`while`: the loop ends when this CEL expression is true. Re-evaluated after every iteration.',
+    }),
+    bounds: AGENTIC_LOOP_BOUNDS_PROPERTY,
+    collect: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 256,
+      description: 'A dotted path into each iteration`s result whose values are collected onto `done`. Absent collects the whole result.',
+    }),
+  }),
+});
+
+const CORE_NOTE_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.note.schema.json',
+  title: 'core.note node config — a canvas comment, never compiled',
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    text: Object.freeze({ type: 'string', maxLength: 4000 }),
+    color: Object.freeze({ type: 'string', enum: Object.freeze(['neutral', 'info', 'warning', 'success']), default: 'neutral' }),
+  }),
+});
+
+const CORE_OUTPUT_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.output.schema.json',
+  title: 'core.output node config — the graph`s end point and its published protocols',
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    outputSchema: TENANT_IO_SCHEMA_PROPERTY,
+    protocols: Object.freeze({
+      type: 'array',
+      minItems: 1,
+      maxItems: 3,
+      items: Object.freeze({ type: 'string', enum: Object.freeze(['http', 'http-sse', 'socket']) }),
+      default: Object.freeze(['http-sse']),
+      description:
+        'Under which protocols the published workflow is reachable. Bounds `?mode=` at invocation: `http` -> blocking, `http-sse` -> stream, `socket` -> the WS stream; `async` is always allowed.',
+    }),
+    onSchemaViolation: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']), default: 'fail' }),
+    claimCheck: Object.freeze({ type: 'string', enum: Object.freeze(['auto', 'always', 'never']), default: 'auto' }),
+    notify: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        webhook: Object.freeze({ type: 'boolean', default: true, description: 'Emit the run-completed webhook (PHI-free payload).' }),
+      }),
+    }),
+  }),
+});
+
+/**
+ * `core.action` — every remaining fixed-purpose clinical step as ONE node type keyed by
+ * `actionKey`. The action's own config travels under `action` and is validated at publish
+ * against the delegated legacy node type's schema (`core-contract.ts`), so the per-type
+ * schemas move under the key unchanged rather than being re-authored.
+ */
+const CORE_ACTION_SCHEMA: NodeConfigSchema = Object.freeze({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://arcaai.dev/hope/workflow-nodes/core.action.schema.json',
+  title: 'core.action node config — a platform action, by key',
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['actionKey']),
+  properties: Object.freeze({
+    actionKey: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 64,
+      description:
+        'A key of the action catalogue (`ACTION_CATALOGUE`). Selects the activity, the effective ports and the config schema under `action`.',
+    }),
+    action: Object.freeze({ type: 'object', description: 'The action`s own config — the delegated node type`s schema, unchanged.' }),
+    execution: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        lane: Object.freeze({ type: 'string', enum: Object.freeze(['durable', 'realtime']) }),
+        cadence: Object.freeze({ type: 'string', enum: Object.freeze(['once', 'perTurn', 'onEnd']) }),
+      }),
+    }),
+    onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
+  }),
+});
+
 /**
  * Node-type key -> AUTHORED config JSON Schema. A key ABSENT from this map means no schema has
  * been authored for that node type yet (`WORKFLOW_NODE_REGISTRY[key].configSchema` stays
@@ -1641,6 +2009,19 @@ const AUTHORED_NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> =
   'agentic.loop': AGENTIC_LOOP_SCHEMA,
   'agentic.stt': AGENTIC_STT_SCHEMA,
   'agentic.tts': AGENTIC_TTS_SCHEMA,
+  // TASK-864 — the `core` vocabulary. `core.data` reuses the Data node's schema verbatim: the
+  // mapping language is the same tiny one, and a second copy is a second thing to audit.
+  'core.trigger': CORE_TRIGGER_SCHEMA,
+  'core.agent': CORE_AGENT_SCHEMA,
+  'core.classify': CORE_CLASSIFY_SCHEMA,
+  'core.humanReview': CORE_HUMAN_REVIEW_SCHEMA,
+  'core.variable': CORE_VARIABLE_SCHEMA,
+  'core.condition': CORE_CONDITION_SCHEMA,
+  'core.loop': CORE_LOOP_SCHEMA,
+  'core.note': CORE_NOTE_SCHEMA,
+  'core.output': CORE_OUTPUT_SCHEMA,
+  'core.data': AGENTIC_DATA_SCHEMA,
+  'core.action': CORE_ACTION_SCHEMA,
 });
 
 // ===========================================================================================
@@ -1848,6 +2229,10 @@ const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
   'consultation.persistDraft',
   'consultation.finalizeAssurance',
   'consultation.hitlGate',
+  // TASK-864 — the `core` graph boundaries. A trigger or an output that can be switched off is a
+  // graph with no entry or no exit; both carry the `mandatory` class in `node-registry.ts`.
+  'core.trigger',
+  'core.output',
 ]);
 
 function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {

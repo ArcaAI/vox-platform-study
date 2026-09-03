@@ -28,6 +28,14 @@ export interface WorkflowGraphNode {
   /** Canvas layout, optional — absent for a graph authored before Workflow Studio's layout
    *  persistence landed, or for one built entirely through the list/tree editor. */
   position?: WorkflowNodePosition;
+  /**
+   * TASK-864 — the `core.loop` node this node is the BODY of, when it is one. A loop body is a
+   * SUB-GRAPH (owner decision D-3): the compiler lifts every node carrying `parentId` out of the
+   * top-level stages and compiles them into `loops[].body`, which `LoopWorkflow` walks once per
+   * iteration. On the canvas it is React Flow's own `parentId` (a group node with
+   * `extent: 'parent'`). Must name another node of this graph, never itself.
+   */
+  parentId?: string;
 }
 
 export interface WorkflowGraphEdge {
@@ -146,6 +154,21 @@ export function workflowGraphProblems(value: unknown): string[] {
       if (!isPlainObject(position) || !isFiniteNumber(position.x) || !isFiniteNumber(position.y)) {
         problems.push(`${path}/position: must be an object with finite numeric x/y when present`);
       }
+    }
+    if (node.parentId !== undefined && (!isPlainString(node.parentId) || node.parentId.length === 0)) {
+      problems.push(`${path}/parentId: must be a non-empty string when present`);
+    }
+  });
+
+  // TASK-864 — a loop body names its loop. Checked after every id is known, so a body node may
+  // precede its loop in the array (authoring order is not a constraint).
+  rawNodes.forEach((node: unknown, index: number) => {
+    if (!isPlainObject(node) || !isPlainString(node.parentId) || node.parentId.length === 0) return;
+    const path = `/nodes/${index}`;
+    if (node.parentId === node.id) {
+      problems.push(`${path}/parentId: a node cannot be its own parent`);
+    } else if (!validNodeIds.has(node.parentId)) {
+      problems.push(`${path}/parentId: references unknown node ${JSON.stringify(node.parentId)}`);
     }
   });
 

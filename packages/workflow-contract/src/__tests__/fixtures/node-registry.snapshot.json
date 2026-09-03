@@ -530,6 +530,91 @@
       "lane": "durable"
     },
     {
+      "key": "core.action",
+      "implemented": true,
+      "activityName": "interpreter.core_action",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 150,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "result",
+        "text": "text",
+        "entities": "entities",
+        "verdict": "verdict",
+        "document": "document",
+        "context": "context",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.agent",
+      "implemented": true,
+      "activityName": "interpreter.core_agent",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 300,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "text",
+        "data": "data",
+        "transcript": "transcript",
+        "audio": "audio",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.classify",
+      "implemented": true,
+      "activityName": "interpreter.core_classify",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "classification",
+        "otherwise": null,
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.condition",
+      "implemented": true,
+      "activityName": "interpreter.core_condition",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "evaluation",
+        "else": null,
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.data",
+      "implemented": true,
+      "activityName": "interpreter.core_data",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "data",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
       "key": "core.end",
       "implemented": true,
       "activityName": "interpreter.core_end",
@@ -537,6 +622,64 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 30,
       "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {},
+      "lane": "durable"
+    },
+    {
+      "key": "core.humanReview",
+      "implemented": true,
+      "activityName": "interpreter.core_human_review",
+      "critical": false,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 3600,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "decision",
+        "approved": null,
+        "rejected": null,
+        "timedOut": null,
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.loop",
+      "implemented": true,
+      "activityName": "interpreter.core_loop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 3600,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "each": "item",
+        "done": "result",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.note",
+      "implemented": true,
+      "activityName": "interpreter.core_note",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 1,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {},
+      "lane": "durable"
+    },
+    {
+      "key": "core.output",
+      "implemented": true,
+      "activityName": "interpreter.core_output",
+      "critical": true,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 2,
       "entitlementKey": null,
       "outputKeys": {},
       "lane": "durable"
@@ -551,6 +694,36 @@
       "defaultMaxAttempts": 1,
       "entitlementKey": null,
       "outputKeys": {
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.trigger",
+      "implemented": true,
+      "activityName": "interpreter.core_trigger",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "context",
+        "next": null
+      },
+      "lane": "durable"
+    },
+    {
+      "key": "core.variable",
+      "implemented": true,
+      "activityName": "interpreter.core_variables",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null,
+      "outputKeys": {
+        "out": "vars",
         "next": null
       },
       "lane": "durable"
