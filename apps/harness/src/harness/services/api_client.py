@@ -395,6 +395,66 @@ class ApiClient:
             params["modelSlug"] = model_slug
         return await self._get("/policy", params)
 
+    async def resolve_agent(
+        self,
+        *,
+        slug: str,
+        tenant_id: str,
+        version_number: int | None = None,
+    ) -> dict[str, Any]:
+        """TASK-864 `core.agent` -> TASK-863 §3.4 ``GET /api/v1/internal/agents/resolve``.
+
+        The ONE agent resolution in the platform lives in ``packages/applications``
+        (``AgentResolverService.resolve``); this method only asks it. Contract coded against
+        (the route lands with TASK-863):
+
+            GET /api/v1/internal/agents/resolve?tenantId=<uuid>&slug=<slug>[&versionNumber=N]
+            headers: X-Service-Token, X-Tenant-Id
+            200 -> ResolvedAgent JSON (see `interpreter/models.py`)
+            404 -> unknown / unpublished / foreign slug (one answer, 404-over-403)
+
+        A SIBLING mount of the harness prefix (``/internal/agents``, not ``/internal/harness``),
+        so the URL is built off the base url directly — the same reason `consent_internal_prefix`
+        exists. Raises :class:`ApiServiceError` on any transport/HTTP error; the activity fails
+        CLOSED on it (selection is never substituted).
+        """
+        params: dict[str, Any] = {"tenantId": tenant_id, "slug": slug}
+        if version_number is not None:
+            params["versionNumber"] = version_number
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        url = f"{self._base_url}/api/v1/internal/agents/resolve"
+        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+            try:
+                resp = await client.get(url, params=params, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise ApiServiceError(f"apps/api /internal/agents/resolve failed: {exc}") from exc
+            return cast("dict[str, Any]", resp.json())
+
+    async def resolve_model(
+        self,
+        *,
+        slug: str,
+        tenant_id: str,
+        task_type: str | None = None,
+    ) -> dict[str, Any]:
+        """TASK-864 `core.classify` -> the registry-model resolve (TASK-860 catalogue).
+
+        Contract coded against (the route is a thin projection of ``AiModelService`` the
+        orchestrator wires; reported in the TASK-864 README):
+
+            GET /api/v1/internal/harness/models/resolve?tenantId=<uuid>&slug=<slug>[&taskType=T]
+            200 -> { slug, taskType, provider?, sourceUri?, localPath? }
+            400/404 -> unknown, disabled, or wrong-task slug (fails CLOSED here)
+
+        The NLP service loads a classifier by ``sourceUri`` (its ``model_name``) and an optional
+        ``localPath`` — registry facts, gateway-injected, never authored on a node.
+        """
+        params: dict[str, Any] = {"tenantId": tenant_id, "slug": slug}
+        if task_type:
+            params["taskType"] = task_type
+        return await self._get("/models/resolve", params)
+
     async def get_resolved_prompt_template(
         self, template_id: str, *, tenant_id: str
     ) -> ResolvedPromptTemplateResponse:

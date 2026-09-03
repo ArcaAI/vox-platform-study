@@ -92,6 +92,11 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
       if (reachable.has(current)) continue;
       reachable.add(current);
       for (const candidate of WORKFLOW_PORT_PRIMITIVES) {
+        // `any` (TASK-864) is a CONSUMER-side wildcard, not a widening target: it accepts every
+        // data primitive and satisfies nothing but itself, so it is a SINK of the closure, never a
+        // step in it. `core-any-wildcard.test.ts` asserts that half; here it is skipped so the
+        // widening chain is measured over the lattice alone.
+        if (candidate === 'any') continue;
         if (portPrimitiveSatisfies(current, candidate)) queue.push(candidate);
       }
     }
@@ -135,11 +140,17 @@ describe('document -> ner is a TYPE ERROR (the anti-hallucination-laundering rul
     // publishes what the recogniser returned), it carries no `generation` class, and the
     // generic `agentic.agent` deliberately produces `text` rather than `transcript` precisely so
     // it can never appear here.
+    // `core.agent` (TASK-864) joins the list because it is the ASR agent's home — the
+    // transcription-node entries above are deprecated in its favour. It carries NO `generation`
+    // class (the loop above is what enforces that), and its `transcript` socket is LIVE only for
+    // an agent whose task is SPEECH_TO_TEXT: an LLM agent's activity emits `text`/`data` and never
+    // the `transcript` key, so nothing model-authored can ever arrive on that socket at runtime.
     expect(transcriptProducers).toEqual([
       'agent.transcription',
       'agentic.stt',
       'consultation.captureBinding',
       'consultation.phiHop',
+      'core.agent',
       'stt.asrEngine',
       'stt.phiHop',
     ]);

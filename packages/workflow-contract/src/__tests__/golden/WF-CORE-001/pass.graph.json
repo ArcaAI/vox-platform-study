@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_trigger",
+      "type": "core.trigger",
+      "config": {
+        "kinds": [
+          "api"
+        ]
+      }
+    },
+    {
+      "id": "n_agent",
+      "type": "core.agent",
+      "config": {
+        "agentRef": {
+          "slug": "platform-summarization"
+        }
+      }
+    },
+    {
+      "id": "n_output",
+      "type": "core.output",
+      "config": {
+        "protocols": [
+          "http-sse"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_trigger",
+      "fromPort": "out",
+      "to": "n_agent",
+      "toPort": "context"
+    },
+    {
+      "id": "e2",
+      "from": "n_agent",
+      "fromPort": "out",
+      "to": "n_output",
+      "toPort": "in"
+    }
+  ]
+}

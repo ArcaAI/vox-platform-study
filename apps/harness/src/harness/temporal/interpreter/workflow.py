@@ -273,7 +273,7 @@ class WorkflowInterpreter:
 
         return InterpreterResult(run_id=inp.run_id, status=status, stages=self._stages)
 
-    # Run-event mirror 
+    # Run-event mirror
     #
     # The CONTROL lane. Node/stage/run outcomes are already durable in Temporal history and
     # readable through the `state` query; these three helpers MIRROR them onto the run's Redis

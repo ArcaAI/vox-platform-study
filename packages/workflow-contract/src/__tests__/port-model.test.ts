@@ -29,7 +29,9 @@ describe('WORKFLOW_PORT_PRIMITIVES', () => {
   // `port-kinds.task847.test.ts` for why each addition cannot weaken the lattice.
   it('is the closed vocabulary settles, plus `control` for ordering edges', () => {
     expect([...WORKFLOW_PORT_PRIMITIVES].sort()).toEqual(
-      ['audio', 'context<schemaRef>', 'control', 'document', 'edits', 'entities', 'object', 'stream<audio>', 'text', 'transcript', 'verdict'].sort(),
+      // `any` (TASK-864) is the consumer-side wildcard for the `core` vocabulary — see
+      // `ANY_PORT_PRIMITIVE` in `port-model.ts` and `core-any-wildcard.test.ts`.
+      ['any', 'audio', 'context<schemaRef>', 'control', 'document', 'edits', 'entities', 'object', 'stream<audio>', 'text', 'transcript', 'verdict'],
     );
   });
 
@@ -112,6 +114,13 @@ describe('portPrimitiveSatisfies (produced -> consumed)', () => {
     for (const a of unrelated) {
       for (const b of WORKFLOW_PORT_PRIMITIVES) {
         if (a === b) continue;
+        // `any` is a CONSUMER-side wildcard (TASK-864): every data primitive satisfies it, and it
+        // satisfies nothing but itself. Its own test is `core-any-wildcard.test.ts`.
+        if (b === 'any') {
+          expect(portPrimitiveSatisfies(a, b)).toBe(a !== 'control');
+          expect(portPrimitiveSatisfies(b, a)).toBe(false);
+          continue;
+        }
         if (widensTo[a] === b) {
           // The ONE permitted direction, asserted rather than skipped.
           expect(portPrimitiveSatisfies(a, b)).toBe(true);
