@@ -36,12 +36,15 @@ type STTRuntimeProvider = 'local' | 'remote';
  * 2. VAD: Detects voice activity and segments speech
  * 3. STT: Transcribes speech segments to text
  *
+ * The browser never runs a model (TASK-865): the `noiseFilter` and `vad`
+ * stages are DEPRECATED client-side models and are constructed only behind the
+ * explicit `clientInference: { allow: true }` gate. The default — and the only
+ * supported — shape is a backend STT stage over the streaming transport.
+ *
  * @example
  * ```typescript
  * const pipeline = new TranscriptionPipeline({
- *   noiseFilter: { enabled: true, location: 'browser', level: 'high' },
- *   vad: { enabled: true, location: 'browser' },
- *   stt: { enabled: true, location: 'auto' },
+ *   stt: { enabled: true, location: 'backend', provider: 'backend', streamingTransport },
  * });
  *
  * pipeline.on('transcription', (result) => {
@@ -69,6 +72,13 @@ export class TranscriptionPipeline {
   // Current processing context
   private currentInput: TranscriptionPipelineInput | null = null;
   private initialized = false;
+
+  /**
+   * Client stages the host asked to enable but the gate refused (TASK-865).
+   * Filled by `setupStageFactories`, reported ONCE by `start()`.
+   */
+  private ignoredClientStages: Array<'noiseFilter' | 'vad'> = [];
+  private clientInferenceWarned = false;
 
   constructor(config?: Partial<TranscriptionPipelineConfig>, logger?: ISDKLogger) {
     this.config = { ...DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG, ...config };
@@ -119,10 +129,23 @@ export class TranscriptionPipeline {
    * Set up the stage factories for lazy loading processors.
    */
   private setupStageFactories(): void {
-    // NoiseFilter stage
+    // TASK-865 hard-off gate: an `enabled: true` on either CLIENT stage is
+    // honoured only behind the explicit `clientInference.allow`. Without it the
+    // stage is left out of the graph (so `@arcaai/noise-filter` / `@arcaai/vad`
+    // are never imported and no model is fetched) and `start()` warns once.
+    const clientInferenceAllowed = this.config.clientInference?.allow === true;
+    this.ignoredClientStages = [];
+    const gate = (stage: 'noiseFilter' | 'vad', requested: boolean): boolean => {
+      if (!requested) return false;
+      if (clientInferenceAllowed) return true;
+      this.ignoredClientStages.push(stage);
+      return false;
+    };
+
+    // NoiseFilter stage — DEPRECATED client model (TASK-865, removed in R4).
     this.stages.set('noiseFilter', {
       name: 'noiseFilter',
-      enabled: this.config.noiseFilter.enabled,
+      enabled: gate('noiseFilter', this.config.noiseFilter.enabled),
       priority: 10,
       processor: null,
       factory: async () => {
@@ -135,10 +158,10 @@ export class TranscriptionPipeline {
       },
     });
 
-    // VAD stage
+    // VAD stage — DEPRECATED client model (TASK-865, removed in R4).
     this.stages.set('vad', {
       name: 'vad',
-      enabled: this.config.vad.enabled,
+      enabled: gate('vad', this.config.vad.enabled),
       priority: 20,
       processor: null,
       factory: async () => {
@@ -236,6 +259,8 @@ export class TranscriptionPipeline {
 
     this.currentInput = input;
     this.updateState({ status: 'RUNNING', currentStage: 'initializing', progress: 0 });
+
+    this.warnIgnoredClientStagesOnce();
 
     const timer = this.logger?.startOperation('startTranscriptionPipeline', {
       component: 'TranscriptionPipeline',
@@ -702,6 +727,26 @@ export class TranscriptionPipeline {
     throw new AgenticError(
       'LOCAL_TRANSCRIPTION_DISABLED',
       'Local (in-browser) transcription is disabled platform-wide. Configure a backend ASR pipeline (stt.sttSocket or stt.streamingTransport) to use speech-to-text.',
+    );
+  }
+
+  /**
+   * Report — once per pipeline — the client stages the TASK-865 gate refused.
+   * A host that shipped `vad.enabled: true` before the directive must SEE that
+   * nothing loaded, rather than silently getting a different graph.
+   */
+  private warnIgnoredClientStagesOnce(): void {
+    if (this.clientInferenceWarned || this.ignoredClientStages.length === 0) return;
+    this.clientInferenceWarned = true;
+    this.logger?.warn(
+      'Client-side inference is deprecated and OFF: the enabled noiseFilter/vad stages were ignored (no model is loaded in the browser). ' +
+        'VAD and denoise are selected server-side by the tenant ASR Agent. To keep them in the browser during the deprecation window, ' +
+        'set audio.clientInference: { allow: true } (itself deprecated; removed in R4).',
+      {
+        operation: 'setupStageFactories',
+        component: 'TranscriptionPipeline',
+        attributes: { ignoredStages: [...this.ignoredClientStages], deprecation: 'TASK-865' },
+      },
     );
   }
 

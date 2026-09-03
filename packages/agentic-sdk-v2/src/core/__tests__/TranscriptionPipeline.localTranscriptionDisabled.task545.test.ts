@@ -247,6 +247,8 @@ describe('TranscriptionPipeline: local transcription disabled', () => {
   it('VAD and NoiseFilter still initialize and emit level/speech events with STT remote-only', async () => {
     const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
     const pipeline = new TranscriptionPipeline({
+      // TASK-865: client stages exist only behind the explicit allow.
+      clientInference: { allow: true },
       noiseFilter: { enabled: true, location: 'browser', level: 'high' },
       vad: { enabled: true, location: 'browser' },
       stt: { enabled: true, location: 'auto', provider: 'auto', streamingTransport: transport },

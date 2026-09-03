@@ -257,6 +257,9 @@ export type {
   ModelRegistryConfig,
   NERPluginConfig,
   NoiseFilterPluginConfig,
+  // TASK-865: the client-inference gate + the stage-name union.
+  AudioPluginStageName,
+  ClientInferenceConfig,
   PersonalizationConfig,
   PluginConfig,
   STTPluginConfig,

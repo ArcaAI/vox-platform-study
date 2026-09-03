@@ -9,6 +9,8 @@ export type {
   AgenticConfig,
   ApiConfig,
   AudioPluginConfig,
+  AudioPluginStageName,
+  ClientInferenceConfig,
   AudioSilenceLocalConfig,
   DiarizationLocalConfig,
   LocalAsrModelInfo,
