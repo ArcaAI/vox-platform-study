@@ -325,6 +325,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // and there is no tenant-facing read surface — every rule route is
   // `manage all`. Widening reads here would buy no consumer anything.
   'RateLimitRule',
+  // TASK-863 — the first-class Agent substrate. `Agent` + `AgentAssignment` are
+  // also SYSTEM-shared-read (platform-default agents resolve tenant → SYSTEM);
+  // the fallback chain and the WORM change log are plain tenant-scoped.
+  'Agent',
+  'AgentModelFallback',
+  'AgentAssignment',
+  'AgentAssignmentChange',
 ]);
 
 /**
@@ -555,6 +562,12 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // widened — a tenant can read but never mutate a SYSTEM-owned rule row
   // (the one-way-strictness rule enforced in the service).
   'WorkflowInvariantRule',
+  // TASK-863 — a tenant resolves SYSTEM's published agents as its platform
+  // defaults (`AgentResolverService`: explicit slug widened [tenant, SYSTEM];
+  // assignment cascade department → tenant → SYSTEM). Writes are NOT widened:
+  // a tenant never edits a SYSTEM agent, it branches its own.
+  'Agent',
+  'AgentAssignment',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

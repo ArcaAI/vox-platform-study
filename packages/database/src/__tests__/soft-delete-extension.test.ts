@@ -231,6 +231,8 @@ describe('modelHasSoftDelete', () => {
       // been omitted since they were introduced.
       'HarnessPolicyChange',
       'PipelinePolicyChange',
+      // TASK-863 — the agent-assignment WORM log, identity-only like its siblings.
+      'AgentAssignmentChange',
     ];
 
     expected.forEach((model) => {
