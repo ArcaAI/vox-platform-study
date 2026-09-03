@@ -9,42 +9,42 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SERVICE_RUNTIME_DEFAULTS } from '../../settings-registry/descriptors/service-runtime.descriptors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
-import type { AiRuntimeProfileResponse } from '../../ai-runtime-profile/dto';
+import type { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
+import type { AiProviderConnectionResponse } from '../../ai-provider-connection/dto';
 import { EffectiveConfigService } from '../effective-config.service';
 
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
-function profile(over: Partial<AiRuntimeProfileResponse> = {}): AiRuntimeProfileResponse {
+/**
+ * TASK-862: a "runtime profile" on the wire is the SYSTEM `AiProviderConnection`
+ * row's CEILINGS (`AiRuntimeProfile` is retired), so the fixture is a masked
+ * connection response.
+ */
+function profile(over: Partial<AiProviderConnectionResponse> = {}): AiProviderConnectionResponse {
   return {
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'ollama',
-    modelSlug: '',
-    temperature: 0.2,
-    topP: 0.9,
-    maxTokens: 2048,
-    contextLength: 8192,
-    maxConcurrent: 6,
-    tpmLimit: null,
-    rpmLimit: null,
-    timeoutS: 120,
-    keepAliveSeconds: null,
+    baseUrl: 'http://ollama:11434',
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    hasKey: true,
+    keyVersion: 1,
+    enabled: true,
     extraJson: null,
+    maxConcurrent: 6,
+    rpmLimit: null,
+    tpmLimit: null,
+    timeoutS: 120,
     version: 1,
     ...over,
   };
 }
 
-/** A row that exists but carries no opinion on any tunable — service env wins. */
-function emptyProfile(): AiRuntimeProfileResponse {
-  return profile({
-    temperature: null,
-    topP: null,
-    maxTokens: null,
-    contextLength: null,
-    maxConcurrent: null,
-    timeoutS: null,
-  });
+/** A row that exists but carries no opinion on any ceiling — service env wins. */
+function emptyProfile(): AiProviderConnectionResponse {
+  return profile({ maxConcurrent: null, rpmLimit: null, tpmLimit: null, timeoutS: null });
 }
 
 /**
@@ -69,11 +69,11 @@ function settingsStub(overrides: Record<string, unknown> = {}) {
 // about. Importing makes the stub definitionally correct.
 const DEFAULTS: Record<string, unknown> = SERVICE_RUNTIME_DEFAULTS;
 
-function serviceWith(settings: EffectiveSettingsService, profiles: Array<AiRuntimeProfileResponse> = []): EffectiveConfigService {
-  const runtimeProfiles = {
+function serviceWith(settings: EffectiveSettingsService, profiles: Array<AiProviderConnectionResponse> = []): EffectiveConfigService {
+  const connections = {
     list: vi.fn(async () => profiles),
-  } as unknown as IAiRuntimeProfileService;
-  return new EffectiveConfigService(settings, runtimeProfiles);
+  } as unknown as IProviderConnectionService;
+  return new EffectiveConfigService(settings, connections);
 }
 
 describe('EffectiveConfigService', () => {
@@ -112,11 +112,13 @@ describe('EffectiveConfigService', () => {
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: null, maxMemoryMb: null, vramBudgetMb: null });
     });
 
-    it('serves nlp runtimeProfiles plus concurrency.maxConcurrent', async () => {
+    it('serves nlp an EMPTY runtimeProfiles list (no connection plane) plus concurrency.maxConcurrent', async () => {
       const svc = serviceWith(settingsStub(), [profile({ provider: 'nlp-local' })]);
       const res = await svc.resolveForService('nlp');
 
-      expect(res.runtimeProfiles).toHaveLength(1);
+      // TASK-862: nlp has no `AiProviderConnection` service, so the wire keeps
+      // the field (apps/nlp tolerates it) but it is always empty.
+      expect(res.runtimeProfiles).toEqual([]);
       expect(res.concurrency?.maxConcurrent).toBe(4);
       // Nlp retention is now admin-controlled too.
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 3 });
@@ -226,12 +228,14 @@ describe('EffectiveConfigService', () => {
 
   describe('house constraint: never leaks per-request model selection', () => {
     it('omits any model-selection field from the text payload', async () => {
-      const svc = serviceWith(settingsStub(), [profile({ modelSlug: 'llama3:8b' })]);
+      const svc = serviceWith(settingsStub(), [profile({ extraJson: { model: 'llama3:8b' } })]);
       const res = await svc.resolveForService('text');
 
-      // modelSlug identifies WHICH profile row applies; it must never be
-      // presented as a selection directive alongside a `model`/`provider` choice.
+      // A connection row's `extraJson.model` is a per-request override that
+      // rides `provider_overrides`; it must never surface here as a selection
+      // directive. The profile is provider-level (`modelSlug: ''`) by construction.
       const payload = res.runtimeProfiles?.[0] as Record<string, unknown>;
+      expect(payload.modelSlug).toBe('');
       expect(payload).not.toHaveProperty('model');
       expect(payload).not.toHaveProperty('selectedModel');
       expect(payload).not.toHaveProperty('defaultModel');

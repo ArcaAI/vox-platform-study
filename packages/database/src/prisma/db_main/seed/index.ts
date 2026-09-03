@@ -31,9 +31,8 @@ import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
 import { seedEntitlements } from './15-entitlements';
-import { seedAiTaskDefault } from './16-ai-task-default';
+import { seedAiRoutingPolicy } from './16-ai-routing-policy';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
-import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
@@ -149,20 +148,22 @@ export const seed = async () => {
     // Needs the reserved SYSTEM tenant + the Global demo tenant (both Phase 1).
     await seedPipelinePolicy(client);
     console.log('');
-    // SYSTEM AiTaskDefault platform defaults (guardrail/NLP task
-    // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
-    await seedAiTaskDefault(client);
-    console.log('');
-    // SYSTEM config-plane rows. Seed-authoritative Day-1 :
-    // the built-in-local llm connections (ollama/lm-studio/built-in/vllm/
-    // llama-cpp) seed ENABLED, so `resolveConnection('llm', …)` returns the
-    // SYSTEM row and env is a pure fallback; cloud-BYO rows stay inert until a
-    // tenant brings a key. AiRuntimeProfile still seeds EMPTY (absence = no
-    // opinion → the injection cascade falls through to the service default).
-    // No FK on either model; ordered after AiTaskDefault for readability.
+    // TASK-862: `16-ai-task-default.ts` and `18-ai-runtime-profile.ts` are
+    // GONE. The task defaults live in `AiRoutingPolicy` (the SYSTEM election is
+    // written from the model registry — TASK-860); the runtime-profile
+    // ceilings moved onto `AiProviderConnection` and hyper-parameters onto the
+    // Agent (TASK-863).
+    //
+    // SYSTEM config-plane rows. Seed-authoritative Day-1: the built-in-local
+    // llm connections (lm-studio/built-in/vllm/llama-cpp) seed ENABLED, so
+    // `resolveConnection('llm', …)` returns the SYSTEM row and env is a pure
+    // fallback; cloud-BYO rows stay inert until a tenant brings a key.
     await seedAiProviderConnection(client);
     console.log('');
-    await seedAiRuntimeProfile(client);
+    // SYSTEM elected task defaults on `AiRoutingPolicy` (TASK-862 — replaces the
+    // retired `AiTaskDefault` seed). CREATE-ONLY; needs the AiModel catalog
+    // (seedStt above) because the election binds the model by FK.
+    await seedAiRoutingPolicy(client);
     console.log('');
     // SYSTEM TenantTtsConfig platform default (/ F1): built-in-first
     // TTS routing (kokoro / indic_parler) so an unconfigured tenant defaults to

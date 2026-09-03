@@ -42,7 +42,6 @@ export * from './settings-registry';
 export * from './ai-task-default';
 // Config-plane core (provider connections + runtime profiles).
 export * from './ai-provider-connection';
-export * from './ai-runtime-profile';
 // The ordered N-way candidate chain over those two: which providers serve a
 // task, in what order, and what may happen on failure
 export * from './ai-routing-policy';

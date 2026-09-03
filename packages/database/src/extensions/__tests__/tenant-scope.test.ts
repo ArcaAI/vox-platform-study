@@ -151,7 +151,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
     // -1 (87): ProviderReconciliationRun — Provider Reconciliation removed
     // outright (TASK-862, owner directive 2026-09-04).
-    expect(TENANT_SCOPED_MODELS.size).toBe(87);
+    // -1 (86): AiRuntimeProfile — retired by TASK-862 (ceilings moved onto
+    // AiProviderConnection, hyper-parameters to the Agent).
+    expect(TENANT_SCOPED_MODELS.size).toBe(86);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -406,9 +408,8 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // (tenant row → SYSTEM row → env); it is the FIRST secret-bearing entry
       // in this list, which is safe because the widening is [caller, SYSTEM]
       // only, the ciphertext is inert without Vault-Transit decrypt, and no
-      // read DTO carries it. AiRuntimeProfile's SYSTEM rows are the
-      // hyperparameter defaults every injection cascade reads (no secrets).
-      // Writes are NOT widened for either.
+      // read DTO carries it. (AiRuntimeProfile used to sit beside it; TASK-862
+      // retired that model.) Writes are NOT widened.
       new Set([
         'AsrPipeline',
         'AiModel',
@@ -440,7 +441,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'ServiceInstance',
         'ChangelogEntry',
         'AiProviderConnection',
-        'AiRuntimeProfile',
         // AiRoutingPolicy's SYSTEM row is the platform-default candidate
         // chain ( Same "tenant row → SYSTEM row" shape as
         // AiTaskDefault; the resolver runs under the caller's own CLS, so

@@ -9,7 +9,6 @@ import { AiPriceBookRepository } from '../../../repositories/generated/core/AiPr
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
-import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
@@ -185,7 +184,6 @@ const repositories = [
   // Config-plane core — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.
   AiProviderConnectionRepository,
-  AiRuntimeProfileRepository,
   // The ordered N-way candidate chain per (tenant, taskKey, policyVersion)
   // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
   // platform default every tenant without its own policy must read.
