@@ -35,11 +35,13 @@ class TestCertCheckDefault:
 
 
 class TestS3BlobStoreCertCheck:
-    def _build(self, *, secure: bool, cert_check: bool) -> MagicMock:
+    def _build(
+        self, *, secure: bool, cert_check: bool, endpoint_url: str = "https://minio.internal:9000"
+    ) -> MagicMock:
         boto3 = MagicMock()
         with patch.dict("sys.modules", {"boto3": boto3}):
             S3BlobStore(
-                endpoint_url="https://minio.internal:9000",
+                endpoint_url=endpoint_url,
                 access_key="ak",
                 secret_key="sk",
                 region="us-east-1",
@@ -58,8 +60,20 @@ class TestS3BlobStoreCertCheck:
 
     def test_plaintext_never_disables_verification(self):
         """No TLS ⇒ nothing to relax; the knob must not change the client."""
-        boto3 = self._build(secure=False, cert_check=False)
+        boto3 = self._build(
+            secure=False, cert_check=False, endpoint_url="http://minio.internal:9000"
+        )
         assert boto3.client.call_args.kwargs.get("verify") is not False
+
+    def test_https_endpoint_is_secure_even_when_the_flag_says_otherwise(self):
+        """TASK-858 — boto3 takes the scheme from ``endpoint_url``, so an https URL with
+        ``secure=False`` was never plaintext: it verified MinIO's internal-CA leaf against
+        the system store and every claim-check read failed (`interpreter.load_config`,
+        the whole governed run FAILED) on any deployment that set the URL but not
+        ``HARNESS_CLAIM_CHECK_SECURE``. The URL is the truth; the flag cannot demote it."""
+        boto3 = self._build(secure=False, cert_check=False)
+        assert boto3.client.call_args.kwargs["verify"] is False
+        assert boto3.client.call_args.kwargs["use_ssl"] is True
 
 
 class TestBuildBlobStorePropagation:
