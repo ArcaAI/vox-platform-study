@@ -1243,3 +1243,18 @@ export const WORKFLOW_ENDPOINTS = {
  * minted for ONE run, so the scope carries the run id.
  */
 export const workflowRunStreamScope = (runId: string): string => `workflow_run:${runId}`;
+
+// =============================================================================
+// Agent endpoints (TASK-865 — business plane, TASK-863 routes)
+// =============================================================================
+
+/**
+ * Published-Agent discovery and invocation, business plane (API key or JWT).
+ * Administration (`/admin/agents/**`) is NOT here — it is the admin plane.
+ */
+export const AGENT_ENDPOINTS = {
+  /** List published, active agents visible to the tenant, optionally filtered by task. */
+  LIST: (task?: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH') => (task ? `/agents?task=${encodeURIComponent(task)}` : '/agents'),
+  /** One published agent: summary + input/output schema + protocols. */
+  GET: (slug: string) => `/agents/${encodeURIComponent(slug)}`,
+} as const;

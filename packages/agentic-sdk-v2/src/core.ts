@@ -60,6 +60,8 @@ export {
   useConsultationSchema,
   useConsultationWorkflow,
   useSelectableConsultationWorkflows,
+  // TASK-865: the ASR Agent picker's data source (no audio/ML — a plain read).
+  useSelectableAsrAgents,
   // workflow invocation (run / watch / cancel). No audio or ML, so
   // it belongs in /core: an admin or dashboard surface runs workflows too.
   useWorkflowRun,
@@ -289,6 +291,10 @@ export type {
 } from './types';
 
 export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultationStatus } from './types';
+
+// TASK-865: published-Agent selection types (business plane).
+export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './types';
+export type { UseSelectableAsrAgentsReturn } from './hooks';
 
 export type { LiveSummarySnapshot, LiveSummarySection, LiveSummaryEntity, LiveSummaryStats, LiveSummaryVitals } from './types';
 export type { LiveAssistEvent, LiveAssistSuggestion, LiveAssistProposal, LiveAssistCorrections } from './types';
