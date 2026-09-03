@@ -6,15 +6,23 @@ import { AiModelRepository, JobQueue } from '@arcaai/domains';
 import { IS3Service } from '../../baseServices/storage';
 import { assertEqualTenants, createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { HF_CACHE_LIBRARIES, HOPE_MODELS_BUCKET, deriveLocalPath } from '../constants';
 import { mergeDownloadMeta } from './model-download-meta.util';
 import { buildAiModelManifest } from './model-manifest.util';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
-import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken } from './model-version.util';
-
-import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '../constants';
+import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
+import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken, sha256Hex } from './model-version.util';
 
 // Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
 export { HOPE_MODELS_BUCKET };
+
+/**
+ * Libraries whose loader opens ONE file (so the derived `localPath` names the
+ * primary object) rather than a directory.
+ */
+const SINGLE_FILE_LIBRARIES: ReadonlySet<string> = new Set(['whisper.cpp', 'llama.cpp', 'onnxruntime', 'parakeet.cpp']);
+
+const HF_REPO_RE = /^(?:hf:)?([\w.-]+)\/([\w.-]+)$/;
 
 export interface DownloadAiModelJobPayload {
   jobId: string;
@@ -26,16 +34,37 @@ export interface DownloadAiModelJobPayload {
 export interface DownloadAiModelResult {
   aiModelId: string;
   sourceUri: string;
+  bucketPrefix: string;
   localPath: string;
   fileSizeMb: number;
   sha256: string | null;
 }
 
 /**
- * AiModelDownloadProcessor — fetches a model's weights from its current
- * `sourceUri`, verifies + content-addresses them, publishes them into
- * `hope-models`, and writes the `AiModel` row back to point at the
- * published copy.
+ * AiModelDownloadProcessor — THE publisher of the `hope-models` bucket
+ * (TASK-860 D-1): fetches a model's weights from its `sourceUri`, verifies +
+ * content-addresses them, publishes them under the layout README §3.3
+ * prescribes, and writes the `AiModel` row back with its bucket identity
+ * (`bucketPrefix`, `primaryObject`, `manifestDigest`, `hfRevision`), the
+ * derived `localPath`, and `availability = AVAILABLE`.
+ *
+ * Two layouts, one contract:
+ *
+ *   `<slug>/<version>/manifest.json, SHA256SUMS, <weights…>`     GGUF / CT2 / ONNX / pth — flat
+ *   `hf/hub/models--<org>--<repo>/{refs/main, snapshots/<sha>/…}` transformers family — a verbatim
+ *                                                               HF cache (`HF_HOME=/mnt/models-bucket/hf`
+ *                                                               + `HF_HUB_OFFLINE=1` serves it; no
+ *                                                               symlinks, s3fs cannot follow them)
+ *
+ * The HF-cache layout needs the repo commit sha (the snapshot directory name).
+ * When the Hub cannot be reached for it the job falls back to the flat layout
+ * rather than inventing a sha — a wrong snapshot name is worse than a flat
+ * prefix the resolvers can still read through `localPath`.
+ *
+ * `sourceUri` is left UNTOUCHED: it is the row's Hub identity (R-3); the bucket
+ * location is `bucketPrefix`. (Before TASK-860 the job repointed `sourceUri` at
+ * `s3://hope-models/…`, which destroyed the identity the card metadata is
+ * mirrored from.)
  *
  * Mirrors `IngestKnowledgeDocumentProcessor`/`DirectorySyncProcessor`: a
  * fail-closed `tenantId` guard, a CLS rebind via `createWorkerSession`
@@ -57,6 +86,7 @@ export class AiModelDownloadProcessor extends WorkerHost {
     private readonly modelSourceFetcher: ModelSourceFetcherService,
     @Inject(IS3Service) private readonly s3Service: IS3Service,
     private readonly cls: ClsService<IActiveUserContext>,
+    private readonly hfClient: HuggingFaceModelSourceClient,
   ) {
     super();
   }
@@ -91,33 +121,43 @@ export class AiModelDownloadProcessor extends WorkerHost {
         const sha256sumsContent = buildSha256SumsContent(files);
         const quant = quantHint ? normalizeQuantToken(quantHint) : deriveQuantTokenFromFilenames([model.sourceUri, ...files.map((f) => f.path)]);
         const version = deriveModelVersion(quant, sha256sumsContent);
-        const prefix = `${model.slug}/${version}/`;
+
+        // Layout: HF cache for the transformers family (when the Hub sha is
+        // known), flat `<slug>/<version>/` for everything else. The sha is
+        // recorded as `hfRevision` on EVERY Hub-sourced row, whatever the layout.
+        const hub = await this.resolveHubInfo(model.sourceUri);
+        const cacheLayout = hub && HF_CACHE_LIBRARIES.has(model.libraryName) ? hub : null;
+        const prefix = cacheLayout ? cacheLayout.snapshotPrefix : `${model.slug}/${version}/`;
 
         const manifest = buildAiModelManifest({
           slug: model.slug,
-          version,
+          version: cacheLayout ? cacheLayout.sha : version,
           quant,
           format: model.format,
           sourceUri: model.sourceUri,
           files,
           publishedBy: userId ?? 'system',
         });
+        const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8');
 
         for (const file of files) {
           await this.s3Service.putFile(HOPE_MODELS_BUCKET, `${prefix}${file.path}`, file.data);
         }
         await this.s3Service.putFile(HOPE_MODELS_BUCKET, `${prefix}SHA256SUMS`, Buffer.from(sha256sumsContent, 'utf8'));
-        await this.s3Service.putFile(HOPE_MODELS_BUCKET, `${prefix}manifest.json`, Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
+        await this.s3Service.putFile(HOPE_MODELS_BUCKET, `${prefix}manifest.json`, manifestBytes);
+        if (cacheLayout) {
+          // `refs/main` is what `hf_hub_download` resolves a revision through
+          // when offline; without it the snapshot is invisible to the loader.
+          await this.s3Service.putFile(HOPE_MODELS_BUCKET, `${cacheLayout.repoPrefix}refs/main`, Buffer.from(cacheLayout.sha, 'utf8'));
+        }
 
         await job.updateProgress(90);
 
         const totalBytes = files.reduce((sum, f) => sum + f.data.length, 0);
         const fileSizeMb = Math.max(1, Math.round(totalBytes / (1024 * 1024)));
-        const primarySha256 = manifest.primaryObject
-          ? (files.find((f) => f.path === manifest.primaryObject)?.sha256 ?? files[0].sha256)
-          : (files[0]?.sha256 ?? null);
-        const sourceUri = `s3://${HOPE_MODELS_BUCKET}/${prefix}`;
-        const localPath = `${HOPE_MODELS_MOUNT}/${prefix}`;
+        const primaryObject = manifest.primaryObject;
+        const primarySha256 = primaryObject ? (files.find((f) => f.path === primaryObject)?.sha256 ?? files[0].sha256) : (files[0]?.sha256 ?? null);
+        const localPath = deriveLocalPath(prefix, SINGLE_FILE_LIBRARIES.has(model.libraryName) ? primaryObject : null);
 
         // Re-read: the row's `_version` may have moved since this job started
         // (e.g. an admin edit) — the CAS below is against the CURRENT row.
@@ -125,19 +165,35 @@ export class AiModelDownloadProcessor extends WorkerHost {
         if (!fresh) {
           throw new Error(`AiModel ${aiModelId} disappeared during download`);
         }
-        fresh.markAsDownloaded(localPath, fileSizeMb, primarySha256 ?? undefined, userId);
-        fresh.sourceUri = sourceUri;
+        fresh.recordPublish({
+          bucketPrefix: prefix,
+          primaryObject,
+          manifestDigest: sha256Hex(manifestBytes),
+          localPath,
+          fileSizeMb,
+          checksum: primarySha256 ?? undefined,
+          hfRevision: hub?.sha ?? null,
+          userId,
+        });
         fresh.metaData = mergeDownloadMeta(fresh.metaData, { jobId, finishedAt: new Date().toISOString(), error: null });
         await this.aiModelRepository.updateWithVersion(aiModelId, fresh, fresh.version);
 
         await job.updateProgress(100);
 
-        this.logger.log({ message: 'AiModel download completed', jobId, aiModelId, sourceUri, localPath, fileSizeMb });
+        this.logger.log({
+          message: 'AiModel published to the models bucket',
+          jobId,
+          aiModelId,
+          sourceUri: model.sourceUri,
+          bucketPrefix: prefix,
+          localPath,
+          fileSizeMb,
+        });
 
-        return { aiModelId, sourceUri, localPath, fileSizeMb, sha256: primarySha256 };
+        return { aiModelId, sourceUri: model.sourceUri, bucketPrefix: prefix, localPath, fileSizeMb, sha256: primarySha256 };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error({ message: 'AiModel download failed', jobId, aiModelId, error: message });
+        this.logger.error({ message: 'AiModel publish failed', jobId, aiModelId, error: message });
 
         const fresh = await this.aiModelRepository.findById(aiModelId);
         if (fresh) {
@@ -149,5 +205,29 @@ export class AiModelDownloadProcessor extends WorkerHost {
         throw error;
       }
     });
+  }
+
+  /**
+   * For a Hub-sourced row: the repo's commit sha and the two prefixes of its
+   * HF-cache layout. `null` for a non-Hub source, and for a Hub the job could
+   * not reach (the caller then publishes flat and records no revision).
+   */
+  private async resolveHubInfo(sourceUri: string): Promise<{ sha: string; repoPrefix: string; snapshotPrefix: string } | null> {
+    const match = sourceUri.match(HF_REPO_RE);
+    if (!match) return null;
+    const [, org, repo] = match;
+    try {
+      const info = await this.hfClient.getRepoInfo(`${org}/${repo}`);
+      if (!info.sha) return null;
+      const repoPrefix = `hf/hub/models--${org}--${repo}/`;
+      return { sha: info.sha, repoPrefix, snapshotPrefix: `${repoPrefix}snapshots/${info.sha}/` };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Hub sha unavailable — publishing flat instead of as an HF cache',
+        sourceUri,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 }

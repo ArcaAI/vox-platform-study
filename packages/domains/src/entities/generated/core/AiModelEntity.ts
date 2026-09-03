@@ -585,10 +585,14 @@ export class AiModelEntity extends BaseTaggedEntity {
    * Record a MEASURED availability (inventory job / publish processor). Never
    * called from an admin edit — availability is a fact about the bucket.
    */
-  public markAvailability(availability: Enums.AiModelAvailability, detail: JsonValue | null = null, checkedAt: Date = new Date()): void {
+  public markAvailability(
+    availability: Enums.AiModelAvailability,
+    detail: JsonValue | Record<string, unknown> | null = null,
+    checkedAt: Date = new Date(),
+  ): void {
     this.setProperty('availability', availability);
     this.setProperty('availabilityCheckedAt', checkedAt);
-    this.setProperty('availabilityDetail', detail);
+    this.setProperty('availabilityDetail', detail as JsonValue | null);
   }
 
   /**

@@ -13,6 +13,20 @@ export interface HuggingFaceFileEntry {
 }
 
 /**
+ * The model-card facts the registry mirrors (TASK-860 R-3): the Hub commit
+ * `sha` (the HF-cache snapshot directory name and `AiModel.hfRevision`), the
+ * licence, whether the repo is gated, and the two taxonomy facets.
+ */
+export interface HuggingFaceRepoInfo {
+  sha: string;
+  gated: boolean;
+  license: string | null;
+  pipelineTag: string | null;
+  libraryName: string | null;
+  languages: string[];
+}
+
+/**
  * Thin transport wrapper over the public HuggingFace Hub REST surface —
  * listing a repo's file tree and downloading one file. No retry/pagination
  * logic: HF's tree endpoint already returns the full recursive listing in
@@ -68,6 +82,37 @@ export class HuggingFaceModelSourceClient {
           path: String(entry.path),
           size: Number((entry.lfs as Record<string, unknown> | undefined)?.size ?? entry.size ?? 0),
         }));
+    } catch (error) {
+      throw this.toRepoError(repo, error);
+    }
+  }
+
+  /**
+   * Read the repo's metadata at `revision` — commit sha + the card facts.
+   * Same auth + error posture as the other two calls.
+   */
+  async getRepoInfo(repo: string, revision = 'main'): Promise<HuggingFaceRepoInfo> {
+    const url = `https://huggingface.co/api/models/${repo}?revision=${encodeURIComponent(revision)}`;
+    const headers = await this.resolveAuthHeaders();
+
+    try {
+      const response = await this.httpService.axiosRef.get(url, { timeout: LIST_TIMEOUT_MS, headers });
+      const data = (response.data ?? {}) as Record<string, unknown>;
+      const card = (data.cardData ?? {}) as Record<string, unknown>;
+      const language = card.language;
+      return {
+        sha: String(data.sha ?? ''),
+        // The Hub reports `gated` as false | 'auto' | 'manual'.
+        gated: data.gated !== false && data.gated !== undefined && data.gated !== null,
+        license: typeof card.license === 'string' ? card.license : null,
+        pipelineTag: typeof data.pipeline_tag === 'string' ? data.pipeline_tag : null,
+        libraryName: typeof data.library_name === 'string' ? data.library_name : null,
+        languages: Array.isArray(language)
+          ? language.filter((l): l is string => typeof l === 'string')
+          : typeof language === 'string'
+            ? [language]
+            : [],
+      };
     } catch (error) {
       throw this.toRepoError(repo, error);
     }

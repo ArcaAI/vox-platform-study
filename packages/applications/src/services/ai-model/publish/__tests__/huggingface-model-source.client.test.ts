@@ -28,6 +28,25 @@ describe('HuggingFaceModelSourceClient', () => {
     client = new HuggingFaceModelSourceClient({ axiosRef } as never, providerConnections);
   });
 
+  describe('getRepoInfo (TASK-860)', () => {
+    it('reads the model-card facts the registry mirrors: sha, license, gated, pipeline_tag, library_name', async () => {
+      axiosRef.get.mockResolvedValue({
+        data: { sha: 'abc123', gated: 'auto', pipeline_tag: 'token-classification', library_name: 'transformers', cardData: { license: 'apache-2.0', language: ['en'] } },
+      });
+
+      const info = await client.getRepoInfo('blaze999/Medical-NER');
+
+      expect(axiosRef.get).toHaveBeenCalledWith('https://huggingface.co/api/models/blaze999/Medical-NER?revision=main', expect.objectContaining({ timeout: expect.any(Number) }));
+      expect(info).toEqual({ sha: 'abc123', gated: true, license: 'apache-2.0', pipelineTag: 'token-classification', libraryName: 'transformers', languages: ['en'] });
+    });
+
+    it('maps an un-gated public repo to gated=false and tolerates a missing card', async () => {
+      axiosRef.get.mockResolvedValue({ data: { sha: 'ffff', gated: false } });
+      const info = await client.getRepoInfo('onnx-community/silero-vad');
+      expect(info).toEqual({ sha: 'ffff', gated: false, license: null, pipelineTag: null, libraryName: null, languages: [] });
+    });
+  });
+
   describe('listRepoFiles', () => {
     it('requests the recursive tree endpoint and returns only file entries', async () => {
       axiosRef.get.mockResolvedValue({
