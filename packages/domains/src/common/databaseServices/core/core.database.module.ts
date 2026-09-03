@@ -102,6 +102,10 @@ import { WorkflowRunRepository } from '../../../repositories/generated/core/Work
 import { WorkflowDefinitionRepository } from '../../../repositories/generated/core/WorkflowDefinitionRepository';
 import { WorkflowAssignmentRepository } from '../../../repositories/generated/core/WorkflowAssignmentRepository';
 import { WorkflowAssignmentChangeRepository } from '../../../repositories/generated/core/WorkflowAssignmentChangeRepository';
+import { AgentRepository } from '../../../repositories/generated/core/AgentRepository';
+import { AgentModelFallbackRepository } from '../../../repositories/generated/core/AgentModelFallbackRepository';
+import { AgentAssignmentRepository } from '../../../repositories/generated/core/AgentAssignmentRepository';
+import { AgentAssignmentChangeRepository } from '../../../repositories/generated/core/AgentAssignmentChangeRepository';
 import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
 import { WorkflowInvariantRuleRepository } from '../../../repositories/generated/core/WorkflowInvariantRuleRepository';
 
@@ -291,6 +295,11 @@ const repositories = [
   // Per-scope workflow assignment + its append-only WORM change log.
   WorkflowAssignmentRepository,
   WorkflowAssignmentChangeRepository,
+  // TASK-863 — the first-class Agent substrate.
+  AgentRepository,
+  AgentModelFallbackRepository,
+  AgentAssignmentRepository,
+  AgentAssignmentChangeRepository,
   // Workflow-graph safety rule rows — a SYSTEM_SHARED_READ_MODEL,
   // see tenant-scope.ts for why.
   WorkflowInvariantRuleRepository,
