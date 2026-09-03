@@ -103,7 +103,7 @@ describe('batch + jobs client', () => {
   });
 
   it('lists published ASR agents from the business route (TASK-863)', async () => {
-    const calls = installFetchMock(() => Response.json({ data: [] }));
+    const calls = installFetchMock();
     await listPlaygroundAsrAgents();
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/agents?task=SPEECH_TO_TEXT']);
   });
