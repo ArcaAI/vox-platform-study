@@ -1,7 +1,7 @@
 /**
  * BUG-014 — rule 11 §5: "disabled buttons need a visible reason (tooltip or
  * adjacent text)". `Upload & transcribe` is disabled until BOTH a file and a
- * pipeline exist; with the pipeline picker stalled, `pipelineId` stays null and
+ * agent exist; with the agent picker stalled, `agentSlug` stays null (the tenant default transcribes) and
  * the control is permanently dead. The reason must be visible AND programmatically
  * associated with the button.
  *
@@ -160,8 +160,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderTab(pipelineId: string | null) {
-  return renderWithProviders(<BatchTab pipelineId={pipelineId} />);
+function renderTab(agentSlug: string | null) {
+  return renderWithProviders(<BatchTab agentSlug={agentSlug} />);
 }
 
 function audioFile(name: string) {
@@ -208,14 +208,6 @@ function transcribeCalls() {
 }
 
 describe('BatchTab upload control', () => {
-  it('states that a pipeline is required when the picker produced none', () => {
-    renderTab(null);
-    chooseFile();
-
-    expect(uploadButton().disabled).toBe(true);
-    expect(accessibleReason()).toMatch(/pipeline/i);
-  });
-
   it('states that a file is required when none has been chosen', () => {
     renderTab('p-default');
 

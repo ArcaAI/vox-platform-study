@@ -15,7 +15,7 @@ import {
   getTranscriptionJob,
   jobStreamPath,
   listMyTranscriptionJobs,
-  listPlaygroundPipelines,
+  listPlaygroundAsrAgents,
   refreshStreamTicket,
   retryTranscriptionJob,
   uploadBatchAudio,
@@ -49,9 +49,9 @@ afterEach(() => {
 });
 
 describe('liveTranscriptionKeys', () => {
-  it('separates pipelines, jobs and job detail under one root', () => {
-    expect(liveTranscriptionKeys.pipelines()[0]).toBe('playground-live-transcription');
-    expect(liveTranscriptionKeys.jobs()).not.toEqual(liveTranscriptionKeys.pipelines());
+  it('separates agents, jobs and job detail under one root', () => {
+    expect(liveTranscriptionKeys.asrAgents()[0]).toBe('playground-live-transcription');
+    expect(liveTranscriptionKeys.jobs()).not.toEqual(liveTranscriptionKeys.asrAgents());
     expect(liveTranscriptionKeys.jobs({ page: 1 })).toEqual(liveTranscriptionKeys.jobs({ page: 1 }));
     expect(liveTranscriptionKeys.jobs({ page: 1 })).not.toEqual(liveTranscriptionKeys.jobs({ page: 2 }));
     expect(liveTranscriptionKeys.job('j-1')).not.toEqual(liveTranscriptionKeys.job('j-2'));
@@ -61,7 +61,7 @@ describe('liveTranscriptionKeys', () => {
 describe('stream session client', () => {
   it('creates, refreshes and deletes stream sessions on the end-user plane', async () => {
     const calls = installFetchMock();
-    await createStreamSession({ pipelineId: 'p-1', sampleRate: 16000 });
+    await createStreamSession({ agentSlug: 'asr-1', sampleRate: 16000 });
     await refreshStreamTicket('s-9d42');
     await closeStreamSession('s-9d42');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
@@ -69,21 +69,21 @@ describe('stream session client', () => {
       'POST /api/hope/audio/transcription-jobs/stream/session/s-9d42/refresh-ticket',
       'DELETE /api/hope/audio/transcription-jobs/stream/session/s-9d42',
     ]);
-    expect(calls[0].body).toEqual({ pipelineId: 'p-1', sampleRate: 16000 });
+    expect(calls[0].body).toEqual({ agentSlug: 'asr-1', sampleRate: 16000 });
   });
 });
 
 describe('batch + jobs client', () => {
-  it('uploads multipart FormData with the file and pipelineId fields', async () => {
+  it('uploads multipart FormData with the file and agentSlug fields', async () => {
     const calls = installFetchMock();
     const file = new File(['RIFF'], 'visit.wav', { type: 'audio/wav' });
-    await uploadBatchAudio({ file, pipelineId: 'p-1' });
+    await uploadBatchAudio({ file, agentSlug: 'asr-1' });
 
     expect(calls[0].method).toBe('POST');
     expect(calls[0].url).toBe('/api/hope/audio/transcription-jobs/transcribe');
     const body = calls[0].body as FormData;
     expect(body).toBeInstanceOf(FormData);
-    expect(body.get('pipelineId')).toBe('p-1');
+    expect(body.get('agentSlug')).toBe('asr-1');
     expect(body.get('file')).toBeInstanceOf(File);
     expect((body.get('file') as File).name).toBe('visit.wav');
   });
@@ -102,10 +102,10 @@ describe('batch + jobs client', () => {
     ]);
   });
 
-  it('lists pipelines from the public end-user read', async () => {
-    const calls = installFetchMock();
-    await listPlaygroundPipelines();
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/audio/pipelines']);
+  it('lists published ASR agents from the business route (TASK-863)', async () => {
+    const calls = installFetchMock(() => Response.json({ data: [] }));
+    await listPlaygroundAsrAgents();
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/agents?task=SPEECH_TO_TEXT']);
   });
 
   it('exposes the gateway-relative SSE path for useEventStream', () => {

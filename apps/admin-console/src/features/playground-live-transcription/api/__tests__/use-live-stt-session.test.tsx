@@ -194,7 +194,7 @@ async function startedHook() {
   const calls = stubFetch(sessionHandler);
   const hook = renderHook(() => useLiveSttSession());
   await act(async () => {
-    await hook.result.current.start({ pipelineId: 'p-1', tenantId: 'tnt-1' });
+    await hook.result.current.start({ agentSlug: 'asr-1', tenantId: 'tnt-1' });
   });
   return { calls, hook };
 }
@@ -205,7 +205,7 @@ describe('useLiveSttSession', () => {
 
     // Session created through the BFF with the negotiated sample rate.
     const create = calls.find((call) => call.url.endsWith('/stream/session'));
-    expect(create?.body).toEqual({ pipelineId: 'p-1', sampleRate: 16000 });
+    expect(create?.body).toEqual({ agentSlug: 'asr-1', sampleRate: 16000 });
 
     // WS client connected directly against the gateway origin.
     const ws = FakeSttWsClient.instances[0];
@@ -246,7 +246,7 @@ describe('useLiveSttSession', () => {
     const hook = renderHook(() => useLiveSttSession());
 
     await act(async () => {
-      await hook.result.current.start({ pipelineId: 'p-1', tenantId: 'tnt-1' });
+      await hook.result.current.start({ agentSlug: 'asr-1', tenantId: 'tnt-1' });
     });
 
     expect(hook.result.current.status).toBe('error');
@@ -269,7 +269,7 @@ describe('useLiveSttSession', () => {
     };
 
     await act(async () => {
-      await hook.result.current.start({ pipelineId: 'p-1', tenantId: 'tnt-1' });
+      await hook.result.current.start({ agentSlug: 'asr-1', tenantId: 'tnt-1' });
     });
     FakeSttWsClient.prototype.connect = original;
 
