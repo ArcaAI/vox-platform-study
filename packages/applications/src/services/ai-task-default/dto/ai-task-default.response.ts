@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** The raw persisted AiTaskDefault row for a (tenant, taskKey). */
+/** @deprecated TASK-862 — removed in R3. The legacy row shape, now projected from the elected `AiRoutingPolicy` row. */
 export class AiTaskDefaultResponse {
   @ApiProperty({ description: 'Owning tenant id (SYSTEM tenant = platform default row)' })
   tenantId!: string;
