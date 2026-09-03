@@ -98,6 +98,8 @@ export interface StartWorkflowRunOptions {
 
 /** Options for {@link useWorkflowRun}. */
 export interface UseWorkflowRunOptions {
+  // TODO(TASK-864): workflow socket protocol — a `transport: 'sse' | 'socket'` option lands here
+  // when the run stream gains a socket lane; SSE with `Last-Event-ID` resume stays the default.
   /**
    * Load the catalogue on mount. Pass a `consultationId` to load the
    * CONSULTATION-BOUND catalogue, which is wider — it also lists

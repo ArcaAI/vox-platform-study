@@ -94,7 +94,10 @@ export interface TransportRequestOptions {
   /** Gateway-relative path, joined via `core/url.ts#buildUrl` (leading slash optional). */
   path: string;
   query?: Record<string, QueryValue>;
-  /** JSON-serialized as the request body when present; also sets `Content-Type: application/json`. */
+  /**
+   * JSON-serialized as the request body when present; also sets `Content-Type: application/json`.
+   * A `FormData` body is sent as-is with NO content type, so the runtime writes the multipart boundary (TASK-865).
+   */
   body?: unknown;
   /** Merged on top of the default headers — set here to override a default (e.g. a streaming request's `Accept`). */
   headers?: HeaderInput;
@@ -128,7 +131,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function buildHeaders(config: TransportConfig, options: TransportRequestOptions): Promise<Headers> {
   const headers = new Headers();
   headers.set('User-Agent', config.userAgent ?? SDK_USER_AGENT);
-  if (options.body !== undefined) headers.set('Content-Type', 'application/json');
+  if (options.body !== undefined && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (config.apiKey) headers.set('X-API-Key', config.apiKey);
   if (config.getToken) {
     const token = await config.getToken();
@@ -185,7 +188,7 @@ export class Transport {
     const signal = composeSignal(options.timeoutMs ?? this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, options.signal);
 
     const init: RequestInit = { method, headers, signal };
-    if (options.body !== undefined) init.body = JSON.stringify(options.body);
+    if (options.body !== undefined) init.body = options.body instanceof FormData ? options.body : JSON.stringify(options.body);
 
     try {
       return await this.fetchImpl(url, init);
