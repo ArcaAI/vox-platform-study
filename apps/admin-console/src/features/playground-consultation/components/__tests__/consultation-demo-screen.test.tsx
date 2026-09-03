@@ -26,6 +26,7 @@ const sdk = vi.hoisted(() => ({
   liveSummary: null as any,
   // the two discovery hooks the screen now calls.
   selectableWorkflows: null as any,
+  asrAgents: null as any,
   governingWorkflow: null as any,
 }));
 /* eslint-enable @typescript-eslint/no-explicit-any -- end of the SDK-double block */
@@ -39,6 +40,7 @@ vi.mock('@arcaai/vox', () => ({
   useArcaLiveSummary: () => sdk.liveSummary,
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn(async () => undefined) }),
   useSelectableConsultationWorkflows: () => sdk.selectableWorkflows,
+  useSelectableAsrAgents: () => sdk.asrAgents,
   useConsultationWorkflow: () => sdk.governingWorkflow,
 }));
 
@@ -55,6 +57,22 @@ function makeSelectableWorkflows(workflows: typeof WORKFLOWS | null = WORKFLOWS,
     isLoading,
     error: null,
     refresh: vi.fn(async () => workflows),
+  };
+}
+
+/** Published ASR agents the tenant may name at audio.start (TASK-865). */
+const ASR_AGENTS = [
+  { slug: 'clinic-asr', name: 'Clinic ASR', description: null, task: 'SPEECH_TO_TEXT' as const, versionNumber: 2, isTenantDefault: true },
+  { slug: 'fast-draft-asr', name: 'Fast Draft', description: null, task: 'SPEECH_TO_TEXT' as const, versionNumber: 1, isTenantDefault: false },
+];
+
+function makeAsrAgents(agents: typeof ASR_AGENTS | null = ASR_AGENTS, isLoading = false) {
+  return {
+    agents,
+    tenantDefault: agents?.find((agent) => agent.isTenantDefault) ?? null,
+    isLoading,
+    error: null,
+    refresh: vi.fn(async () => agents),
   };
 }
 
@@ -135,11 +153,6 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
   };
 }
 
-const PIPELINES = [
-  { id: 'pl-1', name: 'Default Clinical', slug: 'default-clinical', isDefault: true },
-  { id: 'pl-2', name: 'Fast Draft', slug: 'fast-draft', isDefault: false },
-];
-
 /** grants the point-of-care consent read returns for the open patient. */
 interface ConsentStubGrant {
   id: string;
@@ -174,7 +187,6 @@ function stubFetch(sessionOverrides: Parameters<typeof session>[0] = {}, consent
     vi.fn(async (input: string | URL | Request) => {
       const path = new URL(String(input), 'http://test.local').pathname;
       if (path === '/api/auth/session') return Response.json(session(sessionOverrides));
-      if (path === '/api/hope/audio/pipelines') return Response.json(PIPELINES);
       if (path === '/api/hope/admin/consent-grants') {
         return Response.json({ data: consentGrants, count: consentGrants.length, page: 1, limit: 50 });
       }
@@ -197,6 +209,7 @@ beforeEach(() => {
   sdk.userSettings = makeUserSettings();
   sdk.liveSummary = { snapshot: null, status: 'idle', error: null, start: vi.fn(), stop: vi.fn() };
   sdk.selectableWorkflows = makeSelectableWorkflows();
+  sdk.asrAgents = makeAsrAgents();
   sdk.governingWorkflow = makeGoverningWorkflow();
 });
 
@@ -229,7 +242,9 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
     expect(screen.getByText('P-702')).toBeTruthy();
 
     // Footer model selectors.
-    expect(screen.getByText('Transcription agent (STT pipeline)')).toBeTruthy();
+    // TASK-865: the ASR picker names the published transcription AGENT; no
+    // `/audio/pipelines` read is made (the fetch stub would throw on it).
+    expect(screen.getByText('Transcription agent')).toBeTruthy();
     expect(screen.getByText('Note assistant')).toBeTruthy();
   });
 
@@ -344,7 +359,6 @@ describe('ConsultationDemoScreen (scribe workspace)', () => {
         vi.fn(async (input: string | URL | Request) => {
           const path = new URL(String(input), 'http://test.local').pathname;
           if (path === '/api/auth/session') return Response.json(session());
-          if (path === '/api/hope/audio/pipelines') return Response.json(PIPELINES);
           if (path === '/api/hope/admin/consent-grants') return new Response('{"message":"Forbidden"}', { status: 403 });
           throw new Error(`Unhandled fetch: ${path}`);
         }),

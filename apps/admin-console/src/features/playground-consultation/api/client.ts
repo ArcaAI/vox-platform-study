@@ -12,7 +12,6 @@ import type { CorrectionProposal } from './live-assist';
 import type {
   ApproveSummaryRequest,
   AsyncSummaryJob,
-  AudioPipeline,
   ConsultationJobStatus,
   GenerateSummaryRequest,
   NamedEntitiesAggregate,
@@ -107,11 +106,6 @@ function ownDnaStyleLabel(report: OwnDnaReport): string {
 export async function listDnaStyleOptions(): Promise<Array<{ id: string; label: string }>> {
   const reports = await getJson<OwnDnaReport[]>('dna-writing-styles/mine');
   return reports.map((report) => ({ id: report.id, label: ownDnaStyleLabel(report) }));
-}
-
-/** Pipeline picker data — AudioPipelinePublicController. */
-export function listAudioPipelines(): Promise<AudioPipeline[]> {
-  return getJson('audio/pipelines');
 }
 
 /** Get-or-create the demo consultation (the SDK's session.open hits the same route). */
