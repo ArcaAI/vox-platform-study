@@ -354,7 +354,18 @@ export class HarnessInternalService {
     const typedService = service as ProviderService;
     let resolved: Awaited<ReturnType<IProviderConnectionService['resolveTenantCloudOverrides']>>;
     try {
-      resolved = await this.providerConnectionService.resolveTenantCloudOverrides(typedService, tenantId);
+      // TASK-858 — a service-token request carries NO tenant on the CLS store,
+      // and the cascade reads tenant-scoped `AiProviderConnection` rows, which
+      // the tenant-scope extension refuses without one. Re-establish the tenant
+      // from the query, exactly as `assemble` / `getEffectivePolicy` do; without
+      // it every resolve faulted into `unavailable` and the harness failed closed
+      // on rows that exist (the gateway's own text proxy, inside an HTTP tenant
+      // context, resolved the same rows).
+      resolved = await this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+        return this.providerConnectionService!.resolveTenantCloudOverrides(typedService, tenantId);
+      });
     } catch (error) {
       // Deliberately does NOT interpolate the error body — same rule as
       // `resolveMcpToken` and `toOverrideEntry`: a Vault-Transit error string
