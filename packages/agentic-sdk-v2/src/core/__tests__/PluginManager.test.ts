@@ -250,6 +250,7 @@ describe('PluginManager', () => {
     it('should only initialize enabled plugins', async () => {
       const manager = new PluginManager(
         {
+          clientInference: { allow: true },
           noiseFilter: true,
           vad: false,
           stt: false,
@@ -267,7 +268,8 @@ describe('PluginManager', () => {
 
   describe('getProcessor', () => {
     it('should return processor by name', async () => {
-      const manager = new PluginManager({ noiseFilter: true });
+      // TASK-865: client stages exist only behind the explicit allow.
+      const manager = new PluginManager({ clientInference: { allow: true }, noiseFilter: true });
       await manager.initialize({} as MediaStreamTrack, {} as AudioContext);
 
       const processor = manager.getProcessor('noiseFilter');
@@ -283,6 +285,7 @@ describe('PluginManager', () => {
   describe('getAllProcessors', () => {
     it('should return all processors', async () => {
       const manager = new PluginManager({
+        clientInference: { allow: true },
         noiseFilter: true,
         vad: true,
       });
@@ -376,7 +379,7 @@ describe('PluginManager', () => {
 
   describe('restart', () => {
     it('should restart all processors', async () => {
-      const manager = new PluginManager({ noiseFilter: true, vad: true }, mockLogger);
+      const manager = new PluginManager({ clientInference: { allow: true }, noiseFilter: true, vad: true }, mockLogger);
       await manager.initialize({} as MediaStreamTrack, {} as AudioContext);
 
       const newTrack = {} as MediaStreamTrack;

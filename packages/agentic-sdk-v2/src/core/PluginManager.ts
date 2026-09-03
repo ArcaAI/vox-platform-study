@@ -8,6 +8,7 @@
 import type { BaseProcessor } from '@arcaai/room';
 import type {
   AudioPluginConfig,
+  AudioPluginStageName,
   NoiseFilterPluginConfig,
   VADPluginConfig,
   STTPluginConfig,
@@ -168,12 +169,13 @@ export interface PluginManagerState {
  * Delegates to TranscriptionPipeline and KnowledgePipeline for processing.
  * Handles processor lifecycle and provides unified state.
  *
+ * The browser never runs a model (TASK-865): `noiseFilter` / `vad` are
+ * deprecated client stages, ignored unless `clientInference: { allow: true }`.
+ *
  * @example
  * ```typescript
  * const manager = new PluginManager({
- *   noiseFilter: { enabled: true, level: 'high' },
- *   vad: { enabled: true, sensitivity: 0.5 },
- *   stt: { enabled: true, provider: 'auto' },
+ *   stt: { enabled: true, provider: 'backend' },
  * });
  *
  * await manager.initialize(track, audioContext);
@@ -626,6 +628,11 @@ export class PluginManager {
 
     return {
       debugMode: this._debugMode,
+      // TASK-865: the client-inference gate travels with the config. Absent ⇒
+      // the pipeline refuses to construct the two client stages whatever their
+      // `enabled` flags say. Spread only when stated, so the pipeline's own
+      // "no opinion" stays `undefined`.
+      ...(this.config.clientInference ? { clientInference: { allow: this.config.clientInference.allow === true } } : {}),
       noiseFilter: {
         enabled: noiseFilterConfig.enabled ?? false,
         location: noiseFilterConfig.enabled ? 'browser' : 'skip',
@@ -940,7 +947,7 @@ export class PluginManager {
   /**
    * Check if a plugin is enabled in configuration
    */
-  isEnabled(name: keyof AudioPluginConfig): boolean {
+  isEnabled(name: AudioPluginStageName): boolean {
     const config = this.config[name];
     if (typeof config === 'boolean') return config;
     return config?.enabled ?? false;
@@ -949,7 +956,7 @@ export class PluginManager {
   /**
    * Get plugin configuration
    */
-  private getConfig<T extends object>(name: keyof AudioPluginConfig): T {
+  private getConfig<T extends object>(name: AudioPluginStageName): T {
     const config = this.config[name];
     if (typeof config === 'boolean') {
       return { enabled: config } as T;

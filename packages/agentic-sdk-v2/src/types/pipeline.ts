@@ -65,6 +65,15 @@ export interface TranscriptionPipelineConfig {
   /** Enable debug mode for verbose console logging of configuration and transcripts */
   debugMode?: boolean;
   /**
+   * Explicit opt-in for CLIENT-SIDE model inference (TASK-865). Absent ⇒ the
+   * `noiseFilter` and `vad` stages are NOT constructed even when `enabled` —
+   * the pipeline logs a deprecation warning once and skips them. Only
+   * `{ allow: true }` lets the two client models load.
+   *
+   * @deprecated TASK-865 — removed in R4 with the client stages.
+   */
+  clientInference?: { allow: boolean };
+  /**
    * Whether the pipeline owns the AudioContext passed to start().
    * - 'borrowed': pipeline does NOT close the context on stop (default, safe for shared contexts)
    * - 'owned': pipeline closes the context on stop
@@ -116,8 +125,13 @@ export interface TranscriptionPipelineConfig {
     modelId?: string;
     /** WebSocket URL for remote processing */
     sttSocket?: string;
-    /** Backend ASR pipeline ID/slug (for backend mode orchestration) */
+    /**
+     * Backend ASR pipeline ID/slug (for backend mode orchestration).
+     * @deprecated TASK-865 — removed in R4. Use `agentSlug`.
+     */
     pipelineId?: string;
+    /** Slug of the published ASR Agent that should transcribe this session (TASK-865). */
+    agentSlug?: string;
     /** Enable speaker diarization in STT output */
     diarization?: boolean;
     /** Expected number of speakers when diarization is enabled */
@@ -162,15 +176,20 @@ export interface TranscriptionPipelineConfig {
 /**
  * Default transcription pipeline configuration.
  */
+/**
+ * Pipeline-level fallback. Both client stages are OFF here too (TASK-865): a
+ * `new TranscriptionPipeline({ stt })` that names neither stage must not
+ * inherit a Silero/RNNoise download from the pipeline's own defaults.
+ */
 export const DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG: TranscriptionPipelineConfig = {
   contextOwnership: 'borrowed',
   noiseFilter: {
-    enabled: true,
-    location: 'browser',
+    enabled: false,
+    location: 'skip',
     level: 'high',
   },
   vad: {
-    enabled: true,
+    enabled: false,
     location: 'browser',
     sensitivity: 0.5,
     minSpeechDuration: 250,
