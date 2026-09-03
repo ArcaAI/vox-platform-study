@@ -203,3 +203,33 @@ def _str_or_none(value: Any) -> str | None:
     masquerade as a configured one (the same rule `RetrievalConfig` applies to an
     empty Qdrant key)."""
     return value if isinstance(value, str) and value else None
+
+
+def to_provider_overrides(
+    credential: ProviderCredential, provider: str
+) -> dict[str, dict[str, Any]] | None:
+    """The ``provider_overrides`` envelope ``apps/text`` receives, or ``None``.
+
+    TASK-858 — Text holds no endpoint or credential of its own: every adapter,
+    the self-hosted LM Studio one included, reads ``provider_overrides[provider]``
+    (``text/core/connection.py::require_connection``) and answers a typed 503
+    without it. The gateway injects that envelope on its own proxied calls; a
+    harness activity calling Text DIRECTLY must fold the gateway-resolved
+    connection in itself. Only a RESOLVED credential yields an envelope —
+    ABSENT means "no row, nothing to inject" and the two fail-closed outcomes
+    are the caller's to reject via :meth:`ProviderCredential.raise_if_unusable`
+    BEFORE anything is sent.
+
+    ``api_key`` is always present (``""`` when the row carries none): Text's
+    ``ProviderOverride.api_key`` is a required field, and a keyless self-host
+    row still has a ``base_url`` to deliver. Every other field travels only
+    when set, so the wire shape stays byte-identical for a plain key.
+    """
+    if credential.outcome is not CredentialOutcome.RESOLVED:
+        return None
+    entry: dict[str, Any] = {"api_key": credential.secret or ""}
+    for field in ("base_url", "region", "api_version", "deployment_name", "model", "funding"):
+        value = getattr(credential, field)
+        if value:
+            entry[field] = value
+    return {provider: entry}

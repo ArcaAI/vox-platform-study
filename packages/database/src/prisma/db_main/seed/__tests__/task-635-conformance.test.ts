@@ -147,6 +147,21 @@ describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenan
     }
   });
 
+  it('the SYSTEM catch-all SOAP fallback (…036) is owned by the SYSTEM tenant and pinned APPROVED v1 (TASK-858)', () => {
+    const row = ALL_SEEDED_TEMPLATES.find((t) => t.id === TEMPLATE_IDS.CATCHALL_SOAP) as
+      | (SeedTemplateLike & { approvedVersionNumber?: number })
+      | undefined;
+
+    expect(row).toBeDefined();
+    // `SYSTEM_DEFAULTS.promptId` — the platform-wide SOAP fallback `assemble`
+    // reads for every tenant with no SOAP opinion. Under the GLOBAL customer
+    // tenant it was invisible to every other tenant (reads widen only to
+    // `[caller, SYSTEM]`), so the durable lane's prompt assembly 404'd.
+    expect(row?.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(row?.approvedVersionNumber).toBe(1);
+    expect(row?.status ?? resolveSeedStatus(row!.category)).toBe('APPROVED');
+  });
+
   it('the SYSTEM pre-summary default (…040) is owned by the SYSTEM tenant and pinned APPROVED v1', () => {
     const row = ALL_SEEDED_TEMPLATES.find((t) => t.id === TEMPLATE_IDS.PRE_SUMMARY_DEFAULT) as
       | (SeedTemplateLike & { approvedVersionNumber?: number })
