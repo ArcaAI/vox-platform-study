@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { IS3Service } from '../../../baseServices/storage';
+import { IS3Service } from '../../baseServices/storage';
 import { HuggingFaceModelSourceClient } from './huggingface-model-source.client';
 import { isRelevantModelSourceFile, sha256Hex } from './model-version.util';
 

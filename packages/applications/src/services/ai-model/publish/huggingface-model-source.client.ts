@@ -1,7 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
-import { IProviderConnectionService } from '../../../ai-provider-connection/IProviderConnectionService';
+import { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 
 const LIST_TIMEOUT_MS = 15000;
 

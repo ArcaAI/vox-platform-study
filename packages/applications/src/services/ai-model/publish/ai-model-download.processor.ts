@@ -3,27 +3,18 @@ import { Inject, Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { AiModelRepository, JobQueue } from '@arcaai/domains';
-import { IS3Service } from '../../../baseServices/storage';
-import { assertEqualTenants, createWorkerSession } from '../../../../common';
-import { IActiveUserContext } from '../../../../interfaces';
+import { IS3Service } from '../../baseServices/storage';
+import { assertEqualTenants, createWorkerSession } from '../../../common';
+import { IActiveUserContext } from '../../../interfaces';
 import { mergeDownloadMeta } from './model-download-meta.util';
 import { buildAiModelManifest } from './model-manifest.util';
 import { ModelSourceFetcherService } from './model-source-fetcher.service';
 import { buildSha256SumsContent, deriveModelVersion, deriveQuantTokenFromFilenames, normalizeQuantToken } from './model-version.util';
 
-/**
- * The `hope-models` bucket — see `infrastructure/docker/minio/README.md`
- * A bucket name, not tenant/environment config: every other consumer of this
- * bucket (STT's `StoragePathResolver`, harness) hardcodes the same literal
- * (`model_bucket: str = "hope-models"`), and MinIO credentials/endpoint —
- * the part that actually varies per environment — resolve through the
- * existing `IS3Service` (AppSettings `S3_ENDPOINT` + `SecretsService`
- * `S3_ACCESS_KEY`/`S3_SECRET_KEY`), never a new env var here.
- */
-export const HOPE_MODELS_BUCKET = 'hope-models';
+import { HOPE_MODELS_BUCKET, HOPE_MODELS_MOUNT } from '../constants';
 
-/** Mount point of the s3fs sidecar that serves `hope-models` inside a pod. */
-const HOPE_MODELS_MOUNT = '/mnt/models-bucket';
+// Re-exported for the existing importers (tests, the API module); the constant moved to `../constants`.
+export { HOPE_MODELS_BUCKET };
 
 export interface DownloadAiModelJobPayload {
   jobId: string;

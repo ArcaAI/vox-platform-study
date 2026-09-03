@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { DISCOVERABLE_AI_MODEL_PROVIDERS } from './create-model.request';
+import { DISCOVERABLE_AI_MODEL_PROVIDERS } from '../constants';
 
 /**
  * Body of `POST admin/ai-models/discovery/register`.

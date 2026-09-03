@@ -13,6 +13,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AiModelService } from '../aiModel.service';
 
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 // Enum constants to avoid import issues
 const AiModelDownloadStatus = {
   NOT_DOWNLOADED: 'NOT_DOWNLOADED',
@@ -117,7 +119,8 @@ function createBehavioralModelEntity(
 
   const entity = {
     id: overrides.id ?? 'model-id-1',
-    tenantId: overrides.tenantId ?? 'tenant-1',
+    // TASK-860: registry rows live in the SYSTEM tenant.
+    tenantId: overrides.tenantId ?? SYSTEM_TENANT_ID,
     category: overrides.category ?? ModelCategory.AUDIO,
     taskType: overrides.taskType ?? ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: overrides.modelType ?? ModelType.BASE_MODEL,
@@ -227,6 +230,8 @@ function createBehavioralModelEntity(
     },
 
     // BEHAVIORAL methods
+    validate() {},
+
     markAsDownloading(userId?: string) {
       _downloadStatus = AiModelDownloadStatus.DOWNLOADING;
       _changes.downloadStatus = _downloadStatus;
@@ -291,9 +296,15 @@ const mockEventEmitter = {
   emit: vi.fn(),
 };
 
+// TASK-860: registry writes go through the UNSCOPED base client (see the
+// service's class doc); the lane object is asserted by identity below.
+const BASE_CLIENT = { __lane: 'base' };
+const mockDatabaseService = { baseClient: BASE_CLIENT };
+
 const mockModelRepository = {
   findById: vi.fn(),
   findBySlug: vi.fn(),
+  findPlatformDefaultsFor: vi.fn(),
   findAll: vi.fn(),
   findEnabledModels: vi.fn(),
   findByTaskType: vi.fn(),
@@ -315,7 +326,9 @@ describe('AiModelService', () => {
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
-          return { id: 'current-user-id' };
+          // TASK-860: the registry is a SUPER_ADMIN plane; the default caller
+          // in this harness is one, with a WORKING tenant elevated into CLS.
+          return { id: 'current-user-id', roles: ['SUPER_ADMIN'] };
         case 'tenantId':
           return 'tenant-1';
         case 'correlationId':
@@ -325,12 +338,12 @@ describe('AiModelService', () => {
       }
     });
 
-    service = new AiModelService(mockModelRepository as any, mockEventEmitter as any, mockClsService as any);
+    service = new AiModelService(mockModelRepository as any, mockDatabaseService as any, mockEventEmitter as any, mockClsService as any);
   });
 
   describe('create', () => {
     it('should create a new model successfully', async () => {
-      mockModelRepository.isSlugUnique.mockResolvedValue(true);
+      mockModelRepository.findBySlug.mockResolvedValue(null);
       mockModelRepository.create.mockImplementation(async (entity: any) => entity);
 
       const result = await service.create({
@@ -342,10 +355,13 @@ describe('AiModelService', () => {
         source: AiModelSource.HUGGINGFACE as any,
         sourceUri: 'openai/whisper-large-v3',
         format: AiModelFormat.SAFETENSOR as any,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: 'SELF_HOSTED' as any,
       });
 
       expect(result).toBeDefined();
-      expect(mockModelRepository.isSlugUnique).toHaveBeenCalledWith('tenant-1', 'whisper-large-v3');
+      expect(mockModelRepository.findBySlug).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'whisper-large-v3', BASE_CLIENT);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         SysEventType.ResourceCreated,
         expect.objectContaining({
@@ -354,29 +370,9 @@ describe('AiModelService', () => {
       );
     });
 
-    it('should throw BadRequestException when tenant ID is missing', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return null;
-        return null;
-      });
-
-      await expect(
-        service.create({
-          name: 'Test Model',
-          slug: 'test-model',
-          category: ModelCategory.AUDIO as any,
-          taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION as any,
-          modelType: ModelType.BASE_MODEL as any,
-          source: AiModelSource.HUGGINGFACE as any,
-          sourceUri: 'test/model',
-          format: AiModelFormat.SAFETENSOR as any,
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
     // The catalog must accept the additive formats.
     it.each([AiModelFormat.MLX, AiModelFormat.GGUF])('should accept the new %s format', async (format) => {
-      mockModelRepository.isSlugUnique.mockResolvedValue(true);
+      mockModelRepository.findBySlug.mockResolvedValue(null);
       mockModelRepository.create.mockImplementation(async (entity: any) => entity);
 
       const result = await service.create({
@@ -388,6 +384,9 @@ describe('AiModelService', () => {
         source: AiModelSource.LOCAL as any,
         sourceUri: 'local/new-format-model',
         format: format as any,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: 'SELF_HOSTED' as any,
       });
 
       expect(result.format).toBe(format);
@@ -395,7 +394,7 @@ describe('AiModelService', () => {
 
     // Machine-actionable registry identity columns.
     it('should carry provider + architecture through create to the response', async () => {
-      mockModelRepository.isSlugUnique.mockResolvedValue(true);
+      mockModelRepository.findBySlug.mockResolvedValue(null);
       mockModelRepository.create.mockImplementation(async (entity: any) => entity);
 
       const result = await service.create({
@@ -407,6 +406,9 @@ describe('AiModelService', () => {
         source: AiModelSource.LOCAL as any,
         sourceUri: 'gemma-4-e2b-it-qat',
         format: AiModelFormat.GGUF as any,
+        libraryName: 'transformers',
+        servedBy: 'stt',
+        deploymentKind: 'SELF_HOSTED' as any,
         provider: 'lm-studio',
         architecture: 'gemma4',
       });
@@ -419,7 +421,7 @@ describe('AiModelService', () => {
     });
 
     it('should throw BadRequestException when slug already exists', async () => {
-      mockModelRepository.isSlugUnique.mockResolvedValue(false);
+      mockModelRepository.findBySlug.mockResolvedValue(createBehavioralModelEntity({ id: 'another-row' }));
 
       await expect(
         service.create({
@@ -431,6 +433,9 @@ describe('AiModelService', () => {
           source: AiModelSource.HUGGINGFACE as any,
           sourceUri: 'test/model',
           format: AiModelFormat.SAFETENSOR as any,
+          libraryName: 'transformers',
+          servedBy: 'stt',
+          deploymentKind: 'SELF_HOSTED' as any,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -471,7 +476,7 @@ describe('AiModelService', () => {
         slug: 'original-slug',
       });
       mockModelRepository.findById.mockResolvedValue(existingModel);
-      mockModelRepository.isSlugUnique.mockResolvedValue(false);
+      mockModelRepository.findBySlug.mockResolvedValue(createBehavioralModelEntity({ id: 'another-row' }));
 
       await expect(service.update('model-1', { slug: 'taken-slug', expectedVersion: 1 } as any)).rejects.toThrow(BadRequestException);
     });
@@ -484,7 +489,7 @@ describe('AiModelService', () => {
 
       await service.update('model-1', { name: 'X', expectedVersion: 7 } as any);
 
-      expect(mockModelRepository.updateWithVersion).toHaveBeenCalledWith('model-1', existingModel, 7);
+      expect(mockModelRepository.updateWithVersion).toHaveBeenCalledWith('model-1', existingModel, 7, BASE_CLIENT);
       // The legacy non-OCC write must no longer be used.
       expect(mockModelRepository.update).not.toHaveBeenCalled();
     });
@@ -530,39 +535,8 @@ describe('AiModelService', () => {
     // absent from `UpdateModelRequest`, so the global validation pipe
     // (`forbidNonWhitelisted`) REJECTED any admin PATCH carrying it — the
     // registry row could never be pointed at a staged weight directory.
-    it('update() carries localPath + checksum onto the entity and response', async () => {
-      const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
-      mockModelRepository.findById.mockResolvedValue(existingModel);
-      mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
-
-      const result = await service.update('model-1', {
-        localPath: '/opt/hope/models/minicheck',
-        checksum: 'a'.repeat(64),
-        expectedVersion: 3,
-      } as any);
-
-      expect((existingModel as any).localPath).toBe('/opt/hope/models/minicheck');
-      expect((existingModel as any).checksum).toBe('a'.repeat(64));
-      expect(result.localPath).toBe('/opt/hope/models/minicheck');
-      expect(result.checksum).toBe('a'.repeat(64));
-    });
-
     // Clearing the override must be expressible — an empty string resets the
     // row to "no operator override" so scheme dispatch resumes.
-    it('update() allows clearing localPath back to empty', async () => {
-      const existingModel = createBehavioralModelEntity({ id: 'model-1', version: 3 });
-      (existingModel as any).localPath = '/opt/hope/models/old';
-      mockModelRepository.findById.mockResolvedValue(existingModel);
-      mockModelRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
-
-      const result = await service.update('model-1', {
-        localPath: '',
-        expectedVersion: 3,
-      } as any);
-
-      expect((existingModel as any).localPath).toBe('');
-      expect(result.localPath).toBe('');
-    });
   });
 
   describe('getById', () => {
@@ -594,14 +568,6 @@ describe('AiModelService', () => {
       expect(result!.slug).toBe('whisper-large-v3');
     });
 
-    it('should throw BadRequestException when tenant ID is missing', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return null;
-        return null;
-      });
-
-      await expect(service.getBySlug('whisper-large-v3')).rejects.toThrow(BadRequestException);
-    });
   });
 
   describe('getAll', () => {
@@ -612,7 +578,7 @@ describe('AiModelService', () => {
       const result = await service.getAll();
 
       expect(result).toHaveLength(2);
-      expect(mockModelRepository.findEnabledModels).toHaveBeenCalledWith('tenant-1');
+      expect(mockModelRepository.findEnabledModels).toHaveBeenCalledWith(SYSTEM_TENANT_ID);
     });
   });
 
@@ -622,7 +588,7 @@ describe('AiModelService', () => {
   // admin sees only its own clone, not the SYSTEM
   // original surfaced by the shared-read tenant-scope extension.
   describe('getAllForAdmin', () => {
-    it('lists ENABLED + DISABLED rows for the exact tenant only', async () => {
+    it('lists ENABLED + DISABLED rows of the SYSTEM catalogue', async () => {
       const models = [
         createBehavioralModelEntity({ id: 'm1', resourceStatus: ResourceStatusType.ENABLED }),
         createBehavioralModelEntity({ id: 'm2', resourceStatus: ResourceStatusType.DISABLED }),
@@ -635,21 +601,13 @@ describe('AiModelService', () => {
       expect(mockModelRepository.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           filters: expect.objectContaining({
-            tenantId: 'tenant-1',
+            tenantId: SYSTEM_TENANT_ID,
             resourceStatus: { in: [ResourceStatusType.ENABLED, ResourceStatusType.DISABLED] },
           }),
         }),
       );
     });
 
-    it('throws BadRequestException when tenant ID is missing', async () => {
-      mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'tenantId') return null;
-        return null;
-      });
-
-      await expect(service.getAllForAdmin()).rejects.toThrow(BadRequestException);
-    });
   });
 
   describe('list', () => {

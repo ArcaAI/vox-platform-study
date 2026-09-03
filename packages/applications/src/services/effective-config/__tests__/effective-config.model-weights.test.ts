@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
 import type { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
-import type { AiModelService } from '../../stt/model/aiModel.service';
+import type { AiModelService } from '../../ai-model/aiModel.service';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import { EffectiveConfigService } from '../effective-config.service';
 

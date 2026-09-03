@@ -1,8 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
-import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
-import { AI_MODEL_PROVIDERS } from './create-model.request';
+import { IsString, IsOptional, IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsInt, Matches, MaxLength, MinLength, Min } from 'class-validator';
+import { AiDeploymentKind, ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat } from '@arcaai/domains';
+import { AI_MODEL_LIBRARIES, AI_MODEL_PROVIDERS, AI_MODEL_SERVED_BY } from '../constants';
 
+/**
+ * `PATCH admin/ai-models/:id`.
+ *
+ * `localPath` is NOT accepted (TASK-860 D-2): it is derived from
+ * `bucketPrefix` (+ `primaryObject`) by the service, so the global
+ * `forbidNonWhitelisted` pipe rejects a body that carries it. The
+ * platform-default election has its own route (`PATCH :id/platform-default`)
+ * because it also clears the previous holder — it is not a field edit.
+ */
 export class UpdateModelRequest {
   @ApiPropertyOptional({
     description: 'Model name',
@@ -43,7 +52,7 @@ export class UpdateModelRequest {
   category?: ModelCategory;
 
   @ApiPropertyOptional({
-    description: 'Model task type',
+    description: 'Hugging Face task (`pipeline_tag`) as the SCREAMING_CASE enum member.',
     enum: ModelTaskType,
   })
   @IsEnum(ModelTaskType)
@@ -79,22 +88,6 @@ export class UpdateModelRequest {
   @MaxLength(500)
   sourceUri?: string;
 
-  // The operator override. Previously unwritable through this
-  // DTO, so the global `forbidNonWhitelisted` pipe rejected any PATCH carrying
-  // it and the registry row could never point at a staged weight directory.
-  @ApiPropertyOptional({
-    description:
-      'Operator/admin override for the weight directory — HIGHEST precedence in every service resolver, ' +
-      'ahead of `sourceUri` scheme dispatch. Use for air-gapped hosts and pre-staged NFS mounts. ' +
-      'A set-but-missing path falls THROUGH to scheme dispatch with a warning (never a hard failure). ' +
-      'Send an empty string to clear the override.',
-    example: '/opt/hope/models/minicheck-flan-t5-large',
-  })
-  @IsString()
-  @IsOptional()
-  @MaxLength(1000)
-  localPath?: string;
-
   @ApiPropertyOptional({
     description:
       'SHA256 checksum. When set, single-file artifacts (GGUF/ONNX) are verified after download and on ' +
@@ -116,12 +109,80 @@ export class UpdateModelRequest {
   sourceRevision?: string;
 
   @ApiPropertyOptional({
-    description: 'Model format',
+    description: 'Artifact format (descriptive; loader selection is `libraryName`).',
     enum: AiModelFormat,
   })
   @IsEnum(AiModelFormat)
   @IsOptional()
   format?: AiModelFormat;
+
+  // ── Hugging Face taxonomy + serving identity (TASK-860) ──────────────────
+
+  @ApiPropertyOptional({ description: 'Serving library — the Hub `library_name` facet.', enum: AI_MODEL_LIBRARIES })
+  @IsOptional()
+  @IsIn(AI_MODEL_LIBRARIES)
+  libraryName?: string;
+
+  @ApiPropertyOptional({ description: 'Workload that executes the model.', enum: AI_MODEL_SERVED_BY })
+  @IsOptional()
+  @IsIn(AI_MODEL_SERVED_BY)
+  servedBy?: string;
+
+  @ApiPropertyOptional({ description: 'SELF_HOSTED or CLOUD.', enum: AiDeploymentKind })
+  @IsOptional()
+  @IsEnum(AiDeploymentKind)
+  deploymentKind?: AiDeploymentKind;
+
+  @ApiPropertyOptional({ description: 'Vendor wire id for a CLOUD row. Send an empty string to clear.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  wireModelId?: string;
+
+  @ApiPropertyOptional({ description: 'Model-card licence identifier. Send an empty string to clear.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  license?: string;
+
+  @ApiPropertyOptional({ description: 'Hub gated / click-through repo.' })
+  @IsOptional()
+  @IsBoolean()
+  gated?: boolean;
+
+  @ApiPropertyOptional({ description: 'Upstream base checkpoint. Send an empty string to clear.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  baseModel?: string;
+
+  @ApiPropertyOptional({ description: 'ISO 639-1 language codes, model-card order.' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languages?: string[];
+
+  @ApiPropertyOptional({ description: 'Hub commit sha. Send an empty string to clear.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  hfRevision?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". ' +
+      '`localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  bucketPrefix?: string;
+
+  @ApiPropertyOptional({ description: 'The single file a single-file loader opens inside `bucketPrefix`. Send an empty string to clear.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  primaryObject?: string;
 
   @ApiPropertyOptional({
     description: 'Canonical runtime provider id',

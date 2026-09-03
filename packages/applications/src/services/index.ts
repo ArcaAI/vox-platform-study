@@ -76,6 +76,8 @@ export * from './text';
 // + runtime profile) used by both the TEXT proxy and the prompt-test bench.
 export * from './text-request';
 export * from './stt';
+// The SYSTEM-only model registry (TASK-860): catalogue CRUD, publish-to-bucket, inventory.
+export * from './ai-model';
 export * from './pstudio';
 export * from './tenant-bucket';
 export * from './storage-access-key';
