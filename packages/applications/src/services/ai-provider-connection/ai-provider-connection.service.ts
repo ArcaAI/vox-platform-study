@@ -165,6 +165,10 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         keyVersion: secret?.keyVersion ?? null,
         enabled: dto.enabled ?? false,
         extraJson: dto.extraJson ?? null,
+        maxConcurrent: dto.maxConcurrent ?? null,
+        rpmLimit: dto.rpmLimit ?? null,
+        tpmLimit: dto.tpmLimit ?? null,
+        timeoutS: dto.timeoutS ?? null,
         createdBy: this.requestUserId ?? undefined,
       });
       const saved = await this.connectionRepository.create(entity, tx);
@@ -223,6 +227,11 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     if (dto.deploymentName !== undefined) changes.deploymentName = dto.deploymentName;
     if (dto.enabled !== undefined) changes.enabled = dto.enabled;
     if (dto.extraJson !== undefined) changes.extraJson = dto.extraJson;
+    // TASK-862 ceilings: `null` clears a cap (back to "no opinion"), omitted leaves it.
+    if (dto.maxConcurrent !== undefined) changes.maxConcurrent = dto.maxConcurrent;
+    if (dto.rpmLimit !== undefined) changes.rpmLimit = dto.rpmLimit;
+    if (dto.tpmLimit !== undefined) changes.tpmLimit = dto.tpmLimit;
+    if (dto.timeoutS !== undefined) changes.timeoutS = dto.timeoutS;
     if (secret) {
       changes.encryptedApiKey = secret.ciphertext;
       changes.keyVersion = secret.keyVersion;
@@ -410,6 +419,10 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       deploymentName: dto.deploymentName ?? null,
       enabled: dto.enabled ?? false,
       extraJson: dto.extraJson ?? null,
+      maxConcurrent: dto.maxConcurrent ?? null,
+      rpmLimit: dto.rpmLimit ?? null,
+      tpmLimit: dto.tpmLimit ?? null,
+      timeoutS: dto.timeoutS ?? null,
       encryptedApiKey: secret?.ciphertext ?? null,
       keyVersion: secret?.keyVersion ?? null,
     });
@@ -450,8 +463,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * matters because on the `crossTenantLane` base-client path that predicate is
    * the only tenant boundary there is (the base client also skips the
    * soft-delete filter). Asserted by `tests/cross-tenant/task-643-*`.
+   *
+   * PUBLIC since TASK-862 so `ProviderCredentialResolver` can build the
+   * one-credential precedence rule on the SAME tier reads the request fold
+   * uses. It returns ROWS (ciphertext), never plaintext — gateway-side only.
    */
-  private async cascadeRows(
+  async cascadeRows(
     service: ProviderService,
     tenantId: string,
     provider?: string,
@@ -596,8 +613,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * fault, never a veto), logging the identifying facts and NOTHING else — no
    * ciphertext, no plaintext, and deliberately not the error message either (a
    * Transit error string can echo the payload it choked on).
+   *
+   * PUBLIC since TASK-862 for `ProviderCredentialResolver` — the SAME
+   * construction site serves the fold and the one-credential resolver, so
+   * funding derivation cannot fork. Gateway-side only: the result is plaintext.
    */
-  private async toOverrideEntry(row: AiProviderConnectionEntity, service: ProviderService): Promise<ProviderOverrideEntry | null> {
+  async toOverrideEntry(row: AiProviderConnectionEntity, service: ProviderService): Promise<ProviderOverrideEntry | null> {
     if (!this.secretsService || !row.encryptedApiKey) return null;
     try {
       const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
@@ -661,18 +682,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * also why `funding` is read off the entry rather than computed a second time.
    */
   async resolveCredential(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderCredential> {
-    if (!PROVIDER_SERVICES.includes(service)) {
-      throw new BadRequestException(`Unknown provider service '${service}'. Expected one of: ${PROVIDER_SERVICES.join(', ')}.`);
-    }
-    if (!provider?.trim()) {
-      throw new BadRequestException('provider is required');
-    }
-    // No tenant-less form, deliberately: it could only mean "read SYSTEM
-    // unconditionally", which is the widen-without-absence bug the two-tier
-    // rule exists to prevent. A caller with no tenant of its own passes SYSTEM.
-    if (!tenantId?.trim()) {
-      throw new BadRequestException('tenantId is required');
-    }
+    this.assertResolvable(service, provider, tenantId);
 
     let resolved: ResolvedProviderOverrides;
     try {
@@ -720,6 +730,26 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     }
 
     return { outcome: 'absent' };
+  }
+
+  /**
+   * The three input checks every one-credential resolve shares (TASK-862 —
+   * also used by `ProviderCredentialResolver`).
+   *
+   * No tenant-less form, deliberately: it could only mean "read SYSTEM
+   * unconditionally", which is the widen-without-absence bug the two-tier rule
+   * exists to prevent. A caller with no tenant of its own passes SYSTEM.
+   */
+  assertResolvable(service: ProviderService, provider: string, tenantId: string): void {
+    if (!PROVIDER_SERVICES.includes(service)) {
+      throw new BadRequestException(`Unknown provider service '${service}'. Expected one of: ${PROVIDER_SERVICES.join(', ')}.`);
+    }
+    if (!provider?.trim()) {
+      throw new BadRequestException('provider is required');
+    }
+    if (!tenantId?.trim()) {
+      throw new BadRequestException('tenantId is required');
+    }
   }
 
   /**
