@@ -268,10 +268,21 @@ def _nlp_client(settings: Settings) -> NlpClient:
 
 
 def _text_client(settings: Settings) -> TextClient:
+    # TASK-858 — every harness generate folds the gateway-resolved
+    # ``AiProviderConnection`` (tenant → SYSTEM) into the request as
+    # ``provider_overrides``; Text refuses a connection-less request for every
+    # provider, the self-hosted ones included. Resolved INSIDE the call that uses
+    # it, never persisted (same contract as ``_resolve_provider_credential``).
+    async def _resolve_llm_connection(provider: str, tenant_id: str) -> ProviderCredential:
+        return await _api_client(settings).resolve_provider_credential(
+            "llm", provider, tenant_id=tenant_id
+        )
+
     return TextClient(
         settings.text_base_url,
         timeout=settings.text_timeout_s,
         service_token=settings.peer_service_token(settings.text_service_token),
+        credential_resolver=_resolve_llm_connection,
     )
 
 

@@ -736,7 +736,20 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   // ──────────────────────────────────────────────────────────────────
   {
     id: TEMPLATE_IDS.CATCHALL_SOAP,
-    tenantId: DEFAULT_TENANT_ID,
+    // TASK-858 — owned by the SYSTEM tenant, NOT the GLOBAL customer tenant it was
+    // seeded under originally. This row is `SYSTEM_DEFAULTS.promptId` in
+    // prompt-resolution.service.ts — the platform-wide fallback every consultation
+    // whose tenant/department expresses no SOAP opinion assembles from. The same
+    // defect C2 fixed for PRE_SUMMARY_DEFAULT (…040) above: PromptTemplate is
+    // tenant-scoped and reads widen only to `[caller, SYSTEM]`, so a Global-owned
+    // row was invisible to every other tenant and `assemble` threw
+    // DataNotFound → the durable lane's `n_prompt` degraded on every governed run
+    // (measured on hope-v2-dev, 2026-09-03). `approvedVersionNumber: 1` mirrors
+    // …040 so the resolver serves the immutable V15 snapshot. Matching data
+    // migration for already-seeded databases:
+    // migrations/20260903120000_task_858_reown_system_catchall_soap.
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
     name: 'Catch-All SOAP',
     description: 'Fallback SOAP template used when no department-specific template matches the encounter',
     content: `[NOTE TO LLM:

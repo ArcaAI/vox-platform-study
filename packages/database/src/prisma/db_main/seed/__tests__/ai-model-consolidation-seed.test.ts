@@ -716,14 +716,15 @@ describe('AiTaskDefault SYSTEM seed', () => {
     expect(byKey.get('nlp.classification')?.modelSlug).toBe('nlp-doc-type-classifier');
     expect(byKey.get('nlp.diagnosis')?.modelSlug).toBe('symps-disease-bert-v3-c41');
     // TEXT live/finalize routing. OWNER DIRECTIVE 2026-09-03 (TASK-858 D4):
-    // every text-generation task routes to LM Studio `gemma-4-e4b-it-qat`.
-    expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e4b-it-qat');
-    expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e4b-it-qat');
+    // every text-generation task routes to LM Studio `gemma-4-e2b-it-qat`
+    // (owner correction 2026-09-03, TASK-858: E2B is the ONLY LM Studio model).
+    expect(byKey.get('text.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    expect(byKey.get('text.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // BUG-018 — the prompt-template Test key. Seeded so the Test path
     // resolves through AiTaskDefault ALONE and never falls through to the
     // harness `text.finalize` cascade to find a model. Same model as the
     // clinical paths, or the Test button answers a question nobody asked.
-    expect(byKey.get('text.test')?.modelSlug).toBe('lms-gemma-4-e4b-it-qat');
+    expect(byKey.get('text.test')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliguard-llm-guardrails-300m');
     expect(byKey.get('guardrail.pii')?.modelSlug).toBe('gliner2-privacy-filter-pii-multi');
@@ -736,7 +737,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // text-generation task now names, so judgement and documentation resolve
     // one identity rather than two. Both are E4B — this is a narrowing of the
     // earlier directive, not a reversal of it.
-    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e4b-it-qat');
+    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

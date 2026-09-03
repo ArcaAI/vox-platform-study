@@ -7,12 +7,18 @@ hyperparameters are omitted so the Text service applies its own defaults.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.llm_concurrency import LlmCallTimeout, governed_request
+from harness.core.provider_credentials import (
+    CredentialUnavailable,
+    ProviderCredential,
+    to_provider_overrides,
+)
 from harness.temporal.claim_check import ClaimCheckRef
 
 
@@ -87,6 +93,11 @@ class TextGenerationResult(BaseModel):
     stats: dict[str, Any] | None = None
 
 
+#: ``(provider, tenant_id) -> ProviderCredential``. NEVER raises — every fault is an
+#: ``UNAVAILABLE`` outcome the client fails closed on (``ApiClient.resolve_provider_credential``).
+CredentialResolver = Callable[[str, str], Awaitable[ProviderCredential]]
+
+
 class TextClient:
     """Thin async client for the Text synchronous generate endpoint."""
 
@@ -97,11 +108,17 @@ class TextClient:
         timeout: float = 120.0,
         service_token: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
+        credential_resolver: CredentialResolver | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._service_token = service_token
         self._transport = transport
+        # TASK-858 — resolves the ``(provider, tenant_id)`` AiProviderConnection the
+        # request must carry (see ``generate``). ``None`` keeps the bare client for
+        # callers that inject the envelope themselves or run against a Text that
+        # still accepts a connection-less request (unit fixtures).
+        self._credential_resolver = credential_resolver
 
     async def generate(
         self,
@@ -155,6 +172,23 @@ class TextClient:
             body["response_format"] = response_format
         if context is not None:
             body["context"] = context
+
+        # TASK-858 — Text holds no endpoint or credential of its own (TASK-735/736):
+        # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and
+        # answers a 503 ``PROVIDER_CREDENTIALS_MISSING`` without it. The gateway injects
+        # that envelope on its own proxied calls; this client calls Text DIRECTLY, so it
+        # folds the gateway-resolved connection (tenant → SYSTEM, ``funding`` derived
+        # gateway-side) in itself. A DENIED/UNAVAILABLE outcome fails CLOSED here, as the
+        # error type every call site already degrades on, before anything is sent.
+        if provider and self._credential_resolver is not None:
+            credential = await self._credential_resolver(provider, tenant_id.strip())
+            try:
+                credential.raise_if_unusable(service="llm", provider=provider)
+            except CredentialUnavailable as exc:
+                raise TextServiceError(f"text generate refused: {exc}") from exc
+            overrides = to_provider_overrides(credential, provider)
+            if overrides:
+                body["provider_overrides"] = overrides
 
         # A deterministic key lets Text dedup a replayed generate (a
         # worker-crash re-delivery) without re-invoking — and re-billing — the model. Sent
