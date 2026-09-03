@@ -1,8 +1,37 @@
 ##############################################################################
 # GitLab Runner — Production Configuration (Multi-Runner)
 #
-# Location on VM 411:  /etc/gitlab-runner/config.toml
+# Location on VM 411:  /home/dell/.gitlab-runner/config.toml
+#                      ^ the LIVE file. gitlab-runner runs in user mode here.
+#                      /etc/gitlab-runner/config.toml also exists but holds
+#                      only a stub (concurrent = 1, no [[runners]]) and is NOT
+#                      what the service reads — verified 2026-09-03.
 # Managed copy:        docs/research/configs/gitlab-runner/config.toml
+#
+# ── S3 cache TLS (Insecure = false) — PREREQUISITE ──────────────────────────
+# MinIO on 10.10.1.102:9000 serves HTTPS ONLY. With Insecure = true the runner
+# spoke plaintext HTTP to a TLS port, so MinIO answered 400 Bad Request: every
+# job logged "FATAL: received: 400 Bad Request / Failed to create cache" after
+# ~94 s, and every restore logged "Failed to extract cache" — i.e. the cache
+# has been entirely non-functional (measured 2026-09-03, pipeline 1112).
+#
+# The server cert is issued by "ARCAAI Internal CA" (CN = s3.taphuynh.dev,
+# SAN includes IP 10.10.1.102, valid to 2028-03-21), so the endpoint below is
+# covered — but that CA is NOT in any default trust store. Before applying
+# this file, install it on VM 411:
+#
+#   scp <minio-vm>:/home/dell/minio/certs/CAs/ca.crt \
+#       /usr/local/share/ca-certificates/arcaai-internal-ca.crt
+#   sudo update-ca-certificates
+#   curl -sI https://10.10.1.102:9000/minio/health/live   # must be 200, no -k
+#
+# That covers the runner process. The actual cache upload/download runs in the
+# helper container, which has its own trust store — hence the read-only CA
+# bind-mount in every [runners.docker] volumes list below. It lands in
+# /etc/ssl/certs/, which Go's crypto/x509 scans as a cert DIRECTORY in addition
+# to the ca-certificates.crt bundle, so the Go-based cache-archiver picks it up.
+#
+# Skipping either half turns the 400 into a TLS verification failure.
 #
 # Architecture:
 #   4 specialized runners on the SAME host, each with different tags and
@@ -24,10 +53,12 @@
 ## ═══════════════════════════════════════════════════════════════════════════
 
 # Total parallel jobs across ALL [[runners]] sections.
-# 8 vCPU host: fast(3) + build(2) + test(3) + deploy(1) = 9 max slots.
-# Set to sum of individual limits. Do NOT exceed — concurrent Docker builds
-# (especially STT with PyTorch) can each consume 4+ GB RAM.
-concurrent = 10
+# Raised 2026-08-08 at user request: fast(6) + build(6) + test(6) + deploy(6)
+# = 24 max slots on a 12 vCPU / 12 GB host. This deliberately oversubscribes —
+# 6 concurrent Docker builds (4+ GB RAM each, especially STT with PyTorch) and
+# 6 parallel deploys both exceed what the host sustains comfortably; watch for
+# OOM kills and racing deploys. Reconfirmed as intentional 2026-09-03.
+concurrent = 24
 
 check_interval = 3
 shutdown_timeout = 0
@@ -58,7 +89,7 @@ log_format = "text"
   token_obtained_at = 2026-03-17T00:00:00Z
   token_expires_at = 0001-01-01T00:00:00Z
   executor = "docker"
-  limit = 3
+  limit = 6
   clone_url = "http://10.10.1.110"
   builds_dir = "/builds/fast"
   environment = [
@@ -76,7 +107,8 @@ log_format = "text"
     disable_cache = false
     volumes = [
       "/cache:/cache",
-      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw"
+      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw",
+      "/usr/local/share/ca-certificates/arcaai-internal-ca.crt:/etc/ssl/certs/arcaai-internal-ca.pem:ro"
     ]
     shm_size = 0
     pull_policy = ["if-not-present"]
@@ -96,7 +128,7 @@ log_format = "text"
       AccessKey = "VAK1EE5PBL9ASRK3S91X"
       SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
       BucketName = "gitlab-runner-cache"
-      Insecure = true
+      Insecure = false
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
@@ -119,9 +151,10 @@ log_format = "text"
   token_obtained_at = 2026-03-17T00:00:00Z
   token_expires_at = 0001-01-01T00:00:00Z
   executor = "docker"
-  # 2 concurrent builds max — each Docker buildx build (especially STT
-  # with PyTorch) can consume 4+ GB RAM and saturate CPU.
-  limit = 2
+  # 6 concurrent builds — each Docker buildx build (especially STT with
+  # PyTorch) can consume 4+ GB RAM and saturate CPU. See the concurrent
+  # note above: this is a deliberate oversubscription, not a sizing estimate.
+  limit = 6
   output_limit = 20480
   clone_url = "http://10.10.1.110"
   builds_dir = "/builds/build"
@@ -142,7 +175,8 @@ log_format = "text"
     volumes = [
       "/var/run/docker.sock:/var/run/docker.sock",
       "/cache:/cache",
-      "/srv/gitlab-runner/buildkit:/var/lib/buildkit:rw"
+      "/srv/gitlab-runner/buildkit:/var/lib/buildkit:rw",
+      "/usr/local/share/ca-certificates/arcaai-internal-ca.crt:/etc/ssl/certs/arcaai-internal-ca.pem:ro"
     ]
     shm_size = 536870912
     pull_policy = ["if-not-present"]
@@ -162,7 +196,7 @@ log_format = "text"
       AccessKey = "VAK1EE5PBL9ASRK3S91X"
       SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
       BucketName = "gitlab-runner-cache"
-      Insecure = true
+      Insecure = false
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
@@ -187,7 +221,7 @@ log_format = "text"
   token_obtained_at = 2026-03-17T00:00:00Z
   token_expires_at = 0001-01-01T00:00:00Z
   executor = "docker"
-  limit = 3
+  limit = 6
   clone_url = "http://10.10.1.110"
   builds_dir = "/builds/test"
   environment = [
@@ -205,7 +239,8 @@ log_format = "text"
     disable_cache = false
     volumes = [
       "/cache:/cache",
-      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw"
+      "/srv/gitlab-runner/pnpm-store:/pnpm-store:rw",
+      "/usr/local/share/ca-certificates/arcaai-internal-ca.crt:/etc/ssl/certs/arcaai-internal-ca.pem:ro"
     ]
     network_mode = "host"
     shm_size = 536870912
@@ -225,7 +260,7 @@ log_format = "text"
       AccessKey = "VAK1EE5PBL9ASRK3S91X"
       SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
       BucketName = "gitlab-runner-cache"
-      Insecure = true
+      Insecure = false
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
@@ -248,7 +283,7 @@ log_format = "text"
   token_obtained_at = 2026-03-17T00:00:00Z
   token_expires_at = 0001-01-01T00:00:00Z
   executor = "docker"
-  limit = 1
+  limit = 6
   clone_url = "http://10.10.1.110"
   builds_dir = "/builds/deploy"
   environment = [
@@ -265,7 +300,8 @@ log_format = "text"
     disable_cache = false
     volumes = [
       "/var/run/docker.sock:/var/run/docker.sock",
-      "/cache:/cache"
+      "/cache:/cache",
+      "/usr/local/share/ca-certificates/arcaai-internal-ca.crt:/etc/ssl/certs/arcaai-internal-ca.pem:ro"
     ]
     shm_size = 0
     pull_policy = ["if-not-present"]
@@ -285,7 +321,7 @@ log_format = "text"
       AccessKey = "VAK1EE5PBL9ASRK3S91X"
       SecretKey = "Q+MtHJbRr0su1mUXtkaid+mm17wQ7AU5+GLW5SV1"
       BucketName = "gitlab-runner-cache"
-      Insecure = true
+      Insecure = false
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
