@@ -95,6 +95,10 @@ publish-sdk:
   variables:
     GIT_STRATEGY: clone
     GIT_DEPTH: 0
+    # Publishes @arcaai/noise-filter, whose package.json "files" ships
+    # assets/rnnoise.wasm (an LFS object). A pointer stub would publish a
+    # broken package — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
+    GIT_LFS_SKIP_SMUDGE: "0"
   before_script:
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
