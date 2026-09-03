@@ -100,6 +100,11 @@ export interface UseSttProviderToggleReturn {
   switchToDefault: () => Promise<void>;
 }
 
+/**
+ * @deprecated TASK-865 — removed in R4 with the pipeline primary/fallback pair. The ASR Agent
+ * (TASK-861) carries its own `fallback` block and the backend switches engines server-side;
+ * a client-driven toggle has nothing left to select.
+ */
 export function useSttProviderToggle(): UseSttProviderToggleReturn {
   const audio = useArcaAudio();
   const activePipeline = audio.activePipeline ?? null;

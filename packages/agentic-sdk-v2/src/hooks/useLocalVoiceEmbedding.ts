@@ -95,12 +95,30 @@ async function writeCache(cacheKeys: { storageKey: string; passphrase: string } 
   }
 }
 
+/** Module-level so the deprecation is reported once per page load, not once per render. */
+let localVoiceEmbeddingDeprecationWarned = false;
+
+function warnLocalVoiceEmbeddingDeprecatedOnce(): void {
+  if (localVoiceEmbeddingDeprecationWarned) return;
+  localVoiceEmbeddingDeprecationWarned = true;
+  console.warn(
+    '[@arcaai/vox] useLocalVoiceEmbedding is deprecated (TASK-865, removed in R4): it runs a WavLM model in the browser. Use useVoiceEmbedding (server-side enrol) instead.',
+  );
+}
+
 function normalizeFiles(files: EnrollFiles): ReadonlyArray<File | Blob> {
   if (Array.isArray(files)) return files as ReadonlyArray<File | Blob>;
   return [files as File | Blob];
 }
 
+/**
+ * In-browser voice enrolment via Transformers.js (WavLM speaker verification).
+ *
+ * @deprecated TASK-865 — removed in R4. The browser never runs a model; enrol with
+ * `useVoiceEmbedding` (server-side). Logs a console warning on first use.
+ */
 export function useLocalVoiceEmbedding(options: UseLocalVoiceEmbeddingOptions = {}): UseLocalVoiceEmbeddingReturn {
+  warnLocalVoiceEmbeddingDeprecatedOnce();
   // Reuse the EXISTING backend enroll path verbatim for DB persistence.
   const { enroll: backendEnroll } = useVoiceEmbedding();
 

@@ -21,4 +21,9 @@
  * @packageDocumentation
  */
 
+/**
+ * @deprecated TASK-865 — removed in R4 together with this entry point and `@arcaai/med-ner`.
+ * Entity extraction runs in `apps/nlp` through the realtime lane (`agent.ner`); the browser
+ * never runs a model.
+ */
 export { useMedNER } from '@arcaai/med-ner';

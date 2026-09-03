@@ -138,6 +138,8 @@ export interface UseNoiseFilterReturn {
  *   );
  * }
  * ```
+ *
+ * @deprecated TASK-865 — removed in R4. Client-side model inference is retired: in-browser RNNoise. Denoise is a server-side decision of the tenant's ASR Agent (`audioFrontEnd.denoise`); the browser never runs a model.
  */
 export function useNoiseFilter(options: UseNoiseFilterOptions): UseNoiseFilterReturn {
   const { track, autoAttach = true, onStatsUpdate, onError, ...noiseFilterOptions } = options;

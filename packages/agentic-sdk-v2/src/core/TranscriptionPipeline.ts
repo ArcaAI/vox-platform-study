@@ -41,6 +41,9 @@ type STTRuntimeProvider = 'local' | 'remote';
  * explicit `clientInference: { allow: true }` gate. The default — and the only
  * supported — shape is a backend STT stage over the streaming transport.
  *
+ * @deprecated TASK-865 — removed in R4: the local stages (`noiseFilter`, `vad`, the local `stt`
+ * factory) and their model pins. The class itself stays as the backend STT stage host.
+ *
  * @example
  * ```typescript
  * const pipeline = new TranscriptionPipeline({
