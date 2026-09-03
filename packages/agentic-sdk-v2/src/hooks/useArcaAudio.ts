@@ -325,7 +325,12 @@ export function useArcaAudio() {
         const droppedOptions = (
           ['deviceId', 'secondaryDeviceId', 'additionalDeviceIds', 'sourceStreams', 'sourceGains', 'audioProcessing', 'dynamicSources'] as const
         ).filter((key) => options?.[key] !== undefined);
-        const attributes = { language: options?.language, pipelineId: options?.pipelineId, ...(droppedOptions.length ? { droppedOptions } : {}) };
+        const attributes = {
+          language: options?.language,
+          agentSlug: options?.agentSlug,
+          pipelineId: options?.pipelineId,
+          ...(droppedOptions.length ? { droppedOptions } : {}),
+        };
         if (droppedOptions.length) {
           logger?.warn(
             'startAudio ignored — capture already active; capture-shaped options were DROPPED. Start capture from the hook that carries the sources (see).',
@@ -352,6 +357,29 @@ export function useArcaAudio() {
       // …and with no server pipeline baseline carried over: the
       // previous session's engine must never be reported for this one.
       serverPipelineRef.current = null;
+
+      // WHAT transcribes (TASK-865): an ASR Agent slug, or the deprecated
+      // pipeline id, or nothing (the tenant assignment cascade decides). The
+      // two are never forwarded together — `agentSlug` wins and the conflict
+      // is warned about, never dropped silently.
+      const requestedAgentSlug = options?.agentSlug || undefined;
+      let requestedPipelineId = options?.pipelineId || undefined;
+      if (requestedAgentSlug && requestedPipelineId) {
+        logger?.warn('startAudio received both agentSlug and pipelineId — agentSlug wins, pipelineId dropped', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          attributes: { agentSlug: requestedAgentSlug, droppedPipelineId: requestedPipelineId, deprecation: 'TASK-865' },
+        });
+        requestedPipelineId = undefined;
+      } else if (requestedPipelineId) {
+        logger?.warn('AudioStartOptions.pipelineId is deprecated (TASK-865, removed in R4) — pass agentSlug, or nothing', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          attributes: { pipelineId: requestedPipelineId, deprecation: 'TASK-865' },
+        });
+      }
+      // Request-derived selection label until the gateway echoes the resolved one.
+      const requestedSelection = requestedPipelineId ?? requestedAgentSlug;
 
       // A new capture session starts with a clean source registry
       // ids restart at `source-1`, and nothing from the previous session's
@@ -381,9 +409,10 @@ export function useArcaAudio() {
 
       // Forward per-capture options to the plugin manager
       // BEFORE initialize so the streaming transport can be built for the
-      // STT stage when a `pipelineId` is provided.
+      // STT stage when an `agentSlug` (or deprecated `pipelineId`) is provided.
       pluginManager.setRuntimeOptions?.({
-        pipelineId: options?.pipelineId,
+        pipelineId: requestedPipelineId,
+        agentSlug: requestedAgentSlug,
         consultationId: consultation?.id,
         // Order-independent language: mirror the `languageMode` store fallback
         // below so a capture-first start (compat `useAudioCapture` starting the
@@ -426,7 +455,7 @@ export function useArcaAudio() {
       const timer = logger?.startOperation('startAudio', {
         component: 'useArcaAudio',
         sdk: { consultationId: consultation?.id },
-        attributes: { language: options?.language, pipelineId: options?.pipelineId },
+        attributes: { language: options?.language, agentSlug: requestedAgentSlug, pipelineId: requestedPipelineId },
       });
 
       try {
@@ -584,8 +613,8 @@ export function useArcaAudio() {
               const buffer = new Float32Array(analyser.fftSize);
               // Silent-uplink watchdog — rides this
               // same tick rather than a second timer. Streaming-only: with no
-              // pipeline there is no uplink to be silent on.
-              const streamingSession = Boolean(options?.pipelineId);
+              // agent/pipeline named there is no uplink to be silent on.
+              const streamingSession = Boolean(requestedSelection);
               let watchdogZeroTicks = 0;
               let watchdogSilentEpisode = false;
               const watchdogTickLimit = SILENT_UPLINK_WATCHDOG_MS / LEVEL_METER_INTERVAL_MS;
@@ -895,14 +924,13 @@ export function useArcaAudio() {
           },
           onProviderSwitched: (info) => {
             const raw = info as ProviderSwitchInfo & { active?: 'primary' | 'fallback'; isFallback?: boolean };
-            const requestedPipelineId = options?.pipelineId;
             const isFallback =
               raw.isFallback !== undefined
                 ? raw.isFallback
                 : raw.active !== undefined
                   ? raw.active === 'fallback'
-                  : requestedPipelineId && info.toPipeline
-                    ? info.toPipeline !== requestedPipelineId
+                  : requestedSelection && info.toPipeline
+                    ? info.toPipeline !== requestedSelection
                     : true;
             // A switch BACK to primary un-latches the durable fallback flag and
             // returns the connection to the nominal `connected` state — the
@@ -943,7 +971,7 @@ export function useArcaAudio() {
         store.setSttConnectionState('connected');
         store.setActivePipeline(
           serverPipelineRef.current ??
-            (options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' } : null),
+            (requestedSelection ? { id: requestedSelection, name: requestedSelection, isFallback: options?.startOn === 'fallback' } : null),
         );
 
         // Uplink-bitrate poll — the streaming STT stage exists after initialize().
