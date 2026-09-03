@@ -129,6 +129,7 @@ export {
 
 // consultation workflow DISCOVERY (which engine governs a consultation).
 export type { ConsultationWorkflow, SelectableConsultationWorkflow } from './consultationWorkflow';
+export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './agent';
 
 // workflow INVOCATION (running one), as distinct from the discovery
 // types above (which one governs a consultation).

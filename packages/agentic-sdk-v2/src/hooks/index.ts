@@ -100,6 +100,8 @@ export { useConsultationSchema, type UseConsultationSchemaReturn } from './useCo
 // which engine governs a consultation (the read side of OpenSessionInput.workflowDefinitionSlug).
 export { useConsultationWorkflow, type UseConsultationWorkflowReturn } from './useConsultationWorkflow';
 export { useSelectableConsultationWorkflows, type UseSelectableConsultationWorkflowsReturn } from './useSelectableConsultationWorkflows';
+// TASK-865: which ASR Agents may be named at `audio.start({ agentSlug })` (replaces usePipelines for selection).
+export { useSelectableAsrAgents, type UseSelectableAsrAgentsReturn } from './useSelectableAsrAgents';
 
 // workflow INVOCATION: run a published workflow (optionally against a
 // consultation), watch it live with a resumable stream, cancel it.
