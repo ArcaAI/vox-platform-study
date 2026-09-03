@@ -1,4 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
+import { SYSTEM_TENANT_ID } from './00-constants';
+import { Prisma } from '../../../generated/core-prisma-client/client';
 
 /**
  * AiRuntimeProfile Seed (config-plane core)
@@ -83,10 +85,41 @@ export interface AiRuntimeProfileSeed {
   rpmLimit: number | null;
   timeoutS: number | null;
   keepAliveSeconds: number | null;
+  /** Engine-specific ride-along (`extra_body` on the OpenAI-compatible family). */
+  extraJson: Record<string, unknown> | null;
 }
 
-/** Intentionally empty — see the file header. Ids would use the `88000000-…` block. */
-export const SYSTEM_AI_RUNTIME_PROFILES: AiRuntimeProfileSeed[] = [];
+/**
+ * Still NO limits — every numeric knob below is null, so `hasOpinion` stays false
+ * and nothing here claims a measured quota (see the file header).
+ *
+ * TASK-858 — the one row that ships is an ENGINE EXTRA paired with a seeded
+ * catalog row, not a limit: gemma-4 runs with LM Studio's thinking mode ON by
+ * default, which costs every realtime node 400–1300 reasoning tokens and blows
+ * its budget on any GPU this platform targets. `reasoning_effort: "none"` is the
+ * switch LM Studio honours on the OpenAI wire (verified 2026-09-03: 11 completion
+ * tokens, 0 reasoning tokens, correct output). It rides `extraJson` → the
+ * gateway's `applyTextRuntimeProfile` → TEXT `extra` → `extra_body`. A platform
+ * admin can edit or delete it in the console; the seed is create-only.
+ */
+export const SYSTEM_AI_RUNTIME_PROFILES: AiRuntimeProfileSeed[] = [
+  {
+    id: '88000000-0000-0000-0000-000000000001',
+    tenantId: SYSTEM_TENANT_ID,
+    provider: 'lm-studio',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    temperature: null,
+    topP: null,
+    maxTokens: null,
+    contextLength: null,
+    maxConcurrent: null,
+    tpmLimit: null,
+    rpmLimit: null,
+    timeoutS: null,
+    keepAliveSeconds: null,
+    extraJson: { reasoning_effort: 'none' },
+  },
+];
 
 export const seedAiRuntimeProfile = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
   console.log('Seeding SYSTEM AiRuntimeProfile rows (TASK-524)...');
@@ -104,7 +137,10 @@ export const seedAiRuntimeProfile = async (client: CorePrismaClient): Promise<{ 
       continue;
     }
 
-    await client.aiRuntimeProfile.create({ data: { ...row } });
+    const { extraJson, ...columns } = row;
+    await client.aiRuntimeProfile.create({
+      data: { ...columns, extraJson: extraJson === null ? Prisma.JsonNull : (extraJson as Prisma.InputJsonValue) },
+    });
     created += 1;
   }
 

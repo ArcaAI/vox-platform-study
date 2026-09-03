@@ -1,8 +1,9 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
+  AiModelRepository,
   AiRuntimeProfileEntity,
   AiRuntimeProfileFactory,
   AiRuntimeProfileRepository,
@@ -64,6 +65,10 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-858 — translates the provider-native model id a TEXT request carries
+    // (`AiModel.sourceUri`) to the catalog `slug` that keys a profile row. Optional
+    // so hosts without the catalog (tests, tools) still resolve raw-keyed rows.
+    @Optional() private readonly aiModelRepository?: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.AiRuntimeProfile);
   }
@@ -181,12 +186,22 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
   async resolveProfile(provider: string, modelSlug: string): Promise<ResolvedRuntimeProfile> {
     const tx = this.crossTenantLane();
 
-    const [modelRow, defaultRow] = await Promise.all([
-      modelSlug && modelSlug !== PROVIDER_DEFAULT_SLUG
-        ? this.profileRepository.findByTenantProviderAndModel(SYSTEM_TENANT_ID, provider, modelSlug, tx)
-        : Promise.resolve(null),
+    const hasModel = Boolean(modelSlug) && modelSlug !== PROVIDER_DEFAULT_SLUG;
+    const [rawRow, defaultRow, catalogSlug] = await Promise.all([
+      hasModel ? this.profileRepository.findByTenantProviderAndModel(SYSTEM_TENANT_ID, provider, modelSlug, tx) : Promise.resolve(null),
       this.profileRepository.findByTenantProviderAndModel(SYSTEM_TENANT_ID, provider, PROVIDER_DEFAULT_SLUG, tx),
+      hasModel ? this.catalogSlugFor(provider, modelSlug, tx) : Promise.resolve(null),
     ]);
+    // TASK-858 — `modelSlug` is documented as an `AiModel.slug` (schema, seed,
+    // console), but every TEXT caller resolves `model` to the row's `sourceUri`
+    // before the profile is applied, so a console-authored row never matched.
+    // Consult the slug-keyed row too; it outranks a raw-id row per field, and a
+    // catalog miss simply leaves the raw lookup as the only model-level source.
+    const slugRow =
+      catalogSlug && catalogSlug !== modelSlug
+        ? await this.profileRepository.findByTenantProviderAndModel(SYSTEM_TENANT_ID, provider, catalogSlug, tx)
+        : null;
+    const modelRow = this.mergeModelRows(slugRow, rawRow);
 
     const resolved: ResolvedRuntimeProfile = {
       provider,
@@ -227,6 +242,31 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
   }
 
   // ────────────────────────────── internals ──────────────────────────────
+
+  /** The catalog slug for a provider-native model id, or null when the id is not in the SYSTEM catalog. */
+  private async catalogSlugFor(provider: string, sourceUri: string, tx: unknown): Promise<string | null> {
+    if (!this.aiModelRepository) return null;
+    try {
+      const model = await this.aiModelRepository.findByProviderAndSourceUri(SYSTEM_TENANT_ID, provider, sourceUri, tx);
+      return model?.slug ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fold two model-level rows into one per-field view: the slug-keyed row wins
+   * where it has an opinion, the raw-id row fills what it left null. Returns a
+   * plain field bag (never persisted) so `pick` reads it like an entity.
+   */
+  private mergeModelRows(slugRow: AiRuntimeProfileEntity | null, rawRow: AiRuntimeProfileEntity | null): AiRuntimeProfileEntity | null {
+    if (!slugRow) return rawRow;
+    if (!rawRow) return slugRow;
+    const merged: Record<string, unknown> = {};
+    for (const knob of KNOBS) merged[knob] = slugRow[knob] ?? rawRow[knob] ?? null;
+    merged.extraJson = slugRow.extraJson ?? rawRow.extraJson ?? null;
+    return merged as unknown as AiRuntimeProfileEntity;
+  }
 
   private pick(modelRow: AiRuntimeProfileEntity | null, defaultRow: AiRuntimeProfileEntity | null, knob: (typeof KNOBS)[number]): number | null {
     const fromModel = modelRow?.[knob] ?? null;

@@ -188,6 +188,19 @@ class OpenAICompatProvider:
         if ttl_seconds is not None:
             self._retention_ttl_s = clamp_cache_ttl_seconds(ttl_seconds)
 
+    def _apply_request_extras(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
+        """Merge the request's ``extra`` (TASK-858 — `AiRuntimeProfile.extraJson`,
+        forwarded by the gateway) into the SDK's sanctioned ``extra_body``
+        ride-along. Runs AFTER the engine's own dedicated knobs (retention
+        ``ttl``, vLLM ``guided_json``) so a profile extra can ADD a field but
+        never hijack one the platform governs separately.
+        """
+        if not request.extra:
+            return
+        extra_body = kwargs.setdefault("extra_body", {})
+        for key, value in request.extra.items():
+            extra_body.setdefault(key, value)
+
     def _apply_retention_hint(self, kwargs: dict[str, Any]) -> None:
         """Hook: attach the engine's server-side idle-retention directive.
 
@@ -282,6 +295,7 @@ class OpenAICompatProvider:
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
+            self._apply_request_extras(kwargs, request)
 
             start = time.monotonic()
             response = await self._client_for(request).chat.completions.create(**kwargs)
@@ -340,6 +354,7 @@ class OpenAICompatProvider:
 
             self._apply_response_format(kwargs, request)
             self._apply_retention_hint(kwargs)
+            self._apply_request_extras(kwargs, request)
 
             # DRAIN the stream to completion (AD-1): the finish chunk arrives
             # BEFORE the ``stream_options.include_usage`` usage-only chunk, so an

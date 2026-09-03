@@ -35,6 +35,7 @@ import { describe, it, expect } from 'vitest';
 import { MODELS_WITHOUT_SOFT_DELETE } from '../../../../client';
 import { SYSTEM_SHARED_READ_MODELS, TENANT_SCOPED_MODELS } from '../../../../extensions/tenant-scope';
 import { AI_MODEL_PROVIDERS } from '../ai-models/shared';
+import { LLM_AI_MODELS } from '../ai-models/llm';
 import { SYSTEM_TENANT_ID } from '../00-constants';
 import {
   PLATFORM_SELF_HOST_CONNECTIONS,
@@ -338,8 +339,28 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
 // =============================================================================
 
 describe('AiRuntimeProfile seed', () => {
-  it('seeds NO profile rows (absence = env defaults; silent-change guard)', () => {
-    expect(SYSTEM_AI_RUNTIME_PROFILES).toEqual([]);
+  // AMENDED (TASK-858): the shipped default for LIMITS is still none — no row may
+  // claim a measured quota, so `hasOpinion` stays false for every seeded row. The
+  // one row that ships is an ENGINE EXTRA paired with a seeded catalog model:
+  // gemma-4 thinks by LM Studio default, and `reasoning_effort: "none"` is the
+  // only switch that stops the realtime nodes paying for it.
+  const LIMIT_KNOBS = ['temperature', 'topP', 'maxTokens', 'contextLength', 'maxConcurrent', 'tpmLimit', 'rpmLimit', 'timeoutS', 'keepAliveSeconds'] as const;
+
+  it('seeds NO limit on any row (absence = env defaults; silent-change guard)', () => {
+    for (const row of SYSTEM_AI_RUNTIME_PROFILES) {
+      for (const knob of LIMIT_KNOBS) expect(row[knob], `${row.provider}/${row.modelSlug}.${knob}`).toBeNull();
+    }
+  });
+
+  it('ships exactly the gemma-4 E2B thinking-off extra, keyed by the seeded catalog slug', () => {
+    expect(SYSTEM_AI_RUNTIME_PROFILES).toHaveLength(1);
+    const row = SYSTEM_AI_RUNTIME_PROFILES[0];
+    if (!row) throw new Error('unreachable — length asserted above');
+    expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(row.provider).toBe('lm-studio');
+    expect(row.extraJson).toEqual({ reasoning_effort: 'none' });
+    expect(LLM_AI_MODELS.map((m) => m.slug)).toContain(row.modelSlug);
+    expect(LLM_AI_MODELS.find((m) => m.slug === row.modelSlug)?.provider).toBe('lm-studio');
   });
 });
 

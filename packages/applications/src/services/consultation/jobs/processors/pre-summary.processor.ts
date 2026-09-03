@@ -329,6 +329,10 @@ export class PreSummaryProcessor extends WorkerHost {
       // carried so metering is derived from the supplying row). `process()`
       // rebinds `tenantId` into a fresh CLS scope above, which is where the
       // resolver reads it from.
+      // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+      // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+      // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+      await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
       // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY — `tenantId` is the
