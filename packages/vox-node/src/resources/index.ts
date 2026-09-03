@@ -29,3 +29,6 @@ export { TenantsResource } from './tenants';
 
 export type { StartRunOptions, StreamRunOptions } from './workflows';
 export { ConsultationWorkflowsResource, WORKFLOW_PLANE_ROUTES, WorkflowsResource } from './workflows';
+
+export type { InvokeAgentOptions } from './agents';
+export { AGENT_PLANE_ROUTES, AgentsResource } from './agents';
