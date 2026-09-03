@@ -5,6 +5,7 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { IProviderConnectionService } from './IProviderConnectionService';
 import { AiProviderConnectionService } from './ai-provider-connection.service';
 import { ProviderCredentialResolver } from './provider-credential-resolver';
+import { ProviderConnectionProbe } from './provider-connection-probe';
 
 // `IProviderConnectionService` and the deprecated `IAiProviderConnectionService`
 // alias are the SAME symbol value, so registering the token once resolves both
@@ -27,9 +28,11 @@ import { ProviderCredentialResolver } from './provider-credential-resolver';
       // harmless, but aliasing is free.
       useExisting: AiProviderConnectionService,
     },
-    // TASK-862 — the one-credential resolver agents/workflows consume.
+    // TASK-862 — the one-credential resolver agents/workflows consume, and the
+    // ephemeral test-connection probe behind `POST admin/providers/:service/:provider/test`.
     ProviderCredentialResolver,
+    ProviderConnectionProbe,
   ],
-  exports: [IProviderConnectionService, AiProviderConnectionService, ProviderCredentialResolver],
+  exports: [IProviderConnectionService, AiProviderConnectionService, ProviderCredentialResolver, ProviderConnectionProbe],
 })
 export class AiProviderConnectionServiceModule {}

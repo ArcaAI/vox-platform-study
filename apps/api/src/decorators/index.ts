@@ -1,5 +1,6 @@
 // Swagger/OpenAPI decorators (stay in API layer)
 export * from './apiEndpoint.decorator';
+export * from './api-deprecated.decorator';
 export * from './apiPaginated.response';
 export * from './apiSingle.response';
 

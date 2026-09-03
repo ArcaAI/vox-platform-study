@@ -109,34 +109,4 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
   });
 });
 
-test.describe('Unified provider connections — legacy admin/ai-providers alias', () => {
-  let superAdminToken: string;
-
-  test.beforeAll(async ({ request }) => {
-    const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(login, 'super admin login failed').toBeTruthy();
-    superAdminToken = login!.token;
-  });
-
-  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
-
-  test('the legacy alias returns the SAME llm rows as the unified route', async ({ request }) => {
-    const [legacy, unified] = await Promise.all([
-      request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() }),
-      request.get(`/api/v1/admin/providers/llm?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() }),
-    ]);
-    expect(legacy.status()).toBe(200);
-    expect(unified.status()).toBe(200);
-
-    const providersOf = (rows: { provider: string }[]) => rows.map((r) => r.provider).sort();
-    expect(providersOf(await legacy.json())).toEqual(providersOf(await unified.json()));
-  });
-
-  test('the legacy alias still enforces OCC (missing If-Match → 428)', async ({ request }) => {
-    const res = await request.put(`/api/v1/admin/ai-providers/anthropic?tenantId=${SYSTEM_TENANT_ID}`, {
-      headers: auth(),
-      data: { enabled: false },
-    });
-    expect(res.status()).toBe(428);
-  });
-});
+// TASK-862: the `admin/ai-providers` legacy-alias suite was removed with the alias controller.

@@ -9,3 +9,4 @@ export * from './ai-provider-connection.service.module';
 export * from './ai-provider-connection.dto.mapper';
 export * from './provider-vetoed.exception';
 export * from './provider-credential-resolver';
+export * from './provider-connection-probe';
