@@ -207,6 +207,12 @@ class GenerateRequest(BaseModel):
     # ``None``/absent ⇒ the platform posture from the PULL channel stands, which
     # is what every caller gets until the gateway resolves a tenant policy.
     guardrail_policy: GuardrailPolicyOverride | None = None
+    # TASK-858 — engine-specific ride-along from `AiRuntimeProfile.extraJson`
+    # (`n_threads`, `num_predict`, `reasoning_effort`, …), injected by the gateway's
+    # `applyTextRuntimeProfile`. Undeclared before this, so pydantic dropped it and
+    # no profile extra ever reached an engine. The OpenAI-compatible family sends
+    # it as `extra_body`; adapters with no such ride-along ignore it.
+    extra: dict[str, Any] | None = None
 
     @field_validator("prompt")
     @classmethod

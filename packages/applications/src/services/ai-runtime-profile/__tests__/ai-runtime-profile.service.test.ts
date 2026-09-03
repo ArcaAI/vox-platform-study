@@ -190,3 +190,88 @@ describe('AiRuntimeProfileService — governance (test 8)', () => {
     expect(emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceDeleted, expect.anything());
   });
 });
+
+// ===========================================================================
+// TASK-858 — the lookup key the console writes vs the identifier the wire carries
+// ===========================================================================
+
+describe('AiRuntimeProfileService — resolveProfile honours a catalog-slug-keyed row for a wire model id (TASK-858)', () => {
+  // `AiRuntimeProfile.modelSlug` is documented (schema + seed + console) as an
+  // `AiModel.slug`, but every TEXT caller resolves `model` to the row's
+  // `sourceUri` — the provider's own model id — before the profile is applied.
+  // A profile a platform admin saved for `lms-gemma-4-e2b-it-qat` therefore never
+  // matched a request carrying `gemma-4-e2b-it-qat`. The wire id is translated
+  // to the catalog slug (SYSTEM tenant, provider-scoped) and the slug-keyed row
+  // is consulted; a row keyed by the raw wire id still matches as before.
+  function makeTranslatingService(slugForWireId: string | null) {
+    const repo = {
+      findByTenantProviderAndModel: vi.fn().mockResolvedValue(null),
+      findByTenantId: vi.fn().mockResolvedValue([]),
+    };
+    const aiModels = {
+      findByProviderAndSourceUri: vi.fn(async (_tenantId: string, _provider: string, _sourceUri: string) =>
+        slugForWireId ? ({ slug: slugForWireId } as any) : null,
+      ),
+    };
+    const emitter = { emit: vi.fn() };
+    const cls = { get: vi.fn(() => undefined) };
+    const db = { baseClient: { $lane: 'unscoped-base-client' } };
+    const svc = new AiRuntimeProfileService(repo as any, db as any, emitter as any, cls as any, aiModels as any);
+    return { svc, repo, aiModels };
+  }
+
+  it('finds the slug-keyed row when the caller carries the provider model id', async () => {
+    const { svc, repo, aiModels } = makeTranslatingService('lms-gemma-4-e2b-it-qat');
+    repo.findByTenantProviderAndModel.mockImplementation(async (_t: string, _p: string, modelSlug: string) =>
+      modelSlug === 'lms-gemma-4-e2b-it-qat'
+        ? makeProfile({ modelSlug: 'lms-gemma-4-e2b-it-qat', temperature: 0.1 })
+        : null,
+    );
+
+    const resolved = await svc.resolveProfile('lm-studio', 'gemma-4-e2b-it-qat');
+
+    expect(aiModels.findByProviderAndSourceUri).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'lm-studio', 'gemma-4-e2b-it-qat', undefined);
+    expect(resolved.temperature).toBe(0.1);
+    expect(resolved.isEmpty).toBe(false);
+  });
+
+  it('still matches a row keyed by the raw wire id, and prefers the catalog-slug row when both exist', async () => {
+    const { svc, repo } = makeTranslatingService('lms-gemma-4-e2b-it-qat');
+    repo.findByTenantProviderAndModel.mockImplementation(async (_t: string, _p: string, modelSlug: string) => {
+      if (modelSlug === 'lms-gemma-4-e2b-it-qat') return makeProfile({ modelSlug, temperature: 0.1 });
+      if (modelSlug === 'gemma-4-e2b-it-qat') return makeProfile({ modelSlug, temperature: 0.9, maxTokens: 512 });
+      return null;
+    });
+
+    const resolved = await svc.resolveProfile('lm-studio', 'gemma-4-e2b-it-qat');
+
+    // Slug row wins per field; the raw-id row still fills what the slug row left null.
+    expect(resolved.temperature).toBe(0.1);
+    expect(resolved.maxTokens).toBe(512);
+  });
+
+  it('falls back to the raw-id row alone when the wire id is not in the catalog', async () => {
+    const { svc, repo } = makeTranslatingService(null);
+    repo.findByTenantProviderAndModel.mockImplementation(async (_t: string, _p: string, modelSlug: string) =>
+      modelSlug === 'gemma-4-e2b-it-qat' ? makeProfile({ modelSlug, temperature: 0.9 }) : null,
+    );
+
+    const resolved = await svc.resolveProfile('lm-studio', 'gemma-4-e2b-it-qat');
+
+    expect(resolved.temperature).toBe(0.9);
+  });
+
+  it('does not translate when the caller already carries the catalog slug', async () => {
+    const { svc, repo, aiModels } = makeTranslatingService(null);
+    repo.findByTenantProviderAndModel.mockImplementation(async (_t: string, _p: string, modelSlug: string) =>
+      modelSlug === 'lms-gemma-4-e2b-it-qat' ? makeProfile({ modelSlug, temperature: 0.2 }) : null,
+    );
+
+    const resolved = await svc.resolveProfile('lm-studio', 'lms-gemma-4-e2b-it-qat');
+
+    expect(resolved.temperature).toBe(0.2);
+    // The translation lookup ran (it cannot know in advance which kind of id it was
+    // handed) but a catalog miss is not an error and changes nothing.
+    expect(aiModels.findByProviderAndSourceUri).toHaveBeenCalledTimes(1);
+  });
+});

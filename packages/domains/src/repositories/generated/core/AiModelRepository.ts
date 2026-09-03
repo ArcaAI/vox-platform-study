@@ -46,6 +46,39 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
   }
 
   /**
+   * Find the catalog row a provider-native model id belongs to (TASK-858).
+   *
+   * Every TEXT caller resolves a request's `model` to `AiModel.sourceUri` — the id
+   * the engine itself answers to — while `AiRuntimeProfile.modelSlug` is keyed by
+   * the catalog `slug`. This is the translation between the two. Same routing
+   * rule as `findBySlug`: an explicit `tx` bypasses the tenant-scope extension.
+   */
+  async findByProviderAndSourceUri(
+    tenantId: string,
+    provider: string,
+    sourceUri: string,
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<AiModelEntity | null> {
+    const where = {
+      tenantId,
+      provider,
+      sourceUri,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+
+    if (tx) {
+      const model = await (tx as Record<string, any>).aiModel.findFirst({ where });
+      return model ? AiModelEntityMapper.getInstance().toDomainEntity(model) : null;
+    }
+
+    try {
+      return await this.findFirst({ filters: where });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Find multiple models by slugs
    */
   async findBySlugs(tenantId: string, slugs: string[]): Promise<AiModelEntity[]> {

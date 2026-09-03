@@ -477,6 +477,10 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // per-provider env plane, so the endpoint and key must arrive per request.
     // `processWithContext` puts the job's tenant in CLS, which is where the
     // resolver reads it from.
+    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
       timeout: 120000,

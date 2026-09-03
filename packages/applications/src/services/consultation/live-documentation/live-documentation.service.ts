@@ -3281,6 +3281,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolver error injects nothing and the call proceeds, while a POLICY
     // refusal (tenant veto / missing entitlement) still throws so the outage is
     // attributable instead of surfacing as TEXT's unattributable 503.
+    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
@@ -3369,6 +3373,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
+    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
@@ -3465,6 +3473,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       max_tokens: this.textMaxTokens,
       stream: false as const,
     };
+    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'TEXT_SERVICE_TOKEN');
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {

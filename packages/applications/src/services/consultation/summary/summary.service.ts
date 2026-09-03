@@ -1696,6 +1696,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     // implementation so the tenant → SYSTEM cascade and the `funding` label
     // that derives metering both apply. Awaited BEFORE the repair loop below so
     // the original and the corrective retry post byte-identical credentials.
+    // TASK-858 — layer the platform admin's runtime profile (hyperparameters + engine
+    // extras such as `reasoning_effort`) BEFORE the credential fold, exactly as the
+    // TEXT proxy does. Caller-set fields win; a resolver error injects nothing.
+    await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string });
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (`TEXT_SERVICE_TOKEN` is only the
     // migration fallback). TASK-737: `X-Tenant-Id` is MANDATORY on this hop — this
