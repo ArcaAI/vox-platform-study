@@ -1,5 +1,5 @@
 import { ModelResponse, RegisterDiscoveredModelRequest } from '@arcaai/applications';
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, GoneException, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Authorize, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery.service';
@@ -39,17 +39,32 @@ export class AiModelDiscoveryController {
     return this.discoveryService.discover(provider);
   }
 
+  /**
+   * @deprecated TASK-860 — removed in R3. Registration is from the catalogue
+   * (`POST admin/ai-models`, optionally with a `bucketPrefix` for weights the
+   * inventory found "in bucket, not registered"); discovery is READ-ONLY. Per
+   * the program's deprecation policy a deprecated WRITE path refuses once its
+   * replacement ships, so this answers `410 Gone` and never reaches the
+   * service. The route stays mounted (and documented as deprecated) so an
+   * old console build gets an actionable error rather than a 404.
+   */
   @Post('discovery/register')
+  @HttpCode(HttpStatus.GONE)
   @ApiOperation({
-    summary: 'Register a discovered model into the AI model registry',
+    deprecated: true,
+    summary: 'DEPRECATED (TASK-860, removed in R3) — register a discovered model',
     description:
-      'Creates one `AiModel` row from a discovered entry (slug derived from the engine-reported model name). ' +
-      'Delegates to the existing create path, so the factory, the `ResourceCreated` sys-event and the slug-uniqueness ' +
-      'check all apply. On a slug collision the response is 400 asking for an explicit `slug` — there is no silent suffixing.',
+      'Refuses with `410 Gone`. Discovery is read-only since TASK-860; register a model through `POST admin/ai-models` ' +
+      '(the inventory report lists prefixes already in the bucket, which register with their `bucketPrefix`).',
   })
-  @ApiResponse({ status: 201, type: ModelResponse })
-  @ApiResponse({ status: 400, description: 'Unknown/non-server-managed provider, or the derived slug is already taken.' })
-  async register(@Body() request: RegisterDiscoveredModelRequest): Promise<ModelResponse> {
-    return this.discoveryService.register(request);
+  @ApiResponse({
+    status: 410,
+    description: "Deprecated — use POST admin/ai-models (register from the catalogue / the inventory's unregistered prefixes).",
+  })
+  async register(@Body() _request: RegisterDiscoveredModelRequest): Promise<ModelResponse> {
+    throw new GoneException(
+      'POST admin/ai-models/discovery/register is deprecated (TASK-860): discovery is read-only. ' +
+        'Register the model through POST admin/ai-models — run POST admin/ai-models/inventory to list weights already in the bucket and register from the bucket with their bucketPrefix.',
+    );
   }
 }

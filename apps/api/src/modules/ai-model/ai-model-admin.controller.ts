@@ -4,27 +4,31 @@ import {
   CreateModelRequest,
   HttpMethod,
   ModelDownloadStatusResponse,
+  ModelInventoryReport,
+  ModelInventoryService,
   ModelResponse,
   PaginatedModelResponse,
+  SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
   UpdateModelRequest,
 } from '@arcaai/applications';
-import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**
- * Admin AI model catalog controller.
+ * Admin AI model registry controller (TASK-860).
  *
  * Mirrors `audio-pipeline.controller.ts` 1:1: a thin delegation surface over
- * the already-existing `AiModelService`.
+ * `AiModelService` (catalogue CRUD + the platform-default election),
+ * `AiModelDownloadService` (publish-to-bucket) and `ModelInventoryService`
+ * (measured availability + "in bucket, not registered").
  *
- * Authorization: the registry is a SUPER_ADMIN plane — the guard is
- * pinned to `manage:all`, and the tenant-scoped `manage:AiModel` grant no
- * longer opens this controller. Super Admins manage per-tenant clones of the
- * SYSTEM catalog through the working-tenant context. Event broadcasting +
- * exact-tenant scoping live in the service / Prisma `tenant-scope` extension;
- * OCC is enforced via the `If-Match` header.
+ * Authorization: the registry is a SUPER_ADMIN plane — the guard is pinned
+ * to `manage:all` and the service ALSO asserts a platform admin on every
+ * write (403). Rows live only in the SYSTEM tenant; a super admin's working
+ * tenant never changes what this controller reads or writes. OCC is enforced
+ * via the `If-Match` header on the field edit.
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
@@ -36,7 +40,31 @@ export class AiModelAdminController {
   constructor(
     private readonly aiModelService: AiModelService,
     private readonly aiModelDownloadService: AiModelDownloadService,
+    private readonly modelInventoryService: ModelInventoryService,
   ) {}
+
+  /**
+   * Measure every catalogue row against the `hope-models` bucket and list the
+   * manifest-bearing prefixes no row references. Synchronous (one bucket
+   * listing + one manifest read per published row); returns the report.
+   * Static path — registered BEFORE the `:id` family below so it is never
+   * captured as `id="inventory"`.
+   */
+  @Post('inventory')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Run the model-bucket inventory',
+    description:
+      "Verifies every registry row's `bucketPrefix` + `manifestDigest` + manifest objects against `s3://hope-models`, writes the " +
+      'measured `availability` (AVAILABLE / MISSING / PARTIAL / NOT_APPLICABLE) back, and lists the prefixes in the bucket that no row ' +
+      'references ("In bucket, not registered → Register"). The same sweep runs hourly when `modelRegistry.inventory.enabled` is on.',
+  })
+  @ApiResponse({ status: 200, type: ModelInventoryReport })
+  @ApiResponse({ status: 403, description: 'Platform administrators only.' })
+  @ApiResponse({ status: 502, description: 'The bucket could not be listed — nothing was marked.' })
+  async runInventory(): Promise<ModelInventoryReport> {
+    return this.modelInventoryService.runInventory();
+  }
 
   @ApiEndpoint({
     returnedModel: ModelResponse,
@@ -142,6 +170,30 @@ export class AiModelAdminController {
     return this.aiModelService.update(id, effectiveRequest);
   }
 
+  /**
+   * The super-admin "platform default for task" election (TASK-860 §3.7).
+   * Not an OCC field edit — it also clears each task from its previous holder —
+   * so it has its own route and no `If-Match`; the service CASes on the
+   * current row versions and a concurrent edit still surfaces as 412.
+   */
+  @Patch(':id/platform-default')
+  @ApiOperation({
+    summary: 'Elect this row as the platform default for one or more tasks',
+    description:
+      "Replaces the row's `isPlatformDefaultFor` with `tasks` and clears each of those tasks from whichever ENABLED row held it, so a " +
+      'task never has two platform defaults. An empty list withdraws the row from every election. Only writes the registry column and ' +
+      'emits a sys-event; the SYSTEM routing-policy election it seeds is TASK-862.',
+  })
+  @ApiParam({ name: 'id', description: 'Model ID', type: String })
+  @ApiResponse({ status: 200, type: ModelResponse })
+  @ApiResponse({ status: 400, description: 'The row is not ENABLED.' })
+  @ApiResponse({ status: 403, description: 'Platform administrators only.' })
+  @ApiResponse({ status: 404, description: 'Model not found' })
+  @ApiResponse({ status: 412, description: 'A concurrent edit moved one of the rows — re-fetch and try again.' })
+  async setPlatformDefault(@Param('id') id: string, @Body() request: SetPlatformDefaultRequest): Promise<ModelResponse> {
+    return this.aiModelService.setPlatformDefaultFor(id, request);
+  }
+
   @ApiEndpoint({
     returnedModel: ModelResponse,
     method: HttpMethod.DELETE,
@@ -167,7 +219,13 @@ export class AiModelAdminController {
    */
   @Post(':id/download')
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: "Trigger an async download of this model's weights into the hope-models bucket." })
+  @ApiOperation({
+    summary: "Publish this model's weights into the hope-models bucket (async).",
+    description:
+      'Fetches the weights from `sourceUri` (Hub or s3://), verifies + content-addresses them, publishes them under `<slug>/<version>/` ' +
+      '(or as a verbatim HF cache for the transformers family), and writes `bucketPrefix` / `manifestDigest` / `availability` back to the row. ' +
+      "The route path keeps its frozen `download` name; the action is the registry's single publisher (TASK-860 D-1).",
+  })
   @ApiParam({ name: 'id', description: 'Model ID', type: String })
   @ApiResponse({ status: 202, type: TriggerModelDownloadResponse })
   @ApiResponse({ status: 404, description: 'Model not found' })
