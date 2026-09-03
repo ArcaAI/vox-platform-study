@@ -151,8 +151,31 @@ build-admin-console:
     # assets/rnnoise.wasm is an LFS object. A pointer stub would build
     # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
     GIT_LFS_SKIP_SMUDGE: "0"
+    # TASK-858 — smudge ONLY that object. With the full smudge the checkout
+    # fetched ~26 MB of test audio the image never uses, and against a slow
+    # GitLab LFS endpoint the fetch hung until the 30-minute job timeout
+    # (pipeline #1113, both Next.js builds, twice). `lfs.fetchinclude` leaves
+    # every other LFS file as a pointer; the LFS timeouts make a dead endpoint
+    # fail in minutes with a real error instead of a silent hang; and the
+    # before_script below refuses to build from a pointer stub.
+    GIT_CONFIG_COUNT: "3"
+    GIT_CONFIG_KEY_0: lfs.fetchinclude
+    GIT_CONFIG_VALUE_0: packages/noise-filter/assets/rnnoise.wasm
+    GIT_CONFIG_KEY_1: lfs.activitytimeout
+    GIT_CONFIG_VALUE_1: "60"
+    GIT_CONFIG_KEY_2: lfs.dialtimeout
+    GIT_CONFIG_VALUE_2: "30"
     # Browser-reachable gateway origin, inlined into the client bundle.
     BUILD_ARGS: "--build-arg NEXT_PUBLIC_API_HOST=$NEXT_PUBLIC_API_HOST"
+  before_script:
+    - !reference [.buildx-registry-login, before_script]
+    # A pointer stub is ~130 bytes of text; a real wasm starts with "\0asm".
+    - |
+      if ! head -c 4 packages/noise-filter/assets/rnnoise.wasm | grep -q "asm"; then
+        echo "rnnoise.wasm is an LFS pointer stub, not the wasm — the LFS fetch did not run. Refusing to build a broken image."
+        head -c 200 packages/noise-filter/assets/rnnoise.wasm; echo
+        exit 1
+      fi
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ADMIN-/ || $CI_COMMIT_TAG =~ /^ALL-/
@@ -174,7 +197,30 @@ build-compat-playground:
     # assets/rnnoise.wasm is an LFS object. A pointer stub would build
     # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
     GIT_LFS_SKIP_SMUDGE: "0"
+    # TASK-858 — smudge ONLY that object. With the full smudge the checkout
+    # fetched ~26 MB of test audio the image never uses, and against a slow
+    # GitLab LFS endpoint the fetch hung until the 30-minute job timeout
+    # (pipeline #1113, both Next.js builds, twice). `lfs.fetchinclude` leaves
+    # every other LFS file as a pointer; the LFS timeouts make a dead endpoint
+    # fail in minutes with a real error instead of a silent hang; and the
+    # before_script below refuses to build from a pointer stub.
+    GIT_CONFIG_COUNT: "3"
+    GIT_CONFIG_KEY_0: lfs.fetchinclude
+    GIT_CONFIG_VALUE_0: packages/noise-filter/assets/rnnoise.wasm
+    GIT_CONFIG_KEY_1: lfs.activitytimeout
+    GIT_CONFIG_VALUE_1: "60"
+    GIT_CONFIG_KEY_2: lfs.dialtimeout
+    GIT_CONFIG_VALUE_2: "30"
     BUILD_ARGS: "--build-arg VITE_API_BASE_URL=$NEXT_PUBLIC_API_HOST"
+  before_script:
+    - !reference [.buildx-registry-login, before_script]
+    # A pointer stub is ~130 bytes of text; a real wasm starts with "\0asm".
+    - |
+      if ! head -c 4 packages/noise-filter/assets/rnnoise.wasm | grep -q "asm"; then
+        echo "rnnoise.wasm is an LFS pointer stub, not the wasm — the LFS fetch did not run. Refusing to build a broken image."
+        head -c 200 packages/noise-filter/assets/rnnoise.wasm; echo
+        exit 1
+      fi
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^COMPAT-/ || $CI_COMMIT_TAG =~ /^ALL-/
