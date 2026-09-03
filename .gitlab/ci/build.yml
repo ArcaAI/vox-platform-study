@@ -166,9 +166,17 @@ build-admin-console:
     GIT_CONFIG_KEY_2: lfs.dialtimeout
     GIT_CONFIG_VALUE_2: "30"
     # Browser-reachable gateway origin, inlined into the client bundle.
-    BUILD_ARGS: "--build-arg NEXT_PUBLIC_API_HOST=$NEXT_PUBLIC_API_HOST"
+    # The gateway host baked into the client bundle. Environment identity lives
+    # in the deployment repo's overlays (overlays/dev sets NEXT_PUBLIC_API_HOST =
+    # api.taphuynh.dev at RUNTIME, which a Next.js client bundle cannot read) —
+    # so the dev pipeline pins the dev gateway host `api-dev.taphuynh.dev` here, by rule, instead of trusting
+    # a project variable that shipped `vox-api-dev.taphuynh.dev` (no DNS record)
+    # into every dev console build. Other pipeline types keep the variable.
+    CONSOLE_GATEWAY_HOST: "$NEXT_PUBLIC_API_HOST"
+    BUILD_ARGS: "--build-arg NEXT_PUBLIC_API_HOST=$CONSOLE_GATEWAY_HOST"
   before_script:
     - !reference [.buildx-registry-login, before_script]
+    - echo "gateway host baked into the console bundle — $CONSOLE_GATEWAY_HOST"
     # A pointer stub is ~130 bytes of text; a real wasm starts with "\0asm".
     - |
       if ! head -c 4 packages/noise-filter/assets/rnnoise.wasm | grep -q "asm"; then
@@ -177,6 +185,9 @@ build-admin-console:
         exit 1
       fi
   rules:
+    - if: $PIPELINE_TYPE == "dev"
+      variables:
+        CONSOLE_GATEWAY_HOST: "https://api-dev.taphuynh.dev"
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ADMIN-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
@@ -211,9 +222,12 @@ build-compat-playground:
     GIT_CONFIG_VALUE_1: "60"
     GIT_CONFIG_KEY_2: lfs.dialtimeout
     GIT_CONFIG_VALUE_2: "30"
-    BUILD_ARGS: "--build-arg VITE_API_BASE_URL=$NEXT_PUBLIC_API_HOST"
+    # Same rule as build-admin-console: the dev pipeline pins the gateway host.
+    CONSOLE_GATEWAY_HOST: "$NEXT_PUBLIC_API_HOST"
+    BUILD_ARGS: "--build-arg VITE_API_BASE_URL=$CONSOLE_GATEWAY_HOST"
   before_script:
     - !reference [.buildx-registry-login, before_script]
+    - echo "gateway host baked into the playground bundle — $CONSOLE_GATEWAY_HOST"
     # A pointer stub is ~130 bytes of text; a real wasm starts with "\0asm".
     - |
       if ! head -c 4 packages/noise-filter/assets/rnnoise.wasm | grep -q "asm"; then
@@ -222,6 +236,9 @@ build-compat-playground:
         exit 1
       fi
   rules:
+    - if: $PIPELINE_TYPE == "dev"
+      variables:
+        CONSOLE_GATEWAY_HOST: "https://api-dev.taphuynh.dev"
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^COMPAT-/ || $CI_COMMIT_TAG =~ /^ALL-/
 

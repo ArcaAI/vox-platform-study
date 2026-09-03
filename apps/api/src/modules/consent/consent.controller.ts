@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey, ForbidServiceAccount } from '../../decorators';
 
 /**
  * `ConsentGrantController` — admin CRUD over `ConsentGrant`
@@ -73,7 +73,16 @@ export class ConsentGrantController {
    * patient ids to ask about. Now paginated and tenant-wide, with the same
    * patient filter available when the caller does know the id.
    */
+  // AUTH-NOTE: the class gate is `manage:ConsentGrant` (recording/revoking a
+  // grant is tenant-admin work). The READ is clinician-reachable on purpose —
+  // the Consultation Scribe pre-flights the patient's consent through this
+  // route before Start, and a clinician (or a super admin impersonating one)
+  // holds no `manage`; without this override every clinician session showed a
+  // 403 before recording (TASK-858, hope-v2-dev 2026-09-03). `read` is granted
+  // tenant-scoped to the clinician policy in seed/01-policy.ts; rows stay
+  // tenant-owned, so cross-tenant reads still resolve to nothing.
   @Get()
+  @CanRead('ConsentGrant')
   @ApiOperation({
     summary: 'List consent grants for the caller tenant',
     description:

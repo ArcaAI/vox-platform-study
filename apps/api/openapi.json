@@ -28613,6 +28613,9 @@
           },
           {
             "bearer": []
+          },
+          {
+            "bearer": []
           }
         ],
         "summary": "List consent grants for the caller tenant",
