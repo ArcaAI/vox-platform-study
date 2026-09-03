@@ -207,3 +207,6 @@ packages/ui/.ds-bundle-entry.tsx
 .design-sync/upload-chunks/
 .ds-sync/
 ds-bundle/
+
+# Image tarball bundles from scripts/fetch-images.sh (multi-GB, never committed)
+image-bundles/
