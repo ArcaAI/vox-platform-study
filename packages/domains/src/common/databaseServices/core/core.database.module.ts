@@ -16,7 +16,6 @@ import { AiUsageEventRepository } from '../../../repositories/generated/core/AiU
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
 import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
-import { ProviderReconciliationRunRepository } from '../../../repositories/generated/core/ProviderReconciliationRunRepository';
 import { ServiceReleaseRepository } from '../../../repositories/generated/core/ServiceReleaseRepository';
 import { ServiceInstanceRepository } from '../../../repositories/generated/core/ServiceInstanceRepository';
 import { ChangelogEntryRepository } from '../../../repositories/generated/core/ChangelogEntryRepository';
@@ -258,7 +257,6 @@ const repositories = [
   AiUsageOutboxRepository,
   AiUsageRollupHourlyRepository,
   AiUsageRollupDailyRepository,
-  ProviderReconciliationRunRepository,
   AiPriceBookRepository,
   // Tenant billing plane. BillingInvoice is the ONE
   // OCC-written model of the plane (draft edits + the immutable FINALIZE

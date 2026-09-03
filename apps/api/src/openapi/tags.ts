@@ -370,7 +370,7 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     name: 'admin-usage',
     displayName: 'Usage & Consumption',
     plane: 'admin',
-    description: 'Metered consumption, cost attribution, and provider reconciliation.',
+    description: 'Metered consumption and cost attribution.',
   },
   { name: 'admin-user-departments', displayName: 'User Departments', plane: 'admin', description: 'Assignment of users to departments.' },
   { name: 'admin-users', displayName: 'Users', plane: 'admin', description: 'User lifecycle, credentials, and role assignment.' },

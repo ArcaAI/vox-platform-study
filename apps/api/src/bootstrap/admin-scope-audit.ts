@@ -49,7 +49,6 @@ import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN, SKIP_AUTH_KEY } from '@arca
 import './third-party-public-routes';
 
 import { RateLimitAdminController } from '../modules/admin-rate-limit/rate-limit-admin.controller';
-import { AdminReconciliationController } from '../modules/admin-usage/admin-reconciliation.controller';
 import { AdminUsageController } from '../modules/admin-usage/admin-usage.controller';
 import { AgentPromotionController } from '../modules/agent-promotion/agent-promotion.controller';
 import { AgentTrajectoryController } from '../modules/agent-trajectory/agent-trajectory.controller';
@@ -150,7 +149,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AdminConsultationController, expect: 'FORBID' },
   { controller: AdminHealthServicesController, expect: 'FORBID' },
   { controller: AdminImpersonationController, expect: 'FORBID' },
-  { controller: AdminReconciliationController, expect: 'FORBID' },
   { controller: AdminTranscriptionJobController, expect: 'FORBID' },
   { controller: AdminUsageController, expect: 'FORBID' },
   { controller: AgentPromotionController, expect: 'FORBID' },

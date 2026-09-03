@@ -91,14 +91,18 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   //     implied it was a sibling of the configurations rather than their knobs.
   // Net: 10-19 loses both (25 -> 23), 20-29 gains `/ai-platform` (8 -> 9),
   // so the total goes 60 -> 59.
-  it('covers the full 59-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(59);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
+  // TASK-862 REMOVED `/ai-operations/reconciliation` (Provider Reconciliation
+  // deleted outright, owner directive 2026-09-04; the URL keeps a one-release
+  // redirect to `/ai-operations/consumption`), taking 59 -> 58 and tier 10-19
+  // from 23 -> 22.
+  it('covers the full 58-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(58);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -174,13 +178,10 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-runtime-profiles')).toBe(false);
   });
 
-  it('moves provider reconciliation to Platform Ops — it is a billing auditor, not an AI surface', () => {
-    const reconciliation = NAV_ENTRIES.find((entry) => entry.route === '/ai-operations/reconciliation');
-    expect(reconciliation?.domain).toBe('platform-ops');
-    // Domain retag only: the URL, tier and gate are untouched, so no redirect
-    // is possible or needed.
-    expect(reconciliation?.tier).toBe('10-19');
-    expect(reconciliation?.required).toEqual([['manage', 'all']]);
+  it('no longer lists provider reconciliation — the feature was removed outright (TASK-862)', () => {
+    // The route keeps a one-release redirect to `/ai-operations/consumption`,
+    // and a redirect has no place in a navigation list.
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-operations/reconciliation')).toBe(false);
   });
 
   it('re-tiers AI models to super-admin only and folds frontend config into the tenant detail', () => {
@@ -458,7 +459,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/ai-operations/runs', '10-19', [['manage', 'all']]],
   ['/ai-operations/metrics', '10-19', [['manage', 'all']]],
   ['/ai-operations/consumption', '10-19', [['manage', 'all']]],
-  ['/ai-operations/reconciliation', '10-19', [['manage', 'all']]],
+  // `/ai-operations/reconciliation` REMOVED by TASK-862 (Provider Reconciliation deleted outright).
   ['/billing', '10-19', [['manage', 'all']]],
   ['/queues', '10-19', [['manage', 'all']]],
   ['/schedulers', '10-19', [['manage', 'all']]],
@@ -675,13 +676,10 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
   // `/settings-registry` joins `/settings` here: same
   // domain, different resource — descriptor-governed keys vs raw rows/secrets.
-  // `/ai-operations/reconciliation` joined Platform Ops in: a vendor
-  // BILLING auditor that never reads an AI table, filed under AI only because
-  // it shares a URL prefix with its `/ai-operations/*` neighbours.
-  [
-    'platform-ops',
-    ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage', '/ai-operations/reconciliation'],
-  ],
+  // `/ai-operations/reconciliation` used to sit here as a vendor BILLING
+  // auditor; TASK-862 removed the feature outright, so Platform Ops is back to
+  // eight entries.
+  ['platform-ops', ['/queues', '/schedulers', '/audit-logs', '/db-studio', '/rate-limits', '/settings-registry', '/settings', '/storage']],
   [
     'playground',
     [
@@ -749,7 +747,8 @@ describe('NAV_DOMAINS', () => {
   // ai-platform 14 -> 12 (`/ai-task-defaults` and
   // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
   // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
-  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·12·5·4·7·7·9·6)', () => {
+  // platform-ops 9 -> 8: TASK-862 removed `/ai-operations/reconciliation`.
+  it('partitions the 58 rail routes exactly as the ticket Domain Model does (3·6·12·5·4·7·7·8·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -758,7 +757,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES).toHaveLength(58);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

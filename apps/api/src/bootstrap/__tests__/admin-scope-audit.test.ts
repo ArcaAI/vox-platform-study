@@ -191,13 +191,15 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
  */
   // 70 -> 68: deleted `DepartmentAgentController` and
   // `DepartmentAgentResyncController` with the resource they administered.
-  it('covers all 68 admin-prefixed controllers, including the three the  list missed', () => {
+  // 68 -> 67: TASK-862 deleted `AdminReconciliationController` with the
+  // Provider Reconciliation feature (removed outright, owner directive).
+  it('covers all 67 admin-prefixed controllers, including the three the  list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');
     expect(names).toContain('WorkflowSandboxRunController');
     expect(names).toContain('ConsentGrantController');
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(68);
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(67);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {

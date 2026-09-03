@@ -230,10 +230,6 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiUsageOutbox',
   'AiUsageRollupHourly',
   'AiUsageRollupDaily',
-  // SYSTEM-owned platform records (a vendor bills the platform, not a
-  // tenant). Scoped here so a customer tenant's reads can never surface
-  // aggregate platform vendor spend; super-admin reads go through the service.
-  'ProviderReconciliationRun',
   // The price book is the ONE exception in this group: its SYSTEM-tenant rows
   // are the platform rate card that every tenant's rater must read, so it is
   // also a SYSTEM-shared read model (below). Standard soft-delete + sys-events

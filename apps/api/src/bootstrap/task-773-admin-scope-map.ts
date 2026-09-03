@@ -84,11 +84,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     controllerClass: 'RateLimitAdminController',
     adminScope: 'admin:rate-limit:manage',
   },
-  {
-    file: 'apps/api/src/modules/admin-usage/admin-reconciliation.controller.ts',
-    controllerClass: 'AdminReconciliationController',
-    adminScope: 'admin:usage:manage',
-  },
   { file: 'apps/api/src/modules/admin-usage/admin-usage.controller.ts', controllerClass: 'AdminUsageController', adminScope: 'admin:usage:manage' },
   {
     file: 'apps/api/src/modules/agent-promotion/agent-promotion.controller.ts',

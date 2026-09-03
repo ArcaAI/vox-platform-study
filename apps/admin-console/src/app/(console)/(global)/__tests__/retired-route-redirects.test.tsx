@@ -56,6 +56,9 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // use. Contrast `/tools-mcp`, a route-GROUP change that kept its
   // URL and therefore takes no stub at all.
   ['/ai-task-defaults', '../../(shared)/ai-task-defaults/page', '/ai-platform?tab=tasks'],
+  // TASK-862 removed Provider Reconciliation outright; the URL forwards to the
+  // consumption & cost dashboard for one release.
+  ['/ai-operations/reconciliation', '../ai-operations/reconciliation/page', '/ai-operations/consumption'],
 ];
 
 describe('retired route redirects', () => {

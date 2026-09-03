@@ -87,7 +87,6 @@ export * from './UserSettingsEntityMapper';
 export * from './UserVoiceProfileEntityMapper';
 export * from './WebhookEntityMapper';
 export * from './WebhookRunHistoryEntityMapper';
-export * from './ProviderReconciliationRunEntityMapper';
 export * from './ServiceReleaseEntityMapper';
 export * from './ServiceInstanceEntityMapper';
 export * from './ChangelogEntryEntityMapper';

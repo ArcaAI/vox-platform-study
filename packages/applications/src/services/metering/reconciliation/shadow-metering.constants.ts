@@ -37,14 +37,6 @@ export const SHADOW_METERING_DRIFT_THRESHOLD_PCT = 2;
 /** The event name emitted (via `EventEmitter2`) when any comparison in a tenant's report breaches. Mirrors `ENTITLEMENTS_QUOTA_BLOCKED_EVENT` — a narrow, purpose-built payload, not a full `SysEvent`. No consumer is wired in this lane (owns the reconciliation folder only, not `sysEvent.service.ts`); a future subscriber can persist an audit row the same way `handleEntitlementsQuotaBlockedEvent` does. */
 export const SHADOW_METERING_DRIFT_DETECTED_EVENT = 'metering.shadow-drift-detected';
 
-/**
- * Emitted when a PROVIDER's own usage/cost report disagrees with the ledger by
- * more than the threshold (rule 5). Alert-only by design: the
- * append-only ledger is corrected by a compensating event after a human looks,
- * never by the reconciler assuming the vendor is right.
- */
-export const PROVIDER_DRIFT_DETECTED_EVENT = 'metering.provider-drift-detected';
-
 /** The six ledger-derived `UsageMeterMetric` values `MeteringService.reconcileTenant` persists — the shadow report re-derives the same live aggregate and diffs it against the persisted snapshot. */
 export const RECONCILED_METER_METRICS: UsageMeterMetric[] = [
   UsageMeterMetric.STT_SESSION_SECONDS,
