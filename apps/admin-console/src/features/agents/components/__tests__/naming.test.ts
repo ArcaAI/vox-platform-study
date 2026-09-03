@@ -6,13 +6,15 @@
  * never render as "NER agent" on a clinician-visible playground surface. Family 6
  * (admin vocabulary): the per-tenant container is "Agent Catalog".
  *
- * The ASR pipeline's "Listener" label is RETIRED. The
- * platform now ships a single-task realtime TRANSCRIPTION AGENT (an `stt`-palette
- * workflow definition compiled into an `AsrPipeline`), and the Scribe
- * offers a second, different choice next to it — the consultation WORKFLOW selected
- * at session-open. Calling one of them "Listener" hid exactly the distinction the
- * clinician now has to make, so the ASR selector reads "Transcription agent (STT
- * pipeline)". The NER case below is untouched: a shared skill is still not an agent.
+ * The ASR pipeline's "Listener" label is RETIRED. The platform ships a
+ * single-task realtime TRANSCRIPTION AGENT (a published `Agent` of task
+ * `SPEECH_TO_TEXT`, TASK-863), and the Scribe offers a second, different choice
+ * next to it — the consultation WORKFLOW selected at session-open. Calling one of
+ * them "Listener" hid exactly the distinction the clinician now has to make, so
+ * the ASR selector reads "Transcription agent". The former "(STT pipeline)" suffix
+ * named the `AsrPipeline` substrate, which retires under TASK-861 (TASK-865 drops
+ * it from the label). The NER case below is untouched: a shared skill is still
+ * not an agent.
  */
 
 import { readFileSync } from 'node:fs';
@@ -42,11 +44,12 @@ describe('naming rollout (Family 2/6)', () => {
     }
   });
 
-  it('names the ASR selector after the transcription agent, with the pipeline it compiles to', () => {
+  it('names the ASR selector after the transcription agent — no retired substrate, no "Listener"', () => {
     const source = readSrc('features/playground-consultation/components/scribe/scribe-footer.tsx');
-    expect(source).toContain('Transcription agent (STT pipeline)');
-    // The retired label must not come back alongside the new one.
+    expect(source).toContain('label="Transcription agent"');
+    // The retired labels must not come back alongside the new one.
     expect(source).not.toContain('Transcription Listener');
+    expect(source).not.toContain('(STT pipeline)');
   });
 
   // The Agent Catalog screen's own vocabulary case lived here until

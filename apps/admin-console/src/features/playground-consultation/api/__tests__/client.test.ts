@@ -20,7 +20,6 @@ import {
   getTranscriptions,
   harnessAssuranceStreamPath,
   harnessProgressStreamPath,
-  listAudioPipelines,
   listDnaStyleOptions,
   listScopingDepartments,
   liveSummaryStreamPath,
@@ -70,7 +69,6 @@ describe('playgroundConsultationKeys', () => {
 
   it('roots every key under the feature namespace for coarse invalidation', () => {
     for (const key of [
-      playgroundConsultationKeys.pipelines(),
       playgroundConsultationKeys.latestSummary('x'),
       playgroundConsultationKeys.namedEntities('x'),
       playgroundConsultationKeys.job('x'),
@@ -81,13 +79,6 @@ describe('playgroundConsultationKeys', () => {
 });
 
 describe('playground consultation client', () => {
-  it('lists audio pipelines for the picker', async () => {
-    const calls = installFetchMock(() => Response.json([{ id: 'pipe-1', name: 'Default Clinical', slug: 'default-clinical' }]));
-    const pipelines = await listAudioPipelines();
-    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/audio/pipelines']);
-    expect(pipelines[0].slug).toBe('default-clinical');
-  });
-
   it('opens the demo consultation via the get-or-create route (same route the SDK session.open uses)', async () => {
     const calls = installFetchMock(() => Response.json({ id: 'c-1', patientId: 'P-448', status: 'OPEN' }));
     const opened = await openConsultation({ patientId: 'P-448' });

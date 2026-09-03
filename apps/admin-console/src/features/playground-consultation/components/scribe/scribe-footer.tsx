@@ -1,20 +1,20 @@
 'use client';
 
 /**
- * Scribe workspace footer: the transcription-agent (ASR
- * pipeline) and note-assistant model selectors, plus real per-session metric
+ * Scribe workspace footer: the transcription-agent (published ASR
+ * Agent) and note-assistant model selectors, plus real per-session metric
  * cards. Metrics are REAL or an em-dash — throughput/latency come from the
  * live-summary SSE stats (`useLiveMetrics`); bandwidth stays em-dash until the
  * SDK uplink-bitrate signal lands (SDK follow-up), never fabricated.
  *
- * Naming — AMENDED by The Family 2 rollout called the ASR
- * pipeline the "Listener" capability and forbade the word "agent" here. That is
- * reversed: makes the ASR pipeline a single-task TRANSCRIPTION
- * AGENT (an `stt`-palette workflow definition compiled into an `AsrPipeline`),
- * and this screen now offers a second, different choice — the consultation
- * WORKFLOW, picked at session-open. The two selectors have to read as agent vs
- * workflow, so the label names what the thing is and parenthesises the
- * substrate it compiles to. `naming.test.ts` locks the new wording.
+ * Naming — the Family 2 rollout called the ASR pipeline the "Listener"
+ * capability and forbade the word "agent" here. That is reversed: the platform
+ * ships a single-task TRANSCRIPTION AGENT (a published `Agent` of task
+ * `SPEECH_TO_TEXT`, TASK-863), and this screen offers a second, different
+ * choice next to it — the consultation WORKFLOW, picked at session-open. The
+ * two selectors read as agent vs workflow. The old parenthesised suffix named
+ * the pipeline substrate the agent used to compile to; that substrate retires
+ * with TASK-861, so the label is just the agent. `naming.test.ts` locks it.
  */
 
 import { ModelSelector, type ModelOption } from '@arcaai/ui/components/custom/model-selector';
@@ -98,7 +98,7 @@ export function ScribeFooter({
     <footer className="bg-card flex shrink-0 flex-wrap items-stretch gap-3 border-t p-3">
       <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">
         <ModelSelector
-          label="Transcription agent (STT pipeline)"
+          label="Transcription agent"
           models={transcriptionModels}
           selectedModelId={selectedTranscriptionId}
           onChange={onTranscriptionChange}
