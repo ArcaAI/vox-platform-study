@@ -56,7 +56,6 @@ import { AgenticAdminController } from '../modules/agentic-admin/agentic-admin.c
 import { AiModelAdminController } from '../modules/ai-model/ai-model-admin.controller';
 import { AiModelDiscoveryController } from '../modules/ai-model/ai-model-discovery.controller';
 import { ProviderConnectionController } from '../modules/ai-provider-connection/ai-provider-connection.controller';
-import { AiRuntimeProfileController } from '../modules/ai-runtime-profile/ai-runtime-profile.controller';
 import { AiServiceAdminController } from '../modules/ai-service-admin/ai-service-admin.controller';
 import { AiTaskDefaultAdminController } from '../modules/ai-task-default/ai-task-default-admin.controller';
 import { ApiKeyController } from '../modules/api-key/api-key.controller';
@@ -155,7 +154,6 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: AgenticAdminController, expect: 'FORBID' },
   { controller: AiModelAdminController, expect: 'FORBID' },
   { controller: AiModelDiscoveryController, expect: 'FORBID' },
-  { controller: AiRuntimeProfileController, expect: 'FORBID' },
   { controller: AiServiceAdminController, expect: 'FORBID' },
   { controller: AiTaskDefaultAdminController, expect: 'FORBID' },
   { controller: ApiKeyController, expect: 'FORBID' },

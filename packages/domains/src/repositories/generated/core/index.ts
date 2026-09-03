@@ -4,7 +4,6 @@ export * from './AiModelRepository';
 export * from './AiPriceBookRepository';
 export * from './AiProviderConnectionRepository';
 export * from './AiRoutingPolicyRepository';
-export * from './AiRuntimeProfileRepository';
 export * from './AiTaskDefaultRepository';
 export * from './AiUsageEventRepository';
 export * from './AiUsageOutboxRepository';

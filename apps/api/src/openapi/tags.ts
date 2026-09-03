@@ -189,12 +189,6 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The model catalog: which models exist, their metadata, and their label taxonomies.',
   },
   {
-    name: 'admin-ai-runtime-profiles',
-    displayName: 'AI Runtime Profiles',
-    plane: 'admin',
-    description: 'Runtime tuning profiles applied to inference requests.',
-  },
-  {
     name: 'admin-ai-routing-policies',
     displayName: 'AI Routing Policies',
     plane: 'admin',

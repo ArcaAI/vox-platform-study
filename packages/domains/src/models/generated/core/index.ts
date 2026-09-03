@@ -4,7 +4,6 @@ export * from './AiModelModel';
 export * from './AiPriceBookModel';
 export * from './AiProviderConnectionModel';
 export * from './AiRoutingPolicyModel';
-export * from './AiRuntimeProfileModel';
 export * from './AiTaskDefaultModel';
 export * from './AiUsageEventModel';
 export * from './AiUsageOutboxModel';

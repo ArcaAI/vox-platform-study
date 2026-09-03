@@ -116,11 +116,6 @@ export const TASK_773_ADMIN_SCOPE_MAP: readonly AdminScopeMapRow[] = [
     adminScope: 'admin:ai-provider:manage',
   },
   {
-    file: 'apps/api/src/modules/ai-runtime-profile/ai-runtime-profile.controller.ts',
-    controllerClass: 'AiRuntimeProfileController',
-    adminScope: 'admin:ai-runtime-profile:manage',
-  },
-  {
     file: 'apps/api/src/modules/ai-service-admin/ai-service-admin.controller.ts',
     controllerClass: 'AiServiceAdminController',
     adminScope: 'admin:ai-service:manage',

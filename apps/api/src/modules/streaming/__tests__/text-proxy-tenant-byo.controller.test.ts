@@ -65,7 +65,6 @@ function build(
     selection as any, // HarnessPolicyService
     undefined, // aiModelService (@Optional)
     undefined, // aiTaskDefaultService (@Optional)
-    undefined, // aiRuntimeProfileService (@Optional)
     connections as any, // aiProviderConnectionService (@Optional)
   );
 

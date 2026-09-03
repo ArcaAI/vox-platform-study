@@ -195,13 +195,14 @@ describe('boot-time /admin/* named-surface audit (collapsed to FORBID)', () => {
   // Provider Reconciliation feature (removed outright, owner directive).
   // 67 -> 66: TASK-862 deleted the legacy `AiProviderConnectionController`
   // (`admin/ai-providers`, the llm-only alias of `admin/providers`).
-  it('covers all 66 admin-prefixed controllers, including the three the  list missed', () => {
+  // 66 -> 65: TASK-862 deleted `AiRuntimeProfileController` with `AiRuntimeProfile`.
+  it('covers all 65 admin-prefixed controllers, including the three the  list missed', () => {
     const names = ADMIN_SCOPED_CONTROLLERS.map((c) => c.controller.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toContain('KnowledgeController');
     expect(names).toContain('WorkflowSandboxRunController');
     expect(names).toContain('ConsentGrantController');
-    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(66);
+    expect(ADMIN_SCOPED_CONTROLLERS.length).toBe(65);
   });
 
   it('throws when a listed controller loses its @ForbidApiKey() metadata', () => {
