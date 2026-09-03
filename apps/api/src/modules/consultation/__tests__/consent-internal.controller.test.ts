@@ -19,12 +19,40 @@ const mockConsentService = {
   assertConsent: vi.fn(),
 };
 
+const mockCls = {
+  run: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+  set: vi.fn(),
+};
+
 describe('ConsentInternalController', () => {
   let controller: ConsentInternalController;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    controller = new ConsentInternalController(mockConsentService as any);
+    controller = new ConsentInternalController(mockConsentService as any, mockCls as any);
+  });
+
+  it('re-establishes the CLS tenant from the body BEFORE the grant lookup (TASK-858)', async () => {
+    // Service-token routes arrive with an EMPTY CLS (the harness calls out-of-band of the
+    // API-edge ClsModule middleware) and `ConsentGrant` is tenant-scoped: without
+    // `cls.set('tenantId')` before the lookup the tenant-scope extension throws
+    // "tenant context required", the service fails closed with `unavailable: true`, and
+    // every governed run dies at its consent gate with `consent_unavailable`. Same S-3
+    // recurrence class — and the same `cls.run` + set-before-read fix — as
+    // `HarnessInternalController`.
+    const order: string[] = [];
+    mockCls.set.mockImplementation((key: string, value: string) => {
+      order.push(`set:${key}=${value}`);
+    });
+    mockConsentService.checkConsent.mockImplementation(async () => {
+      order.push('checkConsent');
+      return { allowed: true, grantId: 'grant-1', expiresAt: null };
+    });
+
+    await controller.assert({ tenantId: 'tenant-1', externalPatientId: 'PAT-1', purpose: ConsentPurpose.AI_DOCUMENTATION } as any);
+
+    expect(mockCls.run).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['set:tenantId=tenant-1', 'checkConsent']);
   });
 
   it('is class-guarded by HarnessServiceTokenGuard', () => {

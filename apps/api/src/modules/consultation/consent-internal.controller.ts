@@ -1,4 +1,5 @@
-import { ConsentAssertContext, ConsentDecision, IConsultationConsentService } from '@arcaai/applications';
+import { ConsentAssertContext, ConsentDecision, IActiveUserContext, IConsultationConsentService } from '@arcaai/applications';
+import { ClsService } from 'nestjs-cls';
 import { ConsentPurpose } from '@arcaai/domains';
 import { Body, Controller, HttpCode, Inject, Post, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiProperty, ApiPropertyOptional, ApiResponse } from '@nestjs/swagger';
@@ -93,6 +94,7 @@ export class ConsentInternalController {
   constructor(
     @Inject(IConsultationConsentService)
     private readonly consentService: IConsultationConsentService,
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   @Post('assert')
@@ -103,16 +105,26 @@ export class ConsentInternalController {
     const context: ConsentAssertContext | undefined =
       body.consultationId || body.toolName ? { consultationId: body.consultationId, toolName: body.toolName } : undefined;
 
-    const decision: ConsentDecision = await this.consentService.checkConsent({
-      tenantId: body.tenantId,
-      externalPatientId: body.externalPatientId,
-      purpose: body.purpose,
-      scope: body.scope,
-      // The harness calls this from a Temporal activity, not on behalf of an
-      // authenticated end user — 'workflow', mirroring assertConsent's
-      // ConsentAssertActor.kind contract.
-      actor: { kind: 'workflow' },
-      context,
+    // TASK-858 — a service-token route arrives with an EMPTY CLS (the harness calls
+    // out-of-band of the API-edge ClsModule middleware) and `ConsentGrant` is a
+    // tenant-scoped model, so the lookup MUST run inside a CLS context that names
+    // the tenant. Without it the tenant-scope extension threw "tenant context
+    // required", `checkConsent` failed closed with `unavailable: true`, and every
+    // governed run died at its consent gate with `consent_unavailable`. Same S-3
+    // recurrence class — set-before-read — as `HarnessInternalController`.
+    const decision: ConsentDecision = await this.cls.run(async () => {
+      this.cls.set('tenantId', body.tenantId);
+      return this.consentService.checkConsent({
+        tenantId: body.tenantId,
+        externalPatientId: body.externalPatientId,
+        purpose: body.purpose,
+        scope: body.scope,
+        // The harness calls this from a Temporal activity, not on behalf of an
+        // authenticated end user — 'workflow', mirroring assertConsent's
+        // ConsentAssertActor.kind contract.
+        actor: { kind: 'workflow' },
+        context,
+      });
     });
 
     return {
