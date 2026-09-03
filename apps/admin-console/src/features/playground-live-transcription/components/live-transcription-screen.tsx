@@ -14,7 +14,7 @@ import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/com
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useLiveSttSession, usePlaygroundPipelines } from '../api';
+import { useLiveSttSession, usePlaygroundAsrAgents } from '../api';
 import type { LiveSttStatus } from '../api';
 import { isStalledQuery } from '../lib/stalled-query';
 import { BatchTab } from './batch-tab';
@@ -37,26 +37,25 @@ const BUSY_STATUSES: readonly LiveSttStatus[] = ['requesting_mic', 'creating_ses
 function ScreenBody() {
   const session = useSession();
   const live = useLiveSttSession();
-  const pipelinesQuery = usePlaygroundPipelines();
+  const agentsQuery = usePlaygroundAsrAgents();
 
   const [tabParam, setTabParam] = useQueryState('tab');
   const tab = tabParam === 'batch' ? 'batch' : 'streaming';
 
-  const [pipelineChoice, setPipelineChoice] = useState<string | null>(null);
+  // Which published ASR Agent transcribes (TASK-865). `null` — the default — means
+  // "send no slug": the tenant → department AgentAssignment cascade decides. The
+  // tenant default is shown as a hint in the picker, never preselected.
+  const [agentSlug, setAgentSlug] = useState<string | null>(null);
 
-  // Picker options: ENABLED pipelines only; derived default = tenant default.
-  const pipelines = useMemo(() => (pipelinesQuery.data ?? []).filter((pipeline) => pipeline.resourceStatus === 'ENABLED'), [pipelinesQuery.data]);
-  const defaultPipelineId = (pipelines.find((pipeline) => pipeline.isDefault) ?? pipelines[0])?.id ?? null;
-  const pipelineId = pipelineChoice ?? defaultPipelineId;
-
-  const selectedPipeline = pipelines.find((pipeline) => pipeline.id === pipelineId) ?? null;
+  const agents = useMemo(() => agentsQuery.data ?? [], [agentsQuery.data]);
+  const selectedAgent = agents.find((agent) => agent.slug === agentSlug) ?? null;
 
   // BUG-014: a pending query that is NOT fetching never resolves, so the
   // skeleton would stand forever. Fold it in with the error case and render
   // one retryable terminal control instead (rules 10 and 11 Only when
   // there is nothing to show — a refetch that fails over cached options must
   // keep the working picker rather than take the screen away.
-  const pickerFailed = !pipelinesQuery.data && (pipelinesQuery.isError || isStalledQuery(pipelinesQuery));
+  const pickerFailed = !agentsQuery.data && (agentsQuery.isError || isStalledQuery(agentsQuery));
 
   // Sessions bind to the effective (impersonated, when active) tenant;
   // tenant-bound admins use their home tenant. The WS tenant-claim guard
@@ -64,15 +63,16 @@ function ScreenBody() {
   const tenantId = session.data ? (session.data.effectiveTenantId ?? session.data.user.tenantId) : null;
 
   const busy = BUSY_STATUSES.includes(live.status);
-  const canStart = !!pipelineId && !!tenantId && !busy;
+  // No agent is REQUIRED: with none selected the gateway resolves the tenant default.
+  const canStart = !!tenantId && !busy;
 
   function handleStart() {
-    if (!pipelineId || !tenantId) {
-      toast.error('Pick a pipeline first — sessions need a pipeline and a tenant scope.');
+    if (!tenantId) {
+      toast.error('Sessions need a tenant scope.');
       return;
     }
     void setTabParam(null);
-    void live.start({ pipelineId, tenantId });
+    void live.start({ ...(agentSlug ? { agentSlug } : {}), tenantId });
   }
 
   function handleStop() {
@@ -106,33 +106,28 @@ function ScreenBody() {
         toolbar={
           <div className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-3 gap-y-2 px-4">
             {/* No control to point at while the picker is unavailable. */}
-            <Label htmlFor={pickerFailed ? undefined : 'pipeline-picker'}>Pipeline</Label>
+            <Label htmlFor={pickerFailed ? undefined : 'agent-picker'}>Transcription agent</Label>
             {pickerFailed ? (
               <div role="status" className="border-destructive/40 flex items-center gap-2 rounded-md border px-3 py-1.5">
                 <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
                 <span className="text-sm">
-                  Pipelines did not load <span className="text-muted-foreground">{'·'} GET /audio/pipelines</span>
+                  Agents did not load <span className="text-muted-foreground">{'·'} GET /agents?task=SPEECH_TO_TEXT</span>
                 </span>
-                <Button variant="outline" size="sm" aria-label="Retry loading pipelines" onClick={() => void pipelinesQuery.refetch()}>
+                <Button variant="outline" size="sm" aria-label="Retry loading agents" onClick={() => void agentsQuery.refetch()}>
                   <IconRefresh aria-hidden />
                   Retry
                 </Button>
               </div>
-            ) : pipelinesQuery.isPending ? (
+            ) : agentsQuery.isPending ? (
               <Skeleton className="h-9 w-64" />
             ) : (
-              <NativeSelect
-                id="pipeline-picker"
-                className="w-64"
-                value={pipelineId ?? ''}
-                onChange={(event) => setPipelineChoice(event.target.value || null)}
-                disabled={busy || pipelines.length === 0}
-              >
-                {pipelines.length === 0 ? <NativeSelectOption value="">No pipelines available</NativeSelectOption> : null}
-                {pipelines.map((pipeline) => (
-                  <NativeSelectOption key={pipeline.id} value={pipeline.id}>
-                    {pipeline.name}
-                    {pipeline.isDefault ? ' \u00b7 default' : ''}
+              <NativeSelect id="agent-picker" className="w-64" value={agentSlug ?? ''} onChange={(event) => setAgentSlug(event.target.value || null)} disabled={busy}>
+                {/* Empty = the tenant assignment cascade decides; a published tenant default is named as the hint. */}
+                <NativeSelectOption value="">{agents.length === 0 ? 'No agents published \u00b7 tenant default' : 'Tenant default'}</NativeSelectOption>
+                {agents.map((agent) => (
+                  <NativeSelectOption key={agent.slug} value={agent.slug}>
+                    {agent.name}
+                    {agent.isTenantDefault ? ' \u00b7 tenant default' : ''}
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
@@ -166,10 +161,10 @@ function ScreenBody() {
       >
         <PlaygroundCanvas className="max-w-[1100px]">
           <TabsContent value="streaming">
-            <StreamingTab live={live} pipelineName={selectedPipeline?.name ?? null} canStart={canStart} onStart={handleStart} />
+            <StreamingTab live={live} agentName={selectedAgent?.name ?? null} canStart={canStart} onStart={handleStart} />
           </TabsContent>
           <TabsContent value="batch">
-            <BatchTab pipelineId={pipelineId} />
+            <BatchTab agentSlug={agentSlug} />
           </TabsContent>
         </PlaygroundCanvas>
       </ScreenTemplate>
