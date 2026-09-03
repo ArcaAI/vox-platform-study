@@ -15,6 +15,8 @@ function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
   let _checksum: string | null = null;
   let _metaData = (overrides.metaData as Record<string, unknown> | null) ?? { download: { jobId: 'job-1', startedAt: 't0', finishedAt: null, error: null } };
   const changes: Record<string, unknown> = {};
+  // TASK-860 registry write-back (`AiModelEntity.recordPublish`).
+  const registry: Record<string, unknown> = { bucketPrefix: null, primaryObject: null, manifestDigest: null, hfRevision: null, availability: 'UNKNOWN', availabilityCheckedAt: null };
 
   return {
     id: (overrides.id as string) ?? 'model-id-1',
@@ -23,6 +25,31 @@ function createBehavioralModelEntity(overrides: Record<string, unknown> = {}) {
     version: (overrides.version as number) ?? 7,
     computeType: (overrides.computeType as string | null) ?? null,
     format: (overrides.format as string) ?? 'GGUF',
+    libraryName: (overrides.libraryName as string) ?? 'llama.cpp',
+    get bucketPrefix() {
+      return registry.bucketPrefix;
+    },
+    get primaryObject() {
+      return registry.primaryObject;
+    },
+    get manifestDigest() {
+      return registry.manifestDigest;
+    },
+    get hfRevision() {
+      return registry.hfRevision;
+    },
+    get availability() {
+      return registry.availability;
+    },
+    recordPublish(record: Record<string, unknown>) {
+      registry.bucketPrefix = record.bucketPrefix;
+      registry.primaryObject = record.primaryObject ?? null;
+      registry.manifestDigest = record.manifestDigest;
+      if (record.hfRevision !== undefined) registry.hfRevision = record.hfRevision;
+      registry.availability = 'AVAILABLE';
+      registry.availabilityCheckedAt = new Date();
+      this.markAsDownloaded(record.localPath as string, record.fileSizeMb as number | undefined, record.checksum as string | undefined);
+    },
     get sourceUri() {
       return _sourceUri;
     },
@@ -72,6 +99,7 @@ const mockRepository = { findById: vi.fn(), updateWithVersion: vi.fn() };
 const mockFetcher = { fetch: vi.fn() };
 const mockS3Service = { putFile: vi.fn() };
 const mockCls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
+const mockHfClient = { getRepoInfo: vi.fn() };
 
 describe('AiModelDownloadProcessor', () => {
   let processor: AiModelDownloadProcessor;
@@ -80,7 +108,8 @@ describe('AiModelDownloadProcessor', () => {
     vi.clearAllMocks();
     mockCls.run.mockImplementation((fn: () => unknown) => fn());
     mockS3Service.putFile.mockResolvedValue(undefined);
-    processor = new AiModelDownloadProcessor(mockRepository as never, mockFetcher as never, mockS3Service as never, mockCls as never);
+    mockHfClient.getRepoInfo.mockResolvedValue({ sha: 'deadbeefcafe', license: 'apache-2.0', gated: false });
+    processor = new AiModelDownloadProcessor(mockRepository as never, mockFetcher as never, mockS3Service as never, mockCls as never, mockHfClient as never);
   });
 
   function job(data: Record<string, unknown> = {}) {
@@ -115,10 +144,20 @@ describe('AiModelDownloadProcessor', () => {
     expect(versionedPrefix).toMatch(/^gemma4-e2b-it-qat\/q4-0-[0-9a-f]{12}\/$/);
     expect(uploadedKeys.every((k) => k.startsWith(versionedPrefix))).toBe(true);
 
-    // Row written back: DOWNLOADED, sourceUri repointed at hope-models, localPath under the s3fs mount.
+    // Row written back (TASK-860): the bucket identity + AVAILABLE, the legacy
+    // DOWNLOADED bookkeeping, a single-file loader's localPath pointing at the
+    // primary object — and `sourceUri` UNCHANGED (the Hub identity stays; the
+    // bucket location is `bucketPrefix`).
     expect(model.downloadStatus).toBe('DOWNLOADED');
-    expect(model.sourceUri).toBe(`s3://${HOPE_MODELS_BUCKET}/${versionedPrefix}`);
-    expect(model.localPath).toBe(`/mnt/models-bucket/${versionedPrefix}`);
+    expect(model.sourceUri).toBe('google/gemma-4-e2b-it-qat-q4_0-gguf');
+    expect(model.bucketPrefix).toBe(versionedPrefix);
+    expect(model.primaryObject).toBe('model-q4_0.gguf');
+    expect(model.localPath).toBe(`/mnt/models-bucket/${versionedPrefix}model-q4_0.gguf`);
+    expect(model.availability).toBe('AVAILABLE');
+    const manifestCall = mockS3Service.putFile.mock.calls.find((call: unknown[]) => (call[1] as string).endsWith('manifest.json'));
+    const manifestBytes = manifestCall![2] as Buffer;
+    expect(model.manifestDigest).toBe(require('node:crypto').createHash('sha256').update(manifestBytes).digest('hex'));
+    expect(model.hfRevision).toBe('deadbeefcafe');
     expect(model.fileSizeMb).toBeGreaterThanOrEqual(1);
     expect(model.checksum).toBeTruthy();
     const download = model.metaData?.download as Record<string, unknown>;
@@ -127,6 +166,41 @@ describe('AiModelDownloadProcessor', () => {
     expect(download.jobId).toBe('job-1');
 
     expect(result).toMatchObject({ aiModelId: 'model-id-1' });
+  });
+
+  it('lays a transformers-family row out as a verbatim HF cache (models--org--repo/snapshots/<sha>/ + refs/main) and derives a DIRECTORY localPath', async () => {
+    const model = createBehavioralModelEntity({ slug: 'medical-ner', format: 'SAFETENSOR', libraryName: 'transformers', sourceUri: 'blaze999/Medical-NER' });
+    mockRepository.findById.mockResolvedValue(model);
+    mockRepository.updateWithVersion.mockImplementation(async (_id: string, entity: typeof model) => entity);
+    mockFetcher.fetch.mockResolvedValue([
+      { path: 'model.safetensors', data: Buffer.alloc(10), sha256: 'w' },
+      { path: 'config.json', data: Buffer.alloc(10), sha256: 'c' },
+    ]);
+
+    await processor.process(job());
+
+    const uploadedKeys = mockS3Service.putFile.mock.calls.map((call: unknown[]) => call[1] as string);
+    const snapshot = 'hf/hub/models--blaze999--Medical-NER/snapshots/deadbeefcafe/';
+    expect(uploadedKeys).toEqual(expect.arrayContaining([`${snapshot}model.safetensors`, `${snapshot}config.json`, `${snapshot}manifest.json`, `${snapshot}SHA256SUMS`, 'hf/hub/models--blaze999--Medical-NER/refs/main']));
+    const refsCall = mockS3Service.putFile.mock.calls.find((call: unknown[]) => call[1] === 'hf/hub/models--blaze999--Medical-NER/refs/main');
+    expect((refsCall![2] as Buffer).toString('utf8')).toBe('deadbeefcafe');
+    expect(model.bucketPrefix).toBe(snapshot);
+    // A directory loader: no primary object in the path.
+    expect(model.localPath).toBe(`/mnt/models-bucket/${snapshot}`);
+    expect(model.hfRevision).toBe('deadbeefcafe');
+  });
+
+  it('falls back to the flat <slug>/<version>/ layout for a transformers-family row when the Hub sha cannot be resolved', async () => {
+    mockHfClient.getRepoInfo.mockRejectedValue(new Error('hub unreachable'));
+    const model = createBehavioralModelEntity({ slug: 'medical-ner', format: 'SAFETENSOR', libraryName: 'transformers', sourceUri: 'blaze999/Medical-NER' });
+    mockRepository.findById.mockResolvedValue(model);
+    mockRepository.updateWithVersion.mockImplementation(async (_id: string, entity: typeof model) => entity);
+    mockFetcher.fetch.mockResolvedValue([{ path: 'model.safetensors', data: Buffer.alloc(10), sha256: 'w' }]);
+
+    await processor.process(job());
+
+    expect(model.bucketPrefix).toMatch(/^medical-ner\/[0-9a-f]{12}\/$/);
+    expect(model.hfRevision).toBeNull();
   });
 
   it("publishes manifest.json with the row's own `format` — never a hardcoded literal", async () => {

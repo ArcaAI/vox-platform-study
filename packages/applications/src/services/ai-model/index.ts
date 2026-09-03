@@ -5,3 +5,4 @@ export * from './aiModel.dto.mapper';
 export * from './aiModel.service';
 export * from './aiModel.service.module';
 export * from './publish';
+export * from './inventory';
