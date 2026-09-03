@@ -25,7 +25,7 @@ import {
   testTemplate,
   updateTemplate,
 } from '../client';
-import { agentKeys } from '../keys';
+import { promptTemplateKeys } from '../keys';
 
 interface RecordedCall {
   url: string;
@@ -55,15 +55,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('agentKeys', () => {
+describe('promptTemplateKeys', () => {
   it('roots at ["agents"] and separates lists, details, versions and diffs', () => {
-    expect(agentKeys.list({ page: 1 })).toEqual(agentKeys.list({ page: 1 }));
-    expect(agentKeys.list({ page: 1 })).not.toEqual(agentKeys.list({ page: 2 }));
-    expect(agentKeys.detail('pt-1')).not.toEqual(agentKeys.versions('pt-1'));
-    expect(agentKeys.diff('pt-1', 6, 7)).not.toEqual(agentKeys.diff('pt-1', 5, 7));
-    expect(agentKeys.usage('pt-1')).not.toEqual(agentKeys.analytics('pt-1'));
-    expect(agentKeys.usageRecords({ promptTemplateId: 'pt-1' })[0]).toBe('agents');
-    expect(agentKeys.departments()[0]).toBe('agents');
+    expect(promptTemplateKeys.list({ page: 1 })).toEqual(promptTemplateKeys.list({ page: 1 }));
+    expect(promptTemplateKeys.list({ page: 1 })).not.toEqual(promptTemplateKeys.list({ page: 2 }));
+    expect(promptTemplateKeys.detail('pt-1')).not.toEqual(promptTemplateKeys.versions('pt-1'));
+    expect(promptTemplateKeys.diff('pt-1', 6, 7)).not.toEqual(promptTemplateKeys.diff('pt-1', 5, 7));
+    expect(promptTemplateKeys.usage('pt-1')).not.toEqual(promptTemplateKeys.analytics('pt-1'));
+    expect(promptTemplateKeys.usageRecords({ promptTemplateId: 'pt-1' })[0]).toBe('agents');
+    expect(promptTemplateKeys.departments()[0]).toBe('agents');
   });
 });
 

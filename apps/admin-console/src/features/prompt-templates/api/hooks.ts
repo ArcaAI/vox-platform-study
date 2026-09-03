@@ -31,7 +31,7 @@ import {
   testTemplate,
   updateTemplate,
 } from './client';
-import { agentEvalKeys, agentKeys } from './keys';
+import { promptTemplateEvalKeys, promptTemplateKeys } from './keys';
 import type {
   AssignDepartmentRequest,
   CreateTemplateRequest,
@@ -44,46 +44,46 @@ import type {
 } from './types';
 
 export function useTemplates(params?: ListTemplatesParams) {
-  return useQuery({ queryKey: agentKeys.list(params), queryFn: () => listTemplates(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: promptTemplateKeys.list(params), queryFn: () => listTemplates(params), placeholderData: keepPreviousData });
 }
 
 /** Detail read: `data.data` is the template, `data.etag` feeds PATCH/test. */
 export function useTemplate(id: string) {
-  return useQuery({ queryKey: agentKeys.detail(id), queryFn: () => getTemplate(id), enabled: !!id });
+  return useQuery({ queryKey: promptTemplateKeys.detail(id), queryFn: () => getTemplate(id), enabled: !!id });
 }
 
 export function useVersions(id: string) {
-  return useQuery({ queryKey: agentKeys.versions(id), queryFn: () => listVersions(id), enabled: !!id });
+  return useQuery({ queryKey: promptTemplateKeys.versions(id), queryFn: () => listVersions(id), enabled: !!id });
 }
 
 /** Diff of two picked versions; held off until both sides differ. */
 export function useVersionDiff(id: string, from: number | null, to: number | null) {
   return useQuery({
-    queryKey: agentKeys.diff(id, from ?? 0, to ?? 0),
+    queryKey: promptTemplateKeys.diff(id, from ?? 0, to ?? 0),
     queryFn: () => diffVersions(id, from as number, to as number),
     enabled: !!id && from !== null && to !== null && from !== to,
   });
 }
 
 export function useUsageStats(id: string) {
-  return useQuery({ queryKey: agentKeys.usage(id), queryFn: () => getUsageStats(id), enabled: !!id });
+  return useQuery({ queryKey: promptTemplateKeys.usage(id), queryFn: () => getUsageStats(id), enabled: !!id });
 }
 
 export function useUsageAnalytics(promptTemplateId?: string) {
-  return useQuery({ queryKey: agentKeys.analytics(promptTemplateId), queryFn: () => getUsageAnalytics(promptTemplateId) });
+  return useQuery({ queryKey: promptTemplateKeys.analytics(promptTemplateId), queryFn: () => getUsageAnalytics(promptTemplateId) });
 }
 
 export function useUsageRecords(params?: ListUsageRecordsParams) {
-  return useQuery({ queryKey: agentKeys.usageRecords(params), queryFn: () => listUsageRecords(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: promptTemplateKeys.usageRecords(params), queryFn: () => listUsageRecords(params), placeholderData: keepPreviousData });
 }
 
 export function useDepartments() {
-  return useQuery({ queryKey: agentKeys.departments(), queryFn: listDepartments });
+  return useQuery({ queryKey: promptTemplateKeys.departments(), queryFn: listDepartments });
 }
 
 function useInvalidateAgents() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: agentKeys.root });
+  return () => queryClient.invalidateQueries({ queryKey: promptTemplateKeys.root });
 }
 
 export function useCreateTemplate() {
@@ -156,7 +156,7 @@ export function useAssignDepartment() {
 
 // ---------------------------------------------------------------------------
 // DepartmentAgent — the Agent Catalog rows. A separate root
-// (['department-agents']) from the PromptTemplate `agentKeys` above, so
+// (['department-agents']) from the PromptTemplate `promptTemplateKeys` above, so
 // mutations here never invalidate the unrelated template cache.
 // ---------------------------------------------------------------------------
 
@@ -167,7 +167,7 @@ export function useAssignDepartment() {
  */
 export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: agentEvalKeys.goldenSets(params),
+    queryKey: promptTemplateEvalKeys.goldenSets(params),
     queryFn: () => listEvalGoldenSets(params),
     enabled: options?.enabled ?? true,
   });
@@ -179,7 +179,7 @@ export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams, options?: {
  */
 export function useEvalGoldenCases(goldenSetId: string | null, params?: ListEvalGoldenCasesParams) {
   return useQuery({
-    queryKey: agentEvalKeys.goldenCases(goldenSetId ?? '', params),
+    queryKey: promptTemplateEvalKeys.goldenCases(goldenSetId ?? '', params),
     queryFn: () => listEvalGoldenCases(goldenSetId as string, params),
     enabled: !!goldenSetId,
     retry: false,
@@ -193,7 +193,7 @@ export function useEvalGoldenCases(goldenSetId: string | null, params?: ListEval
 export function useAgentEvalRuns(goldenSetId: string | null, limit = 5) {
   const params = { goldenSetId: goldenSetId ?? undefined, limit };
   return useQuery({
-    queryKey: agentEvalKeys.evalRuns(params),
+    queryKey: promptTemplateEvalKeys.evalRuns(params),
     queryFn: () => listAgentEvalRuns(params),
     enabled: !!goldenSetId,
   });
@@ -204,6 +204,6 @@ export function useRunGoldenSetEval() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (goldenSetId: string) => runGoldenSetEval(goldenSetId),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentEvalKeys.root }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: promptTemplateEvalKeys.root }),
   });
 }

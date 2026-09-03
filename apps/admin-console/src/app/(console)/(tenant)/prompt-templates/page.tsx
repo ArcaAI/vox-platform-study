@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { PromptTemplatesScreen } from '@/features/agents/components/prompt-templates-screen';
+import { PromptTemplatesScreen } from '@/features/prompt-templates/components/prompt-templates-screen';
 
 export const metadata: Metadata = { title: 'Prompt Instruction Templates' };
 
