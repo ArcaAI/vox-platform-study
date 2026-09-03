@@ -1,16 +1,19 @@
 # @arcaai/vox
 
-React SDK for ARCAAI medical consultation workflows. Provides a configuration-driven provider (`AgenticProvider`), a unified `useArca()` hook plus 40+ focused hooks, a real-time audio pipeline (noise filtering, voice activity detection, speech-to-text), consultation/context/summary management against the HOPE API gateway, and multi-tenant-safe browser state (per-provider Zustand stores, namespaced persistence, cross-tab sync).
+React SDK for ARCAAI medical consultation workflows. Provides a configuration-driven provider (`AgenticProvider`), a unified `useArca()` hook plus 40+ focused hooks, real-time capture streamed to backend transcription (selected by the tenant's ASR Agent), consultation/context/summary management against the HOPE API gateway, and multi-tenant-safe browser state (per-provider Zustand stores, namespaced persistence, cross-tab sync).
 
-Last updated: 2026-07-04
+> **The browser captures audio and renders results. It never runs a model.** (TASK-865, owner directive 2026-09-04.) VAD, denoise, ASR and NER are server-side decisions of the tenant's agents; the in-browser model packages are deprecated and removed in R4. See [The browser never runs a model](#the-browser-never-runs-a-model).
+
+Last updated: 2026-09-04
 
 ## Where it fits
 
 | Direction     | Package / app                                        | Relationship                                                                |
 | ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------- |
 | Depends on    | `@arcaai/room`                                       | Audio capture, `AudioTrack`, processor contract, `AudioMixer`               |
-| Depends on    | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline                                        |
-| Optional peer | `@arcaai/med-ner`                                    | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner`                    |
+| Depends on    | `@arcaai/stt`                                        | The backend STREAMING transport (`StreamingBackendSTTProvider`) and PCM capture helpers; its in-browser Whisper is **deprecated** (removed in R4) |
+| Depends on    | `@arcaai/noise-filter`, `@arcaai/vad`                | **Deprecated** client models (removed in R4) — never constructed unless `audio.clientInference: { allow: true }` |
+| Optional peer | `@arcaai/med-ner`                                    | **Deprecated** browser NER (removed in R4); hook at `@arcaai/vox/plugins/med-ner` |
 | Optional peer | `highlight.run`                                      | Optional logging transport                                                  |
 | Optional peer | `@microsoft/clarity`                                 | Optional behavioural monitoring transport (non-production only)             |
 | Talks to      | `apps/api` (NestJS gateway, port 8868)               | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
@@ -24,8 +27,8 @@ Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `@arcaai/vox`                 | Everything: core + audio plugin hooks and pipelines                                                                                  |
 | `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code. Includes `useBatchTranscription` (pre-recorded file upload + monitoring)   |
-| `@arcaai/vox/plugins`         | `useVAD`, `useSTT`, `useNoiseFilter`, `useArcaAudio`, `useSttProviderToggle`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, pipelines |
-| `@arcaai/vox/plugins/med-ner` | `useMedNER` only — isolates the optional `@arcaai/med-ner` dependency so the main plugins entry never fails when it is not installed |
+| `@arcaai/vox/plugins`         | `useArcaAudio`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, pipelines. Also re-exports the **deprecated** `useVAD`, `useSTT`, `useNoiseFilter`, `useSttProviderToggle` (removed in R4) |
+| `@arcaai/vox/plugins/med-ner` | **Deprecated** (removed in R4) — `useMedNER` only; isolates the optional `@arcaai/med-ner` dependency |
 | `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat)  |
 
 Use `/core` for admin/dashboard surfaces that only need API access; audio and ML dependencies stay out of that graph.
@@ -68,10 +71,10 @@ const config = {
     accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys (business plane only — admin hooks need the JWT)
     tenantId: 'tenant-id',
   },
+  // Backend streaming STT. No client model: VAD/denoise run server-side,
+  // selected by the tenant's ASR Agent (TASK-865).
   audio: {
-    noiseFilter: { enabled: true, level: 'high' },
-    vad: { enabled: true },
-    stt: { enabled: true, language: 'en-US' },
+    stt: { enabled: true, provider: 'backend', language: 'en-US' },
   },
   debug: false,
 };
@@ -90,7 +93,7 @@ function ConsultationPage() {
   const handleStart = async () => {
     // Get-or-create today's consultation for the patient
     await session.open({ patientId: 'patient-123' });
-    await audio.start(); // pass { pipelineId } to stream via the backend ASR pipeline
+    await audio.start(); // or { agentSlug } to name a published ASR Agent; omit it and the tenant assignment cascade decides
   };
 
   if (!isReady) return <div>Loading…</div>;
@@ -128,21 +131,29 @@ Each `AgenticProvider` mount creates its own Zustand store via `createAgenticSto
 
 Both throw outside an `AgenticProvider`. The exported `useAgenticStore` is a deprecated module singleton kept only for backwards compatibility — no provider initializes it, so its `apiClient`/`configManager` stay `null`; do not use it in new code. On tenant switch the provider calls `store.clearTenantSessionData()` before the new tenant config resolves, wiping tenant-scoped PHI/session state.
 
-### Audio pipeline (TranscriptionPipeline)
+### The browser never runs a model
 
-`PluginManager` builds a `TranscriptionPipeline` that composes the audio packages as lazily-created stages on a `@arcaai/room` track:
+Owner directive (TASK-865, 2026-09-04): *by default, disable all local/client-side AI capabilities such as VAD, noise suppression — no need to load VAD or any AI model in the client.* The SDK's default — and only supported — capture graph is therefore:
 
 ```
-Microphone → @arcaai/room AudioTrack
-  → NoiseFilter stage (@arcaai/noise-filter, RNNoise WASM)
-  → VAD stage (@arcaai/vad, Silero v5)
-  → STT stage (@arcaai/stt: local Whisper worker, or backend streaming)
+Microphone → @arcaai/room AudioTrack (native getUserMedia constraints: echoCancellation / noiseSuppression / autoGainControl stay ON — they cost nothing and load nothing)
+  → STT stage (@arcaai/stt StreamingBackendSTTProvider over StreamingSessionManager + SttWebSocketClient)
+  → gateway → STT service (server-side VAD, denoise, diarization, ASR — selected by the tenant's ASR Agent)
   → transcription events → store → context items
 ```
 
-Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioStartOptions`): `pipelineId` (selects the backend ASR pipeline and switches the STT stage to a streaming transport built on `StreamingSessionManager` + `SttWebSocketClient`), `language`, `deviceId`, and `secondaryDeviceId` (second microphone mixed in via `AudioMixer` before the pipeline). `DualStreamRecorder` can record raw and processed tracks in parallel, and `createProcessedAudioTap` exposes the genuine post-RNNoise audio as a recordable stream without running the full pipeline.
+What transcribes is a **server-side decision**. The client may name the tenant's published ASR Agent by slug (a lineage key, like `workflowDefinitionSlug` at `session.open()`), or name nothing and let the tenant → department `AgentAssignment` cascade decide. It never names a pipeline, an engine, a model or a VAD:
 
-> **Local (in-browser) transcription is disabled platform-wide (TASK-545).** `LOCAL_TRANSCRIPTION_ENABLED` in `src/core/constants.ts` gates the STT stage's local/offline path — it currently reads `false`, so `TranscriptionPipeline.resolveSTTRuntimeProvider()` never resolves to `'local'`: a configured backend transport (`stt.sttSocket`/`stt.streamingTransport`) resolves to `'remote'`; with no transport it throws `AgenticError('LOCAL_TRANSCRIPTION_DISABLED', ...)` instead of silently transcribing on-device (the local Whisper processor is never constructed while the flag is off — no model-download side effects). NoiseFilter and VAD are unaffected — they keep running in the browser as preprocessing stages for the backend stream. **To re-enable**, flip `LOCAL_TRANSCRIPTION_ENABLED` back to `true`; it is the single, findable switch.
+```tsx
+const { agents, tenantDefault } = useSelectableAsrAgents(); // GET /agents?task=SPEECH_TO_TEXT — null (could not ask) ≠ [] (none published)
+await audio.start({ agentSlug: agents?.[0]?.slug });        // or omit agentSlug → the assignment cascade decides
+```
+
+Per-capture runtime options still flow through `useArcaAudio.start(options)` (`AudioStartOptions`, exported from `/core` and the root): `agentSlug`, `language`, `languageMode`, `deviceId`, `secondaryDeviceId` (mixed via `AudioMixer`), `audioProcessing`, the stop-drain knobs. `pipelineId` is **deprecated** (removed in R4): still forwarded with a warning, and when both are passed `agentSlug` wins and `pipelineId` is dropped — with a warning, never silently.
+
+**The hard-off gate.** `DEFAULT_AUDIO_CONFIG` and the pipeline-level `DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG` both declare the `noiseFilter` (RNNoise) and `vad` (Silero) client stages OFF, and the runtime **ignores `enabled: true`** for them — logging a deprecation warning once per pipeline — unless the host also sets `audio.clientInference: { allow: true }`. That switch exists only so a host that genuinely needs in-browser VAD/denoise during the deprecation window can keep it; it is deprecated on arrival and retires with the packages in R4. Nothing else in the SDK loads a model: local Whisper is gated by `LOCAL_TRANSCRIPTION_ENABLED = false` (a configured backend transport resolves to `'remote'`; with none it throws `AgenticError('LOCAL_TRANSCRIPTION_DISABLED')` rather than transcribing on-device), browser NER lives behind the deprecated `/plugins/med-ner` entry, and `useLocalVoiceEmbedding` (WavLM) is deprecated in favour of the server-side `useVoiceEmbedding`.
+
+Deprecated with removal in R4 (register: `docs/operations/deprecation-register.md` §SDK): `@arcaai/vad`, `@arcaai/noise-filter`, `@arcaai/stt`'s in-browser Whisper, `@arcaai/med-ner` + `/plugins/med-ner`, `useVAD`/`useSTT`/`useNoiseFilter`, `useLocalVoiceEmbedding`, `AudioStartOptions.pipelineId`, `usePipelines`, `useArcaPipelines`, `useSttProviderToggle`, the `selectedPipelineId` user setting, `DEFAULT_LOCAL_CONFIG`'s model pins, `LOCAL_TRANSCRIPTION_ENABLED`, and the compat `sttPipelineId` (use `sttAgentSlug`). `DualStreamRecorder` and `createProcessedAudioTap` (post-RNNoise taps) follow the noise filter out.
 
 ### Knowledge pipeline
 
