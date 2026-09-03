@@ -92,7 +92,7 @@ export * from './billing';
 export * from './entitlements';
 // Rolling-monthly usage metering (live aggregate + reconcile job).
 export * from './metering';
-// Shadow-metering drift report + provider-reconciler stubs.
+// Shadow-metering drift report (internal ledger-vs-meter diff; provider reconciliation removed by TASK-862).
 export * from './metering/reconciliation';
 // Per-request AI usage ledger: emission port, outbox drainer, provider
 // usage normalizer, allow-listed attributes and the frozen vocabulary.

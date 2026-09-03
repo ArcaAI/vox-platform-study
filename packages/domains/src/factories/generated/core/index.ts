@@ -81,7 +81,6 @@ export * from './BillingAdjustmentFactory';
 export * from './BillingInvoiceFactory';
 export * from './BillingInvoiceLineFactory';
 export * from './TenantAllowedOriginFactory';
-export * from './ProviderReconciliationRunFactory';
 export * from './ChangelogEntryFactory';
 export * from './ServiceInstanceFactory';
 export * from './ServiceReleaseFactory';

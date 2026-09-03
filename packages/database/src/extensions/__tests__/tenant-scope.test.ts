@@ -88,8 +88,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // BillingAdjustment).
     // 65 → 66: adds TenantAllowedOrigin (CORS control plane).
     // 66 → 67: #6 adds TenantPlanHistory (append-only plan-fee proration).
-    // 67 → 68: adds ProviderReconciliationRun (SYSTEM-owned audit trail;
-    // scoped so a tenant can never read aggregate platform vendor spend).
+    // 67 → 68: added ProviderReconciliationRun (SYSTEM-owned audit trail);
+    // REMOVED again by TASK-862 (Provider Reconciliation deleted outright).
     // 68 → 72: adds the Service Version & Release Registry
     // (ServiceRelease, ServiceInstance, ChangelogEntry,
     // UserChangelogAcknowledgement). All four carry tenantId; the first
@@ -149,7 +149,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (88): AiRoutingPolicy — the config-plane routing policy.
     // SYSTEM row = platform default, tenant row wins on presence; also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // -1 (87): ProviderReconciliationRun — Provider Reconciliation removed
+    // outright (TASK-862, owner directive 2026-09-04).
+    expect(TENANT_SCOPED_MODELS.size).toBe(87);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -164,7 +166,6 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
       'AiPriceBook',
       'AiUsageRollupHourly',
       'AiUsageRollupDaily',
-      'ProviderReconciliationRun',
       'BillingInvoice',
       'BillingInvoiceLine',
       'BillingAdjustment',

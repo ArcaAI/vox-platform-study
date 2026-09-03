@@ -66,7 +66,6 @@ import {
   IconWaveSine,
   IconWorld,
   IconReportMoney,
-  IconScale,
   IconReceipt,
   type TablerIcon,
 } from '@tabler/icons-react';
@@ -357,26 +356,6 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Consumption & cost',
     tier: '10-19',
     icon: IconReportMoney,
-    required: [['manage', 'all']],
-    implemented: true,
-  },
-  {
-    // the provider-reconciliation audit trail. Platform-wide
-    // (a vendor bills the platform, not a tenant), so tier 10-19 with no
-    // working-tenant gate, unlike its /ai-operations neighbours.
-    //
-    // step 3 moved it out of `ai-platform` and into `platform-ops`:
-    // it is a VENDOR BILLING auditor and never touches `AiModel`, a provider
-    // connection or a routing configuration. It sat in the AI domain because it
-    // shares a URL prefix with `/ai-operations/*`, which is a routing accident
-    // rather than a capability. Domain and route are independent (OD-2/OD-3),
-    // so the URL is unchanged — this is neither a rename nor a retier, and a
-    // redirect stub would be a duplicate route rather than a courtesy.
-    route: '/ai-operations/reconciliation',
-    domain: 'platform-ops',
-    label: 'Provider reconciliation',
-    tier: '10-19',
-    icon: IconScale,
     required: [['manage', 'all']],
     implemented: true,
   },

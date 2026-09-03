@@ -169,7 +169,6 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | UserDepartmentsController                | `api/v1/admin/users`                                                       |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:User                                         | :id/departments assign/unassign.                                                                                                         |
 | WorkflowSandboxRunController             | `api/v1/admin/workflow-definitions/:definitionId/sandbox-runs`             |    4 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | per-method WorkflowRun Can*                         | Hand-rolled SSE + StreamScope workflow_run.                                                                                              |
 | AdminConsultationController              | `api/v1/admin/consultations`                                               |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:Consultation                                 | Tenant-wide list/aggregate.                                                                                                              |
-| AdminReconciliationController            | `api/v1/admin/usage/reconciliation`                                        |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:UsageAnalytics                               |                                                                                                                                          |
 | AdminTranscriptionJobController          | `api/v1/admin/audio/transcription-jobs`                                    |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | class manage:Tenant; handlers read:AsrPipeline      |                                                                                                                                          |
 | AgentPromotionController                 | `api/v1/admin/agent-promotions`                                            |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | manage:DepartmentAgent                              | POST requires manage in both tenants (service).                                                                                          |
 | AgentTrajectoryController                | `api/v1/admin/agent-trajectory`                                            |    3 | JWT only                                     | forbidden (@ForbidApiKey)                                                               | read:AgentTrajectory                                |                                                                                                                                          |
@@ -1358,18 +1357,9 @@ The two CASL-gated downstream probes that used to sit here — `GET /api/v1/heal
 - `GET /api/v1/admin/consultations/aggregate` — jwt `CanManage(Consultation)` — apikey yes `admin:consultation-admin:manage` — `aggregate`
 - `GET /api/v1/admin/consultations/:id` — jwt `CanManage(Consultation)` — apikey yes `admin:consultation-admin:manage` — `getById`
 
-### AdminReconciliationController
+### AdminReconciliationController — REMOVED (TASK-862)
 
-- **File:** `src/modules/admin-usage/admin-reconciliation.controller.ts`
-- **Prefix:** `admin/usage/reconciliation` → `api/v1/admin/usage/reconciliation`
-- **api_count:** 3
-- **Auth model:** JWT + API key
-- **API key:** `admin:usage:manage`
-- **JWT / other:** manage:UsageAnalytics
-
-- `GET /api/v1/admin/usage/reconciliation/runs` — jwt `CanManage(UsageAnalytics)` — apikey yes `admin:usage:manage` — `runs`
-- `POST /api/v1/admin/usage/reconciliation/run` — jwt `CanManage(UsageAnalytics)` — apikey yes `admin:usage:manage` — `run`
-- `GET /api/v1/admin/usage/reconciliation/latest` — jwt `CanManage(UsageAnalytics)` — apikey yes `admin:usage:manage` — `latest`
+Provider Reconciliation was removed outright (owner directive 2026-09-04): `admin/usage/reconciliation/{runs,run,latest}`, the `ProviderReconciliationRun` table and the vendor reconciler registry no longer exist. The shadow-metering (internal ledger-vs-meter) sweep is unaffected.
 
 ### AdminTranscriptionJobController
 
