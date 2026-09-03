@@ -1,5 +1,7 @@
 # @arcaai/med-ner
 
+> **DEPRECATED (TASK-865) — removed in R4.** In-browser medical NER is retired; entity extraction runs in apps/nlp through the realtime lane. The browser captures audio and renders results; it never runs a model. This package keeps building and stays importable until R4 so existing hosts can migrate; do not add new consumers. Register row: `docs/operations/deprecation-register.md` §SDK.
+
 Medical Named Entity Recognition in the browser via Transformers.js. Extracts diseases, medications, procedures, anatomy, lab values, symptoms, dosage/frequency/duration, genes, and chemicals from text. Inference runs either on the main thread or — recommended — in a dedicated Web Worker so the ~hundreds-of-MB model stack never blocks the UI. Models are pinned to specific Hugging Face revisions for supply-chain safety.
 
 Last updated: 2026-07-04

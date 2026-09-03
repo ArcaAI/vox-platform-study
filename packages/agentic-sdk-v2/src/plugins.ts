@@ -36,12 +36,19 @@
  * - `useMedNER` from `@arcaai/med-ner` (optional peer dependency)
  */
 
+/**
+ * @deprecated TASK-865 — removed in R4. `useVAD`, `useSTT` and `useNoiseFilter` exist only to run
+ * a model in the browser; the browser never runs a model. Capture with `useArcaAudio` and let the
+ * tenant's ASR Agent decide VAD/denoise/ASR server-side (`audio.start({ agentSlug })`).
+ */
 export { useVAD } from '@arcaai/vad';
 export type { UseVADOptions, UseVADReturn } from '@arcaai/vad';
 
+/** @deprecated TASK-865 — removed in R4. See the note on `useVAD` above. */
 export { useSTT } from '@arcaai/stt';
 export type { UseSTTOptions, UseSTTReturn } from '@arcaai/stt';
 
+/** @deprecated TASK-865 — removed in R4. See the note on `useVAD` above. */
 export { useNoiseFilter } from '@arcaai/noise-filter';
 export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-filter';
 
@@ -58,6 +65,7 @@ export { useArcaAudio } from './hooks/useArcaAudio';
 
 // Native 2-way STT provider toggle (pipeline ↔ default) — a thin adapter over
 // `useArcaAudio`, so it ships alongside it here.
+// @deprecated TASK-865 — removed in R4 (see the hook's own JSDoc).
 export { useSttProviderToggle, type UseSttProviderToggleReturn } from './hooks/useSttProviderToggle';
 
 // `useTtsPlayback` — streamed TTS audio playback (summary read-aloud).

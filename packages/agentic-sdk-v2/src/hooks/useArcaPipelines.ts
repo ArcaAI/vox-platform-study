@@ -40,6 +40,10 @@ export interface UseArcaPipelineControl {
  * Hook for pipeline control (pause/resume transcription, trigger NER, trigger summarization).
  *
  * Extracted from useArca for better performance and maintainability (REFACTOR-01).
+ *
+ * @deprecated TASK-865 — removed in R4. The client no longer runs a transcription/knowledge
+ * pipeline of its own to pause, resume or trigger NER on: capture is `useArcaAudio`, entity
+ * extraction is server-side (`apps/nlp`, realtime lane), summaries are `useArcaSummary`.
  */
 export function useArcaPipelines(): UseArcaPipelineControl {
   const store = useAgenticStore();

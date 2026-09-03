@@ -1,5 +1,7 @@
 # @arcaai/noise-filter
 
+> **DEPRECATED (TASK-865) — removed in R4.** Client-side denoise is retired; the tenant's ASR Agent runs denoise server-side. The browser captures audio and renders results; it never runs a model. This package keeps building and stays importable until R4 so existing hosts can migrate; do not add new consumers. Register row: `docs/operations/deprecation-register.md` §SDK.
+
 AI-powered noise cancellation plugin for `@arcaai/room`. Runs RNNoise (a hybrid DSP + deep-learning noise suppressor) as WebAssembly inside an AudioWorklet for real-time, low-latency noise removal in the browser. The WASM binary ships inside the package — there is no runtime CDN dependency.
 
 Last updated: 2026-07-04

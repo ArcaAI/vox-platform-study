@@ -18,6 +18,10 @@ import type { PaginationParams } from '../types/common';
  * (`PATCH /users/me/settings/:namespace/:key`). The server-side validator
  * in `UserSettingsController` rejects cross-tenant pipeline ids.
  */
+/**
+ * @deprecated TASK-865 — removed in R4 with the `selectedPipelineId` user setting.
+ * Selection is per capture (`audio.start({ agentSlug })`); nothing is persisted per user.
+ */
 export const SELECTED_PIPELINE_SETTING = {
   namespace: 'arcaai-sdk',
   key: 'selectedPipelineId',
@@ -121,6 +125,13 @@ export interface UsePipelinesReturn {
   getVersion: (pipelineId: string, versionNumber: number) => Promise<PipelineVersion>;
 }
 
+/**
+ * Pipeline discovery and selection.
+ *
+ * @deprecated TASK-865 — removed in R4 (the `AsrPipeline` resource retires under TASK-861).
+ * Discover what may transcribe with `useSelectableAsrAgents()` and name it with
+ * `audio.start({ agentSlug })`; the client no longer chooses a pipeline, engine, model or VAD.
+ */
 export function usePipelines(): UsePipelinesReturn {
   const { execute, isLoading, error } = useApiOperation('usePipelines');
   const userSettings = useUserSettings();

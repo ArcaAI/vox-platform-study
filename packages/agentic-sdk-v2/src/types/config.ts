@@ -653,7 +653,11 @@ export interface UserPreferencesUpdate {
 // =============================================================================
 
 /**
- * Default local workflow configuration
+ * Default local workflow configuration.
+ *
+ * @deprecated TASK-865 — removed in R4. The `noiseCancellation` (`rnnoise`), `stt` (`whisper-*`)
+ * and `vad` (`silero-vad-v5`) model pins describe CLIENT models the runtime no longer loads;
+ * they are kept only so persisted user preferences keep deserialising during the window.
  */
 export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   noiseCancellation: { modelId: 'rnnoise', level: 'medium' },
