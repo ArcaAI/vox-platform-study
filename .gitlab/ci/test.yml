@@ -162,6 +162,10 @@ test-sdk:
       artifacts: false
   variables:
     <<: *test-env-vars
+    # @arcaai/noise-filter's wasmAsset.test.ts asserts the on-disk
+    # assets/rnnoise.wasm is > 10_000 bytes; a ~130-byte LFS pointer stub
+    # fails it — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
+    GIT_LFS_SKIP_SMUDGE: "0"
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     # Parallelism is capped by TURBO_CONCURRENCY / VITEST_MAX_WORKERS on

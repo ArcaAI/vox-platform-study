@@ -139,6 +139,27 @@ variables:
   GITHUB_BACKUP_BRANCH: "back-up"
   RUN_NOTIFY_ONLY: ""
   #
+  # ── Git LFS ────────────────────────────────────────────────────────────────
+  # Skip the LFS smudge on checkout. The runner clones over the LAN
+  # (clone_url = http://10.10.1.110, ~30 ms), but GitLab's external_url is
+  # https://git.taphuynh.dev, so the LFS batch API hands back object URLs on
+  # that public hostname. Runner containers resolve it via public DNS to the
+  # Cloudflare edge and fetch the blobs back through the tunnel at ~42 KB/s —
+  # 26 MB of LFS payload = ~10 minutes added to EVERY job's `get_sources`,
+  # measured 2026-09-03 on pipeline 1112 (install-node: 613 s of a 752 s job).
+  #
+  # 24 MB of that is apps/stt/tests/e2e audio fixtures, which no CI job uses —
+  # test-stt runs pytest with --ignore=tests/e2e/.
+  #
+  # The four jobs that DO need a real LFS blob (the 112 KB
+  # packages/noise-filter/assets/rnnoise.wasm, shipped via package.json
+  # "files") re-enable the smudge with GIT_LFS_SKIP_SMUDGE: "0":
+  #   test-sdk, publish-sdk, build-admin-console, build-compat-playground.
+  # Without it they would get a ~130-byte pointer stub — test-sdk's
+  # wasmAsset.test.ts asserts size > 10_000, and the build jobs would
+  # SILENTLY ship a broken wasm.
+  GIT_LFS_SKIP_SMUDGE: "1"
+  #
   # ── Vault via GitLab OIDC ──────────────────────────────────────────────────
   # VAULT_ADDR EMPTY = the mechanism is off and every job uses its CI variables
   # exactly as before. Set it (Settings → CI/CD → Variables, NOT masked — it is

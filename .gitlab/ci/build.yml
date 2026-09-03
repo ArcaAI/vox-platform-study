@@ -147,6 +147,10 @@ build-admin-console:
     SERVICE_NAME: admin-console
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/admin-console/Dockerfile
+    # Depends on @arcaai/vox → @arcaai/noise-filter, whose bundled
+    # assets/rnnoise.wasm is an LFS object. A pointer stub would build
+    # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
+    GIT_LFS_SKIP_SMUDGE: "0"
     # Browser-reachable gateway origin, inlined into the client bundle.
     BUILD_ARGS: "--build-arg NEXT_PUBLIC_API_HOST=$NEXT_PUBLIC_API_HOST"
   rules:
@@ -166,6 +170,10 @@ build-compat-playground:
     SERVICE_NAME: compat-playground
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/compat-playground/Dockerfile
+    # Depends on @arcaai/vox → @arcaai/noise-filter, whose bundled
+    # assets/rnnoise.wasm is an LFS object. A pointer stub would build
+    # cleanly and ship a broken wasm — see GIT_LFS_SKIP_SMUDGE in .gitlab-ci.yml.
+    GIT_LFS_SKIP_SMUDGE: "0"
     BUILD_ARGS: "--build-arg VITE_API_BASE_URL=$NEXT_PUBLIC_API_HOST"
   rules:
     - !reference [.build-common-rules, rules]
