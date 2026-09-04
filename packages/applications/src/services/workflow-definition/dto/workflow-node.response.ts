@@ -67,9 +67,10 @@ export class WorkflowNodeResponse {
   paletteKey: string | null;
 
   @ApiPropertyOptional({
-    description: 'TASK-864: a legacy type kept for the deprecation window — compile() still accepts it; the Studio hides it from the palette.',
+    nullable: true,
+    description: 'TASK-864: a legacy type kept for the deprecation window — compile() still accepts it; the Studio hides it from the palette. `null` when the descriptor does not declare it.',
   })
-  deprecated?: boolean;
+  deprecated?: boolean | null;
 
   @ApiPropertyOptional({ nullable: true, description: 'The core.* type a deprecated type maps onto (for core.action, the catalogue key`s host).' })
   replacedBy?: string | null;

@@ -194,7 +194,7 @@ export interface WorkflowNodeDescriptor {
   /** Declared output ports. */
   outputs: readonly WorkflowNodePort[];
   /** TASK-864 C1: a legacy type kept for the deprecation window — hidden from the palette rail, still rendered in existing graphs. */
-  deprecated?: boolean;
+  deprecated?: boolean | null;
   /** The `core.*` type (or, for `core.action`, the catalogue key`s host) a deprecated type maps onto. */
   replacedBy?: string | null;
 }
