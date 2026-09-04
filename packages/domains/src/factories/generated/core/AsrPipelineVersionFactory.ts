@@ -20,6 +20,7 @@ export interface CreateAsrPipelineVersionProps extends BaseEntityFactoryCreatePr
   updatedBy?: string | null;
 }
 
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; the Agent's rows-are-versions model replaces it. */
 export class AsrPipelineVersionFactory {
   static CreateAsrPipelineVersion(props: CreateAsrPipelineVersionProps): AsrPipelineVersionEntity {
     const id = generateId();

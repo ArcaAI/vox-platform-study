@@ -35,6 +35,7 @@ export interface IPipelinePolicyChangeEntity extends IBaseTenantEntity {
   keyVersion?: number | null;
 }
 
+/** @deprecated TASK-861 — removed in R4 with `PipelinePolicy` (WORM log stays read-only until the drop). */
 export class PipelinePolicyChangeEntity extends BaseTenantEntity {
   private _scope: IPipelinePolicyChangeEntity['scope'];
   private _scopeId?: IPipelinePolicyChangeEntity['scopeId'];
