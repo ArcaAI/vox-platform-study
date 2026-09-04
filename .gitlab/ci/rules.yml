@@ -31,11 +31,8 @@
 # branch and narrower in scope: dev-2.2 opted out of tests + vuln scans only,
 # so it keeps the validate stage, which still references the fragment above.
 # `scan-gitleaks` references NEITHER — a secret scan runs on every branch.
-# All 15 Trivy jobs reference this one: the 13 that previously carried
-# `.skip-on-dev-2-1` plus `scan-python-base` / `scan-qdrant-init`, which
-# carried no branch guard at all and so kept scanning two images on a line
-# that had opted out. That also stops those two on dev-2.1 — the same
-# opt-out it already expressed for every other image.
+# All live Trivy jobs reference this one: the image scans plus `scan-source`.
+# `.scan-compat-playground` is hidden and is not in this set.
 # Branches are listed explicitly, not matched by `/^dev-2\./`, so each new
 # release line opting out stays a deliberate edit rather than an inherited
 # default.
@@ -53,7 +50,7 @@
     # Release tags (<SVC>-<ver> / ALL-<ver>) and prod-* branches
     # run the full test suite so a build/release is only cut from a green
     # commit — even though those branches no longer build.
-    - if: $CI_COMMIT_TAG =~ /^(SDK|TEXT|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|COMPAT|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(SDK|TEXT|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|ALL)-/
     - if: $PIPELINE_TYPE == "prod"
 
 # ── cicd branch: always run everything ──────────────────────────────────────
@@ -130,6 +127,8 @@
         - apps/admin-console/**/*
         - packages/ui/**/*
 
+# Only referenced by the hidden jobs. Keep the template so re-enable
+# is undotting those jobs rather than reconstructing path filters.
 .rules-compat-playground:
   rules:
     - !reference [.rules-always, rules]
@@ -349,7 +348,6 @@
       changes:
         paths:
           - apps/api/**/*
-          - apps/compat-playground/**/*
           - packages/**/*
           - "*.json"
         compare_to: refs/heads/main
@@ -357,7 +355,6 @@
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*
-        - apps/compat-playground/**/*
         - packages/**/*
     - if: $PIPELINE_TYPE == "release_sdk"
 

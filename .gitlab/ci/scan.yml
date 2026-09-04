@@ -109,10 +109,11 @@ scan-nlp:
     - !reference [.skip-vuln-scan-on-dev-2-x, rules]
     - !reference [.rules-nlp, rules]
 
-scan-compat-playground:
+# Hidden with `.build-compat-playground`. See build.yml for re-enable.
+.scan-compat-playground:
   extends: .trivy-scan
   needs:
-    - job: build-compat-playground
+    - job: .build-compat-playground
       artifacts: true
   variables:
     SCAN_IMAGE: $IMAGE
