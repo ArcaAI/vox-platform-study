@@ -74,16 +74,6 @@ from harness.temporal.interpreter.nodes.core import CORE_ACTIVITIES
 from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
 from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
 from harness.temporal.interpreter.nodes.guards import GUARD_ACTIVITIES
-from harness.temporal.interpreter.nodes.stt_placeholder import (
-    interpreter_stt_asr_engine,
-    interpreter_stt_audio_input,
-    interpreter_stt_diarization,
-    interpreter_stt_language_detection,
-    interpreter_stt_noise_filter,
-    interpreter_stt_phi_hop,
-    interpreter_stt_transcript_output,
-    interpreter_stt_vad,
-)
 from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
 from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 from harness.temporal.interpreter.run_events import (
@@ -202,15 +192,8 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_text_generate,
     interpreter_guardrail_check,
     interpreter_deliver,
-    # STT palette — placeholders, see nodes/stt_placeholder.py.
-    interpreter_stt_audio_input,
-    interpreter_stt_vad,
-    interpreter_stt_noise_filter,
-    interpreter_stt_diarization,
-    interpreter_stt_language_detection,
-    interpreter_stt_asr_engine,
-    interpreter_stt_transcript_output,
-    interpreter_stt_phi_hop,
+    # STT palette — RETIRED (TASK-861 step 10 / TASK-867): no activity is served; see the
+    # matching note in registry.py's NODE_REGISTRY.
     # Consultation palette — all 13 node types. consentGate/phiHop/hitlGate came from
     # (nodes/consultation.py); the other ten are the wrappers that complete the palette, grouped
     # by pipeline stage in nodes/consultation_{capture,nlp,compose,verify,persist}.py.
