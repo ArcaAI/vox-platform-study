@@ -11,7 +11,7 @@ const SERVICE_COPY: Record<ProviderService, string> = {
   stt: 'Bring your own Azure Speech, Sarvam, or OpenAI account for speech-to-text transcription.',
   tts: 'Bring your own Azure Speech or Sarvam account for text-to-speech synthesis.',
   embeddings:
-    'Bring your own Azure OpenAI or OpenAI account for embedding generation. This is a separate connection from LLM: a tenant may bring one vendor for generation and another for embeddings.',
+    'Bring your own Azure OpenAI or OpenAI account for embedding generation. This is a separate connection from text generation: a tenant may bring one vendor for generation and another for embeddings.',
   rerank: 'Reranking is served by the platform’s self-hosted TEI service.',
   vector: 'Bring your own Qdrant Cloud cluster for vector storage and retrieval. Without one, the platform’s shared vector plane serves this tenant.',
   'model-registry':
@@ -19,19 +19,15 @@ const SERVICE_COPY: Record<ProviderService, string> = {
 };
 
 /**
- * One service's BYO-credential grid — the shared masked `CredentialCard` set
- * driven by `admin/providers/:service`. Keys are encrypted at rest via Vault
- * Transit, are never returned by any read, and there is no reveal flow. An
- * enabled credential is used for this tenant's requests to that service; a
- * disabled or removed one falls back to the platform credentials.
+ * One service's BYO-credential grid — one card per provider, driven by
+ * `admin/providers/:service`. Keys are encrypted at rest via Vault Transit, are
+ * never returned by any read, and there is no reveal flow.
  *
  * A capability with NO tenant-BYO providers (`rerank`) renders its reason
- * rather than an empty grid. That case is real governance, not a gap: the only
- * reranker is platform infrastructure, so the gateway refuses a tenant row with
- * a 403. Telling the admin that up front is the whole point — the alternative
- * is a blank panel that reads as a broken screen.
+ * rather than an empty grid: the only reranker is platform infrastructure, so
+ * the gateway refuses a tenant row with a 403.
  */
-export function ProviderCredentialsTab({ service }: { service: ProviderService }) {
+export function ProviderCredentialsTab({ service, tenantId, enabled = true }: { service: ProviderService; tenantId?: string; enabled?: boolean }) {
   const providers = PROVIDERS_BY_SERVICE[service];
 
   if (providers.length === 0) {
@@ -52,7 +48,7 @@ export function ProviderCredentialsTab({ service }: { service: ProviderService }
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {providers.map((meta) => (
-          <ProviderCredentialCard key={meta.id} service={service} meta={meta} />
+          <ProviderCredentialCard key={meta.id} service={service} meta={meta} tenantId={tenantId} enabled={enabled} />
         ))}
       </div>
     </div>

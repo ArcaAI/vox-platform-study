@@ -39,7 +39,7 @@ function settingsStub(rows: Record<string, { value: unknown; sourceScope: string
 
 function makeService(settings?: EffectiveSettingsService, tenantId: string | undefined = TENANT_A): TextRequestEnrichmentService {
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? tenantId : undefined)) } as unknown as ClsService<IActiveUserContext>;
-  return new TextRequestEnrichmentService(cls, undefined, undefined, settings);
+  return new TextRequestEnrichmentService(cls, undefined, settings);
 }
 
 describe('TextRequestEnrichmentService.applyTenantGuardrailPolicy', () => {

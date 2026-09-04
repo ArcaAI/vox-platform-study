@@ -4,7 +4,6 @@ import {
   EffectiveSettingsService,
   HarnessPolicyService,
   IActiveUserContext,
-  IAiRuntimeProfileService,
   IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
@@ -234,12 +233,6 @@ export class TextProxyController {
     // Resolves the effective `guardrail.validate` default for the
     // guardrail listing's default marking.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // Resolves the effective hyperparameter profile for the outgoing
-    // {provider, model}. @Optional so existing positional test fixtures (and
-    // graphs that never proxy to TEXT) keep compiling.
-    @Optional()
-    @Inject(IAiRuntimeProfileService)
-    private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
     // Resolves the caller tenant's BYO cloud credential for the
     // outgoing provider. @Optional so existing positional test fixtures (and
     // graphs that never proxy to TEXT) keep compiling.
@@ -280,12 +273,7 @@ export class TextProxyController {
     // this controller's own (already injected) dependencies rather than taken as
     // another constructor parameter: the service is stateless, and every
     // existing positional test fixture keeps its arity and its exact behavior.
-    this.textRequestEnrichment = new TextRequestEnrichmentService(
-      this.clsService,
-      this.aiRuntimeProfileService,
-      this.aiProviderConnectionService,
-      this.effectiveSettingsService,
-    );
+    this.textRequestEnrichment = new TextRequestEnrichmentService(this.clsService, this.aiProviderConnectionService, this.effectiveSettingsService);
   }
 
   private readonly textRequestEnrichment: TextRequestEnrichmentService;
@@ -330,11 +318,9 @@ export class TextProxyController {
       const { provider } = await this.harnessPolicyService.resolveTextSelection(tenantId);
       target.provider = provider;
     }
-    // Layer the resolved runtime profile on top of the identity.
-    // Runs for a caller-pinned model too: the caller chose the MODEL, not the
-    // hyperparameters, and any parameter they did send still wins below.
-    await this.applyTextRuntimeProfile(target);
-    // Then push the caller tenant's own moderation policy, if it has one. Runs
+    // (TASK-862: the runtime-profile layer that used to run here is gone with
+    // `AiRuntimeProfile`; generation parameters arrive with the Agent, TASK-863.)
+    // Push the caller tenant's own moderation policy, if it has one. Runs
     // BEFORE the credential fold because that step can legitimately RAISE (a
     // provider veto → 409, a missing entitlement → 403), and a policy refusal
     // should not be reached with a half-built body.
@@ -356,16 +342,6 @@ export class TextProxyController {
    */
   private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
     return this.textRequestEnrichment.applyTenantProviderOverrides(target);
-  }
-
-  /**
-   * Inject the resolved hyperparameter profile into the forwarded body.
-   *
-   * BUG-018 — implementation MOVED VERBATIM to `TextRequestEnrichmentService`
-   * (caller-wins merge, fail-open on resolver error). See above.
-   */
-  private async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
-    return this.textRequestEnrichment.applyTextRuntimeProfile(target);
   }
 
   // The TEXT base URL resolves through the

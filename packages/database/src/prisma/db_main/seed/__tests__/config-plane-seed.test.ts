@@ -13,7 +13,7 @@
  *      returns the SYSTEM row Day-1 and env becomes a pure fallback. Ollama was
  * removed entirely — there is no `llm:ollama` row to seed.
  *   2. Every CLOUD-BYO row (all services — e.g. llm `azure`/`bedrock`/`openai`/
- *      `anthropic`/`vertex`/`sarvam`, and all stt/tts cloud rows) stays
+ *      `anthropic`/`vertex`, and all stt/tts cloud rows) stays
  *      `enabled: false`: a cloud provider needs a tenant key, so an
  *      enabled-but-keyless cloud row must never serve.
  *   3. No row carries a VENDOR credential, and no ciphertext is committed to
@@ -22,11 +22,11 @@
  *      placeholder, because the `provider_overrides` fold — the channel
  *      `apps/text` actually reads — drops a keyless row on BOTH tiers. See the
  *      delivery-path section at the top of `17-ai-provider-connection.ts`.
- *   4. `AiRuntimeProfile` seeds are EMPTY. Absence of a profile row means "no
- *      opinion" — the injection cascade falls through to the service's own
- *      pydantic/env default, so forwarded requests stay byte-identical.
+ *   4. TASK-862: there is NO `llm:sarvam` row (Sarvam has no LLM adapter —
+ *      decision D-4) and no `AiRuntimeProfile` seed at all (the model was
+ *      retired; connection ceilings live on `AiProviderConnection`).
  *
- * Plus the allow-list drift guard (test 19): both models must be
+ * Plus the allow-list drift guard (test 19): the connection model must be
  * tenant-scoped, SYSTEM-shared for reads, and soft-deleting.
  */
 
@@ -44,7 +44,6 @@ import {
   SYSTEM_AI_PROVIDER_CONNECTIONS,
   isPlatformSelfHostConnection,
 } from '../17-ai-provider-connection';
-import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 
 // =============================================================================
 // 1. AiProviderConnection seed shape
@@ -68,11 +67,14 @@ const isBuiltInLocalLlm = isPlatformSelfHostConnection;
 describe('AiProviderConnection SYSTEM seed rows', () => {
   it('seeds one llm row per canonical serving provider', () => {
     // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
-    // so the llm seed rows must equal it exactly — no manual append.
+    // so the llm seed rows must equal it exactly — no manual append. TASK-862
+    // D-4: `sarvam` is a catalogue provider (STT/TTS) but has NO LLM adapter,
+    // so it seeds no `llm` connection row.
     const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
       .map((c) => c.provider)
       .sort();
-    expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].sort());
+    expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].filter((p) => p !== 'sarvam').sort());
+    expect(SYSTEM_AI_PROVIDER_CONNECTIONS.some((c) => c.service === 'llm' && c.provider === 'sarvam')).toBe(false);
   });
 
   it('seeds the STT cloud catalog rows', () => {
@@ -335,49 +337,19 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
 });
 
 // =============================================================================
-// 2. AiRuntimeProfile seed shape — deliberately empty
-// =============================================================================
-
-describe('AiRuntimeProfile seed', () => {
-  // AMENDED: the shipped default for LIMITS is still none — no row may
-  // claim a measured quota, so `hasOpinion` stays false for every seeded row. The
-  // one row that ships is an ENGINE EXTRA paired with a seeded catalog model:
-  // gemma-4 thinks by LM Studio default, and `reasoning_effort: "none"` is the
-  // only switch that stops the realtime nodes paying for it.
-  const LIMIT_KNOBS = ['temperature', 'topP', 'maxTokens', 'contextLength', 'maxConcurrent', 'tpmLimit', 'rpmLimit', 'timeoutS', 'keepAliveSeconds'] as const;
-
-  it('seeds NO limit on any row (absence = env defaults; silent-change guard)', () => {
-    for (const row of SYSTEM_AI_RUNTIME_PROFILES) {
-      for (const knob of LIMIT_KNOBS) expect(row[knob], `${row.provider}/${row.modelSlug}.${knob}`).toBeNull();
-    }
-  });
-
-  it('ships exactly the gemma-4 E2B thinking-off extra, keyed by the seeded catalog slug', () => {
-    expect(SYSTEM_AI_RUNTIME_PROFILES).toHaveLength(1);
-    const row = SYSTEM_AI_RUNTIME_PROFILES[0];
-    if (!row) throw new Error('unreachable — length asserted above');
-    expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(row.provider).toBe('lm-studio');
-    expect(row.extraJson).toEqual({ reasoning_effort: 'none' });
-    expect(LLM_AI_MODELS.map((m) => m.slug)).toContain(row.modelSlug);
-    expect(LLM_AI_MODELS.find((m) => m.slug === row.modelSlug)?.provider).toBe('lm-studio');
-  });
-});
-
-// =============================================================================
 // 3. Allow-list drift guard (test 19)
 // =============================================================================
 
 describe('client extension allow-lists', () => {
-  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as tenant-scoped', (model) => {
+  it.each(['AiProviderConnection'])('registers %s as tenant-scoped', (model) => {
     expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
   });
 
-  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as a SYSTEM-shared read model', (model) => {
+  it.each(['AiProviderConnection'])('registers %s as a SYSTEM-shared read model', (model) => {
     expect(SYSTEM_SHARED_READ_MODELS.has(model)).toBe(true);
   });
 
-  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('keeps %s soft-deleting', (model) => {
+  it.each(['AiProviderConnection'])('keeps %s soft-deleting', (model) => {
     expect(MODELS_WITHOUT_SOFT_DELETE.has(model)).toBe(false);
   });
 });

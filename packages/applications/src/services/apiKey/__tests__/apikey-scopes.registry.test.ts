@@ -252,10 +252,13 @@ describe('API Key Scope Registry', () => {
     // routes it gated. `admin:agent-promotion:manage` STAYS — the promotion
     // surface survives, now over workflow definitions, so only its `implies`
     // moved (to `manage:WorkflowDefinition`).
-    it('marks all 57 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
+    // 56 -> 55: TASK-862 removes `admin:ai-runtime-profile:manage` with the
+    // `AiRuntimeProfile` surface it gated (ceilings moved onto the provider
+    // connection, hyper-parameters onto the Agent).
+    // 55 -> 56 (TASK-863): adds `admin:agent:manage`.
+    it('marks all 56 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
       const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
-      // 56 -> 57 (TASK-863): adds `admin:agent:manage`.
-      expect(admin.length).toBe(57);
+      expect(admin.length).toBe(56);
       // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
       // Enumerating by line range instead of by KEY would leave the single most
       // dangerous string in the family grantable.
@@ -284,8 +287,9 @@ describe('API Key Scope Registry', () => {
         .sort();
       expect(reservedKeys().sort()).toEqual(derived);
       // 60 -> 59: removes one admin scope (56 admin + 3 webhook).
-      // 59 -> 60 (TASK-863): `admin:agent:manage` (57 admin + 3 webhook).
-      expect(reservedKeys().length).toBe(60);
+      // 59 -> 58: TASK-862 removes `admin:ai-runtime-profile:manage`; 58 -> 59 (TASK-863):
+      // `admin:agent:manage` (56 admin + 3 webhook).
+      expect(reservedKeys().length).toBe(59);
     });
 
     it('isReservedScope answers for members and is false for unknown strings', () => {

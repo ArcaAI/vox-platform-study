@@ -2,8 +2,9 @@
  * The retired console routes.
  *
  * `/prompt-studio` folded into the prompt-template Governance tab, `/pstudio`
- * was renamed `/db-studio`, and `/ai-task-defaults` became the
- * platform-default scope of `/ai-platform`. Each keeps a redirect
+ * was renamed `/db-studio`, `/ai-platform` dissolved into `/ai-providers`
+ * (TASK-862) and `/ai-operations/reconciliation` was removed; `/agents`, once a
+ * redirect to `/prompt-templates`, is a real screen again (TASK-863). Each keeps a redirect
  * page for ONE release so bookmarks and deep links survive. These specs lock
  * the exact targets: a typo'd or dropped redirect is a silent 404 for anyone
  * with the old URL saved.
@@ -45,14 +46,16 @@ const RETIRED_ROUTES: ReadonlyArray<readonly [route: string, modulePath: string,
   // of the PromptTemplate surface onto its own route.
   ['/prompt-studio', '../prompt-studio/page', '/prompt-templates?tab=governance'],
   ['/pstudio', '../pstudio/page', '/db-studio'],
-  // a RENAME: the SYSTEM-tenant task-default screen became the
-  // platform-default SCOPE of the unified AI Platform screen, at a new URL. The
-  // stub lives in `(shared)` rather than `(global)` on purpose: the `(global)`
-  // layout `notFound()`s every non-elevated session, so a tenant admin
-  // following an old link would 404 instead of reaching the screen they can
-  // use. Contrast `/tools-mcp`, a route-GROUP change that kept its
-  // URL and therefore takes no stub at all.
-  ['/ai-task-defaults', '../../(shared)/ai-task-defaults/page', '/ai-platform?tab=tasks'],
+  // TASK-862 dissolved the `/ai-platform` hub into the one `/ai-providers`
+  // screen. The stub lives in `(shared)` rather than `(global)` on purpose: the
+  // `(global)` layout `notFound()`s every non-elevated session, so a tenant
+  // admin following an old link would 404 instead of reaching the screen they
+  // can use. (`/ai-task-defaults`, the stub that used to sit here, was deleted
+  // by the same ticket — its window had passed.)
+  ['/ai-platform', '../../(shared)/ai-platform/page', '/ai-providers'],
+  // TASK-862 removed Provider Reconciliation outright; the URL forwards to the
+  // consumption & cost dashboard for one release.
+  ['/ai-operations/reconciliation', '../ai-operations/reconciliation/page', '/ai-operations/consumption'],
 ];
 
 describe('retired route redirects', () => {

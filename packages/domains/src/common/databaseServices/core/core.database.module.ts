@@ -9,14 +9,12 @@ import { AiPriceBookRepository } from '../../../repositories/generated/core/AiPr
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
-import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
 import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
-import { ProviderReconciliationRunRepository } from '../../../repositories/generated/core/ProviderReconciliationRunRepository';
 import { ServiceReleaseRepository } from '../../../repositories/generated/core/ServiceReleaseRepository';
 import { ServiceInstanceRepository } from '../../../repositories/generated/core/ServiceInstanceRepository';
 import { ChangelogEntryRepository } from '../../../repositories/generated/core/ChangelogEntryRepository';
@@ -190,7 +188,6 @@ const repositories = [
   // Config-plane core — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.
   AiProviderConnectionRepository,
-  AiRuntimeProfileRepository,
   // The ordered N-way candidate chain per (tenant, taskKey, policyVersion)
   // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
   // platform default every tenant without its own policy must read.
@@ -262,7 +259,6 @@ const repositories = [
   AiUsageOutboxRepository,
   AiUsageRollupHourlyRepository,
   AiUsageRollupDailyRepository,
-  ProviderReconciliationRunRepository,
   AiPriceBookRepository,
   // Tenant billing plane. BillingInvoice is the ONE
   // OCC-written model of the plane (draft edits + the immutable FINALIZE

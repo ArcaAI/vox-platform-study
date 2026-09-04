@@ -58,7 +58,6 @@ import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admi
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
 import { AiRoutingPolicyModule } from './modules/ai-routing-policy/ai-routing-policy.module';
-import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
 import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-task-instructions.module';
@@ -442,11 +441,11 @@ const featureModules: any[] = [
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiTaskDefault).
   NlpTaskInstructionsModule,
-  // The config-plane core surfaces: /admin/ai-providers
-  // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
-  // (hyperparameter/context/concurrency profiles, super-admin only).
+  // The config-plane core surface: /admin/providers (provider endpoints +
+  // BYO credentials + connection ceilings + test-connection). TASK-862 removed
+  // `/admin/ai-runtime-profiles` (ceilings moved onto the connection row,
+  // hyper-parameters onto the Agent) and the `/admin/ai-providers` alias.
   AiProviderConnectionModule,
-  AiRuntimeProfileModule,
   // /admin/routing-policies — the ordered N-way candidate chain
   // over those two: which providers serve a task, in what order, and what may
   // happen on failure. Super-admin-authored, enforced imperatively.
