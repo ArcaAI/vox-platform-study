@@ -413,6 +413,10 @@ def _system_prompt(
         (
             value
             for value in (
+                # TASK-863 resolves the instruction (a pinned template version's content, or
+                # the inline prompt) once, gateway-side — that text wins over re-reading the
+                # raw instruction here.
+                resolved.resolved_prompt.content if resolved.resolved_prompt is not None else None,
                 instruction.get("systemPrompt"),
                 instruction.get("resolvedPrompt"),
                 instruction.get("content"),
@@ -720,9 +724,7 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
 
     try:
         raw = await _api_client(get_settings()).resolve_agent(
-            slug=slug,
-            tenant_id=payload.tenant_id,
-            version_number=version if isinstance(version, int) else None,
+            slug=slug, tenant_id=payload.tenant_id
         )
         resolved = ResolvedAgent.model_validate(raw)
     except (ApiServiceError, ValueError) as exc:
@@ -732,6 +734,20 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
         )
         return NodeActivityResult(
             status="DEGRADED", reason=f"core.agent: agent `{slug}` did not resolve: {exc}"
+        )
+    if isinstance(version, int) and resolved.version_number != version:
+        # The gateway resolves the ACTIVE published version and takes no pin (TASK-863 §3.4), so
+        # honouring `agentRef.versionNumber` means REFUSING a different one — a pin that ran
+        # whatever is active would be no pin at all. Fails CLOSED, like every other selection.
+        await record_and_flush(
+            payload, status=STATUS_DEGRADED, started=started, error_code="agent_version_drift"
+        )
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=(
+                f"core.agent: `{slug}` is pinned to v{version} but the gateway resolved "
+                f"v{resolved.version_number}"
+            ),
         )
 
     if resolved.task == "TEXT_GENERATION":
