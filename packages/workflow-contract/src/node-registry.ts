@@ -191,6 +191,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.variable',
   }),
   passthrough: Object.freeze({
     key: 'passthrough',
@@ -208,6 +210,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.variable',
   }),
   // -------------------------------------------------------------------------------------------
   // Graph boundary markers (palette-agnostic). The four palette-independent structural rules
@@ -239,6 +243,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'core.end': Object.freeze({
     key: 'core.end',
@@ -256,6 +262,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   // -------------------------------------------------------------------------------------------
   // Summarization palette — five node types, `paletteKey: 'summarization'`. `classes`
@@ -292,6 +300,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'prompt.template_ref': Object.freeze({
     key: 'prompt.template_ref',
@@ -309,6 +319,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'generate.text': Object.freeze({
     key: 'generate.text',
@@ -326,6 +338,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'guardrail.check': Object.freeze({
     key: 'guardrail.check',
@@ -343,6 +357,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'output.deliver': Object.freeze({
     key: 'output.deliver',
@@ -360,6 +376,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   // -------------------------------------------------------------------------------------------
   // STT palette — eight node types, `paletteKey: 'stt'`. See
@@ -557,6 +575,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.captureBinding': Object.freeze({
     key: 'consultation.captureBinding',
@@ -574,6 +594,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // externalWrite for the persist leg (persist_entities), not the extraction itself — see
   // node-types.md's `critical` rationale, third bullet.
@@ -593,6 +615,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.bindTerminology': Object.freeze({
     key: 'consultation.bindTerminology',
@@ -610,6 +634,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.phiHop': Object.freeze({
     key: 'consultation.phiHop',
@@ -627,6 +653,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.retrieveEvidence': Object.freeze({
     key: 'consultation.retrieveEvidence',
@@ -644,6 +672,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.assemblePrompt': Object.freeze({
     key: 'consultation.assemblePrompt',
@@ -661,6 +691,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.synthesize': Object.freeze({
     key: 'consultation.synthesize',
@@ -678,6 +710,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'consultation.sensors': Object.freeze({
     key: 'consultation.sensors',
@@ -695,6 +729,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.inferentialSensors': Object.freeze({
     key: 'consultation.inferentialSensors',
@@ -712,6 +748,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.persistDraft': Object.freeze({
     key: 'consultation.persistDraft',
@@ -729,6 +767,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.finalizeAssurance': Object.freeze({
     key: 'consultation.finalizeAssurance',
@@ -746,6 +786,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // The ONE durable human wait in this substrate (now implemented). The `gate`
   // class is load-bearing on BOTH sides: the compiler lifts a `gate`-classed node out of
@@ -769,6 +811,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.humanReview',
   }),
   // -------------------------------------------------------------------------------------------
   // R3's three missing capabilities (-W3). The owner's R3 asks ONE workflow to
@@ -802,6 +846,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.suggestions': Object.freeze({
     key: 'consultation.suggestions',
@@ -820,6 +866,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'consultation.proposeCorrections': Object.freeze({
     key: 'consultation.proposeCorrections',
@@ -842,6 +890,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // -------------------------------------------------------------------------------------------
   // The ENDPOINT STAGE — the ordered sequence that runs before a consultation session
@@ -886,6 +936,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'summary.finalize': Object.freeze({
     key: 'summary.finalize',
@@ -904,6 +956,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'feedback.capture': Object.freeze({
     key: 'feedback.capture',
@@ -925,6 +979,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // -------------------------------------------------------------------------------------------
   // The TARGET CATALOGUE (/DD-9) and the guards — lane A.
@@ -979,6 +1035,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.phi']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.normalization': Object.freeze({
     key: 'agent.normalization',
@@ -996,6 +1054,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.ner': Object.freeze({
     key: 'agent.ner',
@@ -1015,6 +1075,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // Lane R (R1) — the GRAMMAR/SPELLING pass of the owner's live loop, and the catalogue's
   // realtime sibling of `consultation.proposeCorrections`.
@@ -1056,6 +1118,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // IMPORTANT FINDINGS, the capability the realtime lane audit recorded as
   // absent: "there is no red-flag / critical-value / allergy-alert / severity layer anywhere".
@@ -1117,6 +1181,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // DD-6 — pre-summarization is a NODE, fed from context supplied at runtime, running on-start.
   // It must stay NON-SIGNABLE: `isFinalSummary` excludes `PRE_SUMMARY`, locked by
@@ -1139,6 +1205,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.summarization': Object.freeze({
     key: 'agent.summarization',
@@ -1156,6 +1224,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.discharge_summary': Object.freeze({
     key: 'agent.discharge_summary',
@@ -1173,6 +1243,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze(['guard.groundedness']),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agent.retrieval': Object.freeze({
     key: 'agent.retrieval',
@@ -1190,6 +1262,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agent.feedback': Object.freeze({
     key: 'agent.feedback',
@@ -1208,6 +1282,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // the DNA-redaction pass, migrated out of the resolver flag triple. The
   // department-agent VETO stays retired: this node redacts when the tenant placed it and (by
@@ -1228,6 +1304,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   // ---- Guards -------------------------------------------------------------------------
   // `critical: false` on all three, matching the engines they delegate to
@@ -1250,6 +1328,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'guard.moderation': Object.freeze({
     key: 'guard.moderation',
@@ -1267,6 +1347,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'guard.groundedness': Object.freeze({
     key: 'guard.groundedness',
@@ -1284,6 +1366,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
 
   // ===========================================================================================
@@ -1346,6 +1430,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.trigger',
   }),
   'agentic.output': Object.freeze({
     key: 'agentic.output',
@@ -1363,6 +1449,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.output',
   }),
   'agentic.agent': Object.freeze({
     key: 'agentic.agent',
@@ -1385,6 +1473,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agentic.guardrail': Object.freeze({
     key: 'agentic.guardrail',
@@ -1402,6 +1492,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.action',
   }),
   'agentic.data': Object.freeze({
     key: 'agentic.data',
@@ -1419,6 +1511,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.data',
   }),
   'agentic.loop': Object.freeze({
     key: 'agentic.loop',
@@ -1439,6 +1533,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.loop',
   }),
   'agentic.stt': Object.freeze({
     key: 'agentic.stt',
@@ -1456,6 +1552,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
   'agentic.tts': Object.freeze({
     key: 'agentic.tts',
@@ -1473,6 +1571,8 @@ const WORKFLOW_NODE_REGISTRY_BASE: Readonly<Record<string, Omit<WorkflowNodeDesc
     requires: Object.freeze([]),
     idempotent: true,
     schemaVersion: 1,
+    deprecated: true,
+    replacedBy: 'core.agent',
   }),
 
   // ===========================================================================================
