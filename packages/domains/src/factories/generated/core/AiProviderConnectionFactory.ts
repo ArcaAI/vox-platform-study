@@ -23,6 +23,10 @@ export interface CreateAiProviderConnectionProps extends BaseEntityFactoryCreate
   keyVersion?: IAiProviderConnectionEntity['keyVersion'];
   enabled?: IAiProviderConnectionEntity['enabled'];
   extraJson?: IAiProviderConnectionEntity['extraJson'];
+  maxConcurrent?: IAiProviderConnectionEntity['maxConcurrent'];
+  rpmLimit?: IAiProviderConnectionEntity['rpmLimit'];
+  tpmLimit?: IAiProviderConnectionEntity['tpmLimit'];
+  timeoutS?: IAiProviderConnectionEntity['timeoutS'];
 
   createdAt?: IAiProviderConnectionEntity['createdAt'];
   updatedAt?: IAiProviderConnectionEntity['updatedAt'];
@@ -57,6 +61,10 @@ export class AiProviderConnectionFactory {
       // the consuming service's env configuration. Mirrors the Prisma default.
       enabled: props.enabled ?? false,
       extraJson: props.extraJson ?? null,
+      maxConcurrent: props.maxConcurrent ?? null,
+      rpmLimit: props.rpmLimit ?? null,
+      tpmLimit: props.tpmLimit ?? null,
+      timeoutS: props.timeoutS ?? null,
     });
   }
 }

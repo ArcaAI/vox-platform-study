@@ -1,8 +1,10 @@
-"""Guardrail consumes AiRuntimeProfile rows.
+"""Guardrail applies per-tenant tuning to the delegating judge client.
 
-Guardrail keeps its SQL resolver rather than adopting the HTTP pull
-client; the read is EXTENDED with the provider-level
-runtime profile (temperature / maxTokens / timeoutS).
+Guardrail keeps its SQL resolver rather than adopting the HTTP pull client.
+Since TASK-862 the tuning (temperature / maxTokens / timeoutS) rides on the
+winning `AiRoutingPolicy.configJson` — the `AiRuntimeProfile` table it used to
+come from is retired — but the `GuardrailTenantConfig` contract below is
+unchanged: the fields are optional and absent tuning keeps the policy defaults.
 
 The existing fail-safe posture must not be weakened: profile fields stay optional
 everywhere, and an absent profile leaves the judge policy's own defaults in force.

@@ -4,7 +4,7 @@
 // `GET /api/v1/internal/effective-config`. They are deliberately
 // NOT per-request model selection: Text's stateless-gateway contract
 // (`apps/text/src/text/core/config.py:1-9`) stays intact, and Text's own tunables
-// arrive as `AiRuntimeProfile` rows rather than registry keys.
+// arrive as `AiProviderConnection` ceilings (TASK-862) rather than registry keys.
 //
 // Registering them changes ZERO runtime behaviour: every `default` below is
 // transcribed verbatim from the consuming Python service's own fallback, so a

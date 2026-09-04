@@ -3,4 +3,3 @@ export * from './usage-timeseries.query';
 export * from './cost-per-encounter.query';
 export * from './top-tenants.query';
 export * from './budget-burndown.query';
-export * from './reconciliation-runs.query';

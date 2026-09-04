@@ -68,9 +68,12 @@ export const PROVIDER_SERVICES = ['llm', 'stt', 'tts', 'embeddings', 'rerank', '
  * posture. Same reasoning as `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `ai-task-default`.
  *
- * NOTE: the three new LLM entries (`openai`, `anthropic`, `vertex`) are frozen
- * here at unification time but only become functional when that lands their
- * TEXT adapters + seed rows.
+ * All five LLM entries are LIVE: `apps/text` registers the Azure OpenAI,
+ * Bedrock, OpenAI, Anthropic and Vertex adapters (`text/main.py`), so a tenant
+ * key for any of them is served today. (An earlier note here claimed Anthropic
+ * and Vertex were not yet functional — stale, corrected by TASK-862.)
+ * Sarvam is deliberately NOT an `llm` provider: its adapter is translation-only
+ * and no catalogue model exists for it (TASK-862 D-4).
  */
 export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
   llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],

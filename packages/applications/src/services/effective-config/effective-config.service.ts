@@ -3,7 +3,7 @@
 // Resolves the per-service SERVICE-LEVEL subset that the Python pull clients
 // consume. It is a thin composition over the existing resolvers — the
 // settings-registry effective facade (`global-kv` override lane), the
-// `AiRuntimeProfile` service and the `AiTaskDefault`/`AiModel` pair — and
+// `AiProviderConnection` ceilings (TASK-862) and the `AiTaskDefault`/`AiModel` pair — and
 // deliberately owns no data access of its own.
 //
 // TWO HOUSE CONSTRAINTS, both load-bearing:
@@ -29,8 +29,8 @@
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { IAiRuntimeProfileService } from '../ai-runtime-profile/IAiRuntimeProfileService';
-import type { AiRuntimeProfileResponse } from '../ai-runtime-profile/dto';
+import { IProviderConnectionService } from '../ai-provider-connection/IProviderConnectionService';
+import type { AiProviderConnectionResponse } from '../ai-provider-connection/dto';
 import { AI_TASK_KEYS, type AiTaskKey } from '../ai-task-default/constants';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import type { AiModelService } from '../stt/model/aiModel.service';
@@ -64,11 +64,15 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const NON_DB_SOURCE_SCOPES = new Set(['code-default', 'env-bootstrap']);
 
 /**
- * The services served `runtimeProfiles`. NOT a per-key list — a runtime profile
- * is an `AiRuntimeProfile` ROW, not a registry setting, so it has no descriptor
- * to declare `consumedBy` on. Adding a config KEY never touches this.
+ * The services served `runtimeProfiles`, and the `AiProviderConnection`
+ * SERVICE whose SYSTEM rows supply them. TASK-862: a "runtime profile" on this
+ * wire is now the platform's CONNECTION CEILINGS (`maxConcurrent` / `rpmLimit`
+ * / `tpmLimit` / `timeoutS` on the SYSTEM `llm:<provider>` row), keyed
+ * `modelSlug: ''` (provider-level) — the shape `apps/text`'s pool policy and
+ * lane budgets already read. Hyper-parameters are ALWAYS null here: they moved
+ * to the Agent (TASK-863). `nlp` is served an empty list (no connection plane).
  */
-const RUNTIME_PROFILE_SERVICES: readonly EffectiveConfigServiceName[] = ['text', 'nlp'];
+const RUNTIME_PROFILE_SERVICES: Partial<Record<EffectiveConfigServiceName, 'llm' | null>> = { text: 'llm', nlp: null };
 
 /**
  * Task keys whose selected model a service materialises LOCALLY even though the
@@ -132,19 +136,9 @@ export function matchesDataType(value: unknown, dataType: SettingDataType): bool
   }
 }
 
-/** A row with no opinion on any tunable leaves the service on its own env values. */
-function hasOpinion(row: AiRuntimeProfileResponse): boolean {
-  return (
-    row.temperature !== null ||
-    row.topP !== null ||
-    row.maxTokens !== null ||
-    row.contextLength !== null ||
-    row.maxConcurrent !== null ||
-    row.tpmLimit !== null ||
-    row.rpmLimit !== null ||
-    row.timeoutS !== null ||
-    row.keepAliveSeconds !== null
-  );
+/** A connection with no opinion on any ceiling leaves the service on its own env values. */
+function hasOpinion(row: AiProviderConnectionResponse): boolean {
+  return row.maxConcurrent !== null || row.tpmLimit !== null || row.rpmLimit !== null || row.timeoutS !== null;
 }
 
 @Injectable()
@@ -153,9 +147,9 @@ export class EffectiveConfigService implements IEffectiveConfigService {
 
   constructor(
     private readonly effectiveSettings: EffectiveSettingsService,
-    // Optional so graphs that never serve text/nlp profiles (and unit tests) keep
+    // Optional so graphs that never serve text profiles (and unit tests) keep
     // working; an unwired service yields an empty profile list rather than a 500.
-    @Optional() @Inject(IAiRuntimeProfileService) private readonly runtimeProfiles?: IAiRuntimeProfileService,
+    @Optional() @Inject(IProviderConnectionService) private readonly connections?: IProviderConnectionService,
     // Optional for the same reason: an unwired pair yields NO `modelWeights`
     // block, which is exactly the state every consumer already handles (it is
     // what they saw before the block existed).
@@ -173,8 +167,9 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     // descriptors did not declare for this service.
     const resolved = await this.resolveDeclaredKeys(service);
 
+    const profileSource = RUNTIME_PROFILE_SERVICES[service];
     const [runtimeProfiles, modelWeights] = await Promise.all([
-      RUNTIME_PROFILE_SERVICES.includes(service) ? this.listProfiles() : Promise.resolve(undefined),
+      profileSource === undefined ? Promise.resolve(undefined) : this.listProfiles(profileSource),
       this.resolveModelWeights(service),
     ]);
 
@@ -207,27 +202,37 @@ export class EffectiveConfigService implements IEffectiveConfigService {
     return new Map(entries);
   }
 
-  private async listProfiles(): Promise<EffectiveRuntimeProfile[]> {
-    if (!this.runtimeProfiles) {
+  /**
+   * The platform's ENABLED `AiProviderConnection` rows for one service,
+   * projected onto the runtime-profile wire shape (TASK-862). SYSTEM rows only:
+   * this is a platform-level pull with no tenant in CLS (the controller pins
+   * SYSTEM), and the ceilings on the platform account are what the shared
+   * provider pool must respect. A tenant's own BYO ceilings ride the request
+   * fold instead.
+   */
+  private async listProfiles(service: 'llm' | null): Promise<EffectiveRuntimeProfile[]> {
+    if (service === null || !this.connections) {
       return [];
     }
 
-    const rows = await this.runtimeProfiles.list();
-    return rows.map((row) => ({
-      provider: row.provider,
-      modelSlug: row.modelSlug,
-      temperature: row.temperature,
-      topP: row.topP,
-      maxTokens: row.maxTokens,
-      contextLength: row.contextLength,
-      maxConcurrent: row.maxConcurrent,
-      tpmLimit: row.tpmLimit,
-      rpmLimit: row.rpmLimit,
-      timeoutS: row.timeoutS,
-      keepAliveSeconds: row.keepAliveSeconds,
-      extraJson: row.extraJson,
-      source: hasOpinion(row) ? 'db' : 'env-fallback',
-    }));
+    const rows = await this.connections.list(service, SYSTEM_TENANT_ID);
+    return rows
+      .filter((row) => row.enabled)
+      .map((row) => ({
+        provider: row.provider,
+        modelSlug: '',
+        temperature: null,
+        topP: null,
+        maxTokens: null,
+        contextLength: null,
+        maxConcurrent: row.maxConcurrent,
+        tpmLimit: row.tpmLimit,
+        rpmLimit: row.rpmLimit,
+        timeoutS: row.timeoutS,
+        keepAliveSeconds: null,
+        extraJson: null,
+        source: hasOpinion(row) ? 'db' : 'env-fallback',
+      }));
   }
 
   /**

@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { IActiveUserContext } from '../../interfaces';
-import { IAiRuntimeProfileService } from '../ai-runtime-profile/IAiRuntimeProfileService';
 import { IProviderConnectionService, ResolvedProviderOverrides } from '../ai-provider-connection/IProviderConnectionService';
 import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { assertProviderAvailable } from '../ai-provider-connection/assert-provider-available';
@@ -9,9 +8,11 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
 
 /**
- * The ONE implementation of the two enrichments every outgoing TEXT
+ * The ONE implementation of the enrichments every outgoing TEXT
  * `/api/v1/generate` body must carry: the caller tenant's BYO cloud credential
- * (`provider_overrides`) and the resolved hyperparameter profile.
+ * (`provider_overrides`) and its pushed moderation policy. (The hyperparameter
+ * profile it used to inject went with `AiRuntimeProfile` — TASK-862; generation
+ * parameters and engine extras now belong to the Agent, TASK-863.)
  *
  * Extracted VERBATIM out of `TextProxyController` (BUG-018 defect 3) because a
  * second caller — the prompt-template test bench — was posting to TEXT directly
@@ -29,9 +30,6 @@ export class TextRequestEnrichmentService {
 
   constructor(
     private readonly clsService: ClsService<IActiveUserContext>,
-    @Optional()
-    @Inject(IAiRuntimeProfileService)
-    private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
     @Optional()
     @Inject(IProviderConnectionService)
     private readonly aiProviderConnectionService?: IProviderConnectionService,
@@ -205,53 +203,14 @@ export class TextRequestEnrichmentService {
   }
 
   /**
-   * Inject the resolved hyperparameter profile into the forwarded body.
-   *
-   * Two invariants:
-   *   - CALLER WINS. Only keys the caller did NOT set are filled in, so SDK
-   *     fidelity is preserved exactly as it is for `model`.
-   *   - FAIL-OPEN. A resolver error injects nothing and the request proceeds on
-   *     the service's own env defaults.
-   *
-   * Field names are snake_case to match the TEXT wire contract; TEXT ignores
-   * unknown body fields.
+   * @deprecated TASK-862 — a NO-OP kept for the callers that still chain it
+   * (`prompt-management`, `summary`, `live-documentation`). `AiRuntimeProfile`
+   * is retired; generation hyper-parameters and engine ride-alongs
+   * (`extra_body`, e.g. gemma-4's `reasoning_effort`) are supplied by the
+   * Agent's parameters (TASK-863). Until that lands, a request carries only what
+   * its caller set. Remove the call sites, then this method, in R3.
    */
   async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
-    if (!this.aiRuntimeProfileService || !target.provider || !target.model) {
-      return target;
-    }
-
-    try {
-      const profile = await this.aiRuntimeProfileService.resolveProfile(target.provider, target.model);
-      if (profile.isEmpty) {
-        return target;
-      }
-
-      const body = target as Record<string, unknown>;
-      const assign = (key: string, value: unknown): void => {
-        // `undefined` = caller did not set it. An explicit caller value —
-        // including 0 or false — is preserved.
-        if (value !== null && body[key] === undefined) {
-          body[key] = value;
-        }
-      };
-
-      assign('temperature', profile.temperature);
-      assign('top_p', profile.topP);
-      assign('max_tokens', profile.maxTokens);
-      assign('context_length', profile.contextLength);
-      assign('timeout_s', profile.timeoutS);
-      assign('keep_alive_seconds', profile.keepAliveSeconds);
-      assign('extra', profile.extraJson);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Runtime-profile resolution failed; forwarding without injected parameters (fail-open)',
-        provider: target.provider,
-        model: target.model,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
     return target;
   }
 }

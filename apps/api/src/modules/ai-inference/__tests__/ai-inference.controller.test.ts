@@ -12,7 +12,6 @@ import { SafetyCheckController } from '../safety-check.controller';
 function makeController(
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
   aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
-  aiRuntimeProfileService?: unknown,
   cls?: { get: ReturnType<typeof vi.fn> },
   usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
   tenantNlpTaskInstructionsService?: { getRow: ReturnType<typeof vi.fn> },
@@ -22,7 +21,6 @@ function makeController(
     client as never,
     aiTaskDefaults as never,
     aiModels as never,
-    aiRuntimeProfileService as never,
     cls as never,
     usageLedgerService as never,
     tenantNlpTaskInstructionsService as never,

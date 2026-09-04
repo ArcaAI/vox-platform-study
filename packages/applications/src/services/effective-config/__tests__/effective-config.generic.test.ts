@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 import type { SettingDescriptor } from '../../settings-registry/registry.types';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
+import type { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import { EffectiveConfigService } from '../effective-config.service';
 
 /**
@@ -78,7 +78,7 @@ function settingsStub(overrides: Record<string, unknown> = {}) {
 }
 
 function serviceWith(settings: EffectiveSettingsService): EffectiveConfigService {
-  const runtimeProfiles = { list: vi.fn(async () => []) } as unknown as IAiRuntimeProfileService;
+  const runtimeProfiles = { list: vi.fn(async () => []) } as unknown as IProviderConnectionService;
   return new EffectiveConfigService(settings, runtimeProfiles);
 }
 

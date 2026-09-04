@@ -139,7 +139,6 @@ describe('TextProxyController', () => {
       undefined, // harnessPolicyService
       undefined, // aiModelService
       undefined, // aiTaskDefaultService
-      undefined, // aiRuntimeProfileService
       undefined, // aiProviderConnectionService
       undefined, // usageLedger
       mockDnaWritingStyleService as any,
