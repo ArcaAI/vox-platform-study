@@ -69,10 +69,10 @@ export function reservedIdentityKeysIn(input: Record<string, unknown> | undefine
  *   `externalWrite`, and `consultation.persistDraft` reaches the same activity the real
  *   consultation workflow uses.
  * - `stt` — REFUSED. Not because it is dangerous but because it is not a product on this plane:
- *   every `stt` interpreter node is an explicit registry-parity PLACEHOLDER that returns
- *   `DEGRADED` without doing work (`interpreter/nodes/stt_placeholder.py`). The palette's real
- *   artifact is the `AsrPipeline` compiled at publish time; invoking the graph over REST would
- *   promise transcription and silently deliver nothing.
+ *   the palette is RETIRED (TASK-861 step 10 / TASK-867) — every `stt.*` descriptor is
+ *   `implemented: false`, the interpreter carries no `stt.*` spec or activity any more, and the
+ *   palette's only artifact was the `AsrPipeline` compiled at publish time; invoking such a graph
+ *   over REST would promise transcription and silently deliver nothing.
  *
  * Palette-agnostic node types (`noop`, `passthrough`, `core.start`, `core.end` — `paletteKey:
  * null` in the registry) belong to no palette and are always permitted.

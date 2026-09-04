@@ -1,6 +1,6 @@
 /**
  * The golden suite: table-driven over `__tests__/golden/<ruleId>/`. Each
- * rule in `DRAFT_SUMMARIZATION_RULE_SET` (and, since, `DRAFT_STT_RULE_SET`) gets
+ * rule in every palette catalogue gets
  * a `pass.graph.json` (no finding for that ruleId) and a `fail.graph.json` (at least one finding
  * for that ruleId, right severity). This is the audit artifact turned into executable tests, per
  * strategy — but see `rule-catalogue.ts`'s module docstring: the rule SETs
@@ -9,9 +9,10 @@
  *
  * Multi-palette, table-driven over `ALL_RULES` (both catalogues merged) rather than one palette's
  * array — a rule's `ruleId` prefix is unique across every palette today (`WF-S-*`/`WF-I-*`/
- * `WF-SUMM-*` vs `WF-STT-*`), so one flat fixture-directory namespace and one evaluation context
+ * `WF-SUMM-*` vs `WF-CONS-*` vs `WF-CORE-*`), so one flat fixture-directory namespace and one evaluation context
  * per rule (keyed off the rule's OWN `paletteKey`, not a single hardcoded palette) is sufficient —
  * adding a third palette's rule set here is exactly "append to ALL_RULES", no new mechanism.
+ * (`WF-STT-001..006` and their fixtures were deleted with the retired `stt` palette — TASK-867.)
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,7 @@ import type { WorkflowGraph } from '../graph-model';
 import { workflowNodeClassLookup } from '../node-registry';
 import { evaluatePredicate } from '../predicates';
 import type { WorkflowEvaluationContext } from '../predicates/context';
-import { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
+import { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
 import type { DraftWorkflowRule } from '../rule-catalogue';
 
 const GOLDEN_DIR = path.join(__dirname, 'golden');
@@ -46,19 +47,17 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
 
 const ALL_RULES: readonly DraftWorkflowRule[] = [
   ...DRAFT_SUMMARIZATION_RULE_SET,
-  ...DRAFT_STT_RULE_SET,
   ...DRAFT_CONSULTATION_RULE_SET,
   ...DRAFT_CORE_RULE_SET,
 ];
 
-/** One context per palette a rule can declare — STT's rules select purely by `nodeType`, so its
- *  `classesOf` stub is never consulted, but the shape is kept parallel to the summarization
- *  context for the same "generic engine" reason `validate.ts`'s merge is additive. */
+/** One context per palette a rule can declare — the shape is kept parallel across palettes for
+ *  the same "generic engine" reason `validate.ts`'s merge is additive. */
 function contextFor(paletteKey: string): WorkflowEvaluationContext {
   return {
     paletteKey,
     registry: {
-      // Fixture-local stub FIRST (the summarization/STT fixtures use invented type keys that are
+      // Fixture-local stub FIRST (the summarization fixtures use invented type keys that are
       // deliberately not registered), then the REAL registry — a palette whose rules select by
       // `nodeClass` (consultation's WF-CONS-019) can only be exercised against real classes.
       classesOf: (type: string) => NODE_CLASSES[type] ?? workflowNodeClassLookup.classesOf(type),

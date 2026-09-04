@@ -15,7 +15,9 @@
  * fails on the same day rather than at the next attempt to publish.
  */
 import { describe, expect, it } from 'vitest';
-import { registryChecksum, workflowNodeClassLookup } from '../node-registry';
+import { compile } from '../compiler';
+import type { CompilerContext } from '../compiler';
+import { nodeInfo, registryChecksum, workflowNodeClassLookup } from '../node-registry';
 import { validate } from '../validate';
 import type { WorkflowGraph, WorkflowGraphNode } from '../graph-model';
 
@@ -48,8 +50,6 @@ const SUMMARIZATION = chain(['core.start', 'input.context_binding', 'generate.te
   'generate.text': { onError: 'fail' },
 });
 
-const STT = chain(['core.start', 'stt.audioInput', 'stt.asrEngine', 'stt.transcriptOutput', 'core.end']);
-
 const CONSULTATION = chain(
   [
     'core.start',
@@ -80,7 +80,6 @@ const CONSULTATION = chain(
 
 const CASES = [
   ['summarization', SUMMARIZATION],
-  ['stt', STT],
   ['consultation', CONSULTATION],
 ] as const;
 
@@ -95,6 +94,48 @@ describe("each palette's canonical graph validates against the full rule set", (
       expect(report(graph, paletteKey).ok).toBe(true);
     });
   }
+});
+
+/**
+ * The `stt` palette is RETIRED (TASK-861 step 10 / TASK-867): every `stt.*` descriptor is
+ * `implemented: false`, so its canonical graph is no longer publishable — `compile()` refuses it.
+ * This keeps the refusal observable the same way the cases above keep buildability observable.
+ */
+describe('the retired stt palette: its canonical graph is refused by compile()', () => {
+  const STT = chain(['core.start', 'stt.audioInput', 'stt.asrEngine', 'stt.transcriptOutput', 'core.end']);
+  const ctx: CompilerContext = {
+    definitionId: '018f1e0a-0000-7000-8000-000000000867',
+    slug: 'retired-stt',
+    versionNumber: 1,
+    tenantId: '00000000-0000-0000-0000-000000000000',
+    paletteKey: 'stt',
+    compilerVersion: '0.1.0',
+    registryChecksum: registryChecksum(),
+    ruleSetVersion: 1,
+    caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
+    policyBindings: {
+      guardrailProfile: 'STANDARD',
+      redactionRuleSetId: null,
+      promptTemplateRefs: [],
+      documentTemplateRefs: [],
+      contextSchemaVersionId: null,
+      entitlementKeys: [],
+    },
+    compiledAt: '2026-09-04T00:00:00.000Z',
+    nodeInfo,
+  };
+
+  it('every stt.* node is a WF-C-002 finding; the bookends still resolve', () => {
+    const result = compile(STT, ctx);
+    expect('findings' in result).toBe(true);
+    const findings = 'findings' in result ? result.findings : [];
+    expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-C-002', 'WF-C-002', 'WF-C-002']);
+    expect(findings.map((finding) => finding.nodeId).sort()).toEqual(
+      STT.nodes.filter((node) => node.type.startsWith('stt.')).map((node) => node.id).sort(),
+    );
+    expect(nodeInfo('core.start')).toBeDefined();
+    expect(nodeInfo('core.end')).toBeDefined();
+  });
 });
 
 /**

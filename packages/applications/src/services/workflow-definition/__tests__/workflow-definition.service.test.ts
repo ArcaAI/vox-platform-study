@@ -386,17 +386,20 @@ describe('WorkflowDefinitionService', () => {
         expect(mockEntitlements.isFeatureEnabled).not.toHaveBeenCalled();
       });
 
-      it('publishes an stt-palette workflow when the tenant IS entitled', async () => {
+      it('refuses (400, WF-C-002) an stt-palette publish even when the tenant IS entitled — the palette is retired (TASK-861 step 10 / TASK-867)', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
-        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
         mockEntitlements.isFeatureEnabled.mockResolvedValue(true);
 
-        const result = await service.publish('def-id-1', {});
+        await expect(service.publish('def-id-1', {})).rejects.toBeInstanceOf(BadRequestException);
 
+        // The entitlement gate still runs first (it is the cheaper check) ...
         expect(mockEntitlements.isFeatureEnabled).toHaveBeenCalledWith('tenant-1', 'paletteStt');
-        expect(mockSttPipelineCompiler.compileAndPublish).toHaveBeenCalledTimes(1);
-        expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+        // ... but every `stt.*` descriptor is `implemented: false`, so the real compile() refuses
+        // the graph before the AsrPipeline compiler or any write is reached.
+        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
+        expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+        expect(entity.status).not.toBe(WorkflowDefinitionStatus.PUBLISHED);
       });
 
       it('blocks (does not write, does not compile an AsrPipeline) an stt-palette publish when the tenant is NOT entitled', async () => {
@@ -410,23 +413,21 @@ describe('WorkflowDefinitionService', () => {
       });
     });
 
-    describe('STT pipeline compilation on publish (Task 4)', () => {
-      it('compiles the graph into an AsrPipeline via SttPipelineCompilerService and threads its id/slug into the sys-event', async () => {
+    describe('STT pipeline compilation on publish (Task 4 — unreachable for a real stt graph since TASK-867)', () => {
+      it('never reaches SttPipelineCompilerService: compile() refuses every stt.* node (WF-C-002) first, so nothing is written and no sys-event fires', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
-        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
         mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-42', slug: 'wf-stt-discharge-summary', version: 1 });
 
-        await service.publish('def-id-1', {});
+        const error = await service.publish('def-id-1', {}).catch((e: unknown) => e);
 
-        expect(mockSttPipelineCompiler.compileAndPublish).toHaveBeenCalledWith(
-          expect.objectContaining({ id: 'def-id-1', slug: entity.slug }),
-          expect.objectContaining({ paletteKey: 'stt' }),
-        );
-        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-          SysEventType.ResourceUpdated,
-          expect.objectContaining({ data: expect.objectContaining({ asrPipelineId: 'pipe-42', asrPipelineSlug: 'wf-stt-discharge-summary' }) }),
-        );
+        expect(error).toBeInstanceOf(BadRequestException);
+        const { findings } = (error as BadRequestException).getResponse() as { findings: Array<{ ruleId: string; nodeId?: string }> };
+        expect(findings.map((finding) => finding.ruleId)).toEqual(['WF-C-002', 'WF-C-002', 'WF-C-002']);
+        expect(findings.map((finding) => finding.nodeId).sort()).toEqual(['n_asr', 'n_audio', 'n_out']);
+        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
+        expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+        expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
       });
 
       it('never calls the STT compiler for a non-stt palette', async () => {
@@ -439,15 +440,10 @@ describe('WorkflowDefinitionService', () => {
         expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
       });
 
-      it('aborts the publish (never writes the WorkflowDefinition) when the compiler rejects — e.g. a graph missing stt.asrEngine', async () => {
-        const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
-        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
-        mockSttPipelineCompiler.compileAndPublish.mockRejectedValue(new Error("no 'stt.asrEngine' node"));
-
-        await expect(service.publish('def-id-1', {})).rejects.toThrow(/stt\.asrEngine/);
-        expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
-        expect(entity.status).not.toBe(WorkflowDefinitionStatus.PUBLISHED);
-      });
+      // The former "aborts the publish when the compiler rejects (e.g. a graph missing
+      // stt.asrEngine)" case is subsumed above: the engine gate refuses the graph before
+      // `compileAndPublish` can reject it. `compilers/__tests__/stt-pipeline.compiler.test.ts`
+      // still covers the deprecated compiler's own rejection paths in isolation.
     });
   });
 
