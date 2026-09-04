@@ -53,14 +53,6 @@ import WebSocket from 'ws';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 /**
- * Seeded production ASR pipeline id from
- * `packages/database/src/prisma/db_main/seed/06-stt.ts`
- * (`DEFAULT_ASR_PIPELINES[0]` — `production-whisper-large-v3`).
- * Visible to every customer tenant via the SYSTEM-tenant inheritance.
- */
-const PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000001';
-
-/**
  * uuidv7-shaped sessionId that no tenant has ever seen — no binding exists,
  * so the mint must 404 fail-closed (pre-fix this minted a ticket).
  */
@@ -191,9 +183,12 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
     let sessionCreateFailure = '';
 
     test.beforeAll(async ({ request }) => {
+      // No `pipelineId` / `agentSlug`: `06-stt.ts` seeds no AsrPipeline rows any
+      // more (TASK-861), so the session resolves through the tenant's assigned
+      // ASR agent (`platform-transcription`, SYSTEM cascade, `25-agents.ts`).
       const createResp = await request.post('/api/v1/audio/transcription-jobs/stream/session', {
         headers: { Authorization: `Bearer ${doctorToken}` },
-        data: { pipelineId: PRODUCTION_PIPELINE_ID },
+        data: {},
       });
       if (createResp.status() === 201) {
         const created = (await createResp.json()) as { sessionId: string };
