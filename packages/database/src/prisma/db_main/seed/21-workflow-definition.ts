@@ -82,7 +82,10 @@ export const COMPILED_AT = '2026-08-16T00:00:00.000Z';
 // GRAPH is unchanged; only the checksum it stamps is. It was ALSO stale before that re-run
 // (it still carried the value from the OD-15 regeneration, while three endpoint node
 // types had moved the registry since) — the kind of drift this script exists to make visible.
-const REGISTRY_CHECKSUM = '417ead4b5af8d5a651580fcd04498a93724053f0adaaef8b393fda81afe6b1cc';
+// Re-run 2026-09-04 (TASK-867, the TASK-861 step-10 follow-up): the eight `stt.*` descriptors
+// flipped to `implemented: false`, which moves `registryChecksum()` and therefore this row's
+// `compiledConfig.checksum`; the GRAPH is unchanged. Script drift verdict: 0.
+const REGISTRY_CHECKSUM = '4bb7da74cf0d43e3d8cc8fcd2447aca50d1fe3043b3a58b1951d1546b5337916';
 
 export const GRAPH = {
   version: 1,
@@ -240,7 +243,7 @@ export const COMPILED_CONFIG = {
   },
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
   // sha256 over canonicalJson of every field above (computed by `compile()` — see docstring).
-  checksum: 'b7d27c8e546954525977f269bf508d02972d7f4424c5f82a00e82762d2a55193',
+  checksum: 'bce90b37356d25998490b471b7e6397b21a33b55bd2185eff8159eb5908c935e',
 };
 
 // sha256 over canonicalJson(GRAPH), computed by the same `canonicalJson` the compiler uses.

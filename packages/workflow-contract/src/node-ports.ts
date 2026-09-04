@@ -56,15 +56,15 @@
  *
  * ## The STT tables are DESIGN INTENT, not observed runtime behaviour
  *
- * All eight `stt.*` activities are deliberate non-execution placeholders
- * (`apps/harness/src/harness/temporal/interpreter/nodes/stt_placeholder.py:1-13`): a published
- * STT `WorkflowDefinition` compiles into an `AsrPipeline` row and is dispatched through the
- * existing realtime/batch ASR path, never executed node-by-node by the interpreter. There is no
- * runtime to infer ports from, so the tables below state the pipeline's intended shape as
- * contract documents it (audio in → audio through the pre-processors → transcript
- * out of the engine). `bypass` and `loop` are declared because the committed golden FIXTURES
- * author those port names; declaring them keeps those graphs resolvable, so they fail on the
- * structural rule they were written to exercise rather than on "unknown port".
+ * All eight `stt.*` node types are RETIRED (`implemented: false`, TASK-861 step 10 / TASK-867)
+ * and no interpreter activity exists for them (the former `nodes/stt_placeholder.py` was
+ * deleted). A published STT `WorkflowDefinition` compiled into an `AsrPipeline` row and was
+ * dispatched through the realtime/batch ASR path, never executed node-by-node by the
+ * interpreter. There was never a runtime to infer ports from, so the tables below state the
+ * pipeline's intended shape as the contract documented it (audio in → audio through the
+ * pre-processors → transcript out of the engine). `bypass` and `loop` were declared because
+ * the (since deleted) WF-STT golden fixtures authored those port names; the tables stay for the
+ * deprecation window so already-published graphs remain resolvable.
  */
 import type { WorkflowPortDescriptor } from './port-model';
 
