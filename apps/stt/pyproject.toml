@@ -132,8 +132,10 @@ ml = [
     # Speaker diarization — pyannote embedding extraction
     # NOTE: pyannote.audio 4.x pins torch==2.8.0 and torchaudio==2.8.0 internally
     "pyannote.audio>=3.3.0",
-    # SpeechBrain
-    "speechbrain>=1.0.0",
+    # SpeechBrain — pinned (TASK-860): 1.0.x carries the offline-fetch defect
+    # (speechbrain#2817) that broke loading a pre-staged local source; the
+    # embedding service also passes `savedir=<source>` for local dirs.
+    "speechbrain>=1.1.0,<1.2",
     # omegaconf — required by pyannote.audio for model config loading
     "omegaconf>=2.3.1",
     # torchcodec — pulled in by pyannote.audio; must match torch version.
@@ -141,7 +143,12 @@ ml = [
     # Requires FFmpeg 6.x installed via conda (torchcodec links libavutil.58).
     "torchcodec>=0.6.0,<0.8.0",
     "optimum==2.1.0",
-    "transformers==5.5.4",
+    # transformers — TASK-860 D-3: `AutoModelForRNNT` (Nemotron / Parakeet
+    # transducer heads, `nemotron-3.5-asr-streaming-0.6b`) ships in 5.13.
+    # The loader is version-gated and fails closed with a named error below
+    # this floor; verify against optimum 2.1 / pywhispercpp / torch 2.8 on
+    # `uv lock` (previous pin: 5.5.4).
+    "transformers>=5.13.0,<6",
     "torchvision>=0.23.0,<0.24.0",
     # faster-whisper / CTranslate2 ASR engine.
     # Lazy-imported in stt.models.faster_whisper_loader — only needed at
@@ -154,11 +161,12 @@ ml = [
     # Its latest release (0.5.6) hard-pins numpy>=1.22,<2.0 and packaging<24.0,
     # which are incompatible with this stack's numpy 2.x (torch 2.8, scipy 1.17,
     # librosa) — pip cannot resolve it and it has no numpy-2.x release upstream.
-    # rnnoise (pyrnnoise, above) is the frame-accurate default denoise engine;
-    # the `deepfilternet3` engine option degrades gracefully to a no-op with a
-    # warning when the package is absent (see preprocessing.py /
-    # streaming/deepfilternet_denoiser.py). Re-add here only if a numpy-2.x
-    # compatible deepfilternet ships upstream.
+    # rnnoise (pyrnnoise, above) is the frame-accurate default denoise engine.
+    # Since TASK-860 the `deepfilternet3` engine option FAILS CLOSED when the
+    # package is absent (streaming/deepfilternet_denoiser.py raises
+    # ModelLoadError) — a selected denoiser never silently no-ops. Add a
+    # numpy-2.x compatible build (git ref or vendored `df` runtime) here to
+    # make the registry row `deepfilternet3` serviceable.
 ]
 
 nemo = [

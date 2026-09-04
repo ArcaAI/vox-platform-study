@@ -13,4 +13,6 @@ export const aiModelKeys = {
   download: (id: string) => [...aiModelKeys.root, 'download', id] as const,
   /** Read-only status of the SYSTEM `model-registry`/`s3` provider connection. */
   modelRegistryConnection: () => [...aiModelKeys.root, 'model-registry-connection'] as const,
+  /** The most recent inventory report (written by the run mutation, read by the unregistered panel). */
+  inventory: () => [...aiModelKeys.root, 'inventory'] as const,
 };

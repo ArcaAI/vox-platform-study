@@ -1,673 +1,48 @@
 /**
- * AI Model Registry Consolidation seed invariants
+ * AI task-default + companion seed invariants (post-consolidation).
  *
  * Static + mock-client assertions over the EXPORTED seed data (no live DB),
  * following the conventions of `seed.test.ts` (this dir) and
- * `src/__tests__/seed.test.ts`. Locks the 60 → 26 catalog consolidation:
+ * `src/__tests__/seed.test.ts`:
  *
- *   1. The final `DEFAULT_AI_MODELS` catalog is EXACTLY the 26 expected slugs,
- *      ids/slugs unique, every `provider` canonical, all 5 TTS rows carry a
- *      non-empty `metaData.voices`, and `indic-f5` seeds DISABLED (prod
- *      NO-GO).
- *   2. `RETIRED_AI_MODEL_SLUGS` is exactly the 50 original retired slugs plus
- * the 3 Ollama slugs retires (53 total), disjoint from the
- *      catalog, and retired ∪ keepers === the previous 60-row catalog plus
- *      those 3.
- *   3. Regression lock — every slug referenced by seeded pipeline YAML
- *      (`models:` blocks) resolves to a catalog slug, and the 8
- *      pipeline-referenced slugs all survive the consolidation.
- *   4. The pipeline-reference retirement guard skips referenced slugs and
- *      retires unreferenced ones (incl. the prefix-collision case:
- *      `whisper-large-v3` must NOT be blocked by `whisper-large-v3-turbo`).
- *   5. The SYSTEM `AiTaskDefault` seed rows reference catalog slugs with the
- *      compatible `taskType`, and the seed step is CREATE-ONLY.
- *   6. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
+ *   1. The SYSTEM `AiTaskDefault` seed rows reference catalogue slugs with the
+ *      compatible `taskType` (or a slug in the retirement ledger — a retired
+ *      selection fails closed exactly as a DISABLED one did), and the seed
+ *      step is CREATE-ONLY.
+ *   2. Companion updates: HarnessPolicy TEXT default → `gemma-4-e2b-it-qat`;
  *      the six superseded GlobalSetting keys are gone from the seeded arrays
  *      and covered by the idempotent soft-retire sweep; tenant admins hold
  *      read+manage on `AiTaskDefault`.
+ *
+ * The model CATALOGUE itself (35 SYSTEM rows, the retirement ledger, the
+ * pipeline-reference guard and the sweeps) is pinned by
+ * `ai-model-registry-seed.test.ts` since TASK-860.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 
-import * as stt from '../06-stt';
+import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS } from '../06-ai-models';
+import { ModelTaskType } from '../ai-models/shared';
 import * as globalSetting from '../11-global-setting';
 import { SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../13-harness-policy';
 import { DEFAULT_POLICIES } from '../01-policy';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 
-const { DEFAULT_AI_MODELS, DEFAULT_ASR_PIPELINES, CUSTOMER_TENANT_ASR_PIPELINES, GLOBAL_TENANT_ASR_PIPELINES, ModelTaskType } = stt;
-
 // Loose views over exports that only exist after the seed consolidation
 // lands (namespace access keeps this file compiling against the OLD seed so
 // the TDD RED run shows real assertion failures, not transform errors).
-const RETIRED_AI_MODEL_SLUGS = (stt as Record<string, unknown>).RETIRED_AI_MODEL_SLUGS as readonly string[] | undefined;
-const shouldRetireAiModelSlug = (stt as Record<string, unknown>).shouldRetireAiModelSlug as
-  ((slug: string, yamls: readonly string[]) => boolean) | undefined;
-const retireLegacyAiModels = (stt as Record<string, unknown>).retireLegacyAiModels as
-  ((client: unknown) => Promise<{ retired: number; skipped: string[] }>) | undefined;
 const RETIRED_GLOBAL_SETTING_KEYS = (globalSetting as Record<string, unknown>).RETIRED_GLOBAL_SETTING_KEYS as
   ReadonlyArray<{ namespace: string; key: string }> | undefined;
 const retireSupersededGlobalSettings = (globalSetting as Record<string, unknown>).retireSupersededGlobalSettings as
   ((client: unknown) => Promise<{ retired: number }>) | undefined;
 
-// =============================================================================
-// Expected catalog — the 10 keepers + 16 new rows
-// =============================================================================
-
-const KEEPER_SLUGS = [
-  'whisper-large-v3-turbo',
-  'whisper-small',
-  'faster-whisper-large-v3-turbo-int8',
-  'azure-speech-stt',
-  'mai-transcribe-1.5',
-  'nemotron-3.5-asr-streaming-0.6b',
-  // renamed from `silero-vad-v6` to match the v5 onnx-community
-  // model the stt runtime actually loads.
-  'silero-vad',
-  'rnnoise',
-  'ecapa-tdnn-voxceleb',
-  'granite-guardian-4.1-8b',
-] as const;
-
-// Ollama slugs removed entirely (owner directive 2026-08-16); see
-// EXPECTED_RETIRED_SLUGS below for their ledger entries.
-const NEW_LLM_SLUGS = [
-  'lms-gemma-4-e2b-it-qat',
-  'lms-gemma-4-e4b-it-qat',
-  'lms-gemma-4-medical-icd10',
-  'lms-gemma-4-12b-qat',
-  'lms-medgemma-1.5-4b-it',
-  'azure-gpt-5.4-mini',
-] as const;
-
-// completes the owner's three-model safety roster: the dedicated PII
-// span model, the JOINT PII+safety checkpoint, and the classification-only
-// LLM-guardrails model.
-const NEW_NLP_SLUGS = ['medical-ner', 'symps-disease-bert-v3-c41', 'gliguard-llm-guardrails-300m', 'gliner2-privacy-filter-pii-multi', 'gliner2-guardrails-pii-multi'] as const;
-
-const NEW_TTS_SLUGS = ['azure-neural-voices', 'kokoro', 'sarvam-bulbul', 'indic-parler-tts', 'indic-f5'] as const;
-
-// Two rows added on top of the closed 60→26
-// consolidation: a whisper.cpp GGUF ASR engine and a reinstated
-// DeepFilterNet3 denoise engine (fresh slug — NOT the retired
-// `deepfilternet-v3`; see EXPECTED_RETIRED_SLUGS below).
-const TASK_507_NEW_SLUGS = ['whisper-large-v3-turbo-gguf', 'deepfilternet3'] as const;
-
-// additive production
-// self-host engine rows: a vLLM (SAFETENSOR/GPU) and a llama.cpp (GGUF) LLM.
-const TASK_515_NEW_SLUGS = ['vllm-medgemma-1.5-27b-it', 'llama-cpp-medgemma-1.5-4b-it'] as const;
-
-// catalog rows for engines the code supports but the seed lacked:
-// a Bedrock LLM, the harness LLM-as-judge (google/gemma-4-e4b), the MiniCheck
-// groundedness fact-checker, the Cadence STT punctuation model, a pyannote
-// WeSpeaker diarization embedding (STT code default), and a DISABLED doc-type
-// classifier placeholder that `nlp.classification` now points at.
-const TASK_524_NEW_SLUGS = [
-  'bedrock-claude-3.5-haiku',
-  'lms-gemma-4-e4b',
-  'minicheck-flan-t5-large',
-  'nlp-doc-type-classifier',
-  'cadence-punctuation',
-  'wespeaker-voxceleb-resnet34',
-] as const;
-
-// Tenant BYOK STT fallback engines (cloud REST catalog metadata for
-// the fallback-candidate picker; the pipeline YAML reaches them via the
-// `provider :: model` shorthand, so their Prisma `format` is CLOUD_API).
-const TASK_567_NEW_SLUGS = ['sarvam-saaras-v4', 'openai-gpt4o-transcribe'] as const;
-
-// ArcaAI in-house Malayalam+English code-switch full fine-tune of
-// whisper-large-v3-turbo, served via whisper.cpp GGUF (matrix #10).
-const ARCAAI_ML_EN_NEW_SLUGS = [
-  'arcaai-whisper-large-ml-en-gguf',
-  'arcaai-whisper-large-ml-en-gguf-q8_0',
-  'arcaai-whisper-large-ml-en',
-] as const;
-
-// Backfilled from live models created ad hoc in the admin console
-// (referenced by the ARCAAI_MANUAL_ASR_PIPELINES / GLOBAL_MANUAL_ASR_PIPELINES
-// tenant-only pipeline seeds in 06-stt.ts).
-const ADMIN_CONSOLE_BACKFILL_NEW_SLUGS = [
-  'arcaai-whisper-large-ml-en-ct2',
-  'whisper-large-en-medical-260726-merged-gguf',
-  'whisper-large-en-medical-260726-merged-ct2',
-] as const;
-
-// The first ModelCategory.VISION catalog row: the SAME LM Studio
-// weights as `lms-medgemma-1.5-4b-it` (a 4B MedGemma checkpoint is natively
-// multimodal), catalogued under a distinct slug/taskType for image+text
-// extraction. Catalogued but NOT loaded on the dev instance (see the "not
-// loaded" LM_STUDIO_SOURCE_URIS entry below) — no AiTaskDefault selects it.
-const TASK_657_NEW_SLUGS = ['lms-medgemma-1.5-4b-it-vision'] as const;
-
-// the q8_0 build of the in-house EN-medical whisper.cpp repo. A
-// separate row rather than a `computeType` edit on the f16 one, because
-// `computeType` is what selects the GGUF FILE inside the repo.
-const TASK_858_NEW_SLUGS = ['whisper-large-en-medical-260726-merged-gguf-q8_0'] as const;
-
-const EXPECTED_CATALOG_SLUGS = [
-  ...KEEPER_SLUGS,
-  ...NEW_LLM_SLUGS,
-  ...NEW_NLP_SLUGS,
-  ...NEW_TTS_SLUGS,
-  ...TASK_507_NEW_SLUGS,
-  ...TASK_515_NEW_SLUGS,
-  ...TASK_524_NEW_SLUGS,
-  ...TASK_567_NEW_SLUGS,
-  ...ARCAAI_ML_EN_NEW_SLUGS,
-  ...ADMIN_CONSOLE_BACKFILL_NEW_SLUGS,
-  ...TASK_657_NEW_SLUGS,
-  ...TASK_858_NEW_SLUGS,
-] as const;
-
-// The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
-const EXPECTED_RETIRED_SLUGS = [
-  // ASR
-  'whisper-large-v3',
-  'whisper-medium',
-  'faster-whisper-large-v3',
-  'parakeet-ctc-1.1b',
-  // VAD
-  'silero-vad-v4',
-  'silero-vad-v5',
-  'pyannote-vad',
-  // Noise
-  'deepfilternet-v3',
-  'nvidia-cleanunet',
-  // Server-side ONNX whisper
-  'whisper-large-v3-turbo-onnx',
-  'whisper-large-v3-onnx',
-  'whisper-medium-onnx',
-  'whisper-small-onnx',
-  // Ollama LLMs
-  'ollama-qwen3.5-27b',
-  'ollama-qwen3.5-latest',
-  'ollama-translategemma-12b',
-  'ollama-translategemma-latest',
-  'ollama-medgemma-27b-text-q4km',
-  'ollama-gemma3-latest',
-  'ollama-gemma3n-e2b',
-  'ollama-gpt-oss-latest',
-  'ollama-gemma3n-latest',
-  'ollama-granite4-tiny-h',
-  'ollama-granite4-latest',
-  // Ollama LLMs (Ollama removed entirely, owner directive 2026-08-16)
-  'ollama-gemma4-12b-mlx',
-  'ollama-gemma4-e2b-it-qat',
-  'ollama-qwen3.5-2b',
-  // Azure OpenAI
-  'gpt-4',
-  'gpt-4o',
-  'gpt-4o-mini',
-  // Bedrock
-  'claude-3-haiku',
-  'claude-3.5-sonnet',
-  // OpenAI-compatible
-  'local-model-openai-compat',
-  // LM Studio
-  'lms-qwen3.5-4b',
-  'lms-qwen3.5-0.8b',
-  'lms-qwen3.5-9b',
-  'lms-qwen3.5-35b-a3b',
-  'lms-lfm2-24b-a2b',
-  'lms-glm-4.6v-flash',
-  'lms-lfm2.5-1.2b-instruct',
-  'lms-lfm2.5-1.2b-thinking',
-  'lms-lfm2.5-vl-1.6b',
-  'lms-translategemma-27b-it',
-  'lms-gemma-4-e2b-it-sft-rlvr-medical',
-  'lms-medgemma-1.5-4b-unsloth',
-  'lms-gpt-oss-20b',
-  // Browser-local whisper
-  'whisper-tiny',
-  'whisper-base',
-  'whisper-small-local',
-  'whisper-medium-local',
-  'whisper-tiny-en',
-  'whisper-base-en',
-  'whisper-small-en',
-] as const;
-
-const ALLOWED_PROVIDERS = ['lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'vllm', 'llama-cpp'];
-
-// The 8 slugs referenced by seeded pipeline `models:` blocks (regression lock).
-const PIPELINE_REFERENCED_SLUGS = [
-  'whisper-large-v3-turbo',
-  'silero-vad',
-  'rnnoise',
-  'faster-whisper-large-v3-turbo-int8',
-  'whisper-small',
-  'azure-speech-stt',
-  'mai-transcribe-1.5',
-  'nemotron-3.5-asr-streaming-0.6b',
-  'arcaai-whisper-large-ml-en-gguf',
-  'arcaai-whisper-large-ml-en-gguf-q8_0',
-  'arcaai-whisper-large-ml-en',
-] as const;
-
-type SeedModel = (typeof DEFAULT_AI_MODELS)[number] & {
-  provider?: string | null;
-  architecture?: string | null;
-  metaData?: { voices?: Array<{ id: string; locale: string }>; azureDeployment?: string };
-  resourceStatus?: string;
-};
+type SeedModel = (typeof DEFAULT_AI_MODELS)[number];
 
 const catalog = DEFAULT_AI_MODELS as readonly SeedModel[];
 const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 
 // =============================================================================
-// 1. Final catalog shape
-// =============================================================================
-
-describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 46 expected slugs (46 minus 3 Ollama rows, +1 net from the guardrail split, +1 from the joint model, +1 from the q8_0 medical ASR row)', () => {
-    const slugs = catalog.map((m) => m.slug).sort();
-    expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    // added `gliner2-guardrails-pii-multi`, completing the three-model
-    // roster; added the q8_0 build of the EN-medical whisper.cpp repo.
-    expect(catalog.length).toBe(46);
-  });
-
-  it('seeds no row with provider "ollama" (Ollama removed entirely)', () => {
-    catalog.forEach((m) => {
-      expect(m.provider, `model ${m.slug} still carries provider 'ollama'`).not.toBe('ollama');
-    });
-  });
-
-  it('has unique ids and unique slugs', () => {
-    const ids = catalog.map((m) => m.id);
-    const slugs = catalog.map((m) => m.slug);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(new Set(slugs).size).toBe(slugs.length);
-  });
-
-  it('keeps every row on the SYSTEM tenant', () => {
-    catalog.forEach((m) => expect(m.tenantId).toBe(SYSTEM_TENANT_ID));
-  });
-
-  it('sets a canonical provider on every row', () => {
-    catalog.forEach((m) => {
-      expect(ALLOWED_PROVIDERS, `model ${m.slug} has provider ${String(m.provider)}`).toContain(m.provider);
-    });
-  });
-
-  it('gives all 5 TTS rows a non-empty metaData.voices catalog ({id, locale} entries)', () => {
-    const ttsRows = catalog.filter((m) => m.taskType === 'TEXT_TO_SPEECH');
-    expect(ttsRows.map((m) => m.slug).sort()).toEqual([...NEW_TTS_SLUGS].sort());
-    ttsRows.forEach((m) => {
-      const voices = m.metaData?.voices;
-      expect(Array.isArray(voices), `TTS model ${m.slug} missing metaData.voices`).toBe(true);
-      expect(voices!.length).toBeGreaterThan(0);
-      voices!.forEach((v) => {
-        expect(typeof v.id).toBe('string');
-        expect(v.id.length).toBeGreaterThan(0);
-        expect(typeof v.locale).toBe('string');
-        expect(v.locale.length).toBeGreaterThan(0);
-      });
-    });
-  });
-
-  it('seeds indic-f5 + the doc-type placeholder DISABLED and no other row with a non-default status', () => {
-    // indic-f5 — prod NO-GO; nlp-doc-type-classifier —
-    // explicit fail-closed placeholder (no doc-type model deployed yet).
-    const disabledSlugs = ['indic-f5', 'nlp-doc-type-classifier'];
-    disabledSlugs.forEach((slug) => expect(bySlug(slug)?.resourceStatus).toBe('DISABLED'));
-    catalog.filter((m) => !disabledSlugs.includes(m.slug)).forEach((m) => expect(m.resourceStatus).toBeUndefined());
-  });
-
-  it('backfills provider/architecture on the keepers per spec', () => {
-    const expectations: Array<[string, string, string | null]> = [
-      ['whisper-large-v3-turbo', 'built-in', 'whisper'],
-      ['whisper-small', 'built-in', 'whisper'],
-      ['faster-whisper-large-v3-turbo-int8', 'built-in', 'whisper'],
-      ['azure-speech-stt', 'azure', null],
-      ['mai-transcribe-1.5', 'azure', null],
-      ['nemotron-3.5-asr-streaming-0.6b', 'built-in', null],
-      ['silero-vad', 'built-in', 'silero'],
-      ['rnnoise', 'built-in', null],
-      ['ecapa-tdnn-voxceleb', 'built-in', 'ecapa-tdnn'],
-      ['granite-guardian-4.1-8b', 'lm-studio', 'granite'],
-    ];
-    expectations.forEach(([slug, provider, architecture]) => {
-      const m = bySlug(slug);
-      expect(m, `missing keeper ${slug}`).toBeDefined();
-      expect(m?.provider, `${slug} provider`).toBe(provider);
-      expect(m?.architecture ?? null, `${slug} architecture`).toBe(architecture);
-    });
-  });
-
-  it('keeps granite-guardian-4.1-8b a GUARDRAIL/GGUF NLP row with the lm-studio sourceUri', () => {
-    const granite = bySlug('granite-guardian-4.1-8b');
-    expect(granite?.taskType).toBe('GUARDRAIL');
-    expect(granite?.format).toBe('GGUF');
-    expect(granite?.sourceUri).toBe('granite-guardian-4.1-8b');
-    expect(granite?.category).toBe('NLP');
-  });
-
-  it('marks lms-gemma-4-e2b-it-qat as the platform text/summarization default (tags)', () => {
-    const row = bySlug('lms-gemma-4-e2b-it-qat');
-    expect(row).toBeDefined();
-    expect(row?.tags).toContain('default');
-    expect(row?.tags).toContain('summarization');
-    expect(row?.provider).toBe('lm-studio');
-    expect(row?.sourceUri).toBe('gemma-4-e2b-it-qat');
-  });
-
-  it('seeds azure-gpt-5.4-mini as a CLOUD_API row with an empty azureDeployment placeholder', () => {
-    const row = bySlug('azure-gpt-5.4-mini');
-    expect(row?.format).toBe('CLOUD_API');
-    expect(row?.provider).toBe('azure');
-    expect(row?.sourceUri).toBe('gpt-5.4-mini');
-    expect(row?.memorySizeMb).toBe(0);
-    expect(row?.metaData?.azureDeployment).toBe('');
-  });
-
-  // The first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
-  it('seeds lms-medgemma-1.5-4b-it-vision as the first ModelCategory.VISION row', () => {
-    const row = bySlug('lms-medgemma-1.5-4b-it-vision');
-    expect(row).toBeDefined();
-    expect(row?.category).toBe('VISION');
-    expect(row?.taskType).toBe('IMAGE_TEXT_TO_TEXT');
-    expect(row?.provider).toBe('lm-studio');
-    expect(row?.sourceUri).toBe('medgemma-1.5-4b-it');
-    expect(row?.tags).toContain('vision');
-  });
-
-  it('is the ONLY row using ModelCategory.VISION or IMAGE_TEXT_TO_TEXT before this', () => {
-    const visionRows = catalog.filter((m) => m.category === 'VISION' || m.taskType === 'IMAGE_TEXT_TO_TEXT');
-    expect(visionRows.map((m) => m.slug)).toEqual(['lms-medgemma-1.5-4b-it-vision']);
-  });
-
-  // ===========================================================================
-  // LM Studio identifier parity with the live instance
-  // ===========================================================================
-  //
-  // `sourceUri` on an `lm-studio` row IS the LM Studio model id sent as
-  // `model` on the OpenAI-compatible wire — a wrong identifier is not a
-  // cosmetic drift, it is a guaranteed 404 at request time. That is exactly
-  // how `harness.judge` broke: the seed carried `google/gemma-4-e4b-qat`
-  // (never served) while the live instance serves `google/gemma-4-e4b`
-  // (without the `-qat` suffix) — the reverse of what an earlier revision of
-  // this file and `llm.ts` both asserted.
-  //
-  // Re-verified against the dev instance on 2026-08-16 (superseding the
-  // 2026-08-10 pin, which asserted the wrong id for the e4b judge model).
-  const LIVE_LM_STUDIO_MODEL_IDS = [
-    'gemma-4-e2b-it-qat',
-    'gemma-4-e4b-it-qat',
-    'granite-guardian-4.1-8b',
-    'google/gemma-4-e4b',
-    'text-embedding-nomic-embed-text-v1.5',
-  ] as const;
-
-  // Every `lm-studio` catalogue row, pinned. Rows flagged `loaded: false` are
-  // catalogued-but-not-installed on THIS host: the identifier is
-  // provider-correct, the weights are simply not loaded here. That is a
-  // legitimate catalogue state and is NOT the same defect as a wrong id.
-  const LM_STUDIO_SOURCE_URIS: ReadonlyArray<readonly [slug: string, sourceUri: string, loaded: boolean]> = [
-    ['granite-guardian-4.1-8b', 'granite-guardian-4.1-8b', true],
-    ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat', true],
-    ['lms-gemma-4-e4b', 'google/gemma-4-e4b', true],
-    ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat', true],
-    ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10', false],
-    ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat', false],
-    ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it', false],
-    // The vision row reuses the SAME sourceUri as the text-only
-    // row above (one set of weights, two catalog entries for two task types).
-    ['lms-medgemma-1.5-4b-it-vision', 'medgemma-1.5-4b-it', false],
-  ] as const;
-
-  it.each(LM_STUDIO_SOURCE_URIS)('pins the LM Studio identifier of %s to %s', (slug, sourceUri) => {
-    const row = bySlug(slug);
-    expect(row, `missing lm-studio row ${slug}`).toBeDefined();
-    expect(row?.provider).toBe('lm-studio');
-    expect(row?.sourceUri).toBe(sourceUri);
-  });
-
-  it('covers every lm-studio catalogue row in the identifier pin', () => {
-    const pinned = new Set(LM_STUDIO_SOURCE_URIS.map(([slug]) => slug));
-    const actual = catalog.filter((m) => m.provider === 'lm-studio').map((m) => m.slug);
-    expect([...actual].sort()).toEqual([...pinned].sort());
-  });
-
-  it('resolves every row marked loaded against a real live LM Studio model id', () => {
-    const live = new Set<string>(LIVE_LM_STUDIO_MODEL_IDS);
-    LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => loaded).forEach(([slug, sourceUri]) => {
-      expect(live.has(sourceUri), `${slug} claims to be loaded but ${sourceUri} is not served by the instance`).toBe(true);
-    });
-  });
-
-  it('says "not loaded" in the description of every catalogued-but-not-installed row', () => {
-    LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => !loaded).forEach(([slug]) => {
-      expect(bySlug(slug)?.description, `${slug} must declare that it is not loaded on the dev instance`).toMatch(/not loaded/i);
-    });
-  });
-
-  it('points every elected-default-referenced lm-studio row at a loaded model', async () => {
-    const { SYSTEM_TASK_DEFAULT_ROUTING } = (await import('../16-ai-routing-policy')) as {
-      SYSTEM_TASK_DEFAULT_ROUTING: Array<{ taskKey: string; modelSlug: string }>;
-    };
-    const loadedSlugs = new Set(LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => loaded).map(([slug]) => slug));
-    const lmStudioSlugs = new Set(LM_STUDIO_SOURCE_URIS.map(([slug]) => slug));
-    SYSTEM_TASK_DEFAULT_ROUTING.filter((row) => lmStudioSlugs.has(row.modelSlug)).forEach((row) => {
-      expect(loadedSlugs.has(row.modelSlug), `AiRoutingPolicy default ${row.taskKey} selects ${row.modelSlug}, which is not loaded`).toBe(true);
-    });
-  });
-
-  // ===========================================================================
-  // Catalog ⊆ instance — the check that would have caught the
-  // `harness.judge` id-drift defect. Hard-coded fixture, no network call.
-  // Deliberately a SUBSET assertion, not equality: the live instance also
-  // serves qwen/bonsai/veena/etc. models HOPE deliberately does not catalog
-  // (curated subset, not a mirror of "whatever happens to be installed").
-  // ===========================================================================
-  const LM_STUDIO_INSTANCE_SERVED_IDS_20260816 = [
-    'gemma-4-e2b-it-qat',
-    'gemma-4-e4b-it-qat',
-    'google/gemma-4-e2b',
-    'google/gemma-4-e4b',
-    'google/gemma-4-12b-qat',
-    'google/gemma-4-31b-qat',
-    'google/gemma-4-26b-a4b-qat',
-    'granite-guardian-4.1-8b',
-    'granite-guardian-3.3-8b',
-    'gemma-4-medical-icd10',
-    'gemma-4-e2b-it-sft-rlvr-medical',
-    'medgemma-27b-text-it',
-    'medgemma-1.5-4b-it',
-    'mediphi',
-    'text-embedding-nomic-embed-text-v1.5',
-    'text-embedding-bge-m3',
-    'text-embedding-embeddinggemma-300m',
-    'text-embedding-embeddinggemma-300m-qat',
-  ] as const;
-
-  it('keeps every ENABLED lm-studio catalog sourceUri inside the live instance catalog (verified 2026-08-16)', () => {
-    const served = new Set<string>(LM_STUDIO_INSTANCE_SERVED_IDS_20260816);
-    catalog
-      .filter((m) => m.provider === 'lm-studio' && m.resourceStatus !== 'DISABLED')
-      .forEach((m) => {
-        expect(served.has(m.sourceUri), `${m.slug} sourceUri "${m.sourceUri}" is not served by the live LM Studio instance (2026-08-16)`).toBe(
-          true,
-        );
-      });
-  });
-
-  it('seeds the two NLP task models from HuggingFace with the right taskTypes', () => {
-    const ner = bySlug('medical-ner');
-    expect(ner?.taskType).toBe('TOKEN_CLASSIFICATION');
-    expect(ner?.sourceUri).toBe('blaze999/Medical-NER');
-    expect(ner?.source).toBe('HUGGINGFACE');
-    const cls = bySlug('symps-disease-bert-v3-c41');
-    expect(cls?.taskType).toBe('TEXT_CLASSIFICATION');
-    expect(cls?.sourceUri).toBe('shanover/symps_disease_bert_v3_c41');
-    expect(cls?.source).toBe('HUGGINGFACE');
-    expect(cls?.architecture).toBe('bert');
-  });
-});
-
-// =============================================================================
-// 2. Retired-slug ledger
-// =============================================================================
-
-describe('RETIRED_AI_MODEL_SLUGS ledger', () => {
-  it('is exactly the 53 expected retired slugs (50 original + 3 Ollama from)', () => {
-    expect(RETIRED_AI_MODEL_SLUGS).toBeDefined();
-    expect([...(RETIRED_AI_MODEL_SLUGS ?? [])].sort()).toEqual([...EXPECTED_RETIRED_SLUGS].sort());
-    expect(RETIRED_AI_MODEL_SLUGS?.length).toBe(53);
-  });
-
-  it('is disjoint from the live catalog slugs', () => {
-    const catalogSlugs = new Set(catalog.map((m) => m.slug));
-    (RETIRED_AI_MODEL_SLUGS ?? []).forEach((slug) => {
-      expect(catalogSlugs.has(slug), `${slug} is both retired and in the catalog`).toBe(false);
-    });
-  });
-
-  it('together with the 10 keepers accounts for the previous 60-row catalog plus the 3  Ollama retirements (63)', () => {
-    const union = new Set([...(RETIRED_AI_MODEL_SLUGS ?? []), ...KEEPER_SLUGS]);
-    expect(union.size).toBe(63);
-  });
-
-  it('contains every slug  removed from the live Ollama catalog', () => {
-    const removedByTask736 = ['ollama-gemma4-12b-mlx', 'ollama-gemma4-e2b-it-qat', 'ollama-qwen3.5-2b'];
-    removedByTask736.forEach((slug) => {
-      expect(RETIRED_AI_MODEL_SLUGS, `${slug} must be in the retired ledger`).toContain(slug);
-    });
-  });
-});
-
-// =============================================================================
-// 3. Pipeline regression lock
-// =============================================================================
-
-describe('pipeline-reference regression lock', () => {
-  const allPipelines = [...DEFAULT_ASR_PIPELINES, ...GLOBAL_TENANT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES];
-
-  it('keeps all 8 pipeline-referenced slugs in the catalog', () => {
-    const catalogSlugs = new Set(catalog.map((m) => m.slug));
-    PIPELINE_REFERENCED_SLUGS.forEach((slug) => {
-      expect(catalogSlugs.has(slug), `pipeline-referenced slug ${slug} missing`).toBe(true);
-    });
-  });
-
-  it('resolves every models: slug reference in PIPELINE_CONFIGS YAML to a catalog slug', () => {
-    const catalogSlugs = new Set(catalog.map((m) => m.slug));
-    let referenced = 0;
-    allPipelines.forEach((pipeline) => {
-      for (const key of ['asr', 'vad', 'denoise'] as const) {
-        const match = pipeline.configYaml.match(new RegExp(`${key}:\\s*"([^"]+)"`));
-        const slugRef = match?.[1];
-        if (slugRef !== undefined) {
-          referenced += 1;
-          expect(catalogSlugs.has(slugRef), `pipeline ${pipeline.slug} references unknown model slug ${slugRef}`).toBe(true);
-        }
-      }
-    });
-    // Sanity: the regex actually found slug references.
-    expect(referenced).toBeGreaterThanOrEqual(10);
-  });
-});
-
-// =============================================================================
-// 4. Retirement pipeline-reference guard (pure helper)
-// =============================================================================
-
-describe('shouldRetireAiModelSlug guard', () => {
-  it('skips (returns false for) a slug referenced by a non-deleted pipeline YAML', () => {
-    expect(shouldRetireAiModelSlug).toBeTypeOf('function');
-    const yamls = ['models:\n  asr: "whisper-large-v3"\n'];
-    expect(shouldRetireAiModelSlug!('whisper-large-v3', yamls)).toBe(false);
-  });
-
-  it('retires (returns true for) an unreferenced slug', () => {
-    const yamls = ['models:\n  asr: "whisper-large-v3-turbo"\n  vad: "silero-vad"\n'];
-    expect(shouldRetireAiModelSlug!('deepfilternet-v3', yamls)).toBe(true);
-  });
-
-  it('does NOT let a longer keeper slug block a retired prefix slug (whisper-large-v3 vs -turbo)', () => {
-    const yamls = ['models:\n  asr: "whisper-large-v3-turbo"\n'];
-    expect(shouldRetireAiModelSlug!('whisper-large-v3', yamls)).toBe(true);
-  });
-
-  it('does NOT treat an inline hf_model_id path segment as a slug reference (openai/whisper-tiny)', () => {
-    const yamls = ['models:\n  asr:\n    hf_model_id: "openai/whisper-tiny"\n    engine: "safetensor"\n'];
-    expect(shouldRetireAiModelSlug!('whisper-tiny', yamls)).toBe(true);
-  });
-
-  it('retires every one of the 50 retired slugs against the SEEDED pipeline set (no accidental blocks)', () => {
-    const seededYamls = [...DEFAULT_ASR_PIPELINES, ...GLOBAL_TENANT_ASR_PIPELINES, ...CUSTOMER_TENANT_ASR_PIPELINES].map((p) => p.configYaml);
-    (RETIRED_AI_MODEL_SLUGS ?? []).forEach((slug) => {
-      expect(shouldRetireAiModelSlug!(slug, seededYamls), `seeded pipelines unexpectedly block retirement of ${slug}`).toBe(true);
-    });
-  });
-});
-
-// =============================================================================
-// 5. retireLegacyAiModels sweep (mock client)
-// =============================================================================
-
-describe('retireLegacyAiModels sweep', () => {
-  const makeClient = (pipelines: Array<{ configYaml: string }>) => {
-    const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
-    const client = {
-      asrPipeline: {
-        findMany: vi.fn(async () => pipelines),
-      },
-      aiModel: {
-        updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
-          updates.push(args);
-          return { count: 1 };
-        }),
-      },
-    };
-    return { client, updates };
-  };
-
-  it('soft-deletes every retired slug across all tenants with stamps + version increment', async () => {
-    expect(retireLegacyAiModels).toBeTypeOf('function');
-    const { client, updates } = makeClient([]);
-    const result = await retireLegacyAiModels!(client as never);
-
-    expect(client.aiModel.updateMany).toHaveBeenCalledTimes(53);
-    expect(result.retired).toBe(53);
-    expect(result.skipped).toEqual([]);
-
-    updates.forEach(({ where, data }) => {
-      // All tenants' copies: the filter is slug-wide, NOT tenant-pinned,
-      // and idempotent (already-DELETED rows are excluded).
-      expect(where.tenantId).toBeUndefined();
-      expect(where.resourceStatus).toEqual({ not: 'DELETED' });
-      expect(RETIRED_AI_MODEL_SLUGS).toContain(where.slug);
-      expect(data.resourceStatus).toBe('DELETED');
-      expect(data.resourceStatusUpdatedAt).toBeInstanceOf(Date);
-      expect(data.resourceStatusUpdatedBy).toBe(SYSTEM_USER_ID);
-      expect(data.version).toEqual({ increment: 1 });
-    });
-  });
-
-  it('skips a slug referenced by a live custom pipeline and reports it', async () => {
-    const { client, updates } = makeClient([{ configYaml: 'version: "2.0"\nmodels:\n  asr: "whisper-large-v3"\n' }]);
-    const result = await retireLegacyAiModels!(client as never);
-
-    expect(result.skipped).toEqual(['whisper-large-v3']);
-    expect(result.retired).toBe(52);
-    expect(updates.some((u) => u.where.slug === 'whisper-large-v3')).toBe(false);
-  });
-
-  it('only consults non-deleted pipelines for the reference guard', async () => {
-    const { client } = makeClient([]);
-    await retireLegacyAiModels!(client as never);
-    expect(client.asrPipeline.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ resourceStatus: { not: 'DELETED' } }),
-      }),
-    );
-  });
-});
-
-// =============================================================================
-// 6. AiTaskDefault SYSTEM seed (create-only)
+// 1. AiTaskDefault SYSTEM seed
 // =============================================================================
 
 describe('AiTaskDefault SYSTEM seed', () => {
@@ -751,8 +126,16 @@ describe('AiTaskDefault SYSTEM seed', () => {
     const { SYSTEM_TASK_DEFAULT_ROUTING: SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       const model = bySlug(row.modelSlug);
-      expect(model, `AiTaskDefault ${row.taskKey} references unknown slug ${row.modelSlug}`).toBeDefined();
-      expect(model?.taskType).toBe(TASK_KEY_TO_TASK_TYPE[row.taskKey]);
+      if (!model) {
+        // TASK-860 retired the DISABLED `nlp-doc-type-classifier` placeholder
+        // that `nlp.classification` pointed at. A retired selection resolves
+        // to no ENABLED model — the same fail-closed 503 the DISABLED row
+        // produced — so the reference is tolerated ONLY through the ledger.
+        // `16-ai-task-default.ts` itself is retired by TASK-862.
+        expect(RETIRED_AI_MODEL_SLUGS, `AiTaskDefault ${row.taskKey} references unknown slug ${row.modelSlug}`).toContain(row.modelSlug);
+        return;
+      }
+      expect(model.taskType).toBe(TASK_KEY_TO_TASK_TYPE[row.taskKey]);
     });
   });
 
@@ -815,7 +198,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
 });
 
 // =============================================================================
-// 7. Companion seeds — HarnessPolicy default + GlobalSetting retirement + RBAC
+// 2. Companion seeds — HarnessPolicy default + GlobalSetting retirement + RBAC
 // =============================================================================
 
 describe('companion seed updates', () => {

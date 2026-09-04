@@ -164,3 +164,34 @@ describe('AiModelAdminController download delegation', () => {
     expect(result.localPath).toBe('/mnt/models-bucket/gemma4-e2b-it-qat/q4-0-451faffb5a16/');
   });
 });
+
+// =============================================================================
+// TASK-860 — inventory + platform-default election
+// =============================================================================
+describe('AiModelAdminController inventory + platform-default (TASK-860)', () => {
+  it('runInventory is bound to POST inventory and returns the report verbatim', async () => {
+    expect(Reflect.getMetadata(PATH_METADATA, AiModelAdminController.prototype.runInventory)).toBe('inventory');
+    expect(Reflect.getMetadata(METHOD_METADATA, AiModelAdminController.prototype.runInventory)).toBe(RequestMethod.POST);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, AiModelAdminController.prototype.runInventory)).toBe(HttpStatus.OK);
+
+    const report = { checkedAt: new Date(), counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 }, rows: [], unregistered: [] };
+    const runInventory = vi.fn().mockResolvedValue(report);
+    const controller = new AiModelAdminController({} as never, {} as never, { runInventory } as never);
+
+    expect(await controller.runInventory()).toBe(report);
+    expect(runInventory).toHaveBeenCalledTimes(1);
+  });
+
+  it('setPlatformDefault is bound to PATCH :id/platform-default and delegates to AiModelService.setPlatformDefaultFor', async () => {
+    expect(Reflect.getMetadata(PATH_METADATA, AiModelAdminController.prototype.setPlatformDefault)).toBe(':id/platform-default');
+    expect(Reflect.getMetadata(METHOD_METADATA, AiModelAdminController.prototype.setPlatformDefault)).toBe(RequestMethod.PATCH);
+
+    const setPlatformDefaultFor = vi.fn().mockResolvedValue({ id: 'm1', isPlatformDefaultFor: ['SPEECH_TO_TEXT'] });
+    const controller = new AiModelAdminController({ setPlatformDefaultFor } as never, {} as never, {} as never);
+
+    const result = await controller.setPlatformDefault('m1', { tasks: ['SPEECH_TO_TEXT'] } as never);
+
+    expect(setPlatformDefaultFor).toHaveBeenCalledWith('m1', { tasks: ['SPEECH_TO_TEXT'] });
+    expect(result).toEqual(expect.objectContaining({ isPlatformDefaultFor: ['SPEECH_TO_TEXT'] }));
+  });
+});
