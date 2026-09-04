@@ -11,7 +11,11 @@ import {
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { ApiDeprecated, ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+
+/** TASK-861 — every WRITE on this controller is deprecated; removed in R4 with `AsrPipeline` (replacement: the ASR Agent, TASK-863). Reads keep answering for the window. */
+const DEPRECATION = { ticket: 'TASK-861', removeIn: 'R4', replacement: '/api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)' } as const;
+
 import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
 
 /**
@@ -25,9 +29,11 @@ import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, Validat
 @RequiredSvcScopes('svc:admin:audio-pipeline:manage')
 @Controller('admin/audio/pipelines')
 @Authorize(['manage', 'AsrPipeline'])
+/** @deprecated TASK-861 — removed in R4 with `AsrPipeline`; the ASR Agent (`/admin/agents`, task `SPEECH_TO_TEXT`) replaces it. */
 export class AudioPipelineController {
   constructor(private readonly pipelineService: PipelineService) {}
 
+  @ApiDeprecated(DEPRECATION)
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.POST,
@@ -91,6 +97,7 @@ export class AudioPipelineController {
     return pipeline;
   }
 
+  @ApiDeprecated(DEPRECATION)
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.PATCH,
@@ -134,6 +141,7 @@ export class AudioPipelineController {
     return this.pipelineService.update(id, effectiveRequest);
   }
 
+  @ApiDeprecated(DEPRECATION)
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.DELETE,
@@ -157,6 +165,7 @@ export class AudioPipelineController {
    * admins, which matches owner expectation E4 ("can clone/copy or create their
    * own") — cloning is allowed even though the SOURCE may be locked.
    */
+  @ApiDeprecated(DEPRECATION)
   @Post(':id/clone')
   @ApiOperation({
     summary: 'Clone a pipeline into a new editable copy',
@@ -175,6 +184,7 @@ export class AudioPipelineController {
     return this.pipelineService.clone(id, request);
   }
 
+  @ApiDeprecated(DEPRECATION)
   @ApiEndpoint({
     returnedModel: PipelineResponse,
     method: HttpMethod.POST,
@@ -194,6 +204,7 @@ export class AudioPipelineController {
    * rejected; a same-tenant assignment is persisted by promoting the
    * pipeline to the tenant default.
    */
+  @ApiDeprecated(DEPRECATION)
   @Post(':id/assign-tenant')
   @HttpCode(200)
   @ApiOperation({ summary: 'Assign an ASR pipeline within its tenant' })
@@ -219,6 +230,7 @@ export class AudioPipelineController {
    * atomically). This is a tenant-scoped flag flip — NOT a content edit — so
    * it deliberately does not require `If-Match`.
    */
+  @ApiDeprecated(DEPRECATION)
   @Post(':id/set-default')
   @HttpCode(200)
   @ApiOperation({ summary: 'Set a pipeline as the tenant default' })
@@ -233,6 +245,7 @@ export class AudioPipelineController {
    * Enable/disable a pipeline (flips `resourceStatus`). OCC-guarded: the
    * `If-Match` header is REQUIRED and folds into the CAS predicate.
    */
+  @ApiDeprecated(DEPRECATION)
   @Patch(':id/toggle')
   @RequiresIfMatch()
   @ApiOperation({

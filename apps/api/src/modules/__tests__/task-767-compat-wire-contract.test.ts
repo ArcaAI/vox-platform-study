@@ -96,6 +96,10 @@ describe('SttCompatController wire contract is unchanged by ', () => {
 
   it('accepts exactly the v1 request fields — start_session', () => {
     expect(acceptedFields(StartSessionRequest)).toEqual([
+      // TASK-861 (D-3): ADDITIVE optional field — the ASR Agent slug. A v1 body
+      // that never sends it is unchanged; `pipelineId` stays accepted (deprecated,
+      // removed in R4). Same kind of extension as `pipelineId` / `startOn` before it.
+      'agentSlug',
       'audioSettings',
       'language',
       'pipelineId',

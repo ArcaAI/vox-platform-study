@@ -30,7 +30,8 @@ describe('AppSidebar — scoped to the active domain', () => {
     await screen.findByRole('link', { name: 'Consultations' });
 
     const links = within(scopedNav('Clinical')).getAllByRole('link');
-    expect(links.map((link) => link.textContent)).toEqual(['Patient consent', 'Audio pipelines', 'Transcription jobs', 'Consultations']);
+    // TASK-861 retired `/audio/pipelines` (redirect stub → `/agents?task=SPEECH_TO_TEXT`).
+    expect(links.map((link) => link.textContent)).toEqual(['Patient consent', 'Transcription jobs', 'Consultations']);
     expect(links.length).toBeLessThan(NAV_ENTRIES.length);
     // A route from another domain is simply absent — not hidden-but-focusable.
     expect(screen.queryByRole('link', { name: 'Queues & jobs' })).toBeNull();
@@ -76,7 +77,7 @@ describe('AppSidebar — scoped to the active domain', () => {
     expect(rules).toHaveLength(1);
     expect(active.closest('li')?.contains(rules[0] as Node)).toBe(true);
 
-    expect(screen.getByRole('link', { name: 'Audio pipelines' }).getAttribute('data-active')).toBe('false');
+    expect(screen.getByRole('link', { name: 'Transcription jobs' }).getAttribute('data-active')).toBe('false');
   });
 
   it('activates only Tenant storage (not Tenants) on /tenants/storage', async () => {

@@ -338,6 +338,10 @@ class SessionMetadata:
     last_stream_id: str | None = None
     sample_rate: int = 16000
     pipeline_config_json: str = ""  # serialized PreprocessingConfig
+    # TASK-861 — the gateway-resolved ResolvedAsrSpec (JSON) the session was
+    # assembled from, persisted so crash recovery rebuilds the engine chain
+    # WITHOUT a database read. Empty on the deprecated pipeline_id path.
+    resolved_spec_json: str = ""
     closed_at: str | None = None  # ISO-8601 (set when status=closed)
     raw_audio_uri: str | None = None
     processed_audio_uri: str | None = None
@@ -373,6 +377,8 @@ class SessionMetadata:
         }
         if self.last_stream_id:
             d["last_stream_id"] = self.last_stream_id
+        if self.resolved_spec_json:
+            d["resolved_spec_json"] = self.resolved_spec_json
         if self.closed_at:
             d["closed_at"] = self.closed_at
         if self.raw_audio_uri:
@@ -428,6 +434,7 @@ class SessionMetadata:
             last_stream_id=last_stream_id,
             sample_rate=int(_get("sample_rate") or "16000"),
             pipeline_config_json=_get("pipeline_config_json"),
+            resolved_spec_json=_get("resolved_spec_json"),
             closed_at=closed_at,
             raw_audio_uri=raw_audio_uri,
             processed_audio_uri=processed_audio_uri,

@@ -19,3 +19,6 @@ export * from './stepper.js';
 
 // TASK-863 — the resolved-agent contract (gateway ↔ harness ↔ SDK).
 export * from './agent.js';
+
+// TASK-861 — the gateway-resolved ASR runtime contract (gateway → apps/stt), replacing AsrPipeline.configYaml.
+export * from './asr-spec.js';

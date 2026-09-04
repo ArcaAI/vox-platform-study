@@ -22,6 +22,12 @@ import { CanManage, CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decor
  *     grants tenant admins — a class-only `manage Tenant` had locked them out
  *     (the seed gives tenant admins read/update Tenant, not manage).
  *
+ * TASK-861: rows are keyed to the ASR Agent version (`agentVersionId` +
+ * `resolvedSpec`) — `pipelineId` is the deprecated key and is `null` on
+ * agent-keyed jobs. The `read:AsrPipeline` gate below is the deprecated CASL
+ * subject the audio surface has always been scoped on; re-scoping it is a
+ * permission-model change outside this ticket.
+ *
  * Tenant isolation:
  *   - The `tenantScopeFilter` Prisma extension injects `tenantId` into every
  *     read, so these tenant-wide queries can never cross a tenant boundary.

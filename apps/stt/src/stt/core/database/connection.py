@@ -28,6 +28,21 @@ _ENGINE_NAMESPACE = "database.engine"
 _initialized = False
 
 
+class DatabaseDisabledError(RuntimeError):
+    """TASK-861 — the read-only Postgres connection is OFF (the default).
+
+    Raised by every DB-backed reader so a caller on a deprecated path fails
+    CLOSED with a named cause instead of hanging on a connection attempt.
+    """
+
+    def __init__(self, what: str = "database read") -> None:
+        super().__init__(
+            f"{what} needs the read-only Postgres connection, which is disabled "
+            "(TASK-861: selection arrives as a gateway-resolved spec). Set "
+            "STT_DATABASE_ENABLED=true only for the deprecated pipeline_id path."
+        )
+
+
 def _dispose_stale(bound: tuple[AsyncEngine, async_sessionmaker[AsyncSession]]) -> None:
     """Reclaim an engine whose event loop is gone (BUG-015).
 
@@ -80,8 +95,15 @@ def engine_cache_size() -> int:
 
 
 async def initialize_database() -> None:
-    """Initialize and test the database connection."""
+    """Initialize and test the database connection (a no-op when disabled)."""
     global _initialized
+
+    if not settings.database_enabled:
+        logger.info(
+            "Database connection disabled (STT_DATABASE_ENABLED=false) — "
+            "selection arrives as a gateway-resolved spec (TASK-861)"
+        )
+        return
 
     logger.info("Initializing database connection", url=settings.database_url[:50] + "...")
 
@@ -122,6 +144,9 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     This automatically creates an engine for the current event loop if needed,
     which handles the case of Dramatiq workers using asyncio.run() per job.
     """
+    if not settings.database_enabled:
+        raise DatabaseDisabledError()
+
     _, session_factory = _get_or_create_engine()
 
     async with session_factory() as session:

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 
@@ -43,15 +43,33 @@ export const ALLOWED_AUDIO_MIMES = new Set([
   'audio/aac',
 ]);
 
+/**
+ * `agentSlug` shape: the Agent lineage slug (`WORKFLOW_DEFINITION_SLUG_PATTERN`
+ * family — lowercase alphanumerics + dashes). Same shape guard as `pipelineId`,
+ * minus the UUID branch (an agent is addressed by slug, never by id, on the
+ * business plane).
+ */
+export const AGENT_SLUG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+
 export class TranscribeFileRequest {
   /**
-   * OPTIONAL since : omit it to transcribe on the tenant's default
-   * pipeline, the same "I don't care which, use ours" intent a live session has
-   * always been able to express. The gateway resolves the tenant default and
-   * 409s when the tenant has neither a default nor a fallback — it never guesses
-   * a pipeline.
+   * TASK-861 — the ASR Agent to transcribe with (lineage slug of a PUBLISHED
+   * `SPEECH_TO_TEXT` agent visible to the tenant). Omit it to use the tenant's
+   * assigned agent (department → tenant → SYSTEM cascade). A foreign or unknown
+   * slug is a 404 (404-over-403).
    */
-  @ApiPropertyOptional({ description: "Pipeline ID (slug or UUID). Omit to use the tenant's default pipeline." })
+  @ApiPropertyOptional({ description: 'ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).' })
+  @IsString()
+  @IsOptional()
+  @Matches(AGENT_SLUG_PATTERN, { message: 'agentSlug must be a slug ([A-Za-z0-9-])' })
+  agentSlug?: string;
+
+  /**
+   * @deprecated TASK-861 — removed in R4. The `AsrPipeline` to run on; answers
+   * with `Deprecation` headers. Prefer `agentSlug` (or nothing, for the
+   * assigned agent).
+   */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.', deprecated: true })
   @IsString()
   @IsOptional()
   @Matches(PIPELINE_ID_PATTERN, {
@@ -71,13 +89,28 @@ export class TranscribeFileRequest {
 }
 
 export class CreateStreamSessionRequest {
-  @ApiProperty({ description: 'Pipeline ID (slug or UUID) to use for streaming' })
+  /**
+   * TASK-861 — the ASR Agent to stream with (lineage slug of a PUBLISHED
+   * `SPEECH_TO_TEXT` agent visible to the tenant). Omit it — and `pipelineId` —
+   * to use the tenant's assigned agent (department → tenant → SYSTEM cascade).
+   */
+  @ApiPropertyOptional({ description: 'ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).' })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
+  @Matches(AGENT_SLUG_PATTERN, { message: 'agentSlug must be a slug ([A-Za-z0-9-])' })
+  agentSlug?: string;
+
+  /**
+   * @deprecated TASK-861 — removed in R4. The `AsrPipeline` to stream on;
+   * answers with `Deprecation` headers. Prefer `agentSlug`.
+   */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861, removed in R4): Pipeline ID (slug or UUID). Prefer `agentSlug`.', deprecated: true })
+  @IsString()
+  @IsOptional()
   @Matches(PIPELINE_ID_PATTERN, {
     message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (D-19)',
   })
-  pipelineId!: string;
+  pipelineId?: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
   @IsString()
@@ -151,10 +184,23 @@ export class StreamSessionResponse {
    * left it null for every session started without an explicit pipeline.
    * Absent against an STT that predates the echo.
    */
-  @ApiPropertyOptional({ description: 'Resolved ASR pipeline id the session opened with' })
+  @ApiPropertyOptional({
+    description: 'The runtime key the session opened with: the ASR Agent VERSION id (agent path) or the resolved AsrPipeline id (deprecated path)',
+  })
   @IsOptional()
   @IsString()
   pipelineId?: string;
+
+  /** TASK-861 — the agent the session resolved to (absent on the deprecated pipeline path). */
+  @ApiPropertyOptional({ description: 'ASR Agent slug the session resolved to' })
+  @IsOptional()
+  @IsString()
+  agentSlug?: string;
+
+  @ApiPropertyOptional({ description: 'ASR Agent VERSION id the session runs on' })
+  @IsOptional()
+  @IsString()
+  agentVersionId?: string;
 
   /**
    * The engine actually live at create: `'primary'`, or `'fallback'` when the
@@ -202,6 +248,13 @@ export class BatchTranscribeResponse {
 
   @ApiProperty({ description: 'Audio file URI in storage' })
   audioUri!: string;
+
+  /** TASK-861 — the agent the job resolved to (absent on the deprecated pipeline path). */
+  @ApiPropertyOptional({ description: 'ASR Agent slug the job resolved to' })
+  agentSlug?: string;
+
+  @ApiPropertyOptional({ description: 'ASR Agent VERSION id the job runs on' })
+  agentVersionId?: string;
 }
 
 /**
@@ -234,12 +287,18 @@ export class BatchTranscriptionLimitsResponse {
  * and failed with a 409 mid-consultation.
  */
 export class SttFallbackProviderResponse {
-  @ApiProperty({ description: 'Whether a usable fallback pipeline is configured for this tenant' })
+  @ApiProperty({ description: 'Whether the resolved ASR agent declares a usable fallback engine' })
   configured!: boolean;
 
-  @ApiProperty({ description: 'Configured fallback pipeline id, if any', nullable: true })
+  @ApiProperty({
+    description: 'The fallback engine’s runtime key (TASK-861: `ResolvedAsrSpec.fallback.spec.runtimeKey`; formerly the fallback pipeline id)',
+    nullable: true,
+  })
   pipelineId!: string | null;
 
-  @ApiProperty({ description: 'Display name of the fallback pipeline, if resolvable', nullable: true })
+  @ApiProperty({ description: 'Display name of the fallback engine (fallback agent slug, or the fallback model slug)', nullable: true })
   pipelineName!: string | null;
+
+  @ApiPropertyOptional({ description: 'TASK-861 — the primary ASR agent the fallback belongs to' })
+  agentSlug?: string;
 }

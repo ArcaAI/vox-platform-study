@@ -7,6 +7,7 @@ import {
   PipelineVersionResponse,
 } from './dto';
 
+/** @deprecated TASK-861 — removed in R4. See `PipelineService`. */
 export interface IPipelineService {
   /**
    * Create a new ASR pipeline

@@ -82,7 +82,15 @@ class Settings(BaseSettings):
     # explicitly rather than inheriting a wildcard nobody chose.
     cors_origins: list[str] = Field(default_factory=list)
 
-    # Database (read-only)
+    # Database (read-only). TASK-861: OPTIONAL and OFF by default — selection
+    # (ASR agent, models, fallback) arrives from the gateway as a
+    # `ResolvedAsrSpec`; this service reads no selection from Postgres. Turn it
+    # on (`STT_DATABASE_ENABLED=true`) only for the deprecated `pipeline_id`
+    # path and the voice-profile / initial-prompt readers, all removed in R4.
+    database_enabled: bool = Field(
+        default=False,
+        description="Open the read-only Postgres connection (deprecated paths only; TASK-861).",
+    )
     database_url: str = Field(
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/hope",
         description="PostgreSQL connection string (read-only access)",
@@ -275,8 +283,9 @@ class Settings(BaseSettings):
 
     # HuggingFace
     huggingface_cache_dir: str = Field(
-        default_factory=lambda: os.environ.get("HF_HOME")
-        or os.path.expanduser("~/.cache/huggingface/hub"),
+        default_factory=lambda: (
+            os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface/hub")
+        ),
         description="HuggingFace model cache directory",
     )
     # CLOSED. The HuggingFace token is a BYO credential on

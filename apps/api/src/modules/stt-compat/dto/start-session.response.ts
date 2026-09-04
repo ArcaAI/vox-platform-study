@@ -30,4 +30,7 @@ export interface StartSessionResponse {
    * the primary ASR failed to load.
    */
   active_engine?: 'primary' | 'fallback';
+  /** TASK-861 — the ASR Agent the session resolved to (ADDITIVE; absent on the deprecated pipeline path). */
+  agent_slug?: string;
+  agent_version_id?: string;
 }

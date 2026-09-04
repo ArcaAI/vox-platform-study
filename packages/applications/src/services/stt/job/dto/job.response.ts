@@ -10,11 +10,19 @@ export class TranscriptionJobResponse {
   @ApiProperty({ description: 'Job type', enum: TranscriptionJobType })
   jobType: TranscriptionJobType;
 
-  @ApiProperty({ description: 'Pipeline ID' })
-  pipelineId: string;
+  /** @deprecated TASK-861 — removed in R4. `null` on agent-keyed jobs; read `agentVersionId`. */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs', nullable: true, deprecated: true })
+  pipelineId: string | null;
 
-  @ApiPropertyOptional({ description: 'Pipeline details' })
+  /** @deprecated TASK-861 — removed in R4 with `AsrPipeline`. */
+  @ApiPropertyOptional({ description: 'DEPRECATED (TASK-861): Pipeline details', deprecated: true })
   pipeline?: PipelineResponse;
+
+  @ApiPropertyOptional({ description: 'TASK-861 — the ASR Agent VERSION that ran the job', nullable: true })
+  agentVersionId?: string | null;
+
+  @ApiPropertyOptional({ description: 'TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential)', nullable: true })
+  resolvedSpec?: JsonValue | null;
 
   @ApiPropertyOptional({ description: 'Consultation ID' })
   consultationId?: string | null;

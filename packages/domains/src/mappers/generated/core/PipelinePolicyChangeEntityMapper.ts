@@ -24,6 +24,7 @@ function stripNonPersistedFields<T>(model: T): T {
   return model;
 }
 
+/** @deprecated TASK-861 — removed in R4 with `PipelinePolicy` (WORM log stays read-only until the drop). */
 export class PipelinePolicyChangeEntityMapper extends BaseMapper<Entities.PipelinePolicyChangeEntity, Models.PipelinePolicyChange> {
   constructor() {
     super();

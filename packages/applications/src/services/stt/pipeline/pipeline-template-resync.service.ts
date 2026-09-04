@@ -68,6 +68,7 @@ export interface PipelineTemplateResyncSummary {
  * passed explicitly and never read from CLS.
  */
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. with `AsrPipeline` (template clones retire with the table). */
 export class PipelineTemplateResyncService extends BaseService {
   private readonly logger = new Logger(PipelineTemplateResyncService.name);
 

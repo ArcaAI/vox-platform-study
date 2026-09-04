@@ -18,6 +18,7 @@ function stripNonWritableFields<T extends object>(model: T, fields: string[]): T
   return model;
 }
 
+/** @deprecated TASK-861 — removed in R4. Replaced by the ASR Agent (`Agent`, task `SPEECH_TO_TEXT`, TASK-863) + the gateway-resolved `ResolvedAsrSpec`; `apps/stt` no longer reads this table. */
 export class AsrPipelineEntityMapper extends BaseMapper<Entities.AsrPipelineEntity, Models.AsrPipeline> {
   constructor() {
     super();
