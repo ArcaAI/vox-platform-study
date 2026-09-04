@@ -37,21 +37,15 @@
  * wire (DEF-C3).
  *
  * Live-stack requirement: this spec depends on the dev stack
- * (`docker compose up postgres redis`) plus the seed in
- * `06-stt.ts` (production ASR pipeline). STT does NOT need to be
- * running — the create endpoint only writes the row; it does not
- * dispatch the job until `transcribeFile` is invoked separately.
+ * (`docker compose up postgres redis`) plus the seed — the job is keyed
+ * to the tenant's assigned ASR agent (`platform-transcription`,
+ * `25-agents.ts`, TASK-861); `06-stt.ts` seeds no AsrPipeline rows any
+ * more. STT does NOT need to be running — the create endpoint only
+ * writes the row; it does not dispatch the job until `transcribeFile`
+ * is invoked separately.
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
-
-/**
- * Seeded production ASR pipeline id from
- * `packages/database/src/prisma/db_main/seed/06-stt.ts`
- * (`DEFAULT_ASR_PIPELINES[0]` — `production-whisper-large-v3`).
- * Visible to every customer tenant via the SYSTEM-tenant inheritance.
- */
-const PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000001';
 
 /**
  * uuidv7-shaped id that no tenant has ever seen. The interceptor's
@@ -78,10 +72,11 @@ test.describe('AC-2/AC-3 — TranscriptionJob ownership genuine probe (AC-12)', 
     // The create endpoint persists the row but does not dispatch
     // to STT; status will stay QUEUED, which is enough for the
     // interceptor (it reads tenantId off the row regardless).
+    // No `pipelineId` / `agentSlug`: the gateway resolves the tenant's
+    // assigned ASR agent through the SYSTEM cascade (TASK-861).
     const createResp = await request.post('/api/v1/audio/transcription-jobs', {
       headers: { Authorization: `Bearer ${doctorToken}` },
       data: {
-        pipelineId: PRODUCTION_PIPELINE_ID,
         jobType: 'STREAMING',
       },
     });
