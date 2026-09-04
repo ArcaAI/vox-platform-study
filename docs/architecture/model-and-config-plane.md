@@ -197,54 +197,102 @@ re-seeded on the gemma-4 agent's parameters.
 
 ## 6. Model registry, discovery & source resolution
 
-### 6.1 Registry (`AiModel`)
+### 6.1 Registry (`AiModel`) — one catalogue, SYSTEM-owned (TASK-860)
 
-`AiModel` is the standalone registry for every model the platform knows about —
-ASR / VAD / denoise engines and admin-selectable LLM / guardrail / NLP / TTS
-task models. Models are referenced **by slug** in pipeline YAML and by
-`AiRoutingPolicy.modelId` (a real FK since the absorption). Classification is by
-`category` / `taskType` / `modelType` enums; serving models additionally carry a
-nullable `provider` and `architecture`.
+`AiModel` (`packages/database/src/prisma/db_main/ai-model.prisma`) is the
+platform catalogue of the shared model bucket. Since TASK-860 its rows live
+**only in the SYSTEM tenant**: `AiModelService` pins `tenantId = SYSTEM` on
+every write, refuses a non-platform-admin caller with `403` (a privilege
+boundary, not the 404-over-403 cross-tenant posture), and writes through the
+unscoped base-client lane so a super admin's elevated working tenant never
+rewrites the row. Tenants READ the catalogue through the tenant-scope
+extension's shared-read widening; the per-tenant clones the seed used to
+materialise are gone (soft-deleted by the TASK-860 migration + seed sweep).
 
-### 6.2 Discovery hub
+Rows are organised the way the Hugging Face Hub is:
 
-`AiModelDiscoveryService` / `AiModelDiscoveryController` (gateway `ai-model`
-module) produce a **merge view** of registered `AiModel` rows against models
-enumerated live from server-managed providers
-(`DISCOVERABLE_AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'vllm', 'llama-cpp']`).
-Each entry carries a status:
+| Facet | Column | Notes |
+|---|---|---|
+| task (`pipeline_tag`) | `taskType` (enum) | the DTO derives the kebab-case `pipelineTag` from `MODEL_TASK_TYPE_TO_PIPELINE_TAG`; the HOPE extensions `GUARDRAIL` / `SPEAKER_*` map onto the nearest Hub tag |
+| serving library (`library_name`) | `libraryName` | the loader is selected by this, from the closed `AI_MODEL_LIBRARIES` vocabulary (`packages/applications/src/services/ai-model/constants.ts`, mirrored by the seed's `shared.ts`, parity-pinned by `tests/contracts/ai-model-providers.contract.test.ts`) |
+| owning workload | `servedBy` | `stt` · `nlp` · `tts` · `lmstudio` · `text` · … — cloud rows are governed by the gateway and executed by the owning service |
+| deployment | `deploymentKind` + `wireModelId` | `CLOUD` rows carry the vendor wire id and are `NOT_APPLICABLE` for availability |
+| card metadata | `license`, `gated`, `baseModel`, `languages`, `hfRevision` | mirrored from the Hub |
+| bucket identity | `bucketPrefix`, `primaryObject`, `manifestDigest` | written by the publisher; `localPath` is **derived** (`/mnt/models-bucket/` + prefix [+ primary object]) and never typed |
+| measured availability | `availability`, `availabilityCheckedAt`, `availabilityDetail` | written by the inventory job and the publisher only |
+| platform default | `isPlatformDefaultFor: AiTaskKind[]` | at most one enabled row per task; `PATCH admin/ai-models/:id/platform-default` clears the previous holder (the SYSTEM `AiRoutingPolicy` election it seeds is TASK-862's) |
 
-| Status                         | Meaning                                                      |
-| ------------------------------ | ------------------------------------------------------------ |
-| `registered`                   | governance row exists and the model is present on its server |
-| `discovered`                   | live on a server but not yet a governance row                |
-| `registered-missing-on-server` | governance row exists but the server no longer serves it     |
+Models are still referenced **by slug** in pipeline YAML and by
+`AiTaskDefault.modelSlug`; `AiRoutingPolicy.modelId` is the one FK.
+`downloadStatus` / `downloadedAt` / `fileSizeMb`, free-text `localPath`, the
+cloud `AiModelFormat` pseudo-values and `AiModelSource.MLFLOW`/`GITHUB` are
+deprecated (register: TASK-860, removed in R3).
 
-Explicit **register** promotes a discovered model into a governance row.
-`normalizeModelSlug` deterministically lowercases and hyphen-collapses the
-server's model name (`llama3.1:8b-instruct-q4_K_M` → `llama3-1-8b-instruct-q4-k-m`);
-there is deliberately **no collision suffixing** — a taken slug surfaces as an
-actionable 400 so the admin names the row on purpose.
+The seeded catalogue (`seed/06-ai-models.ts`) is exactly the owner's 35 rows
+(README §3.6 of TASK-860); everything else is in `RETIRED_AI_MODEL_SLUGS`.
 
-### 6.3 Source resolution
+### 6.2 One publisher, one inventory
+
+**Publisher.** `POST admin/ai-models/:id/download` (path kept for the frozen
+contract; the action is *publish to bucket*) enqueues `DownloadAiModel`. The
+processor fetches the weights from `sourceUri` (Hub or `s3://`, with the SYSTEM
+`model-registry/huggingface` token for gated/private repos), content-addresses
+them, and publishes them under the layout `infrastructure/docker/minio/README.md`
+§5 prescribes — flat `<slug>/<version>/` for GGUF / CT2 / ONNX / pth, a verbatim
+HF cache `hf/hub/models--<org>--<repo>/{refs/main, snapshots/<sha>/}` for the
+transformers family (no symlinks — s3fs cannot follow them). It writes
+`bucketPrefix` / `primaryObject` / `manifestDigest` / `hfRevision`, the derived
+`localPath` and `availability = AVAILABLE` back; `sourceUri` keeps the Hub
+identity. The deployment repo's `hope-models-publish.yaml` is to become a
+bootstrap wrapper over this code path (cross-repo follow-up).
+
+**Inventory.** `ModelInventoryService` (`POST admin/ai-models/inventory`, and
+hourly when `modelRegistry.inventory.enabled` is on) lists the bucket once,
+verifies every row's `bucketPrefix` + `manifestDigest` + manifest objects, stamps
+`AVAILABLE` / `MISSING` / `PARTIAL` / `NOT_APPLICABLE`, and lists the
+manifest-bearing prefixes no row references ("In bucket, not registered →
+Register", which creates the row with its `bucketPrefix`). Availability is a
+FACT about the bucket, so an admin edit never sets it.
+
+### 6.3 Discovery hub — read-only
+
+`AiModelDiscoveryService` / `AiModelDiscoveryController` still produce the
+**merge view** of registry rows against models enumerated live from
+server-managed providers (`DISCOVERABLE_AI_MODEL_PROVIDERS = ['ollama',
+'lm-studio', 'vllm', 'llama-cpp']`), tagged `registered` / `discovered` /
+`registered-missing-on-server` with the engine's load state. Since TASK-860 it
+is **read-only**: `POST admin/ai-models/discovery/register` answers `410 Gone`
+(deprecated, removed in R3). Registration happens from the catalogue —
+`POST admin/ai-models`, optionally with an inventory-reported `bucketPrefix`.
+
+### 6.4 Source resolution
 
 `AiModel.sourceUri` follows a scheme grammar honoured by every service's
-`resolve_model_dir` (stt, guardrail, nlp, harness):
+`resolve_model_dir` (stt, nlp, tts, harness — `tests/contracts/source-resolver-parity.contract.test.ts`
+keeps the four copies in step):
 
 | Scheme                                   | Behaviour                                                               |
 | ---------------------------------------- | ----------------------------------------------------------------------- |
-| `hf:<org>/<repo>` or bare `<org>/<repo>` | HuggingFace Hub snapshot; honours `HF_HUB_OFFLINE`                      |
+| `hf:<org>/<repo>` or bare `<org>/<repo>` | HuggingFace Hub snapshot; honours `HF_HUB_OFFLINE` (cache read before any raise) |
 | `file:///abs/path`                       | verified in place, never copied                                         |
 | `s3://bucket/prefix`                     | downloaded once into the service cache, single-flight + SHA256-verified |
 
 Anything else is a hard `ModelSourceError` — never a silent fallback
-(`azure-blob://` is deferred). `AiModel.localPath` is an operator/admin override
-with the **highest precedence**, ahead of scheme dispatch (air-gapped hosts,
-pre-staged NFS mounts); a set-but-missing `localPath` falls through to scheme
+(`azure-blob://` is deferred). The derived `localPath` keeps the **highest
+precedence**, ahead of scheme dispatch, and may name a FILE (the primary object
+of a whisper.cpp / llama.cpp row) or a directory — every resolver checks
+`exists()`, not `is_dir()`. A set-but-missing path falls through to scheme
 dispatch with a warning. `checksum` (SHA256) is verified for single-file
-artifacts (GGUF / ONNX) after download and on first use of a pre-existing cache
-entry — a mismatch is a hard error and the model is never served; on directory
-snapshots it is a documented no-op.
+artifacts after download and on first use of a pre-existing cache entry.
+
+Loader coverage per library (TASK-860 §3.5): `deepfilternet3` fails closed
+when the package is absent (`ModelLoadError`, never a silent no-op);
+Nemotron/Parakeet transducer checkpoints load through transformers
+`AutoModelForRNNT` behind a version gate (`RNNT_MIN_TRANSFORMERS`); Kokoro loads
+`KModel(config, model)` + voice `.pt` paths from `TTS_KOKORO_MODEL_PATH` (the
+published prefix) instead of `HF_HOME`; Indic Parler ships as the tts
+`[indic-parler]` image variant; SpeechBrain treats a local source as its own
+`savedir`.
 
 ---
 

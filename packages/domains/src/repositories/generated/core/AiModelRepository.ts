@@ -6,7 +6,7 @@ import { AiModelEntityMapper } from '../../../mappers';
 import { AiModelEntity } from '../../../entities';
 import { AiModel } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ResourceStatusType, ModelTaskType, AiModelDownloadStatus, AiModelSource, AiModelFormat } from '../../../enums';
+import { ResourceStatusType, ModelTaskType, AiModelDownloadStatus, AiModelSource, AiModelFormat, AiTaskKind } from '../../../enums';
 
 @Injectable()
 export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
@@ -122,6 +122,27 @@ export class AiModelRepository extends Repository<AiModelEntity, AiModel> {
     const args = {
       where: {
         taskType,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      orderBy: { name: 'asc' as const },
+    };
+    const delegate = tx ? (tx as Record<string, any>).aiModel : (this as any).db;
+    const models = await delegate.findMany(args);
+    return models.map((model: AiModel) => AiModelEntityMapper.getInstance().toDomainEntity(model));
+  }
+
+  /**
+   * Registry rows (SYSTEM tenant) elected as the platform default for `kind`
+   * (TASK-860 `isPlatformDefaultFor`). Only ENABLED rows can hold an
+   * election, and the service keeps it to at most one — a second result here
+   * is a data defect, not a resolution rule. Routed through `tx` when the
+   * caller is on the cross-tenant base-client lane.
+   */
+  async findPlatformDefaultsFor(tenantId: string, kind: AiTaskKind, tx?: Prisma.TransactionClient | any): Promise<AiModelEntity[]> {
+    const args = {
+      where: {
+        tenantId,
+        isPlatformDefaultFor: { has: kind },
         resourceStatus: ResourceStatusType.ENABLED,
       },
       orderBy: { name: 'asc' as const },

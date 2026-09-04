@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
 import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
-import { AiModelServiceModule } from '../stt/model/aiModel.service.module';
+import { AiModelServiceModule } from '../ai-model/aiModel.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { EffectiveConfigService } from './effective-config.service';
 import { IEffectiveConfigService } from './IEffectiveConfigService';

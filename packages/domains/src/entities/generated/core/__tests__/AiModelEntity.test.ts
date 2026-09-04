@@ -6,7 +6,18 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AiModelEntity, IAiModelEntity } from '../AiModelEntity';
-import { AiModelSource, AiModelFormat, AiModelDownloadStatus, ModelCategory, ModelTaskType, ModelType, ResourceStatusType } from '../../../../enums';
+import {
+  AiModelSource,
+  AiModelFormat,
+  AiModelDownloadStatus,
+  AiModelAvailability,
+  AiDeploymentKind,
+  AiTaskKind,
+  ModelCategory,
+  ModelTaskType,
+  ModelType,
+  ResourceStatusType,
+} from '../../../../enums';
 
 // Factory function for creating test entities
 function createTestEntity(overrides: Partial<IAiModelEntity> = {}): AiModelEntity {
@@ -23,6 +34,13 @@ function createTestEntity(overrides: Partial<IAiModelEntity> = {}): AiModelEntit
     sourceUri: 'openai/whisper-large-v3',
     sourceRevision: 'main',
     format: AiModelFormat.SAFETENSOR,
+    libraryName: 'transformers',
+    servedBy: 'stt',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    gated: false,
+    languages: [],
+    availability: AiModelAvailability.UNKNOWN,
+    isPlatformDefaultFor: [],
     memorySizeMb: 3000,
     computeType: 'float16',
     downloadStatus: AiModelDownloadStatus.NOT_DOWNLOADED,
@@ -372,6 +390,108 @@ describe('AiModelEntity', () => {
       const entity = createTestEntity({ tags: [] });
 
       expect(entity.tags).toEqual([]);
+    });
+  });
+
+  // ==========================================================================
+  // TASK-860 — registry fields (HF taxonomy, bucket identity, availability)
+  // ==========================================================================
+  describe('registry fields (TASK-860)', () => {
+    it('round-trips libraryName / servedBy / deploymentKind / card metadata / bucket identity', () => {
+      const entity = createTestEntity({
+        libraryName: 'whisper.cpp',
+        servedBy: 'stt',
+        deploymentKind: AiDeploymentKind.SELF_HOSTED,
+        wireModelId: null,
+        license: 'apache-2.0',
+        gated: true,
+        baseModel: 'openai/whisper-large-v3-turbo',
+        languages: ['ml', 'en'],
+        hfRevision: 'abc123',
+        bucketPrefix: 'arcaai-whisper-large-ml-en-gguf/f16-0123456789ab/',
+        primaryObject: 'ggml-model-f16.bin',
+        manifestDigest: 'deadbeef',
+        availability: AiModelAvailability.AVAILABLE,
+        isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT],
+      });
+
+      expect(entity.libraryName).toBe('whisper.cpp');
+      expect(entity.servedBy).toBe('stt');
+      expect(entity.deploymentKind).toBe(AiDeploymentKind.SELF_HOSTED);
+      expect(entity.license).toBe('apache-2.0');
+      expect(entity.gated).toBe(true);
+      expect(entity.baseModel).toBe('openai/whisper-large-v3-turbo');
+      expect(entity.languages).toEqual(['ml', 'en']);
+      expect(entity.hfRevision).toBe('abc123');
+      expect(entity.bucketPrefix).toBe('arcaai-whisper-large-ml-en-gguf/f16-0123456789ab/');
+      expect(entity.primaryObject).toBe('ggml-model-f16.bin');
+      expect(entity.manifestDigest).toBe('deadbeef');
+      expect(entity.availability).toBe(AiModelAvailability.AVAILABLE);
+      expect(entity.isPlatformDefaultFor).toEqual([AiTaskKind.SPEECH_TO_TEXT]);
+    });
+
+    it('isCloud reflects deploymentKind, not the deprecated format pseudo-values', () => {
+      expect(createTestEntity({ deploymentKind: AiDeploymentKind.CLOUD, format: AiModelFormat.SAFETENSOR }).isCloud).toBe(true);
+      expect(createTestEntity({ deploymentKind: AiDeploymentKind.SELF_HOSTED, format: AiModelFormat.AZURE_SPEECH }).isCloud).toBe(false);
+    });
+
+    it('markAvailability stamps availability + checkedAt + detail through change tracking', () => {
+      const entity = createTestEntity();
+      const checkedAt = new Date('2026-09-04T10:00:00Z');
+
+      entity.markAvailability(AiModelAvailability.MISSING, { reason: 'manifest.json absent' }, checkedAt);
+
+      expect(entity.availability).toBe(AiModelAvailability.MISSING);
+      expect(entity.availabilityCheckedAt).toBe(checkedAt);
+      expect(entity.availabilityDetail).toEqual({ reason: 'manifest.json absent' });
+      expect(entity.changes).toHaveProperty('availability', AiModelAvailability.MISSING);
+      expect(entity.changes).toHaveProperty('availabilityCheckedAt', checkedAt);
+    });
+
+    it('recordPublish writes the bucket identity, derived localPath, AVAILABLE and the legacy DOWNLOADED bookkeeping', () => {
+      const entity = createTestEntity();
+
+      entity.recordPublish({
+        bucketPrefix: 'medical-ner/0123456789ab/',
+        primaryObject: 'model.safetensors',
+        manifestDigest: 'cafe',
+        localPath: '/mnt/models-bucket/medical-ner/0123456789ab/',
+        fileSizeMb: 512,
+        checksum: 'sha',
+        hfRevision: 'rev1',
+        userId: 'user-9',
+      });
+
+      expect(entity.bucketPrefix).toBe('medical-ner/0123456789ab/');
+      expect(entity.primaryObject).toBe('model.safetensors');
+      expect(entity.manifestDigest).toBe('cafe');
+      expect(entity.localPath).toBe('/mnt/models-bucket/medical-ner/0123456789ab/');
+      expect(entity.hfRevision).toBe('rev1');
+      expect(entity.availability).toBe(AiModelAvailability.AVAILABLE);
+      expect(entity.availabilityCheckedAt).toBeInstanceOf(Date);
+      // Legacy bookkeeping stays in step until R3 removes it.
+      expect(entity.downloadStatus).toBe(AiModelDownloadStatus.DOWNLOADED);
+      expect(entity.fileSizeMb).toBe(512);
+      expect(entity.checksum).toBe('sha');
+      expect(entity.changes).toHaveProperty('updatedBy', 'user-9');
+    });
+
+    it('setPlatformDefaultFor replaces the task list through change tracking', () => {
+      const entity = createTestEntity({ isPlatformDefaultFor: [AiTaskKind.SPEECH_TO_TEXT] });
+
+      entity.setPlatformDefaultFor([AiTaskKind.TEXT_GENERATION, AiTaskKind.TEXT_GENERATION], 'user-1');
+
+      // De-duplicated; order preserved.
+      expect(entity.isPlatformDefaultFor).toEqual([AiTaskKind.TEXT_GENERATION]);
+      expect(entity.changes).toHaveProperty('isPlatformDefaultFor', [AiTaskKind.TEXT_GENERATION]);
+      expect(entity.changes).toHaveProperty('updatedBy', 'user-1');
+    });
+
+    it('validate rejects an empty libraryName / servedBy and a CLOUD row without a wireModelId', () => {
+      expect(() => createTestEntity({ libraryName: '' }).validate()).toThrow(/libraryName/);
+      expect(() => createTestEntity({ servedBy: ' ' }).validate()).toThrow(/servedBy/);
+      expect(() => createTestEntity({ deploymentKind: AiDeploymentKind.CLOUD, wireModelId: null }).validate()).toThrow(/wireModelId/);
+      expect(() => createTestEntity({ deploymentKind: AiDeploymentKind.CLOUD, wireModelId: 'gpt-transcribe' }).validate()).not.toThrow();
     });
   });
 });

@@ -5,8 +5,8 @@
  * assertions are about the MERGE RULE and the register mapping, not HTTP.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
-import { RequestMethod } from '@nestjs/common';
+import { PATH_METADATA, METHOD_METADATA, HTTP_CODE_METADATA } from '@nestjs/common/constants';
+import { GoneException, HttpStatus, RequestMethod } from '@nestjs/common';
 import { AiModelDiscoveryController } from '../ai-model-discovery.controller';
 import { AiModelDiscoveryService, normalizeModelSlug } from '../ai-model-discovery.service';
 
@@ -409,9 +409,11 @@ describe('AiModelDiscoveryController delegation', () => {
     expect(service.discover).toHaveBeenCalledWith('vllm');
   });
 
-  it('passes the register body through', async () => {
+  it('register is DEPRECATED (TASK-860): answers 410 Gone naming the replacement and never touches the service', async () => {
     const body = { provider: 'vllm', modelName: 'x' };
-    await controller.register(body as never);
-    expect(service.register).toHaveBeenCalledWith(body);
+    await expect(controller.register(body as never)).rejects.toBeInstanceOf(GoneException);
+    await expect(controller.register(body as never)).rejects.toThrow(/inventory|register from the bucket/i);
+    expect(service.register).not.toHaveBeenCalled();
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, AiModelDiscoveryController.prototype.register)).toBe(HttpStatus.GONE);
   });
 });

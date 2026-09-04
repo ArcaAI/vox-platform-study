@@ -5,6 +5,7 @@ SpeechBrain ``EncoderClassifier`` models.
 """
 
 import logging
+import os
 from typing import Any
 
 from ..core.exceptions import EmbeddingExtractionError
@@ -35,11 +36,21 @@ class SpeechBrainEmbeddingService(EmbeddingService):
             sb_device = device if device in ("cpu",) or device.startswith("cuda") else "cpu"
 
             fetch_config = FetchConfig(token=token) if token else FetchConfig()
-            self._classifier = EncoderClassifier.from_hparams(
-                source=model_id,
-                run_opts={"device": sb_device},
-                fetch_config=fetch_config,
-            )
+            from_hparams_kwargs: dict[str, Any] = {
+                "source": model_id,
+                "run_opts": {"device": sb_device},
+                "fetch_config": fetch_config,
+            }
+            # TASK-860: a LOCAL source (the published bucket prefix the registry
+            # row's `localPath` derives to) is used IN PLACE. Without `savedir`
+            # SpeechBrain still "fetches" each hparams/checkpoint file into
+            # `pretrained_models/<hash>/` — a copy/symlink step that fails on a
+            # read-only mount and trips the 1.0.x offline-fetch defect
+            # (speechbrain#2817). Pointing `savedir` at the source directory
+            # makes the fetch a no-op: nothing is copied, nothing is downloaded.
+            if os.path.isdir(model_id):
+                from_hparams_kwargs["savedir"] = model_id
+            self._classifier = EncoderClassifier.from_hparams(**from_hparams_kwargs)
 
             logger.info("SpeechBrain embedding model loaded: %s (device=%s)", model_id, sb_device)
 

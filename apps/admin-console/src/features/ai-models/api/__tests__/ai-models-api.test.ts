@@ -9,7 +9,8 @@ import {
   getModelRegistryConnectionStatus,
   listModels,
   listModelsPaginated,
-  registerDiscoveredModel,
+  runModelInventory,
+  setModelPlatformDefault,
   startModelDownload,
   updateModel,
 } from '../client';
@@ -76,6 +77,9 @@ describe('ai-models client', () => {
       source: 'HUGGINGFACE',
       sourceUri: 'openai/whisper-large-v3',
       format: 'FASTER_WHISPER',
+      libraryName: 'faster-whisper',
+      servedBy: 'stt',
+      deploymentKind: 'SELF_HOSTED',
     });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/hope/admin/ai-models',
@@ -111,14 +115,9 @@ describe('discovery client', () => {
     expect(calls[1].url).toContain('provider=lm-studio');
   });
 
-  it('POSTs the register body to admin/ai-models/discovery/register', async () => {
-    const calls = installFetchMock(() => Response.json({ id: 'm-9', slug: 'mistral-7b' }));
-
-    await registerDiscoveredModel({ provider: 'ollama', modelName: 'mistral:7b' });
-
-    expect(calls[0].method).toBe('POST');
-    expect(calls[0].url).toContain('admin/ai-models/discovery/register');
-    expect(calls[0].body).toEqual({ provider: 'ollama', modelName: 'mistral:7b' });
+  it('exposes NO register-from-discovery client — the route is deprecated (410 Gone, TASK-860)', async () => {
+    const client = await import('../client');
+    expect('registerDiscoveredModel' in client).toBe(false);
   });
 
   it('keys discovery per provider filter and under the ai-models root', () => {
@@ -181,5 +180,38 @@ describe('model-registry connection status client', () => {
     expect(calls[0].url).toContain('admin/providers/model-registry/s3');
     expect(calls[0].url).toContain('tenantId=00000000-0000-0000-0000-000000000000');
     expect(result).toEqual({ enabled: true, hasKey: true, version: 3 });
+  });
+});
+
+// =============================================================================
+// Registry v2 (TASK-860): inventory + platform-default election
+// =============================================================================
+describe('inventory + platform-default client', () => {
+  it('POSTs admin/ai-models/inventory with no body and returns the report', async () => {
+    const report = { checkedAt: '2026-09-04T10:00:00.000Z', counts: { available: 1, missing: 0, partial: 0, notApplicable: 0 }, rows: [], unregistered: [] };
+    const calls = installFetchMock(() => Response.json(report));
+
+    const result = await runModelInventory();
+
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toContain('admin/ai-models/inventory');
+    expect(calls[0].body).toBeUndefined();
+    expect(result).toEqual(report);
+  });
+
+  it('PATCHes admin/ai-models/:id/platform-default with the task list (no If-Match — not an OCC field edit)', async () => {
+    const calls = installFetchMock(() => Response.json({ id: 'm-1', isPlatformDefaultFor: ['SPEECH_TO_TEXT'] }));
+
+    await setModelPlatformDefault('m-1', ['SPEECH_TO_TEXT']);
+
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[0].url).toContain('admin/ai-models/m-1/platform-default');
+    expect(calls[0].body).toEqual({ tasks: ['SPEECH_TO_TEXT'] });
+    expect(calls[0].headers.get('if-match')).toBeNull();
+  });
+
+  it('keys the inventory report under the ai-models root, distinct from the list', () => {
+    expect(aiModelKeys.inventory()[0]).toBe('ai-models');
+    expect(aiModelKeys.inventory()).not.toEqual(aiModelKeys.all());
   });
 });
