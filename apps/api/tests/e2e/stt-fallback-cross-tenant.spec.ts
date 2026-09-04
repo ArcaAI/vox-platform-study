@@ -80,12 +80,6 @@ test.describe('STT fallback + BYOK', () => {
     }
   });
 
-  test('GET credentials list never carries key material (masked hasKey/keyVersion only)', async ({ request }) => {
-    const resp = await request.get(`${BASE}/credentials`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    expect(resp.status()).toBe(200);
-    assertNoSecretMaterial(await resp.text());
-  });
-
   test('GET fallback-candidates returns an array of enabled cloud pipelines, no secrets', async ({ request }) => {
     const resp = await request.get(`${BASE}/fallback-candidates`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
     expect(resp.status()).toBe(200);
@@ -94,33 +88,13 @@ test.describe('STT fallback + BYOK', () => {
     expect(Array.isArray(JSON.parse(raw))).toBe(true);
   });
 
+  // TASK-862 removed `admin/stt-config/credentials/**` outright (the console hooks were dead):
+  // BYO STT keys live under `admin/providers/stt/:provider` and are covered by
+  // ai-provider-connections.spec.ts. The five credential cases this spec carried went with the routes;
+  // the reveal probe stays because a retired route answering 404 is exactly the contract.
   test('there is NO reveal route for provider keys', async ({ request }) => {
     const resp = await request.get(`${BASE}/credentials/sarvam/reveal`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
     expect([404, 405]).toContain(resp.status());
-  });
-
-  test('credential PUT without If-Match → 428', async ({ request }) => {
-    const resp = await request.put(`${BASE}/credentials/sarvam`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}` },
-      data: { apiKey: 'probe-key', expectedVersion: 0 },
-    });
-    expect(resp.status()).toBe(428);
-  });
-
-  test('credential PUT with a stale If-Match → 412', async ({ request }) => {
-    const resp = await request.put(`${BASE}/credentials/sarvam`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': '"9999"' },
-      data: { apiKey: 'probe-key' },
-    });
-    expect(resp.status()).toBe(412);
-  });
-
-  test('an unknown BYO provider → 400 (fixed provider set, not 404)', async ({ request }) => {
-    const resp = await request.put(`${BASE}/credentials/not-a-provider`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': '"0"' },
-      data: { apiKey: 'probe-key', expectedVersion: 0 },
-    });
-    expect(resp.status()).toBe(400);
   });
 
   test('fallback row PUT without If-Match → 428', async ({ request }) => {
@@ -129,24 +103,6 @@ test.describe('STT fallback + BYOK', () => {
       data: { fallbackPipelineId: null, expectedVersion: 0 },
     });
     expect(resp.status()).toBe(428);
-  });
-
-  test('a written key is never returned by the write response either', async ({ request }) => {
-    const read = await request.get(`${BASE}/credentials`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    const rows = (await read.json()) as Array<{ provider: string; version: number }>;
-    const existing = rows.find((r) => r.provider === 'sarvam');
-    const etag = existing ? `"${existing.version}"` : '"0"';
-    const resp = await request.put(`${BASE}/credentials/sarvam`, {
-      headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': etag },
-      data: { apiKey: 'sk-e2e-probe-value', enabled: false },
-    });
-    // 400 is legitimate when the test env has no Vault Transit provider (the
-    // Vault-gate rejects rather than storing plaintext) — the never-echoed
-    // contract holds either way.
-    expect([200, 400]).toContain(resp.status());
-    const raw = await resp.text();
-    expect(raw).not.toContain('sk-e2e-probe-value');
-    if (resp.status() === 200) assertNoSecretMaterial(raw);
   });
 
   test('a tenant admin cannot address a foreign tenant', async ({ request }) => {
