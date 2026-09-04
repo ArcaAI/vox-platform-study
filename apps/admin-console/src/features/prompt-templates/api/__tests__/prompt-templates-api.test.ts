@@ -56,14 +56,14 @@ afterEach(() => {
 });
 
 describe('promptTemplateKeys', () => {
-  it('roots at ["agents"] and separates lists, details, versions and diffs', () => {
+  it('roots at ["prompt-templates"] and separates lists, details, versions and diffs', () => {
     expect(promptTemplateKeys.list({ page: 1 })).toEqual(promptTemplateKeys.list({ page: 1 }));
     expect(promptTemplateKeys.list({ page: 1 })).not.toEqual(promptTemplateKeys.list({ page: 2 }));
     expect(promptTemplateKeys.detail('pt-1')).not.toEqual(promptTemplateKeys.versions('pt-1'));
     expect(promptTemplateKeys.diff('pt-1', 6, 7)).not.toEqual(promptTemplateKeys.diff('pt-1', 5, 7));
     expect(promptTemplateKeys.usage('pt-1')).not.toEqual(promptTemplateKeys.analytics('pt-1'));
-    expect(promptTemplateKeys.usageRecords({ promptTemplateId: 'pt-1' })[0]).toBe('agents');
-    expect(promptTemplateKeys.departments()[0]).toBe('agents');
+    expect(promptTemplateKeys.usageRecords({ promptTemplateId: 'pt-1' })[0]).toBe('prompt-templates');
+    expect(promptTemplateKeys.departments()[0]).toBe('prompt-templates');
   });
 });
 

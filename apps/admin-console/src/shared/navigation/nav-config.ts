@@ -11,10 +11,10 @@ import {
   IconBuildings,
   IconBuildingSkyscraper,
   IconBulb,
-  IconCpu,
-  IconCpu2,
   IconCalendarTime,
   IconChartHistogram,
+  IconCpu,
+  IconCpu2,
   IconDatabase,
   IconDatabaseSearch,
   IconDna,
@@ -24,28 +24,32 @@ import {
   IconFileText,
   IconFingerprint,
   IconFlask,
+  IconFlask2,
   IconFolders,
   IconGauge,
-  IconFlask2,
   IconHeartbeat,
   IconHistory,
   IconHome,
   IconKey,
-  IconLockAccess,
   IconLayoutDashboard,
   IconLayoutGrid,
   IconLicense,
   IconListDetails,
   IconListTree,
+  IconLockAccess,
   IconLockCog,
   IconMicrophone,
   IconPlugConnected,
+  IconReceipt,
   IconReportMedical,
+  IconReportMoney,
+  IconRobot,
+  IconRocket,
+  IconRoute,
+  IconScale,
   IconSchema,
   IconServerBolt,
   IconServerCog,
-  IconRocket,
-  IconRoute,
   IconSettings,
   IconShieldBolt,
   IconShieldCog,
@@ -65,9 +69,6 @@ import {
   IconVersions,
   IconWaveSine,
   IconWorld,
-  IconReportMoney,
-  IconScale,
-  IconReceipt,
   type TablerIcon,
 } from '@tabler/icons-react';
 import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
@@ -608,19 +609,23 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // `/agents` — the Agent Catalog — is GONE from the nav. It CRUD-ed
-  // `DepartmentAgent`, which was retired: a prompt template's binding to a
-  // workflow now lives on the node that references it. The route keeps a
-  // one-release `redirect()` to `/prompt-templates` for bookmarks, but a
-  // redirect has no place in a navigation list.
-  //
-  // Its nav gate was `manage:PromptTemplate` while the screen CRUD-ed
-  // `DepartmentAgent` — D-26, a mismatch that predated this ticket. Removing
-  // the entry removes the mismatch rather than papering over it.
-  //
+  // `/agents` — TASK-863: the first-class, task-typed, publishable Agent (ASR ·
+  // text generation · TTS) — one task, one registry model, task-typed
+  // instruction/parameters/I-O schemas, versioned and published like a workflow
+  // definition. Its own resource (`manage:Agent`), no longer a prompt-template
+  // screen in disguise; the retired Agent Catalog redirect is gone with it.
+  {
+    route: '/agents',
+    domain: 'knowledge-agents',
+    label: 'Agents',
+    tier: '30-49',
+    icon: IconRobot,
+    required: [['manage', 'Agent']],
+    implemented: true,
+  },
   // Prompt instruction templates have their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
-  // approval, previously buried as tabs 2 and 3 of the Agent Catalog.
+  // approval. The instruction library an agent binds to.
   {
     route: '/prompt-templates',
     domain: 'knowledge-agents',

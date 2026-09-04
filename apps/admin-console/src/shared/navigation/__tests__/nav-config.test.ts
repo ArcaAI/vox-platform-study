@@ -91,14 +91,16 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   //     implied it was a sibling of the configurations rather than their knobs.
   // Net: 10-19 loses both (25 -> 23), 20-29 gains `/ai-platform` (8 -> 9),
   // so the total goes 60 -> 59.
-  it('covers the full 59-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(59);
+  // TASK-863: /agents is back as a REAL screen (the Agent entity), 59 -> 60, tier 30-49 21 -> 22.
+  it('covers the full 60-route rail map across the four tiers (including /ai-platform, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(60);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(23);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
+    // TASK-863: 61 -> 62 (`/agents` returns to the rail as a real screen).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -548,6 +550,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['manage', 'Storage'],
     ],
   ],
+  ['/agents', '30-49', [['manage', 'Agent']]],
   ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
   ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
   // the clinical document SHAPE catalog. `manage:DocumentTemplate`
@@ -658,7 +661,8 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   ],
   // `/document-templates` sits next to `/context-schemas`: the two
   // halves of one contract — what context may go in, what document comes out.
-  ['knowledge-agents', ['/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles']],
+  // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 5 -> 6.
+  ['knowledge-agents', ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles']],
   ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
   [
     'workflow-harness',
@@ -749,7 +753,8 @@ describe('NAV_DOMAINS', () => {
   // ai-platform 14 -> 12 (`/ai-task-defaults` and
   // `/ai-runtime-profiles` retired from the rail, `/ai-platform` added,
   // `/ai-operations/reconciliation` retagged out) and platform-ops 8 -> 9.
-  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·12·5·4·7·7·9·6)', () => {
+  // TASK-863: knowledge-agents 5 -> 6 (/agents).
+  it('partitions the 60 rail routes exactly as the ticket Domain Model does (3·6·12·6·4·7·7·9·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -758,7 +763,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES).toHaveLength(60);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {
