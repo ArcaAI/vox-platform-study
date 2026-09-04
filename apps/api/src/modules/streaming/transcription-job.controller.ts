@@ -194,7 +194,8 @@ export class TranscriptionJobController {
    */
   private markPipelineIdDeprecated(res?: Response): void {
     res?.setHeader('Deprecation', 'true');
-    res?.setHeader('X-Deprecation-Notice', 'TASK-861 — `pipelineId` is removed in R4; send `agentSlug` (or nothing, for the assigned ASR agent)');
+    // ASCII only — Node rejects non-Latin-1 header values with ERR_INVALID_CHAR (a 500 on every call).
+    res?.setHeader('X-Deprecation-Notice', 'TASK-861 - pipelineId is removed in R4; send agentSlug (or nothing, for the assigned ASR agent)');
     res?.setHeader('Link', '</api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"');
   }
 

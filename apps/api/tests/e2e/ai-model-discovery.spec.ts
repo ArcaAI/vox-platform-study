@@ -161,66 +161,22 @@ test.describe('AI model discovery', () => {
     expect((after as unknown[]).length).toBe((before as unknown[]).length);
   });
 
-  // ── 3. Register ────────────────────────────────────────────────────────────
+  // ── 3. Register ────────────────────────────────────────────────────
+  //
+  // TASK-860: discovery is READ-ONLY. `POST …/discovery/register` answers 410 Gone once its
+  // replacement (`POST admin/ai-models`, fed by the inventory report) ships, so the four
+  // registration-dependent cases this section used to carry (slug derivation, merge-view
+  // status, duplicate-slug 400, explicit-slug escape hatch) moved with the surface. The route
+  // stays mounted for one release so an old console build gets an actionable error.
 
-  test('registers a model, deriving a slug from the engine-reported name', async ({ request }) => {
-    const modelName = `e2e-528:8b-instruct_Q4_K_M-${Date.now()}`;
+  test('register is 410 Gone — discovery is read-only, registration goes through POST admin/ai-models', async ({ request }) => {
     const resp = await request.post(`${DISCOVERY}/register`, {
       headers: auth(superAdminToken),
-      data: { provider: 'vllm', modelName },
+      data: { provider: 'vllm', modelName: `e2e-528:8b-instruct_Q4_K_M-${Date.now()}` },
     });
-    expect(resp.status()).toBe(201);
-
-    const body = (await resp.json()) as { id: string; slug: string; sourceUri: string; provider: string };
-    createdIds.push(body.id);
-
-    expect(body.provider).toBe('vllm');
-    expect(body.sourceUri).toBe(modelName);
-    expect(body.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
-    expect(body.slug).not.toContain(':');
-    expect(body.slug).not.toContain('_');
-  });
-
-  test('a registered model shows up in the merge view as registered', async ({ request }) => {
-    const body = (await (await discover(request, superAdminToken, 'vllm')).json()) as DiscoveryResponse;
-    const created = body.entries.find((e) => e.registeredModel?.id === createdIds[0]);
-    expect(created, 'the freshly-registered row must appear in the merge view').toBeTruthy();
-    expect(created!.status).not.toBe('discovered');
-  });
-
-  test('a duplicate slug is a 400 naming the taken slug — never a silent suffix', async ({ request }) => {
-    const modelName = `e2e-528-dup-${Date.now()}`;
-    const first = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(superAdminToken),
-      data: { provider: 'vllm', modelName },
-    });
-    expect(first.status()).toBe(201);
-    createdIds.push(((await first.json()) as { id: string }).id);
-
-    const second = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(superAdminToken),
-      data: { provider: 'vllm', modelName },
-    });
-    expect(second.status()).toBe(400);
-    const message = JSON.stringify(await second.json());
-    expect(message).toContain(modelName.toLowerCase());
-    expect(message.toLowerCase()).toContain('slug');
-  });
-
-  test('an explicit slug is the escape hatch for a collision', async ({ request }) => {
-    const modelName = `e2e-528-explicit-${Date.now()}`;
-    const first = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(superAdminToken),
-      data: { provider: 'vllm', modelName },
-    });
-    createdIds.push(((await first.json()) as { id: string }).id);
-
-    const second = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(superAdminToken),
-      data: { provider: 'vllm', modelName, slug: `${modelName.toLowerCase()}-v2` },
-    });
-    expect(second.status()).toBe(201);
-    createdIds.push(((await second.json()) as { id: string }).id);
+    expect(resp.status()).toBe(410);
+    const message = JSON.stringify(await resp.json());
+    expect(message).toContain('admin/ai-models');
   });
 
   test('rejects cloud and unknown providers (nothing to discover there)', async ({ request }) => {
@@ -241,18 +197,9 @@ test.describe('AI model discovery', () => {
     expect(resp.status()).toBe(400);
   });
 
-  // ── 4. Cross-tenant ────────────────────────────────────────────────────────
-
-  test('cross-tenant — a row registered under one tenant is not readable from another', async ({ request }) => {
-    const id = createdIds[0];
-    expect(id, 'a row must have been registered by the earlier test').toBeTruthy();
-
-    // The super admin created the row under the ARCAAI working tenant; the
-    // DEFAULT-tenant admin must get the 404-over-403 posture, never the row.
-    const resp = await request.get(`${BASE}/${id}`, { headers: auth(tenantAdminToken) });
-    expect([403, 404]).toContain(resp.status());
-    if (resp.status() === 200) {
-      throw new Error('cross-tenant read of a registered model leaked');
-    }
-  });
+  // ── 4. Cross-tenant ───────────────────────────────────────────────
+  //
+  // The former case read back a row this spec had registered through discovery. With
+  // registration retired (410 above) there is nothing to read; the 404-over-403 posture of
+  // `GET admin/ai-models/:id` is a TASK-860 follow-up to cover through `POST admin/ai-models`.
 });

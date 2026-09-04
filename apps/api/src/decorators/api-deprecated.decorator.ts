@@ -27,8 +27,15 @@ export interface ApiDeprecatedOptions {
  * runs last and MERGES `deprecated: true` into the operation metadata the
  * `@ApiOperation` below it already wrote — it never replaces the summary).
  */
+/** HTTP header values are ISO-8859-1; anything outside printable ASCII is replaced so a notice can never break the response. */
+export function toHeaderSafe(value: string): string {
+  return value.replace(/[^\x20-\x7e]/g, '-');
+}
+
 export function ApiDeprecated(options: ApiDeprecatedOptions): MethodDecorator {
-  const notice = `${options.ticket} — removed in ${options.removeIn}${options.replacement ? `; use ${options.replacement}` : ''}`;
+  // ASCII only: Node rejects a non-Latin-1 header value with ERR_INVALID_CHAR, which turned every
+  // deprecated route into a 500 (the original text carried an em-dash).
+  const notice = toHeaderSafe(`${options.ticket} - removed in ${options.removeIn}${options.replacement ? `; use ${options.replacement}` : ''}`);
   const headers: MethodDecorator[] = [Header('Deprecation', 'true'), Header('X-Deprecation-Notice', notice)];
   if (options.replacement) headers.push(Header('Link', `<${options.replacement}>; rel="successor-version"`));
   if (options.sunsetAt) headers.push(Header('Sunset', options.sunsetAt));

@@ -378,6 +378,10 @@ test.describe(' route authorization conformance matrix', () => {
     // DOCUMENTATION-visibility signal only, and must never be allowed to shrink this inventory
     // (see `skipReasonFor` in ./helpers/route-manifest.helper.ts). If this number collapses
     // toward 0, suspect the sweep's skip predicate before suspecting the routes.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(30);
+    // TASK-859 program (2026-09-04) added three service-token-gated internal routes:
+    //   GET /internal/agents/resolve (TASK-863, AgentInternalController),
+    //   GET /internal/model-registry-credential (TASK-860, ModelRegistryInternalController),
+    //   POST /internal/harness/tts/synthesize (HarnessTtsInternalController) = 33.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(33);
   });
 });
