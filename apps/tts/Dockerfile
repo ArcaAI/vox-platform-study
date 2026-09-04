@@ -11,11 +11,16 @@
 # 82M model has no use for. Measured on linux/amd64: 1.39 GB with the CPU pin vs
 # 7.34 GB without it. `KokoroConfig.device` already defaults to "cpu".
 #
-# NOT in this image: Indic Parler-TTS (Malayalam) and IndicF5. Parler needs the
-# `[indic-parler]` extra plus the git-installed `parler-tts` (kept out of the
-# shared lock) and its ai4bharat weights are HF-gated; IndicF5 is license-blocked
-# (CC-BY-NC base weights — see tts/core/config.py). Both belong in a separate
-# image variant, with the weights mirrored internally rather than pulled at run time.
+# NOT in the DEFAULT image: Indic Parler-TTS (Malayalam) and IndicF5. Parler
+# needs the `[indic-parler]` extra (git-pinned `parler-tts`, TASK-860) and its
+# ai4bharat weights are HF-gated; IndicF5 is license-blocked (CC-BY-NC base
+# weights — see tts/core/config.py). The Parler VARIANT is this same Dockerfile
+# with the extras build-arg widened:
+#   docker build -f apps/tts/Dockerfile --target production \
+#     --build-arg TTS_EXTRAS="--extra indic-parler" -t tts-indic-parler .
+# Weights are never pulled at run time: both engines read the published bucket
+# prefix (`TTS_KOKORO_MODEL_PATH` / `TTS_PARLER_MODEL_PATH` = the registry
+# row's derived `localPath`) with HF_HUB_OFFLINE=1.
 #
 # Kokoro model weights are NOT baked in: `KPipeline` pulls hexgrad/Kokoro-82M
 # (~327 MB, Apache-2.0, ungated) from huggingface.co on first synth. See
@@ -34,11 +39,17 @@ ARG BASE_IMAGE=hope-python-base:latest
 # publishes the same version as `<version>+cpu`.
 ARG TORCH_VERSION=2.8.0
 ARG TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
+# ADDITIONAL uv extras on top of `[kokoro]` (always installed — it is what
+# makes a keyless deployment Ready). The Indic Parler variant passes
+# `--extra indic-parler` (see the header). One Dockerfile, two invocations —
+# never a second copy of these layers.
+ARG TTS_EXTRAS=""
 
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS builder
 ARG TORCH_VERSION
 ARG TORCH_CPU_INDEX
+ARG TTS_EXTRAS
 
 # The CUDA stack `torch` declares on linux/x86_64. Skipped from the frozen sync
 # and replaced by the CPU-only wheel below; on aarch64 these are already excluded
@@ -80,7 +91,7 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package tts --extra kokoro --no-dev --no-install-project --no-editable \
+    uv sync --frozen --package tts --extra kokoro ${TTS_EXTRAS} --no-dev --no-install-project --no-editable \
         ${UV_NO_CUDA_SKIPS}
 
 # Layer 1b: CPU-only torch, pinned to the lock's version. Kept in its own layer
@@ -105,7 +116,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY apps/tts/README.md ./apps/tts/
 COPY apps/tts/src ./apps/tts/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package tts --extra kokoro --no-dev --no-editable --inexact \
+    uv sync --frozen --package tts --extra kokoro ${TTS_EXTRAS} --no-dev --no-editable --inexact \
         ${UV_NO_CUDA_SKIPS}
 
 RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \

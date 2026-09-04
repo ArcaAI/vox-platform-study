@@ -34,8 +34,10 @@ dependencies = [
     "spacy>=3.8.15",
     # GLiNER2 — hosts the guardrail-plane models :
     # PII spans and multi-task LLM-safety moderation. Model IDS are NOT pinned
-    # here: they are SYSTEM `AiModel` rows the caller resolves and sends.
-    "gliner2",
+    # here: they are SYSTEM `AiModel` rows the caller resolves and sends. The
+    # RUNTIME is pinned (TASK-860): the three catalogue rows were probed against
+    # 1.3.x; a major bump changes the `classify_text` schema contract.
+    "gliner2>=1.3.2,<2",
     # llama.cpp for the MiniCheck GGUF NLI scorer. Imported
     # LAZILY in `services/entailment_scorer.py`, so a deployment that never
     # scores entailment never loads it.
