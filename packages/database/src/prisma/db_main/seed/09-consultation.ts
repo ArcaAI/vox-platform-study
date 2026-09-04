@@ -15,6 +15,7 @@ import {
   SEED_TRANSCRIPTION_JOB_IDS,
   SYSTEM_USER_ID,
 } from './00-constants';
+import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from './25-agents';
 // The plaintext clinical PHI columns were dropped; seed rows must
 // persist Vault-Transit ciphertext into the sibling `encrypted*` columns.
 import { encryptSeedRow } from './phi-encryption';
@@ -1230,25 +1231,36 @@ const DEFAULT_NAMED_ENTITIES = [
 // the admin job views and EU analytics are populated for more than one tenant.
 //
 // FK/coherence rules honoured:
-//   - `pipelineId` is a REAL FK to AsrPipeline.id; each job references the
-//     production pipeline OWNED BY THE SAME TENANT (Global → …0401 from
-//     GLOBAL_TENANT_ASR_PIPELINES; ArcaAI → …0101). Pipelines are seeded by
-//     `seedAsrPipelines` earlier in index.ts, so the FK resolves.
+//   - `agentVersionId` (TASK-861) is the ASR Agent VERSION that ran the job
+//     (`Agent.id` — rows are versions; deliberately NO FK, the job stays
+//     readable history after the agent is archived). Each job names the agent
+//     the tenant's cascade resolves: the Global playground runs its OWN
+//     `example-transcription`; ArcaAI seeds no agents and inherits the SYSTEM
+//     `platform-transcription` through the TENANT-scope assignment. Both ids
+//     are deterministic (`25-agents.ts`), so seed ORDER does not matter.
+//     `pipelineId` is deprecated and NEVER written: `06-stt.ts` seeds no
+//     `AsrPipeline` rows any more, and the column's FK would refuse a dangling
+//     pointer.
 //   - `consultationId` / `contextItemId` / `mediaId` are soft references (no
 //     DB FK); each points at a seeded row in the SAME tenant.
 //   - `mediaId` is only set where real Media exists (the Global GEN dual-capture
 //     recording); other jobs leave it null.
 // =============================================================================
 
-const GLOBAL_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000401';
-const ARCAAI_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000101';
+const asrAgentVersionId = (specs: ReadonlyArray<{ id: string; slug: string; task: string }>, slug: string): string => {
+  const spec = specs.find((candidate) => candidate.slug === slug && candidate.task === 'SPEECH_TO_TEXT');
+  if (!spec) throw new Error(`09-consultation: seeded SPEECH_TO_TEXT agent "${slug}" not found in 25-agents.ts`);
+  return spec.id;
+};
+const GLOBAL_ASR_AGENT_VERSION_ID = asrAgentVersionId(GLOBAL_AGENT_SPECS, 'example-transcription');
+const PLATFORM_ASR_AGENT_VERSION_ID = asrAgentVersionId(PLATFORM_AGENT_SPECS, 'platform-transcription');
 
 interface TranscriptionJobSeed {
   id: string;
   tenantId: string;
   jobType: TranscriptionJobType;
   status: TranscriptionJobStatus;
-  pipelineId: string;
+  agentVersionId: string;
   consultationId: string | null;
   contextItemId: string | null;
   mediaId: string | null;
@@ -1271,7 +1283,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_TENANT_ID,
     jobType: 'BATCH' as TranscriptionJobType,
     status: 'COMPLETED' as TranscriptionJobStatus,
-    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    agentVersionId: GLOBAL_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
     contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
     mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
@@ -1293,7 +1305,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_TENANT_ID,
     jobType: 'BATCH' as TranscriptionJobType,
     status: 'PROCESSING' as TranscriptionJobStatus,
-    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    agentVersionId: GLOBAL_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
     contextItemId: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
     mediaId: null,
@@ -1314,7 +1326,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_TENANT_ID,
     jobType: 'STREAMING' as TranscriptionJobType,
     status: 'QUEUED' as TranscriptionJobStatus,
-    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    agentVersionId: GLOBAL_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
     contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
     mediaId: null,
@@ -1335,7 +1347,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_TENANT_ID,
     jobType: 'BATCH' as TranscriptionJobType,
     status: 'FAILED' as TranscriptionJobStatus,
-    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    agentVersionId: GLOBAL_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
     contextItemId: null,
     mediaId: null,
@@ -1356,7 +1368,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     jobType: 'BATCH' as TranscriptionJobType,
     status: 'COMPLETED' as TranscriptionJobStatus,
-    pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+    agentVersionId: PLATFORM_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
     contextItemId: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
     mediaId: null,
@@ -1378,7 +1390,7 @@ export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     jobType: 'STREAMING' as TranscriptionJobType,
     status: 'QUEUED' as TranscriptionJobStatus,
-    pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+    agentVersionId: PLATFORM_ASR_AGENT_VERSION_ID,
     consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
     contextItemId: null,
     mediaId: null,
@@ -1469,15 +1481,15 @@ export const seedConsultation = async (client: CorePrismaClient) => {
   }
   console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
 
-  // Transcription jobs depend on ASR pipelines (FK) which
-  // are seeded earlier by seedAsrPipelines, and reference seeded consultations.
+  // Transcription jobs are keyed to their ASR Agent version (no FK — TASK-861)
+  // and reference seeded consultations.
   for (const job of DEFAULT_TRANSCRIPTION_JOBS) {
     const data = {
       id: job.id,
       tenantId: job.tenantId,
       jobType: job.jobType,
       status: job.status,
-      pipelineId: job.pipelineId,
+      agentVersionId: job.agentVersionId,
       consultationId: job.consultationId,
       contextItemId: job.contextItemId,
       mediaId: job.mediaId,
