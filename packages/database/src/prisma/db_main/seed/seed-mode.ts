@@ -42,15 +42,14 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * | `09-consultation` | Synthetic, Vault-encrypted PHI |
  * | `10-audit-log` | Fabricated rows in the HIPAA audit trail |
  * | `23-arcaai-workflow-authoring` | FABRICATED GOVERNANCE — see below |
- * | `23a-realtime-transcription-agent-arcaai` | FABRICATED GOVERNANCE — the ArcaAI half of |
  * | `24-example-consultation-workflows-arcaai`| FABRICATED GOVERNANCE — the ArcaAI half of |
  * | `91-user` | Demo accounts (`*@example.com`) with a documented default password |
  *
  * ## A phase string is a FILE STEM, with one suffix
  *
- * `23a-realtime-transcription-agent` and `24-example-consultation-workflows`
- * each seed BOTH a SYSTEM-owned platform half and an ArcaAI tenant-authored
- * half, and the two halves belong on opposite sides of this list. Splitting
+ * `24-example-consultation-workflows` (and, until TASK-861 retired it, the
+ * `23a` realtime transcription agent) seeds BOTH a SYSTEM-owned platform half
+ * and an ArcaAI tenant-authored half, and the two halves belong on opposite sides of this list. Splitting
  * each into two files would separate a graph from the compiled artifact whose
  * only correctness property is "equals what the compiler emits for that graph",
  * so instead each file exports two seed functions and `index.ts` gates them
@@ -79,8 +78,7 @@ const VALID_MODES: readonly SeedMode[] = ['all', 'safe', 'none'] as const;
  * The SYSTEM-owned platform default (`21-workflow-definition`, `createdBy: SYSTEM_USER_ID`) is
  * deliberately NOT excluded — that IS platform configuration, and it is what a `safe` bootstrap
  * needs so a tenant with no graph of its own still resolves a lane. The same reasoning keeps the
- * SYSTEM halves of two files (`23a-realtime-transcription-agent`,
- * `24-example-consultation-workflows`) IN every mode: they are the clone-from-template library
+ * SYSTEM half of `24-example-consultation-workflows` IN every mode: they are the clone-from-template library
  * `findSystemTemplates` serves, so excluding them would ship a production tenant a Workflow
  * Studio with nothing to start from.
  *
@@ -97,7 +95,6 @@ export const SEED_PHASES_EXCLUDED_FROM_SAFE: readonly string[] = [
   '09-consultation',
   '10-audit-log',
   '23-arcaai-workflow-authoring',
-  '23a-realtime-transcription-agent-arcaai',
   '24-example-consultation-workflows-arcaai',
   '91-user',
 ] as const;

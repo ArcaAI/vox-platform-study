@@ -80,7 +80,7 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
   // See `seed-mode.ts`'s table for the full reasoning.
   // adds the two `-arcaai` halves for the same reason: their rows carry
   // `createdBy: <the ArcaAI tenant admin>` on PUBLISHED clinical workflows. Their
-  // SYSTEM halves (`23a-realtime-transcription-agent`,
+  // SYSTEM halves (formerly `23a-realtime-transcription-agent` — retired by TASK-861 —,
   // `24-example-consultation-workflows`) stay IN every mode — see the "still runs
   // platform-config phases" case below.
   const DANGEROUS = [
@@ -90,7 +90,6 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
     '09-consultation',
     '10-audit-log',
     '23-arcaai-workflow-authoring',
-    '23a-realtime-transcription-agent-arcaai',
     '24-example-consultation-workflows-arcaai',
     '91-user',
   ];
@@ -130,7 +129,6 @@ describe('isPhaseEnabled — which phases each mode runs', () => {
       // them would ship a Workflow Studio with an empty template library, which
       // is precisely the platform configuration `safe` exists to install.
       '21-workflow-definition',
-      '23a-realtime-transcription-agent',
       '24-example-consultation-workflows',
     ]) {
       expect(isPhaseEnabled(phase, 'safe')).toBe(true);

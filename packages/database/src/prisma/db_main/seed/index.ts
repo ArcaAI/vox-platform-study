@@ -29,7 +29,6 @@ import { seedConsultationGateSettings } from './11c-consultation-gate-settings';
 import { seedTtsEngineFlagSettings } from './11d-tts-engine-flags';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
-import { seedPipelinePolicy } from './14-pipeline-policy';
 import { seedEntitlements } from './15-entitlements';
 import { seedAiRoutingPolicy } from './16-ai-routing-policy';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
@@ -37,7 +36,6 @@ import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
-import { seedArcaaiTranscriptionAgent, seedPlatformTranscriptionAgentTemplate } from './23a-realtime-transcription-agent';
 import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflowTemplates } from './24-example-consultation-workflows';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedAgents } from './25-agents';
@@ -145,10 +143,9 @@ export const seed = async () => {
     // Depends only on the reserved SYSTEM tenant (Phase 1).
     await seedHarnessPolicy(client);
     console.log('');
-    // SYSTEM + demo PipelinePolicy cascade defaults (+ WORM).
-    // Needs the reserved SYSTEM tenant + the Global demo tenant (both Phase 1).
-    await seedPipelinePolicy(client);
-    console.log('');
+    // TASK-861: `14-pipeline-policy.ts` is GONE. `PipelinePolicy` is deprecated
+    // (removed in R4); its toggles become `enabled` flags on the nodes of the
+    // assigned workflow (`WorkflowAssignment`, TASK-864). No rows are seeded.
     // TASK-862: `16-ai-task-default.ts` and `18-ai-runtime-profile.ts` are
     // GONE. The task defaults live in `AiRoutingPolicy` (the SYSTEM election is
     // written from the model registry — TASK-860); the runtime-profile
@@ -320,29 +317,15 @@ export const seed = async () => {
       await seedArcaaiWorkflowAuthoring(client);
       console.log('');
     }
-    // /D3 — the realtime transcription AGENT (stt palette) and the
-    // three example consultation workflows, each seeded twice.
-    //
-    // The SYSTEM halves are platform configuration: SYSTEM-tenant, createdBy
-    // SYSTEM_USER_ID, asserting no human authorship, and they are what
-    // `findSystemTemplates` serves to the Studio's clone-from-template flow — so
-    // they run in EVERY seeding mode, exactly like 21-workflow-definition.
-    //
-    // The ArcaAI halves carry `createdBy: <the ArcaAI tenant admin>`, which in a
-    // real database is a published clinical workflow attributed to a named human
-    // who never authored it. Same objection that gates 23; same deny-list.
-    //
-    // Ordered after 21 (the platform default must exist first) and after 23 (the
-    // ArcaAI transcription phase reconciles the tenant's default AsrPipeline, and
-    // must have the last word over `seedStt`'s own reconciler in Phase 2).
-    if (isPhaseEnabled('23a-realtime-transcription-agent', mode)) {
-      await seedPlatformTranscriptionAgentTemplate(client);
-      console.log('');
-    }
-    if (isPhaseEnabled('23a-realtime-transcription-agent-arcaai', mode)) {
-      await seedArcaaiTranscriptionAgent(client);
-      console.log('');
-    }
+    // TASK-861: `23a-realtime-transcription-agent{,.generated}.ts` are GONE. The
+    // realtime "Transcription Agent" was an `stt`-palette workflow that compiled
+    // back into the deprecated `AsrPipeline`; the ASR Agent is now a first-class
+    // `Agent` row (`25-agents.ts`, TASK-863), resolved by the gateway into a
+    // `ResolvedAsrSpec`. The three example consultation workflows below are
+    // unchanged, each seeded twice: the SYSTEM halves are platform configuration
+    // (SYSTEM-tenant, createdBy SYSTEM_USER_ID, served by `findSystemTemplates`)
+    // and run in EVERY seeding mode; the ArcaAI halves carry a named human
+    // author and sit on the same deny-list as 23.
     if (isPhaseEnabled('24-example-consultation-workflows', mode)) {
       await seedExampleConsultationWorkflowTemplates(client);
       console.log('');
