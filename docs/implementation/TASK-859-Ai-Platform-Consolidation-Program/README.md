@@ -201,7 +201,10 @@ pair, with tests); `POST audio/transcription-jobs` (JSON create) never resolved 
 its multipart sibling had (`agentSlug` on the DTO, resolution in the controller, tests). Specs updated
 for merged semantics: discovery register is 410 Gone (860), ten SYSTEM llm connections (862), 33
 service-token-gated internal routes (863/860), stt-fallback credential cases removed with their routes
-(862). Pre-existing on the owner's base, NOT program-caused: `mcp-admin.spec.ts` (the TASK-846 egress
+(862). Final e2e on the merged tree (`6fcf4083b`, API booted alone): **1117 passed, 2 failed, 60 skipped, 11 did
+not run** of 1190 (from 1048 / 32 on the first baseline); zero tenant-scope mismatches and zero header
+errors in the gateway log. The two reds and the 11 not-run cases (the rest of `mcp-admin.spec.ts` after its
+first failure) are pre-existing on the owner's base, NOT program-caused: `mcp-admin.spec.ts` (the TASK-846 egress
 allow-list `mcp.egress.allowedHosts` is never seeded for e2e) and `task-660-loop-stream.spec.ts` (label
 whitespace on a path no program commit touched).
 
@@ -216,3 +219,4 @@ plus `workflows.py:748` (`workflow.patched()` without an id, a base defect).
 |---|---|
 | 2026-09-04 | Program created from the owner's review brief; eight exploration/research passes; six tickets planned; decisions and owner questions consolidated. |
 | 2026-09-04 | Fan-out executed: 862, 863, 860, 864 merged into dev-2.2 with gates re-run on the merged tree (see §9); 861 in progress, 865 queued last. |
+| 2026-09-04 | 861 and 865 merged; wave 3 (seed retirement, stt palette residue, gateway compat/credentials) merged; artifacts regenerated twice (gateway DI fix, DTO change); e2e baseline surfaced four gateway defects (ASCII deprecation headers, WS owner-binding audit entry, shared-read tenant scope for in-lists, JSON create-job agent cascade) — all fixed; final e2e 1117/1190 with only the two pre-existing reds. Every worktree removed; dev-2.2 is 108 commits ahead of origin and NOT pushed. |
