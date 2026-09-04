@@ -15,6 +15,8 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from '
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { AsrAgentResolverService, ProviderVetoedException } from '@arcaai/applications';
+import { QuotaExceededException } from '@arcaai/exceptions';
 import { SttInternalController } from '../stt-internal.controller';
 
 describe('SttInternalController.ensureInternalApiKey', () => {
@@ -95,38 +97,121 @@ describe('SttInternalController.ensureInternalApiKey', () => {
   });
 });
 
-// Item 8: the batch-worker BYO override PULL route.
+/**
+ * The batch-worker BYO credential PULL route (TASK-861 follow-up): a tenant's
+ * cloud STT credentials resolve through TASK-862's `ProviderCredentialResolver`
+ * — tenant row → SYSTEM fallback, funding DERIVED from the row that served —
+ * via `AsrAgentResolverService.resolveProviderOverrides` (the same loop the
+ * session / batch entry points use), inside a tenant-pinned CLS context. The
+ * wire shape `apps/stt` parses (`{provider: {api_key, funding, ...}}`) is unchanged.
+ *
+ * These cases run the REAL loop over a mocked one-credential resolver, so what
+ * they pin is the route's behaviour end to end, not a mock of the loop.
+ */
 describe('SttInternalController.getProviderOverrides', () => {
+  const TENANT = '50000000-0000-0000-0000-000000000001';
+  const request = { apiKey: { id: 'key-1' } } as any;
   let sttInternalService: any;
-  let sttConfig: any;
+  let credentials: { resolve: ReturnType<typeof vi.fn> };
   let cls: any;
   let controller: SttInternalController;
 
+  const binding = (funding: 'tenant' | 'platform', override: Record<string, unknown>) => ({
+    override: { funding, ...override },
+    fundingTier: funding,
+    connectionId: `conn-${funding}`,
+  });
+
   beforeEach(() => {
     sttInternalService = { createTranscript: vi.fn() };
-    sttConfig = { resolveProviderOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'k' } }) };
+    credentials = { resolve: vi.fn().mockResolvedValue(null) };
     // Minimal CLS: `run` invokes the callback synchronously, `set` records the tenant.
     cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
-    controller = new SttInternalController(sttInternalService, sttConfig, cls);
+    const asrResolver = new AsrAgentResolverService({} as never, credentials as never);
+    controller = new SttInternalController(sttInternalService, asrResolver, cls);
   });
 
   it('rejects when the internal API key is absent (service-to-service gate)', async () => {
-    await expect(controller.getProviderOverrides({} as any, 't-1')).rejects.toThrow(UnauthorizedException);
-    expect(sttConfig.resolveProviderOverrides).not.toHaveBeenCalled();
+    await expect(controller.getProviderOverrides({} as any, TENANT)).rejects.toThrow(UnauthorizedException);
+    expect(credentials.resolve).not.toHaveBeenCalled();
   });
 
   it('400s when tenantId is missing', async () => {
-    const request = { apiKey: { id: 'key-1' } } as any;
     await expect(controller.getProviderOverrides(request, undefined)).rejects.toThrow(BadRequestException);
-    expect(sttConfig.resolveProviderOverrides).not.toHaveBeenCalled();
+    expect(credentials.resolve).not.toHaveBeenCalled();
   });
 
-  it('resolves overrides within a tenant-pinned CLS context when authorized', async () => {
-    const request = { apiKey: { id: 'key-1' } } as any;
-    const result = await controller.getProviderOverrides(request, 't-1');
-    expect(result).toEqual({ sarvam: { api_key: 'k' } });
-    expect(cls.set).toHaveBeenCalledWith('tenantId', 't-1');
-    expect(sttConfig.resolveProviderOverrides).toHaveBeenCalledWith('t-1');
+  it('400s when the ASR agent resolver is not wired — never a silent empty map', async () => {
+    const unwired = new SttInternalController(sttInternalService, undefined, cls);
+    await expect(unwired.getProviderOverrides(request, TENANT)).rejects.toThrow(BadRequestException);
+  });
+
+  it('resolves every cloud STT provider through the ONE resolver inside a tenant-pinned CLS context; funding is the tier that served', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-tenant', region: 'eastus' });
+      if (provider === 'sarvam') return binding('platform', { api_key: 'k-platform', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' });
+      return null; // openai: no row at either tier
+    });
+
+    const result = await controller.getProviderOverrides(request, TENANT);
+
+    expect(cls.run).toHaveBeenCalledTimes(1);
+    expect(cls.set).toHaveBeenCalledWith('tenantId', TENANT);
+    expect(credentials.resolve.mock.calls).toEqual([
+      ['stt', 'azure-speech', TENANT],
+      ['stt', 'sarvam', TENANT],
+      ['stt', 'openai', TENANT],
+    ]);
+    // The tenant's own row → `tenant`; the SYSTEM platform default → `platform`;
+    // no row anywhere → no key (the BYOK-only STT loader then fails closed).
+    expect(result).toEqual({
+      'azure-speech': { api_key: 'k-tenant', funding: 'tenant', region: 'eastus' },
+      sarvam: { api_key: 'k-platform', funding: 'platform', base_url: 'https://api.sarvam.ai', model: 'saarika:v2' },
+    });
+    expect('openai' in result).toBe(false);
+  });
+
+  it('a DISABLED tenant row is a veto for THAT provider: absent from the map (no tier serves it) while the others still resolve', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'sarvam') throw new ProviderVetoedException('stt', 'sarvam', TENANT);
+      if (provider === 'azure-speech') return binding('tenant', { api_key: 'k-tenant', region: 'eastus' });
+      return binding('platform', { api_key: 'k-openai-platform' });
+    });
+
+    const result = await controller.getProviderOverrides(request, TENANT);
+
+    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'openai']);
+    expect(result.sarvam).toBeUndefined();
+    // A veto on one provider does not block the pull for the others.
+    expect(credentials.resolve).toHaveBeenCalledTimes(3);
+  });
+
+  it('an unentitled platform default is a refusal for that provider only (absent) — never a substituted credential', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) => {
+      if (provider === 'openai') {
+        throw new QuotaExceededException('not entitled', { capability: 'platformDefaultCredential', limit: 0, used: 0, requested: 1 });
+      }
+      return binding('tenant', { api_key: `k-${provider}` });
+    });
+    const result = await controller.getProviderOverrides(request, TENANT);
+    expect(Object.keys(result).sort()).toEqual(['azure-speech', 'sarvam']);
+  });
+
+  it('a backend fault propagates — it is never disguised as "no credential"', async () => {
+    credentials.resolve.mockRejectedValueOnce(new Error('vault transit unavailable'));
+    await expect(controller.getProviderOverrides(request, TENANT)).rejects.toThrow('vault transit unavailable');
+  });
+
+  it('forwards the resolver’s wire entry verbatim (the shape apps/stt parses) — funding included and never restamped', async () => {
+    credentials.resolve.mockImplementation(async (_service: string, provider: string) =>
+      provider === 'azure-speech'
+        ? binding('platform', { api_key: 'k', region: 'eastus', endpoint: 'https://x.cognitiveservices.azure.com', api_version: '2024-11-15' })
+        : null,
+    );
+    const result = await controller.getProviderOverrides(request, TENANT);
+    expect(result).toEqual({
+      'azure-speech': { api_key: 'k', funding: 'platform', region: 'eastus', endpoint: 'https://x.cognitiveservices.azure.com', api_version: '2024-11-15' },
+    });
   });
 });
 
