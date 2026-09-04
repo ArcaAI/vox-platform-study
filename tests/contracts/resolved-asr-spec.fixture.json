@@ -1,0 +1,199 @@
+{
+  "$comment": "TASK-861 — the ResolvedAsrSpec cross-language contract fixture. `input` is what TASK-863's AgentResolverService returns (a ResolvedAgent, plus the resolved `parameters.fallback.agentSlug` agent when one is named); `expected` is what `buildResolvedAsrSpec()` (@arcaai/applications) MUST produce from it and what `apps/stt/src/stt/pipeline/spec.py` MUST validate and map. Both `tests/contracts/resolved-asr-spec-parity.contract.test.ts` and `apps/stt/tests/unit/test_resolved_spec_parity.py` read this file; change it with both suites open.",
+  "platformDefault": {
+    "$comment": "The SYSTEM `platform-transcription` agent: GGUF whisper primary, Silero VAD, ECAPA diarization, one AgentModelFallback row (kind: model).",
+    "input": {
+      "agent": {
+        "agentId": "0199a861-0000-7000-8000-000000000001",
+        "agentVersionId": "0199a861-0000-7000-8000-000000000001",
+        "slug": "platform-transcription",
+        "versionNumber": 1,
+        "task": "SPEECH_TO_TEXT",
+        "tenantId": "00000000-0000-0000-0000-000000000000",
+        "source": "platform-default",
+        "compiledConfig": {
+          "task": "SPEECH_TO_TEXT",
+          "service": "stt",
+          "model": { "id": "0199a860-0000-7000-8000-00000000a001", "slug": "arcaai-whisper-large-ml-en-gguf", "provider": null, "taskType": "AUTOMATIC_SPEECH_RECOGNITION" },
+          "fallbacks": [{ "priority": 0, "id": "0199a860-0000-7000-8000-00000000a002", "slug": "faster-whisper-large-v3-turbo-int8", "provider": null }],
+          "instruction": { "initialPrompt": "Clinical consultation. Medical terminology.", "hotwords": ["paracetamol", "metformin"] },
+          "resolvedPrompt": null,
+          "parameters": {
+            "audioFrontEnd": {
+              "vad": { "modelSlug": "silero-vad", "threshold": 0.5, "minSpeechMs": 120, "minSilenceMs": 200 },
+              "diarization": { "enabled": true, "backend": "embedding", "embeddingModelSlug": "ecapa-tdnn-voxceleb", "maxSpeakers": 2 }
+            },
+            "decoding": { "languageMode": "ml-en", "codeSwitching": true, "wordTimestamps": true, "beamSize": 5 },
+            "postProcessing": { "punctuation": { "enabled": true }, "stabilizer": true },
+            "streaming": { "partialIntervalMs": 500, "endpointing": "fixed" },
+            "fallback": { "autoSwitch": true, "switchAfterConsecutiveFailures": 2 }
+          },
+          "inputSchema": { "type": "object" },
+          "outputSchema": { "type": "object" },
+          "tools": [],
+          "protocols": ["http", "socket"]
+        },
+        "models": [
+          { "role": "primary", "slug": "arcaai-whisper-large-ml-en-gguf", "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF", "sourceRevision": null, "localPath": "/models/whisper-turbo-ml-en/ggml-model.gguf", "checksum": "sha256:aaaa", "format": "WHISPER_CPP", "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+          { "role": "fallback", "priority": 0, "slug": "faster-whisper-large-v3-turbo-int8", "sourceUri": "deepdml/faster-whisper-large-v3-turbo-ct2", "sourceRevision": null, "localPath": null, "checksum": null, "format": "FASTER_WHISPER", "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+          { "role": "vad", "slug": "silero-vad", "sourceUri": "onnx-community/silero-vad", "sourceRevision": null, "localPath": null, "checksum": null, "format": "ONNX", "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+          { "role": "embedding", "slug": "ecapa-tdnn-voxceleb", "sourceUri": "speechbrain/spkrec-ecapa-voxceleb", "sourceRevision": null, "localPath": null, "checksum": null, "format": "PYTORCH", "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+        ]
+      },
+      "fallbackAgent": null
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "runtimeKey": "0199a861-0000-7000-8000-000000000001",
+      "agent": { "slug": "platform-transcription", "versionId": "0199a861-0000-7000-8000-000000000001", "versionNumber": 1, "tenantId": "00000000-0000-0000-0000-000000000000", "source": "platform-default" },
+      "models": {
+        "asr": { "role": "asr", "slug": "arcaai-whisper-large-ml-en-gguf", "taskType": "AUTOMATIC_SPEECH_RECOGNITION", "format": "WHISPER_CPP", "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF", "sourceRevision": null, "localPath": "/models/whisper-turbo-ml-en/ggml-model.gguf", "checksum": "sha256:aaaa", "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+        "vad": { "role": "vad", "slug": "silero-vad", "taskType": "VOICE_ACTIVITY_DETECTION", "format": "ONNX", "sourceUri": "onnx-community/silero-vad", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+        "embedding": { "role": "embedding", "slug": "ecapa-tdnn-voxceleb", "taskType": "SPEAKER_EMBEDDING", "format": "PYTORCH", "sourceUri": "speechbrain/spkrec-ecapa-voxceleb", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+      },
+      "audioFrontEnd": {
+        "vad": { "enabled": true, "threshold": 0.5, "minSpeechMs": 120, "minSilenceMs": 200 },
+        "denoise": { "enabled": false, "level": "off" },
+        "diarization": { "enabled": true, "backend": "embedding", "maxSpeakers": 2 },
+        "resample": true,
+        "normalize": true
+      },
+      "decoding": { "languageMode": "ml-en", "codeSwitching": true, "wordTimestamps": true, "beamSize": 5, "temperature": null, "vadFilter": false },
+      "postProcessing": { "punctuation": { "enabled": true }, "disfluency": false, "stabilizer": true, "merge": false },
+      "streaming": { "partialIntervalMs": 500, "endpointing": "fixed", "maxUtteranceSec": null },
+      "instruction": { "initialPrompt": "Clinical consultation. Medical terminology.", "hotwords": ["paracetamol", "metformin"] },
+      "fallback": {
+        "kind": "model",
+        "autoSwitch": true,
+        "switchAfterConsecutiveFailures": 2,
+        "spec": {
+          "runtimeKey": "0199a861-0000-7000-8000-000000000001:fallback:faster-whisper-large-v3-turbo-int8",
+          "agent": { "slug": "platform-transcription", "versionId": "0199a861-0000-7000-8000-000000000001", "versionNumber": 1, "tenantId": "00000000-0000-0000-0000-000000000000", "source": "platform-default" },
+          "models": {
+            "asr": { "role": "asr", "slug": "faster-whisper-large-v3-turbo-int8", "taskType": "AUTOMATIC_SPEECH_RECOGNITION", "format": "FASTER_WHISPER", "sourceUri": "deepdml/faster-whisper-large-v3-turbo-ct2", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+            "vad": { "role": "vad", "slug": "silero-vad", "taskType": "VOICE_ACTIVITY_DETECTION", "format": "ONNX", "sourceUri": "onnx-community/silero-vad", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" },
+            "embedding": { "role": "embedding", "slug": "ecapa-tdnn-voxceleb", "taskType": "SPEAKER_EMBEDDING", "format": "PYTORCH", "sourceUri": "speechbrain/spkrec-ecapa-voxceleb", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+          },
+          "audioFrontEnd": {
+            "vad": { "enabled": true, "threshold": 0.5, "minSpeechMs": 120, "minSilenceMs": 200 },
+            "denoise": { "enabled": false, "level": "off" },
+            "diarization": { "enabled": true, "backend": "embedding", "maxSpeakers": 2 },
+            "resample": true,
+            "normalize": true
+          },
+          "decoding": { "languageMode": "ml-en", "codeSwitching": true, "wordTimestamps": true, "beamSize": 5, "temperature": null, "vadFilter": false },
+          "postProcessing": { "punctuation": { "enabled": true }, "disfluency": false, "stabilizer": true, "merge": false },
+          "streaming": { "partialIntervalMs": 500, "endpointing": "fixed", "maxUtteranceSec": null },
+          "instruction": { "initialPrompt": "Clinical consultation. Medical terminology.", "hotwords": ["paracetamol", "metformin"] }
+        }
+      }
+    }
+  },
+  "cloudWithAgentFallback": {
+    "$comment": "A tenant agent on a cloud (Azure) row with a denoise model and a `fallback.agentSlug` naming a second published agent (kind: agent). Credentials are NOT here — they travel as provider_overrides.",
+    "input": {
+      "agent": {
+        "agentId": "0199a861-0000-7000-8000-000000000011",
+        "agentVersionId": "0199a861-0000-7000-8000-000000000011",
+        "slug": "clinic-azure-transcription",
+        "versionNumber": 3,
+        "task": "SPEECH_TO_TEXT",
+        "tenantId": "50000000-0000-0000-0000-000000000000",
+        "source": "explicit",
+        "compiledConfig": {
+          "task": "SPEECH_TO_TEXT",
+          "service": "stt",
+          "model": { "id": "0199a860-0000-7000-8000-00000000a011", "slug": "azure-speech-stt", "provider": "azure", "taskType": "AUTOMATIC_SPEECH_RECOGNITION" },
+          "fallbacks": [],
+          "instruction": null,
+          "resolvedPrompt": null,
+          "parameters": {
+            "audioFrontEnd": { "denoise": { "modelSlug": "rnnoise", "level": "high" }, "resample": false },
+            "decoding": { "languageMode": "en", "temperature": 0.2 },
+            "postProcessing": { "punctuation": { "enabled": false }, "disfluency": true, "merge": true },
+            "streaming": { "endpointing": "semantic", "maxUtteranceSec": 30 },
+            "fallback": { "agentSlug": "platform-transcription", "autoSwitch": false, "switchAfterConsecutiveFailures": 3 }
+          },
+          "inputSchema": { "type": "object" },
+          "outputSchema": { "type": "object" },
+          "tools": [],
+          "protocols": ["http", "socket"]
+        },
+        "models": [
+          { "role": "primary", "slug": "azure-speech-stt", "sourceUri": "azure://speech", "sourceRevision": null, "localPath": null, "checksum": null, "format": "AZURE_SPEECH", "computeType": null, "provider": "azure", "tenantId": "00000000-0000-0000-0000-000000000000" },
+          { "role": "denoise", "slug": "rnnoise", "sourceUri": "file:///opt/models/rnnoise", "sourceRevision": null, "localPath": "/opt/models/rnnoise", "checksum": null, "format": "ONNX", "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+        ],
+        "providerOverride": { "provider": "azure", "api_key": "REDACTED-NEVER-IN-SPEC", "funding": "tenant", "region": "eastus" },
+        "fundingTier": "tenant"
+      },
+      "fallbackAgent": {
+        "agentId": "0199a861-0000-7000-8000-000000000001",
+        "agentVersionId": "0199a861-0000-7000-8000-000000000001",
+        "slug": "platform-transcription",
+        "versionNumber": 1,
+        "task": "SPEECH_TO_TEXT",
+        "tenantId": "00000000-0000-0000-0000-000000000000",
+        "source": "explicit",
+        "compiledConfig": {
+          "task": "SPEECH_TO_TEXT",
+          "service": "stt",
+          "model": { "id": "0199a860-0000-7000-8000-00000000a001", "slug": "arcaai-whisper-large-ml-en-gguf", "provider": null, "taskType": "AUTOMATIC_SPEECH_RECOGNITION" },
+          "fallbacks": [],
+          "instruction": null,
+          "resolvedPrompt": null,
+          "parameters": {},
+          "inputSchema": { "type": "object" },
+          "outputSchema": { "type": "object" },
+          "tools": [],
+          "protocols": ["http", "socket"]
+        },
+        "models": [
+          { "role": "primary", "slug": "arcaai-whisper-large-ml-en-gguf", "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF", "sourceRevision": null, "localPath": "/models/whisper-turbo-ml-en/ggml-model.gguf", "checksum": "sha256:aaaa", "format": "WHISPER_CPP", "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+        ]
+      }
+    },
+    "expected": {
+      "schemaVersion": 1,
+      "runtimeKey": "0199a861-0000-7000-8000-000000000011",
+      "agent": { "slug": "clinic-azure-transcription", "versionId": "0199a861-0000-7000-8000-000000000011", "versionNumber": 3, "tenantId": "50000000-0000-0000-0000-000000000000", "source": "explicit" },
+      "models": {
+        "asr": { "role": "asr", "slug": "azure-speech-stt", "taskType": "AUTOMATIC_SPEECH_RECOGNITION", "format": "AZURE_SPEECH", "sourceUri": "azure://speech", "sourceRevision": null, "localPath": null, "checksum": null, "computeType": null, "provider": "azure", "tenantId": "00000000-0000-0000-0000-000000000000" },
+        "denoise": { "role": "denoise", "slug": "rnnoise", "taskType": "AUDIO_TO_AUDIO", "format": "ONNX", "sourceUri": "file:///opt/models/rnnoise", "sourceRevision": null, "localPath": "/opt/models/rnnoise", "checksum": null, "computeType": null, "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+      },
+      "audioFrontEnd": {
+        "vad": { "enabled": true, "threshold": null, "minSpeechMs": null, "minSilenceMs": null },
+        "denoise": { "enabled": true, "level": "high" },
+        "diarization": { "enabled": false, "backend": "embedding", "maxSpeakers": null },
+        "resample": false,
+        "normalize": true
+      },
+      "decoding": { "languageMode": "en", "codeSwitching": false, "wordTimestamps": false, "beamSize": null, "temperature": 0.2, "vadFilter": false },
+      "postProcessing": { "punctuation": { "enabled": false }, "disfluency": true, "stabilizer": false, "merge": true },
+      "streaming": { "partialIntervalMs": null, "endpointing": "semantic", "maxUtteranceSec": 30 },
+      "instruction": { "initialPrompt": null, "hotwords": [] },
+      "fallback": {
+        "kind": "agent",
+        "autoSwitch": false,
+        "switchAfterConsecutiveFailures": 3,
+        "spec": {
+          "runtimeKey": "0199a861-0000-7000-8000-000000000001",
+          "agent": { "slug": "platform-transcription", "versionId": "0199a861-0000-7000-8000-000000000001", "versionNumber": 1, "tenantId": "00000000-0000-0000-0000-000000000000", "source": "explicit" },
+          "models": {
+            "asr": { "role": "asr", "slug": "arcaai-whisper-large-ml-en-gguf", "taskType": "AUTOMATIC_SPEECH_RECOGNITION", "format": "WHISPER_CPP", "sourceUri": "taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF", "sourceRevision": null, "localPath": "/models/whisper-turbo-ml-en/ggml-model.gguf", "checksum": "sha256:aaaa", "computeType": "int8", "provider": null, "tenantId": "00000000-0000-0000-0000-000000000000" }
+          },
+          "audioFrontEnd": {
+            "vad": { "enabled": true, "threshold": null, "minSpeechMs": null, "minSilenceMs": null },
+            "denoise": { "enabled": false, "level": "off" },
+            "diarization": { "enabled": false, "backend": "embedding", "maxSpeakers": null },
+            "resample": true,
+            "normalize": true
+          },
+          "decoding": { "languageMode": null, "codeSwitching": false, "wordTimestamps": false, "beamSize": null, "temperature": null, "vadFilter": false },
+          "postProcessing": { "punctuation": { "enabled": true }, "disfluency": false, "stabilizer": false, "merge": false },
+          "streaming": { "partialIntervalMs": null, "endpointing": "fixed", "maxUtteranceSec": null },
+          "instruction": { "initialPrompt": null, "hotwords": [] }
+        }
+      }
+    }
+  }
+}
