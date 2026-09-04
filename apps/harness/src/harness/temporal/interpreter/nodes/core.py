@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 import jsonschema
@@ -285,7 +286,8 @@ def _pick_class(
         key = declared.get("key")
         if not isinstance(key, str):
             continue
-        labels = declared.get("labels") if isinstance(declared.get("labels"), list) else [key]
+        raw_labels = declared.get("labels")
+        labels = raw_labels if isinstance(raw_labels, list) else [key]
         best = 0.0
         for label in labels:
             if isinstance(label, str) and isinstance(probabilities.get(label), (int, float)):
@@ -855,14 +857,16 @@ async def interpreter_core_action(payload: NodeActivityInput) -> NodeActivityRes
             status="DEGRADED",
             reason=f"core.action: `actionKey` {key!r} is not in the action catalogue",
         )
-    action_config = config.get("action") if isinstance(config.get("action"), dict) else {}
+    raw_action = config.get("action")
+    action_config: dict[str, Any] = raw_action if isinstance(raw_action, dict) else {}
     # The runtime knobs travel with the action; `enabled` was already honoured by the walk.
     merged = {**action_config}
     for knob in ("timeoutSeconds", "retry", "onError"):
         if knob in config and knob not in merged:
             merged[knob] = config[knob]
     delegated = payload.model_copy(update={"node_type": spec.key, "config": merged})
-    return await spec.activity(delegated)
+    result: NodeActivityResult = await spec.activity(delegated)
+    return result
 
 
 _CHILD_WORKFLOW_ONLY = (
@@ -898,7 +902,7 @@ def evaluate_over_path(context: dict[str, Any], path: str) -> list[Any] | None:
 
 
 # Spread into `activities.NODE_ACTIVITIES` — see that list's note on the two hand-kept lists.
-CORE_ACTIVITIES = [
+CORE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_core_trigger,
     interpreter_core_variables,
     interpreter_core_condition,

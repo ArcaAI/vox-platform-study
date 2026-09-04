@@ -376,7 +376,7 @@ def _deep_equal(a: Any, b: Any) -> bool:
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a == b
     if _is_number(a) and _is_number(b):
-        return a == b
+        return bool(a == b)
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(_deep_equal(x, y) for x, y in zip(a, b, strict=True))
     if isinstance(a, dict) and isinstance(b, dict):

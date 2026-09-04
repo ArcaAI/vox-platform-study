@@ -49,6 +49,7 @@ with workflow.unsafe.imports_passed_through():
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
+        CoreLoopBounds,
         CoreLoopInput,
         CoreLoopResult,
         InterpreterInput,
@@ -711,7 +712,8 @@ class WorkflowInterpreter:
         as a branch. `approved` and `rejected` are both decisions the graph routes (SUCCEEDED);
         `timedOut` is the absence of one (DEGRADED, reason `review_timed_out`) — never approval."""
         config = node.config
-        escalation = config.get("escalation") if isinstance(config.get("escalation"), dict) else {}
+        raw_escalation = config.get("escalation")
+        escalation: dict[str, Any] = raw_escalation if isinstance(raw_escalation, dict) else {}
         review_input = ReviewGateInput(
             run_id=inp.run_id,
             node_id=node.node_id,
@@ -809,7 +811,7 @@ class WorkflowInterpreter:
             items=items,
             until=config.get("until") if isinstance(config.get("until"), str) else None,
             collect=config.get("collect") if isinstance(config.get("collect"), str) else None,
-            bounds=config.get("bounds") or {},
+            bounds=CoreLoopBounds.model_validate(config.get("bounds") or {}),
             body=body,
             nested=dict(self._loops_by_id),
             seed_inputs=self._resolve_bound_inputs(node),
