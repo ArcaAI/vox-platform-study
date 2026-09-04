@@ -216,3 +216,23 @@ async def test_load_succeeds_when_ctx_present(_patched_env):
 
     assert loaded.model is live_handle
     assert loaded.format is AiModelFormat.WHISPER_CPP
+
+
+async def test_load_uses_a_file_local_path_directly_without_reselecting(_patched_env):
+    """TASK-860: the registry derives a whisper.cpp row's `localPath` to the
+    published PRIMARY OBJECT (e.g. the q8_0 file), so the resolver yields a
+    FILE. The loader must open that exact file — never re-run the directory
+    selection, which is what let a q8_0 row load whichever file sorted first."""
+    live_handle = MagicMock(_ctx=object())
+    model = MagicMock(return_value=live_handle)
+
+    with (
+        patch.dict(sys.modules, _fake_pywhispercpp(model)),
+        patch.object(WhisperCppLoader, "_select_gguf_file") as select,
+    ):
+        loader = WhisperCppLoader()
+        loaded = await loader.load(_config("q8_0"))
+
+    select.assert_not_called()
+    assert loaded.extra["model_path"].endswith("whisper-large-v3-turbo-q8_0.gguf")
+    assert model.call_args.kwargs["model"].endswith("whisper-large-v3-turbo-q8_0.gguf")

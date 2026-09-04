@@ -185,6 +185,94 @@ class TestSessionManagerDenoiserWiring:
             assert pp_call.kwargs.get("denoiser") is mock_denoiser
 
     @pytest.mark.asyncio
+    async def test_deepfilternet3_unavailable_fails_the_session_closed(self):
+        """TASK-860 R-5: a selected deepfilternet3 whose package is absent
+        FAILS the session with ModelLoadError — never a silent no-op denoiser
+        and never a degrade to no denoiser."""
+        from stt.streaming.session_manager import SessionManager
+
+        mgr = MagicMock(spec=SessionManager)
+        mgr._sessions = {}
+        mgr._consumers = {}
+        mgr._control_listeners = {}
+        mgr._publishers = {}
+        mgr._preprocessors = {}
+        mgr._inference_workers = {}
+        mgr._dual_capture = {}
+        mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
+
+        pipeline_config = MagicMock()
+        pipeline_config.preprocessing.vad.enabled = True
+        pipeline_config.preprocessing.vad.threshold = 0.5
+        pipeline_config.preprocessing.vad.min_speech_duration_ms = 250
+        pipeline_config.preprocessing.vad.min_silence_duration_ms = 700
+        pipeline_config.preprocessing.denoise.enabled = True
+        pipeline_config.preprocessing.denoise.strength = 0.8
+        pipeline_config.preprocessing.denoise.engine = "deepfilternet3"
+        pipeline_config.preprocessing.normalize = True
+        pipeline_config.preprocessing.target_sample_rate = 16000
+        pipeline_config.diarization.enabled = False
+
+        from stt.core.exceptions import ModelLoadError
+
+        mock_denoiser = MagicMock()
+        mock_denoiser.initialize.side_effect = ModelLoadError("deepfilternet3 not installed")
+
+        mock_session = MagicMock()
+        mock_session.force_persist = AsyncMock()
+
+        with (
+            patch(
+                "stt.streaming.session_manager.DeepFilterNet3StreamingDenoiser",
+                return_value=mock_denoiser,
+            ) as mock_df3_cls,
+            patch("stt.streaming.session_manager.StreamingDenoiser") as mock_rnnoise_cls,
+            patch("stt.streaming.session_manager.StreamingPreprocessor") as mock_pp_cls,
+            patch("stt.streaming.session_manager.StreamSession", return_value=mock_session),
+            patch("stt.streaming.session_manager.ResultPublisher"),
+            patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
+            patch("stt.streaming.session_manager.ControlListener") as mock_cl,
+        ):
+
+            mock_ic.return_value.start = AsyncMock()
+            mock_cl.return_value.start = AsyncMock()
+
+            mgr._profile = MagicMock()
+            mgr._profile.denoise_enabled_default = False
+            mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
+            mgr._load_vad_service = AsyncMock(return_value=MagicMock())
+            mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
+            mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+                mgr, **kw
+            )
+            mgr._redis = AsyncMock()
+            mgr._worker_id = "test-worker"
+            mgr._capacity_guard = MagicMock()
+            mgr._capacity_guard.try_acquire = AsyncMock(return_value=True)
+            mgr._register_inference_runtime = MagicMock()
+            mgr._make_frame_handler = MagicMock(return_value=lambda x: None)
+            mgr._make_control_handler = MagicMock(return_value=lambda x: None)
+            mgr._make_commit_policy = MagicMock(return_value=None)
+            mgr.remove_session = AsyncMock()
+
+            with pytest.raises(ModelLoadError, match="deepfilternet3"):
+                await SessionManager.create_session(
+                    mgr,
+                    session_id="s1",
+                    tenant_id="t1",
+                    pipeline_id="p1",
+                    sample_rate=16000,
+                )
+
+            mock_df3_cls.assert_called_once_with(input_sr=16000, strength=0.8)
+            mock_rnnoise_cls.assert_not_called()
+            # The session never reached the preprocessor with a no-op denoiser.
+            mock_pp_cls.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_denoiser_skipped_when_disabled(self):
         """When denoise.enabled=False, no denoiser should be created."""
         from stt.streaming.session_manager import SessionManager
