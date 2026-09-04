@@ -29,6 +29,10 @@ with workflow.unsafe.imports_passed_through():
         CompiledNode,
         CompiledStage,
     )
+    from harness.temporal.interpreter.core_loop_workflow import (
+        LoopWorkflow,
+        core_loop_workflow_id,
+    )
     from harness.temporal.interpreter.gate_workflow import (
         ConsultationGateWorkflow,
         gate_workflow_id,
@@ -45,6 +49,8 @@ with workflow.unsafe.imports_passed_through():
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
+        CoreLoopInput,
+        CoreLoopResult,
         InterpreterInput,
         InterpreterResult,
         InterpreterStateQueryResult,
@@ -52,12 +58,25 @@ with workflow.unsafe.imports_passed_through():
         NodeActivityResult,
         NodeResult,
         NodeStatus,
+        ReviewGateInput,
+        ReviewGateResult,
         RunEventBatch,
         RunEventSpec,
         RunStatus,
         StageResult,
     )
-    from harness.temporal.interpreter.registry import NODE_REGISTRY
+    from harness.temporal.interpreter.nodes._shared import MISSING, resolve_dotted_path
+    from harness.temporal.interpreter.registry import (
+        CORE_LOOP_NODE_TYPE,
+        CORE_REVIEW_NODE_TYPE,
+        NODE_REGISTRY,
+        effective_spec,
+        output_keys_for,
+    )
+    from harness.temporal.interpreter.review_workflow import (
+        ReviewGateWorkflow,
+        review_gate_workflow_id,
+    )
     from harness.temporal.interpreter.run_events import (
         EVENT_NODE_COMPLETED,
         EVENT_NODE_FAILED,
@@ -118,6 +137,15 @@ _STREAM_PATCH = "task-849-run-event-stream"
 _EMIT_TIMEOUT = timedelta(seconds=10)
 _EMIT_RETRY = RetryPolicy(maximum_attempts=1)
 
+# TASK-864 — the `core` vocabulary's patch marker. FOURTH gate, same rule: dispatching a
+# `core.humanReview` as a `ReviewGateWorkflow` child and a `core.loop` as a `LoopWorkflow` child
+# are NEW commands. The cheap operand (the node's TYPE) is provably False on every pre-existing
+# history — no history recorded before this ticket carries a `core.*` node, because the types did
+# not exist — so `workflow.patched` is consulted only for a graph that actually uses them. The
+# branch gating and the run context add NO command (a skip removes one only on graphs that carry
+# `branchGuards`, which likewise predate nothing), so they need no marker.
+_CORE_PATCH = "task-864-core-vocabulary"
+
 # The loop's own node type. Named once: `_index_loop_body` and `_dispatch_node` must agree about
 # it, and a second spelling is how the two drift.
 _LOOP_NODE_TYPE = "agentic.loop"
@@ -150,6 +178,15 @@ def interpreter_workflow_id(run_id: str) -> str:
 def _opt_str(value: Any) -> str | None:
     """A non-empty string, or None. Pure."""
     return value if isinstance(value, str) and value else None
+
+
+def _configured_realtime(node: CompiledNode) -> bool:
+    """TASK-864 — lane is per INSTANCE on `core.agent`/`core.action` (`execution.lane`), no
+    longer only per type. Pure read of the compiled config."""
+    if node.type not in ("core.agent", "core.action"):
+        return False
+    execution = node.config.get("execution")
+    return isinstance(execution, dict) and execution.get("lane") == "realtime"
 
 
 @workflow.defn(name="WorkflowInterpreter")
@@ -187,6 +224,14 @@ class WorkflowInterpreter:
         # nothing about which node type produced the dict. Pure derived state, so it is replay-safe
         # for the same reason `_stages` is.
         self._node_types: dict[str, str] = {}
+        # TASK-864 — the BRANCH handles each router/review node took, and the nodes skipped
+        # because no guard of theirs fired (so their own successors are skipped too). Pure
+        # derived state built from activity results, replay-safe like `_node_outputs`.
+        self._taken_handles: dict[str, set[str]] = {}
+        self._branch_skipped: set[str] = set()
+        # TASK-864 — `compiledConfig.loops[]` by loop node id: the compiled BODY each
+        # `core.loop` hands to its `LoopWorkflow` child.
+        self._loops_by_id: dict[str, dict[str, Any]] = {}
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -224,6 +269,8 @@ class WorkflowInterpreter:
                             self._loop_body_node_ids.add(sub_ref)
         for indexed_gate in config.gates:
             self._node_types.setdefault(indexed_gate.node_id, "consultation.hitlGate")
+        for indexed_loop in config.loops:
+            self._loops_by_id[indexed_loop.node_id] = indexed_loop.body.model_dump(by_alias=True)
 
         run_failed = False
         run_degraded = False
@@ -399,8 +446,15 @@ class WorkflowInterpreter:
         bound: dict[str, Any] = {}
         for binding in node.inputs:
             upstream_type = self._node_types.get(binding.from_node_id)
-            spec = NODE_REGISTRY.get(upstream_type) if upstream_type is not None else None
-            if spec is None or binding.from_port not in spec.output_keys:
+            upstream_node = self._nodes_by_id.get(binding.from_node_id)
+            # TASK-864: a `core.action` publishes its DELEGATE's sockets, so the keys are resolved
+            # per instance (`output_keys_for`), not per type. Every other type is unchanged.
+            output_keys = (
+                output_keys_for(upstream_type, upstream_node.config if upstream_node else None)
+                if upstream_type is not None
+                else None
+            )
+            if output_keys is None or binding.from_port not in output_keys:
                 raise ApplicationError(
                     f"unresolved input binding: node {node.node_id!r} ({node.type}) binds "
                     f"{binding.to_port!r} from {binding.from_node_id!r} "
@@ -409,7 +463,7 @@ class WorkflowInterpreter:
                     type="unresolved_input_binding",
                     non_retryable=True,
                 )
-            output_key = spec.output_keys[binding.from_port]
+            output_key = output_keys[binding.from_port]
             if output_key is None:
                 # An ORDERING edge. The stage partitioning already carries the dependency.
                 continue
@@ -430,7 +484,9 @@ class WorkflowInterpreter:
         The ORDER of these six is load-bearing and unchanged; each comment explains its own
         position.
         """
-        spec = NODE_REGISTRY.get(node.type)
+        # TASK-864: a `core.action`'s SAFETY properties are its delegate's (`effective_spec`);
+        # every other type resolves to its own spec exactly as before.
+        spec = effective_spec(node.type, node.config)
         if spec is None or not spec.implemented:
             return NodeResult(
                 node_id=node.node_id,
@@ -449,12 +505,27 @@ class WorkflowInterpreter:
         # degraded on `no_bound_text` every run. The skip turns a silent degrade into an
         # OBSERVABLE one that names the runtime which owns the work — the same discipline as
         # `unsupported_node_type` above, and never a silent no-op.
-        if spec.lane == "realtime":
+        if spec.lane == "realtime" or _configured_realtime(node):
             return NodeResult(
                 node_id=node.node_id,
                 node_type=node.type,
                 status="SKIPPED",
                 reason="realtime_lane",
+            )
+
+        # TASK-864 — BRANCH GATING. A node behind a router/review handle runs only when one of
+        # its guards was TAKEN; a node whose every predecessor was skipped that way is skipped
+        # too, so an untaken branch's whole tail is skipped, not just its first node. A join
+        # (the Output fed by both branches) runs as long as ONE predecessor ran. Pure: every
+        # input is a recorded activity result. Legacy configs carry no guards, so nothing here
+        # changes their command sequence.
+        if self._branch_skip(node):
+            self._branch_skipped.add(node.node_id)
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="SKIPPED",
+                reason="branch_not_taken",
             )
 
         # item 4 — the per-node KILL SWITCH, honoured by BOTH runtimes.
@@ -523,7 +594,15 @@ class WorkflowInterpreter:
 
         # Present after `_preflight_skip` by construction — an unregistered/unimplemented type
         # is its first refusal, so reaching here means the registry has a real spec.
-        spec = NODE_REGISTRY[node.type]
+        spec = effective_spec(node.type, node.config) or NODE_REGISTRY[node.type]
+
+        # TASK-864 — the two `core` constructs that run as CHILD WORKFLOWS. Cheap operand (the
+        # node type) first, exactly as the loop gate below: `workflow.patched` is consulted only
+        # for a graph that actually carries one, and no pre-existing history can.
+        if node.type == CORE_REVIEW_NODE_TYPE and workflow.patched(_CORE_PATCH):
+            return await self._run_review(node, inp)
+        if node.type == CORE_LOOP_NODE_TYPE and workflow.patched(_CORE_PATCH):
+            return await self._run_core_loop(node, inp)
 
         # the loop runs as a CHILD WORKFLOW, not as an activity.
         #
@@ -553,6 +632,9 @@ class WorkflowInterpreter:
             bound_inputs=self._resolve_bound_inputs(node),
             run_payload=inp.payload,
             run_id=inp.run_id,
+            # TASK-864 — the run context, for `core.*` nodes only: a legacy node's payload stays
+            # byte-identical to every run before this ticket.
+            run_context=self._run_context() if node.type.startswith("core.") else {},
         )
 
         try:
@@ -576,6 +658,8 @@ class WorkflowInterpreter:
         if result.status == "SUCCEEDED":
             if result.output is not None:
                 self._node_outputs[node.node_id] = result.output
+            if result.taken_handle is not None:
+                self._taken_handles[node.node_id] = {result.taken_handle}
             return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
         if result.status == "DEGRADED":
             promoted_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
@@ -589,6 +673,186 @@ class WorkflowInterpreter:
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
+        )
+
+    # TASK-864 — the `core` vocabulary's helpers. All pure except the two child dispatches.
+
+    def _branch_skip(self, node: CompiledNode) -> bool:
+        """Whether branch gating declines this node (pure). See `_preflight_skip`."""
+        if node.branch_guards and not any(
+            guard.handle in self._taken_handles.get(guard.from_node_id, set())
+            for guard in node.branch_guards
+        ):
+            return True
+        predecessors = {binding.from_node_id for binding in node.inputs} | {
+            guard.from_node_id for guard in node.branch_guards
+        }
+        return bool(predecessors) and predecessors <= self._branch_skipped
+
+    def _run_context(self) -> dict[str, Any]:
+        """The run context `{trigger, vars, nodes}` (TASK-864 §3.2), from the output cache.
+
+        `trigger` is the `core.trigger` node's published context; `vars` is every
+        `core.variable` node's declared map, merged in stage order; `nodes` is the whole cache
+        keyed by node id. Pure derived state.
+        """
+        trigger: dict[str, Any] = {}
+        variables: dict[str, Any] = {}
+        for node_id, output in self._node_outputs.items():
+            node_type = self._node_types.get(node_id)
+            if node_type == "core.trigger" and isinstance(output.get("context"), dict):
+                trigger = output["context"]
+            elif node_type == "core.variable" and isinstance(output.get("vars"), dict):
+                variables.update(output["vars"])
+        return {"trigger": trigger, "vars": variables, "nodes": dict(self._node_outputs)}
+
+    async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
+        """Dispatch a `core.humanReview` as a `ReviewGateWorkflow` child and TAKE its outcome
+        as a branch. `approved` and `rejected` are both decisions the graph routes (SUCCEEDED);
+        `timedOut` is the absence of one (DEGRADED, reason `review_timed_out`) — never approval."""
+        config = node.config
+        escalation = config.get("escalation") if isinstance(config.get("escalation"), dict) else {}
+        review_input = ReviewGateInput(
+            run_id=inp.run_id,
+            node_id=node.node_id,
+            tenant_id=inp.tenant_id,
+            workflow_version_id=inp.workflow_version_id,
+            review_type=str(config.get("reviewType") or "approval"),
+            instructions=(
+                config.get("instructions") if isinstance(config.get("instructions"), str) else None
+            ),
+            assign_role=(
+                config.get("assignRole") if isinstance(config.get("assignRole"), str) else None
+            ),
+            timeout_seconds=int(config.get("timeoutSeconds") or node.timeout_seconds),
+            escalation_after_seconds=(
+                int(escalation["afterSeconds"])
+                if isinstance(escalation.get("afterSeconds"), int)
+                else None
+            ),
+            max_escalations=(
+                int(escalation["maxEscalations"])
+                if isinstance(escalation.get("maxEscalations"), int)
+                else 0
+            ),
+            allow_edit=config.get("allowEdit") is True,
+            payload=self._resolve_bound_inputs(node),
+            trajectory=TrajectoryContext(
+                tenant_id=inp.tenant_id,
+                seq=self._next_seq(),
+                workflow_version_id=inp.workflow_version_id,
+                stage_id="review",
+                node_id=node.node_id,
+                node_type=node.type,
+            ),
+        )
+        try:
+            result: ReviewGateResult = await workflow.execute_child_workflow(
+                ReviewGateWorkflow.run,
+                review_input,
+                id=review_gate_workflow_id(inp.run_id, node.node_id),
+            )
+        except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="review_unavailable",
+            )
+
+        self._node_outputs[node.node_id] = {"decision": result.model_dump()}
+        self._taken_handles[node.node_id] = {result.outcome}
+        if result.outcome == "timedOut":
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="review_timed_out",
+            )
+        return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
+
+    async def _run_core_loop(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
+        """Dispatch a `core.loop` as a `LoopWorkflow` child over its compiled body, racing it
+        against the parent-owned `maxDurationSeconds` timer (the one bound a continue-as-new
+        chain cannot carry itself — see `loop_workflow.py`)."""
+        body = self._loops_by_id.get(node.node_id)
+        if body is None:
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="loop_body_missing",
+            )
+        config = node.config
+        mode = config.get("mode")
+        run_context = self._run_context()
+        items: list[Any] = []
+        if mode == "foreach":
+            over = config.get("over")
+            resolved = resolve_dotted_path(run_context, over) if isinstance(over, str) else MISSING
+            if not isinstance(resolved, list):
+                return NodeResult(
+                    node_id=node.node_id,
+                    node_type=node.type,
+                    status="DEGRADED",
+                    reason="loop_over_unresolvable",
+                )
+            items = resolved
+
+        loop_input = CoreLoopInput(
+            run_id=inp.run_id,
+            node_id=node.node_id,
+            tenant_id=inp.tenant_id,
+            workflow_version_id=inp.workflow_version_id,
+            sandbox=inp.sandbox,
+            mode="foreach" if mode == "foreach" else "while",
+            items=items,
+            until=config.get("until") if isinstance(config.get("until"), str) else None,
+            collect=config.get("collect") if isinstance(config.get("collect"), str) else None,
+            bounds=config.get("bounds") or {},
+            body=body,
+            nested=dict(self._loops_by_id),
+            seed_inputs=self._resolve_bound_inputs(node),
+            run_payload=inp.payload,
+            run_context=run_context,
+        )
+        max_duration = int(loop_input.bounds.max_duration_seconds)
+        try:
+            result: CoreLoopResult = await asyncio.wait_for(
+                workflow.execute_child_workflow(
+                    LoopWorkflow.run,
+                    loop_input,
+                    id=core_loop_workflow_id(inp.run_id, node.node_id),
+                ),
+                timeout=max_duration,
+            )
+        except TimeoutError:
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason=_LOOP_DURATION_REASON,
+            )
+        except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
+            return NodeResult(
+                node_id=node.node_id,
+                node_type=node.type,
+                status="DEGRADED",
+                reason="loop_unavailable",
+            )
+
+        self._node_outputs[node.node_id] = {
+            "result": result.result,
+            "iterations": result.iterations,
+            "stopReason": result.stop_reason,
+        }
+        if result.stop_reason in ("items_exhausted", "until", "no_progress_iterations"):
+            return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
+        return NodeResult(
+            node_id=node.node_id,
+            node_type=node.type,
+            status="DEGRADED",
+            reason=result.stop_reason,
         )
 
     def _loop_node_spec(self, node_id: str) -> AgenticLoopNodeSpec | None:

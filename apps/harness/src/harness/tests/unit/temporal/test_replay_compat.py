@@ -23,10 +23,12 @@ from temporalio.client import WorkflowHistory
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Replayer
 
+from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.loop_workflow import (
     AgenticLoopWorkflow,
     AgenticSubAgentWorkflow,
 )
+from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import ConsultationLoopWorkflow, HarnessDocWorkflow
 
@@ -576,3 +578,43 @@ class TestAgenticLoopReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("interpreter_v1_history"))
+
+
+class TestCoreVocabularyReplayCompatibility:
+    """TASK-864 — the `core` vocabulary's replay guards, in both directions.
+
+    The `task-864-core-vocabulary` patch adds TWO new commands to the interpreter's dispatch
+    path: a `ReviewGateWorkflow` child for `core.humanReview` and a `LoopWorkflow` child (a
+    `continue_as_new` chain) for `core.loop`. Branch gating and the run context add none.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_core_era_history_replays_on_the_current_definition(self):
+        """FORWARD guard. `interpreter_core_v1_history` is a real recorded history carrying the
+        patch marker, a condition, a branch-skipped node, the loop child start, the review child
+        start (signalled `approved`) and the run-event mirror. Moving, reordering or ungating
+        either child dispatch fails here rather than against a live run."""
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter, ReviewGateWorkflow, LoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_core_v1_history"))
+
+    @pytest.mark.asyncio
+    async def test_every_pre_core_history_still_replays_with_the_patch_never_consulted(self):
+        """BACKWARD guard, and the one that justifies the cheap-operand-first gate: no history
+        recorded before this ticket carries a `core.*` node, so `workflow.patched` is never
+        reached and the command sequence of every earlier era is byte-identical."""
+        replayer = Replayer(
+            workflows=[
+                WorkflowInterpreter,
+                ReviewGateWorkflow,
+                LoopWorkflow,
+                AgenticLoopWorkflow,
+                AgenticSubAgentWorkflow,
+            ],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_v1_history"))
+        await replayer.replay_workflow(_history("interpreter_stream_v1_history"))
+        await replayer.replay_workflow(_history("interpreter_loop_v1_history"))
