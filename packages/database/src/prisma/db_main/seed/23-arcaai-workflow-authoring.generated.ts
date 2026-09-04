@@ -14,7 +14,7 @@
  *   pnpm --filter @arcaai/database exec tsx scripts/regen-arcaai-consultation-workflow-seed.ts
  */
 
-export const REGISTRY_CHECKSUM: string = "ff06c16b9ee08534845e208a5e1cfd3eea16190eed5b0bf794439f72d77a7aca" as const;
+export const REGISTRY_CHECKSUM: string = "c0aa308b37b27ba36ad84d54599633aa7461c1a2b770eac52dddf84d3878bbcb" as const;
 
 export const GEN_GRAPH_CHECKSUM: string = "a23b0b564672f186718a3ffb6b9590ddf0cf8c986675f9587dc64864afad4b0c" as const;
 
@@ -23,7 +23,7 @@ export const GEN_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "ff06c16b9ee08534845e208a5e1cfd3eea16190eed5b0bf794439f72d77a7aca",
+  "registryChecksum": "c0aa308b37b27ba36ad84d54599633aa7461c1a2b770eac52dddf84d3878bbcb",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -36,7 +36,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "ff06c16b9ee08534845e208a5e1cfd3eea16190eed5b0bf794439f72d77a7aca",
+  "registryChecksum": "c0aa308b37b27ba36ad84d54599633aa7461c1a2b770eac52dddf84d3878bbcb",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -726,7 +726,7 @@ export const GEN_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "b43a2646bd069f5d3dbee3b15c6030abcdfca7d326f93847939d1449ccdcc39b"
+  "checksum": "bbf07fc6d655be058ef77db39969c1a071a08784b0f4db1c82431453cd31249a"
 } as const;
 
 export const RHEUM_GRAPH_CHECKSUM: string = "e4da75eda428d38ba201e3749bd0ed30b44461d2473afee8ad878f79c4f8ff1a" as const;
@@ -736,7 +736,7 @@ export const RHEUM_VALIDATION_REPORT: Record<string, unknown> = {
   "ok": true,
   "findings": [],
   "ruleSetVersion": 1,
-  "registryChecksum": "ff06c16b9ee08534845e208a5e1cfd3eea16190eed5b0bf794439f72d77a7aca",
+  "registryChecksum": "c0aa308b37b27ba36ad84d54599633aa7461c1a2b770eac52dddf84d3878bbcb",
   "evaluatedAt": "2026-08-23T00:00:00.000Z"
 } as const;
 
@@ -749,7 +749,7 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
   "paletteKey": "consultation",
   "compiledAt": "2026-08-23T00:00:00.000Z",
   "compilerVersion": "0.1.0",
-  "registryChecksum": "ff06c16b9ee08534845e208a5e1cfd3eea16190eed5b0bf794439f72d77a7aca",
+  "registryChecksum": "c0aa308b37b27ba36ad84d54599633aa7461c1a2b770eac52dddf84d3878bbcb",
   "ruleSetVersion": 1,
   "stages": [
     {
@@ -1483,5 +1483,5 @@ export const RHEUM_COMPILED_CONFIG: Record<string, unknown> = {
     "maxNodeSeconds": 600,
     "maxAttempts": 5
   },
-  "checksum": "79b18bfd48f6bc12479986ad995380bb17056240f5f8bb5e8d9dbbe463207eb5"
+  "checksum": "3c4b35dcbb2f9ed12087b0922ffc4dbd92b5ef48f678ce619fcff41be59fe57b"
 } as const;
