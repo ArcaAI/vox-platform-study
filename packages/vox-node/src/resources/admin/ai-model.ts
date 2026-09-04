@@ -15,10 +15,12 @@ import type {
   CreateModelRequest,
   DiscoveryResponse,
   ModelDownloadStatusResponse,
+  ModelInventoryReport,
   ModelResponse,
   PaginatedModelResponse,
   PaginatedResponse,
   RegisterDiscoveredModelRequest,
+  SetPlatformDefaultRequest,
   TriggerModelDownloadResponse,
   UpdateModelRequest,
 } from './schemas';
@@ -31,7 +33,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AiModelAdminController, AiModelDiscoveryController
- * (11 routes). Several controllers sharing one scope share one
+ * (13 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -130,7 +132,9 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
-   * Trigger an async download of this model's weights into the hope-models bucket.
+   * Publish this model's weights into the hope-models bucket (async).
+   *
+   * Fetches the weights from `sourceUri` (Hub or s3://), verifies + content-addresses them, publishes them under `<slug>/<version>/` (or as a verbatim HF cache for the transformers family), and writes `bucketPrefix` / `manifestDigest` / `availability` back to the row. The route path keeps its frozen `download` name; the action is the registry's single publisher (TASK-860 D-1).
    *
    * `POST /api/v1/admin/ai-models/{id}/download` — `AiModelAdminController.triggerDownload`.
    */
@@ -138,6 +142,23 @@ export class AdminAiModelResource extends AdminResource {
     return this.request<TriggerModelDownloadResponse>({
       method: 'POST',
       path: `admin/ai-models/${encodePathSegment(String(id))}/download`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Elect this row as the platform default for one or more tasks
+   *
+   * Replaces the row's `isPlatformDefaultFor` with `tasks` and clears each of those tasks from whichever ENABLED row held it, so a task never has two platform defaults. An empty list withdraws the row from every election. Only writes the registry column and emits a sys-event; the SYSTEM routing-policy election it seeds is TASK-862.
+   *
+   * `PATCH /api/v1/admin/ai-models/{id}/platform-default` — `AiModelAdminController.setPlatformDefault`.
+   */
+  setPlatformDefault(id: string, body: SetPlatformDefaultRequest, options: AdminRequestOptions = {}): Promise<ModelResponse> {
+    return this.request<ModelResponse>({
+      method: 'PATCH',
+      path: `admin/ai-models/${encodePathSegment(String(id))}/platform-default`,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -161,17 +182,33 @@ export class AdminAiModelResource extends AdminResource {
   }
 
   /**
-   * Register a discovered model into the AI model registry
+   * DEPRECATED (TASK-860, removed in R3) — register a discovered model
    *
-   * Creates one `AiModel` row from a discovered entry (slug derived from the engine-reported model name). Delegates to the existing create path, so the factory, the `ResourceCreated` sys-event and the slug-uniqueness check all apply. On a slug collision the response is 400 asking for an explicit `slug` — there is no silent suffixing.
+   * Refuses with `410 Gone`. Discovery is read-only since TASK-860; register a model through `POST admin/ai-models` (the inventory report lists prefixes already in the bucket, which register with their `bucketPrefix`).
    *
    * `POST /api/v1/admin/ai-models/discovery/register` — `AiModelDiscoveryController.register`.
    */
-  register(body: RegisterDiscoveredModelRequest, options: AdminRequestOptions = {}): Promise<ModelResponse> {
-    return this.request<ModelResponse>({
+  register(body: RegisterDiscoveredModelRequest, options: AdminRequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>({
       method: 'POST',
       path: 'admin/ai-models/discovery/register',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Run the model-bucket inventory
+   *
+   * Verifies every registry row's `bucketPrefix` + `manifestDigest` + manifest objects against `s3://hope-models`, writes the measured `availability` (AVAILABLE / MISSING / PARTIAL / NOT_APPLICABLE) back, and lists the prefixes in the bucket that no row references ("In bucket, not registered → Register"). The same sweep runs hourly when `modelRegistry.inventory.enabled` is on.
+   *
+   * `POST /api/v1/admin/ai-models/inventory` — `AiModelAdminController.runInventory`.
+   */
+  runInventory(options: AdminRequestOptions = {}): Promise<ModelInventoryReport> {
+    return this.request<ModelInventoryReport>({
+      method: 'POST',
+      path: 'admin/ai-models/inventory',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

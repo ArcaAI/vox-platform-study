@@ -12,12 +12,12 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 377 component schemas the generated surface transitively
+ * Only the 386 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
  * A property typed `unknown` is the document declining to describe a shape,
- * not this generator giving up: `openapi-fidelity.md` measured the
+ * not this generator giving up: `openapi-fidelity.md` §B2 measured the
  * minority of admin operations with no usable schema and the recorded decision
  * was to emit `unknown` at those call sites rather than invent one.
  */
@@ -27,6 +27,34 @@ export interface AddAdjustmentRequest {
   amountMicros: string;
   /** Bounded reason CODE, not prose (aggregatable, PHI-free). e.g. "goodwill_credit", "metering_correction", "sla_credit". */
   reason: string;
+}
+
+export interface AgentAssignmentResponse {
+  agentSlug: string;
+  /** ISO timestamp */
+  createdAt: string;
+  id: string;
+  scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
+  scopeId?: string | null;
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  tenantId: string;
+  /** ISO timestamp */
+  updatedAt: string;
+  version: number;
+}
+
+export interface AgentFallbackResponse {
+  enabled: boolean;
+  modelId: string;
+  modelSlug?: string | null;
+  priority: number;
+}
+
+export interface AgentFindingResponse {
+  code: string;
+  message: string;
+  path: string;
+  severity: 'ERROR' | 'WARNING';
 }
 
 export interface AgentPromotionResponse {
@@ -62,6 +90,44 @@ export interface AgentPromotionResponse {
   version: number;
   /** Non-blocking operator alerts issued at promotion time (e.g. live consultations on the previous version). */
   warnings: string[];
+}
+
+export interface AgentResponse {
+  /** Server-stamped at publish; null until then. */
+  compiledConfig?: Record<string, unknown> | null;
+  compiledConfigChecksum?: string | null;
+  /** ISO timestamp */
+  createdAt: string;
+  createdBy?: string | null;
+  deprecatedAt?: string | null;
+  description?: string | null;
+  fallbacks: AgentFallbackResponse[];
+  id: string;
+  inputSchema?: Record<string, unknown> | null;
+  instruction?: Record<string, unknown> | null;
+  isActive: boolean;
+  modelId: string;
+  /** The backing model`s registry slug (joined for display). */
+  modelSlug?: string | null;
+  name: string;
+  outputSchema?: Record<string, unknown> | null;
+  parameters?: Record<string, unknown> | null;
+  parentVersionId?: string | null;
+  publishedAt?: string | null;
+  resourceStatus: string;
+  slug: string;
+  status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'DEPRECATED';
+  tags: string[];
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  tenantId: string;
+  tools?: Array<Record<string, unknown>> | null;
+  /** ISO timestamp */
+  updatedAt: string;
+  updatedBy?: string | null;
+  validatedAt?: string | null;
+  validationReport?: AgentValidationReportResponse;
+  version: number;
+  versionNumber: number;
 }
 
 export interface AgentTrajectorySessionResponse {
@@ -122,6 +188,13 @@ export interface AgentTrajectoryStepsPageResponse {
   nextCursor?: string | null;
 }
 
+export interface AgentValidationReportResponse {
+  blocking: boolean;
+  /** ISO timestamp */
+  checkedAt: string;
+  findings: AgentFindingResponse[];
+}
+
 export interface AgenticInstructionsResponse {
   /** The vendored (read-only) PDSQI judge-prompt pin. */
   judgePrompt: JudgePromptPinResponse;
@@ -152,46 +225,21 @@ export interface AiProviderConnectionResponse {
   hasKey: boolean;
   /** Vault-Transit key version backing the stored ciphertext. */
   keyVersion: number | null;
+  /** Ceiling — simultaneous in-flight requests. Null = no opinion. */
+  maxConcurrent: number | null;
   /** Capability-scoped serving provider identifier. */
   provider: string;
   /** Region identifier (bedrock). */
   region: string | null;
+  /** Ceiling — requests per minute. Null = no opinion. */
+  rpmLimit: number | null;
   /** Capability the connection serves. */
   service: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
   /** Owning tenant. The reserved SYSTEM tenant row is the platform default. */
   tenantId: string;
-  /** Last update timestamp (ISO 8601). */
-  updatedAt?: string;
-  /** Row version for optimistic concurrency. 0 when no row exists yet. */
-  version: number;
-}
-
-export interface AiRuntimeProfileResponse {
-  /** Context window budget. Null = no opinion. */
-  contextLength: number | null;
-  /** Engine-specific extras. */
-  extraJson: Record<string, unknown> | null;
-  /** Keep-alive/retention hint in seconds. Null = no opinion. */
-  keepAliveSeconds: number | null;
-  /** Maximum concurrent requests. Null = no opinion. */
-  maxConcurrent: number | null;
-  /** Maximum tokens to generate. Null = no opinion. */
-  maxTokens: number | null;
-  /** Model slug this profile applies to. Empty string = the provider-level default. */
-  modelSlug: string;
-  /** Serving provider identifier. */
-  provider: string;
-  /** Requests-per-minute limit. Null = no opinion. */
-  rpmLimit: number | null;
-  /** Sampling temperature. Null = no opinion. */
-  temperature: number | null;
-  /** Owning tenant — always the reserved SYSTEM tenant in this program. */
-  tenantId: string;
-  /** Request timeout in seconds. Null = no opinion. */
+  /** Ceiling — per-request timeout in seconds. Null = no opinion. */
   timeoutS: number | null;
-  /** Nucleus sampling top-p. Null = no opinion. */
-  topP: number | null;
-  /** Tokens-per-minute limit. Null = no opinion. */
+  /** Ceiling — tokens (LLM) / characters (TTS) per minute. Null = no opinion. */
   tpmLimit: number | null;
   /** Last update timestamp (ISO 8601). */
   updatedAt?: string;
@@ -427,7 +475,7 @@ export interface BillingInvoiceResponse {
   period: string;
   periodEnd: string;
   periodStart: string;
-  /** How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY ( #6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated. */
+  /** How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). TENANT_PLAN_HISTORY (#6): dated plan segments existed, so the fee is prorated per segment (fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is authoritative for how that draft was rated. */
   planFeeBasis: 'PERIOD_END_PLAN' | 'TENANT_PLAN_HISTORY';
   /** Plan the period was billed under; null = ungated-legacy tenant. */
   planTier?: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER' | null;
@@ -709,7 +757,7 @@ export interface ConsultationResponse {
   parentConsultationId?: string;
   /** Patient identifier */
   patientId: string;
-  /** Clinical lifecycle status — the single-sourced ConsultationStatus column ( session state machine;). */
+  /** Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine). */
   status?:
     | 'OPEN'
     | 'RECORDING'
@@ -725,7 +773,7 @@ export interface ConsultationResponse {
     | 'CLOSED_INCOMPLETE';
   /** Last update timestamp */
   updatedAt: string;
-  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen —). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
+  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
   version?: number;
 }
 
@@ -857,6 +905,32 @@ export interface CostPerEncounterResponse {
   periodStart: string;
   /** Σ cost across every attributed consultation. */
   totalMicros: string;
+}
+
+export interface CreateAgentRequest {
+  /** Free-text description. */
+  description?: string;
+  /** Ordered fallback model ids of the same task (priority = array position). */
+  fallbackModelIds?: string[];
+  /** Authorable JSON-Schema subset for the invocation input; defaults per task. */
+  inputSchema?: Record<string, unknown>;
+  /** Task-specific instruction: `{ promptTemplateId, promptVersionNumber?, variables?, evalGate? }` or `{ systemPrompt }` (TEXT_GENERATION); `{ initialPrompt?, hotwords? }` (SPEECH_TO_TEXT); none (TEXT_TO_SPEECH). */
+  instruction?: Record<string, unknown>;
+  /** The registry `AiModel` id backing this agent; its `taskType` must match `task`. */
+  modelId: string;
+  /** Human-readable name. */
+  name: string;
+  /** Authorable JSON-Schema subset for the invocation output; defaults per task. */
+  outputSchema?: Record<string, unknown>;
+  /** Task-specific hyper-parameters, validated against AGENT_PARAMETER_SCHEMAS[task]. */
+  parameters?: Record<string, unknown>;
+  /** Stable lineage key, unique per (tenant, slug, versionNumber). */
+  slug: string;
+  tags?: string[];
+  /** The ONE task this agent performs. */
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+  /** `[{ mcpServerId, toolName }]` — TEXT_GENERATION only. */
+  tools?: Array<Record<string, unknown>>;
 }
 
 export interface CreateApiKeyRequest {
@@ -1016,13 +1090,19 @@ export interface CreateMcpServerRequest {
 export interface CreateModelRequest {
   /** Model architecture family */
   architecture?: string;
+  /** Upstream base checkpoint. */
+  baseModel?: string;
+  /** Key prefix under `s3://hope-models` when registering weights ALREADY in the bucket ("In bucket, not registered → Register"). Normally written by the publish job. `localPath` is derived from it and never accepted directly. */
+  bucketPrefix?: string;
   /** Model category */
   category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
   /** Compute type (float32, float16, int8) */
   computeType?: string;
+  /** SELF_HOSTED rows have weights in the bucket; CLOUD rows carry a `wireModelId` and are NOT_APPLICABLE for availability. */
+  deploymentKind: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
   /** Model description */
   description?: string;
-  /** Model format */
+  /** Artifact format (descriptive; loader selection is `libraryName`). */
   format:
     | 'SAFETENSOR'
     | 'ONNX'
@@ -1040,14 +1120,69 @@ export interface CreateModelRequest {
     | 'WHISPER_CPP'
     | 'SARVAM'
     | 'OPENAI';
+  /** Hub gated / click-through repo — the publisher needs the SYSTEM token. */
+  gated?: boolean;
+  /** Hub commit sha the weights were fetched at. */
+  hfRevision?: string;
+  /** Platform-default election per task (at most one enabled row per task). */
+  isPlatformDefaultFor?: Array<
+    | 'TEXT_GENERATION'
+    | 'TRANSLATION'
+    | 'SPEECH_TO_TEXT'
+    | 'TEXT_TO_SPEECH'
+    | 'VISION_EXTRACTION'
+    | 'EMBEDDING'
+    | 'NAMED_ENTITY_RECOGNITION'
+    | 'TEXT_CLASSIFICATION'
+    | 'CONTENT_SAFETY'
+    | 'GROUNDEDNESS'
+    | 'PII_DETECTION'
+  >;
+  /** ISO 639-1 language codes, model-card order. */
+  languages?: string[];
+  /** Serving library — the Hub `library_name` facet; selects the loader. */
+  libraryName:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex';
+  /** Model-card licence identifier (Hub spelling). */
+  license?: string;
   /** Estimated memory size in MB */
   memorySizeMb?: number;
   /** Model type */
   modelType: 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
   /** Model name */
   name: string;
+  /** The single file a single-file loader opens inside `bucketPrefix`. */
+  primaryObject?: string;
   /** Canonical runtime provider id */
   provider?: 'ollama' | 'lm-studio' | 'azure' | 'bedrock' | 'built-in' | 'sarvam' | 'openai' | 'anthropic' | 'vertex' | 'vllm' | 'llama-cpp';
+  /** Workload that executes the model. */
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
@@ -1058,7 +1193,7 @@ export interface CreateModelRequest {
   sourceUri: string;
   /** Tags for categorization */
   tags?: string[];
-  /** Model task type */
+  /** Hugging Face task (`pipeline_tag`) as the SCREAMING_CASE enum member; the response derives the kebab-case `pipelineTag`. */
   taskType:
     | 'IMAGE_TEXT_TO_TEXT'
     | 'VISUAL_QUESTION_ANSWERING'
@@ -1108,6 +1243,8 @@ export interface CreateModelRequest {
     | 'TABULAR_REGRESSION'
     | 'TIME_SERIES_FORECASTING'
     | 'UNKNOWN';
+  /** Vendor wire id a CLOUD row is invoked with (`saaras:v4`, `gpt-transcribe`, `MAI-Transcribe-1.5`). Required when `deploymentKind` is CLOUD. */
+  wireModelId?: string;
 }
 
 export interface CreatePipelineRequest {
@@ -1372,7 +1509,7 @@ export interface CreateWorkflowDefinitionRequest {
 export interface CreateWorkflowTestFixtureRequest {
   /** Fixture description */
   description?: string;
-  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (RESOLVED): the plaintext column was dropped, so only ciphertext is persisted. */
+  /** Synthetic test input. SYNTHETIC ONLY — do not paste real or realistic patient data. Stored encrypted with Vault Transit (, RESOLVED): the plaintext column was dropped, so only ciphertext is persisted. */
   input: Record<string, unknown>;
   /** Fixture name */
   name: string;
@@ -1535,7 +1672,7 @@ export interface DnaDashboardUsageEntry {
 export interface DnaErasureResponse {
   /** Number of DNA writing-style reports soft-deleted. */
   deletedReports: number;
-  /** Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge. */
+  /** Number of historical report versions associated with the erased report(s). Not mutated here — DnaWritingStyleVersion has no soft-delete column, so these rows are only counted; they become unreachable the moment their parent report is soft-deleted, and are hard-deleted alongside it later by the scheduled DnaProfileRetentionService purge (Task 10). */
   deletedVersions: number;
   /** The clinician whose writing-style profile was erased. */
   doctorId: string;
@@ -2461,7 +2598,7 @@ export interface MlflowStatusResponse {
   embedBlockedReason: string | null;
   /** Whether the console may render MLflow in an iframe. False whenever the server frames-denies, or when no browser-reachable UI URL exists. */
   embeddable: boolean;
-  /** Operator-facing failure summary. Never carries the internal host:port. */
+  /** Operator-facing failure summary. Never carries the internal host:port . */
   error?: string;
   /** The `X-Frame-Options` header value OBSERVED on the probe, or null when the server sent none. */
   frameOptions: string | null;
@@ -2490,9 +2627,42 @@ export interface ModelDownloadStatusResponse {
   status: 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
 }
 
+export interface ModelInventoryCounts {
+  available: number;
+  missing: number;
+  notApplicable: number;
+  partial: number;
+}
+
+export interface ModelInventoryReport {
+  checkedAt: string;
+  counts: ModelInventoryCounts;
+  rows: ModelInventoryRow[];
+  /** "In bucket, not registered" — candidates for Register. */
+  unregistered: UnregisteredBucketPrefix[];
+}
+
+export interface ModelInventoryRow {
+  availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
+  /** Per-object verification detail (missing objects, digest drift, reason). */
+  detail?: Record<string, unknown>;
+  id: string;
+  slug: string;
+}
+
 export interface ModelResponse {
   /** Model architecture family */
   architecture?: string | null;
+  /** MEASURED presence of the weights in the bucket (inventory job). */
+  availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
+  /** When the inventory last measured this row. */
+  availabilityCheckedAt?: string | null;
+  /** Per-object verification detail from the last inventory run. */
+  availabilityDetail?: Record<string, unknown> | null;
+  /** Upstream base checkpoint. */
+  baseModel?: string | null;
+  /** Key prefix under `s3://hope-models`. */
+  bucketPrefix?: string | null;
   /** Model category */
   category: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
   /** SHA256 checksum */
@@ -2503,6 +2673,8 @@ export interface ModelResponse {
   createdAt: string;
   /** Created by user ID */
   createdBy?: string;
+  /** SELF_HOSTED or CLOUD. */
+  deploymentKind: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
   /** Model description */
   description?: string;
   /** Download status */
@@ -2511,7 +2683,7 @@ export interface ModelResponse {
   downloadedAt?: string;
   /** File size in MB */
   fileSizeMb?: number;
-  /** Model format */
+  /** Artifact format (descriptive; loader selection is `libraryName`). */
   format:
     | 'SAFETENSOR'
     | 'ONNX'
@@ -2529,20 +2701,79 @@ export interface ModelResponse {
     | 'WHISPER_CPP'
     | 'SARVAM'
     | 'OPENAI';
+  /** Hub gated / click-through repo. */
+  gated: boolean;
+  /** Hub commit sha the weights were fetched at. */
+  hfRevision?: string | null;
   /** Model ID */
   id: string;
-  /** Operator/admin weight-directory override — HIGHEST precedence in every service resolver, ahead of `sourceUri` scheme dispatch. Set-but-missing falls through with a warning. Also populated by download bookkeeping. */
+  /** Platform-default election per task. */
+  isPlatformDefaultFor: Array<
+    | 'TEXT_GENERATION'
+    | 'TRANSLATION'
+    | 'SPEECH_TO_TEXT'
+    | 'TEXT_TO_SPEECH'
+    | 'VISION_EXTRACTION'
+    | 'EMBEDDING'
+    | 'NAMED_ENTITY_RECOGNITION'
+    | 'TEXT_CLASSIFICATION'
+    | 'CONTENT_SAFETY'
+    | 'GROUNDEDNESS'
+    | 'PII_DETECTION'
+  >;
+  /** ISO 639-1 language codes. */
+  languages: string[];
+  /** Serving library — the Hub `library_name` facet. */
+  libraryName:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex';
+  /** Model-card licence identifier. */
+  license?: string | null;
+  /** DERIVED (TASK-860): `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Read by every service resolver as the highest-precedence weight location. Falls back to the legacy stored value on rows that predate `bucketPrefix`. */
   localPath?: string;
+  /** sha256 of the published `manifest.json`. */
+  manifestDigest?: string | null;
   /** Estimated memory size in MB */
   memorySizeMb?: number;
   /** Model type */
   modelType: 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
   /** Model name */
   name: string;
+  /** The Hugging Face `pipeline_tag` (kebab-case), derived from `taskType`. */
+  pipelineTag: string;
+  /** The single file a single-file loader opens inside `bucketPrefix`. */
+  primaryObject?: string | null;
   /** Canonical runtime provider id */
   provider?: string | null;
   /** Resource status */
   resourceStatus: 'ENABLED' | 'DISABLED' | 'SUSPENDED' | 'ARCHIVED' | 'DELETED';
+  /** Workload that executes the model. */
+  servedBy: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
   /** URL-friendly unique identifier */
   slug: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only). */
@@ -2553,7 +2784,7 @@ export interface ModelResponse {
   sourceUri: string;
   /** Tags */
   tags: string[];
-  /** Model task type */
+  /** Hugging Face task (`pipeline_tag`) as the SCREAMING_CASE enum member. */
   taskType:
     | 'IMAGE_TEXT_TO_TEXT'
     | 'VISUAL_QUESTION_ANSWERING'
@@ -2603,7 +2834,7 @@ export interface ModelResponse {
     | 'TABULAR_REGRESSION'
     | 'TIME_SERIES_FORECASTING'
     | 'UNKNOWN';
-  /** Tenant ID */
+  /** Tenant ID (always the SYSTEM tenant for a registry row) */
   tenantId: string;
   /** Updated at timestamp */
   updatedAt: string;
@@ -2611,6 +2842,8 @@ export interface ModelResponse {
   updatedBy?: string;
   /** Optimistic-concurrency row version */
   version: number;
+  /** Vendor wire id for a CLOUD row. */
+  wireModelId?: string | null;
 }
 
 export interface NamedEntityResponse {
@@ -2640,6 +2873,13 @@ export interface NamedEntityResponse {
   startOffset?: number;
   /** The recognized text span */
   text: string;
+}
+
+export interface NewAgentVersionRequest {
+  description?: string;
+  name?: string;
+  /** Only when branching from a SYSTEM agent: the slug of the new tenant lineage (defaults to the source slug). */
+  slug?: string;
 }
 
 export interface NodePromptBindingResponse {
@@ -3144,27 +3384,27 @@ export interface PlanEntitlementResponse {
   maxPromptTemplates?: number | null;
   /** Max users/seats; null = unlimited */
   maxUsers?: number | null;
-  /** Max PUBLISHED workflow definitions; null = unlimited */
+  /** Max PUBLISHED workflow definitions ; null = unlimited */
   maxWorkflowDefinitions?: number | null;
   /** Model-access tier (base | full | full_custom) */
   modelTier: string;
   /** Monthly consultations; null = unlimited */
   monthlyConsultations?: number | null;
-  /** Monthly embedding tokens allowance; null = unlimited */
+  /** Monthly embedding tokens allowance (D11); null = unlimited */
   monthlyEmbeddingTokens?: number | null;
-  /** Monthly LLM tokens allowance, all billable kinds summed; null = unlimited */
+  /** Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited */
   monthlyLlmTokens?: number | null;
-  /** Monthly NLP text-units allowance; null = unlimited */
+  /** Monthly NLP text-units allowance (D11); null = unlimited */
   monthlyNlpTextUnits?: number | null;
-  /** Monthly STT session-seconds allowance; null = unlimited */
+  /** Monthly STT session-seconds allowance (D11); null = unlimited */
   monthlySttSessionSeconds?: number | null;
   /** Monthly summaries; null = unlimited */
   monthlySummaries?: number | null;
   /** Monthly transcription minutes; null = unlimited */
   monthlyTranscriptionMinutes?: number | null;
-  /** Monthly TTS characters allowance, Unicode code points; null = unlimited */
+  /** Monthly TTS characters allowance, Unicode code points (D11); null = unlimited */
   monthlyTtsCharacters?: number | null;
-  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke; null = unlimited */
+  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited */
   monthlyWorkflowInvocations?: number | null;
   /** Commercial plan */
   plan: 'ENTERPRISE' | 'PRO' | 'TRIAL' | 'STARTER';
@@ -3499,30 +3739,6 @@ export interface PromptVersionResponse {
   versionNumber: number;
 }
 
-export interface ProviderReconciliationRunResponse {
-  breachedThreshold: boolean;
-  id: string;
-  /** The ledger's own CLOUD-only total. Null when no comparison happened. */
-  ledgerQuantity?: string;
-  provider: string;
-  /** The vendor's reported total, in THEIR unit vocabulary. */
-  providerQuantity?: string;
-  providerUnit?: string;
-  /** Why, when the status is not `reconciled` — availability reason or transport error. */
-  reason?: string;
-  /** Signed (provider - ledger) / ledger. Null when the ratio is undefined (ledger 0). */
-  relativeDrift?: string;
-  runAt: string;
-  status: 'reconciled' | 'skipped' | 'failed';
-  /** The threshold in force FOR THIS RUN — stamped so a later change cannot reinterpret the verdict. */
-  thresholdPct: number;
-  /** Human window label, e.g. "2026-08-06" or "2026-08-04..2026-08-06". */
-  window: string;
-  /** EXCLUSIVE end of the half-open window. */
-  windowEnd: string;
-  windowStart: string;
-}
-
 export interface ProvisionTenantAdminBlock {
   /** Required when mode=new-local */
   email?: string;
@@ -3545,6 +3761,11 @@ export interface ProvisionTenantRequest {
   tenantKey?: string;
   /** Name of the tenant */
   tenantName: string;
+}
+
+export interface PublishAgentRequest {
+  /** Make this the ACTIVE version the resolver serves, demoting the slug’s previous active version (if any). Defaults to true. */
+  activate?: boolean;
 }
 
 export interface PublishConsultationContextSchemaRequest {
@@ -4115,6 +4336,23 @@ export interface SetEnforcementEnabledRequest {
   enabled: boolean;
 }
 
+export interface SetPlatformDefaultRequest {
+  /** The tasks this row is the platform default for. */
+  tasks: Array<
+    | 'TEXT_GENERATION'
+    | 'TRANSLATION'
+    | 'SPEECH_TO_TEXT'
+    | 'TEXT_TO_SPEECH'
+    | 'VISION_EXTRACTION'
+    | 'EMBEDDING'
+    | 'NAMED_ENTITY_RECOGNITION'
+    | 'TEXT_CLASSIFICATION'
+    | 'CONTENT_SAFETY'
+    | 'GROUNDEDNESS'
+    | 'PII_DETECTION'
+  >;
+}
+
 export interface SetRateLimitEnabledRequest {
   /** Global rate-limit kill-switch. `false` disables throttling for every route. */
   enabled: boolean;
@@ -4147,21 +4385,6 @@ export interface SetRateLimitTierRequest {
   ttl?: number;
 }
 
-export interface SetSttCredentialRequest {
-  /** Provider API key (write-only; encrypted at rest, never returned) */
-  apiKey: string;
-  /** Enable this credential (default true) */
-  enabled?: boolean;
-  /** Azure Foundry resource / OpenAI-compatible base URL */
-  endpoint?: string;
-  /** OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). Browser clients drive OCC through the If-Match header (which overrides this field when present); this is the service-to-service fallback for non-header callers. */
-  expectedVersion?: number;
-  /** Provider model id (Foundry model / Sarvam / OpenAI); stored under extraJson */
-  model?: string;
-  /** Classic Azure Speech region (e.g. eastus) */
-  region?: string;
-}
-
 export interface SetSttFallbackRequest {
   /** Enable the error-triggered auto-switch to the fallback (default true). */
   autoSwitchEnabled?: boolean;
@@ -4187,15 +4410,6 @@ export interface SetTenantTagsRequest {
   /** Full replacement set of tenant tags */
   tags: string[];
   tenantId?: string;
-}
-
-export interface SetTtsCredentialRequest {
-  /** Provider API key (write-only; encrypted at rest, never returned) */
-  apiKey: string;
-  /** Enable this credential for routing (default true) */
-  enabled?: boolean;
-  /** Provider endpoint — azure: region (e.g. eastus); sarvam: base URL */
-  endpoint?: string;
 }
 
 export interface SetUserDepartmentsRequest {
@@ -4232,7 +4446,7 @@ export interface SettingCatalogItemResponse {
   sensitivity: 'public' | 'internal' | 'secret';
   /** Recorded eventual home when `tier` is not where the key ends up. */
   targetTier?: string;
-  /** Storage tier / data class. */
+  /** Storage tier / §3 data class. */
   tier: string;
 }
 
@@ -4275,27 +4489,6 @@ export interface StartSandboxRunRequest {
   fixtureId?: string;
   /** Inline synthetic test input, forwarded verbatim as the run payload. Wins over `fixtureId` when both are supplied. */
   input?: Record<string, unknown>;
-}
-
-export interface SttCredentialResponse {
-  /** Whether this credential is enabled */
-  enabled: boolean;
-  /** Azure Foundry resource / OpenAI-compatible base URL */
-  endpoint?: string | null;
-  /** Whether an encrypted key is stored */
-  hasKey: boolean;
-  /** Vault key version the ciphertext was sealed with */
-  keyVersion?: number | null;
-  /** Provider model id (from extraJson) */
-  model?: string | null;
-  /** Provider (azure-speech | sarvam | openai) */
-  provider: string;
-  /** Classic Azure Speech region */
-  region?: string | null;
-  /** Last updated (ISO) */
-  updatedAt?: string;
-  /** OCC version. Echo back as `If-Match: "<version>"` on the next write. */
-  version: number;
 }
 
 export interface SuccessResponse {
@@ -4461,27 +4654,27 @@ export interface TenantEntitlementResponse {
   maxPromptTemplates?: number | null;
   /** Override max users; null = inherit */
   maxUsers?: number | null;
-  /** Override max PUBLISHED workflow definitions; null = inherit */
+  /** Override max PUBLISHED workflow definitions ; null = inherit */
   maxWorkflowDefinitions?: number | null;
   /** Override model tier; null = inherit */
   modelTier?: string | null;
   /** Override monthly consultations; null = inherit */
   monthlyConsultations?: number | null;
-  /** Override monthly embedding tokens allowance; null = inherit */
+  /** Override monthly embedding tokens allowance (D11); null = inherit */
   monthlyEmbeddingTokens?: number | null;
-  /** Override monthly LLM tokens allowance; null = inherit */
+  /** Override monthly LLM tokens allowance (D11); null = inherit */
   monthlyLlmTokens?: number | null;
-  /** Override monthly NLP text-units allowance; null = inherit */
+  /** Override monthly NLP text-units allowance (D11); null = inherit */
   monthlyNlpTextUnits?: number | null;
-  /** Override monthly STT session-seconds allowance; null = inherit */
+  /** Override monthly STT session-seconds allowance (D11); null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */
   monthlySummaries?: number | null;
   /** Override monthly transcription minutes; null = inherit */
   monthlyTranscriptionMinutes?: number | null;
-  /** Override monthly TTS characters allowance; null = inherit */
+  /** Override monthly TTS characters allowance (D11); null = inherit */
   monthlyTtsCharacters?: number | null;
-  /** Override monthly PUBLISHED-workflow invocations; null = inherit */
+  /** Override monthly PUBLISHED-workflow invocations ; null = inherit */
   monthlyWorkflowInvocations?: number | null;
   /** Per-tenant absolute rate override (req/min); null = use the tier */
   rateLimitPerMinute?: number | null;
@@ -4710,20 +4903,28 @@ export interface TestPromptTemplateRequest {
   versionNumber?: number;
 }
 
-export interface TestSttCredentialRequest {
-  /** Provider API key to probe (never persisted) */
-  apiKey: string;
-  /** Azure Foundry resource / OpenAI-compatible / Sarvam base URL to probe */
-  endpoint?: string;
-  /** Classic Azure Speech region (e.g. eastus) */
+export interface TestProviderConnectionRequest {
+  /** Provider API key to probe (never persisted). Omit to probe the stored key. */
+  apiKey?: string;
+  /** API version (Azure OpenAI). Omit to use the stored row. */
+  apiVersion?: string;
+  /** Endpoint / base URL to probe. Omit to use the stored row. */
+  baseUrl?: string;
+  /** Deployment name (Azure OpenAI) — verified against the listed deployments when given. */
+  deploymentName?: string;
+  /** Region (classic Azure Speech, Bedrock). Omit to use the stored row. */
   region?: string;
 }
 
-export interface TestSttCredentialResponse {
+export interface TestProviderConnectionResponse {
   /** Human-readable probe result */
   message: string;
   /** Whether the probe succeeded */
   ok: boolean;
+  /** `auth` — the provider confirmed the credential (a real auth-only call). `reachability` — the endpoint answered but the provider exposes no auth-only route, so the key is verified on first real use. */
+  probe: 'auth' | 'reachability';
+  /** Which tier supplied the probed configuration: the request body, the tenant row, or the SYSTEM row. */
+  source: 'request' | 'tenant' | 'platform';
 }
 
 export interface TogglePipelineRequest {
@@ -4752,6 +4953,8 @@ export interface TopTenantsResponse {
 }
 
 export interface TranscriptionJobResponse {
+  /** TASK-861 — the ASR Agent VERSION that ran the job */
+  agentVersionId?: string | null;
   /** Completed at timestamp */
   completedAt?: string;
   /** Consultation ID */
@@ -4774,14 +4977,16 @@ export interface TranscriptionJobResponse {
   maxRetries: number;
   /** Media ID (for batch jobs) */
   mediaId?: string;
-  /** Pipeline details */
+  /** DEPRECATED (TASK-861): Pipeline details */
   pipeline?: PipelineResponse;
-  /** Pipeline ID */
-  pipelineId: string;
+  /** DEPRECATED (TASK-861): the AsrPipeline that ran the job; null on agent-keyed jobs */
+  pipelineId?: string | null;
   /** Progress (0-100) */
   progress: number;
   /** Queued at timestamp */
   queuedAt: string;
+  /** TASK-861 — the ResolvedAsrSpec snapshot the job ran on (never a credential) */
+  resolvedSpec?: Record<string, unknown> | null;
   /** Result metadata */
   resultMetadata?: Record<string, unknown>;
   /** Transcription result text */
@@ -4860,24 +5065,35 @@ export interface TtsCatalogVoice {
   name?: string;
 }
 
-export interface TtsCredentialResponse {
-  /** Whether this credential is enabled for routing */
-  enabled: boolean;
-  /** Endpoint — azure: region; sarvam: base URL */
-  endpoint?: string | null;
-  /** Whether an encrypted key is stored */
-  hasKey: boolean;
-  /** Vault key version the ciphertext was sealed with */
-  keyVersion?: number | null;
-  /** Provider (azure | sarvam) */
-  provider: string;
-  /** Last updated (ISO) */
-  updatedAt?: string;
-}
-
 export interface TtsPlatformCatalogResponse {
   /** Platform TTS engines */
   providers: TtsCatalogProvider[];
+}
+
+export interface UnregisteredBucketPrefix {
+  bucketPrefix: string;
+  layout: 'flat' | 'hf-cache';
+  objectCount: number;
+  slug?: string | null;
+  totalBytes?: number | null;
+  version?: string | null;
+}
+
+export interface UpdateAgentRequest {
+  description?: string;
+  /** Optimistic-concurrency version; the `If-Match` header overrides it when both are present. */
+  expectedVersion?: number;
+  /** Replaces the whole fallback chain. */
+  fallbackModelIds?: string[];
+  inputSchema?: Record<string, unknown>;
+  instruction?: Record<string, unknown>;
+  /** Re-bind the backing model (same task). */
+  modelId?: string;
+  name?: string;
+  outputSchema?: Record<string, unknown>;
+  parameters?: Record<string, unknown>;
+  tags?: string[];
+  tools?: Array<Record<string, unknown>>;
 }
 
 export interface UpdateApiKeyRequest {
@@ -4966,7 +5182,7 @@ export interface UpdateDnaReportRequest {
   changeReason?: string;
   /** Current row version of the DNA report (from the prior GET). The admin PATCH fails with 412 if the version drifted. */
   expectedVersion?: number;
-  /** the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: } to clear. */
+  /** the doctor's structured DNA redaction/rewrite rule set ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Encrypted at rest; validated for shape on write. Pass { rules: [] } to clear. */
   redactionRules?: Record<string, unknown>;
   /** Updated report data (JSON) */
   reportData?: Record<string, unknown>;
@@ -5106,17 +5322,23 @@ export interface UpdateMcpServerRequest {
 export interface UpdateModelRequest {
   /** Model architecture family */
   architecture?: string;
+  /** Upstream base checkpoint. Send an empty string to clear. */
+  baseModel?: string;
+  /** Key prefix under `s3://hope-models`. Normally written by the publish job; accepted here for "register from bucket". `localPath` is derived from it (+ `primaryObject`). Send an empty string to clear both. */
+  bucketPrefix?: string;
   /** Model category */
   category?: 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULAR' | 'UNKNOWN';
   /** SHA256 checksum. When set, single-file artifacts (GGUF/ONNX) are verified after download and on first use of a pre-existing cache entry; a mismatch is a HARD error and the model is never served. On directory snapshots (HuggingFace) it is a documented no-op. */
   checksum?: string;
   /** Compute type */
   computeType?: string;
+  /** SELF_HOSTED or CLOUD. */
+  deploymentKind?: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
   /** Model description */
   description?: string;
   /** Current version of the row (from the prior GET, e.g. via the `ETag` header). The PATCH fails with `412 Precondition Failed` if the version drifted. */
   expectedVersion: number;
-  /** Model format */
+  /** Artifact format (descriptive; loader selection is `libraryName`). */
   format?:
     | 'SAFETENSOR'
     | 'ONNX'
@@ -5134,16 +5356,55 @@ export interface UpdateModelRequest {
     | 'WHISPER_CPP'
     | 'SARVAM'
     | 'OPENAI';
-  /** Operator/admin override for the weight directory — HIGHEST precedence in every service resolver, ahead of `sourceUri` scheme dispatch. Use for air-gapped hosts and pre-staged NFS mounts. A set-but-missing path falls THROUGH to scheme dispatch with a warning (never a hard failure). Send an empty string to clear the override. */
-  localPath?: string;
+  /** Hub gated / click-through repo. */
+  gated?: boolean;
+  /** Hub commit sha. Send an empty string to clear. */
+  hfRevision?: string;
+  /** ISO 639-1 language codes, model-card order. */
+  languages?: string[];
+  /** Serving library — the Hub `library_name` facet. */
+  libraryName?:
+    | 'faster-whisper'
+    | 'whisper.cpp'
+    | 'ctranslate2'
+    | 'parakeet.cpp'
+    | 'nemo'
+    | 'onnxruntime'
+    | 'pyrnnoise'
+    | 'deepfilternet'
+    | 'speechbrain'
+    | 'pyannote-audio'
+    | 'cadence-punctuation'
+    | 'transformers'
+    | 'gliner2'
+    | 'llama.cpp'
+    | 'kokoro'
+    | 'parler-tts'
+    | 'lm-studio'
+    | 'ollama'
+    | 'vllm'
+    | 'azure-speech'
+    | 'azure-foundry'
+    | 'azure-openai'
+    | 'openai'
+    | 'sarvam'
+    | 'bedrock'
+    | 'anthropic'
+    | 'vertex';
+  /** Model-card licence identifier. Send an empty string to clear. */
+  license?: string;
   /** Estimated memory size in MB */
   memorySizeMb?: number;
   /** Model type */
   modelType?: 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
   /** Model name */
   name?: string;
+  /** The single file a single-file loader opens inside `bucketPrefix`. Send an empty string to clear. */
+  primaryObject?: string;
   /** Canonical runtime provider id */
   provider?: 'ollama' | 'lm-studio' | 'azure' | 'bedrock' | 'built-in' | 'sarvam' | 'openai' | 'anthropic' | 'vertex' | 'vllm' | 'llama-cpp';
+  /** Workload that executes the model. */
+  servedBy?: 'stt' | 'stt-worker' | 'nlp' | 'tts' | 'tts-worker' | 'lmstudio' | 'text' | 'gateway-proxy';
   /** URL-friendly unique identifier */
   slug?: string;
   /** Model source. S3 = S3/MinIO-compatible object storage (s3:// only; azure-blob:// is out of scope). */
@@ -5154,7 +5415,7 @@ export interface UpdateModelRequest {
   sourceUri?: string;
   /** Tags for categorization */
   tags?: string[];
-  /** Model task type */
+  /** Hugging Face task (`pipeline_tag`) as the SCREAMING_CASE enum member. */
   taskType?:
     | 'IMAGE_TEXT_TO_TEXT'
     | 'VISUAL_QUESTION_ANSWERING'
@@ -5204,6 +5465,8 @@ export interface UpdateModelRequest {
     | 'TABULAR_REGRESSION'
     | 'TIME_SERIES_FORECASTING'
     | 'UNKNOWN';
+  /** Vendor wire id for a CLOUD row. Send an empty string to clear. */
+  wireModelId?: string;
 }
 
 export interface UpdateNodePromptRequest {
@@ -5291,27 +5554,27 @@ export interface UpdatePlanEntitlementRequest {
   maxPromptTemplates?: number | null;
   /** Max users/seats; null = unlimited */
   maxUsers?: number | null;
-  /** Max PUBLISHED workflow definitions; null = unlimited */
+  /** Max PUBLISHED workflow definitions ; null = unlimited */
   maxWorkflowDefinitions?: number | null;
   /** Model-access tier (base | full | full_custom) */
   modelTier?: string;
   /** Monthly consultations; null = unlimited */
   monthlyConsultations?: number | null;
-  /** Monthly embedding tokens allowance; null = unlimited */
+  /** Monthly embedding tokens allowance (D11); null = unlimited */
   monthlyEmbeddingTokens?: number | null;
-  /** Monthly LLM tokens allowance, all billable kinds summed; null = unlimited */
+  /** Monthly LLM tokens allowance, all billable kinds summed (D11); null = unlimited */
   monthlyLlmTokens?: number | null;
-  /** Monthly NLP text-units allowance; null = unlimited */
+  /** Monthly NLP text-units allowance (D11); null = unlimited */
   monthlyNlpTextUnits?: number | null;
-  /** Monthly STT session-seconds allowance; null = unlimited */
+  /** Monthly STT session-seconds allowance (D11); null = unlimited */
   monthlySttSessionSeconds?: number | null;
   /** Monthly summaries; null = unlimited */
   monthlySummaries?: number | null;
   /** Monthly transcription minutes; null = unlimited */
   monthlyTranscriptionMinutes?: number | null;
-  /** Monthly TTS characters allowance, Unicode code points; null = unlimited */
+  /** Monthly TTS characters allowance, Unicode code points (D11); null = unlimited */
   monthlyTtsCharacters?: number | null;
-  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke; null = unlimited */
+  /** Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke ; null = unlimited */
   monthlyWorkflowInvocations?: number | null;
   /** ABSOLUTE requests-per-window for this plan. Send `null` to clear it and fall back to `rateLimitTier`. */
   rateLimitPerMinute?: number | null;
@@ -5605,6 +5868,21 @@ export interface UpdateWorkflowTestFixtureRequest {
   workflowDefinitionId?: string;
 }
 
+export interface UpsertAgentAssignmentRequest {
+  /** Lineage slug of the assigned agent. Must resolve to an ACTIVE PUBLISHED agent of this task visible to the caller tenant. */
+  agentSlug: string;
+  /** OCC token; the `If-Match` header wins when both are supplied. */
+  expectedVersion?: number;
+  /** Why the assignment changed — recorded verbatim on the WORM change row. */
+  reason?: string;
+  /** Cascade tier this assignment sits on. Only TENANT and DEPARTMENT are accepted. */
+  scope: 'TENANT' | 'DEPARTMENT' | 'DOCTOR';
+  /** The department id for a DEPARTMENT-scope assignment; omitted (or null) for TENANT scope. */
+  scopeId?: string;
+  /** The agent task this assignment governs. */
+  task: 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH';
+}
+
 export interface UpsertAiProviderConnectionRequest {
   /** Plaintext API key. Vault-Transit encrypted at rest and NEVER returned by any read. Omit to leave the stored key untouched; the write is rejected when Vault is unavailable. */
   apiKey?: string;
@@ -5620,35 +5898,18 @@ export interface UpsertAiProviderConnectionRequest {
   expectedVersion?: number;
   /** Provider-specific extras, forwarded VERBATIM to the serving adapter as part of the per-request override entry. A FLAT object: values must be strings, numbers, booleans, or arrays of those — nested objects are rejected. At most 32 keys; strings up to 2048 characters. The keys the connection row itself supplies (`api_key`, `funding`, `base_url`, `region`, `api_version`, `deployment_name`) are reserved and rejected here. */
   extraJson?: Record<string, unknown>;
+  /** Ceiling — simultaneous in-flight requests on this connection (TASK-862, moved from the retired runtime profiles). Null/omitted = no opinion; a positive integer is a hard cap. */
+  maxConcurrent?: number | null;
   /** Region identifier (bedrock). */
   region?: string;
+  /** Ceiling — requests per minute. Null/omitted = no opinion. */
+  rpmLimit?: number | null;
   /** Capability the connection serves. The route `:service` path param is authoritative. */
   service?: 'llm' | 'stt' | 'tts' | 'embeddings' | 'rerank' | 'vector' | 'model-registry';
-}
-
-export interface UpsertAiRuntimeProfileRequest {
-  /** Context window budget — `n_ctx` for GGUF engines, request context budget for API engines. */
-  contextLength?: number;
-  /** Version the client read (optimistic concurrency). The `If-Match` header overrides this when both are present. Use 0 to create. */
-  expectedVersion?: number;
-  /** Engine-specific extras (n_threads, n_gpu_layers, num_predict, …). */
-  extraJson?: Record<string, unknown>;
-  /** Model-retention hint forwarded to server-managed engines (keep-alive seconds). */
-  keepAliveSeconds?: number;
-  /** Maximum concurrent in-flight requests. */
-  maxConcurrent?: number;
-  /** Maximum tokens to generate. */
-  maxTokens?: number;
-  /** Requests-per-minute limit. */
-  rpmLimit?: number;
-  /** Sampling temperature (0–2). */
-  temperature?: number;
-  /** Request timeout in seconds. */
-  timeoutS?: number;
-  /** Nucleus sampling top-p (0–1). */
-  topP?: number;
-  /** Tokens-per-minute limit. */
-  tpmLimit?: number;
+  /** Ceiling — per-request timeout in seconds. Null/omitted = no opinion. */
+  timeoutS?: number | null;
+  /** Ceiling — tokens per minute (LLM/embeddings; characters for TTS). Null/omitted = no opinion. */
+  tpmLimit?: number | null;
 }
 
 export interface UpsertAiTaskDefaultRequest {
@@ -5686,7 +5947,7 @@ export interface UpsertPlatformStorageConfigRequest {
 export interface UpsertTenantEntitlementRequest {
   /** Current row version (OCC). REQUIRED to update an existing override; ignored on create. */
   expectedVersion?: number;
-  /** Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant. Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide. */
+  /** Grant (true) / deny (false) / inherit (null) the harness AGENTIC LOOP for this tenant . Inherit resolves the plan value: false on STARTER, true on TRIAL/PRO/ENTERPRISE. The consultation.loop.emergencyStop kill-switch can still subtract it platform-wide. */
   featureAgenticLoop?: boolean | null;
   /** Override DNA reports feature; null = inherit */
   featureDnaReports?: boolean | null;
@@ -5708,27 +5969,27 @@ export interface UpsertTenantEntitlementRequest {
   maxPromptTemplates?: number | null;
   /** Override max users; null = inherit */
   maxUsers?: number | null;
-  /** Override max PUBLISHED workflow definitions; null = inherit */
+  /** Override max PUBLISHED workflow definitions ; null = inherit */
   maxWorkflowDefinitions?: number | null;
   /** Override model tier; null = inherit */
   modelTier?: string | null;
   /** Override monthly consultations; null = inherit */
   monthlyConsultations?: number | null;
-  /** Override monthly embedding tokens allowance; null = inherit */
+  /** Override monthly embedding tokens allowance (D11); null = inherit */
   monthlyEmbeddingTokens?: number | null;
-  /** Override monthly LLM tokens allowance; null = inherit */
+  /** Override monthly LLM tokens allowance (D11); null = inherit */
   monthlyLlmTokens?: number | null;
-  /** Override monthly NLP text-units allowance; null = inherit */
+  /** Override monthly NLP text-units allowance (D11); null = inherit */
   monthlyNlpTextUnits?: number | null;
-  /** Override monthly STT session-seconds allowance; null = inherit */
+  /** Override monthly STT session-seconds allowance (D11); null = inherit */
   monthlySttSessionSeconds?: number | null;
   /** Override monthly summaries; null = inherit */
   monthlySummaries?: number | null;
   /** Override monthly transcription minutes; null = inherit */
   monthlyTranscriptionMinutes?: number | null;
-  /** Override monthly TTS characters allowance; null = inherit */
+  /** Override monthly TTS characters allowance (D11); null = inherit */
   monthlyTtsCharacters?: number | null;
-  /** Override monthly PUBLISHED-workflow invocations; null = inherit */
+  /** Override monthly PUBLISHED-workflow invocations ; null = inherit */
   monthlyWorkflowInvocations?: number | null;
   /** Per-tenant absolute rate override (req/min); null = use the tier */
   rateLimitPerMinute?: number | null;
@@ -6124,11 +6385,22 @@ export interface WorkflowNodePortResponse {
   multiple: boolean;
   /** Stable, node-type-local port name — what a graph edge’s fromPort/toPort names. */
   name: string;
-  /** The key of the producing activity’s output object that this socket carries. A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort. */
+  /** The key of the producing activity’s output object that this socket carries (OD-15). A port NAME is an authoring handle — what the canvas draws and what a graph edge’s fromPort/toPort names — while the interpreter threads values by reading a KEY out of the activity’s own output, and no activity emits a key called “out”. Absent on a control port, which carries no payload at all, and on every input port, which is bound by its own toPort. */
   outputKey?: string;
   /** The port’s type in the closed workflow port vocabulary. Compatibility is a subtype relation with exactly two widenings (transcript ⊑ text, document ⊑ text); transcript and document are siblings, which is what makes document → ner a type error. */
   primitive:
-    'control' | 'stream<audio>' | 'audio' | 'transcript' | 'text' | 'object' | 'entities' | 'document' | 'edits' | 'verdict' | 'context<schemaRef>';
+    | 'control'
+    | 'stream<audio>'
+    | 'audio'
+    | 'transcript'
+    | 'text'
+    | 'object'
+    | 'entities'
+    | 'document'
+    | 'edits'
+    | 'verdict'
+    | 'context<schemaRef>'
+    | 'any';
   /** An input the node cannot run without / an output the node always produces. */
   required: boolean;
 }
@@ -6149,6 +6421,8 @@ export interface WorkflowNodeResponse {
   critical: boolean;
   defaultMaxAttempts: number;
   defaultTimeoutSeconds: number;
+  /** TASK-864: a legacy type kept for the deprecation window — compile() still accepts it; the Studio hides it from the palette. `null` when the descriptor does not declare it. */
+  deprecated?: boolean | null;
   /** The EntitlementFeatureKey that gates this node type, if any. */
   entitlementKey?: string | null;
   /** The golden-set eval gate bound to this node type, or null when none is bound. */
@@ -6167,6 +6441,8 @@ export interface WorkflowNodeResponse {
   outputs: WorkflowNodePortResponse[];
   /** The palette this node type belongs to, or null for a palette-agnostic utility node. */
   paletteKey?: string | null;
+  /** The core.* type a deprecated type maps onto (for core.action, the catalogue key`s host). */
+  replacedBy?: string | null;
   /** Guard attachment keys — node types that must be wired to EVERY INSTANCE of this node before a graph containing it publishes. */
   requires: string[];
   /** The node TYPE’s version. A published node’s ports are never reshaped in place — a breaking change becomes a new key with an @N suffix, and this field agrees with that suffix. */
@@ -6233,6 +6509,17 @@ export interface WorkflowTestFixtureResponse {
   version: number;
   /** WorkflowDefinition id this fixture is scoped to; null = tenant-wide */
   workflowDefinitionId?: string;
+}
+
+export interface WorkflowWebhookSecretResponseDto {
+  /** The relative URL external systems POST signed deliveries to. */
+  hookUrl: string;
+  /** ISO-8601 rotation instant. */
+  rotatedAt: string;
+  /** The raw HMAC secret. Shown exactly once — store it now. */
+  secret: string;
+  /** The workflow lineage the secret belongs to. */
+  slug: string;
 }
 
 export interface WriteRegistrySettingRequest {

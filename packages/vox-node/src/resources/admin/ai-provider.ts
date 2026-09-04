@@ -11,7 +11,12 @@
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
-import type { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './schemas';
+import type {
+  AiProviderConnectionResponse,
+  TestProviderConnectionRequest,
+  TestProviderConnectionResponse,
+  UpsertAiProviderConnectionRequest,
+} from './schemas';
 
 /**
  * `hope.admin.aiProvider` — the `svc:admin:ai-provider:manage` administration area.
@@ -20,8 +25,8 @@ import type { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } 
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AiProviderConnectionController, ProviderConnectionController
- * (8 routes). Several controllers sharing one scope share one
+ * Backed by controller ProviderConnectionController
+ * (5 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -29,87 +34,11 @@ export class AdminAiProviderResource extends AdminResource {
   readonly svcScope = 'svc:admin:ai-provider:manage';
 
   /**
-   * DEPRECATED — use `GET admin/providers/llm`. List LLM provider connections (keys never returned).
-   *
-   * `GET /api/v1/admin/ai-providers` — `AiProviderConnectionController.list`.
-   */
-  aiProviderConnectionList(options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<AiProviderConnectionResponse[]> {
-    return this.request<AiProviderConnectionResponse[]>({
-      method: 'GET',
-      path: 'admin/ai-providers',
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * DEPRECATED — use `DELETE admin/providers/llm/:provider`. Soft-delete one LLM provider connection.
-   *
-   * `DELETE /api/v1/admin/ai-providers/{provider}` — `AiProviderConnectionController.remove`.
-   */
-  aiProviderConnectionRemove(provider: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
-    return this.request<unknown>({
-      method: 'DELETE',
-      path: `admin/ai-providers/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * DEPRECATED — use `GET admin/providers/llm/:provider`.
-   *
-   * `GET /api/v1/admin/ai-providers/{provider}` — `AiProviderConnectionController.getOne`.
-   */
-  aiProviderConnectionGetOne(
-    provider: string,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<AiProviderConnectionResponse> {
-    return this.request<AiProviderConnectionResponse>({
-      method: 'GET',
-      path: `admin/ai-providers/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * DEPRECATED — use `PUT admin/providers/llm/:provider`. Create or update one LLM provider connection.
-   *
-   * Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a Compare-And-Set against the row's `_version`. When present the header overrides the body-field `expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create.
-   *
-   * `PUT /api/v1/admin/ai-providers/{provider}` — `AiProviderConnectionController.upsert`.
-   *
-   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
-   */
-  aiProviderConnectionUpsert(
-    provider: string,
-    body: UpsertAiProviderConnectionRequest,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } & { ifMatch: IfMatchPrecondition },
-  ): Promise<AiProviderConnectionResponse> {
-    return this.requestWithPrecondition<AiProviderConnectionResponse>({
-      method: 'PUT',
-      path: `admin/ai-providers/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      body,
-      ifMatch: options.ifMatch,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
    * List provider connections for one service and the scoped tenant (keys never returned).
    *
    * `GET /api/v1/admin/providers/{service}` — `ProviderConnectionController.list`.
    */
-  providerConnectionList(
-    service: string,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<AiProviderConnectionResponse[]> {
+  list(service: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<AiProviderConnectionResponse[]> {
     return this.request<AiProviderConnectionResponse[]>({
       method: 'GET',
       path: `admin/providers/${encodePathSegment(String(service))}`,
@@ -126,11 +55,7 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * `DELETE /api/v1/admin/providers/{service}/{provider}` — `ProviderConnectionController.remove`.
    */
-  providerConnectionRemove(
-    service: string,
-    provider: string,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<unknown> {
+  remove(service: string, provider: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
     return this.request<unknown>({
       method: 'DELETE',
       path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}`,
@@ -145,7 +70,7 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * `GET /api/v1/admin/providers/{service}/{provider}` — `ProviderConnectionController.getOne`.
    */
-  providerConnectionGetOne(
+  getOne(
     service: string,
     provider: string,
     options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
@@ -168,7 +93,7 @@ export class AdminAiProviderResource extends AdminResource {
    *
    * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
    */
-  providerConnectionUpsert(
+  upsert(
     service: string,
     provider: string,
     body: UpsertAiProviderConnectionRequest,
@@ -180,6 +105,29 @@ export class AdminAiProviderResource extends AdminResource {
       query: options.query,
       body,
       ifMatch: options.ifMatch,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Test a provider connection against the live vendor (ephemeral — never persisted).
+   *
+   * Probes the credential/endpoint BEFORE (or independent of) saving it. Every body field is optional: an omitted field falls back to the STORED row (the tenant row, else the SYSTEM platform default), so a saved write-only key can be re-tested without re-entering it. A real auth-only call where the vendor exposes one (`probe: "auth"`), a reachability smoke test otherwise (`probe: "reachability"`). No Vault write, no OCC, the key is never logged. Tenant-supplied URLs must be https and public.
+   *
+   * `POST /api/v1/admin/providers/{service}/{provider}/test` — `ProviderConnectionController.testConnection`.
+   */
+  testConnection(
+    service: string,
+    provider: string,
+    body: TestProviderConnectionRequest,
+    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
+  ): Promise<TestProviderConnectionResponse> {
+    return this.request<TestProviderConnectionResponse>({
+      method: 'POST',
+      path: `admin/providers/${encodePathSegment(String(service))}/${encodePathSegment(String(provider))}/test`,
+      query: options.query,
+      body,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

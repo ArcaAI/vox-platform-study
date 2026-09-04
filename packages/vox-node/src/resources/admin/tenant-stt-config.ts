@@ -8,19 +8,9 @@
  * any hand-edit.
  */
 
-import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
-import type {
-  EffectiveSttConfigResponse,
-  PipelineResponse,
-  SetSttCredentialRequest,
-  SetSttFallbackRequest,
-  SttCredentialResponse,
-  TenantSttConfigResponse,
-  TestSttCredentialRequest,
-  TestSttCredentialResponse,
-} from './schemas';
+import type { EffectiveSttConfigResponse, PipelineResponse, SetSttFallbackRequest, TenantSttConfigResponse } from './schemas';
 
 /**
  * `hope.admin.tenantSttConfig` — the `svc:admin:tenant-stt-config:manage` administration area.
@@ -30,7 +20,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller TenantSttConfigAdminController
- * (8 routes). Several controllers sharing one scope share one
+ * (4 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -40,7 +30,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Resolve the effective STT fallback spec for a tenant (tenant row over the SYSTEM default)
    *
-   * Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path.
+   * Merges the tenant row over the SYSTEM-tenant platform default. Read-only; this is what the gateway reads on the session-create path. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config` — `TenantSttConfigAdminController.getEffective`.
    */
@@ -55,86 +45,9 @@ export class AdminTenantSttConfigResource extends AdminResource {
   }
 
   /**
-   * List a tenant's BYO provider credentials (masked — never the key)
-   *
-   * `GET /api/v1/admin/stt-config/credentials` — `TenantSttConfigAdminController.getCredentials`.
-   */
-  getCredentials(options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<SttCredentialResponse[]> {
-    return this.request<SttCredentialResponse[]>({
-      method: 'GET',
-      path: 'admin/stt-config/credentials',
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Remove a tenant BYO provider credential
-   *
-   * `DELETE /api/v1/admin/stt-config/credentials/{provider}` — `TenantSttConfigAdminController.removeCredential`.
-   */
-  removeCredential(provider: string, options: AdminRequestOptions & { query?: { tenantId?: string } } = {}): Promise<unknown> {
-    return this.request<unknown>({
-      method: 'DELETE',
-      path: `admin/stt-config/credentials/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Set or rotate a tenant BYO provider key (write-only; Vault-encrypted at rest, never returned)
-   *
-   * `If-Match` (RFC 7232) carries the credential version — `"0"` creates, an existing version CASes against `_version` (drift → 412, missing → 428).
-   *
-   * `PUT /api/v1/admin/stt-config/credentials/{provider}` — `TenantSttConfigAdminController.setCredential`.
-   *
-   * Carries `@RequiresIfMatch()`: `options.ifMatch` is required by the type, so the 428 branch is unreachable. On drift the gateway answers 412 (`VersionConflictError.currentVersion`).
-   */
-  setCredential(
-    provider: string,
-    body: SetSttCredentialRequest,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } & { ifMatch: IfMatchPrecondition },
-  ): Promise<SttCredentialResponse> {
-    return this.requestWithPrecondition<SttCredentialResponse>({
-      method: 'PUT',
-      path: `admin/stt-config/credentials/${encodePathSegment(String(provider))}`,
-      query: options.query,
-      body,
-      ifMatch: options.ifMatch,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
-   * Test an apiKey/region/endpoint combination against the live provider BEFORE saving it
-   *
-   * Ephemeral probe — never persisted, no Vault write, no OCC. Lets a tenant admin validate a key before (or independent of) saving it, since the saved key is write-only and never returned for re-testing.
-   *
-   * `POST /api/v1/admin/stt-config/credentials/{provider}/test` — `TenantSttConfigAdminController.testCredential`.
-   */
-  testCredential(
-    provider: string,
-    body: TestSttCredentialRequest,
-    options: AdminRequestOptions & { query?: { tenantId?: string } } = {},
-  ): Promise<TestSttCredentialResponse> {
-    return this.request<TestSttCredentialResponse>({
-      method: 'POST',
-      path: `admin/stt-config/credentials/${encodePathSegment(String(provider))}/test`,
-      query: options.query,
-      body,
-      signal: options.signal,
-      timeoutMs: options.timeoutMs,
-    });
-  }
-
-  /**
    * List the enabled, cloud-engine-backed pipelines a tenant may set as its fallback
    *
-   * The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection.
+   * The valid targets for the fallback pointer — the picker offers exactly these, so the PUT never rejects a selection. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config/fallback-candidates` — `TenantSttConfigAdminController.getFallbackCandidates`.
    */
@@ -151,7 +64,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Get the raw, editable STT config row for a tenant
    *
-   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`).
+   * Returns the tenant row, or a `version:0` placeholder (all-inherit) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT` (create with `expectedVersion: 0`). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `GET /api/v1/admin/stt-config/row` — `TenantSttConfigAdminController.getRow`.
    */
@@ -168,7 +81,7 @@ export class AdminTenantSttConfigResource extends AdminResource {
   /**
    * Create or update the tenant STT fallback row under optimistic concurrency
    *
-   * Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed).
+   * Upserts the fallback pipeline pointer + auto-switch knobs (omit = unchanged; `fallbackPipelineId: null` clears it). `If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version CASes against `_version` (drift → 412, missing → 428). The fallback target is validated (tenant-visible, ENABLED, cloud-engine-backed). DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)).
    *
    * `PUT /api/v1/admin/stt-config/row` — `TenantSttConfigAdminController.updateRow`.
    *

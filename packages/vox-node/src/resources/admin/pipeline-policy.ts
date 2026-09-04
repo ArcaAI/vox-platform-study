@@ -31,7 +31,7 @@ export class AdminPipelinePolicyResource extends AdminResource {
   /**
    * Resolve the effective realtime-pipeline cascade (+ trace) for a tenant/department/doctor context
    *
-   * Reduces every toggle to a concrete boolean via the cascade (doctor → department → tenant → SYSTEM default → code default) and reports the winning tier per toggle in `trace`. Read-only; consumed by the realtime path.
+   * Reduces every toggle to a concrete boolean via the cascade (doctor → department → tenant → SYSTEM default → code default) and reports the winning tier per toggle in `trace`. Read-only; consumed by the realtime path. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).
    *
    * `GET /api/v1/admin/harness/pipeline-policy` — `PipelinePolicyAdminController.getEffective`.
    */
@@ -50,7 +50,7 @@ export class AdminPipelinePolicyResource extends AdminResource {
   /**
    * Get ONE raw, editable policy row (nullable toggles) for a scope
    *
-   * Returns the row at the requested scope (TENANT default), or a `code-default` placeholder (version 0, all toggles null) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT`.
+   * Returns the row at the requested scope (TENANT default), or a `code-default` placeholder (version 0, all toggles null) when none exists yet. The `version` drives the `If-Match` OCC token for the matching `PUT`. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).
    *
    * `GET /api/v1/admin/harness/pipeline-policy/row` — `PipelinePolicyAdminController.getRow`.
    */
@@ -69,7 +69,7 @@ export class AdminPipelinePolicyResource extends AdminResource {
   /**
    * Create or update ONE policy row (sparse patch) under optimistic concurrency
    *
-   * Pins/clears the supplied toggles at the requested scope (omit = unchanged, `null` = clear/inherit). The `If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS'es against `_version` (drift → 412, missing → 428); every edit appends a WORM `PipelinePolicyChange` in the same transaction. A toggle pinned beyond its registered max scope (e.g. `harnessEnabled` at DOCTOR) is rejected with 400.
+   * Pins/clears the supplied toggles at the requested scope (omit = unchanged, `null` = clear/inherit). The `If-Match` header (RFC 7232) is REQUIRED on an existing row and CAS'es against `_version` (drift → 412, missing → 428); every edit appends a WORM `PipelinePolicyChange` in the same transaction. A toggle pinned beyond its registered max scope (e.g. `harnessEnabled` at DOCTOR) is rejected with 400. DEPRECATED (TASK-861 — removed in R4; use /api/v1/admin/workflow-assignments (TASK-864)).
    *
    * `PUT /api/v1/admin/harness/pipeline-policy/row` — `PipelinePolicyAdminController.updateRow`.
    *

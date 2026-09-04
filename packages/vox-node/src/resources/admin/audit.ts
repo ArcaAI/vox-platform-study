@@ -118,7 +118,10 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
           | 'DocumentTemplate'
-          | 'AiRoutingPolicy';
+          | 'AiRoutingPolicy'
+          | 'Agent'
+          | 'AgentAssignment'
+          | 'WorkflowRun';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -240,7 +243,10 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
           | 'DocumentTemplate'
-          | 'AiRoutingPolicy';
+          | 'AiRoutingPolicy'
+          | 'Agent'
+          | 'AgentAssignment'
+          | 'WorkflowRun';
         to?: string;
         userId?: string;
       };
@@ -344,7 +350,10 @@ export class AdminAuditResource extends AdminResource {
           | 'WorkflowInvariantRule'
           | 'RateLimitRule'
           | 'DocumentTemplate'
-          | 'AiRoutingPolicy';
+          | 'AiRoutingPolicy'
+          | 'Agent'
+          | 'AgentAssignment'
+          | 'WorkflowRun';
         search?: string;
         searchFields?: string;
         sort?: string;

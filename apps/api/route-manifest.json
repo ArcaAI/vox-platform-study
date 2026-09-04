@@ -102,6 +102,121 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentAssignmentAdminController",
+      "handler": "fetchAll",
+      "method": "GET",
+      "path": "/api/v1/admin/agent-assignments",
+      "routePath": "/admin/agent-assignments",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAssignmentAdminController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/agent-assignments",
+      "routePath": "/admin/agent-assignments",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAssignmentAdminController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/agent-assignments",
+      "routePath": "/admin/agent-assignments",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAssignmentAdminController",
+      "handler": "remove",
+      "method": "DELETE",
+      "path": "/api/v1/admin/agent-assignments/{id}",
+      "routePath": "/admin/agent-assignments/:id",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAssignmentAdminController",
+      "handler": "fetchById",
+      "method": "GET",
+      "path": "/api/v1/admin/agent-assignments/{id}",
+      "routePath": "/admin/agent-assignments/:id",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AgentPromotionController",
       "handler": "list",
       "method": "GET",
@@ -255,6 +370,236 @@
         [
           "manage",
           "HarnessPolicy"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "fetchAll",
+      "method": "GET",
+      "path": "/api/v1/admin/agents",
+      "routePath": "/admin/agents",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/admin/agents",
+      "routePath": "/admin/agents",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "remove",
+      "method": "DELETE",
+      "path": "/api/v1/admin/agents/{id}",
+      "routePath": "/admin/agents/:id",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "fetchById",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/{id}",
+      "routePath": "/admin/agents/:id",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "update",
+      "method": "PATCH",
+      "path": "/api/v1/admin/agents/{id}",
+      "routePath": "/admin/agents/:id",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "deprecate",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/deprecate",
+      "routePath": "/admin/agents/:id/deprecate",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "publish",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/publish",
+      "routePath": "/admin/agents/:id/publish",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "validate",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/validate",
+      "routePath": "/admin/agents/:id/validate",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "fetchVersions",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/{id}/versions",
+      "routePath": "/admin/agents/:id/versions",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "newVersion",
+      "method": "POST",
+      "path": "/api/v1/admin/agents/{id}/versions",
+      "routePath": "/admin/agents/:id/versions",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
         ]
       ],
       "isPublic": false,
@@ -424,6 +769,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "AiModelAdminController",
+      "handler": "setPlatformDefault",
+      "method": "PATCH",
+      "path": "/api/v1/admin/ai-models/{id}/platform-default",
+      "routePath": "/admin/ai-models/:id/platform-default",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelDiscoveryController",
       "handler": "discover",
       "method": "GET",
@@ -452,6 +820,29 @@
       "method": "POST",
       "path": "/api/v1/admin/ai-models/discovery/register",
       "routePath": "/admin/ai-models/discovery/register",
+      "svcScopes": [
+        "svc:admin:ai-model:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AiModelAdminController",
+      "handler": "runInventory",
+      "method": "POST",
+      "path": "/api/v1/admin/ai-models/inventory",
+      "routePath": "/admin/ai-models/inventory",
       "svcScopes": [
         "svc:admin:ai-model:manage"
       ],
@@ -513,213 +904,6 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiProviderConnectionController",
-      "handler": "list",
-      "method": "GET",
-      "path": "/api/v1/admin/ai-providers",
-      "routePath": "/admin/ai-providers",
-      "svcScopes": [
-        "svc:admin:ai-provider:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "GlobalSetting"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiProviderConnectionController",
-      "handler": "remove",
-      "method": "DELETE",
-      "path": "/api/v1/admin/ai-providers/{provider}",
-      "routePath": "/admin/ai-providers/:provider",
-      "svcScopes": [
-        "svc:admin:ai-provider:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "GlobalSetting"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiProviderConnectionController",
-      "handler": "getOne",
-      "method": "GET",
-      "path": "/api/v1/admin/ai-providers/{provider}",
-      "routePath": "/admin/ai-providers/:provider",
-      "svcScopes": [
-        "svc:admin:ai-provider:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "GlobalSetting"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiProviderConnectionController",
-      "handler": "upsert",
-      "method": "PUT",
-      "path": "/api/v1/admin/ai-providers/{provider}",
-      "routePath": "/admin/ai-providers/:provider",
-      "svcScopes": [
-        "svc:admin:ai-provider:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "GlobalSetting"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiRuntimeProfileController",
-      "handler": "list",
-      "method": "GET",
-      "path": "/api/v1/admin/ai-runtime-profiles",
-      "routePath": "/admin/ai-runtime-profiles",
-      "svcScopes": [
-        "svc:admin:ai-runtime-profile:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "all"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiRuntimeProfileController",
-      "handler": "resolve",
-      "method": "GET",
-      "path": "/api/v1/admin/ai-runtime-profiles/resolve",
-      "routePath": "/admin/ai-runtime-profiles/resolve",
-      "svcScopes": [
-        "svc:admin:ai-runtime-profile:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "all"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiRuntimeProfileController",
-      "handler": "remove",
-      "method": "DELETE",
-      "path": "/api/v1/admin/ai-runtime-profiles/row",
-      "routePath": "/admin/ai-runtime-profiles/row",
-      "svcScopes": [
-        "svc:admin:ai-runtime-profile:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "all"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiRuntimeProfileController",
-      "handler": "getRow",
-      "method": "GET",
-      "path": "/api/v1/admin/ai-runtime-profiles/row",
-      "routePath": "/admin/ai-runtime-profiles/row",
-      "svcScopes": [
-        "svc:admin:ai-runtime-profile:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "all"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AiRuntimeProfileController",
-      "handler": "upsert",
-      "method": "PUT",
-      "path": "/api/v1/admin/ai-runtime-profiles/row",
-      "routePath": "/admin/ai-runtime-profiles/row",
-      "svcScopes": [
-        "svc:admin:ai-runtime-profile:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "all"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
       "apiExcluded": false
     },
     {
@@ -5126,6 +5310,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "ProviderConnectionController",
+      "handler": "testConnection",
+      "method": "POST",
+      "path": "/api/v1/admin/providers/{service}/{provider}/test",
+      "routePath": "/admin/providers/:service/:provider/test",
+      "svcScopes": [
+        "svc:admin:ai-provider:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "GlobalSetting"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "PrismaStudioStatusController",
       "handler": "getStatus",
       "method": "GET",
@@ -7208,98 +7415,6 @@
     },
     {
       "controller": "TenantSttConfigAdminController",
-      "handler": "getCredentials",
-      "method": "GET",
-      "path": "/api/v1/admin/stt-config/credentials",
-      "routePath": "/admin/stt-config/credentials",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "removeCredential",
-      "method": "DELETE",
-      "path": "/api/v1/admin/stt-config/credentials/{provider}",
-      "routePath": "/admin/stt-config/credentials/:provider",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "setCredential",
-      "method": "PUT",
-      "path": "/api/v1/admin/stt-config/credentials/{provider}",
-      "routePath": "/admin/stt-config/credentials/:provider",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": true,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
-      "handler": "testCredential",
-      "method": "POST",
-      "path": "/api/v1/admin/stt-config/credentials/{provider}/test",
-      "routePath": "/admin/stt-config/credentials/:provider/test",
-      "svcScopes": [
-        "svc:admin:tenant-stt-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantSttConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantSttConfigAdminController",
       "handler": "getFallbackCandidates",
       "method": "GET",
       "path": "/api/v1/admin/stt-config/fallback-candidates",
@@ -8602,75 +8717,6 @@
     },
     {
       "controller": "TenantTtsConfigAdminController",
-      "handler": "getCredentials",
-      "method": "GET",
-      "path": "/api/v1/admin/tts-config/credentials",
-      "routePath": "/admin/tts-config/credentials",
-      "svcScopes": [
-        "svc:admin:tenant-tts-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "read",
-          "TenantTtsConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantTtsConfigAdminController",
-      "handler": "removeCredential",
-      "method": "DELETE",
-      "path": "/api/v1/admin/tts-config/credentials/{provider}",
-      "routePath": "/admin/tts-config/credentials/:provider",
-      "svcScopes": [
-        "svc:admin:tenant-tts-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantTtsConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantTtsConfigAdminController",
-      "handler": "setCredential",
-      "method": "PUT",
-      "path": "/api/v1/admin/tts-config/credentials/{provider}",
-      "routePath": "/admin/tts-config/credentials/:provider",
-      "svcScopes": [
-        "svc:admin:tenant-tts-config:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "TenantTtsConfig"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "TenantTtsConfigAdminController",
       "handler": "getRow",
       "method": "GET",
       "path": "/api/v1/admin/tts-config/row",
@@ -8721,75 +8767,6 @@
       "method": "GET",
       "path": "/api/v1/admin/usage/cost-per-encounter",
       "routePath": "/admin/usage/cost-per-encounter",
-      "svcScopes": [
-        "svc:admin:usage:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "UsageAnalytics"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AdminReconciliationController",
-      "handler": "latest",
-      "method": "GET",
-      "path": "/api/v1/admin/usage/reconciliation/latest",
-      "routePath": "/admin/usage/reconciliation/latest",
-      "svcScopes": [
-        "svc:admin:usage:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "UsageAnalytics"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AdminReconciliationController",
-      "handler": "run",
-      "method": "POST",
-      "path": "/api/v1/admin/usage/reconciliation/run",
-      "routePath": "/admin/usage/reconciliation/run",
-      "svcScopes": [
-        "svc:admin:usage:manage"
-      ],
-      "forbidServiceAccount": false,
-      "apiKeyForbidden": true,
-      "apiKeyScopes": [],
-      "requiredPermissions": [
-        [
-          "manage",
-          "UsageAnalytics"
-        ]
-      ],
-      "isPublic": false,
-      "permissionMode": "AND",
-      "requiresIfMatch": false,
-      "apiExcluded": false
-    },
-    {
-      "controller": "AdminReconciliationController",
-      "handler": "runs",
-      "method": "GET",
-      "path": "/api/v1/admin/usage/reconciliation/runs",
-      "routePath": "/admin/usage/reconciliation/runs",
       "svcScopes": [
         "svc:admin:usage:manage"
       ],
@@ -10141,6 +10118,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "rotateWebhookSecret",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret",
+      "routePath": "/admin/workflow-definitions/slug/:slug/webhook-secret",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "fetchTemplates",
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/templates",
@@ -10518,6 +10518,96 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/agents",
+      "routePath": "/agents",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:definition:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}",
+      "routePath": "/agents/:slug",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:definition:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "invoke",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/invocations",
+      "routePath": "/agents/:slug/invocations",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "speech",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/speech",
+      "routePath": "/agents/:slug/speech",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "transcribe",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/transcriptions",
+      "routePath": "/agents/:slug/transcriptions",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
       "apiExcluded": false
     },
     {
@@ -12889,6 +12979,38 @@
       "permissionMode": null,
       "requiresIfMatch": false,
       "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowHooksController",
+      "handler": "trigger",
+      "method": "POST",
+      "path": "/api/v1/hooks/workflows/{hookId}",
+      "routePath": "/hooks/workflows/:hookId",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentInternalController",
+      "handler": "resolve",
+      "method": "GET",
+      "path": "/api/v1/internal/agents/resolve",
+      "routePath": "/internal/agents/resolve",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
     },
     {
       "controller": "ConsentInternalController",
@@ -15356,6 +15478,29 @@
         [
           "read",
           "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "getSchema",
+      "method": "GET",
+      "path": "/api/v1/workflows/{slug}/schema",
+      "routePath": "/workflows/:slug/schema",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:definition:read"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
+          "WorkflowDefinition"
         ]
       ],
       "isPublic": false,
