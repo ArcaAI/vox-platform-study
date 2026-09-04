@@ -37,6 +37,7 @@ reviews carry the iteration counter, which is carried state, never a clock.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
@@ -52,6 +53,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.models import (
         AgenticLoopBounds,
         AgenticLoopState,
+        CoreLoopBounds,
         CoreLoopInput,
         CoreLoopResult,
         CoreLoopState,
@@ -107,10 +109,10 @@ def _as_agentic_state(state: CoreLoopState) -> AgenticLoopState:
 
 def _as_agentic_bounds(inp: CoreLoopInput) -> AgenticLoopBounds:
     return AgenticLoopBounds(
-        max_iterations=inp.bounds.max_iterations,
-        max_duration_seconds=inp.bounds.max_duration_seconds,
-        max_total_tokens=inp.bounds.max_total_tokens,
-        no_progress_iterations=inp.bounds.no_progress_iterations,
+        maxIterations=inp.bounds.max_iterations,
+        maxDurationSeconds=inp.bounds.max_duration_seconds,
+        maxTotalTokens=inp.bounds.max_total_tokens,
+        noProgressIterations=inp.bounds.no_progress_iterations,
     )
 
 
@@ -286,7 +288,7 @@ class LoopWorkflow:
         bound: dict[str, Any] = {}
         for binding in node.inputs:
             if binding.from_node_id == loop_id:
-                keys: dict[str, str | None] | None = {
+                keys: Mapping[str, str | None] | None = {
                     "each": "item",
                     "done": "result",
                     "next": None,
@@ -413,7 +415,7 @@ class LoopWorkflow:
                     if isinstance(node.config.get("collect"), str)
                     else None
                 ),
-                bounds=node.config.get("bounds") or {},
+                bounds=CoreLoopBounds.model_validate(node.config.get("bounds") or {}),
                 body=nested_body,
                 nested=inp.nested,
                 seed_inputs=bound,
