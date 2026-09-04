@@ -521,7 +521,7 @@ class TestHuggingFaceLoaderLoad:
                 huggingface_cache_dir=_MODEL_BASE,
                 huggingface_token=None,
             )
-            mock_load_task.return_value = (mock_model, None, mock_processor, None, False)
+            mock_load_task.return_value = (mock_model, None, mock_processor, None, False, False)
 
             result = await loader.load(sample_config)
 

@@ -3,18 +3,11 @@ import { platformStorageEndpoint } from './05c-platform-storage-config';
 import { ResourceStatusType, ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID, SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS } from './00-constants';
 import { TEMPLATE_IDS } from './07-prompt-template';
-import { AUDIO_AI_MODELS } from './ai-models/audio';
-import { LLM_AI_MODELS } from './ai-models/llm';
-import { NLP_AI_MODELS } from './ai-models/nlp';
-import { TTS_AI_MODELS } from './ai-models/tts';
-import { RETIRED_AI_MODEL_SLUGS, shouldRetireAiModelSlug } from './ai-models/retired';
-import type { AiModelSeed } from './ai-models/shared';
 
 /**
  * STT (Speech-to-Text) Seed Data
  *
  * This script creates seed data for the STT service including:
- * - AI Models (consolidated registry: ASR/VAD/noise + LLM/guardrail + NLP + TTS)
  * - ASR Pipelines
  * - Global Settings for STT configuration
  *
@@ -22,10 +15,10 @@ import type { AiModelSeed } from './ai-models/shared';
  * them; they are NOT customer data. Therefore they are owned by the reserved
  * system tenant (`00000000-…`).
  *
- * The model catalog is consolidated to 26 rows split into
- * per-domain modules under `seed/ai-models/` ({audio,llm,nlp,tts}.ts); the
- * retired slugs are soft-`DELETED` across all tenants by
- * `retireLegacyAiModels` (guarded against live pipeline references).
+ * The AI model catalogue moved to `06-ai-models.ts` (TASK-860) and is seeded
+ * BEFORE this module (pipelines reference models by slug). The enum mirrors
+ * are still re-exported here for the pipeline seed's own use; TASK-861
+ * deletes this file with the pipeline surface.
  */
 
 // `DEFAULT_TENANT_ID` is kept as a local re-export so existing call sites
@@ -35,23 +28,12 @@ export const DEFAULT_TENANT_ID = SYSTEM_TENANT_ID;
 export { SYSTEM_USER_ID } from './00-constants';
 
 // =============================================================================
-// ENUM MIRRORS + MODEL CATALOG (split into seed/ai-models/*)
-// Re-exported here so existing imports keep working.
+// ENUM MIRRORS (the catalogue itself lives in 06-ai-models.ts)
+// Re-exported here so the pipeline seed's existing imports keep working.
 // =============================================================================
 
 export { AiModelSource, AiModelFormat, ModelCategory, ModelTaskType, ModelType, AI_MODEL_PROVIDERS } from './ai-models/shared';
 export type { AiModelSeed, TtsVoiceBinding } from './ai-models/shared';
-export { AUDIO_AI_MODELS } from './ai-models/audio';
-export { LLM_AI_MODELS } from './ai-models/llm';
-export { NLP_AI_MODELS } from './ai-models/nlp';
-export { TTS_AI_MODELS } from './ai-models/tts';
-export { RETIRED_AI_MODEL_SLUGS, shouldRetireAiModelSlug, pipelineYamlReferencesSlug } from './ai-models/retired';
-
-/**
- * The consolidated platform model catalog (26 rows): 9 audio engines +
- * 10 LLM/guardrail + 2 NLP task models + 5 TTS engines.
- */
-export const DEFAULT_AI_MODELS: AiModelSeed[] = [...AUDIO_AI_MODELS, ...LLM_AI_MODELS, ...NLP_AI_MODELS, ...TTS_AI_MODELS];
 
 // =============================================================================
 // ASR PIPELINE SEED DATA
@@ -1800,179 +1782,6 @@ export const DEFAULT_STT_SETTINGS = [
 // SEED FUNCTIONS
 // =============================================================================
 
-export const seedAiModels = async (client: CorePrismaClient) => {
-  console.log('Seeding AI Models...');
-
-  for (const modelData of DEFAULT_AI_MODELS) {
-    const existing = await client.aiModel.findFirst({
-      where: {
-        tenantId: modelData.tenantId,
-        slug: modelData.slug,
-      },
-    });
-
-    if (existing) {
-      console.log(`  AI Model "${modelData.slug}" already exists, updating...`);
-      await client.aiModel.update({
-        where: { id: existing.id },
-        data: {
-          name: modelData.name,
-          description: modelData.description,
-          category: modelData.category,
-          taskType: modelData.taskType,
-          modelType: modelData.modelType,
-          source: modelData.source,
-          sourceUri: modelData.sourceUri,
-          sourceRevision: modelData.sourceRevision,
-          // keep the operator-override path in sync on re-seed,
-          // same as every other source-resolution field above.
-          localPath: modelData.localPath ?? null,
-          format: modelData.format,
-          memorySizeMb: modelData.memorySizeMb,
-          computeType: modelData.computeType,
-          tags: modelData.tags,
-          // Keep provider/architecture and per-model
-          // extras (TTS voice catalogs, Azure deployment placeholder)
-          // in sync on re-seed. `metaData` is only written when the
-          // seed row defines one (absent → field skipped).
-          provider: modelData.provider,
-          architecture: modelData.architecture,
-          ...(modelData.metaData !== undefined ? { metaData: modelData.metaData } : {}),
-        },
-      });
-    } else {
-      console.log(`  Creating AI Model "${modelData.slug}"...`);
-      await client.aiModel.create({
-        data: modelData,
-      });
-    }
-  }
-
-  console.log(`Seeded ${DEFAULT_AI_MODELS.length} AI Models`);
-  return { success: true, count: DEFAULT_AI_MODELS.length };
-};
-
-/**
- * Customer tenants that receive a clone of the SYSTEM AI model catalog. Mirrors
- * the customer-tenant set used by the per-tenant ASR pipeline / settings seeds.
- */
-export const CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL = [SEED_TENANT_ID, SEED_CUSTOMER_TENANT_IDS.ARCAAI];
-
-/**
- * Clones the SYSTEM AI model catalog into
- * every seeded customer tenant so EXISTING tenants are made whole (the runtime
- * `TenantService.provisionTenantModelCatalog` handles NEW tenants).
- *
- * Idempotent: a clone is created only when the tenant does not already own the
- * slug, so re-running `db:seed` fills only the gaps and never duplicates. The
- * SYSTEM rows are never touched (they are the master template); each clone omits
- * the SYSTEM row `id` so Prisma assigns a fresh `uuid(7)`, and download state is
- * intentionally not copied (the column defaults to `NOT_DOWNLOADED`).
- */
-export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) => {
-  console.log('Backfilling customer-tenant AI model catalog...');
-
-  let cloned = 0;
-  let synced = 0;
-  for (const tenantId of CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL) {
-    for (const src of DEFAULT_AI_MODELS) {
-      const existing = await client.aiModel.findFirst({
-        where: { tenantId, slug: src.slug },
-      });
-      if (existing) {
-        // Older clones lack the machine-actionable
-        // provider/architecture/metaData columns the guardrail/NLP/TTS
-        // resolvers read (the resolver prefers the same-tenant model
-        // row, so a NULL-provider clone shadows the SYSTEM row's
-        // value). Fill them ONLY while provider is still NULL —
-        // create-only semantics otherwise, so tenant customizations
-        // are never trampled on re-seed.
-        if (existing.provider == null && src.provider != null) {
-          await client.aiModel.update({
-            where: { id: existing.id },
-            data: {
-              provider: src.provider,
-              architecture: src.architecture ?? null,
-              ...(src.metaData !== undefined ? { metaData: src.metaData } : {}),
-              version: { increment: 1 },
-            },
-          });
-          synced += 1;
-        }
-        continue;
-      }
-
-      // Strip the SYSTEM-owned id + tenantId; the clone gets a fresh id
-      // (uuid(7) default) and the customer tenant id.
-      const { id: _systemId, tenantId: _systemTenantId, ...rest } = src;
-      await client.aiModel.create({
-        data: { ...rest, tenantId },
-      });
-      cloned += 1;
-    }
-  }
-
-  console.log(`Backfilled ${cloned} customer-tenant AI models (${synced} pre-506 clones column-synced)`);
-  return { success: true, count: cloned, synced };
-};
-
-/**
- * Soft-retire the legacy catalog slugs (RETIRED_AI_MODEL_SLUGS)
- * across EVERY tenant's copy (SYSTEM master + Global/customer clones + rows
- * provisioned at tenant creation). Runs inside `seedStt` AFTER the upserts.
- *
- * Idempotent: rows already `DELETED` are excluded by the filter, so re-running
- * `db:seed` writes nothing. Soft-delete only — rows stay recoverable.
- *
- * Safety guard: a slug still referenced by ANY non-deleted
- * `AsrPipeline.configYaml` (a tenant may have built a custom pipeline on it)
- * is SKIPPED with a loud warning instead of breaking stt's
- * `config_reader._to_model_config` slug resolution. The decision itself is the
- * pure helper `shouldRetireAiModelSlug` (seed/ai-models/retired.ts).
- */
-export const retireLegacyAiModels = async (client: CorePrismaClient): Promise<{ retired: number; skipped: string[] }> => {
-  console.log('Retiring legacy AI models (consolidation)...');
-
-  // Guard input: every non-deleted pipeline's YAML, ANY tenant.
-  const activePipelines = await client.asrPipeline.findMany({
-    where: { resourceStatus: { not: ResourceStatusType.DELETED } },
-    select: { configYaml: true },
-  });
-  const activeYamls = activePipelines.map((p) => p.configYaml);
-
-  let retired = 0;
-  const skipped: string[] = [];
-  for (const slug of RETIRED_AI_MODEL_SLUGS) {
-    if (!shouldRetireAiModelSlug(slug, activeYamls)) {
-      console.warn(
-        `  ⚠️  RETIREMENT SKIPPED: AiModel "${slug}" is still referenced by a ` +
-          'non-deleted AsrPipeline configYaml — leaving it active. Migrate the ' +
-          'pipeline off this model, then re-run db:seed.',
-      );
-      skipped.push(slug);
-      continue;
-    }
-
-    // Sweep ALL tenants' copies of the slug in one statement.
-    const result = await client.aiModel.updateMany({
-      where: { slug, resourceStatus: { not: ResourceStatusType.DELETED } },
-      data: {
-        resourceStatus: ResourceStatusType.DELETED,
-        resourceStatusUpdatedAt: new Date(),
-        resourceStatusUpdatedBy: SYSTEM_USER_ID,
-        version: { increment: 1 },
-      },
-    });
-    retired += result.count;
-  }
-
-  console.log(
-    `Retired ${retired} legacy AI model rows across all tenants` +
-      (skipped.length > 0 ? ` (${skipped.length} slugs skipped: ${skipped.join(', ')})` : ''),
-  );
-  return { retired, skipped };
-};
-
 /**
  * Soft-disable pipelines retired from the product matrix of 9.
  * Idempotent; uses DISABLED (not DELETE) so historical FKs remain intact.
@@ -2270,15 +2079,8 @@ export const seedStt = async (client: CorePrismaClient) => {
   console.log('Starting STT domain seeding...\n');
 
   try {
-    // Seed AI Models first (pipelines reference them by slug)
-    await seedAiModels(client);
-    console.log('');
-
-    // Clone the SYSTEM catalog into existing customer
-    // tenants (idempotent; mirrors the runtime clone-per-tenant).
-    await backfillCustomerTenantAiModels(client);
-    console.log('');
-
+    // The AI model catalogue is seeded by `seedAiModelRegistry`
+    // (06-ai-models.ts) BEFORE this runs — pipelines reference it by slug.
     await seedAsrPipelines(client);
     console.log('');
 
@@ -2297,13 +2099,6 @@ export const seedStt = async (client: CorePrismaClient) => {
 
     // Soft-disable pipelines retired from the product matrix of 9.
     await retireRetiredAsrPipelines(client);
-    console.log('');
-
-    // Soft-retire the legacy catalog rows across all tenants
-    // AFTER the upserts (idempotent; the pipeline-reference guard skips
-    // any slug a live pipeline still points at). Runs after
-    // seedAsrPipelines so the guard sees the freshly seeded pipelines.
-    await retireLegacyAiModels(client);
     console.log('');
 
     await seedSttSettings(client);

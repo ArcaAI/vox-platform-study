@@ -1,5 +1,17 @@
+import { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID } from '../00-constants';
-import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, type AiModelSeed, type GenerationParamName } from './shared';
+import {
+  AiDeploymentKind,
+  AiModelAvailability,
+  AiModelFormat,
+  AiModelSource,
+  AiTaskKind,
+  ModelCategory,
+  ModelTaskType,
+  ModelType,
+  type AiModelSeed,
+  type GenerationParamName,
+} from './shared';
 
 /**
  * finding F-32 — the generation hyper-parameters this platform can actually deliver to
@@ -11,91 +23,67 @@ import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, 
  *     `{temperature, max_tokens, top_p}`, and `:69-71` is where a request's values enter it.
  *   - `AiRuntimeProfile` carries exactly `temperature`, `topP`, `maxTokens` and no other
  *     generation column (`ai-runtime-profile.prisma:28-30`).
- *   - No adapter in `apps/text/src/text/providers/` mentions a penalty parameter at all —
- *     `grep -rn "penalty" apps/text/src/text/providers/` returns nothing. `bedrock.py:168-170`
- *     and `anthropic.py:158-160` show the shape: three keys, forwarded, nothing else.
+ *   - No adapter in `apps/text/src/text/providers/` mentions a penalty parameter at all.
  *
  * So on THIS platform, a node that sets `presencePenalty`, `frequencyPenalty`, `seed` or
  * `stopSequences` is tuning a value that never reaches a provider. Declaring the honest set is
  * what lets the publish gate say so at authoring time instead of letting it be discovered in a
  * consultation.
- *
- * A tenant whose own `AiProviderConnection` reaches an endpoint that DOES honour more may
- * register its own `AiModel` row declaring a wider set — the tenant row wins over these SYSTEM
- * rows on the standard two-tier cascade, which is precisely why this is a row and not a constant
- * in application code.
  */
 const TEXT_PLANE_GENERATION_PARAMS: GenerationParamName[] = ['temperature', 'maxTokens', 'topP'];
 
 /**
- * LLM (text generation / summarization) + guardrail model catalog
- * (the owner-approved 10-model matrix).
+ * text-generation catalogue (TASK-860 — the owner's catalogue, exactly): the
+ * granite-guardian safety LLM, four Gemma 4 rows on LM Studio, and the Azure
+ * OpenAI cloud row. Retired here (see `retired.ts`): `lms-gemma-4-12b-qat`,
+ * `lms-medgemma-1.5-4b-it`, `lms-medgemma-1.5-4b-it-vision`,
+ * `vllm-medgemma-1.5-27b-it`, `llama-cpp-medgemma-1.5-4b-it`,
+ * `bedrock-claude-3.5-haiku`.
  *
- * Replaces the previous 31 LLM/guardrail rows. `sourceUri` carries the
- * provider-native identifier actually sent to the runtime (LM Studio model
- * name, Azure model id, Bedrock model id); `slug` stays the stable registry
- * key. New rows use the fresh `80000000-…-0007-…` id block (0001–0006 are
- * occupied by the legacy audio/LLM/browser blocks). Every `ollama-*` row was
- * deleted and its slug moved to `retired.ts` — the platform standardises on one
- * LM Studio model and ships no Ollama model opinion. The `ollama` PROVIDER is
- * still selectable (owner decision 2026-08-17); a tenant that runs its own
- * Ollama registers its own `AiModel` row against it.
- *
- * ## LM Studio identifiers — the invariant, and the two states a row may be in
+ * ## LM Studio identifiers — the invariant
  *
  * For an `lm-studio` row, `sourceUri` IS the LM Studio model id the services
- * put on the wire as `model`. A wrong identifier is not cosmetic drift; it is
- * a guaranteed 404 at request time, and it stays invisible until the model is
- * actually called.
+ * put on the wire as `model` (`findByProviderAndSourceUri`, the TEXT router).
+ * A wrong identifier is a guaranteed 404 at request time. `wireModelId`
+ * mirrors it; the Hub artifact the PUBLISHER fetches is `metaData.hubArtifact`
+ * until TASK-862 re-points routing at `wireModelId`, after which `sourceUri`
+ * can become the Hub repo the schema comment describes.
  *
- * Two states are legitimate, and a reader must be able to tell them apart:
- *
- *   1. **Loaded** — the identifier resolves on the dev LM Studio instance
- *      today.
- *   2. **Catalogued, not loaded** — the identifier is provider-correct but the
- *      weights are not installed on this host. A catalogue legitimately lists
- *      installable models, so these rows are KEPT (not retired): retirement is
- *      a permanent cross-tenant soft-delete, which is the wrong verb for "an
- *      operator has not pulled this one yet". Each such row says "Not loaded"
- *      in its description, and NO `AiTaskDefault` may select one.
- *
- * A prior revision of this file claimed the dev instance serves
- * `google/gemma-4-e4b-qat` and that `google/gemma-4-e4b` was a typo for it —
- * this is how `harness.judge` broke (404 on every call). Re-verified against
- * the LIVE instance on 2026-08-16: BOTH halves were wrong. `google/gemma-4-e4b`
- * IS served; `google/gemma-4-e4b-qat` is NOT. A prose claim about a runtime
- * catalog is only as trustworthy as its last verification, so this file no
- * longer asserts one inline — `ai-model-consolidation-seed.test.ts` pins the
- * served set as a hard-coded, dated fixture instead (catalog ⊆ instance).
- *
- * `ai-model-consolidation-seed.test.ts` pins every LM Studio `sourceUri`,
- * enforces the "not loaded" wording, and fails if an `AiTaskDefault` ever
- * points at an unloaded row.
+ * GGUF loading happens in the `hope-lmstudio` workload (`servedBy: lmstudio`);
+ * the Gemma 4 GGUF repos carry a separate `-mmproj.gguf` the publisher keeps.
  */
 export const LLM_AI_MODELS: AiModelSeed[] = [
   // =========================================================================
-  // Guardrail / Safety (slug continuity with the `guardrail.safety` AiTaskDefault, which is
-  // what apps/guardrail resolves its engine + model from since /736)
+  // Guardrail / Safety — the granite-guardian screen (guardrail.validate)
   // =========================================================================
   {
+    // IBM ships no first-party GGUF for granite-guardian — the artifact is the
+    // community quant `mradermacher/granite-guardian-4.1-8b-GGUF` (Q4_K_M
+    // published; the previous seed said q4_k_s).
     id: '80000000-0000-0000-0005-000000000060',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Granite Guardian 4.1 8B',
     slug: 'granite-guardian-4.1-8b',
     description:
-      'IBM Granite Guardian 4.1 8B — safety/guardrail model. `format` is descriptive metadata (GGUF / llama.cpp); serving is provider-based (LM Studio). Platform default for guardrail.validate (AiTaskDefault).',
+      'IBM Granite Guardian 4.1 8B — safety/guardrail LLM served by LM Studio (llama.cpp GGUF, community quant mradermacher/granite-guardian-4.1-8b-GGUF Q4_K_M). Platform default for guardrail.validate.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.GUARDRAIL,
-    modelType: ModelType.BASE_MODEL,
+    modelType: ModelType.QUANTIZED_MODEL,
     source: AiModelSource.LOCAL,
     sourceUri: 'granite-guardian-4.1-8b',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'granite-guardian-4.1-8b',
+    license: 'apache-2.0',
+    baseModel: 'ibm-granite/granite-guardian-4.1-8b',
+    languages: ['en'],
     provider: 'lm-studio',
     architecture: 'granite',
     memorySizeMb: 4900,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'q4_k_s',
+    computeType: 'q4_k_m',
     tags: ['guardrail', 'safety', 'granite'],
     // `metaData.policy` — the governed key set declared in
     // `apps/guardrail/src/guardrail/core/policy.py::_SPECS`, resolved through
@@ -111,11 +99,11 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     //
     // `injectionScreeningCriteria` (also `failMode: closed`) is declared in
     // `core/policy.py` but UNUSED by any call site today (reserved for a
-    // future LLM-judge second opinion on the inbound path — README
-    // Deliberately NOT seeded here: authoring criteria text for a
-    // check nothing resolves yet would be unreviewed policy masquerading as
-    // shipped configuration.
+    // future LLM-judge second opinion on the inbound path). Deliberately NOT
+    // seeded here: authoring criteria text for a check nothing resolves yet
+    // would be unreviewed policy masquerading as shipped configuration.
     metaData: {
+      hubArtifact: 'mradermacher/granite-guardian-4.1-8b-GGUF',
       policy: {
         medicalValidationCriteria:
           'You are a medical context validator. Your task is to determine if the provided text is related to medical documentation, clinical notes, patient care, or healthcare services. Analyze the text and respond ONLY with a JSON object in this exact format:\n{"is_medical": true/false, "confidence": 0.0-1.0, "context_type": "clinical/administrative/general", "reasoning": "brief explanation"}\n\nMedical context includes: patient records, clinical notes, diagnoses, treatments, medications, symptoms, medical procedures, healthcare consultations, referrals, prescriptions, vital signs, medical history, physical examinations, lab results, imaging reports, care plans, discharge summaries.\n\nNon-medical context includes: general conversation, business documents, technical documentation, entertainment content, personal communications unrelated to healthcare.',
@@ -124,7 +112,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // LM Studio provider
+  // LM Studio — Gemma 4
   // =========================================================================
   {
     id: '80000000-0000-0000-0007-000000000004',
@@ -132,7 +120,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'Gemma 4 E2B IT QAT (LM Studio)',
     slug: 'lms-gemma-4-e2b-it-qat',
     description:
-      'Google Gemma 4 E2B instruction-tuned QAT via LM Studio — the platform default text/summarization model (HarnessPolicy SYSTEM textModel).',
+      'Google Gemma 4 E2B instruction-tuned QAT (q4_0 GGUF + mmproj) via LM Studio — the platform default text-generation model (HarnessPolicy SYSTEM textModel).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -140,13 +128,21 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'gemma-4-e2b-it-qat',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'gemma-4-e2b-it-qat',
+    license: 'gemma',
+    gated: true,
+    baseModel: 'google/gemma-4-E2B-it',
+    languages: ['en'],
+    isPlatformDefaultFor: [AiTaskKind.TEXT_GENERATION],
     provider: 'lm-studio',
     architecture: 'gemma4',
     memorySizeMb: 2048,
-    // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_0',
-    tags: ['llm', 'lm-studio', 'default', 'summarization'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    tags: ['llm', 'lm-studio', 'default', 'summarization', 'mmproj'],
+    metaData: { hubArtifact: 'google/gemma-4-E2B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
     id: '80000000-0000-0000-0007-000000000005',
@@ -154,7 +150,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'Gemma 4 E4B IT QAT (LM Studio)',
     slug: 'lms-gemma-4-e4b-it-qat',
     description:
-      'Google Gemma 4 E4B instruction-tuned QAT via LM Studio — balanced local text-generation model. Served by the dev LM Studio instance (verified 2026-08-16).',
+      'Google Gemma 4 E4B instruction-tuned QAT (q4_0 GGUF + mmproj) via LM Studio — balanced local text-generation model. Served by the dev LM Studio instance (verified 2026-08-16).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -162,84 +158,89 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'gemma-4-e4b-it-qat',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'gemma-4-e4b-it-qat',
+    license: 'gemma',
+    gated: true,
+    baseModel: 'google/gemma-4-E4B-it',
+    languages: ['en'],
     provider: 'lm-studio',
     architecture: 'gemma4',
     memorySizeMb: 3072,
-    // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q4_0',
-    tags: ['llm', 'lm-studio'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    tags: ['llm', 'lm-studio', 'mmproj'],
+    metaData: { hubArtifact: 'google/gemma-4-E4B-it-qat-q4_0-gguf', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
   {
+    // Unvalidated community fine-tune (5 downloads) — seeded DISABLED pending
+    // evaluation (decision D-5). Upstream is safetensors; needs a GGUF
+    // conversion step before LM Studio can serve it.
     id: '80000000-0000-0000-0007-000000000006',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Gemma 4 Medical ICD-10 (LM Studio)',
     slug: 'lms-gemma-4-medical-icd10',
     description:
-      'Gemma 4 medical ICD-10 fine-tune via LM Studio — medical-coding-aware text generation. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
+      'Gemma 4 medical ICD-10 community fine-tune (nikhil061307/Gemma-4-Medical-ICD10) via LM Studio — medical-coding-aware text generation. UNVALIDATED; DISABLED until evaluated. Needs a GGUF conversion step.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
+    modelType: ModelType.FINETUNED_MODEL,
     source: AiModelSource.LOCAL,
     sourceUri: 'gemma-4-medical-icd10',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'gemma-4-medical-icd10',
+    license: 'gemma',
+    baseModel: 'google/gemma-4-E4B-it',
+    languages: ['en'],
     provider: 'lm-studio',
     architecture: 'gemma4',
     memorySizeMb: 3072,
-    // Precision refresh (owner-specified exact quant scheme).
     computeType: 'q5_k_m',
-    tags: ['llm', 'lm-studio', 'medical'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    tags: ['llm', 'lm-studio', 'medical', 'unvalidated', 'requires-conversion'],
+    metaData: { hubArtifact: 'nikhil061307/Gemma-4-Medical-ICD10', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    resourceStatus: ResourceStatusType.DISABLED,
   },
   {
-    id: '80000000-0000-0000-0007-000000000007',
+    // The un-quantised E4B build — a catalogued ALTERNATE for the harness
+    // LLM-as-judge. `harness.judge` targets the QAT row; this one is here so
+    // a super admin can select the bf16 build deliberately. Upstream is bf16
+    // safetensors; needs a GGUF conversion step.
+    id: '80000000-0000-0000-0007-000000000023',
     tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 12B QAT (LM Studio)',
-    slug: 'lms-gemma-4-12b-qat',
+    name: 'Gemma 4 E4B (LM Studio judge)',
+    slug: 'lms-gemma-4-e4b',
     description:
-      'Google Gemma 4 12B QAT via LM Studio — large local text-generation model. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
+      'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — an alternate harness LLM-as-judge model. Identifier verified against the live instance 2026-08-16 (`google/gemma-4-e4b`). Upstream bf16 safetensors; needs a GGUF conversion step.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
+    modelType: ModelType.BASE_MODEL,
     source: AiModelSource.LOCAL,
-    sourceUri: 'google/gemma-4-12b-qat',
+    sourceUri: 'google/gemma-4-e4b',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
+    libraryName: 'llama.cpp',
+    servedBy: 'lmstudio',
+    deploymentKind: AiDeploymentKind.SELF_HOSTED,
+    wireModelId: 'google/gemma-4-e4b',
+    license: 'gemma',
+    gated: true,
+    baseModel: 'google/gemma-4-E4B',
+    languages: ['en'],
     provider: 'lm-studio',
     architecture: 'gemma4',
-    memorySizeMb: 8192,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'q4_0',
-    tags: ['llm', 'lm-studio'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-  {
-    id: '80000000-0000-0000-0007-000000000008',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'MedGemma 1.5 4B IT (LM Studio)',
-    slug: 'lms-medgemma-1.5-4b-it',
-    description:
-      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical-domain text generation. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'medgemma-1.5-4b-it',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'lm-studio',
-    architecture: 'gemma3',
     memorySizeMb: 3072,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'q5_k_xl',
-    tags: ['llm', 'lm-studio', 'medical'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
+    computeType: 'q4_0',
+    tags: ['llm', 'lm-studio', 'judge', 'requires-conversion'],
+    metaData: { hubArtifact: 'google/gemma-4-E4B', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 
   // =========================================================================
-  // Azure OpenAI provider (cloud — endpoint/key/deployment configured by
-  // admins later; metaData.azureDeployment is the non-secret placeholder)
+  // Azure OpenAI (cloud — gateway-governed, executed by text)
   // =========================================================================
   {
     id: '80000000-0000-0000-0007-000000000009',
@@ -247,7 +248,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'GPT-5.4 Mini (Azure OpenAI)',
     slug: 'azure-gpt-5.4-mini',
     description:
-      'OpenAI GPT-5.4 Mini via Azure OpenAI — cloud text generation. Endpoint/API key stay in env/Vault; admins set the deployment name (metaData.azureDeployment).',
+      'OpenAI GPT-5.4 Mini via Azure OpenAI — cloud text generation. Endpoint/API key live on the `llm`/`azure` provider connection; the deployment name is set there (metaData.azureDeployment is the legacy placeholder).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.BASE_MODEL,
@@ -255,156 +256,17 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     sourceUri: 'gpt-5.4-mini',
     sourceRevision: 'main',
     format: AiModelFormat.CLOUD_API,
+    libraryName: 'azure-openai',
+    servedBy: 'text',
+    deploymentKind: AiDeploymentKind.CLOUD,
+    wireModelId: 'gpt-5.4-mini',
+    languages: ['en'],
+    availability: AiModelAvailability.NOT_APPLICABLE,
     provider: 'azure',
     architecture: null,
     memorySizeMb: 0,
     computeType: 'cloud',
     tags: ['llm', 'cloud', 'azure'],
     metaData: { azureDeployment: '', supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-
-  // =========================================================================
-  // vLLM provider ( / production self-host GPU
-  // tier, AD-4). OpenAI-compatible `/v1` wire; prefix-cache + structured
-  // `json_schema` output. Additive-only seed rows.
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000020',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'MedGemma 1.5 27B IT (vLLM)',
-    slug: 'vllm-medgemma-1.5-27b-it',
-    description:
-      'MedGemma 1.5 27B instruction-tuned served by vLLM — production self-host GPU tier (AD-4). OpenAI-compatible `/v1` wire with prefix caching + structured json_schema output.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.BASE_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'google/medgemma-1.5-27b-it',
-    sourceRevision: 'main',
-    format: AiModelFormat.SAFETENSOR,
-    provider: 'vllm',
-    architecture: 'gemma3',
-    memorySizeMb: 55296,
-    computeType: 'bf16',
-    tags: ['llm', 'vllm', 'medical', 'self-host'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-
-  // =========================================================================
-  // llama.cpp provider ( / production self-host
-  // GGUF tier, AD-4). OpenAI-compatible `/v1` wire (`cache_prompt`). Additive.
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000021',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'MedGemma 1.5 4B IT (llama.cpp)',
-    slug: 'llama-cpp-medgemma-1.5-4b-it',
-    description:
-      'MedGemma 1.5 4B instruction-tuned served by the llama.cpp server — production self-host GGUF tier (AD-4). OpenAI-compatible `/v1` wire with `cache_prompt` prefix caching + structured json_schema output.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'medgemma-1.5-4b-it-Q5_K_M.gguf',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'llama-cpp',
-    architecture: 'gemma3',
-    memorySizeMb: 3584,
-    computeType: 'q5_k_m',
-    tags: ['llm', 'llama-cpp', 'medical', 'self-host'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-
-  // =========================================================================
-  // AWS Bedrock provider (TEXT supports the `bedrock` provider but
-  // the catalog had no row. Region/credentials stay in env/Vault; sourceUri is
-  // the Bedrock model id sent to the converse API.)
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000022',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Claude 3.5 Haiku (Bedrock)',
-    slug: 'bedrock-claude-3.5-haiku',
-    description:
-      'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the TEXT Bedrock provider default (TEXT_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.BASE_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'anthropic.claude-3-5-haiku-20241022-v1:0',
-    sourceRevision: 'main',
-    format: AiModelFormat.CLOUD_API,
-    provider: 'bedrock',
-    architecture: 'claude',
-    memorySizeMb: 0,
-    computeType: 'cloud',
-    tags: ['llm', 'cloud', 'bedrock'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-
-  // =========================================================================
-  // Harness LLM-as-judge model — a catalogued ALTERNATE. The `harness.judge`
-  // AiTaskDefault targets `lms-gemma-4-e4b-it-qat` (owner directive
-  // 2026-09-03), not this row: both are E4B, but that one names
-  // the QAT wire id the deployed LM Studio serves. Kept catalogued so a super
-  // admin can select the un-quantized build deliberately.
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000023',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 E4B (LM Studio judge)',
-    slug: 'lms-gemma-4-e4b',
-    description:
-      'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — an alternate harness LLM-as-judge model. The sourceUri previously read `google/gemma-4-e4b-qat`, an identifier the live instance has never served (every prior judge call against it 404d); corrected to `google/gemma-4-e4b`, which the instance does serve (verified 2026-08-16).',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.HUGGINGFACE,
-    sourceUri: 'google/gemma-4-e4b',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'lm-studio',
-    architecture: 'gemma4',
-    memorySizeMb: 3072,
-    computeType: 'q4_0',
-    tags: ['llm', 'lm-studio', 'judge'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
-  },
-
-  // =========================================================================
-  // Vision — first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
-  // Same LM Studio weights as `lms-medgemma-1.5-4b-it` above (a 4B MedGemma
-  // checkpoint is natively multimodal — one set of weights, two catalog rows
-  // for two task types; `AiModel`'s only uniqueness constraint is
-  // (tenantId, slug), not sourceUri). In-boundary (self-hosted) default —
-  // no PHI ever leaves the tenant's infrastructure — chosen over a BYOK cloud
-  // VLM (see for
-  // the full tradeoff). Not loaded on the dev LM Studio instance (verified
-  // 2026-08-10, same as `lms-medgemma-1.5-4b-it`); catalogued-but-not-loaded
-  // rows are never selected by an AiTaskDefault, so `vlm.extract` has
-  // deliberately NO SYSTEM default and fails closed until an operator either
-  // loads these weights or a BYOK cloud vision credential is configured.
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000024',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'MedGemma 1.5 4B IT — Vision (LM Studio)',
-    slug: 'lms-medgemma-1.5-4b-it-vision',
-    description:
-      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical image+text vision-language extraction (vlm.extract). Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
-    category: ModelCategory.VISION,
-    taskType: ModelTaskType.IMAGE_TEXT_TO_TEXT,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'medgemma-1.5-4b-it',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'lm-studio',
-    architecture: 'gemma3',
-    memorySizeMb: 3072,
-    computeType: 'q5_k_xl',
-    tags: ['vision', 'lm-studio', 'medical'],
-    metaData: { supportedGenerationParams: TEXT_PLANE_GENERATION_PARAMS },
   },
 ];
