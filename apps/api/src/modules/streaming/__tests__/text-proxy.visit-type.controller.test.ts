@@ -45,7 +45,8 @@ function controller(catalogue?: unknown): TextProxyController {
     {} as never,
     {} as never,
     { getConfigValue: vi.fn().mockReturnValue('http://text.local') } as never,
-    // 11-19: secretsService … effectiveSettingsService, all @Optional().
+    // 11-18: secretsService … effectiveSettingsService, all @Optional() (TASK-862 removed the
+    // runtime-profile slot, so this list is one shorter than it used to be).
     undefined,
     undefined,
     undefined,
@@ -54,8 +55,7 @@ function controller(catalogue?: unknown): TextProxyController {
     undefined,
     undefined,
     undefined,
-    undefined,
-    // 20: the caller tenant's visit-type catalogue.
+    // 19: the caller tenant's visit-type catalogue.
     visitTypes(catalogue) as never,
   );
 }
