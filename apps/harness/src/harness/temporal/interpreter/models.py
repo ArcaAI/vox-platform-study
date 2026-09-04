@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import TrajectoryContext
@@ -602,23 +602,59 @@ class ResolvedAgentModel(BaseModel):
     checksum: str | None = None
 
 
-class ResolvedAgent(BaseModel):
-    """The gateway's answer to ``GET /internal/agents/resolve`` (TASK-863 §3.4).
+class ResolvedPrompt(BaseModel):
+    """``compiledConfig.resolvedPrompt`` — the instruction text the gateway already resolved: a
+    pinned, approved template version's content, or the inline system prompt. The activity
+    interpolates it; it never re-resolves a template itself."""
 
-    A LOCAL pydantic mirror of the ``ResolvedAgent`` type ``@arcaai/types`` will export. It is
-    ``extra="ignore"`` on purpose: the resolver may grow fields (funding tier, availability
-    detail) that this activity has no use for, and a stricter mirror would fail a run over a
-    field it never reads. TODO(TASK-863): re-verify against the merged ``packages/types/src/
-    agent.ts`` shape.
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    source: Literal["template", "inline"]
+    content: str
+    prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
+    prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+
+
+def _registry_models(data: dict[str, Any]) -> list[dict[str, Any]]:
+    models = data.get("models")
+    return [m for m in models if isinstance(m, dict)] if isinstance(models, list) else []
+
+
+def _by_priority(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda row: (row.get("priority") is None, row.get("priority") or 0))
+
+
+class ResolvedAgent(BaseModel):
+    """The gateway's answer to ``GET /internal/agents/resolve`` — TASK-863's ``ResolvedAgent``
+    (``packages/types/src/agent.ts``), the ONE producer being ``AgentResolverService.resolve``.
+
+    On the wire the SELECTION lives under ``compiledConfig`` (``model`` / ``fallbacks`` /
+    ``instruction`` / ``resolvedPrompt`` / ``parameters`` / schemas) and the REGISTRY FACTS of
+    every model in the chain (``sourceUri``, ``localPath``, ``format``, ``computeType``,
+    ``checksum``) under ``models[]`` keyed by ``role``. The before-validator lifts both into the
+    flat ``model`` / ``fallbacks`` / ``instruction`` … fields the activities read, merging a
+    fallback's selection with its registry row by slug. A payload that already carries the flat
+    fields (older fixtures) validates unchanged.
+
+    ``extra="ignore"`` on purpose: the resolver may grow fields (availability detail, tools,
+    protocols) this activity has no use for, and a stricter mirror would fail a run over a field
+    it never reads. Nothing here is a credential except ``providerOverride`` — forwarded to the
+    Python service for ONE hop and never persisted.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     agent_id: str = Field(alias="agentId")
+    agent_version_id: str | None = Field(default=None, alias="agentVersionId")
     slug: str
     version_number: int = Field(alias="versionNumber")
     task: AgentTask
+    #: The tenant that OWNS the resolved row (the caller's, or SYSTEM for a platform default).
+    tenant_id: str | None = Field(default=None, alias="tenantId")
+    #: How the row was chosen: `explicit` | `department` | `tenant` | `platform-default`.
+    source: str | None = None
     instruction: dict[str, Any] | None = None
+    resolved_prompt: ResolvedPrompt | None = Field(default=None, alias="resolvedPrompt")
     parameters: dict[str, Any] = Field(default_factory=dict)
     input_schema: dict[str, Any] | None = Field(default=None, alias="inputSchema")
     output_schema: dict[str, Any] | None = Field(default=None, alias="outputSchema")
@@ -627,7 +663,48 @@ class ResolvedAgent(BaseModel):
     #: TASK-862's credential resolver output for a CLOUD provider — forwarded to ``apps/text``
     #: as ``provider_overrides``; ``None`` for a self-hosted model. Never persisted.
     provider_override: dict[str, Any] | None = Field(default=None, alias="providerOverride")
+    funding_tier: str | None = Field(default=None, alias="fundingTier")
     compiled_config: dict[str, Any] | None = Field(default=None, alias="compiledConfig")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lift_compiled_config(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        compiled = data.get("compiledConfig")
+        if not isinstance(compiled, dict):
+            return data
+        lifted: dict[str, Any] = dict(data)
+        for key in ("instruction", "resolvedPrompt", "parameters", "inputSchema", "outputSchema"):
+            if lifted.get(key) is None and compiled.get(key) is not None:
+                lifted[key] = compiled[key]
+
+        registry = _registry_models(data)
+        if lifted.get("model") is None:
+            raw_model = compiled.get("model")
+            selection: dict[str, Any] = raw_model if isinstance(raw_model, dict) else {}
+            primary = next((m for m in registry if m.get("role") == "primary"), {})
+            merged = {**selection, **{k: v for k, v in primary.items() if v is not None}}
+            if merged.get("slug"):
+                lifted["model"] = merged
+
+        if not lifted.get("fallbacks"):
+            selections = compiled.get("fallbacks")
+            selected = (
+                _by_priority([s for s in selections if isinstance(s, dict)])
+                if isinstance(selections, list)
+                else []
+            )
+            rows = _by_priority([m for m in registry if m.get("role") == "fallback"])
+            by_slug = {row.get("slug"): row for row in rows}
+            if selected:
+                lifted["fallbacks"] = [
+                    {**s, **{k: v for k, v in by_slug.get(s.get("slug"), {}).items() if v is not None}}
+                    for s in selected
+                ]
+            elif rows:
+                lifted["fallbacks"] = rows
+        return lifted
 
 
 class ResolvedClassificationModel(BaseModel):
