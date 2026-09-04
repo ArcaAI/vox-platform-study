@@ -377,6 +377,13 @@ enum ResourceType {
   // resource (the `policyVersion` natural key), not a separate ResourceType —
   // the `PromptVersion` / `DocumentTemplateVersion` precedents above.
   AiRoutingPolicy
+  // TASK-863 — the first-class Agent (rows are versions; publish/deprecate are
+  // `ResourceUpdated` with a `data.action` discriminator) and its per-scope
+  // assignment. `AgentModelFallback` rides on its agent's events and
+  // `AgentAssignmentChange` is the WORM trail itself — neither is a
+  // ResourceType (the WorkflowAssignmentChange precedent).
+  Agent
+  AgentAssignment
 
   // TASK-864 (owner decision D-5) — the run read model gains a sys-event so a
   // run-completed WEBHOOK can exist: `recordRunFinished` broadcasts a

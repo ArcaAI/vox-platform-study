@@ -146,10 +146,13 @@ export enum ResourceType {
   // `policyVersion` natural key), not a ResourceType of its own.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   AiRoutingPolicy = 'AiRoutingPolicy',
+  // TASK-863 — first-class Agent + its per-scope assignment. Parity with
+  // audit.prisma; see resourceType.enum-parity.test.ts.
+  Agent = 'Agent',
+  AgentAssignment = 'AgentAssignment',
   // TASK-864 (owner decision D-5) — the run read model emits ONE sys-event, on
   // terminal status, so a run-completed webhook can fan out (PHI-free payload).
   // Reverses the telemetry exemption. Parity with audit.prisma; see
-  // resourceType.enum-parity.test.ts. APPEND-ONLY (TASK-863 appends `Agent`,
-  // `AgentAssignment` in a sibling branch).
+  // resourceType.enum-parity.test.ts.
   WorkflowRun = 'WorkflowRun',
 }

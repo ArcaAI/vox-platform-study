@@ -1,36 +1,18 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
-import {
-  AiCapability,
-  AiDeploymentKind,
-  AiUsageUnit,
-  CoreDatabaseService,
-  EntityId,
-  ProviderReconciliationRunFactory,
-  ProviderReconciliationRunRepository,
-  SYSTEM_TENANT_ID,
-  UsageMeterMetric,
-  type ProviderReconciliationRunQuery,
-} from '@arcaai/domains';
+import { AiCapability, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { currentMonthWindow } from '../metering-window';
-import { computeDrift, computeDriftReport, DriftComparison } from './drift-math';
-import { buildProviderReconcilerRegistry, summarizeAvailability } from './provider-reconciler-registry';
-import { formatWindowLabel, resolveReconciliationWindow } from './provider-reconciliation-window';
-import type { ProviderReconcilerAvailability } from './provider-reconciler';
-import { SecretsService } from '../../baseServices/_meta/secrets';
+import { computeDriftReport, DriftComparison } from './drift-math';
 import { IShadowMeteringService } from './IShadowMeteringService';
-import { ProviderReconciliationResult, ProviderReconciliationSweepResult, ShadowMeteringSweepResult, TenantDriftReport } from './dto/drift-report';
-import { ProviderReconciliationRunDtoMapper, ProviderReconciliationRunResponse } from './dto/provider-reconciliation-run.response';
+import { ShadowMeteringSweepResult, TenantDriftReport } from './dto/drift-report';
 import {
   RECONCILED_METER_METRICS,
   SHADOW_METERING_CRON_KEY,
   SHADOW_METERING_DEFAULTS,
-  PROVIDER_DRIFT_DETECTED_EVENT,
   SHADOW_METERING_DRIFT_DETECTED_EVENT,
-  SHADOW_METERING_DRIFT_THRESHOLD_PCT,
   SHADOW_METERING_ENABLED_KEY,
   SHADOW_METERING_JOB_NAME,
   SHADOW_TOKEN_UNITS,
@@ -47,7 +29,12 @@ function toNumberSafe(value: unknown): number {
 }
 
 /**
- * Shadow-metering reconciliation report.
+ * Shadow-metering drift report.
+ *
+ * TASK-862 removed the provider (vendor-billing) reconciliation half of this
+ * service outright — the `ProviderReconciliationRun` audit trail, the vendor
+ * reconciler registry and `admin/usage/reconciliation` are gone. What remains
+ * is the INTERNAL ledger-vs-meter comparison, which never touched a vendor.
  *
  * Read-only, self-scheduling, OFF by default — see
  * `shadow-metering.constants.ts` for the full design rationale. Structured
@@ -62,40 +49,13 @@ function toNumberSafe(value: unknown): number {
 export class ShadowMeteringService implements IShadowMeteringService, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ShadowMeteringService.name);
   private activeCron: string | null = null;
-  private readonly providerRegistry = buildProviderReconcilerRegistry((key) => this.lookupSecret(key));
 
   constructor(
     @Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly eventEmitter: EventEmitter2,
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
-    // Optional so the service still constructs (and the sweep still runs, with
-    // every provider reported unavailable) in a deployment with no secrets
-    // backend wired — rule 7, fail open.
-    private readonly runRepository: ProviderReconciliationRunRepository,
-    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
-
-  /**
-   * The UNSCOPED client, used for every `ProviderReconciliationRun` read and
-   * write.
-   *
-   * These rows are SYSTEM-owned PLATFORM records — a vendor bills the platform,
-   * not a tenant — so they can neither be written nor read under a customer
-   * tenant's CLS: the tenant-scope extension rightly rejects a SYSTEM `tenantId`
-   * from a non-SYSTEM context, and a scoped read would filter every row away.
-   * Access control for this surface is the SUPER_ADMIN gate on the controller,
-   * not the tenant scope. Same escape hatch this service already uses for its
-   * cross-tenant report reads.
-   */
-  private get unscopedClient(): unknown {
-    return this.databaseService.baseClient;
-  }
-
-  /** Vault-backed credential resolution for the provider reconcilers. */
-  private async lookupSecret(key: string): Promise<string | undefined> {
-    return this.secretsService?.getSecretOptional(key);
-  }
 
   onModuleInit(): void {
     this.syncSchedulerFromConfig();
@@ -152,7 +112,6 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
       periodEnd,
       comparisons: results,
       breaches,
-      providerAvailability: await summarizeAvailability(this.providerRegistry),
     };
 
     if (breaches.length > 0) {
@@ -245,169 +204,6 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     this.replaceJob(cron);
   }
 
-  /**
-   * Reconcile the ledger against each provider's own usage/cost report for the
-   * last SETTLED window.
-   *
-   * Four rules are enforced here rather than left to each vendor client:
-   *   - **CLOUD only** (rule 2). BYOK runs on the tenant's account, so the
-   *     platform is not billed for it and must not expect it in a vendor total;
-   *     self-hosted has no vendor bill at all. The ledger side filters on
-   *     `deployment: CLOUD` — which is only expressible because put
-   *     `deployment` on the rollup grain.
-   *   - **Trailing window** (rule 4) — see `provider-reconciliation-window.ts`.
-   *   - **Alert, never auto-correct** (rule 5). A breach emits; nothing writes
-   *     to the ledger. The ledger is append-only and is corrected by a
-   *     compensating event, never by a reconciler deciding the vendor is right.
-   *   - **Fail open** (rule 7). A provider that errors is recorded `failed` and
-   *     the sweep continues; reconciliation must never block metering.
-   */
-  async reconcileProviders(now: Date = new Date()): Promise<ProviderReconciliationSweepResult> {
-    const window = resolveReconciliationWindow(now);
-    const label = formatWindowLabel(window);
-    const results: ProviderReconciliationResult[] = [];
-
-    for (const reconciler of this.providerRegistry.values()) {
-      const availability: ProviderReconcilerAvailability = await reconciler.checkAvailability();
-      if (availability.available === false) {
-        results.push({
-          provider: reconciler.provider,
-          window: label,
-          windowStart: window.start,
-          windowEnd: window.end,
-          status: 'skipped',
-          reason: availability.reason,
-        });
-        continue;
-      }
-
-      try {
-        const [ledgerQuantity, controlTotal] = await Promise.all([
-          this.cloudLedgerControlTotal(reconciler.provider, window),
-          reconciler.fetchControlTotal(window.start, window.end),
-        ]);
-
-        // `null` = the vendor reports an empty bucket, which is a real answer
-        // (0), not an error — comparing it is how a silently-stopped emitter
-        // gets caught.
-        const providerQuantity = controlTotal?.quantity ?? 0;
-        const drift = computeDrift({ label: `ledger-vs-provider:${reconciler.provider}`, expected: ledgerQuantity, actual: providerQuantity });
-
-        results.push({
-          provider: reconciler.provider,
-          window: label,
-          windowStart: window.start,
-          windowEnd: window.end,
-          status: 'reconciled',
-          ledgerQuantity,
-          providerQuantity,
-          providerUnit: controlTotal?.unit,
-          relativeDrift: drift.relativeDrift,
-          breachesThreshold: drift.breachesThreshold,
-        });
-
-        if (drift.breachesThreshold) {
-          this.eventEmitter.emit(PROVIDER_DRIFT_DETECTED_EVENT, {
-            provider: reconciler.provider,
-            window: label,
-            ledgerQuantity,
-            providerQuantity,
-            relativeDrift: drift.relativeDrift,
-            thresholdPct: SHADOW_METERING_DRIFT_THRESHOLD_PCT,
-          });
-          this.logger.warn({
-            message: 'Provider reconciliation drift detected',
-            provider: reconciler.provider,
-            window: label,
-            ledgerQuantity,
-            providerQuantity,
-            relativeDrift: drift.relativeDrift,
-          });
-        }
-      } catch (error) {
-        this.logger.error({
-          message: 'Provider reconciliation failed — continuing',
-          provider: reconciler.provider,
-          window: label,
-          error: (error as Error).message,
-        });
-        results.push({
-          provider: reconciler.provider,
-          window: label,
-          windowStart: window.start,
-          windowEnd: window.end,
-          status: 'failed',
-          reason: (error as Error).message,
-        });
-      }
-    }
-
-    await this.persistRuns(results);
-
-    return {
-      window: label,
-      results,
-      reconciled: results.filter((r) => r.status === 'reconciled').length,
-      skipped: results.filter((r) => r.status === 'skipped').length,
-      failed: results.filter((r) => r.status === 'failed').length,
-      breaches: results.filter((r) => r.breachesThreshold).length,
-    };
-  }
-
-  /**
-   * The audit report (rule 6) — newest first.
-   *
-   * SUPER_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
-   * tenant must never see aggregate platform spend.
-   */
-  async findReconciliationRuns(query: ProviderReconciliationRunQuery = {}): Promise<ProviderReconciliationRunResponse[]> {
-    return ProviderReconciliationRunDtoMapper.toResponseList(await this.runRepository.findRuns(query, this.unscopedClient));
-  }
-
-  /** Most recent run per provider — the status-board read. */
-  async findLatestReconciliationPerProvider(): Promise<ProviderReconciliationRunResponse[]> {
-    return ProviderReconciliationRunDtoMapper.toResponseList(await this.runRepository.findLatestPerProvider(this.unscopedClient));
-  }
-
-  /**
-   * Persist one row per attempt — including SKIPPED and FAILED ones.
-   *
-   * Recording the non-events is most of the value: "we have not reconciled
-   * openai since March because the credential expired" is invisible if only
-   * successful comparisons are stored, and that gap is exactly what an auditor
-   * asks about. Persistence failures are swallowed: the sweep is a diagnostic
-   * and must not fail closed (rule 7).
-   */
-  private async persistRuns(results: ProviderReconciliationResult[]): Promise<void> {
-    for (const result of results) {
-      try {
-        const entity = ProviderReconciliationRunFactory.CreateProviderReconciliationRun({
-          // SYSTEM-owned: a vendor bills the PLATFORM, not a tenant.
-          tenantId: SYSTEM_TENANT_ID,
-          provider: result.provider,
-          windowStart: result.windowStart,
-          windowEnd: result.windowEnd,
-          windowLabel: result.window,
-          status: result.status,
-          reason: result.reason ?? null,
-          // NULL, not 0, on a skipped/failed run — a stored 0 is
-          // indistinguishable from "the vendor genuinely billed nothing".
-          ledgerQuantity: result.ledgerQuantity ?? null,
-          providerQuantity: result.providerQuantity ?? null,
-          providerUnit: result.providerUnit ?? null,
-          relativeDrift: result.relativeDrift ?? null,
-          breachedThreshold: result.breachesThreshold ?? false,
-          // Stamped per row so a later threshold change never reinterprets a
-          // verdict reached under the old one.
-          thresholdPct: SHADOW_METERING_DRIFT_THRESHOLD_PCT,
-        });
-        await this.runRepository.create(entity, this.unscopedClient);
-      } catch (error) {
-        this.logger.error({ message: 'Failed to persist a reconciliation run record', provider: result.provider, error: (error as Error).message });
-      }
-    }
-  }
-
   // ── Internals ─────────────────────────────────────────────────────────
 
   private async sumRollupQuantity(
@@ -419,23 +215,6 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     const result = await this.databaseService.baseClient.aiUsageRollupDaily.aggregate({
       _sum: { quantitySum: true },
       where: { tenantId, capability, unit: { in: units }, bucketStart: window },
-    });
-    return Math.round(toNumberSafe(result._sum.quantitySum));
-  }
-
-  /**
-   * Platform-wide ledger quantity for one provider over the window, CLOUD only.
-   *
-   * No tenant filter ON PURPOSE — a vendor bills the platform, not a tenant, so
-   * the only join that can balance is platform-wide (research-findings
-   * `deployment: CLOUD` excludes BYOK (tenant-funded) and SELF_HOSTED (no
-   * vendor bill), which is the difference between a meaningful comparison and
-   * one that is guaranteed to drift.
-   */
-  private async cloudLedgerControlTotal(provider: string, window: { start: Date; end: Date }): Promise<number> {
-    const result = await this.databaseService.baseClient.aiUsageRollupDaily.aggregate({
-      _sum: { quantitySum: true },
-      where: { provider, deployment: AiDeploymentKind.CLOUD, bucketStart: { gte: window.start, lt: window.end } },
     });
     return Math.round(toNumberSafe(result._sum.quantitySum));
   }

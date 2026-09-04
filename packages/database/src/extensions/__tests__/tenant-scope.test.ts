@@ -88,8 +88,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // BillingAdjustment).
     // 65 → 66: adds TenantAllowedOrigin (CORS control plane).
     // 66 → 67: #6 adds TenantPlanHistory (append-only plan-fee proration).
-    // 67 → 68: adds ProviderReconciliationRun (SYSTEM-owned audit trail;
-    // scoped so a tenant can never read aggregate platform vendor spend).
+    // 67 → 68: added ProviderReconciliationRun (SYSTEM-owned audit trail);
+    // REMOVED again by TASK-862 (Provider Reconciliation deleted outright).
     // 68 → 72: adds the Service Version & Release Registry
     // (ServiceRelease, ServiceInstance, ChangelogEntry,
     // UserChangelogAcknowledgement). All four carry tenantId; the first
@@ -149,9 +149,14 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (88): AiRoutingPolicy — the config-plane routing policy.
     // SYSTEM row = platform default, tenant row wins on presence; also a
     // SYSTEM_SHARED_READ_MODEL (see that suite below).
-    // +1 (89): WorkflowWebhookSecret — TASK-864's per-definition inbound
+    // -1 (87): ProviderReconciliationRun — Provider Reconciliation removed
+    // outright (TASK-862, owner directive 2026-09-04).
+    // -1 (86): AiRuntimeProfile — retired by TASK-862 (ceilings moved onto
+    // AiProviderConnection, hyper-parameters to the Agent).
+    // +4 (90): Agent, AgentModelFallback, AgentAssignment, AgentAssignmentChange (TASK-863).
+    // +1 (91): WorkflowWebhookSecret — TASK-864's per-definition inbound
     // webhook HMAC secret, keyed (tenantId, workflowSlug).
-    expect(TENANT_SCOPED_MODELS.size).toBe(89);
+    expect(TENANT_SCOPED_MODELS.size).toBe(91);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -166,7 +171,6 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
       'AiPriceBook',
       'AiUsageRollupHourly',
       'AiUsageRollupDaily',
-      'ProviderReconciliationRun',
       'BillingInvoice',
       'BillingInvoiceLine',
       'BillingAdjustment',
@@ -407,9 +411,8 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // (tenant row → SYSTEM row → env); it is the FIRST secret-bearing entry
       // in this list, which is safe because the widening is [caller, SYSTEM]
       // only, the ciphertext is inert without Vault-Transit decrypt, and no
-      // read DTO carries it. AiRuntimeProfile's SYSTEM rows are the
-      // hyperparameter defaults every injection cascade reads (no secrets).
-      // Writes are NOT widened for either.
+      // read DTO carries it. (AiRuntimeProfile used to sit beside it; TASK-862
+      // retired that model.) Writes are NOT widened.
       new Set([
         'AsrPipeline',
         'AiModel',
@@ -441,7 +444,6 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'ServiceInstance',
         'ChangelogEntry',
         'AiProviderConnection',
-        'AiRuntimeProfile',
         // AiRoutingPolicy's SYSTEM row is the platform-default candidate
         // chain ( Same "tenant row → SYSTEM row" shape as
         // AiTaskDefault; the resolver runs under the caller's own CLS, so
@@ -483,6 +485,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // PipelinePolicy above. READS widen to [caller, SYSTEM]; WRITES are
         // NOT widened — a tenant can never mutate a SYSTEM-owned rule row.
         'WorkflowInvariantRule',
+        // TASK-863 — platform-default agents + assignments resolve tenant → SYSTEM.
+        'Agent',
+        'AgentAssignment',
       ]),
     );
   });

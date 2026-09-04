@@ -1,4 +1,5 @@
 import {
+  AgentServiceModule,
   AiProviderConnectionServiceModule,
   EffectiveConfigServiceModule,
   SttInternalServiceModule,
@@ -6,6 +7,7 @@ import {
   TenantSttConfigServiceModule,
 } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
+import { AgentInternalController } from './agent-internal.controller';
 import { EffectiveConfigController } from './effective-config.controller';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { ModelRegistryInternalController } from './model-registry-internal.controller';
@@ -25,8 +27,10 @@ import { SttInternalController } from './stt-internal.controller';
     TenantSttConfigServiceModule,
     StreamingSessionServiceModule,
     AiProviderConnectionServiceModule,
+    // TASK-863 — `AgentInternalController` (`/internal/agents/resolve`) resolves through the ONE agent resolver.
+    AgentServiceModule,
   ],
-  controllers: [SttInternalController, EffectiveConfigController, ModelRegistryInternalController],
+  controllers: [SttInternalController, EffectiveConfigController, ModelRegistryInternalController, AgentInternalController],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
   providers: [InternalServiceTokenGuard],

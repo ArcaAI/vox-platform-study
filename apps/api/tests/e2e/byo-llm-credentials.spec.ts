@@ -21,7 +21,7 @@
  *   2. Tenant B (no credential of its own) calling the same route never
  *      receives tenant A's override — isolation holds through the CLS tenant
  *      context, not merely through the admin read surface.
- *   3. The admin read surface (`GET admin/ai-providers/bedrock`) still never
+ *   3. The admin read surface (`GET admin/providers/llm/bedrock`) still never
  *      echoes the plaintext key — reinforced here because this is the one
  *      spec that deliberately writes a real plaintext key and exercises it.
  *
@@ -49,7 +49,8 @@ import { test, expect } from '@playwright/test';
 import * as http from 'node:http';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const ADMIN_BASE = '/api/v1/admin/ai-providers';
+// TASK-862: the `admin/ai-providers` alias was removed; the unified route pins `service='llm'`.
+const ADMIN_BASE = '/api/v1/admin/providers/llm';
 const GENERATE_ROUTE = '/api/v1/text-generations/generate';
 const ARCAAI_TENANT_KEY = 'ARCAAI';
 
@@ -183,7 +184,7 @@ test.describe.serial('tenant BYO cloud credential reaches TEXT (generate round-t
     // Independent raw-text scan closes off a JSON.parse projection hiding a
     // second copy. This string appears ONLY because the stub deliberately
     // echoes it for this spec's own verification (see the file header) — the
-    // opposite must hold for `admin/ai-providers` responses (previous test).
+    // opposite must hold for `admin/providers/llm` responses (previous test).
     expect(JSON.stringify(body)).toContain(TENANT_A_SECRET);
   });
 

@@ -1,6 +1,6 @@
 /**
  * BYO cloud-credential probes against AiProviderConnectionController
- * (`/api/v1/admin/ai-providers`), following the / pattern.
+ * (`/api/v1/admin/providers/llm` — the former `admin/ai-providers` alias was removed by TASK-862).
  *
  * The e2e job needs a live gateway +
  * seeded DB; `pnpm test:api:up` then `pnpm test:e2e`.
@@ -20,7 +20,8 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
-const BASE = '/api/v1/admin/ai-providers';
+// TASK-862: the `admin/ai-providers` alias was removed; the unified route pins `service='llm'` in the path.
+const BASE = '/api/v1/admin/providers/llm';
 
 /** Every key name in an object graph — the deep secret scan. */
 function deepKeys(value: unknown, acc: string[] = []): string[] {

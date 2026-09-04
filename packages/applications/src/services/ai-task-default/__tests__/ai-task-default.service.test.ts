@@ -1,11 +1,13 @@
 /**
- * AiTaskDefaultService — unit tests.
+ * AiTaskDefaultService — unit tests for the TASK-862 FACADE.
  *
- * Mirrors the `tenant-tts-config` test style: repositories, EventEmitter2 and
- * ClsService are mocked; the effective cascade (tenant row → SYSTEM row →
- * null), upsert validation (task key, slug resolution, taskType
- * compatibility), the guardrail.* super-admin governance rule, OCC semantics
- * and sys-event broadcasting are asserted.
+ * The service no longer owns a table: reads stand on
+ * `IAiRoutingPolicyService.resolveDefault`, writes land ONLY on the elected
+ * `AiRoutingPolicy` row. Asserted here: the cascade projection, the raw-row
+ * projection, upsert validation (task key, slug resolution, taskType), the
+ * super-admin / guardrail governance rules, OCC against the ROUTING row's
+ * version, and that no `AiTaskDefault` repository exists anywhere in the
+ * constructor.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,10 +17,12 @@ import {
   AiModelFactory,
   AiModelFormat,
   AiModelSource,
-  AiTaskDefaultFactory,
+  AiRoutingPolicyFactory,
+  AiRoutingPolicyStatus,
   ModelCategory,
   ModelTaskType,
   ModelType,
+  ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
 } from '@arcaai/domains';
@@ -42,27 +46,29 @@ function makeModel(overrides: { tenantId?: string; slug?: string; taskType?: Mod
   });
 }
 
-function makeRow(overrides: { tenantId?: string; taskKey?: string; modelSlug?: string; configJson?: Record<string, unknown> | null } = {}) {
-  return AiTaskDefaultFactory.CreateAiTaskDefault({
+function makePolicy(
+  overrides: { tenantId?: string; taskKey?: string; modelId?: string; displayName?: string; configJson?: Record<string, unknown> | null; isDefault?: boolean } = {},
+) {
+  return AiRoutingPolicyFactory.CreateAiRoutingPolicy({
     tenantId: overrides.tenantId ?? TENANT,
-    taskKey: overrides.taskKey ?? 'nlp.ner',
-    modelSlug: overrides.modelSlug ?? 'medical-ner',
-    configJson: overrides.configJson ?? null,
+    taskKey: overrides.taskKey ?? 'guardrail.validate',
+    modelId: overrides.modelId ?? 'model-1',
+    displayName: overrides.displayName ?? null,
+    isDefault: overrides.isDefault ?? true,
+    enabled: true,
+    status: AiRoutingPolicyStatus.ACTIVE,
+    configJson: (overrides.configJson ?? null) as any,
   });
 }
 
 function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {}) {
-  const repo = { findByTenantAndTaskKey: vi.fn().mockResolvedValue(null), create: vi.fn(), updateWithVersion: vi.fn() };
-  const modelRepo = { findBySlug: vi.fn().mockResolvedValue(null) };
+  const modelRepo = { findBySlug: vi.fn().mockResolvedValue(null), findById: vi.fn().mockRejectedValue(new Error('not found')) };
   const emitter = { emit: vi.fn() };
   const clsTenantId = opts.clsTenantId === undefined ? TENANT : opts.clsTenantId;
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? clsTenantId : undefined)),
   };
-  // r2605 Finding A — the UNSCOPED base client the cross-tenant lane routes through.
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  // write-through — `upsertRow` now writes the retired projection and
-  // its authoritative `AiRoutingPolicy` counterpart in ONE transaction.
   const routingRepo = {
     findCandidates: vi.fn().mockResolvedValue([]),
     clearDefaultFor: vi.fn().mockResolvedValue(0),
@@ -71,590 +77,191 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null } = {
   };
   const trx = { $lane: 'transaction' };
   const unitOfWork = { runInTransaction: vi.fn().mockImplementation(async (work: any) => work(trx)) };
-  const svc = new AiTaskDefaultService(
-    repo as any,
-    modelRepo as any,
-    db as any,
-    routingRepo as any,
-    unitOfWork as any,
-    emitter as any,
-    cls as any,
-  );
-  return { svc, repo, modelRepo, emitter, db, routingRepo, unitOfWork, trx };
+  const routingService = { resolveDefault: vi.fn().mockResolvedValue({ tenantId: TENANT, taskKey: 'guardrail.validate', source: null, policy: null, model: null }) };
+  const svc = new AiTaskDefaultService(modelRepo as any, db as any, routingRepo as any, unitOfWork as any, routingService as any, emitter as any, cls as any);
+  return { svc, modelRepo, emitter, routingRepo, unitOfWork, routingService, trx, db };
 }
 
-describe('AiTaskDefaultService — getEffective', () => {
-  let ctx: ReturnType<typeof makeService>;
-  beforeEach(() => {
-    ctx = makeService();
+describe('AiTaskDefaultService — getEffective (facade over resolveDefault)', () => {
+  it('projects the tenant-tier answer: slug from the FK model, configJson from the row, source tenant', async () => {
+    const { svc, routingService } = makeService();
+    const model = makeModel({ slug: 'tenant-guardian' });
+    routingService.resolveDefault.mockResolvedValue({ tenantId: TENANT, taskKey: 'guardrail.validate', source: 'tenant', policy: makePolicy({ configJson: { threshold: 0.7 } }), model });
+
+    const res = await svc.getEffective('guardrail.validate');
+
+    expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'guardrail.validate', { systemOnly: false });
+    expect(res.source).toBe('tenant');
+    expect(res.modelSlug).toBe('tenant-guardian');
+    expect(res.configJson).toEqual({ threshold: 0.7 });
+    expect(res.model?.slug).toBe('tenant-guardian');
   });
 
-  it('ignores tenant override rows for SUPER_ADMIN-only keys (SYSTEM wins)', async () => {
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === SYSTEM_TENANT_ID
-        ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' })
-        : makeRow({ tenantId: TENANT, modelSlug: 'tenant-custom-ner' }),
-    );
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
-    );
-
-    const eff = await ctx.svc.getEffective('nlp.ner');
-
-    expect(eff.source).toBe('system');
-    expect(eff.modelSlug).toBe('medical-ner');
-    expect(eff.model?.slug).toBe('medical-ner');
-    // Tenant row must not be consulted for nlp.* (SYSTEM-only resolution).
-    expect(ctx.repo.findByTenantAndTaskKey).not.toHaveBeenCalledWith(TENANT, 'nlp.ner', undefined);
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', undefined);
+  it('asks for SYSTEM only on the SUPER_ADMIN-only keys (nlp.*, harness.*)', async () => {
+    const { svc, routingService } = makeService();
+    await svc.getEffective('nlp.ner');
+    expect(routingService.resolveDefault).toHaveBeenCalledWith(TENANT, 'nlp.ner', { systemOnly: true });
   });
 
-  it('resolves the SYSTEM row for nlp.* (source: system)', async () => {
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
-    );
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }) : null,
-    );
-
-    const eff = await ctx.svc.getEffective('nlp.ner');
-
-    expect(eff.source).toBe('system');
-    expect(eff.modelSlug).toBe('medical-ner');
-    expect(eff.model?.slug).toBe('medical-ner');
+  it('returns source null + null model when neither tier has a configuration', async () => {
+    const { svc } = makeService();
+    const res = await svc.getEffective('guardrail.validate');
+    expect(res).toEqual({ tenantId: TENANT, taskKey: 'guardrail.validate', modelSlug: null, source: null, configJson: null, model: null });
   });
 
-  it('returns source null + null model when neither tenant nor SYSTEM row exists', async () => {
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    const eff = await ctx.svc.getEffective('guardrail.validate');
-
-    expect(eff).toMatchObject({ taskKey: 'guardrail.validate', modelSlug: null, source: null, model: null });
-    expect(ctx.modelRepo.findBySlug).not.toHaveBeenCalled();
-  });
-
-  it('resolves the SYSTEM model slug against the tenant-visible registry for nlp.*', async () => {
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
-    );
-    const systemModel = makeModel({ tenantId: SYSTEM_TENANT_ID, slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string) =>
-      tenantId === TENANT || tenantId === SYSTEM_TENANT_ID ? systemModel : null,
-    );
-
-    const eff = await ctx.svc.getEffective('nlp.ner');
-
-    expect(eff.source).toBe('system');
-    expect(eff.model?.slug).toBe('medical-ner');
-    expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith(TENANT, 'medical-ner', undefined);
+  it('falls back to the row modelRef for the slug when the FK model is not readable', async () => {
+    const { svc, routingService } = makeService();
+    const policy = makePolicy();
+    policy.modelRef = 'wire-id';
+    routingService.resolveDefault.mockResolvedValue({ tenantId: TENANT, taskKey: 'guardrail.validate', source: 'system', policy, model: null });
+    const res = await svc.getEffective('guardrail.validate');
+    expect(res.modelSlug).toBe('wire-id');
+    expect(res.model).toBeNull();
   });
 
   it('rejects an unknown task key', async () => {
-    await expect(ctx.svc.getEffective('text.summarize')).rejects.toBeInstanceOf(ArgumentInvalidException);
+    const { svc } = makeService();
+    await expect(svc.getEffective('not.a.key')).rejects.toBeInstanceOf(ArgumentInvalidException);
+  });
+
+  it('honours an explicit tenantId (super admin acting on another tenant)', async () => {
+    const { svc, routingService } = makeService({ roles: ['SUPER_ADMIN'] });
+    await svc.getEffective('guardrail.validate', 'tenant-other');
+    expect(routingService.resolveDefault).toHaveBeenCalledWith('tenant-other', 'guardrail.validate', { systemOnly: false });
   });
 });
 
-describe('AiTaskDefaultService — getRow', () => {
-  it('returns a version:0 placeholder when the tenant has no row', async () => {
-    const ctx = makeService();
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    const row = await ctx.svc.getRow('nlp.ner');
-
-    expect(row).toMatchObject({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: null, version: 0 });
+describe('AiTaskDefaultService — getRow (the tenant-owned elected routing row)', () => {
+  it('returns a version:0 placeholder when the tenant has no elected configuration', async () => {
+    const { svc, routingRepo } = makeService();
+    const res = await svc.getRow('guardrail.validate');
+    expect(res).toEqual({ tenantId: TENANT, taskKey: 'guardrail.validate', modelSlug: null, configJson: null, version: 0 });
+    // Own rows only, in ANY status — the row an OCC write will CAS against.
+    expect(routingRepo.findCandidates).toHaveBeenCalledWith([TENANT], 'guardrail.validate', undefined, { activeOnly: false, enabledOnly: false });
   });
 
-  it('returns the raw persisted row when present', async () => {
-    const ctx = makeService();
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(makeRow({ configJson: { threshold: 0.9 } }));
-
-    const row = await ctx.svc.getRow('nlp.ner');
-
-    expect(row).toMatchObject({ taskKey: 'nlp.ner', modelSlug: 'medical-ner', version: 1, configJson: { threshold: 0.9 } });
+  it('projects the elected row: routing version drives the OCC token, slug from the FK model', async () => {
+    const { svc, routingRepo, modelRepo } = makeService();
+    const policy = makePolicy({ configJson: { k: 1 } });
+    routingRepo.findCandidates.mockResolvedValue([makePolicy({ isDefault: false }), policy]);
+    modelRepo.findById.mockResolvedValue(makeModel({ slug: 'granite' }));
+    const res = await svc.getRow('guardrail.validate');
+    expect(res.version).toBe(policy.version);
+    expect(res.modelSlug).toBe('granite');
+    expect(res.configJson).toEqual({ k: 1 });
   });
 });
 
 describe('AiTaskDefaultService — upsertRow validation', () => {
   it('rejects an unknown task key', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    await expect(ctx.svc.upsertRow('nope.key', { modelSlug: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'] });
+    await expect(svc.upsertRow('bogus.key', { modelSlug: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug that resolves to no ENABLED model in [tenant, SYSTEM]', async () => {
-    // The repository's findBySlug filters ENABLED-only, so a DISABLED or
-    // soft-deleted model resolves to null exactly like an unknown slug.
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(null);
-
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'ghost-model', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'] });
+    await expect(svc.upsertRow('nlp.ner', { modelSlug: 'ghost', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug whose taskType does not match the task key', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    // nlp.ner requires TOKEN_CLASSIFICATION; hand it a TEXT_GENERATION model.
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
-
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    const { svc, modelRepo } = makeService({ roles: ['SUPER_ADMIN'] });
+    modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
+    await expect(svc.upsertRow('nlp.ner', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 })).rejects.toThrow(/requires/);
   });
 });
 
-describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
-  // (owner decision 2026-08-16) reversed the 2026-07-17
-  // super-admin-only directive for guardrail.*: it is now tenant-admin
-  // configurable, subject to the D2 platform-approved-list floor (see the
-  // "guardrail.* platform floor" describe block below), NOT a blanket
-  // ForbiddenException for every tenant admin. This test previously asserted
-  // the old blanket-403 behaviour; it is folded into that describe block.
-
-  it('rejects an nlp.* write from a tenant admin with ForbiddenException', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 })).rejects.toBeInstanceOf(ForbiddenException);
-    expect(ctx.repo.create).not.toHaveBeenCalled();
+describe('AiTaskDefaultService — governance', () => {
+  it('rejects an nlp.* write from a tenant admin with ForbiddenException (403, not 404)', async () => {
+    const { svc } = makeService({ roles: ['TENANT_ADMIN'] });
+    await expect(svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('accepts an nlp.* write from a SUPER_ADMIN', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 });
-
-    expect(res.modelSlug).toBe('medical-ner');
+  it('accepts a text.* write from a tenant admin', async () => {
+    const { svc, modelRepo, routingRepo } = makeService({ roles: ['TENANT_ADMIN'] });
+    modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'gemma', taskType: ModelTaskType.TEXT_GENERATION }));
+    await svc.upsertRow('text.finalize', { modelSlug: 'gemma', expectedVersion: 0 });
+    expect(routingRepo.create).toHaveBeenCalled();
   });
 
-  it('accepts an text.* write from a tenant admin (TEXT routing is now tenant-configurable)', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('text.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
-
-    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+  it('guardrail.* from a tenant admin: 403 unless the slug is on the platform-approved (SYSTEM) list', async () => {
+    const { svc, modelRepo } = makeService({ roles: ['TENANT_ADMIN'] });
+    // Only a TENANT-owned row exists for the slug — not approved.
+    modelRepo.findBySlug.mockImplementation(async (tenantId: string) => (tenantId === SYSTEM_TENANT_ID ? null : makeModel({ tenantId: TENANT })));
+    await expect(svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('accepts an text.finalize write from a tenant admin for their own tenant', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('text.finalize', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
-
-    expect(res.tenantId).toBe(TENANT);
-    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    // the write-through runs BOTH tables in one transaction, so
-    // every write now carries the transaction client rather than `undefined`.
-    // `runInTransaction` opens it on `databaseService.baseClient`, so the
-    // client is still UNSCOPED; the entity's own `tenantId` (pinned to the
-    // caller's CLS tenant by `resolveScopedTenantId`) is what bounds the write.
-    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), ctx.trx);
-  });
-
-  it('accepts an text.finalize.fallback write from a tenant admin', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('text.finalize.fallback', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
-
-    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
-  });
-
-  // Regression lock — touched ONLY guardrail.*'s governance.
-  // nlp.*/harness.* must keep the exact earlier behaviour: blanket
-  // ForbiddenException for a tenant admin, success for SUPER_ADMIN, no
-  // approved-list floor involved (that floor is guardrail-specific).
-  it('nlp.*/harness.* governance is unchanged by  (still blanket super-admin-only, no approved-list floor)', async () => {
-    const tenantAdminCtx = makeService({ roles: ['TENANT_ADMIN'] });
-    tenantAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
-    await expect(
-      tenantAdminCtx.svc.upsertRow('harness.judge', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    // Never even reaches slug/approved-list resolution — the blanket
-    // governance check fires first, so findBySlug is never called for it.
-    expect(tenantAdminCtx.modelRepo.findBySlug).not.toHaveBeenCalled();
-
-    const superAdminCtx = makeService({ roles: ['SUPER_ADMIN'] });
-    superAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
-    superAdminCtx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    superAdminCtx.repo.create.mockImplementation(async (e: unknown) => e);
-    const res = await superAdminCtx.svc.upsertRow('harness.judge', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
-    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+  it('a SUPER_ADMIN writing the SYSTEM row is exempt from the guardrail floor', async () => {
+    const { svc, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: SYSTEM_TENANT_ID });
+    modelRepo.findBySlug.mockResolvedValue(makeModel());
+    await svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
+    expect(routingRepo.create).toHaveBeenCalled();
   });
 });
 
-/**
- * (owner decision 2026-08-16, D2 "tighten-only"). Guardrail
- * left `SUPER_ADMIN_ONLY_TASK_PREFIXES`, so `upsertRow`'s blanket
- * super-admin-only check no longer fires for `guardrail.*` — but a
- * SEPARATE, guardrail-specific platform floor still applies: a binding for a
- * non-SYSTEM tenant must name a slug that resolves to an ENABLED
- * SYSTEM-tenant `AiModel` row (the platform-approved list), independent of
- * whether the caller also holds a tenant-owned model under the same slug.
- *
- * NOTE: the ticket's full D2 floor also calls for a
- * `featureGuardrailModelSelection` entitlement gate (see
- * `settings-registry/descriptors/entitlements.descriptors.ts`); that half is
- * NOT enforced yet — it needs a DB column outside this ticket's file scope
- * ( These tests cover the half that IS enforced today.
- */
-describe('AiTaskDefaultService — guardrail.* platform floor (Phase 0, D2)', () => {
-  it('accepts a guardrail.* write from a TENANT ADMIN when the slug is on the platform-approved (SYSTEM) list', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeModel({ tenantId: SYSTEM_TENANT_ID, slug, taskType: ModelTaskType.GUARDRAIL }) : null,
-    );
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 });
-
-    expect(res.modelSlug).toBe('granite-guardian-4.1-8b');
-    expect(res.tenantId).toBe(TENANT);
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+describe('AiTaskDefaultService — writes land ONLY on the elected AiRoutingPolicy row', () => {
+  let ctx: ReturnType<typeof makeService>;
+  const model = makeModel();
+  beforeEach(() => {
+    ctx = makeService({ roles: ['SUPER_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(model);
   });
 
-  it(
-    'rejects a guardrail.* write from a TENANT ADMIN with ForbiddenException when the slug is only a ' +
-      'tenant-owned model (not on the platform-approved list)',
-    async () => {
-      const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-      // Resolves for the TENANT's own custom registration but does NOT exist
-      // as a SYSTEM row — the floor must reject it even though
-      // resolveEnabledModelBySlug alone would have accepted a tenant-owned row.
-      ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-        tenantId === TENANT ? makeModel({ tenantId: TENANT, slug, taskType: ModelTaskType.GUARDRAIL }) : null,
-      );
+  it('CREATE: frees the election slot, inserts an ACTIVE elected row carrying the catalogue FK (not the slug), emits ResourceCreated', async () => {
+    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, configJson: { threshold: 0.9 }, expectedVersion: 0 });
 
-      await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'tenant-custom-guardian', expectedVersion: 0 })).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
-      expect(ctx.repo.create).not.toHaveBeenCalled();
-    },
-  );
-
-  it('a SUPER_ADMIN writing the SYSTEM row itself is exempt (they are defining the approved list)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ tenantId: SYSTEM_TENANT_ID, taskType: ModelTaskType.GUARDRAIL }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
-
-    expect(res.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
-  });
-
-  it('an unapproved slug 403s a SUPER_ADMIN acting on behalf of a tenant too (the floor is not role-gated)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      tenantId === 'tenant-other' ? makeModel({ tenantId: 'tenant-other', slug, taskType: ModelTaskType.GUARDRAIL }) : null,
-    );
-
-    await expect(
-      ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'unvetted-model', expectedVersion: 0 }, 'tenant-other'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-  });
-});
-
-describe('AiTaskDefaultService — getEffective cascade for guardrail.* (Phase 0)', () => {
-  it('the tenant row wins over the SYSTEM row for guardrail.validate (no longer SYSTEM-only)', async () => {
-    const ctx = makeService();
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === TENANT
-        ? makeRow({ tenantId: TENANT, taskKey: 'guardrail.validate', modelSlug: 'tenant-guardian' })
-        : makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' }),
-    );
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      makeModel({ tenantId, slug, taskType: ModelTaskType.GUARDRAIL }),
-    );
-
-    const eff = await ctx.svc.getEffective('guardrail.validate');
-
-    expect(eff.source).toBe('tenant');
-    expect(eff.modelSlug).toBe('tenant-guardian');
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'guardrail.validate', undefined);
-  });
-
-  it('falls back to the SYSTEM row for guardrail.validate when no tenant row exists', async () => {
-    const ctx = makeService();
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' }) : null,
-    );
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      makeModel({ tenantId, slug, taskType: ModelTaskType.GUARDRAIL }),
-    );
-
-    const eff = await ctx.svc.getEffective('guardrail.validate');
-
-    expect(eff.source).toBe('system');
-    expect(eff.modelSlug).toBe('granite-guardian-4.1-8b');
-  });
-});
-
-describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
-  it('creates the row + broadcasts ResourceCreated when none exists (expectedVersion 0)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', configJson: { note: 'x' }, expectedVersion: 0 });
-
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
-    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.any(Object));
-    const created = ctx.repo.create.mock.calls[0][0];
-    expect(created.tenantId).toBe(TENANT);
-    expect(created.taskKey).toBe('nlp.ner');
-    expect(created.configJson).toEqual({ note: 'x' });
-  });
-
-  it('create with a non-zero expectedVersion is a concurrency conflict', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 3 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
+    expect(ctx.unitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
+    expect(ctx.routingRepo.clearDefaultFor).toHaveBeenCalledWith(TENANT, 'guardrail.validate', null, ctx.trx, 'u1');
+    const [entity, tx] = ctx.routingRepo.create.mock.calls[0];
+    expect(tx).toBe(ctx.trx);
+    expect(entity.modelId).toBe(model.id);
+    expect(entity.isDefault).toBe(true);
+    expect(entity.status).toBe(AiRoutingPolicyStatus.ACTIVE);
+    expect(entity.configJson).toEqual({ threshold: 0.9 });
+    expect(res.modelSlug).toBe(model.slug);
+    expect(res.version).toBe(1);
+    expect(ctx.emitter.emit).toHaveBeenCalledWith(
+      SysEventType.ResourceCreated,
+      expect.objectContaining({ resourceType: ResourceType.AiRoutingPolicy, data: expect.objectContaining({ taskKey: 'guardrail.validate', modelSlug: model.slug }) }),
     );
   });
 
-  it('updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'symps-disease-bert-v3-c41', taskType: ModelTaskType.TEXT_CLASSIFICATION }));
-    const row = makeRow({ taskKey: 'nlp.classification', modelSlug: 'old-slug' });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-    ctx.repo.updateWithVersion.mockImplementation(async () => row);
-
-    await ctx.svc.upsertRow('nlp.classification', { modelSlug: 'symps-disease-bert-v3-c41', expectedVersion: 1 });
-
-    // write-through — see the create-path note above.
-    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
-    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
+  it('CREATE with a non-zero expectedVersion is a concurrency conflict', async () => {
+    await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, expectedVersion: 3 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    expect(ctx.routingRepo.create).not.toHaveBeenCalled();
   });
 
-  it('propagates OCC drift from the repository', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    const row = makeRow({ modelSlug: 'old-slug' });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-    ctx.repo.updateWithVersion.mockRejectedValue(
-      new OptimisticConcurrencyException('AiTaskDefault', row.id, { expectedVersion: 1, currentVersion: 2 }),
-    );
+  it('UPDATE: CASes on the routing row version, updates the FK in place, emits ResourceUpdated', async () => {
+    const elected = makePolicy({ modelId: 'old-model' });
+    ctx.routingRepo.findCandidates.mockResolvedValue([elected]);
 
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
-    );
+    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, expectedVersion: elected.version });
+
+    expect(ctx.routingRepo.updateWithVersion).toHaveBeenCalledWith(elected.id, elected, elected.version, ctx.trx);
+    expect(elected.modelId).toBe(model.id);
+    expect(ctx.routingRepo.create).not.toHaveBeenCalled();
+    expect(res.modelSlug).toBe(model.slug);
+    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceType: ResourceType.AiRoutingPolicy }));
   });
 
-  it('re-PUTting the value already stored is idempotent: 200 with the current row, no write, no event', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-
-    // PUT is idempotent (RFC 9110 §9.2.2): re-sending the value that is already
-    // stored returns the CURRENT representation, unchanged — same observable
-    // result as the first send. No write, no version bump, no ResourceUpdated
-    // event. (A stale `expectedVersion` still 412s; that is asserted separately.)
-    const first = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 });
-    const second = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 });
-
-    expect(first.modelSlug).toBe('medical-ner');
-    expect(second).toEqual(first);
-    expect(row.version).toBe(1); // version never burned
-    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
-    expect(ctx.emitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
+  it('UPDATE without a token, or with a stale one, is 412 — even when the payload would change nothing', async () => {
+    const elected = makePolicy({ modelId: model.id });
+    ctx.routingRepo.findCandidates.mockResolvedValue([elected]);
+    await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, expectedVersion: 99 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 
-  it('a no-op PUT with a STALE expectedVersion is still 412, not a silent idempotent 200', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 999 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
-    expect(ctx.repo.updateWithVersion).not.toHaveBeenCalled();
+  it('re-PUTting the stored value is idempotent: current row back, no write, no event', async () => {
+    const elected = makePolicy({ modelId: model.id, displayName: model.slug });
+    ctx.routingRepo.findCandidates.mockResolvedValue([elected]);
+    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, expectedVersion: elected.version });
+    expect(res.version).toBe(elected.version);
+    expect(ctx.routingRepo.updateWithVersion).not.toHaveBeenCalled();
+    expect(ctx.emitter.emit).not.toHaveBeenCalled();
   });
 
-  it('honors an explicit tenantId override (super admin acting on another tenant)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
-    );
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 }, 'tenant-other');
-
-    expect(res.tenantId).toBe('tenant-other');
-    // Cross-tenant super-admin write → routed through the base-client lane.
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith('tenant-other', 'nlp.ner', ctx.db.baseClient);
-  });
-});
-
-/**
- * r2605 Finding A — SYSTEM/cross-tenant reads+writes must bypass the
- * tenant-scoped extended client. With a super admin's working tenant W
- * elevated into CLS, targeting `?tenantId=SYSTEM` through the extended client
- * makes the tenant-scope extension inject W: the CAS update matches 0 rows
- * (eternal 412), the create throws `TenantScope: tenantId mismatch` (500) and
- * reads silently miss. The service must route the whole target-tenant
- * read/write set through the UNSCOPED base client whenever the resolved
- * target differs from the CLS tenant (or CLS is empty) AND the caller is a
- * super admin. Tenant admins stay on the scoped path byte-for-byte.
- */
-describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
-  it('getRow targeting SYSTEM under an elevated working tenant W routes the read through the base client', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    await ctx.svc.getRow('nlp.ner', SYSTEM_TENANT_ID);
-
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', ctx.db.baseClient);
-  });
-
-  it('getEffective targeting a foreign tenant routes SYSTEM-only nlp.* reads AND model resolution through the base client', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
-    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
-      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
-    );
-    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
-      makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
-    );
-
-    const eff = await ctx.svc.getEffective('nlp.ner', 'tenant-other');
-
-    expect(eff.source).toBe('system');
-    expect(ctx.repo.findByTenantAndTaskKey).not.toHaveBeenCalledWith('tenant-other', 'nlp.ner', ctx.db.baseClient);
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(SYSTEM_TENANT_ID, 'nlp.ner', ctx.db.baseClient);
-    expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith('tenant-other', 'medical-ner', ctx.db.baseClient);
-  });
-
-  it('upsert CREATE targeting SYSTEM under working tenant W persists via the base client (no TenantScope mismatch)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
-
-    expect(res.tenantId).toBe(SYSTEM_TENANT_ID);
-    // still the UNSCOPED client, now reached through the
-    // transaction `runInTransaction` opens on it. The cross-tenant lane
-    // guarantee this test exists for is intact.
-    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }), ctx.trx);
-  });
-
-  it('upsert CAS targeting SYSTEM under working tenant W runs updateWithVersion through the base client (no eternal 412)', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
-    const row = makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'old-slug' });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-    ctx.repo.updateWithVersion.mockImplementation(async () => row);
-
-    await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 1 }, SYSTEM_TENANT_ID);
-
-    // unscoped, and now transactional. See the note above.
-    expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.trx);
-  });
-
-  it('super admin with an EMPTY CLS tenant (not elevated) also uses the base-client lane', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    await ctx.svc.getRow('nlp.ner', TENANT);
-
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'nlp.ner', ctx.db.baseClient);
-  });
-
-  it('a NON-admin caller acting on their own tenant never gets the base-client lane (getRow)', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'], clsTenantId: TENANT });
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-
-    await ctx.svc.getRow('nlp.ner');
-
-    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'nlp.ner', undefined);
-  });
-});
-
-describe('AiTaskDefaultService —  write-through to AiRoutingPolicy', () => {
-  /**
-   * The invariant this suite exists for: `AiTaskDefault` is RETIRED but still
-   * read (by ~11 TypeScript resolvers and by `apps/guardrail`'s direct SQL), so
-   * every write to it must land in the authoritative table too — in the SAME
-   * transaction, or the two can diverge on a partial failure.
-   */
-  it('writes BOTH tables inside ONE transaction on a create', async () => {
-    const { svc, repo, modelRepo, routingRepo, unitOfWork, trx } = makeService({ roles: ['SUPER_ADMIN'] });
-    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
-    modelRepo.findBySlug.mockResolvedValue(model);
-    repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    repo.create.mockImplementation(async (entity: any) => entity);
-
-    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
-
-    expect(unitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
-    // Both writes carry the SAME transaction client.
-    expect(repo.create.mock.calls[0][1]).toBe(trx);
-    expect(routingRepo.create.mock.calls[0][1]).toBe(trx);
-  });
-
-  it('projects the row as an ELECTED default carrying the catalogue FK, not the slug', async () => {
-    // The point of the projection: the by-slug join is performed
-    // ONCE at write time and stored as `modelId`, so the authoritative table
-    // never has to repeat it.
-    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
-    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
-    modelRepo.findBySlug.mockResolvedValue(model);
-    repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    repo.create.mockImplementation(async (entity: any) => entity);
-
-    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
-
-    const projected = routingRepo.create.mock.calls[0][0];
-    expect(projected.modelId).toBe(model.id);
-    expect(projected.isDefault).toBe(true);
-    // ACTIVE, not DRAFT — an AiTaskDefault row serves the moment it is written,
-    // so its projection must too.
-    expect(projected.status).toBe('ACTIVE');
-    // Derived from the task key, never chosen.
-    expect(projected.taskKind).toBe('NAMED_ENTITY_RECOGNITION');
-  });
-
-  it('frees the election slot before inserting, so the partial unique index cannot refuse it', async () => {
-    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
-    modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
-    repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    repo.create.mockImplementation(async (entity: any) => entity);
-
-    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 } as any, TENANT);
-
-    expect(routingRepo.clearDefaultFor).toHaveBeenCalled();
-    expect(routingRepo.clearDefaultFor.mock.invocationCallOrder[0]).toBeLessThan(routingRepo.create.mock.invocationCallOrder[0]);
-  });
-
-  it('UPDATES the existing counterpart rather than creating a second one', async () => {
-    const { svc, repo, modelRepo, routingRepo } = makeService({ roles: ['SUPER_ADMIN'] });
-    const model = makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION });
-    modelRepo.findBySlug.mockResolvedValue(model);
-    const existingRow = makeRow({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'old-model' });
-    repo.findByTenantAndTaskKey.mockResolvedValue(existingRow);
-    repo.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
-    routingRepo.findCandidates.mockResolvedValue([{ id: 'rp1', isDefault: true, version: 1, modelId: 'old', displayName: 'old' }]);
-
-    await svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: existingRow.version } as any, TENANT);
-
-    expect(routingRepo.updateWithVersion).toHaveBeenCalledTimes(1);
-    expect(routingRepo.create).not.toHaveBeenCalled();
-    expect(routingRepo.updateWithVersion.mock.calls[0][1].modelId).toBe(model.id);
+  it('routes a foreign-tenant write from a super admin through the unscoped base-client lane', async () => {
+    await ctx.svc.upsertRow('guardrail.validate', { modelSlug: model.slug, expectedVersion: 0 }, SYSTEM_TENANT_ID);
+    expect(ctx.routingRepo.findCandidates).toHaveBeenCalledWith([SYSTEM_TENANT_ID], 'guardrail.validate', ctx.db.baseClient, { activeOnly: false, enabledOnly: false });
+    expect(ctx.modelRepo.findBySlug).toHaveBeenCalledWith(SYSTEM_TENANT_ID, model.slug, ctx.db.baseClient);
   });
 });

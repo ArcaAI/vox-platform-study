@@ -5,7 +5,7 @@
  * database (`pnpm db:seed`), which supplies the eleven SYSTEM `llm`
  * `AiProviderConnection` rows (ollama, lm-studio, azure, bedrock, built-in,
  * sarvam, openai, anthropic, vertex, vllm, llama-cpp — see
- * seed/17-ai-provider-connection.ts; the legacy `/admin/ai-providers` alias
+ * seed/17-ai-provider-connection.ts; the legacy `/admin/ai-providers` alias was REMOVED by TASK-862 — this spec now targets `/admin/providers/llm`; it
  * hard-pins `service='llm'`, so `stt`/`tts` rows never show up here).
  * Seed-authoritative posture: the five built-in-local engines
  * (ollama, lm-studio, built-in, vllm, llama-cpp) seed ENABLED as the Day-1
@@ -46,7 +46,7 @@ test.describe('AI provider connections', () => {
   const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('seeds eleven SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
-    const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
+    const res = await request.get(`/api/v1/admin/providers/llm?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
     // Seed-authoritative: the built-in-local engines are the enabled
@@ -73,14 +73,14 @@ test.describe('AI provider connections', () => {
   });
 
   test('never returns ciphertext on the wire (raw-body assertion)', async ({ request }) => {
-    const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
+    const res = await request.get(`/api/v1/admin/providers/llm?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     const raw = await res.text();
     expect(raw).not.toContain('encryptedApiKey');
     expect(raw).not.toContain('vault:v');
   });
 
   test('PATCH-equivalent PUT without If-Match → 428', async ({ request }) => {
-    const res = await request.put(`/api/v1/admin/ai-providers/azure?tenantId=${SYSTEM_TENANT_ID}`, {
+    const res = await request.put(`/api/v1/admin/providers/llm/azure?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: auth(),
       data: { enabled: false },
     });
@@ -88,12 +88,12 @@ test.describe('AI provider connections', () => {
   });
 
   test('PUT with a stale If-Match → 412', async ({ request }) => {
-    const current = await request.get(`/api/v1/admin/ai-providers/azure?tenantId=${SYSTEM_TENANT_ID}`, {
+    const current = await request.get(`/api/v1/admin/providers/llm/azure?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: auth(),
     });
     const { version } = await current.json();
 
-    const res = await request.put(`/api/v1/admin/ai-providers/azure?tenantId=${SYSTEM_TENANT_ID}`, {
+    const res = await request.put(`/api/v1/admin/providers/llm/azure?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: { ...auth(), 'If-Match': `"${version + 99}"` },
       data: { apiVersion: '2024-10-21' },
     });
@@ -101,7 +101,7 @@ test.describe('AI provider connections', () => {
   });
 
   test('rejects an undeclared body field with 400 (forbidNonWhitelisted)', async ({ request }) => {
-    const res = await request.put(`/api/v1/admin/ai-providers/azure?tenantId=${SYSTEM_TENANT_ID}`, {
+    const res = await request.put(`/api/v1/admin/providers/llm/azure?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: { ...auth(), 'If-Match': '"1"' },
       data: { enabled: true, thisFieldIsNotDeclared: 'boom' },
     });
@@ -114,7 +114,7 @@ test.describe('AI provider connections cross-tenant posture', () => {
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(login).toBeTruthy();
 
-    const res = await request.put(`/api/v1/admin/ai-providers/ollama?tenantId=${SYSTEM_TENANT_ID}`, {
+    const res = await request.put(`/api/v1/admin/providers/llm/ollama?tenantId=${SYSTEM_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${login!.token}`, 'If-Match': '"1"' },
       data: { enabled: true },
     });

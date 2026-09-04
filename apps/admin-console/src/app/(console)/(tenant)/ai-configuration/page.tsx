@@ -1,14 +1,16 @@
 import type { Metadata } from 'next';
-import { TenantAiConfigurationScreen } from '@/features/ai-task-defaults/components/tenant-ai-configuration-screen';
+import { SpeechAndVoiceScreen } from '@/features/tenant-tts-config/components/speech-and-voice-screen';
 
-export const metadata: Metadata = { title: 'AI Configuration' };
+export const metadata: Metadata = { title: 'Speech & Voice' };
 
 /**
- * Tenant AI configuration (tier 30-49, working tenant): read-only
- * effective models for all 9 task keys + BYO cloud provider credentials.
- * Successor to the dead-end `/ai-model-defaults` screen, which now
- * redirects here.
+ * Tenant Speech & Voice configuration (tier 30-49, working tenant): the STT
+ * fallback pointer and the TTS voice/language bindings.
+ *
+ * DEPRECATED (TASK-862, removed in R4): both bindings retire with the ASR and
+ * TTS Agents (TASK-861/863); this route then becomes a one-release
+ * `redirect('/agents')`. Provider keys already live on `/ai-providers`.
  */
 export default function AiConfigurationPage() {
-  return <TenantAiConfigurationScreen />;
+  return <SpeechAndVoiceScreen />;
 }

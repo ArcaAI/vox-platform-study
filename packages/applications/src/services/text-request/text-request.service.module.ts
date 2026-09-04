@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { CommonServiceModule } from '../baseServices/common.service.module';
-import { AiRuntimeProfileServiceModule } from '../ai-runtime-profile/ai-runtime-profile.service.module';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { TextRequestEnrichmentService } from './text-request-enrichment.service';
@@ -15,7 +14,7 @@ import { TextRequestEnrichmentService } from './text-request-enrichment.service'
  * which is the same state as a tenant with no opinion.
  */
 @Module({
-  imports: [CommonServiceModule, AiRuntimeProfileServiceModule, AiProviderConnectionServiceModule, EffectiveSettingsModule],
+  imports: [CommonServiceModule, AiProviderConnectionServiceModule, EffectiveSettingsModule],
   providers: [TextRequestEnrichmentService],
   exports: [TextRequestEnrichmentService],
 })

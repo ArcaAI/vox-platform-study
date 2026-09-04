@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | feature |
 | **Program** | [TASK-859 — AI Platform Consolidation](../TASK-859-Ai-Platform-Consolidation-Program/README.md) |
 | **Packages** | `packages/database`, `packages/domains`, `packages/applications` (`agent/*`, `agent-assignment/*`, `agent-invocation/*`), `apps/api` (`agent`, `agent-admin`, `internal/agents`), `apps/harness` (agent activity), `apps/admin-console` (`features/agents` rewrite), `packages/vox-node`, `packages/agentic-sdk-v2` |
@@ -221,10 +221,73 @@ SYSTEM tenant (platform defaults, `isActive: true`): `platform-transcription` (A
 
 ## 7. Implementation Summary
 
-_Pending._
+Implemented on branch `task-863-agent-entity` (worktree `hope-v2-task-863`, base `dev-2.2 @ 1896ebc03`), steps 1–6, 8, 9 and 11 of the plan. Steps 7 (harness `core.agent` activity) and 10 (SDK) belong to TASK-864 / TASK-865 and code against the contracts published here.
+
+### 7.1 Data model (step 1) — `packages/database`
+
+- `src/prisma/db_main/agent.prisma`: `Agent` (rows are versions; `modelId` FK → `AiModel`, `onDelete: Restrict`), `AgentModelFallback` (ordered chain, FKs both ends), `AgentAssignment` (`(scope, scopeId, task)` over `PipelinePolicyScope`), `AgentAssignmentChange` (identity-only WORM).
+- `enums.prisma`: `AgentTask { SPEECH_TO_TEXT TEXT_GENERATION TEXT_TO_SPEECH }` appended; `audit.prisma`: `ResourceType += Agent, AgentAssignment` (parity test green); `stt.prisma`: two back-relation lines on `AiModel` (`agents`, `agentFallbacks`) — required by Prisma for the FKs.
+- Migration `migrations/20260904120000_task_863_agent/`: the `prisma migrate diff` output + hand-written SQL — partial unique index `Agent_tenant_slug_active_unique` (`WHERE "isActive" = true AND "resourceStatus" != 'DELETED'`), `agent_immutability_guard` (PUBLISHED/DEPRECATED bytes + lineage immutable, hard DELETE refused), `agent_model_fallback_immutability_guard`, and `agent_assignment_change_worm_guard` (a role-independent BEFORE UPDATE OR DELETE trigger instead of a `REVOKE` against a role name the repo never fixed).
+- Allow-lists: `TENANT_SCOPED_MODELS` += the four; `SYSTEM_SHARED_READ_MODELS` += `Agent`, `AgentAssignment`; `MODELS_WITHOUT_SOFT_DELETE` += `AgentAssignmentChange`.
+
+### 7.2 Domain (step 2) — `packages/domains`
+
+Hand-authored trios for the four models (`AgentEntity` invariants: slug grammar, PUBLISHED ⇒ `compiledConfig`, `isActive` only when PUBLISHED, tools TEXT_GENERATION-only), OCC mappers (`FIELDS_NOT_WRITABLE = ['version']`), a strip mapper for the WORM log, `AgentRepository` with the published-and-active predicate written once (`findPublishedActiveBySlug`, `findPublishedActiveVisible`, `findByIdVisible`, `findOwnActiveBySlug`, `findAllVersionsBySlug`, `findMaxVersionNumber(tx)`), `CoreDatabaseModule` registrations. `gen:entity:check` / `gen:factory:check`: no drift, schema coverage OK. `packages/types/src/agent.ts` publishes `ResolvedAgent` / `AgentCompiledConfig`.
+
+### 7.3 Contract (step 3) — `packages/workflow-contract/src/agent-schemas.ts`
+
+`AGENT_TASKS`, `AGENT_TASK_SERVICE`, `AGENT_TASK_MODEL_TASK_TYPE`, `AGENT_PROTOCOLS`, `AGENT_PARAMETER_SCHEMAS` (§3.2 per task; the ASR spec of TASK-861 §3.2 — every auxiliary model a registry SLUG), `AGENT_INSTRUCTION_SCHEMAS`, `AGENT_IO_DEFAULTS`, `agentConfigProblems()` (task ↔ model match, reference-only rule over the agent's JSON columns, per-task instruction shape, tools TEXT_GENERATION-only, `json_schema ⇒ responseSchema`, generation + SSML capability gates). Reference-only proof: `forbiddenSchemaKeyProblems(AGENT_PARAMETER_SCHEMAS) === []`.
+
+### 7.4 Services (steps 4–5) — `packages/applications`
+
+- `services/agent/`: `AgentService` (list/getById/listVersions/create/update/deleteById/validate/publish/newVersion/deprecate + business `listPublished`/`getPublishedBySlug`). ONE findings pipeline (`collectFindings`) backs both `validate()` and `publish()`: structural (`agentConfigProblems` + `jsonSchemaValueProblems` + `authorableJsonSchemaProblems`), availability fail-closed (cloud ⇒ enabled `AiProviderConnection` at tenant or SYSTEM; engine-served `lm-studio|ollama|vllm|llama-cpp` ⇒ ENABLED; otherwise `localPath` or DOWNLOADED), APPROVED template + pinned version, capability gates from `AiModel.metaData`. `publish()` stamps `compiledConfig` (`AgentCompiledConfig`) + `sha256:` over `canonicalJson`, elects `isActive` and demotes the previous active row. Findings carry codes: `MODEL_UNAVAILABLE`, `MODEL_TASK_MISMATCH`, `MODEL_NOT_FOUND`, `MODEL_DISABLED`, `TEMPLATE_NOT_APPROVED`, `TEMPLATE_NOT_FOUND`, `TEMPLATE_VERSION_NOT_FOUND`, `CAPABILITY`, `SCHEMA`, `CONFIG`.
+- `AgentResolverService.resolve({ tenantId, task?, agentSlug?, departmentId? })` → `ResolvedAgent` (explicit slug widened [tenant, SYSTEM] → one 404; else the assignment cascade; primary + fallbacks + ASR auxiliaries materialised; cloud `providerOverride` + `fundingTier` from `resolveTenantCloudOverrides(service, tenantId)`).
+- `AgentInvocationService`: `invokeText` (blocking / stream through the sanctioned `apps/text` `/api/v1/generate` path: `applyTextRuntimeProfile` → `applyTenantProviderOverrides`, `internalServiceHeaders`), `inputProblems` (TIER 3 against `inputSchema`), `buildSpeechRequest`, `resolveAsrPipelineId` (`TODO(TASK-861)`).
+- `services/agent-assignment/`: `AgentAssignmentService` — `resolve` walks department → tenant → SYSTEM and skips a tier whose slug no longer resolves; OCC `upsert`/`remove` with a WORM change row in one transaction.
+- API-key scopes: `admin:agent:manage` (reserved → `svc:admin:agent:manage`), `agent:definition:read`, `agent:invocation:write`.
+
+### 7.5 Routes (step 6) — `apps/api`
+
+| Route | Guards | Notes |
+|---|---|---|
+| `GET /api/v1/agents?task=` · `GET /api/v1/agents/{slug}` | `@Authorize()` + `@RequiredScopes('agent:definition:read')` | `{ data: AgentSummaryResponse[] }` / `AgentSummaryResponse` |
+| `POST /api/v1/agents/{slug}/invocations?mode=blocking\|stream` | `@Authorize()` + `@RequiredScopes('agent:invocation:write')`, heavy throttle | body validated against `inputSchema`; blocking JSON or SSE relay |
+| `POST /api/v1/agents/{slug}/speech` | same | agent voice/format/speed/model over the tenant TTS config + BYO overrides; streamed; metered |
+| `POST /api/v1/agents/{slug}/transcriptions` | same | `{ mediaId, consultationId?, language? }` → batch `TranscriptionJob` on the agent-resolved pipeline (201) |
+| `/api/v1/admin/agents/**` | `@CanManage('Agent')`, `@ForbidApiKey`, `svc:admin:agent:manage` | list (`?task&includeTemplates`), get, versions, create, PATCH (If-Match), delete, validate, publish, versions (branch), deprecate |
+| `/api/v1/admin/agent-assignments/**` | same subject/scope | list (`?task`), get, create, PATCH (If-Match), DELETE (If-Match) |
+| `GET /api/v1/internal/agents/resolve?service=harness&tenantId&task&agentSlug&departmentId` | `@Public()` + `InternalServiceTokenGuard`; `X-Tenant-Id` (or `tenantId`) mandatory | `ResolvedAgent`; CLS pinned to the caller tenant |
+
+Tags `agents`, `admin-agents`, `admin-agent-assignments`, `internal-agents`; tenant-admin CASL grants for `Agent` / `AgentAssignment` (`seed/01-policy.ts`). Artifacts (`route-manifest`, `openapi.json`, portal, `vox-node gen:admin`) are NOT regenerated on this branch — orchestrator step.
+
+### 7.6 Console (step 8) — `apps/admin-console`
+
+`features/agents` (the prompt-template components moved verbatim to `features/prompt-templates`, keys re-rooted): `AgentsScreen` (fill-height grid, task/status/owner facets, `WorkingTenantGate`), `CreateAgentWizard` (Task → Model with availability hints → Instruction → Parameters, schema-driven over `AGENT_PARAMETER_SCHEMAS` → Schemas → Review; create draft / create & publish), `AgentDetailDrawer` (Overview · Configuration · Versions · Test run · Usage; validate/publish/deprecate/new version/branch template/delete/set as tenant default). `/agents` is a real route again; nav-config gained the `/agents` entry (`knowledge-agents`, 30-49, `manage:Agent`). axe: 0 violations on the grid and the open drawer (vitest-axe). Both themes use semantic tokens only; runtime visual verification is left to the orchestrator (no `next dev`/browser in this lane).
+
+### 7.7 Seeds (step 9) — `seed/25-agents.ts`
+
+SYSTEM: `platform-transcription` (whisper.cpp ML/EN + CT2 turbo fallback, silero-vad, cadence punctuation), `platform-summarization` (live SOAP template), `platform-presummarization`, `platform-discharge-summary` (inline prompt — no APPROVED SYSTEM discharge template exists on this base), `platform-grammar-correction`, `platform-important-findings` (JSON), `platform-tts` (kokoro/af_heart) — all PUBLISHED + active, plus SYSTEM TENANT-scope assignments for the three tasks. Global tenant: the same seven as `example-*` published rows plus `example-azure-transcription` and `example-sarvam-transcription` in DRAFT. ArcaAI: nothing. Models resolved by slug at seed time; unresolvable specs are skipped (fail closed).
+
+### 7.8 Gates (package-scoped, this branch)
+
+`@arcaai/workflow-contract` 20/20 new tests · `@arcaai/database` 79 files / 1868 (+ seed test) · `@arcaai/domains` build + 160 files (1900) · `gen:entity:check`/`gen:factory:check` no drift, coverage OK · `@arcaai/applications` build + 651 files (incl. `text-generate-caller-coverage`, scope registries) · `pnpm api:build` + 50 controller/tag tests · `@arcaai/admin-console` build (`/agents`, `/prompt-templates` emitted), lint (`--max-warnings 0`), 266 files / 2359 tests.
+
+### 7.9 Cross-ticket markers
+
+`TODO(TASK-860)` availability predicate (`agent.service.ts`) · `TODO(TASK-861)` `resolveAsrPipelineId` (`agent-invocation.service.ts`, `agent.controller.ts`) · `TODO(TASK-862)` credential resolver (`agent.service.ts`, `agent-resolver.service.ts`, `capabilitiesOf`).
+
+### 7.10 Deviations
+
+- `AiModel` gained two back-relation lines in `stt.prisma` (Prisma requires both sides of a relation).
+- `AgentAssignmentChange` WORM is a trigger, not a `REVOKE` (no app role name exists in the repo; the trigger holds under any deployment).
+- `built-in` is NOT engine-served: bucket-loaded rows need `localPath`/DOWNLOADED, so publishing `platform-tts` (kokoro, weights owned by the pip package) through the UI fails closed until TASK-860's `availability` lands; the seed writes the row directly.
+- `mode=stream` relays the TEXT service SSE frames directly (no task-id handshake).
+- No `maxAgents` entitlement precheck (open question 2).
+- `hope-v2` `dev-2.2` moved to `9a933b360` after this branch was cut; the console build on the base commit fails type-check on the pre-existing `ai-platform/huggingface-fetch-drawer.tsx` `raw.trim` bug that `9a933b360` fixes — it passes with that fix (verified by applying it locally, then restoring the base file).
 
 ## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-04 | Ticket created from the TASK-859 review. |
+| 2026-09-04 | Steps 1–6, 8, 9, 11 implemented on `task-863-agent-entity` (schema + migration, domain trios, contract schemas, services + resolver + invocation, routes, console Agents screen, seeds, register). Status → Review. Steps 7 (harness) / 10 (SDK) → TASK-864 / TASK-865. |

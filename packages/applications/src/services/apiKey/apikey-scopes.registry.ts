@@ -379,12 +379,6 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'manage', subject: 'GlobalSetting' }],
     reserved: true,
   },
-  'admin:ai-runtime-profile:manage': {
-    description: 'Manage AI runtime profiles',
-    category: 'Admin',
-    implies: [{ action: 'manage', subject: 'all' }],
-    reserved: true,
-  },
   'admin:ai-service:manage': {
     description: 'Manage AI service configuration',
     category: 'Admin',
@@ -627,6 +621,15 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     implies: [{ action: 'read', subject: 'WorkflowDefinition' }],
     reserved: true,
   },
+  // TASK-863 — the first-class Agent. Reserved like every `admin:*` scope; exists so
+  // SERVICE_ACCOUNT_SCOPE_REGISTRY derives `svc:admin:agent:manage`. `admin/agent-assignments`
+  // reuses it (assigning an agent is agent GOVERNANCE, the workflow-assignment precedent).
+  'admin:agent:manage': {
+    description: 'Author, validate, publish and assign agents',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'Agent' }],
+    reserved: true,
+  },
 
   // Workflow exposure plane. Prefix-matching (apikey.service.ts's
   // hasScope) means a key holding the bare `"workflow"` scope would grant all
@@ -651,6 +654,20 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     description: 'Read workflow run status and stream progress',
     category: 'Workflow',
     implies: [{ action: 'read', subject: 'WorkflowRun' }],
+  },
+
+  // TASK-863 — the Agent business plane (`/agents/**`): list/describe published agents and
+  // invoke them (text generation, speech, batch transcription). Prefix semantics as above:
+  // a key holding the bare `agent` scope reaches both.
+  'agent:definition:read': {
+    description: 'List published agents and their input/output schemas',
+    category: 'Agent',
+    implies: [{ action: 'list', subject: 'Agent' }],
+  },
+  'agent:invocation:write': {
+    description: 'Invoke published agents (text generation, speech synthesis, batch transcription)',
+    category: 'Agent',
+    implies: [{ action: 'read', subject: 'Agent' }],
   },
 
   // lane A — the CONSULTATION-BOUND invocation plane
