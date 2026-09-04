@@ -45,7 +45,7 @@ test.describe('AI provider connections', () => {
 
   const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
-  test('seeds eleven SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
+  test('seeds ten SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/providers/llm?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
@@ -60,7 +60,9 @@ test.describe('AI provider connections', () => {
     const SELF_HOST_KEYED = new Set(['ollama', 'lm-studio', 'vllm', 'llama-cpp']);
 
     const rows = await res.json();
-    expect(rows).toHaveLength(11);
+    // TASK-862: `llm:sarvam` left the SYSTEM llm seed — Sarvam is an STT/TTS provider, its
+    // connection rows live under those services — so the llm connection count is ten.
+    expect(rows).toHaveLength(10);
     for (const row of rows) {
       expect(row.hasKey, `${row.provider} key material must match the self-host placeholder posture`).toBe(SELF_HOST_KEYED.has(row.provider));
       expect(row.enabled, `${row.provider} enabled-state must match built-in-local posture`).toBe(BUILTIN_LOCAL.has(row.provider));
