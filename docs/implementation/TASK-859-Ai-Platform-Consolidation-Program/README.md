@@ -171,7 +171,7 @@ the merged primary (`14-multi-agent-worktrees.md` §5). Status on 2026-09-04:
 | TASK-860 Model Registry | **merged** | `e8e24f9f2` | `uv.lock` re-resolved; `parler-tts` installs `--no-deps` in the `indic-parler` image variant |
 | TASK-864 Workflow Studio v2 | **merged** | `ac5d4068a` | harness `core.agent` reconciled with the merged 863 resolve contract; `harness:typecheck` clean apart from the base defect; step B2 seeds partial (Q-B2) |
 | TASK-861 Audio-pipeline retirement | **merged** | `74f7d975a` | steps 10 (palette descriptors already marked by 864; `implemented: false` / `WF-STT-*` / `stt_placeholder.py` residue) and 13 (artifacts) orchestrator-owned; step 7 covered by 860's fail-closed loaders; the pipeline half of `06-stt.ts` + `seedTenantSttConfig` still seeded (follow-up) |
-| TASK-865 SDK | ready, merges last | — | branch carries dev-2.2 through `86ff18952`; waits for 861 because the playground sends `agentSlug` |
+| TASK-865 SDK | **merged** | `f09d17113` | client AI off by default, `agentSlug` selection, `hope.agents.*` in vox-node; one pre-existing prettier warning in `useRoles.ts` left as found |
 
 Base regressions fixed on dev-2.2 along the way: three call-parenthesis typos from the cleanup
 commit (`9a933b360`); two TASK-862 constructor-slot drifts in tests (`f0e9031f7`, `86ff18952`).
