@@ -20,6 +20,26 @@
   --workflow-canvas-edge: var(--muted-foreground);
   --workflow-canvas-edge-label-bg: var(--background);
   --workflow-canvas-edge-label-fg: var(--foreground);
+  --workflow-canvas-handle-control: var(--primary);
+  --workflow-canvas-group-bg: color-mix(in oklab, var(--muted) 55%, transparent);
+  --workflow-canvas-group-border: var(--border);
+}
+
+/* Per-port handles (TASK-864 B1) sit inline in their port row rather than at React Flow's
+   absolute mid-edge default; control handles are square so kind is never conveyed by colour
+   alone. */
+.workflow-canvas .react-flow__handle.workflow-canvas-port {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  transform: none;
+  width: 10px;
+  height: 10px;
+}
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-kind='control'] {
+  border-radius: 2px;
+  background: var(--workflow-canvas-handle-control);
 }
 
 .workflow-canvas .react-flow {

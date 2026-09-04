@@ -78,6 +78,8 @@ export class WorkflowDefinitionDtoMapper {
     dto.activityName = descriptor.activityName;
     dto.classes = [...descriptor.classes];
     dto.paletteKey = descriptor.paletteKey;
+    dto.deprecated = descriptor.deprecated === true;
+    dto.replacedBy = descriptor.replacedBy ?? null;
     dto.critical = descriptor.critical;
     dto.externalWrite = descriptor.externalWrite;
     dto.defaultTimeoutSeconds = descriptor.defaultTimeoutSeconds;
