@@ -1,4 +1,4 @@
-import { paletteOf, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
+import { CORE_PALETTE_KEY, actionDelegateOf, paletteOf, WORKFLOW_NODE_REGISTRY } from '@arcaai/workflow-contract';
 
 /**
  * The keys the interpreter reads as RUN IDENTITY, which a caller may therefore never supply
@@ -77,7 +77,7 @@ export function reservedIdentityKeysIn(input: Record<string, unknown> | undefine
  * Palette-agnostic node types (`noop`, `passthrough`, `core.start`, `core.end` — `paletteKey:
  * null` in the registry) belong to no palette and are always permitted.
  */
-export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization']);
+export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization', CORE_PALETTE_KEY]);
 
 /**
  * Palettes invocable on the CONSULTATION-BOUND plane
@@ -121,7 +121,33 @@ export const EXPOSURE_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summariz
  * transcription and deliver nothing), and `agentic` is refused for want of an affirmative
  * decision — config selection fails closed.
  */
-export const CONSULTATION_BOUND_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization', 'consultation']);
+export const CONSULTATION_BOUND_ALLOWED_PALETTES: ReadonlySet<string> = new Set(['summarization', 'consultation', CORE_PALETTE_KEY]);
+
+/**
+ * TASK-864 — the CLASS-BASED rule that replaces palette membership as the real boundary for the
+ * `core` vocabulary (§3.4): a graph is invokable on the UNBOUND plane unless it carries an
+ * `externalWrite` CLINICAL action — one that writes into a consultation's own rows. The Output
+ * node's claim-check publish and a TTS artifact are external writes too, but they write to the
+ * run, not to a patient record, which is exactly the distinction C-8 turned on.
+ *
+ * Resolved per INSTANCE: a `core.action` writes if the legacy node it delegates to writes
+ * (`actionDelegateOf`), and only the consultation palette's writers are clinical.
+ */
+function clinicalWriteViolation(graph: unknown): string | null {
+  const nodes = (graph as { nodes?: unknown })?.nodes;
+  if (!Array.isArray(nodes)) return null;
+  for (const node of nodes) {
+    const record = node as { type?: unknown; config?: unknown };
+    if (record?.type !== 'core.action') continue;
+    const config = typeof record.config === 'object' && record.config !== null ? (record.config as Record<string, unknown>) : undefined;
+    const delegate = actionDelegateOf(config);
+    if (delegate === undefined) continue;
+    if (delegate.externalWrite && delegate.paletteKey === 'consultation') {
+      return `action '${delegate.key}' writes into a consultation — invokable only through the consultation-bound route`;
+    }
+  }
+  return null;
+}
 
 /** Every palette key the node registry actually declares — the create-time validation set for
  *  `WorkflowDefinition.paletteKey` (W1's second half / findings C-5, D-5). Derived from the
@@ -204,6 +230,13 @@ export function exposureBoundaryViolation(
   }
 
   const nodeTypes = collectNodeTypes(definition.graph, definition.compiledConfig);
+
+  // TASK-864 — the class-based rule. Checked on the UNBOUND plane only: the bound plane has a
+  // server-resolved consultation to write into, which is what makes those writes safe there.
+  if (context.consultationBound !== true) {
+    const clinical = clinicalWriteViolation(definition.graph);
+    if (clinical) return clinical;
+  }
 
   for (const nodeType of nodeTypes) {
     const palette = paletteOf(nodeType);

@@ -43,11 +43,14 @@ export interface GraphState extends GraphSnapshot {
 
 export interface GraphActions {
   hydrate: (nodes: GraphStoreNode[], edges: GraphStoreEdge[]) => void;
+  /** An AUTHORED wholesale replacement (JSON import, TASK-864 B1): undoable and dirty, unlike `hydrate`. */
+  replaceGraph: (nodes: GraphStoreNode[], edges: GraphStoreEdge[]) => void;
   /** Pre-places every `mandatory`-classed descriptor into a fresh graph (README Task 12: "pre-
    *  placed into a new definition's graph by the store's `initializeGraph` action"). Non-
    *  mandatory descriptors are ignored — they come from the palette rail on demand. */
   initializeGraph: (descriptors: Array<{ type: string; safetyClasses: readonly string[] }>) => void;
-  addNode: (descriptor: { type: string; safetyClasses: readonly string[] }, position: { x: number; y: number }) => string;
+  /** `options.parentId` nests the new node inside a `core.loop` body (TASK-864); `position` is then relative to that group. */
+  addNode: (descriptor: { type: string; safetyClasses: readonly string[] }, position: { x: number; y: number }, options?: { parentId?: string }) => string;
   deleteNode: (nodeId: string) => ActionResult;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   /** Copies a node's type/classes/config into a NEW node offset below the original. Refuses a
@@ -126,6 +129,11 @@ export function createGraphStore(): GraphStoreApi {
         set({ nodes, edges, selectedNodeId: null, dirty: false, undoStack: [], redoStack: [], autosaveState: 'idle' });
       },
 
+      replaceGraph: (nodes, edges) => {
+        snapshotForUndo();
+        set({ nodes, edges, selectedNodeId: null, dirty: true });
+      },
+
       initializeGraph: (descriptors) => {
         const mandatory = descriptors.filter((descriptor) => descriptor.safetyClasses.includes(MANDATORY_CLASS));
         const nodes: GraphStoreNode[] = mandatory.map((descriptor, index) => ({
@@ -138,10 +146,17 @@ export function createGraphStore(): GraphStoreApi {
         set({ nodes, edges: [], selectedNodeId: null, dirty: false, undoStack: [], redoStack: [] });
       },
 
-      addNode: (descriptor, position) => {
+      addNode: (descriptor, position, options) => {
         snapshotForUndo();
         const id = generateNodeId();
-        const node: GraphStoreNode = { id, type: descriptor.type, position, safetyClasses: descriptor.safetyClasses, config: {} };
+        const node: GraphStoreNode = {
+          id,
+          type: descriptor.type,
+          position,
+          safetyClasses: descriptor.safetyClasses,
+          config: {},
+          ...(options?.parentId ? { parentId: options.parentId } : {}),
+        };
         set((state) => ({ nodes: [...state.nodes, node], dirty: true }));
         return id;
       },
@@ -151,10 +166,13 @@ export function createGraphStore(): GraphStoreApi {
         if (!node) return { ok: false, reason: 'Node not found.' };
         if (isMandatory(node)) return { ok: false, reason: 'This node type is mandatory for the palette and cannot be deleted.' };
         snapshotForUndo();
+        // A loop body goes with its loop (TASK-864): children naming this node as parent are
+        // removed too, so no orphan is ever left pointing at a group that no longer exists.
+        const removed = new Set<string>([nodeId, ...get().nodes.filter((candidate) => candidate.parentId === nodeId).map((candidate) => candidate.id)]);
         set((state) => ({
-          nodes: state.nodes.filter((candidate) => candidate.id !== nodeId),
-          edges: state.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
-          selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+          nodes: state.nodes.filter((candidate) => !removed.has(candidate.id)),
+          edges: state.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
+          selectedNodeId: state.selectedNodeId !== null && removed.has(state.selectedNodeId) ? null : state.selectedNodeId,
           dirty: true,
         }));
         return { ok: true };
@@ -209,8 +227,8 @@ export function createGraphStore(): GraphStoreApi {
         if (portLookup) {
           const compatible = checkPortCompatibility(
             portLookup,
-            { type: sourceNode.type, handle: request.sourceHandle },
-            { type: targetNode.type, handle: request.targetHandle },
+            { type: sourceNode.type, handle: request.sourceHandle, config: sourceNode.config },
+            { type: targetNode.type, handle: request.targetHandle, config: targetNode.config },
           );
           if (!compatible.ok) return compatible;
         }

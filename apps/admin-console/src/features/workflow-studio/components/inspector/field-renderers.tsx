@@ -25,6 +25,7 @@ import {
 import type { FieldDescriptor } from '../../lib/schema-form';
 import { getAtPath, setAtPath } from './field-path';
 import { RawJsonField } from './raw-json-field';
+import { CelExpressionField } from './cel-expression-field';
 
 export interface FieldRendererProps {
   descriptor: FieldDescriptor;
@@ -33,13 +34,15 @@ export interface FieldRendererProps {
   /** Server `WorkflowFinding.message` strings whose `path` matches this descriptor, verbatim. */
   errors?: string[];
   idPrefix: string;
+  /** Run-context references the CEL editor offers as quick inserts (TASK-864 B1). */
+  references?: readonly string[];
 }
 
 function fieldId(idPrefix: string, path: string): string {
   return `${idPrefix}-${path || 'root'}`;
 }
 
-export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPrefix }: FieldRendererProps) {
+export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPrefix, references }: FieldRendererProps) {
   const id = fieldId(idPrefix, descriptor.path);
   const value = getAtPath(config, descriptor.path);
   const set = (next: unknown) => onConfigChange(setAtPath(config, descriptor.path, next));
@@ -54,7 +57,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {descriptor.description ? <FieldDescription>{descriptor.description}</FieldDescription> : null}
         <div className="flex flex-col gap-4 pl-4">
           {descriptor.fields.map((field) => (
-            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} />
+            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} />
           ))}
         </div>
       </FieldSet>
@@ -89,7 +92,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
         {currentBranch ? (
           <div className="flex flex-col gap-4 pl-4">
             {currentBranch.fields.map((field) => (
-              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} />
+              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} />
             ))}
           </div>
         ) : null}
@@ -196,7 +199,22 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors, idPr
     );
   }
 
-  // 'string'
+  // 'string' — a `format: 'cel'` string (the contract's CEL_EXPRESSION_PROPERTY) gets the
+  // expression editor (TASK-864 B1); every other string is a plain input.
+  if (descriptor.format === 'cel') {
+    return (
+      <CelExpressionField
+        id={id}
+        label={descriptor.label}
+        description={descriptor.description}
+        required={descriptor.required}
+        value={typeof value === 'string' ? value : ''}
+        onChange={set}
+        errors={errors}
+        references={references}
+      />
+    );
+  }
   return (
     <Field data-invalid={(errors?.length ?? 0) > 0 ? 'true' : undefined}>
       <FieldLabel htmlFor={id}>

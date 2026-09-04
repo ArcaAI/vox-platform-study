@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ResourceType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
+import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MAX_CURSOR_LIMIT, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
@@ -340,7 +340,30 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
       return WorkflowRunDtoMapper.toResponse(entity);
     }
     const saved = await this.workflowRunRepository.updateWithVersion(entity.id, entity, entity.version);
-    // NO sys-event — telemetry exemption.
+
+    // TASK-864 (owner decision D-5) — the ONE sys-event the run read model emits, on TERMINAL
+    // status, so a `WorkflowRun` webhook subscription fires (`workflow.run.completed`). The
+    // payload is PHI-FREE by construction: identifiers, status, reason and timestamps — never the
+    // result, never a payload. The outbound delivery is reference-not-content anyway
+    // (`webhook-delivery.processor.ts`), and this is the second layer of that rule.
+    // `recordRunStarted` still emits nothing; `resourceType` is set explicitly so this service's
+    // other events (gate approvals, on the definition) are unaffected.
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: saved.id,
+      resourceType: ResourceType.WorkflowRun,
+      tenantId: input.tenantId,
+      data: {
+        action: 'runFinished',
+        runId: saved.runId,
+        slug: saved.workflowSlug,
+        workflowVersionNumber: saved.workflowVersionNumber,
+        status: saved.status,
+        terminalReason: input.terminalReason ?? null,
+        startedAt: saved.startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        consultationId: input.consultationId ?? null,
+      },
+    });
     return WorkflowRunDtoMapper.toResponse(saved);
   }
 

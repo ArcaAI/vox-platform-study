@@ -71,6 +71,7 @@ export const WORKFLOW_PORT_PRIMITIVES = [
   'edits',
   'verdict',
   'context<schemaRef>',
+  'any',
 ] as const;
 
 export type WorkflowPortPrimitive = (typeof WORKFLOW_PORT_PRIMITIVES)[number];
@@ -102,7 +103,25 @@ export type WorkflowPortPrimitive = (typeof WORKFLOW_PORT_PRIMITIVES)[number];
  * per-frame audio never enters a Temporal workflow — expressed in the type lattice instead of in
  * a comment somebody has to remember.
  */
-export const WORKFLOW_PORT_KINDS = ['control', 'text', 'object', 'audio', 'flag'] as const;
+export const WORKFLOW_PORT_KINDS = ['control', 'text', 'object', 'audio', 'flag', 'any'] as const;
+
+/**
+ * TASK-864 — `any`, the CONSUMER-SIDE wildcard for the `core` vocabulary.
+ *
+ * The owner's node table types the Human-review, Condition, Loop and Output inputs as `in: any`:
+ * a review can hold out ANY payload, a condition reads the run context rather than one typed
+ * value, an output declares its own schema. The closed vocabulary had no honest type for that —
+ * every candidate (`object`, `text`) would refuse a legal wiring.
+ *
+ * `any` is deliberately NOT a lattice top. `WORKFLOW_PORT_SUPERTYPE.any` is `null` and nothing
+ * widens INTO it; instead `portPrimitiveSatisfies` treats an `any`-typed CONSUMER as accepting
+ * every data primitive, while an `any`-typed PRODUCER satisfies only `any`. That asymmetry is
+ * the anti-laundering rule kept intact: a value that arrived as `any` can never be handed to a
+ * `transcript` (or any other refined) input, so no chain of widenings takes a generated
+ * document to NER through an `any` socket. `control` is excluded in both directions —
+ * ordering still carries no payload.
+ */
+export const ANY_PORT_PRIMITIVE = 'any' as const;
 
 export type WorkflowPortKind = (typeof WORKFLOW_PORT_KINDS)[number];
 
@@ -185,6 +204,7 @@ export const WORKFLOW_PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, Wor
   edits: 'object',
   verdict: 'object',
   'context<schemaRef>': 'object',
+  any: null,
 });
 
 /**
@@ -211,6 +231,7 @@ export const PORT_PRIMITIVE_CONTEXT_PRIMITIVE: Readonly<Record<WorkflowPortPrimi
   edits: 'STRUCTURED',
   verdict: 'STRUCTURED',
   'context<schemaRef>': 'STRUCTURED',
+  any: 'STRUCTURED',
 });
 
 /**
@@ -239,6 +260,7 @@ export const PORT_PRIMITIVE_KIND: Readonly<Record<WorkflowPortPrimitive, Workflo
   edits: 'object',
   verdict: 'flag',
   'context<schemaRef>': 'object',
+  any: 'any',
 });
 
 /** The tier-1 kind of a port primitive. */
@@ -250,6 +272,9 @@ export function portKindOf(primitive: WorkflowPortPrimitive): WorkflowPortKind {
  *  and nothing more. `control` matches only `control`, so an ordering edge can never be
  *  mistaken for a data edge (and vice versa) even at this coarse grain. */
 export function portKindsCompatible(produced: WorkflowPortPrimitive, consumed: WorkflowPortPrimitive): boolean {
+  // The `any` wildcard (TASK-864): a consumer that accepts any DATA kind. `control` stays
+  // excluded so an ordering edge can never be mistaken for a data edge even at this grain.
+  if (consumed === ANY_PORT_PRIMITIVE) return produced !== 'control';
   return portKindOf(produced) === portKindOf(consumed);
 }
 
@@ -266,6 +291,10 @@ export function isWorkflowPortPrimitive(value: unknown): value is WorkflowPortPr
  * is the whole point: this relation is deliberately NOT symmetric.
  */
 export function portPrimitiveSatisfies(produced: WorkflowPortPrimitive, consumed: WorkflowPortPrimitive): boolean {
+  // The `any` wildcard (TASK-864, see `ANY_PORT_PRIMITIVE`): every DATA primitive satisfies an
+  // `any` consumer; `any` itself satisfies only `any` (handled by the reflexive walk below), so
+  // the wildcard can widen nothing into a refined input.
+  if (consumed === ANY_PORT_PRIMITIVE) return produced !== 'control';
   let cursor: WorkflowPortPrimitive | null | undefined = produced;
   // `!= null` and not `!== null`, deliberately. This walk was `while (cursor !== null)`, which
   // terminates only for primitives the supertype map actually lists — a value outside the

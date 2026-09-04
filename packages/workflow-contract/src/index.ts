@@ -13,6 +13,48 @@
  */
 
 export type { WorkflowGraph, WorkflowGraphNode, WorkflowGraphEdge, WorkflowNodePosition } from './graph-model';
+
+// TASK-864 — the `core` vocabulary's contract: the action catalogue behind `core.action`,
+// per-instance (dynamic) branch handles, loop-body rules, the publish-time checks a JSON
+// Schema cannot express, and the protocol/trigger/schema readers the exposure plane and the
+// OpenAPI generator consume.
+export {
+  ACTION_CATALOGUE,
+  ANNOTATION_NODE_CLASS,
+  CORE_OUTPUT_PROTOCOLS,
+  CORE_TRIGGER_KINDS,
+  DEFAULT_OUTPUT_PROTOCOLS,
+  LOOP_NODE_CLASS,
+  REVIEW_NODE_CLASS,
+  ROUTER_NODE_CLASS,
+  actionConfigSchemaOf,
+  actionDelegateOf,
+  branchHandlesOf,
+  coreNodeConfigProblems,
+  declaredIoSchemas,
+  declaredOutputProtocols,
+  declaredTriggerKinds,
+  effectivePorts,
+  isBranchHandle,
+  isCoreGraph,
+  loopBodyProblems,
+  resolveInputPort,
+  resolveOutputPort,
+} from './core-contract';
+export type { CoreActionDescriptor, CoreNodeView, CoreOutputProtocol, CoreTriggerKind } from './core-contract';
+
+// TASK-864 §3.2 — the CEL-subset expression language `core.condition` / `core.loop` are authored
+// in. Pure, total, dependency-free; the Python interpreter mirrors it and both are held to ONE
+// committed fixture (`__tests__/fixtures/expressions.fixture.json`).
+export {
+  EXPRESSION_CONTEXT_ROOTS,
+  evaluateCondition,
+  evaluateExpression,
+  expressionProblems,
+  expressionRootIdentifiers,
+  parseExpression,
+} from './expressions';
+export type { ExpressionNode, ExpressionResult, ExpressionValue } from './expressions';
 export {
   MAX_GRAPH_NODES,
   MAX_GRAPH_EDGES,
@@ -44,8 +86,11 @@ export { canonicalJson } from './canonical-json';
 export {
   AGENTIC_NODE_TYPES,
   AGENTIC_PALETTE_KEY,
+  CORE_NODE_TYPES,
+  CORE_PALETTE_KEY,
   WORKFLOW_NODE_REGISTRY,
   classesOf,
+  isDeprecatedNodeType,
   paletteOf,
   nodeInfo,
   workflowNodeClassLookup,
@@ -64,6 +109,7 @@ export type { NodeConfigSchema } from './node-config-schemas';
 // the cheap kind pre-filter the Studio canvas runs on every drag — alongside the lattice, which
 // stays the publish-time authority. Tier 1 is coarser on purpose; see `port-model.ts`.
 export {
+  ANY_PORT_PRIMITIVE,
   CONTEXT_PRIMITIVES_MIRROR,
   PORT_PRIMITIVE_CONTEXT_PRIMITIVE,
   PORT_PRIMITIVE_KIND,
@@ -115,6 +161,9 @@ export type {
   CompiledStage,
   CompiledNode,
   CompiledGate,
+  CompiledBranchGuard,
+  CompiledLoop,
+  CompiledLoopBody,
   CompiledPolicyBindings,
   CompiledCaps,
   CompiledRetryPolicy,
@@ -125,7 +174,7 @@ export type {
   CompileResult,
 } from './compiler';
 
-export { DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
+export { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
 export type { DraftWorkflowRule } from './rule-catalogue';
 
 // `ALL_DRAFT_RULES` — every palette's bundled rule set, which is also `validate()`'s own

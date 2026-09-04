@@ -33,6 +33,7 @@
  */
 import type { ActionResult } from '../store/types';
 import type { WorkflowNodeDescriptor, WorkflowNodePort, WorkflowPortPrimitive } from '../api/types';
+import { effectiveNodePorts } from './core-ports';
 
 /** Each primitive's direct supertype, or `null` at a lattice root. Verbatim mirror of
  *  `WORKFLOW_PORT_SUPERTYPE` (`port-model.ts`) — see the module comment for why this is a
@@ -50,6 +51,7 @@ export const PORT_SUPERTYPE: Readonly<Record<WorkflowPortPrimitive, WorkflowPort
   edits: 'object',
   verdict: 'object',
   'context<schemaRef>': 'object',
+  any: null,
 });
 
 /** Derived from `PORT_SUPERTYPE`'s own keys rather than hand-listed again, so there is exactly
@@ -65,6 +67,9 @@ export const MIRRORED_PORT_PRIMITIVES: readonly WorkflowPortPrimitive[] = Object
  * the whole point — this relation is deliberately NOT symmetric.
  */
 export function portPrimitiveSatisfies(produced: WorkflowPortPrimitive, consumed: WorkflowPortPrimitive): boolean {
+  // TASK-864: `any` is a consumer-side wildcard over DATA — mirrors `port-model.ts`'s
+  // `portPrimitiveSatisfies` short-circuit; a `control` producer never satisfies it.
+  if (consumed === 'any') return produced !== 'control';
   let cursor: WorkflowPortPrimitive | null = produced;
   while (cursor !== null) {
     if (cursor === consumed) return true;
@@ -75,10 +80,12 @@ export function portPrimitiveSatisfies(produced: WorkflowPortPrimitive, consumed
 
 type PortDirection = 'input' | 'output';
 
-function findPort(descriptor: WorkflowNodeDescriptor | undefined, handle: string, direction: PortDirection): WorkflowNodePort | undefined {
-  if (!descriptor) return undefined;
-  const ports = direction === 'input' ? descriptor.inputs : descriptor.outputs;
-  return ports.find((port) => port.name === handle);
+function findPort(descriptorByType: ReadonlyMap<string, WorkflowNodeDescriptor>, endpoint: PortEndpoint, direction: PortDirection): WorkflowNodePort | undefined {
+  // TASK-864: ports are per INSTANCE — a router's branch handles come from its config and a
+  // `core.action` wears its delegate's table — so the lookup goes through `effectiveNodePorts`.
+  const ports = effectiveNodePorts(descriptorByType, endpoint.type, endpoint.config);
+  if (!ports) return undefined;
+  return (direction === 'input' ? ports.inputs : ports.outputs).find((port) => port.name === endpoint.handle);
 }
 
 export interface PortEndpoint {
@@ -86,6 +93,8 @@ export interface PortEndpoint {
   type: string;
   /** The edge's `fromPort`/`toPort` name. */
   handle: string;
+  /** The instance's config — decides a router's branch handles and an action's delegate (TASK-864). */
+  config?: Record<string, unknown>;
 }
 
 /**
@@ -102,11 +111,11 @@ export function checkPortCompatibility(
   source: PortEndpoint,
   target: PortEndpoint,
 ): ActionResult {
-  const outputPort = findPort(descriptorByType.get(source.type), source.handle, 'output');
+  const outputPort = findPort(descriptorByType, source, 'output');
   if (!outputPort) {
     return { ok: false, reason: `Node type "${source.type}" has no output port named "${source.handle}".` };
   }
-  const inputPort = findPort(descriptorByType.get(target.type), target.handle, 'input');
+  const inputPort = findPort(descriptorByType, target, 'input');
   if (!inputPort) {
     return { ok: false, reason: `Node type "${target.type}" has no input port named "${target.handle}".` };
   }
