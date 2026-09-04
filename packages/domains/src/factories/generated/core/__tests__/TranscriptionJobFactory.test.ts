@@ -285,3 +285,28 @@ describe('TranscriptionJobFactory', () => {
     });
   });
 });
+
+// TASK-861 — the agent path creates jobs without a pipeline row.
+describe('TranscriptionJobFactory — agent re-key (TASK-861)', () => {
+  const resolvedSpec = { schemaVersion: 1, runtimeKey: 'agent-v-1' };
+
+  it('creates an agent-keyed batch job with no pipelineId', () => {
+    const job = TranscriptionJobFactory.CreateBatchJob({
+      tenantId: 'tenant-123',
+      mediaId: 'media-1',
+      agentVersionId: 'agent-v-1',
+      resolvedSpec,
+    });
+    expect(job.pipelineId).toBeNull();
+    expect(job.agentVersionId).toBe('agent-v-1');
+    expect(job.resolvedSpec).toEqual(resolvedSpec);
+    expect(() => job.validate()).not.toThrow();
+  });
+
+  it('keeps the deprecated pipeline path working for the window', () => {
+    const job = TranscriptionJobFactory.CreateStreamingJob({ tenantId: 'tenant-123', pipelineId: 'pipeline-123' });
+    expect(job.pipelineId).toBe('pipeline-123');
+    expect(job.agentVersionId).toBeNull();
+    expect(job.resolvedSpec).toBeNull();
+  });
+});

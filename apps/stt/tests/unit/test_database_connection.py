@@ -9,6 +9,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _database_enabled():
+    """TASK-861: the connection is OFF by default; this module tests the ON path."""
+    from stt.core.database import connection
+
+    with patch.object(connection.settings, "database_enabled", True):
+        yield
+
+
 class TestDatabaseConnectionHelpers:
     """Tests for database connection helper functions."""
 

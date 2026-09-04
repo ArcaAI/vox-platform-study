@@ -35,6 +35,7 @@ from harness.temporal.activities import (
 )
 from harness.temporal.client import get_temporal_client
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
+from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
 from harness.temporal.interpreter.loop_activities import (
     loop_state_checkpoint,
@@ -44,6 +45,7 @@ from harness.temporal.interpreter.loop_workflow import (
     AgenticLoopWorkflow,
     AgenticSubAgentWorkflow,
 )
+from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
@@ -319,6 +321,11 @@ async def run_worker() -> None:
             # hosted here or a loop node hangs waiting for a worker that never polls for it.
             AgenticLoopWorkflow,
             AgenticSubAgentWorkflow,
+            # TASK-864 — the `core` vocabulary's two child workflow types (a human review and a
+            # sub-graph loop), started by the interpreter with no explicit task_queue and
+            # therefore served here.
+            ReviewGateWorkflow,
+            LoopWorkflow,
         ],
         activities=[
             ping_activity,

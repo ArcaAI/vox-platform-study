@@ -1,5 +1,9 @@
 # HOPE Compat Playground
 
+> **Deprecated.** CI no longer tests, builds, scans, or promotes this
+> app. Aggregate repo scripts (`pnpm lint` / `test` / `build` / `typecheck`) skip
+> it. Local opt-in remains: `pnpm compat:dev` (port 5177).
+
 A **standalone developer console** — `@arcaai/compat-playground` — modeling what a
 real HOPE v1 → v2 migrating developer would build on `@arcaai/vox/compat`. It is
 the runnable reference for the compat surface: connect with tenant credentials,

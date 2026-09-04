@@ -74,6 +74,39 @@ class NlpClient:
             data = resp.json()
         return [self._to_entity(e) for e in data.get("entities", [])]
 
+    async def classify_text(
+        self,
+        text: str,
+        *,
+        tenant_id: str,
+        model_name: str,
+        model_path: str | None = None,
+        language: str = "en",
+    ) -> dict[str, Any]:
+        """TASK-864 `core.classify` -> ``POST /api/v1/classify/text`` (single-label).
+
+        Returns the raw ``TextClassificationResponse`` dict (``predicted_label``, ``confidence``,
+        ``probabilities``, ``model_version``). ``model_name``/``model_path`` are the registry
+        row's ``sourceUri``/``localPath`` the gateway resolved — the NLP service fails closed
+        (503) without a model, and this client never invents one.
+        """
+        if not tenant_id or not tenant_id.strip():
+            raise ValueError("nlp classify_text requires a tenant_id")
+        url = f"{self._base_url}/api/v1/classify/text"
+        body: dict[str, Any] = {"text": text, "language": language, "model_name": model_name}
+        if model_path:
+            body["model_path"] = model_path
+        headers: dict[str, str] = {"X-Tenant-Id": tenant_id.strip()}
+        if self._service_token:
+            headers["X-Service-Token"] = self._service_token
+        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+            try:
+                resp = await client.post(url, json=body, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise NlpServiceError(f"nlp classify/text failed: {exc}") from exc
+            return resp.json()  # type: ignore[no-any-return]
+
     @staticmethod
     def _to_entity(raw: dict[str, Any]) -> NEREntity:
         position = raw.get("position") or {}

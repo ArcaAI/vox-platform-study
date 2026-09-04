@@ -5,6 +5,7 @@
  * by the StreamingSessionService to communicate with the STT service.
  */
 
+import type { ResolvedAsrSpec } from '@arcaai/types';
 import { StorageDescriptor } from '../../../baseServices/storage/providers/IBlobStorageProvider';
 
 // ---------------------------------------------------------------------------
@@ -16,8 +17,19 @@ export interface CreateStreamingSessionRequest {
   sessionId: string;
   /** Tenant identifier */
   tenantId: string;
-  /** ASR pipeline identifier (UUID or slug) */
+  /**
+   * The runtime identity the session is keyed on. With `resolvedSpec` this is
+   * `spec.runtimeKey` (the ASR Agent VERSION id); without it, the deprecated
+   * `AsrPipeline` id/slug `apps/stt` still looks up for the window.
+   */
   pipelineId: string;
+  /**
+   * TASK-861 — the gateway-resolved ASR runtime contract. When present,
+   * `apps/stt` assembles the engine chain from it and reads NOTHING from
+   * Postgres; `pipelineId` / `fallbackPipelineId` are then the spec's runtime
+   * keys, sent for the session-identity plumbing that predates the spec.
+   */
+  resolvedSpec?: ResolvedAsrSpec | null;
   /** Optional consultation context */
   consultationId?: string;
   /** Audio sample rate in Hz (default 16000) */
@@ -64,8 +76,9 @@ export interface CreateStreamingSessionRequest {
    */
   providerOverrides?: Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
   /**
-   * Tenant-level default fallback pipeline id. Forwarded so the
-   * session runtime can lazily resolve + swap to the fallback ASR engine on a
+   * The fallback engine's runtime key (`resolvedSpec.fallback.spec.runtimeKey`),
+   * or — deprecated, TASK-861 — the tenant-level fallback `AsrPipeline` id.
+   * Forwarded so the session runtime can swap to the fallback ASR engine on a
    * classified outage without tearing the WebSocket.
    */
   fallbackPipelineId?: string | null;

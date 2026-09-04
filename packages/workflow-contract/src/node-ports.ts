@@ -501,6 +501,103 @@ export const NODE_PORTS: Readonly<Record<string, WorkflowNodePorts>> = Object.fr
   'agentic.loop': ports([port('in', 'object', false, true), AFTER], [port('out', 'object', true, true, { outputKey: 'result' }), NEXT]),
   'agentic.stt': ports([port('in', 'audio', true, false), AFTER], [port('out', 'transcript', true, true, { outputKey: 'transcript' }), NEXT]),
   'agentic.tts': ports([port('in', 'text', true, false), AFTER], [port('out', 'audio', true, true, { outputKey: 'audio' }), NEXT]),
+
+  // -------------------------------------------------------------------------------------------
+  // TASK-864 — the `core` vocabulary: the owner's nine primitives plus the two platform-action
+  // node types (`core.data`, `core.action`). One palette, composed; behaviour is CONFIGURATION.
+  //
+  // Three typing choices carry the contract here:
+  //
+  //  - **`any` (consumer-side wildcard)** on `core.humanReview.in`, `core.condition.in`,
+  //    `core.loop.in` and `core.output.in` — the owner's own `in: any`. See `port-model.ts`'s
+  //    `ANY_PORT_PRIMITIVE`: it accepts every DATA primitive and can widen nothing back out, so the
+  //    anti-laundering rule survives it untouched.
+  //  - **Branch handles are DYNAMIC and typed `control`.** `core.classify` fans out one handle
+  //    per `classes[].key`, `core.condition` one per `branches[].key`; both keep a static
+  //    `otherwise` / `else`, and `core.humanReview` keeps the static `approved` / `rejected` /
+  //    `timedOut`. A branch handle carries NO payload — the routing decision is the fact that the
+  //    handle was TAKEN — so it is an ordering edge into a downstream node's `after` socket, never a
+  //    data edge. The per-class handles cannot be listed here (they are per-instance); the
+  //    contract resolves them from the node's config (`core-contract.ts`'s `resolveOutputPort`),
+  //    and the compiler turns an edge from any of them into a `branchGuards` entry on the target.
+  //  - **`core.agent` declares the union of every task's sockets.** LLM: `in: text` /
+  //    `context: object` -> `out: text` / `data: object`; ASR: `audio` -> `transcript`; TTS: `in:
+  //    text` -> `audio`. Which subset is LIVE is derived from the referenced agent's task by the
+  //    Studio and the activity (the registry is one static contract per TYPE, and an agent's task
+  //    is per instance). Every declared socket is a real, typed one, so a graph that wires a
+  //    socket the bound agent cannot serve is a publish problem, not a silent no-op.
+  //
+  // `core.trigger` and `core.output` are the graph BOUNDARIES: the trigger has only a source
+  // handle (`out: context<schemaRef>`, the consultation-context object the whole session reads),
+  // the output only target handles. `core.note` has NO ports at all — it is a canvas comment,
+  // stripped by `compile()`; `node-contract.test.ts` exempts the `annotation` class from the
+  // "a node must have a port" rule for exactly that reason.
+  //
+  // `core.action` declares a generic SUPERSET of sockets; the effective sockets of an instance
+  // are the delegated action's own (`ACTION_CATALOGUE[actionKey]` -> the legacy node type's port
+  // table), resolved by `core-contract.ts`. The static table exists so the descriptor stays
+  // total and the parity fixture stays a projection of static declarations.
+  // -------------------------------------------------------------------------------------------
+  'core.trigger': ports([], [port('out', 'context<schemaRef>', true, true, { outputKey: 'context' }), NEXT]),
+  'core.agent': ports(
+    [port('in', 'text', false, true), port('context', 'object', false, true), port('audio', 'audio', false, false), AFTER],
+    [
+      port('out', 'text', true, true, { outputKey: 'text' }),
+      port('data', 'object', false, true, { outputKey: 'data' }),
+      port('transcript', 'transcript', false, true, { outputKey: 'transcript' }),
+      port('audio', 'audio', false, true, { outputKey: 'audio' }),
+      NEXT,
+    ],
+  ),
+  // `in: any` rather than `text`: a Classify node routes whatever it is handed — a transcript,
+  // a generated text, or the Trigger's context object (the activity reads `text` off an object
+  // and classifies that) — and `any` is the consumer-side wildcard that says so honestly.
+  'core.classify': ports(
+    [port('in', 'any', true, false), AFTER],
+    [port('out', 'object', true, true, { outputKey: 'classification' }), control('otherwise', false, true), NEXT],
+  ),
+  'core.humanReview': ports(
+    [port('in', 'any', false, true), AFTER],
+    [
+      port('out', 'object', true, true, { outputKey: 'decision' }),
+      control('approved', false, true),
+      control('rejected', false, true),
+      control('timedOut', false, true),
+      NEXT,
+    ],
+  ),
+  'core.variable': ports([port('set', 'object', false, true), AFTER], [port('out', 'object', true, true, { outputKey: 'vars' }), NEXT]),
+  'core.condition': ports(
+    [port('in', 'any', false, true), AFTER],
+    [port('out', 'object', true, true, { outputKey: 'evaluation' }), control('else', false, true), NEXT],
+  ),
+  'core.loop': ports(
+    [port('in', 'any', false, true), AFTER],
+    [port('each', 'object', true, true, { outputKey: 'item' }), port('done', 'object', true, true, { outputKey: 'result' }), NEXT],
+  ),
+  'core.note': ports([], []),
+  'core.output': ports([port('in', 'any', false, true), AFTER], []),
+  'core.data': ports([port('in', 'object', true, true), AFTER], [port('out', 'object', true, true, { outputKey: 'data' }), NEXT]),
+  'core.action': ports(
+    [
+      port('in', 'object', false, true),
+      port('text', 'text', false, true),
+      port('transcript', 'transcript', false, false),
+      port('entities', 'entities', false, true),
+      port('document', 'document', false, false),
+      port('context', 'context<schemaRef>', false, true),
+      AFTER,
+    ],
+    [
+      port('out', 'object', true, true, { outputKey: 'result' }),
+      port('text', 'text', false, true, { outputKey: 'text' }),
+      port('entities', 'entities', false, true, { outputKey: 'entities' }),
+      port('verdict', 'verdict', false, true, { outputKey: 'verdict' }),
+      port('document', 'document', false, true, { outputKey: 'document' }),
+      port('context', 'context<schemaRef>', false, true, { outputKey: 'context' }),
+      NEXT,
+    ],
+  ),
 });
 
 /** `{ inputs: [], outputs: [] }` for an unregistered type — callers detect that via the

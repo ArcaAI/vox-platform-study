@@ -8,6 +8,7 @@ import { TenantSttConfigEntityMapper } from '../../../mappers';
 import { TenantSttConfig } from '../../../models';
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`). */
 export class TenantSttConfigRepository extends Repository<TenantSttConfigEntity, TenantSttConfig> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'tenantSttConfig', TenantSttConfigEntityMapper.getInstance());

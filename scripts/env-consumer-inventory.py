@@ -146,7 +146,7 @@ def build() -> dict[str, list[str]]:
     print(f"  {'api':14} {len(api):4} env vars (incl. shared packages)", file=sys.stderr)
     add("api", api)
 
-    for app in ("admin-console", "compat-playground"):
+    for app in ("admin-console",):
         d = REPO / "apps" / app / "src"
         if d.is_dir():
             keys = ts_keys(d)

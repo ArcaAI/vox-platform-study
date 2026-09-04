@@ -1,5 +1,10 @@
 // Pipeline-toggle descriptors.
 //
+// @deprecated TASK-861 — removed in R4. `PipelinePolicy` retires; these five
+// toggles become `enabled` flags on the nodes of the workflow a department is
+// assigned (`WorkflowAssignment`, TASK-864). The descriptors stay registered
+// for the window so existing rows remain readable and governed.
+//
 // Sourced FROM the existing `PIPELINE_SETTING_DESCRIPTORS` (config-resolver) so
 // maxScope + code default stay single-sourced — the registry adds only the
 // classification metadata (tier / sensitivity / editor / category). No behaviour

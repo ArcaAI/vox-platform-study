@@ -20,6 +20,7 @@ export interface CreateTenantSttConfigProps extends BaseEntityFactoryCreateProps
   updatedBy?: ITenantSttConfigEntity['updatedBy'];
 }
 
+/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`). */
 export class TenantSttConfigFactory {
   static CreateTenantSttConfig(props: CreateTenantSttConfigProps): TenantSttConfigEntity {
     const id = generateId();

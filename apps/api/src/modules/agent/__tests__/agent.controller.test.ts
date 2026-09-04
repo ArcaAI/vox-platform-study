@@ -59,7 +59,13 @@ function make(overrides: Record<string, unknown> = {}) {
   const jobService = { createBatchJob: vi.fn(async () => ({ id: 'job-1', status: 'PENDING' })), failJob: vi.fn() };
   const realtimeService = { dispatchDramatiqJob: vi.fn(async () => undefined) };
   const mediaService = { fetchById: vi.fn(async () => ({ id: 'media-1', uri: 's3://bucket/audio.wav' })) };
-  const deps = { agentService, resolver, invocation, cls, jobService, realtimeService, mediaService, ...overrides };
+  // TASK-861 — the ASR resolution behind `transcriptions`.
+  const asrResolver = {
+    resolve: vi.fn(async () => ({
+      spec: { schemaVersion: 1, runtimeKey: 'agent-v-1', agent: { slug: 'platform-transcription', versionId: 'agent-v-1' }, models: { asr: { slug: 'whisper' } }, fallback: { kind: 'none', spec: null } },
+    })),
+  };
+  const deps = { agentService, resolver, invocation, cls, jobService, realtimeService, mediaService, asrResolver, ...overrides };
   const controller = new AgentController(
     deps.agentService as never,
     deps.resolver as never,
@@ -75,6 +81,7 @@ function make(overrides: Record<string, unknown> = {}) {
     deps.jobService as never,
     deps.realtimeService as never,
     deps.mediaService as never,
+    deps.asrResolver as never,
   );
   return { controller, ...deps };
 }
@@ -130,18 +137,25 @@ describe('AgentController — invocations', () => {
   });
 });
 
-describe('AgentController — transcriptions', () => {
-  it('creates the batch job on the agent-resolved pipeline and dispatches it with the media uri', async () => {
-    const { controller, jobService, realtimeService } = make();
+describe('AgentController — transcriptions (TASK-861: agent-keyed, no pipeline row)', () => {
+  it('resolves the agent to a ResolvedAsrSpec, creates an agent-keyed job and dispatches the spec with the media uri', async () => {
+    const { controller, jobService, realtimeService, asrResolver, invocation } = make();
     const out = await controller.transcribe('platform-transcription', { mediaId: 'media-1', language: 'ml-en' });
-    expect(jobService.createBatchJob).toHaveBeenCalledWith({ pipelineId: 'pipe-1', mediaId: 'media-1', consultationId: undefined });
-    expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-1', pipelineId: 'pipe-1', audioUri: 's3://bucket/audio.wav', language: 'ml-en' }));
-    expect(out).toMatchObject({ id: 'job-1', pipelineId: 'pipe-1', sseUrl: '/api/v1/audio/transcription-jobs/job-1/stream' });
+    expect(asrResolver.resolve).toHaveBeenCalledWith({ tenantId: TENANT, agentSlug: 'platform-transcription', departmentId: null });
+    expect(invocation.resolveAsrPipelineId).not.toHaveBeenCalled();
+    expect(jobService.createBatchJob).toHaveBeenCalledWith(
+      expect.objectContaining({ agentVersionId: 'agent-v-1', resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }), mediaId: 'media-1', consultationId: undefined }),
+    );
+    expect(jobService.createBatchJob.mock.calls[0][0]).not.toHaveProperty('pipelineId');
+    expect(realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'job-1', pipelineId: 'agent-v-1', resolvedSpec: expect.objectContaining({ runtimeKey: 'agent-v-1' }), audioUri: 's3://bucket/audio.wav', language: 'ml-en' }),
+    );
+    expect(out).toMatchObject({ id: 'job-1', agentSlug: 'platform-transcription', agentVersionId: 'agent-v-1', pipelineId: 'agent-v-1', sseUrl: '/api/v1/audio/transcription-jobs/job-1/stream' });
   });
 
-  it('fails closed (409) when no ASR pipeline can serve the agent model', async () => {
-    const { controller, invocation, jobService } = make();
-    invocation.resolveAsrPipelineId.mockResolvedValue(null);
+  it('fails closed (409) when the agent cannot become a runnable spec — the resolver’s verdict propagates untouched', async () => {
+    const { controller, asrResolver, jobService } = make();
+    asrResolver.resolve.mockRejectedValue(new ConflictException({ code: 'ASR_AGENT_UNRUNNABLE' }));
     await expect(controller.transcribe('x', { mediaId: 'media-1' })).rejects.toBeInstanceOf(ConflictException);
     expect(jobService.createBatchJob).not.toHaveBeenCalled();
   });

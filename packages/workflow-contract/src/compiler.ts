@@ -9,11 +9,28 @@
  * catalogue — but it is still TOTAL: a structurally broken graph (a cycle, a dangling
  * reference) yields `{ findings }` rather than throwing, because a compiler that can be handed
  * an unsafe graph and silently produce SOMETHING is the exact failure mode warns about.
+ *
+ * ## TASK-864 — what the `core` vocabulary adds, all ADDITIVE and keyed on node CLASS
+ *
+ * The compiler stays registry-free: it reads `CompilerNodeInfo.classes` and nothing else.
+ *
+ *  - `annotation` (`core.note`) nodes and their edges are STRIPPED before anything else.
+ *  - `router` / `review` nodes: an edge leaving any handle other than `out`/`next` is a BRANCH.
+ *    It is recorded on the TARGET as a `branchGuards` entry (`{ fromNodeId, handle }`) and is
+ *    NOT an input binding — a branch carries no payload, only the fact that it was taken. The
+ *    interpreter dispatches a guarded node only when one of its guards was taken.
+ *  - `loop` nodes: every node carrying `parentId = <loop id>` is the loop's BODY. Body nodes are
+ *    lifted OUT of the top-level stages and compiled — recursively, with the same rules — into
+ *    `loops[{ nodeId, body: { stages } }]`. The loop's `each` edges become the body's input
+ *    bindings (`fromNodeId = <loop id>, fromPort = 'each'`), which `LoopWorkflow` satisfies from
+ *    the current item.
+ *  - Both new fields are OMITTED when empty, so every artifact compiled before this ticket is
+ *    byte-identical (and so its checksum still verifies).
  */
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
 import { topologicalLevels } from './graph-algorithms';
-import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
+import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from './graph-model';
 import { internalErrorFinding } from './report';
 import type { WorkflowFinding } from './report';
 
@@ -31,6 +48,12 @@ export interface CompiledInputBinding {
   toPort: string;
 }
 
+/** TASK-864 — one branch a node is gated behind: the router/review node and the handle. */
+export interface CompiledBranchGuard {
+  fromNodeId: string;
+  handle: string;
+}
+
 export interface CompiledNode {
   nodeId: string;
   type: string;
@@ -41,6 +64,8 @@ export interface CompiledNode {
   inputs: CompiledInputBinding[];
   onError: 'fail' | 'degrade';
   emitsTrajectory: true;
+  /** TASK-864 — present only when the node sits behind at least one branch handle. */
+  branchGuards?: CompiledBranchGuard[];
 }
 
 export interface CompiledStage {
@@ -54,6 +79,16 @@ export interface CompiledGate {
   blocking: boolean;
   timeoutSeconds: number;
   onTimeout: string;
+}
+
+/** TASK-864 — a `core.loop`'s compiled body, walked once per iteration by `LoopWorkflow`. */
+export interface CompiledLoopBody {
+  stages: CompiledStage[];
+}
+
+export interface CompiledLoop {
+  nodeId: string;
+  body: CompiledLoopBody;
 }
 
 export interface CompiledPolicyBindings {
@@ -96,6 +131,8 @@ export interface CompiledWorkflowConfig {
   gates: CompiledGate[];
   policyBindings: CompiledPolicyBindings;
   caps: CompiledCaps;
+  /** TASK-864 — present only when the graph contains at least one `core.loop`. Sorted by `nodeId`. */
+  loops?: CompiledLoop[];
   checksum: string;
 }
 
@@ -126,23 +163,56 @@ export type CompileResult = { config: CompiledWorkflowConfig } | { findings: Wor
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const DEFAULT_RETRY: CompiledRetryPolicy = { maximumAttempts: 1, initialIntervalSeconds: 1, backoffCoefficient: 2 };
 
+/** The classes the compiler keys on (mirrors `core-contract.ts`; duplicated so this module stays registry-free). */
+const ROUTER_CLASSES: ReadonlySet<string> = new Set(['router', 'review']);
+const LOOP_CLASS = 'loop';
+const ANNOTATION_CLASS = 'annotation';
+const GATE_CLASS = 'gate';
+/** Output handles of a router/review node that carry data or ordering, not a branch. */
+const NON_BRANCH_OUTPUTS: ReadonlySet<string> = new Set(['out', 'next']);
+/** The loop's body-entry handle. */
+const LOOP_EACH_PORT = 'each';
+
 function clamp(value: number, max: number): number {
   return Math.min(value, max);
 }
 
-function compileNode(node: WorkflowGraphNode, graph: WorkflowGraph, ctx: CompilerContext, activity: string): CompiledNode {
+function hasClass(ctx: CompilerContext, type: string, cls: string): boolean {
+  return ctx.nodeInfo(type)?.classes.includes(cls) ?? false;
+}
+
+function isBranchEdge(edge: WorkflowGraphEdge, nodesById: Map<string, WorkflowGraphNode>, ctx: CompilerContext): boolean {
+  const from = nodesById.get(edge.from);
+  if (from === undefined) return false;
+  const info = ctx.nodeInfo(from.type);
+  if (info === undefined || !info.classes.some((cls) => ROUTER_CLASSES.has(cls))) return false;
+  return !NON_BRANCH_OUTPUTS.has(edge.fromPort);
+}
+
+function compileNode(
+  node: WorkflowGraphNode,
+  incoming: readonly WorkflowGraphEdge[],
+  nodesById: Map<string, WorkflowGraphNode>,
+  ctx: CompilerContext,
+  activity: string,
+): CompiledNode {
   const config = node.config ?? {};
   const requestedTimeout = typeof config.timeoutSeconds === 'number' ? config.timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
   const requestedRetry = typeof config.retry === 'object' && config.retry !== null ? (config.retry as Partial<CompiledRetryPolicy>) : {};
 
-  const inputs: CompiledInputBinding[] = graph.edges
-    .filter((edge) => edge.to === node.id)
+  const inputs: CompiledInputBinding[] = incoming
+    .filter((edge) => !isBranchEdge(edge, nodesById, ctx))
     .map((edge) => ({ fromNodeId: edge.from, fromPort: edge.fromPort, toPort: edge.toPort }))
     // Deterministic regardless of authored edge order, per the shuffle-invariance property —
     // this does NOT contradict "array order is authored intent" (canonical-json.ts): that rule
     // protects the compiled OUTPUT's array order, not the compiler's internal aggregation of
     // scattered edges into one node's input list.
     .sort((a, b) => (a.toPort === b.toPort ? a.fromNodeId.localeCompare(b.fromNodeId) : a.toPort.localeCompare(b.toPort)));
+
+  const branchGuards: CompiledBranchGuard[] = incoming
+    .filter((edge) => isBranchEdge(edge, nodesById, ctx))
+    .map((edge) => ({ fromNodeId: edge.from, handle: edge.fromPort }))
+    .sort((a, b) => (a.fromNodeId === b.fromNodeId ? a.handle.localeCompare(b.handle) : a.fromNodeId.localeCompare(b.fromNodeId)));
 
   return {
     nodeId: node.id,
@@ -158,6 +228,8 @@ function compileNode(node: WorkflowGraphNode, graph: WorkflowGraph, ctx: Compile
     inputs,
     onError: config.onError === 'degrade' ? 'degrade' : 'fail',
     emitsTrajectory: true,
+    // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
+    ...(branchGuards.length > 0 ? { branchGuards } : {}),
   };
 }
 
@@ -176,6 +248,81 @@ function compileGate(node: WorkflowGraphNode, ctx: CompilerContext): CompiledGat
   };
 }
 
+interface Scope {
+  /** The nodes of this scope — top-level nodes, or one loop's body. */
+  nodes: WorkflowGraphNode[];
+  /** Edges INSIDE this scope, plus (for a body) the loop's `each` edges into it. */
+  edges: WorkflowGraphEdge[];
+}
+
+type ScopeResult = { stages: CompiledStage[]; gates: CompiledGate[]; loops: CompiledLoop[] } | { findings: WorkflowFinding[] };
+
+/**
+ * Compile one SCOPE (the top level, or a loop body) into stages, lifting gates and compiling
+ * nested loop bodies recursively.
+ */
+function compileScope(
+  scope: Scope,
+  allNodesById: Map<string, WorkflowGraphNode>,
+  bodiesByLoop: Map<string, WorkflowGraphNode[]>,
+  allEdges: readonly WorkflowGraphEdge[],
+  ctx: CompilerContext,
+): ScopeResult {
+  const scopeIds = new Set(scope.nodes.map((node) => node.id));
+  // Topological ordering considers only edges BETWEEN scope members; an `each` edge from the
+  // enclosing loop is a binding, not an ordering constraint inside the body.
+  const orderingEdges = scope.edges.filter((edge) => scopeIds.has(edge.from) && scopeIds.has(edge.to));
+  const levels = topologicalLevels({ version: 1, nodes: scope.nodes, edges: orderingEdges });
+  if ('cycle' in levels) {
+    return {
+      findings: [
+        {
+          ruleId: 'WF-S-001',
+          ruleClass: 'structural',
+          severity: 'ERROR',
+          nodeId: null,
+          message: `cannot compile: graph contains a cycle involving: ${levels.cycle.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  const gateIds = new Set(scope.nodes.filter((node) => hasClass(ctx, node.type, GATE_CLASS)).map((node) => node.id));
+
+  const stages: CompiledStage[] = [];
+  const loops: CompiledLoop[] = [];
+  for (const level of levels.levels) {
+    const stageNodeIds = level.filter((id) => !gateIds.has(id)).sort();
+    if (stageNodeIds.length === 0) continue;
+    const nodes: CompiledNode[] = [];
+    for (const id of stageNodeIds) {
+      const node = allNodesById.get(id) as WorkflowGraphNode;
+      const info = ctx.nodeInfo(node.type) as CompilerNodeInfo;
+      const incoming = scope.edges.filter((edge) => edge.to === node.id);
+      nodes.push(compileNode(node, incoming, allNodesById, ctx, info.activity));
+
+      if (hasClass(ctx, node.type, LOOP_CLASS)) {
+        const body = bodiesByLoop.get(node.id) ?? [];
+        const bodyIds = new Set(body.map((member) => member.id));
+        const bodyEdges = allEdges.filter(
+          (edge) =>
+            (bodyIds.has(edge.from) && bodyIds.has(edge.to)) || (edge.from === node.id && edge.fromPort === LOOP_EACH_PORT && bodyIds.has(edge.to)),
+        );
+        const compiledBody = compileScope({ nodes: body, edges: bodyEdges }, allNodesById, bodiesByLoop, allEdges, ctx);
+        if ('findings' in compiledBody) return compiledBody;
+        loops.push({ nodeId: node.id, body: { stages: compiledBody.stages } }, ...compiledBody.loops);
+      }
+    }
+    stages.push({ stageIndex: stages.length, nodes });
+  }
+
+  const gates: CompiledGate[] = Array.from(gateIds)
+    .sort()
+    .map((id) => compileGate(allNodesById.get(id) as WorkflowGraphNode, ctx));
+
+  return { stages, gates, loops };
+}
+
 /**
  * Compile a graph into its `compiledConfig`. Total: returns `{ findings }` (never throws) when
  * the graph is not shape-safe for compilation (e.g. contains a cycle, so no topological stage
@@ -183,22 +330,6 @@ function compileGate(node: WorkflowGraphNode, ctx: CompilerContext): CompiledGat
  */
 export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResult {
   try {
-    const levels = topologicalLevels(graph);
-    if ('cycle' in levels) {
-      return {
-        findings: [
-          {
-            ruleId: 'WF-S-001',
-            ruleClass: 'structural',
-            severity: 'ERROR',
-            nodeId: null,
-            message: `cannot compile: graph contains a cycle involving: ${levels.cycle.join(', ')}`,
-          },
-        ],
-      };
-    }
-
-    const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
     const unresolvable = graph.nodes.filter((node) => ctx.nodeInfo(node.type) === undefined);
     if (unresolvable.length > 0) {
       return {
@@ -212,27 +343,35 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
       };
     }
 
-    const gateIds = new Set(
-      graph.nodes.filter((node) => (ctx.nodeInfo(node.type) as CompilerNodeInfo).classes.includes('gate')).map((node) => node.id),
-    );
+    // 1) Strip annotations (TASK-864): a note is a canvas comment and never executes.
+    const annotationIds = new Set(graph.nodes.filter((node) => hasClass(ctx, node.type, ANNOTATION_CLASS)).map((node) => node.id));
+    const nodes = graph.nodes.filter((node) => !annotationIds.has(node.id));
+    const edges = graph.edges.filter((edge) => !annotationIds.has(edge.from) && !annotationIds.has(edge.to));
 
-    const stages: CompiledStage[] = [];
-    for (const level of levels.levels) {
-      const stageNodeIds = level.filter((id) => !gateIds.has(id)).sort();
-      if (stageNodeIds.length === 0) continue;
-      stages.push({
-        stageIndex: stages.length,
-        nodes: stageNodeIds.map((id) => {
-          const node = nodesById.get(id) as WorkflowGraphNode;
-          const info = ctx.nodeInfo(node.type) as CompilerNodeInfo;
-          return compileNode(node, graph, ctx, info.activity);
-        }),
-      });
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+
+    // 2) Partition loop bodies (TASK-864) by `parentId`. A body whose loop is not a loop-classed
+    //    node, or whose wiring crosses the body boundary, is refused by `loopBodyProblems` at
+    //    publish; here only the partition is needed.
+    const bodiesByLoop = new Map<string, WorkflowGraphNode[]>();
+    const topLevel: WorkflowGraphNode[] = [];
+    for (const node of nodes) {
+      const parentId = node.parentId;
+      if (typeof parentId === 'string' && nodesById.has(parentId) && hasClass(ctx, (nodesById.get(parentId) as WorkflowGraphNode).type, LOOP_CLASS)) {
+        const body = bodiesByLoop.get(parentId) ?? [];
+        body.push(node);
+        bodiesByLoop.set(parentId, body);
+      } else {
+        topLevel.push(node);
+      }
     }
+    const topLevelIds = new Set(topLevel.map((node) => node.id));
+    const topLevelEdges = edges.filter((edge) => topLevelIds.has(edge.from) && topLevelIds.has(edge.to));
 
-    const gates: CompiledGate[] = Array.from(gateIds)
-      .sort()
-      .map((id) => compileGate(nodesById.get(id) as WorkflowGraphNode, ctx));
+    const compiled = compileScope({ nodes: topLevel, edges: topLevelEdges }, nodesById, bodiesByLoop, edges, ctx);
+    if ('findings' in compiled) return compiled;
+
+    const loops = compiled.loops.slice().sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
     const withoutChecksum = {
       formatVersion: 1 as const,
@@ -245,10 +384,12 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
       compilerVersion: ctx.compilerVersion,
       registryChecksum: ctx.registryChecksum,
       ruleSetVersion: ctx.ruleSetVersion,
-      stages,
-      gates,
+      stages: compiled.stages,
+      gates: compiled.gates,
       policyBindings: ctx.policyBindings,
       caps: ctx.caps,
+      // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
+      ...(loops.length > 0 ? { loops } : {}),
     };
 
     const checksum = sha256Hex(canonicalJson(withoutChecksum));

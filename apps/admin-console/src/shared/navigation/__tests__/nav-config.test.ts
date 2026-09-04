@@ -98,15 +98,18 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // into the one `/ai-providers` screen (tier 20-29): 20-29 stays at 9.
   // TASK-863: /agents is back as a REAL screen (the Agent entity), 58 -> 59,
   // tier 30-49 21 -> 22.
-  it('covers the full 59-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(59);
+  // TASK-861: `/audio/pipelines` and `/harness/pipeline-policy` RETIRED (redirect
+  // stubs; the ASR Agent + workflow assignments replace them), 59 -> 57, tier 30-49 22 -> 20.
+  it('covers the full 57-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(57);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen).
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
+    // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen);
+    // TASK-861: 61 -> 59 (two retired routes).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(59);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -557,7 +560,6 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
   ['/dna-writing-styles', '30-49', [['manage', 'DnaWritingStyleReport']]],
   // the consent register.
   ['/consent', '30-49', [['manage', 'ConsentGrant']]],
-  ['/audio/pipelines', '30-49', [['manage', 'AsrPipeline']]],
   [
     '/audio/transcription-jobs',
     '30-49',
@@ -589,14 +591,6 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
     [
       ['read', 'HarnessWorkflow'],
       ['manage', 'HarnessWorkflow'],
-    ],
-  ],
-  [
-    '/harness/pipeline-policy',
-    '30-49',
-    [
-      ['read', 'PipelinePolicy'],
-      ['manage', 'PipelinePolicy'],
     ],
   ],
   ['/workflow-runs', '30-49', [['read', 'WorkflowRun']]],
@@ -662,8 +656,10 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
     'knowledge-agents',
     ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles', '/tools-mcp', '/workflow-studio', '/workflow-studio/assignments'],
   ],
-  ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
-  ['workflow-harness', ['/harness/policy', '/harness/observability', '/harness/workflows', '/harness/pipeline-policy', '/workflow-runs']],
+  // TASK-861: `/audio/pipelines` retired.
+  ['clinical', ['/consultations', '/consent', '/audio/transcription-jobs']],
+  // TASK-861: `/harness/pipeline-policy` retired.
+  ['workflow-harness', ['/harness/policy', '/harness/observability', '/harness/workflows', '/workflow-runs']],
   ['identity-access', ['/users', '/rbac/roles', '/rbac/policies', '/api-keys', '/identity-providers', '/allowed-origins', '/security-policy']],
   // `/settings-registry` joins `/settings` here: same
   // domain, different resource — descriptor-governed keys vs raw rows/secrets.
@@ -769,7 +765,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES).toHaveLength(57);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

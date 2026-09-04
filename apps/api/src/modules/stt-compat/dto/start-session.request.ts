@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 class AudioSettingsDto {
   @ApiProperty({
@@ -86,10 +86,29 @@ export class StartSessionRequest {
   @IsObject()
   audioSettings: AudioSettingsDto;
 
+  /**
+   * TASK-861 — the ASR Agent to run this session on (lineage slug of a PUBLISHED
+   * `SPEECH_TO_TEXT` agent visible to the tenant). Omit it — and `pipelineId` —
+   * to use the tenant's assigned agent (department → tenant → SYSTEM cascade).
+   * ADDITIVE: v1 clients that never send it are unaffected.
+   */
   @ApiPropertyOptional({
-    description:
-      'Explicit STT pipeline id to run this session on. When supplied it is used directly (bypassing the `provider`-enum pipeline selection); when omitted, the pipeline is selected from `provider`.',
+    description: 'ASR Agent slug. Omit to use the assigned agent (department → tenant → platform default).',
+    example: 'platform-transcription',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9-]*$/, { message: 'agentSlug must be a slug ([A-Za-z0-9-])' })
+  agentSlug?: string;
+
+  /**
+   * @deprecated TASK-861 — removed in R4. Explicit STT pipeline id; when supplied
+   * it is used directly (the deprecated path). Prefer `agentSlug`.
+   */
+  @ApiPropertyOptional({
+    description: 'DEPRECATED (TASK-861, removed in R4): explicit STT pipeline id. Prefer `agentSlug`.',
     example: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+    deprecated: true,
   })
   @IsOptional()
   @IsUUID()

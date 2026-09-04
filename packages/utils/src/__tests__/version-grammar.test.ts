@@ -44,6 +44,7 @@ describe('parseReleaseTag', () => {
     ['TEXT-2.1.0.1', 'four-part versions are not SemVer'],
     ['TEXT-02.1.0', 'leading zeros are not SemVer'],
     ['UNKNOWN-1.0.0', 'not a known service prefix'],
+    ['COMPAT-1.0.0', 'compat-playground prefix retired'],
     ['TEXT-', 'no version'],
     ['', 'empty'],
   ])('rejects %s (%s)', (tag) => {
@@ -58,7 +59,7 @@ describe('parseReleaseTag', () => {
   it('covers every prefix the CI build rules trigger on', () => {
     // Keep in lockstep with .gitlab/ci/build.yml — a prefix that builds an image
     // but is missing here would produce a release the console cannot name.
-    expect(SERVICE_TAG_PREFIXES).toEqual(['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS']);
+    expect(SERVICE_TAG_PREFIXES).toEqual(['ALL', 'API', 'ADMIN', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS']);
   });
 });
 

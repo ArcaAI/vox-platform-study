@@ -92,6 +92,7 @@ function entityToToggles(e: PipelinePolicyEntity): PolicyToggleSnapshot {
  * only.
  */
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. `PipelinePolicy` retires; its toggles become `enabled` flags on the nodes of the assigned workflow (`WorkflowAssignment`, TASK-864). Reads keep working for the window. */
 export class PipelinePolicyService {
   private readonly logger = new Logger(PipelinePolicyService.name);
 

@@ -16,7 +16,7 @@
  * `$CI_COMMIT_TAG =~ /^(...)-/` rules in `.gitlab/ci/build.yml`; a prefix that
  * builds an image but is absent here yields a release the console cannot name.
  */
-export const SERVICE_TAG_PREFIXES = ['ALL', 'API', 'ADMIN', 'COMPAT', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS'] as const;
+export const SERVICE_TAG_PREFIXES = ['ALL', 'API', 'ADMIN', 'GUARD', 'HARNESS', 'NLP', 'TEXT', 'STT', 'TTS'] as const;
 
 export type ServiceTagPrefix = (typeof SERVICE_TAG_PREFIXES)[number];
 

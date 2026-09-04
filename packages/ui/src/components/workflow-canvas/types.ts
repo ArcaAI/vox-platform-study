@@ -15,12 +15,36 @@ export interface WorkflowCanvasNodeProblem {
   messages: readonly string[];
 }
 
+/** One declared port on a node INSTANCE — rendered as its own handle (TASK-864 B1). */
+export interface WorkflowCanvasPort {
+  /** The handle id — the edge's `sourceHandle` / `targetHandle`. */
+  id: string;
+  /** `control` ports carry sequencing only (branch handles, `next`); everything else carries data. */
+  kind: 'control' | 'data';
+  /** The port primitive, verbatim (`text`, `transcript`, `context<schemaRef>`, `any`, …) — shown as the handle's title. */
+  primitive: string;
+  label?: string;
+}
+
 export interface WorkflowCanvasNode {
   id: string;
   /** Registry node `type` — selects the renderer from the `nodeTypes` prop, when supplied. */
   type: string;
   label: string;
+  /** For a child of a group (`parentId` set), RELATIVE to the group's origin — React Flow's own convention, round-tripped verbatim. */
   position: { x: number; y: number };
+  /**
+   * Per-instance ports (TASK-864 B1). When present, every port renders as its OWN handle keyed by
+   * `id`, so an edge lands on the socket it names; when absent the node keeps the legacy single
+   * `in`/`out` pair.
+   */
+  ports?: { inputs: readonly WorkflowCanvasPort[]; outputs: readonly WorkflowCanvasPort[] };
+  /** `group`: a container (a `core.loop` body) that other nodes nest inside via `parentId`. */
+  kind?: 'node' | 'group';
+  /** The enclosing group's id — the node is drawn inside it and moves with it. */
+  parentId?: string;
+  /** A deprecated registry type: still rendered (existing graphs must stay readable), badged as such. */
+  deprecated?: boolean;
   /**
    * Open set of registry-declared classes (`contracts/registry.contract.md`
    * `WorkflowNodeClassLookup.classesOf`). A node is "mandatory" iff `'mandatory'` is a member.
@@ -80,6 +104,8 @@ export interface WorkflowCanvasProps {
   emptyState?: ReactNode;
   /** Never removes a node itself — the consumer decides (and may refuse for a `mandatory` node). */
   onDeleteRequest?: (nodeId: string) => void;
+  /** Render the overview minimap (bottom-right). Default `true`; pass `false` for tiny embeds. */
+  minimap?: boolean;
   'aria-label': string;
   className?: string;
 }

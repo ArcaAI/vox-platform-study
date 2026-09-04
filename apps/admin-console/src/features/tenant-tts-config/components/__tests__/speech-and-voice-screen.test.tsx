@@ -108,10 +108,10 @@ describe('SpeechAndVoiceScreen — structure', () => {
     expect(link.getAttribute('href')).toBe('/ai-providers');
   });
 
-  it('renders the STT fallback editor on the Speech tab and the TTS editor on the Voice tab', async () => {
+  it('renders the STT fallback retirement notice (TASK-861) on the Speech tab and the TTS editor on the Voice tab', async () => {
     stubFetch();
     renderWithProviders(<SpeechAndVoiceScreen />, { searchParams: '?tab=speech' });
-    expect(await screen.findByRole('heading', { name: /Tenant STT fallback editor/i })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Speech fallback moved to the ASR agent/i })).toBeDefined();
     cleanup();
 
     stubFetch();

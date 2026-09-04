@@ -29,6 +29,7 @@ import {
   validateWorkflowDefinition,
   type ListWorkflowDefinitionsParams,
 } from './client';
+import { listAgentOptions } from './client';
 import { workflowStudioKeys } from './keys';
 import type {
   CloneWorkflowDefinitionRequest,
@@ -234,4 +235,9 @@ export function usePutEndpointSequence() {
     // the tenant-scope read is stale even though its own row never moved.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [...workflowStudioKeys.root, 'endpoint-sequence'] }),
   });
+}
+
+/** The `core.agent` picker's options (TASK-864 B1). Retries are off: a 404 means the agent surface is not there yet, and the picker falls back to a slug box. */
+export function useAgentOptions(task: string, enabled = true) {
+  return useQuery({ queryKey: workflowStudioKeys.agentOptions(task), queryFn: () => listAgentOptions(task), enabled, retry: false, staleTime: 60_000 });
 }

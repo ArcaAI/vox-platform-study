@@ -15,4 +15,5 @@ import { PipelinePolicyService } from './pipeline-policy.service';
   providers: [PipelinePolicyService],
   exports: [PipelinePolicyService],
 })
+/** @deprecated TASK-861 — removed in R4. with `PipelinePolicy`. */
 export class PipelinePolicyServiceModule {}

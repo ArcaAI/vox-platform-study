@@ -1,6 +1,15 @@
-"""Pipeline configuration reader from database."""
+"""Pipeline configuration reader from database.
+
+.. deprecated:: TASK-861
+   The ASR Agent + gateway-resolved ``ResolvedAsrSpec`` (``stt.pipeline.spec``)
+   replaced these readers: a session/job carries every model it needs, so this
+   service reads no selection from Postgres. Both readers stay for the
+   deprecated ``pipeline_id`` path only (removed in R4), warn on every use, and
+   fail CLOSED (``DatabaseDisabledError``) while the connection is off.
+"""
 
 import logging
+import warnings
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +30,20 @@ from .yaml_parser import get_yaml_parser
 logger = logging.getLogger(__name__)
 
 
+def _deprecated(what: str) -> None:
+    warnings.warn(
+        f"{what} is deprecated (TASK-861, removed in R4): apps/stt consumes the "
+        "gateway-resolved ResolvedAsrSpec instead of reading AsrPipeline/AiModel rows.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 class PipelineConfigReader:
-    """Read ASR pipeline configurations from database."""
+    """Read ASR pipeline configurations from database.
+
+    .. deprecated:: TASK-861 — removed in R4; see the module docstring.
+    """
 
     def __init__(self, session: AsyncSession | None = None):
         """
@@ -59,6 +80,7 @@ class PipelineConfigReader:
             NotFoundError: If pipeline not found (or belongs to another tenant)
             ValidationError: If pipeline config is invalid
         """
+        _deprecated("PipelineConfigReader.get_pipeline()")
         async with get_session() as session:
             query = select(AsrPipelineRead).where(
                 AsrPipelineRead.id == pipeline_id,
@@ -91,6 +113,7 @@ class PipelineConfigReader:
             NotFoundError: If pipeline not found
             ValidationError: If pipeline config is invalid
         """
+        _deprecated("PipelineConfigReader.get_pipeline_by_slug()")
         async with get_session() as session:
             query = select(AsrPipelineRead).where(
                 AsrPipelineRead.slug == slug,
@@ -118,6 +141,7 @@ class PipelineConfigReader:
         Returns:
             List of PipelineConfig
         """
+        _deprecated("PipelineConfigReader.get_enabled_pipelines()")
         async with get_session() as session:
             query = select(AsrPipelineRead).where(
                 AsrPipelineRead.resource_status == "ENABLED",
@@ -177,7 +201,10 @@ class PipelineConfigReader:
 
 
 class ModelRegistryReader:
-    """Read AI model registry from database."""
+    """Read AI model registry from database.
+
+    .. deprecated:: TASK-861 — removed in R4; see the module docstring.
+    """
 
     async def get_model(self, model_id: str) -> AiModelConfig:
         """
@@ -192,6 +219,7 @@ class ModelRegistryReader:
         Raises:
             NotFoundError: If model not found
         """
+        _deprecated("ModelRegistryReader.get_model()")
         async with get_session() as session:
             result = await session.execute(
                 select(AiModelRead).where(
@@ -220,6 +248,7 @@ class ModelRegistryReader:
         Raises:
             NotFoundError: If model not found
         """
+        _deprecated("ModelRegistryReader.get_model_by_slug()")
         async with get_session() as session:
             query = select(AiModelRead).where(
                 AiModelRead.slug == slug,
@@ -253,6 +282,7 @@ class ModelRegistryReader:
         if not slugs:
             return []
 
+        _deprecated("ModelRegistryReader.get_models_by_slugs()")
         async with get_session() as session:
             query = select(AiModelRead).where(
                 AiModelRead.slug.in_(slugs),
@@ -277,6 +307,7 @@ class ModelRegistryReader:
         Returns:
             List of AiModelConfig
         """
+        _deprecated("ModelRegistryReader.get_downloaded_models()")
         async with get_session() as session:
             query = select(AiModelRead).where(
                 AiModelRead.download_status == "DOWNLOADED",

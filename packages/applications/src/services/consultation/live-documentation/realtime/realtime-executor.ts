@@ -219,7 +219,7 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
   // degraded. Type safety must not depend on execution succeeding.
   for (const stage of lane.stages) {
     for (const node of stage.nodes) {
-      const handler = realtimeHandlerFor(node.type);
+      const handler = realtimeHandlerFor(node.type, node.config);
       if (handler) producerHandlers.set(node.nodeId, handler);
     }
   }
@@ -230,7 +230,7 @@ export async function runRealtimeLane(input: RealtimeRunInput): Promise<Realtime
     const stageResults = await Promise.all(
       stage.nodes.map(async (node): Promise<RealtimeNodeOutcome> => {
         const startedAt = Date.now();
-        const handler = realtimeHandlerFor(node.type);
+        const handler = realtimeHandlerFor(node.type, node.config);
 
         if (!handler) {
           return {

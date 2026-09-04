@@ -20,4 +20,5 @@ import { CommonServiceModule } from '../../baseServices';
   providers: [PipelineService, PipelineTemplateResyncService, PipelineTemplateResyncCronService],
   exports: [PipelineService, PipelineTemplateResyncService],
 })
+/** @deprecated TASK-861 — removed in R4. Import `AsrAgentResolverServiceModule` instead. */
 export class PipelineServiceModule {}

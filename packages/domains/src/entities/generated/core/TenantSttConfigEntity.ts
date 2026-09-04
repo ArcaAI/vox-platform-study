@@ -22,6 +22,7 @@ export interface ITenantSttConfigEntity extends IBaseTenantEntity {
   taskKind?: AiTaskKind;
 }
 
+/** @deprecated TASK-861 — removed in R4. `fallbackPipelineId` / `autoSwitchEnabled` become the ASR Agent's `fallback` block (`ResolvedAsrSpec.fallback`). */
 export class TenantSttConfigEntity extends BaseTenantEntity {
   private _fallbackPipelineId?: ITenantSttConfigEntity['fallbackPipelineId'];
   private _autoSwitchEnabled: ITenantSttConfigEntity['autoSwitchEnabled'];
