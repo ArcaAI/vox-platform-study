@@ -174,7 +174,7 @@ export type {
   CompileResult,
 } from './compiler';
 
-export { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
+export { DRAFT_CONSULTATION_RULE_SET, DRAFT_CORE_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from './rule-catalogue';
 export type { DraftWorkflowRule } from './rule-catalogue';
 
 // `ALL_DRAFT_RULES` — every palette's bundled rule set, which is also `validate()`'s own

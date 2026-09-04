@@ -35,8 +35,8 @@ agentic.loop OBSERVABLE non-execution on THIS path. made the loop
 using every new node type compiles to a valid IR"*. So the choice is not between "runs" and
 "refused at compile" — it is between an honest ``DEGRADED`` naming the ticket that owns the work,
 and a silent ``SUCCEEDED`` for work that never happened. This module takes the first, which is
-the standing rule ``stt_placeholder.py`` states for its own siblings: *"fail loudly… never pass
-through while claiming the hop ran."* A run that reaches one is visibly degraded on its
+the standing rule the retired STT palette's ``stt_placeholder.py`` (removed by TASK-867) stated
+for its own siblings: *"fail loudly… never pass through while claiming the hop ran."* A run that reaches one is visibly degraded on its
 trajectory.
 
 ## What is NOT here, and must not be added

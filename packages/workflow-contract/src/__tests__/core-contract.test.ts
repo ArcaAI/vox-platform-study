@@ -137,6 +137,10 @@ describe('the `core` palette is registered (A1)', () => {
       expect(descriptor.deprecated).toBe(true);
       expect(descriptor.replacedBy).toBe('core.agent');
       expect(isDeprecatedNodeType(descriptor.key)).toBe(true);
+      // TASK-867 (the TASK-861 step-10 follow-up): the whole palette is unimplemented, so
+      // `nodeInfo()` hides it from the compiler and no stt graph compiles any more.
+      expect(descriptor.implemented).toBe(false);
+      expect(nodeInfo(descriptor.key)).toBeUndefined();
     }
     expect(isDeprecatedNodeType('core.agent')).toBe(false);
     expect(isDeprecatedNodeType('nope')).toBe(false);

@@ -5,6 +5,11 @@
  * (see `node-registry.ts`'s module docstring). Neither runtime can import the other's module,
  * so both sides assert against the SAME committed fixture instead of against each other —
  * `test_node_registry_parity.py` is the Python half of this guard.
+ *
+ * The one deliberate asymmetry (TASK-867): a fixture entry with `implemented: false` exists on
+ * THIS side only. `registry.py` cannot hold a spec without a registered activity callable, and
+ * the interpreter skips "no spec" and "unimplemented spec" identically, so the Python half
+ * asserts those keys are ABSENT there while this side keeps them for the deprecation window.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -74,6 +79,20 @@ function projectRegistry(): FixtureEntry[] {
 describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
   it('matches the committed cross-language fixture exactly', () => {
     expect(projectRegistry()).toEqual(loadFixtureEntries());
+  });
+
+  it('`implemented: false` is exactly the retired `stt` palette (TASK-861 step 10 / TASK-867) — the keys the Python registry has NO spec for', () => {
+    const unimplemented = loadFixtureEntries().filter((entry) => !entry.implemented).map((entry) => entry.key);
+    expect(unimplemented).toEqual([
+      'stt.asrEngine',
+      'stt.audioInput',
+      'stt.diarization',
+      'stt.languageDetection',
+      'stt.noiseFilter',
+      'stt.phiHop',
+      'stt.transcriptOutput',
+      'stt.vad',
+    ]);
   });
 
   it('the fixture is sorted by key (so a diff never looks like an unrelated reorder)', () => {
