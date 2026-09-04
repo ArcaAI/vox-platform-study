@@ -30,14 +30,20 @@
 // a strangler-fig transition with a stated end condition, not a second home for
 // the data.
 //
-// ## What must happen before this table is dropped
+// ## What must happen before this table is dropped — TASK-862 status
 //
-//   1. repoint `apps/guardrail/src/guardrail/core/tenant_config.py`'s
-//      SQLAlchemy mapping onto `AiRoutingPolicy` ⋈ `AiModel` (by `modelId`);
-//   2. repoint the TypeScript readers of `AiTaskDefaultService.getEffective`;
-//   3. delete the service, its controller, its admin-console screen and
+// /// @deprecated TASK-862 — removed in R3.
+//
+//   1. DONE (TASK-862): `apps/guardrail/.../core/tenant_config.py` reads
+//      `AiRoutingPolicy` ⋈ `AiModel` (by `modelId`); NOTHING reads this table.
+//   2. DONE (TASK-862): `AiTaskDefaultService` is a FACADE over
+//      `AiRoutingPolicyService.resolveDefault`; it never reads or writes this
+//      table. The ~40 TypeScript readers still call the facade (same interface)
+//      and are repointed one by one to `IAiRoutingPolicyService.resolveDefault`
+//      — the follow-up the orchestrator schedules after the TASK-859 wave merges.
+//   3. R3: delete the service, its controller, the console screen and
 //      `packages/vox-node/src/resources/admin/ai-task-default.ts`;
-//   4. drop the table.
+//   4. R3: drop the table (its rows are already inert — no writer exists).
 //
 // Do NOT add a new reader, a new writer, or a new row to this model.
 // ============================================================================

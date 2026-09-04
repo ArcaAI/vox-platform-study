@@ -40,10 +40,10 @@ TENANT_A = "11111111-1111-1111-1111-111111111111"
 
 
 # ---------------------------------------------------------------------------
-# A session fake that can answer the TWO queries `_load_from_db` issues: the
-# `AiTaskDefault ⋈ AiModel` select, then the `AiRuntimeProfile` select. The
-# fake in `test_tenant_config.py` answers every execute with the same rows and
-# has no `first()`, which is why it cannot see the profile read at all.
+# A scripted session fake. Since TASK-862 `_load_from_db` issues ONE query —
+# the `AiRoutingPolicy ⋈ AiModel` select; the tuning that used to come from a
+# second `AiRuntimeProfile` read now rides on the winning row's `configJson`
+# (`config_json` below). Trailing script entries are simply never consumed.
 # ---------------------------------------------------------------------------
 
 
@@ -82,10 +82,13 @@ def _selection_row(
     model_tenant: str | None,
     provider: str | None = "lm-studio",
     source_uri: str | None = "the-model",
+    config_json: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         default_tenant_id=default_tenant,
         default_resource_status="ENABLED",
+        default_enabled=True,
+        config_json=config_json,
         model_tenant_id=model_tenant,
         provider=provider,
         source_uri=source_uri,
@@ -97,38 +100,36 @@ def _selection_row(
     )
 
 
-def _profile_row(
-    tenant: str, temperature: float, max_tokens: int, timeout_s: int
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        tenant_id=tenant,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout_s=timeout_s,
-    )
-
-
 def _scripted_resolver(script: list[list[Any]]) -> TenantConfigResolver:
     session = _ScriptedSession(script)
     return TenantConfigResolver(session_factory=lambda: session, cache_ttl_s=60)
 
 
 # ---------------------------------------------------------------------------
-# F-05a — AiRuntimeProfile: tenant row wins, SYSTEM applies only on absence.
+# F-05a (TASK-862 form) — tuning rides on the WINNING row's configJson: the
+# tenant's own elected row wins, SYSTEM applies only on absence, and widening
+# is row-level (a tenant row never borrows SYSTEM's other knobs).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_runtime_profile_prefers_the_tenants_own_row() -> None:
-    """A tenant that brings its own connection may tune it. Its provider-default
-    profile row wins over the platform's for the same provider."""
+async def test_tuning_prefers_the_tenants_own_elected_row() -> None:
+    """A tenant that elected its own configuration tunes it: its configJson
+    wins over the platform row's for the same task key."""
     resolver = _scripted_resolver(
         [
-            [_selection_row(TENANT_A, SYSTEM_TENANT_ID)],
             [
-                _profile_row(SYSTEM_TENANT_ID, 0.9, 1024, 30),
-                _profile_row(TENANT_A, 0.1, 4096, 90),
-            ],
+                _selection_row(
+                    SYSTEM_TENANT_ID,
+                    SYSTEM_TENANT_ID,
+                    config_json={"temperature": 0.9, "maxTokens": 1024, "timeoutS": 30},
+                ),
+                _selection_row(
+                    TENANT_A,
+                    SYSTEM_TENANT_ID,
+                    config_json={"temperature": 0.1, "maxTokens": 4096, "timeoutS": 90},
+                ),
+            ]
         ]
     )
 
@@ -140,12 +141,17 @@ async def test_runtime_profile_prefers_the_tenants_own_row() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_profile_widens_to_system_only_on_absence() -> None:
-    """No tenant profile row = no opinion, so the platform default applies."""
+async def test_tuning_widens_to_system_only_on_absence() -> None:
+    """No tenant row = no opinion, so the platform default (and its tuning) applies."""
     resolver = _scripted_resolver(
         [
-            [_selection_row(TENANT_A, SYSTEM_TENANT_ID)],
-            [_profile_row(SYSTEM_TENANT_ID, 0.9, 1024, 30)],
+            [
+                _selection_row(
+                    SYSTEM_TENANT_ID,
+                    SYSTEM_TENANT_ID,
+                    config_json={"temperature": 0.9, "maxTokens": 1024, "timeoutS": 30},
+                )
+            ]
         ]
     )
 
@@ -157,19 +163,19 @@ async def test_runtime_profile_widens_to_system_only_on_absence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_profile_widening_is_row_level_not_field_level() -> None:
+async def test_tuning_widening_is_row_level_not_field_level() -> None:
     """A tenant row that sets only `temperature` does not borrow SYSTEM's
-    `maxTokens` — widening is tenant-level, as it is for the selection, so a
-    profile is never a blend of two tiers."""
+    `maxTokens` — the winning row is the whole opinion."""
     resolver = _scripted_resolver(
         [
-            [_selection_row(TENANT_A, SYSTEM_TENANT_ID)],
             [
-                _profile_row(SYSTEM_TENANT_ID, 0.9, 1024, 30),
-                SimpleNamespace(
-                    tenant_id=TENANT_A, temperature=0.1, max_tokens=None, timeout_s=None
+                _selection_row(
+                    SYSTEM_TENANT_ID,
+                    SYSTEM_TENANT_ID,
+                    config_json={"temperature": 0.9, "maxTokens": 1024, "timeoutS": 30},
                 ),
-            ],
+                _selection_row(TENANT_A, SYSTEM_TENANT_ID, config_json={"temperature": 0.1}),
+            ]
         ]
     )
 
@@ -181,14 +187,28 @@ async def test_runtime_profile_widening_is_row_level_not_field_level() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runtime_profile_keys_are_absent_when_no_row_exists() -> None:
-    resolver = _scripted_resolver([[_selection_row(TENANT_A, SYSTEM_TENANT_ID)], []])
+async def test_tuning_keys_are_absent_when_the_row_carries_none() -> None:
+    resolver = _scripted_resolver([[_selection_row(TENANT_A, SYSTEM_TENANT_ID)]])
 
     keys = await resolver._load_from_db(TENANT_A, TASK_KEY_GUARDRAIL_VALIDATE)
 
     assert KEY_TEMPERATURE not in keys
     assert KEY_MAX_TOKENS not in keys
     assert KEY_TIMEOUT_S not in keys
+
+
+@pytest.mark.asyncio
+async def test_a_switched_off_tenant_row_is_a_veto_not_an_absence() -> None:
+    """`enabled = false` on the tenant's elected row fails closed exactly like a
+    DISABLED resourceStatus — never a fold-through to SYSTEM."""
+    from guardrail.core.tenant_config import TenantSelectionVetoedError
+
+    off = _selection_row(TENANT_A, SYSTEM_TENANT_ID)
+    off.default_enabled = False
+    resolver = _scripted_resolver([[_selection_row(SYSTEM_TENANT_ID, SYSTEM_TENANT_ID), off]])
+
+    with pytest.raises(TenantSelectionVetoedError):
+        await resolver.resolve(TENANT_A)
 
 
 # ---------------------------------------------------------------------------

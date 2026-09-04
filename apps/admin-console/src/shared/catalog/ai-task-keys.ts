@@ -2,17 +2,13 @@
  * The AI task-key registry — the console mirror of `AI_TASK_KEYS` in
  * `packages/applications/src/services/ai-task-default/constants.ts`.
  *
- * It lives in `shared/catalog` rather than in one feature because
- * gave it a SECOND reader: the unified AI-platform screen resolves routing
- * policies per task key, alongside the task-default surface that declared it
- * first. Rule 13 forbids one feature importing another, and `document-templates.ts`
- * next door records the usual answer to that — a minimal copy. A copy is the
- * wrong answer HERE: this list has already drifted from the backend three times,
- * and `features/ai-task-defaults/api/__tests__/ai-task-keys-lockstep.test.ts`
- * exists precisely because a comment saying "keep these in step" did not hold.
- * Two console copies would need two guards. So the registry is DECLARED once
- * here and re-exported by the feature that used to own it; the lockstep guard
- * reaches it through that re-export and keeps working unchanged.
+ * It lives in `shared/catalog` because more than one feature reads it. This
+ * list has already drifted from the backend three times, and
+ * `shared/catalog/__tests__/ai-task-keys-lockstep.test.ts` exists precisely
+ * because a comment saying "keep these in step" did not hold — the guard parses
+ * the backend constants file and fails on any difference. (TASK-862 deleted
+ * `features/ai-task-defaults`, the feature that used to re-export this; the
+ * registry is declared once, here.)
  *
  * Hand-declared with no server import — the BFF boundary stands, and
  * `@arcaai/applications` is not a dependency of this app.

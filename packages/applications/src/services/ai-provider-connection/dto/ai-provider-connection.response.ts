@@ -45,6 +45,18 @@ export class AiProviderConnectionResponse {
   @ApiProperty({ description: 'Provider-specific extras.', nullable: true, type: Object })
   extraJson!: Record<string, unknown> | null;
 
+  @ApiProperty({ description: 'Ceiling — simultaneous in-flight requests. Null = no opinion.', nullable: true })
+  maxConcurrent!: number | null;
+
+  @ApiProperty({ description: 'Ceiling — requests per minute. Null = no opinion.', nullable: true })
+  rpmLimit!: number | null;
+
+  @ApiProperty({ description: 'Ceiling — tokens (LLM) / characters (TTS) per minute. Null = no opinion.', nullable: true })
+  tpmLimit!: number | null;
+
+  @ApiProperty({ description: 'Ceiling — per-request timeout in seconds. Null = no opinion.', nullable: true })
+  timeoutS!: number | null;
+
   @ApiProperty({ description: 'Row version for optimistic concurrency. 0 when no row exists yet.' })
   version!: number;
 

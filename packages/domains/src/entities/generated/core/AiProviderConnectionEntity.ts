@@ -31,6 +31,11 @@ export interface IAiProviderConnectionEntity extends IBaseTenantEntity {
   keyVersion?: number | null;
   enabled: boolean;
   extraJson?: Record<string, unknown> | null;
+  /** TASK-862 — connection-level ceilings (moved from the retired `AiRuntimeProfile`). Null = no opinion. */
+  maxConcurrent?: number | null;
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  timeoutS?: number | null;
 }
 
 export class AiProviderConnectionEntity extends BaseTenantEntity {
@@ -44,6 +49,10 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
   private _keyVersion?: IAiProviderConnectionEntity['keyVersion'];
   private _enabled: IAiProviderConnectionEntity['enabled'];
   private _extraJson?: IAiProviderConnectionEntity['extraJson'];
+  private _maxConcurrent?: IAiProviderConnectionEntity['maxConcurrent'];
+  private _rpmLimit?: IAiProviderConnectionEntity['rpmLimit'];
+  private _tpmLimit?: IAiProviderConnectionEntity['tpmLimit'];
+  private _timeoutS?: IAiProviderConnectionEntity['timeoutS'];
 
   constructor(init: IAiProviderConnectionEntity) {
     super(init);
@@ -57,6 +66,10 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
     this._keyVersion = init.keyVersion;
     this._enabled = init.enabled;
     this._extraJson = init.extraJson;
+    this._maxConcurrent = init.maxConcurrent;
+    this._rpmLimit = init.rpmLimit;
+    this._tpmLimit = init.tpmLimit;
+    this._timeoutS = init.timeoutS;
   }
 
   get service(): IAiProviderConnectionEntity['service'] {
@@ -139,6 +152,38 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
     this.setProperty('extraJson', value);
   }
 
+  get maxConcurrent(): IAiProviderConnectionEntity['maxConcurrent'] {
+    return this._maxConcurrent;
+  }
+
+  set maxConcurrent(value: IAiProviderConnectionEntity['maxConcurrent']) {
+    this.setProperty('maxConcurrent', value);
+  }
+
+  get rpmLimit(): IAiProviderConnectionEntity['rpmLimit'] {
+    return this._rpmLimit;
+  }
+
+  set rpmLimit(value: IAiProviderConnectionEntity['rpmLimit']) {
+    this.setProperty('rpmLimit', value);
+  }
+
+  get tpmLimit(): IAiProviderConnectionEntity['tpmLimit'] {
+    return this._tpmLimit;
+  }
+
+  set tpmLimit(value: IAiProviderConnectionEntity['tpmLimit']) {
+    this.setProperty('tpmLimit', value);
+  }
+
+  get timeoutS(): IAiProviderConnectionEntity['timeoutS'] {
+    return this._timeoutS;
+  }
+
+  set timeoutS(value: IAiProviderConnectionEntity['timeoutS']) {
+    this.setProperty('timeoutS', value);
+  }
+
   /** True when key material is present, without exposing it. Read DTOs use this. */
   get hasKey(): boolean {
     return this._encryptedApiKey != null && this._encryptedApiKey.length > 0;
@@ -156,6 +201,18 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
     // would silently fail to decrypt at the gateway.
     if (this.hasKey && (this._keyVersion == null || this._keyVersion < 1)) {
       throw new BusinessException('Key version is required when an encrypted API key is present');
+    }
+    // A ceiling is a positive cap or no opinion — zero would silently refuse
+    // every request on the connection, which is what `enabled: false` is for.
+    for (const [name, value] of [
+      ['maxConcurrent', this._maxConcurrent],
+      ['rpmLimit', this._rpmLimit],
+      ['tpmLimit', this._tpmLimit],
+      ['timeoutS', this._timeoutS],
+    ] as const) {
+      if (value != null && (!Number.isInteger(value) || value < 1)) {
+        throw new BusinessException(`${name} must be a positive integer when set`);
+      }
     }
   }
 }

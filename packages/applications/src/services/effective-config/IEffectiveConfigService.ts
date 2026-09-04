@@ -25,7 +25,11 @@ export type EffectiveConfigServiceName = ConsumingDeployable;
  */
 export type EffectiveConfigSource = 'db' | 'env-fallback';
 
-/** One `AiRuntimeProfile` row, flattened for the wire. */
+/**
+ * One provider-level runtime profile on the wire. TASK-862: sourced from the
+ * SYSTEM `AiProviderConnection` row's CEILINGS (`AiRuntimeProfile` is retired);
+ * the hyper-parameter fields are kept for wire compatibility and are always null.
+ */
 export interface EffectiveRuntimeProfile {
   provider: string;
   /** Empty string = the provider-level default row. */
@@ -124,7 +128,7 @@ export interface EffectiveExternalGuardrail {
  * `apps/text`'s in-code `GENERATION_FLOOR`.
  *
  * Applies only to a request that set no value of its own AND for which no
- * `AiRuntimeProfile` could be resolved and pushed onto the body; both of those
+ * Agent parameter (TASK-863) was pushed onto the body; both of those
  * are more specific and still win. Null ⇒ that hyperparameter keeps its floor.
  */
 export interface EffectiveGeneration {

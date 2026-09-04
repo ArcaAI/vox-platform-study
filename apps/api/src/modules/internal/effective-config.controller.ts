@@ -42,7 +42,7 @@ export class EffectiveConfigController {
    *
    * Service-to-service requests carry NO user and NO tenant, so the CLS store is
    * empty — and parts of the read subtree touch tenant-scoped models
-   * (AiRuntimeProfile via the runtime-profile list), whose Prisma tenant-scope
+   * (AiProviderConnection via the runtime-profile list — TASK-862), whose Prisma tenant-scope
    * extension fails closed without a tenant context. Re-establish CLS here,
    * pinned to the SYSTEM tenant: every effective-config subset resolves
    * platform-level state (SYSTEM-scoped settings and SYSTEM-owned profile rows),

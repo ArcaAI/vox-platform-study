@@ -3,15 +3,11 @@ import {
   IActiveUserContext,
   ITenantSttConfigService,
   PipelineResponse,
-  SetSttCredentialRequest,
   SetSttFallbackRequest,
-  SttCredentialResponse,
   TenantSttConfigResponse,
-  TestSttCredentialRequest,
-  TestSttCredentialResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -32,11 +28,11 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcS
  *    → 412).
  *  - `GET 'fallback-candidates'`→ the enabled, cloud-engine-backed pipelines the
  *    tenant may target (the picker's valid options).
- *  - `GET/PUT/DELETE 'credentials/:provider'` → masked BYO credentials; the key
- *    is write-only (Vault-encrypted, never returned). PUT is OCC-guarded too
- * (credential-OCC divergence).
- *  - `POST 'credentials/:provider/test'` → ephemeral "Test connection" probe of
- *    an apiKey/region/endpoint BEFORE it is saved. Never persisted, no OCC.
+ *
+ * TASK-862 removed the `credentials/**` facade (masked list / set / remove /
+ * test): the one credential editor is `admin/providers/stt/:provider` and the
+ * one probe is `POST admin/providers/stt/:provider/test`. The fallback routes
+ * that remain retire under TASK-861.
  *
  * Tenant admins are pinned to their CLS tenant; super-admins (`isSuperAdmin`)
  * act cross-tenant — incl. the SYSTEM-tenant platform default — via `?tenantId=`.
@@ -119,77 +115,6 @@ export class TenantSttConfigAdminController {
   @ApiResponse({ status: 200, type: [PipelineResponse] })
   async getFallbackCandidates(@Query('tenantId') tenantId?: string): Promise<PipelineResponse[]> {
     return this.configService.getFallbackCandidates(this.resolveTenantId(tenantId));
-  }
-
-  @Get('credentials')
-  @Authorize(['read', 'TenantSttConfig'])
-  @ApiOperation({ summary: "List a tenant's BYO provider credentials (masked — never the key)" })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
-  @ApiResponse({ status: 200, type: [SttCredentialResponse] })
-  async getCredentials(@Query('tenantId') tenantId?: string): Promise<SttCredentialResponse[]> {
-    return this.configService.getCredentials(this.resolveTenantId(tenantId));
-  }
-
-  @Put('credentials/:provider')
-  @Authorize(['manage', 'TenantSttConfig'])
-  @RequiresIfMatch()
-  @ApiOperation({
-    summary: 'Set or rotate a tenant BYO provider key (write-only; Vault-encrypted at rest, never returned)',
-    description:
-      '`If-Match` (RFC 7232) carries the credential version — `"0"` creates, an existing version CASes against `_version` (drift → 412, missing → 428).',
-  })
-  @ApiParam({ name: 'provider', enum: ['azure-speech', 'sarvam', 'openai'] })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
-  @ApiHeader({
-    name: 'If-Match',
-    description: 'RFC 7232 strong validator carrying the credential version the client read (e.g. `"0"` to create).',
-    required: true,
-    example: '"0"',
-  })
-  @ApiResponse({ status: 200, type: SttCredentialResponse })
-  @ApiResponse({ status: 400, description: 'Unsupported provider, or Vault secrets provider not configured.' })
-  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
-  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async setCredential(
-    @Param('provider') provider: string,
-    @Body() body: SetSttCredentialRequest,
-    @ExpectedVersion() expectedFromHeader: number | undefined,
-    @Query('tenantId') tenantId?: string,
-  ): Promise<SttCredentialResponse> {
-    const dto = { ...body, expectedVersion: expectedFromHeader ?? body.expectedVersion };
-    return this.configService.setCredential(this.resolveTenantId(tenantId), provider, dto);
-  }
-
-  @Delete('credentials/:provider')
-  @HttpCode(204)
-  @Authorize(['manage', 'TenantSttConfig'])
-  @ApiOperation({ summary: 'Remove a tenant BYO provider credential' })
-  @ApiParam({ name: 'provider', enum: ['azure-speech', 'sarvam', 'openai'] })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
-  @ApiResponse({ status: 204, description: 'Removed.' })
-  @ApiResponse({ status: 404, description: 'No credential for this provider.' })
-  async removeCredential(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
-    return this.configService.removeCredential(this.resolveTenantId(tenantId), provider);
-  }
-
-  @Post('credentials/:provider/test')
-  @Authorize(['manage', 'TenantSttConfig'])
-  @ApiOperation({
-    summary: 'Test an apiKey/region/endpoint combination against the live provider BEFORE saving it',
-    description:
-      'Ephemeral probe — never persisted, no Vault write, no OCC. Lets a tenant admin validate a key before (or independent of) saving it, ' +
-      'since the saved key is write-only and never returned for re-testing.',
-  })
-  @ApiParam({ name: 'provider', enum: ['azure-speech', 'sarvam', 'openai'] })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
-  @ApiResponse({ status: 200, type: TestSttCredentialResponse })
-  @ApiResponse({ status: 400, description: 'Unsupported provider, or the supplied endpoint failed URL/SSRF validation.' })
-  async testCredential(
-    @Param('provider') provider: string,
-    @Body() body: TestSttCredentialRequest,
-    @Query('tenantId') tenantId?: string,
-  ): Promise<TestSttCredentialResponse> {
-    return this.configService.testCredential(this.resolveTenantId(tenantId), provider, body);
   }
 
   /** Tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */

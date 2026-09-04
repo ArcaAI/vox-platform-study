@@ -69,6 +69,18 @@ model AiProviderConnection {
   enabled         Boolean @default(false)
   extraJson       Json?   @db.JsonB // provider-specific extras (validated per-provider in the DTO)
 
+  // Connection-level CEILINGS (TASK-862 — moved here from the retired
+  // `AiRuntimeProfile`). They bound what this connection may be driven at, per
+  // tier: a tenant's BYO row carries the tenant's own vendor limits, the SYSTEM
+  // row the platform account's. Generation hyper-parameters (temperature,
+  // topP, maxTokens, …) do NOT live here — they belong to the Agent (TASK-863).
+  // Every field is nullable = "no opinion" (the consuming service's own default
+  // applies); a value is a hard cap the router/adapter must not exceed.
+  maxConcurrent Int? // simultaneous in-flight requests on this connection
+  rpmLimit      Int? // requests per minute
+  tpmLimit      Int? // tokens per minute (LLM/embeddings); characters for TTS
+  timeoutS      Int? // per-request timeout, seconds
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

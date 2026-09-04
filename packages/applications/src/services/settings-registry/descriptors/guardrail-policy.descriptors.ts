@@ -335,7 +335,7 @@ export const GUARDRAIL_POLICY_SETTINGS: SettingDescriptor[] = (
     // tenant-cascade read surface for db-config keys". `global-kv` is the tier
     // that already has the complete read + write + cascade + invalidate loop,
     // and `db-config` stays reserved for values with their own table
-    // (AiProviderConnection, AiTaskDefault, AiModel, AiRuntimeProfile,
+    // (AiProviderConnection, AiRoutingPolicy, AiModel,
     // TenantStorageConfig). These are none of those.
     tier: 'global-kv',
     dataType: dataTypeFor(short),

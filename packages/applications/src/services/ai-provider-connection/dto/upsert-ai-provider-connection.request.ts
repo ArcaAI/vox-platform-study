@@ -130,6 +130,40 @@ export class UpsertAiProviderConnectionRequest {
 
   @ApiPropertyOptional({
     description:
+      'Ceiling — simultaneous in-flight requests on this connection (TASK-862, moved from the retired runtime profiles). ' +
+      'Null/omitted = no opinion; a positive integer is a hard cap.',
+    nullable: true,
+    example: 8,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxConcurrent?: number | null;
+
+  @ApiPropertyOptional({ description: 'Ceiling — requests per minute. Null/omitted = no opinion.', nullable: true, example: 600 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  rpmLimit?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Ceiling — tokens per minute (LLM/embeddings; characters for TTS). Null/omitted = no opinion.',
+    nullable: true,
+    example: 200000,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  tpmLimit?: number | null;
+
+  @ApiPropertyOptional({ description: 'Ceiling — per-request timeout in seconds. Null/omitted = no opinion.', nullable: true, example: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  timeoutS?: number | null;
+
+  @ApiPropertyOptional({
+    description:
       'Version the client read (optimistic concurrency). The `If-Match` header overrides this ' + 'when both are present. Use 0 to create.',
     example: 3,
   })

@@ -1,34 +1,13 @@
-import type {
-  ListAgentEvalRunsParams,
-  ListEvalGoldenCasesParams,
-  ListEvalGoldenSetsParams,
-  ListTemplatesParams,
-  ListUsageRecordsParams,
-} from './types';
+import type { AgentTask } from './types';
 
-/** Query-key factory — every key roots at ['agents'] for coarse invalidation. */
+/** Query-key factory — every key roots at ['agent-entities'] (the prompt-template feature owns ['prompt-templates']). */
 export const agentKeys = {
-  root: ['agents'] as const,
-  list: (params?: ListTemplatesParams) => [...agentKeys.root, 'list', params ?? {}] as const,
+  root: ['agent-entities'] as const,
+  list: (task?: AgentTask) => [...agentKeys.root, 'list', task ?? 'all'] as const,
   detail: (id: string) => [...agentKeys.root, 'detail', id] as const,
   versions: (id: string) => [...agentKeys.root, 'versions', id] as const,
-  version: (id: string, versionNumber: number) => [...agentKeys.root, 'version', id, versionNumber] as const,
-  diff: (id: string, from: number, to: number) => [...agentKeys.root, 'diff', id, from, to] as const,
-  usage: (id: string) => [...agentKeys.root, 'usage', id] as const,
-  analytics: (promptTemplateId?: string) => [...agentKeys.root, 'analytics', promptTemplateId ?? null] as const,
-  usageRecords: (params?: ListUsageRecordsParams) => [...agentKeys.root, 'usage-records', params ?? {}] as const,
+  assignments: (task?: AgentTask) => [...agentKeys.root, 'assignments', task ?? 'all'] as const,
+  registryModels: () => [...agentKeys.root, 'registry-models'] as const,
+  instructionTemplates: () => [...agentKeys.root, 'instruction-templates'] as const,
   departments: () => [...agentKeys.root, 'departments'] as const,
-};
-
-/**
- * Eval-gated promotion query-key factory — rooted separately at
- * ['agent-eval'] so `useRunGoldenSetEval`'s invalidation never touches the
- * unrelated PromptTemplate cache above.
- */
-export const agentEvalKeys = {
-  root: ['agent-eval'] as const,
-  goldenSets: (params?: ListEvalGoldenSetsParams) => [...agentEvalKeys.root, 'golden-sets', params ?? {}] as const,
-  goldenCases: (goldenSetId: string, params?: ListEvalGoldenCasesParams) =>
-    [...agentEvalKeys.root, 'golden-cases', goldenSetId, params ?? {}] as const,
-  evalRuns: (params?: ListAgentEvalRunsParams) => [...agentEvalKeys.root, 'eval-runs', params ?? {}] as const,
 };
