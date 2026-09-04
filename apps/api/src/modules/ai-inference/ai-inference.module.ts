@@ -27,13 +27,7 @@ import { SafetyCheckController } from './safety-check.controller';
  * resolve the tenant's topic/intent instruction content before proxying.
  */
 @Module({
-  imports: [
-    HttpModule,
-    AiTaskDefaultServiceModule,
-    AiModelServiceModule,
-    UsageLedgerServiceModule,
-    TenantNlpTaskInstructionsServiceModule,
-  ],
+  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, UsageLedgerServiceModule, TenantNlpTaskInstructionsServiceModule],
   controllers: [AiInferenceController, SafetyCheckController, AiInferenceRedirectShimController],
   providers: [AiInferenceClient],
 })

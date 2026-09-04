@@ -252,9 +252,7 @@ export function auditInternalRoutesOffApiKeySurface(app: INestApplicationContext
 
   if (offenders.length > 0) {
     const list = offenders.map((o) => `  - ${o}`).join('\n');
-    throw new Error(
-      `refused to start — ${offenders.length} /internal/* route(s) are reachable off a platform service-token guard:\n${list}`,
-    );
+    throw new Error(`refused to start — ${offenders.length} /internal/* route(s) are reachable off a platform service-token guard:\n${list}`);
   }
 }
 

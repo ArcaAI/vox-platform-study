@@ -309,9 +309,7 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       }
     }
     if (!liveBindingApplied) {
-      console.warn(
-        '[ C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.',
-      );
+      console.warn('[ C6] no live-bound node on the tenant’s governing consultation graph — R-N1 will assert the SYSTEM-default tier instead.');
     }
 
     const patientId = `task-635-c6-${Date.now()}`;

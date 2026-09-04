@@ -73,7 +73,7 @@ import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPaylo
 import { StreamTicketService } from './stream-ticket.service';
 
 // SUPER_ADMIN (formerly SUPER_ADMIN, renamed) is the single
-// elevated role; the earlier, unrelated retired SUPER_ADMIN role 
+// elevated role; the earlier, unrelated retired SUPER_ADMIN role
 // stays retired under its own reserved id.
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 

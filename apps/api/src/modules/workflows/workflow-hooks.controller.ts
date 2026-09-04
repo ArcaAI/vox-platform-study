@@ -41,7 +41,10 @@ export class WorkflowHooksController {
   @ApiHeader({ name: 'Idempotency-Key', required: false })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse })
   @ApiResponse({ status: 400, description: 'The body is not a JSON object, or carries a reserved run-identity field.' })
-  @ApiResponse({ status: 404, description: 'Unknown hook, bad or stale signature, or a Trigger that does not accept the webhook kind — one answer for all.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Unknown hook, bad or stale signature, or a Trigger that does not accept the webhook kind — one answer for all.',
+  })
   async trigger(
     @Param('hookId') hookId: string,
     @Req() req: RawBodyRequest<Request>,
