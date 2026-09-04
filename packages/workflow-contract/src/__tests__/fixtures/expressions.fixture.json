@@ -1,0 +1,373 @@
+{
+  "_comment": "TASK-864 \u00a73.2 \u2014 the CROSS-LANGUAGE parity fixture for the workflow expression language (a CEL subset). Asserted from BOTH packages/workflow-contract/src/__tests__/expressions.test.ts (TypeScript, the publish-time type-check) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_expressions_parity.py (Python, the runtime evaluator inside `interpreter.core_evaluate`). Neither runtime can import the other's evaluator, so this file IS the contract: every case names an expression, the run context it is evaluated against, and EITHER the exact value both sides must produce OR `error: true` when both must refuse it. Adding a capability to one evaluator without a case here is drift the two suites cannot see.",
+  "context": {
+    "trigger": {
+      "department": "cardiology",
+      "patientAge": 67,
+      "flags": [
+        "urgent",
+        "followup"
+      ],
+      "vitals": {
+        "hr": 88,
+        "bp": "130/85"
+      }
+    },
+    "vars": {
+      "threshold": 0.7,
+      "language": "en",
+      "maxItems": 3,
+      "enabled": true,
+      "notes": null
+    },
+    "nodes": {
+      "classify": {
+        "classification": {
+          "category": "safe",
+          "scores": {
+            "safe": 0.91,
+            "unsafe": 0.09
+          }
+        }
+      },
+      "summary": {
+        "text": "Patient presents with chest pain.",
+        "usage": {
+          "total_tokens": 120
+        }
+      },
+      "split": {
+        "items": [
+          {
+            "id": 1,
+            "kind": "lab"
+          },
+          {
+            "id": 2,
+            "kind": "note"
+          }
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "literal int",
+      "expression": "42",
+      "expected": 42
+    },
+    {
+      "name": "literal double",
+      "expression": "1.5",
+      "expected": 1.5
+    },
+    {
+      "name": "literal string single quotes",
+      "expression": "'hi'",
+      "expected": "hi"
+    },
+    {
+      "name": "literal string escapes",
+      "expression": "\"a\\nb\"",
+      "expected": "a\nb"
+    },
+    {
+      "name": "literal bool and null",
+      "expression": "[true, false, null]",
+      "expected": [
+        true,
+        false,
+        null
+      ]
+    },
+    {
+      "name": "map literal",
+      "expression": "{'a': 1, 'b': [2]}",
+      "expected": {
+        "a": 1,
+        "b": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "member access",
+      "expression": "trigger.department",
+      "expected": "cardiology"
+    },
+    {
+      "name": "nested member access",
+      "expression": "trigger.vitals.hr",
+      "expected": 88
+    },
+    {
+      "name": "index into list",
+      "expression": "trigger.flags[1]",
+      "expected": "followup"
+    },
+    {
+      "name": "index into map",
+      "expression": "trigger.vitals['bp']",
+      "expected": "130/85"
+    },
+    {
+      "name": "deep node output",
+      "expression": "nodes.classify.classification.scores.safe",
+      "expected": 0.91
+    },
+    {
+      "name": "equality on strings",
+      "expression": "nodes.classify.classification.category == 'safe'",
+      "expected": true
+    },
+    {
+      "name": "inequality",
+      "expression": "vars.language != 'en'",
+      "expected": false
+    },
+    {
+      "name": "numeric comparison",
+      "expression": "trigger.patientAge >= 65",
+      "expected": true
+    },
+    {
+      "name": "double comparison",
+      "expression": "nodes.classify.classification.scores.safe > vars.threshold",
+      "expected": true
+    },
+    {
+      "name": "string comparison",
+      "expression": "'abc' < 'abd'",
+      "expected": true
+    },
+    {
+      "name": "logical and",
+      "expression": "trigger.patientAge > 60 && vars.enabled",
+      "expected": true
+    },
+    {
+      "name": "logical or",
+      "expression": "trigger.patientAge < 18 || vars.language == 'en'",
+      "expected": true
+    },
+    {
+      "name": "logical not",
+      "expression": "!vars.enabled",
+      "expected": false
+    },
+    {
+      "name": "short-circuit and never evaluates the right side",
+      "expression": "false && nope.missing",
+      "expected": false
+    },
+    {
+      "name": "short-circuit or never evaluates the right side",
+      "expression": "true || nope.missing",
+      "expected": true
+    },
+    {
+      "name": "ternary",
+      "expression": "trigger.patientAge >= 65 ? 'senior' : 'adult'",
+      "expected": "senior"
+    },
+    {
+      "name": "integer arithmetic",
+      "expression": "1 + 2 * 3 - 4",
+      "expected": 3
+    },
+    {
+      "name": "integer division truncates",
+      "expression": "7 / 2",
+      "expected": 3
+    },
+    {
+      "name": "whole double is an int on both sides",
+      "expression": "7.0 / 2",
+      "expected": 3
+    },
+    {
+      "name": "negative integer division truncates toward zero",
+      "expression": "-7 / 2",
+      "expected": -3
+    },
+    {
+      "name": "double division",
+      "expression": "7.5 / 2",
+      "expected": 3.75
+    },
+    {
+      "name": "modulus",
+      "expression": "7 % 3",
+      "expected": 1
+    },
+    {
+      "name": "unary minus",
+      "expression": "-trigger.patientAge",
+      "expected": -67
+    },
+    {
+      "name": "string concatenation",
+      "expression": "vars.language + '-US'",
+      "expected": "en-US"
+    },
+    {
+      "name": "list concatenation",
+      "expression": "[1] + [2, 3]",
+      "expected": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "in list",
+      "expression": "'urgent' in trigger.flags",
+      "expected": true
+    },
+    {
+      "name": "not in list",
+      "expression": "'routine' in trigger.flags",
+      "expected": false
+    },
+    {
+      "name": "in map keys",
+      "expression": "'hr' in trigger.vitals",
+      "expected": true
+    },
+    {
+      "name": "has present",
+      "expression": "has(vars.language)",
+      "expected": true
+    },
+    {
+      "name": "has absent",
+      "expression": "has(vars.missing)",
+      "expected": false
+    },
+    {
+      "name": "has on missing parent",
+      "expression": "has(nodes.nope.text)",
+      "expected": false
+    },
+    {
+      "name": "size of string",
+      "expression": "size('hello')",
+      "expected": 5
+    },
+    {
+      "name": "size of list",
+      "expression": "size(trigger.flags)",
+      "expected": 2
+    },
+    {
+      "name": "size of map",
+      "expression": "size(trigger.vitals)",
+      "expected": 2
+    },
+    {
+      "name": "size method form",
+      "expression": "nodes.split.items.size()",
+      "expected": 2
+    },
+    {
+      "name": "contains",
+      "expression": "nodes.summary.text.contains('chest')",
+      "expected": true
+    },
+    {
+      "name": "startsWith",
+      "expression": "nodes.summary.text.startsWith('Patient')",
+      "expected": true
+    },
+    {
+      "name": "endsWith",
+      "expression": "nodes.summary.text.endsWith('pain.')",
+      "expected": true
+    },
+    {
+      "name": "string conversion",
+      "expression": "string(trigger.patientAge)",
+      "expected": "67"
+    },
+    {
+      "name": "int conversion from string",
+      "expression": "int('12')",
+      "expected": 12
+    },
+    {
+      "name": "int conversion truncates",
+      "expression": "int(3.9)",
+      "expected": 3
+    },
+    {
+      "name": "double conversion",
+      "expression": "double('2.5')",
+      "expected": 2.5
+    },
+    {
+      "name": "null equality",
+      "expression": "vars.notes == null",
+      "expected": true
+    },
+    {
+      "name": "deep equality on maps",
+      "expression": "nodes.split.items[0] == {'id': 1, 'kind': 'lab'}",
+      "expected": true
+    },
+    {
+      "name": "loop until shape",
+      "expression": "size(nodes.split.items) >= vars.maxItems || !vars.enabled",
+      "expected": false
+    },
+    {
+      "name": "grouping parentheses",
+      "expression": "(1 + 2) * 3",
+      "expected": 9
+    },
+    {
+      "name": "error: unknown identifier",
+      "expression": "unknownRoot.x",
+      "error": true
+    },
+    {
+      "name": "error: missing key",
+      "expression": "vars.missing",
+      "error": true
+    },
+    {
+      "name": "error: index out of range",
+      "expression": "trigger.flags[5]",
+      "error": true
+    },
+    {
+      "name": "error: type mismatch in arithmetic",
+      "expression": "1 + 'a'",
+      "error": true
+    },
+    {
+      "name": "error: non-boolean and",
+      "expression": "1 && true",
+      "error": true
+    },
+    {
+      "name": "error: division by zero",
+      "expression": "1 / 0",
+      "error": true
+    },
+    {
+      "name": "error: parse failure",
+      "expression": "1 +",
+      "error": true
+    },
+    {
+      "name": "error: unknown function",
+      "expression": "frobnicate(1)",
+      "error": true
+    },
+    {
+      "name": "error: modulus on doubles",
+      "expression": "7.5 % 2",
+      "error": true
+    }
+  ]
+}

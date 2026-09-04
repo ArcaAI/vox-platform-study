@@ -21,8 +21,8 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 (**removed outright** — deviation 2) | — | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | removed (`ResourceType.AiRuntimeProfile` enum member left in place) |
 | `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | marked (`@deprecated` on service/interface, `Deprecation` headers on every `admin/tts-config` route; credential facade already removed) |
 | `AiRoutingPolicy.candidatesJson` | TASK-862 | R1 | R3 | candidate rows | planned (untouched by the TASK-862 wave — already `@deprecated` on the entity) |
-| `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | planned |
-| Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | planned |
+| `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | marked |
+| Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | removed |
 | `ProviderReconciliationRun` + `provider-reconciler*` + `admin/usage/reconciliation` + `/ai-operations/reconciliation` | TASK-862 | R1 (**removed outright**, owner directive) | — | — | removed (route keeps a one-release redirect to `/ai-operations/consumption`) |
 
 ## API routes
@@ -31,7 +31,7 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 |---|---|---|---|---|---|
 | `admin/ai-providers/**` (llm-only alias) | TASK-862 | R1 (**removed** — no caller remained) | — | `admin/providers/:service/:provider` | removed |
 | `admin/tts-config/credentials/**`, `admin/stt-config/credentials/**` | TASK-862 | R1 (**removed** — console hooks were dead) | — | `admin/providers/**` + `POST …/test` | removed |
-| `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | planned |
+| `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | marked |
 | `pipelineId` on `POST audio/transcription-jobs/stream/session`, `POST …/transcribe`, `POST api/stt/start_session` | TASK-861 | R2 | R4 | `agentSlug` | marked — all three accept `agentSlug` (absent = the tenant's assigned ASR agent via the `AgentAssignment` cascade) and resolve a `ResolvedAsrSpec` through `AsrAgentResolverService`; `stream/session` and `transcribe` still honour `pipelineId` and answer `Deprecation: true` + `X-Deprecation-Notice` + `Link: </api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"` (no `Sunset` until OD-2); `api/stt/start_session` honours `pipelineId` WITHOUT the headers (follow-up); the DTO fields carry `@deprecated` |
 | `POST /workflows/:slug/invoke` (alias) | already deprecated in code | — | R3 | `POST /workflows/:slug/runs` | marked |
 
@@ -39,9 +39,9 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
 |---|---|---|---|---|---|
-| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 | R2 | R4 | ASR Agent | planned — partial: `stt-pipeline.compiler.ts` and `stt-pipeline-resolver.service.ts` carry `@deprecated TASK-861` (this ticket); the 8 palette descriptors are marked `deprecated: true` + `replacedBy` by TASK-864; the `WF-STT-*` retirement and the `stt_placeholder.py` removal are a post-merge follow-up (TASK-861 step 10) |
-| `summarization`, `consultation`, `agentic` palettes (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) | planned |
-| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary | planned |
+| `stt` palette (8 node types), `WF-STT-*` rules, `stt-pipeline.compiler.ts`, `stt-pipeline-resolver.service.ts`, `stt_placeholder.py` | TASK-861 (node types marked by TASK-864: `deprecated: true`, `replacedBy: 'core.agent'`) | R2 | R4 | ASR Agent | planned — partial: `stt-pipeline.compiler.ts` and `stt-pipeline-resolver.service.ts` carry `@deprecated TASK-861` (this ticket); the 8 palette descriptors are marked `deprecated: true` + `replacedBy` by TASK-864; the `WF-STT-*` retirement and the `stt_placeholder.py` removal are a post-merge follow-up (TASK-861 step 10) |
+| `summarization`, `consultation`, `agentic` palettes + the palette-less `noop`/`passthrough`/`core.start`/`core.end`/`guard.*` (50 node types) | TASK-864 | R2 | R4 | `core.*` vocabulary (+ `core.action` catalogue, seeded Agents) — every descriptor carries `deprecated: true` + `replacedBy`; `deprecation.task864.test.ts` pins the set; the Studio rail hides them | marked |
+| `EXPOSURE_ALLOWED_PALETTES` | TASK-864 | R2 | R4 | class-based exposure boundary (`clinicalWriteViolation`) — the palette sets now admit `core` and are consulted only for legacy graphs | marked |
 | Harness `_llm_policy.get_policy(task_key)` over `AiTaskDefault` | TASK-863 | R1 | R3 | `/internal/agents/resolve` + `AiRoutingPolicy` | planned |
 | `HarnessPolicy.textProvider`, `textModel` | TASK-863 | R1 | R3 | Agent binding | planned |
 
@@ -78,4 +78,4 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `14-pipeline-policy.ts`, `23a-realtime-transcription-agent{,.generated}.ts`, regen script + their seed tests — DONE; `06-stt.ts` pipelines + `seedTenantSttConfig` — STILL SEEDED, deferred to the TASK-860 file split (TASK-860 rewrites `06-stt.ts` and is not in the TASK-861 base; deleting the pipeline half on the 861 branch would conflict) | TASK-861 |
 | `16-ai-task-default.ts` (replaced by `16-ai-routing-policy.ts`), `18-ai-runtime-profile.ts`, `llm:sarvam` connection row — DONE; `19-tenant-tts-config.ts` — with TASK-863 | TASK-862 |
 | 10 catalogue rows not in the owner's list; `RETIRED_AI_MODEL_SLUGS` ledger extended | TASK-860 |
-| `21`, `23`, `24` workflow seeds rewritten in `core.*` | TASK-864 |
+| `21`, `23`, `24` workflow seeds rewritten in `core.*` — NOT DONE in the first TASK-864 landing: their derived blobs were regenerated for the core registry (checksums), the authoring sources still use the legacy palettes (owner question: the consultation rule set `CR-*` keys on `consultation.*` types, so a `core.action` rewrite needs the rules retargeted first) | TASK-864 |

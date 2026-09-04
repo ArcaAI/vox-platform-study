@@ -216,7 +216,7 @@ export function compiledGraphLeakProblems(compiled: unknown): string[] {
 }
 
 // =============================================================================================
-// Hyper-parameter capability gating 
+// Hyper-parameter capability gating
 // =============================================================================================
 
 /** The closed hyper-parameter vocabulary the generic agent node offers. */

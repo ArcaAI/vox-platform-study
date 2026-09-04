@@ -345,6 +345,28 @@ this means knowing the snapshot frame deliberately carries no cursor.
 Use `isTerminalRunStatus(status)` rather than comparing strings: the terminal set
 includes `TIMED_OUT`, and cancellation is spelled `CANCELED` (one L).
 
+### 3.2a A `core` workflow declares what it can do (TASK-864)
+
+A workflow authored in the Studio v2 `core` vocabulary carries its own contract on its
+Trigger and Output nodes, and the gateway enforces it rather than documenting it:
+
+| Declared on | Governs | What you see |
+|---|---|---|
+| `core.trigger.kinds` | which entry points exist (`api`, `webhook`, `consultation`, `schedule`) | `POST /workflows/{slug}/runs` on a workflow that does not declare `api` is a **404** — the route family exists, that workflow is not on it |
+| `core.output.protocols` | which `?mode=` the run route admits — `http` → `blocking`, `http-sse` → `stream`; `async` always | an undeclared mode is a **400** `modeRefusal`, never a silent downgrade |
+| `core.trigger.contextSchema` / `core.output.outputSchema` | the input body / the result | published as components, below |
+
+`GET /api/v1/workflows/{slug}/schema` returns the generated contract for the caller's
+tenant — the `Workflow_<slug>_Input` / `Workflow_<slug>_Output` component pair, the trigger
+kinds, protocols, admitted modes, and an AsyncAPI fragment for the run-event frames. The
+committed `openapi.json` documents the generic route family only: a workflow's schema is
+tenant data, so it is served live, not baked into the static document.
+
+When `socket` is declared, `/ws/workflows?slug=…&runId=…&ticket=…[&lastEventId=…]` replays
+the same frames as the SSE channel as JSON text messages `{ event, id?, data }`. Authenticate
+with a single-use stream ticket scoped `workflow_run:<runId>`
+(`POST /api/v1/auth/stream-ticket`) — never a JWT in the URL.
+
 ### 3.3 Idempotency joins, it does not de-duplicate
 
 ```ts
@@ -408,6 +430,32 @@ data, PHI included, to a third-party endpoint:
 
 So a receiver verifies, enqueues, and then fetches what it needs with its own
 credentials.
+
+### 3.5a Inbound webhooks — letting a third party START a workflow (TASK-864)
+
+A workflow whose Trigger declares `webhook` can be started from outside without an API key.
+An admin issues (or rotates) the definition's secret — shown ONCE, stored as ciphertext:
+
+```http
+POST /api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret
+→ { "slug": "…", "secret": "<64 hex>", "rotatedAt": "…", "hookUrl": "/api/v1/hooks/workflows/<hookId>" }
+```
+
+The caller signs every request over the raw body:
+
+```
+X-Hope-Timestamp: <unix seconds>
+X-Hope-Signature: sha256=HMAC_SHA256(secret, "<timestamp>.<rawBody>")
+Idempotency-Key:  <optional — same semantics as §3.3>
+POST /api/v1/hooks/workflows/<hookId>
+```
+
+Rules the gateway applies, in order: the timestamp must be within ±300 s; the signature is
+compared in constant time; the body must be JSON (it becomes the run's `input`, validated
+against the Trigger's context schema at dispatch). **Every refusal is the same 404** — an
+unknown hook id, a stale timestamp and a bad signature are indistinguishable from outside,
+so the hook URL is not an oracle. A successful call answers `202` with the run handle,
+always in `async` mode: read the result through the stream or the run-completed event.
 
 ### 3.6 Verifying a delivery
 
@@ -534,13 +582,33 @@ no trace. That is another reason the observer belongs first.
 Hold the stream (`runAndStream` / `streamRun`), or poll `getRun` until
 `isTerminalRunStatus(status)`. Do not build on an event that will not arrive.
 
+### Amendment (TASK-864) — the run-completed event now exists
+
+The finding above described the pre-TASK-864 state and is kept as the record of WHY the
+event was not a small change. TASK-864 closed G9 the way §"The recommended design" asked:
+
+- `ResourceType.WorkflowRun` was appended (audit enum + domain enum + migration), and
+  `WorkflowRunService.recordRunFinished` emits exactly ONE `ResourceUpdated` sys-event per
+  terminal transition with `data.action = 'runFinished'` and a PHI-free payload
+  (`runId`, `slug`, `workflowVersionNumber`, `status`, `terminalReason`, `startedAt`,
+  `endedAt`, `consultationId`). A webhook subscribed with `resourceTypeName: 'WorkflowRun'`
+  fires on it; the delivery body is references only, as in §3.5.
+- The terminal status is no longer written only on a lazy read: `WorkflowRunCompletionService`
+  watches the run stream after `POST /workflows/{slug}/runs` returns and records the terminal
+  frame (`CANCELED` from `cancelRun` included, with `terminalReason`) under a
+  `workflow-run-completion` worker session — so a fire-and-forget `mode=async` run with no
+  reader attached still completes, and its webhook still fires.
+
+What stays true: the watcher is per gateway process (a run whose gateway restarts mid-run is
+recorded on the next read, as before), and there is still no business-plane run listing.
+
 ---
 
 ## Known gaps, collected
 
 | # | Gap | Impact |
 |---|---|---|
-| G9 | No `WorkflowRun` sys-event; terminal status only written on a lazy read | No "run completed" webhook; a fire-and-forget run stays `RUNNING` forever |
+| G9 | ~~No `WorkflowRun` sys-event; terminal status only written on a lazy read~~ — closed by TASK-864 (see §Webhooks amendment) | a gateway restart mid-run still defers the terminal write to the next read |
 | — | No business-plane run listing | A run is reachable only by a `runId` you kept |
 | — | `useConsultationEvents` has no resume | Frames published while disconnected are lost, with no server-side buffer |
 

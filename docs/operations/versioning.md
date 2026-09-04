@@ -55,7 +55,7 @@ Valid `<SVC>` prefixes (`packages/utils/src/version-grammar.ts`, `SERVICE_TAG_PR
 kept in lockstep with the tag regexes in `.gitlab/ci/build.yml`):
 
 ```
-ALL  API  ADMIN  COMPAT  GUARD  HARNESS  NLP  TEXT  STT  TTS
+ALL  API  ADMIN  GUARD  HARNESS  NLP  TEXT  STT  TTS
 ```
 
 (`SDK` is also accepted by the workflow-level tag rule for the separate npm-SemVer SDK
@@ -88,7 +88,7 @@ Each build job in `build.yml` has its own `rules:` on top of the shared
 `/^API-/ || /^ALL-/`, and so on for every service in the scope table below. So:
 
 - `TEXT-2.1.0` builds only the `text` image.
-- `ALL-2.2.0` builds **every** image (`api`, `admin-console`, `compat-playground`, `text`,
+- `ALL-2.2.0` builds **every** image (`api`, `admin-console`, `text`,
   `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`, `harness-worker`,
   `database`, `qdrant-init`, `hope-python-base`) — that is what makes it "the platform
   release train."
@@ -225,7 +225,7 @@ record and changelog, then — separately — tag the same commit `vX.Y.Z` and r
    git push origin ALL-2.2.0
    ```
 4. **Watch the pipeline.** `PIPELINE_TYPE=release` runs the full test suite, then builds
-   every image in scope (`api`, `admin-console`, `compat-playground`, `text`,
+   every image in scope (`api`, `admin-console`, `text`,
    `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`,
    `harness-worker`, `database`, `qdrant-init`, `hope-python-base`), each tagged
    `ALL-2.2.0` + `sha-<sha8>`. CI collects the commits since the previous `ALL-` tag,

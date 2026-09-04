@@ -1,0 +1,51 @@
+// ============================================================================
+// TASK-864 — the INBOUND workflow webhook trigger's per-definition secret.
+//
+// `POST /api/v1/hooks/workflows/{slug}` starts a run of the tenant's ACTIVE
+// published version of `{slug}` from an external system, authenticated by an
+// HMAC-SHA256 signature over the raw body (`X-Hope-Signature: sha256=<hex>`)
+// plus a timestamp header (`X-Hope-Timestamp`) folded into the signed string
+// to bound replay. The key is THIS row's secret.
+//
+// Keyed by (tenantId, workflowSlug) — the LINEAGE, not one published version —
+// so a republish does not rotate every integrator's key. Rotation is explicit
+// (`POST /admin/workflow-definitions/{slug}/webhook-secret`, returns the raw
+// secret exactly once), mirroring `Webhook.hashedSecret`'s posture: the
+// column holds REVERSIBLE ciphertext (AES-256-GCM under the dedicated
+// `WEBHOOK_SECRET_PEPPER`, `WebhookService.encryptSecret`) because the
+// verifier must recover the key; a one-way hash cannot verify an HMAC.
+//
+// Emits no sys-event of its own: a rotation is audited as a
+// `ResourceUpdated` on the `WorkflowDefinition` lineage it belongs to, so this
+// model deliberately carries NO `ResourceType` entry (rule 03 step 4).
+// ============================================================================
+
+model WorkflowWebhookSecret {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  workflowSlug    String
+  encryptedSecret String
+  rotatedAt       DateTime @default(now())
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, workflowSlug], map: "WorkflowWebhookSecret_tenant_slug_key")
+  @@index([tenantId], name: "WorkflowWebhookSecret_tenantId_idx")
+  @@schema("core")
+}

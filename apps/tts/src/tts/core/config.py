@@ -116,6 +116,16 @@ class KokoroConfig(BaseSettings):
     # warm-up path takes its voice from the catalog too (see `main.create_app`),
     # so the string exists in exactly one place.
     device: str = Field(default="cpu", validation_alias=moved_alias("TTS_KOKORO_DEVICE"))
+    # TASK-860: the PUBLISHED weights directory — the registry row's derived
+    # `localPath` (`/mnt/models-bucket/hf/hub/models--hexgrad--Kokoro-82M/
+    # snapshots/<sha>`), containing `config.json`, the `.pth` checkpoint and
+    # `voices/*.pt`. When set the provider loads `KModel(config, model)` +
+    # voice `.pt` paths explicitly and never touches HF_HOME / the Hub; a set
+    # path missing those files fails at construction (never a silent Hub pull).
+    # Empty = dev fallback to `KPipeline`'s own Hub download. Same precedent as
+    # `TTS_PARLER_MODEL_PATH`; the gateway-injected `localPath` is the
+    # intended supplier once TASK-862/863 plumb it.
+    model_path: str = Field(default="", validation_alias=moved_alias("TTS_KOKORO_MODEL_PATH"))
 
 
 class IndicParlerConfig(BaseSettings):

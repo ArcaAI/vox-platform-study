@@ -160,10 +160,29 @@ Two releases: **R1** ships 860 → 862 → 863 with everything old marked deprec
 
 ## 9. Implementation Summary
 
-_Not started. Planning deliverables:_ this README, six ticket READMEs, the deprecation register.
+Execution ran as one orchestrator plus one Fable worker per ticket, each in its own git worktree
+off the owner's dev-2.2 (`1896ebc03`), merged back in dependency order with every gate re-run on
+the merged primary (`14-multi-agent-worktrees.md` §5). Status on 2026-09-04:
+
+| Ticket | State | Merge commit on dev-2.2 | Notes |
+|---|---|---|---|
+| TASK-862 AI Providers | **merged** | first merge after the base repairs `9a933b360` | reconciliation removed outright; one `/ai-services` screen; `AiRuntimeProfile` removed (deviation 2) |
+| TASK-863 Agent entity | **merged** | `36b9d9dd1` | integration fixes `5e1b1c31d`, migration banner strip `d10ed047c` |
+| TASK-860 Model Registry | **merged** | `e8e24f9f2` | `uv.lock` re-resolved; `parler-tts` installs `--no-deps` in the `indic-parler` image variant |
+| TASK-864 Workflow Studio v2 | **merged** | `ac5d4068a` | harness `core.agent` reconciled with the merged 863 resolve contract; `harness:typecheck` clean apart from the base defect; step B2 seeds partial (Q-B2) |
+| TASK-861 Audio-pipeline retirement | in progress | — | 8 commits on `task-861-audio-pipeline-retirement`; steps 10 (deferred behind 864's palette deprecation) and 13 (artifacts, orchestrator) skipped by design |
+| TASK-865 SDK | ready, merges last | — | branch carries dev-2.2 through `86ff18952`; waits for 861 because the playground sends `agentSlug` |
+
+Base regressions fixed on dev-2.2 along the way: three call-parenthesis typos from the cleanup
+commit (`9a933b360`); two TASK-862 constructor-slot drifts in tests (`f0e9031f7`, `86ff18952`).
+Orchestrator-owned steps still owed after 865: artifact regeneration (`api:route-manifest`,
+`api:openapi`, `api:portal`, `vox-node gen:admin`), the e2e run on the isolated test stack, the
+`06-stt.ts` seed split, the `AiTaskDefault` reader repoint (R3), and the owner decisions OD-1..OD-15
+plus `workflows.py:748` (`workflow.patched()` without an id, a base defect).
 
 ## 10. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-04 | Program created from the owner's review brief; eight exploration/research passes; six tickets planned; decisions and owner questions consolidated. |
+| 2026-09-04 | Fan-out executed: 862, 863, 860, 864 merged into dev-2.2 with gates re-run on the merged tree (see §9); 861 in progress, 865 queued last. |

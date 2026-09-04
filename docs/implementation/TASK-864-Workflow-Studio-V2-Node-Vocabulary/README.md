@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | feature + refactor |
 | **Program** | [TASK-859 — AI Platform Consolidation](../TASK-859-Ai-Platform-Consolidation-Program/README.md) |
 | **Packages** | `packages/workflow-contract`, `packages/applications` (`workflow-*`, `consultation/workflow-dispatch`, `consultation/live-documentation/realtime`), `apps/api` (`workflows`, `workflow-*`, `webhook`), `apps/harness` (`temporal/interpreter/**`), `packages/ui/src/components/workflow-canvas`, `apps/admin-console/src/features/workflow-studio`, `packages/vox-node`, `packages/database` (seeds 21/23/24, `WorkflowRun`) |
@@ -186,16 +186,49 @@ Phase A adds the vocabulary alongside the old palettes (non-breaking); Phase B m
 
 ## 6. Open questions for the owner
 
+- **Q-B2 — rewriting seeds 21/23/24 in `core.*`.** The consultation rule set (`CR-*`, `DRAFT_CONSULTATION_RULE_SET`) keys its mandatory-presence and ordering guarantees on the `consultation.*` TYPES; a seed rewritten as `core.action` wrappers would pass the core rule set and silently lose those guarantees unless the rules are first retargeted to see through `actionKey`. That retargeting changes what "consent before generation" means for every tenant graph and needs an owner decision; the derived blobs are regenerated and green meanwhile.
+- **Q-harness — `workflows.py:748 workflow.patched()` without an id** (Substrate A, base branch). A one-token fix, but the patch id is a replay-compat decision for `HarnessDocWorkflow`'s fixtures; not touched here.
+- **Q-CEL libs** — `cel-js`/`celpy` deliberately not declared (native evaluators); add on request.
+
 1. Retire Substrate A (`ConsultationLoopWorkflow`/`HarnessDocWorkflow`) once every tenant is provisioned with a SYSTEM-cloned `core` consultation workflow? (Recommended as a follow-on ticket after two releases of parity.)
 2. Should Human review be assignable to a **role** only, or also to a named user/department queue? (Today the gate escalates by SLA; there is no assignee.)
 3. `schedule` trigger: in scope for this program or later?
 
 ## 7. Implementation Summary
 
-_Pending._
+Branch `task-864-workflow-studio-v2` (worktree `../hope-v2-task-864`, base `dev-2.2` @ `1896ebc03`).
+Status per plan step — **done** unless marked.
+
+| Step | Outcome | Evidence (real command output, worktree) |
+|---|---|---|
+| A1 contract | `core` palette (11 types) + `core.action` catalogue (31 keys), `any` consumer wildcard, class selectors (`entry`/`terminal`/`annotation`), per-instance ports (`branchHandlesOf`/`effectivePorts`), Trigger/Output declarations, `DRAFT_CORE_RULE_SET`, parity snapshot (69 entries) | `pnpm --filter @arcaai/workflow-contract test` → 33 files / 1478 tests |
+| A2 CEL | native TS + Python evaluators over ONE fixture (`expressions.fixture.json`; whole doubles are ints on both sides; errors are values) | contract suite above; `py-workflow-contract` 69 passed; harness `test_expressions_parity.py` |
+| A3 compiler | `branchGuards` + `loops[]` (`parentId` sub-graphs), byte-identical artifacts for legacy graphs (both omitted when empty); Python `CompiledLoop`/`CompiledBranchGuard` | golden fixtures WF-CORE-001..003; parity test |
+| A4 interpreter | `workflow.patched('task-864-core-vocabulary')` cheap-operand-first; branch gating (`branch_not_taken`), run context `{trigger, vars, nodes}` for core nodes only; `LoopWorkflow` ('CoreLoop', one iteration per generation + `continue_as_new`, foreach/while/until, nested, parent-owned `maxDurationSeconds`); `ReviewGateWorkflow` ('ReviewGate', signal/query, timeout → `timedOut`); `POST/GET /workflow-runs/{run}/reviews/{node}`; fixture `interpreter_core_v1_history.json` (125 events) via `_capture_core_replay_fixture.py`, `TestCoreVocabularyReplayCompatibility` | `pytest src/harness/tests/ -q --no-cov -p no:cacheprovider --deselect …TestReplayCompatibility -k 'not (<16 optimistic-gate tests>)'` → **2054 passed, 29 deselected, 2 failed** — every excluded/failed test is Substrate A (`HarnessDocWorkflow`) and fails on the BASE branch: `workflows.py:748` calls `workflow.patched()` with no id (`TypeError` inside workflow code → endless task retry → a hang in the time-skipping env). `workflows.py` is untouched here. `ruff check src` → All checks passed |
+| A5 realtime lane | admission per instance (`execution.lane`), `core.action` delegates to its action's realtime handler, `canonicalRealtimeNodeType(type, config)` | `realtime-core.task864.test.ts` green with the existing lane suites |
+| A6 exposure | class-based boundary (`clinicalWriteViolation`), `?mode` bounded by Output protocols (400) + trigger kinds (404), inbound webhook `POST /hooks/workflows/{hookId}` (`sha256=HMAC(secret, "<ts>.<rawBody>")`, ±300 s, single 404), `WorkflowWebhookSecret` (NEW `workflow-webhook.prisma`, migration `20260904120000_task_864_workflow_v2` — `ADD VALUE 'WorkflowRun'` + table; authored via shadow diff, header-clean, NEVER applied), AES-256-GCM secret via `WebhookService.encryptSecret`, `POST /admin/workflow-definitions/slug/{slug}/webhook-secret`, `/ws/workflows` gateway (stream ticket `workflow_run:<runId>`), `WorkflowRunCompletionService` (terminal write incl. `CANCELED` + `terminalReason`, `workflow-run-completion` worker session), ONE `ResourceUpdated` sys-event on `ResourceType.WorkflowRun` | applications: `npx vitest run …/workflow-exposure …/workflow-run` → 9 files / 95 tests; api: `npx dotenv -e .env.test -- npx vitest run apps/api/src/modules/{workflows,workflow-definition,webhook,streaming}` → 24 files / 456 tests; `pnpm --filter @arcaai/api build` clean; `pnpm --filter @arcaai/database test` → 79 files / 1862 tests; `gen:model:check` no drift |
+| A7 docs generation | `describeWorkflow()` in `@arcaai/applications` (the gateway has no `workflow-contract` dependency): `Workflow_<slug>_Input/_Output` components, admitted modes, AsyncAPI fragment; `GET /workflows/{slug}/schema` per tenant. NO committed artifact regenerated (orchestrator step) | `workflow-schema-description.task864.test.ts` (in the 95 above) |
+| B2 seeds | **PARTIAL.** Derived blobs of 21/23/23a/24 regenerated for the core registry (three regen cycles as the registry moved: core entries → deprecation flags → `format: 'cel'`); 21's print-only script had exactly two literals swapped from its own drift report (`DRIFT: 0`). The authoring sources were NOT rewritten in `core.*` — see §6 Q-B2 | database gate above (every seeded graph validates with ZERO findings) |
+| B1 Studio v2 | per-port handles (`ports` → one handle per port, kind + primitive exposed), `core.loop` as a derived-size group with `parentId` children (React Flow `extent: 'parent'`), minimap, `layoutWorkflowGraph` (pure layered engine; injectable ELK engine; `elkjs` declared as an `optionalDependency` of `packages/ui`, NOT installed/imported), JSON export/import (shape-checked, undoable `replaceGraph`), CEL editor (`format: 'cel'` strings; balance fast-fail + reference chips), `core.agent` picker against TASK-863 §3.5 (`GET /admin/agents?task=`, slug-box fallback on 404), `core.action` inspector (registry-driven action select = deprecated types with `replacedBy: 'core.action'`, delegate schema under `action.`), core node renderers, palette hides deprecated types and lists `core` first, `any` + per-instance ports mirrored with drift tests | `packages/ui`: `npx vitest run src/components/workflow-canvas` → 3 files / 26 tests; console: `npx vitest run src/features/workflow-studio` → 38 files / 324 tests; `npx eslint src/features/workflow-studio` clean; `tsc` clean for `workflow-studio`/`workflow-canvas` (the 6 remaining console errors are base-branch/unbuilt-sibling-dist files: `playground-*` on `@arcaai/vox`/`@arcaai/stt`, `ai-platform/huggingface-fetch-drawer.tsx`) |
+| C1 deprecation | all 58 non-core descriptors `deprecated: true` + `replacedBy` (pinned by `deprecation.task864.test.ts`); DTO + Studio mirror carry the flags; register rows flipped to `marked`; integration guide §3.2a/§3.5a/§Webhooks amendment; this README | contract + database gates above |
+
+### Dependencies declared, not installed (per brief)
+
+- `elkjs@^0.11.1` → `packages/ui#optionalDependencies`. Not imported anywhere: `layout.ts` takes an injected ELK-shaped engine and ships a pure layered fallback (a static import of an uninstalled module is a build error, not a fallback).
+- `cel-js` / `celpy` — **NOT added.** Both evaluators are native and held to one fixture; adding manifest entries for libraries the code never calls would be a lie to the lockfile. Report as a deviation; trivial to add if the owner wants the option.
+
+### Cross-ticket seams coded against
+
+- TASK-863: `GET /internal/agents/resolve` — reconciled against the MERGED route on 2026-09-04 (orchestrator): the slug travels as `agentSlug` (the route reads `task` / `agentSlug` / `departmentId`, never `slug`), and the answer is `ResolvedAgent` from `packages/types/src/agent.ts` — selection under `compiledConfig`, registry facts under `models[]` by role. `interpreter/models.py::ResolvedAgent` lifts both into the flat `model` / `fallbacks` / `instruction` / `resolvedPrompt` fields the activities read (`test_core_agent_resolution.py`). The route serves the ACTIVE version and takes no pin, so `agentRef.versionNumber` is enforced by the activity after resolution: a drift DEGRADES with `agent_version_drift` (fails closed — a pin that ran whatever is active would be no pin). Follow-up F-863-1: teach `AgentResolverService.resolve` an optional `versionNumber` so a pinned graph keeps running after a republish. `GET /admin/agents?task=&status=PUBLISHED&limit=200` (Studio picker; tolerates a bare array or `{ data }`); `/agents?create=1` deep link.
+- TASK-862/860: none (model selection stays behind the agent reference).
+- TASK-865: SDK additions wanted — `hope.workflows.schema(slug)`, a `/ws/workflows` client, inbound-webhook signing helper (`signWebhookTrigger` is exported from `@arcaai/applications` for parity), `WorkflowRun` webhook payload type.
+- `nav-config.ts` (TASK-862): no new route — the Studio v2 lives at the existing `/workflow-studio/*`.
 
 ## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-09-04 | Ticket created from the TASK-859 review. |
+| 2026-09-04 | A1–A3 landed (`7dc6fd254`): core contract, CEL evaluators, branch/loop compiler, Python parity. |
+| 2026-09-04 | A5 (`a3fcf4ec8`), A6+A7 (`5a8a0575a`), seed regen (`2d7245b15`), A4 (`452dcee12`), C1 part 1 (`9562f70ff`); then B1 Studio v2 + C1 docs/register/seeds. Harness gate excludes the base-branch `HarnessDocWorkflow` `patched()` defect (§7). |
+| 2026-09-04 | Orchestrator verification on the merged tree (dev-2.2 = base repairs + 862 + 863 + 860): `WorkflowNodeResponse.deprecated` is `boolean \| null` (`?? null`, per the totality rule) and `palette-key.test.ts` records the `core` palette as authorable AND exposure-allowed (A6) — `b51896a5a`. Harness `core.agent` reconciled with the merged 863 resolve contract (`agentSlug`, `compiledConfig` + `models[]` lifting, post-resolution version-pin check) — see §Cross-ticket seams. Full gates re-run: console lint + 263 files / 2315 tests, console build, applications + api unit (api: 7 pre-existing `ai-inference.controller.test.ts` failures reproduce on dev-2.2 — a TASK-862 constructor-slot drift, fixed there), harness `tests/unit/temporal/interpreter` + `tests/unit/services` (587 passed); `pnpm harness:typecheck` brought to the single pre-existing base error (`e73574703` — the branch had added 11). Merged into dev-2.2 at `ac5d4068a`; on the merged primary: shadow-DB proof drift-free (ledger replayed, `-- This is an empty migration.`), harness ruff clean / mypy at the single base defect / 587 tests. |

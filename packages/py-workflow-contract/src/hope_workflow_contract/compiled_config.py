@@ -93,6 +93,20 @@ class _CompiledModel(BaseModel):
         frozen=True,
     )
 
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        """Dump WITHOUT the additive-optional fields the document never carried.
+
+        TASK-864 added two OPTIONAL fields (``loops`` on the root, ``branchGuards`` on a
+        node) that the TypeScript compiler OMITS when empty, so that every artifact compiled
+        before they existed stays byte-identical and its checksum still verifies. A dump that
+        materialised them as ``null`` would break exactly that: the round-tripped document
+        would differ from the one that was signed. ``exclude_unset`` keeps a field the document
+        DID carry (including an explicit ``null`` such as ``redactionRuleSetId``) and drops only
+        what was never provided.
+        """
+        kwargs.setdefault("exclude_unset", True)
+        return super().model_dump(**kwargs)
+
 
 class CompiledRetryPolicy(_CompiledModel):
     maximum_attempts: int = Field(ge=1)
@@ -104,6 +118,13 @@ class CompiledInputBinding(_CompiledModel):
     from_node_id: str
     from_port: str
     to_port: str
+
+
+class CompiledBranchGuard(_CompiledModel):
+    """TASK-864 — one branch a node is gated behind: the router/review node and the handle."""
+
+    from_node_id: str
+    handle: str = Field(min_length=1)
 
 
 class CompiledNode(_CompiledModel):
@@ -123,11 +144,25 @@ class CompiledNode(_CompiledModel):
     #: Always true for activity nodes (INV-084) — provenance emission is not
     #: tenant-disableable, so the contract pins it rather than leaving it optional.
     emits_trajectory: Literal[True]
+    #: TASK-864, additive-optional: OMITTED by the compiler when empty, so a legacy artifact
+    #: (and its checksum) is untouched. Present only behind a router/review branch handle.
+    branch_guards: list[CompiledBranchGuard] | None = None
 
 
 class CompiledStage(_CompiledModel):
     stage_index: int = Field(ge=0)
     nodes: list[CompiledNode]
+
+
+class CompiledLoopBody(_CompiledModel):
+    """TASK-864 — a `core.loop`'s compiled body, walked once per iteration."""
+
+    stages: list[CompiledStage]
+
+
+class CompiledLoop(_CompiledModel):
+    node_id: NodeIdStr
+    body: CompiledLoopBody
 
 
 class CompiledGate(_CompiledModel):
@@ -218,6 +253,8 @@ class CompiledWorkflowConfig(_CompiledModel):
     gates: list[CompiledGate]
     policy_bindings: CompiledPolicyBindings
     caps: CompiledCaps
+    #: TASK-864, additive-optional — present only when the graph carries a `core.loop`.
+    loops: list[CompiledLoop] | None = None
     checksum: str = Field(min_length=1)
 
     @model_validator(mode="before")

@@ -40,10 +40,13 @@ from pydantic import BaseModel, ValidationError
 import hope_workflow_contract
 from hope_workflow_contract import (
     COMPILED_CONFIG_FORMAT_VERSION,
+    CompiledBranchGuard,
     CompiledCaps,
     CompiledDocumentTemplateRef,
     CompiledGate,
     CompiledInputBinding,
+    CompiledLoop,
+    CompiledLoopBody,
     CompiledNode,
     CompiledPolicyBindings,
     CompiledPromptTemplateRef,
@@ -126,6 +129,10 @@ PAIRS: list[tuple[str, type[BaseModel], dict[str, Any]]] = [
     ("caps", CompiledCaps, SCHEMA["$defs"]["caps"]),
     ("promptTemplateRef", CompiledPromptTemplateRef, PROMPT_TEMPLATE_REF_SCHEMA),
     ("documentTemplateRef", CompiledDocumentTemplateRef, DOCUMENT_TEMPLATE_REF_SCHEMA),
+    # TASK-864 — branch guards and loop bodies (both OPTIONAL on the artifact; omitted when empty).
+    ("branchGuard", CompiledBranchGuard, SCHEMA["$defs"]["branchGuard"]),
+    ("loopBody", CompiledLoopBody, SCHEMA["$defs"]["loopBody"]),
+    ("loop", CompiledLoop, SCHEMA["$defs"]["loop"]),
 ]
 
 
@@ -171,6 +178,10 @@ def test_every_normative_definition_has_a_model() -> None:
         "gate",
         "policyBindings",
         "caps",
+        # TASK-864
+        "branchGuard",
+        "loopBody",
+        "loop",
     }
 
 

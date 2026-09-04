@@ -1,12 +1,29 @@
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { generateId, ResourceType, SysEventType, WorkflowDefinitionRepository } from '@arcaai/domains';
+import {
+  generateId,
+  ResourceType,
+  SysEventType,
+  WorkflowDefinitionRepository,
+  WorkflowWebhookSecretFactory,
+  WorkflowWebhookSecretRepository,
+} from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { declaredOutputProtocols, declaredTriggerKinds, isCoreGraph, type WorkflowGraph } from '@arcaai/workflow-contract';
+
+/** A graph column read as the contract's shape — a null/garbled column reads as an empty graph. */
+function graphOf(value: unknown): Pick<WorkflowGraph, 'nodes'> {
+  const nodes = (value as { nodes?: unknown } | null)?.nodes;
+  return { nodes: Array.isArray(nodes) ? (nodes as WorkflowGraph['nodes']) : [] };
+}
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
+import { WebhookService } from '../webhook/webhook.service';
 import { IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
 import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
@@ -15,6 +32,7 @@ import { interpreterSessionId, IWorkflowRunService, WorkflowRunResponse } from '
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
+import { describeWorkflow, type WorkflowSchemaDescription } from './workflow-schema-description';
 import {
   InvokeWorkflowRequest,
   WorkflowInvokeResponse,
@@ -22,7 +40,14 @@ import {
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from './dto';
-import { IWorkflowExposureService, InvokeWorkflowOptions, ListWorkflowOptions } from './IWorkflowExposureService';
+import {
+  IWorkflowExposureService,
+  InvokeWorkflowOptions,
+  ListWorkflowOptions,
+  WebhookTriggerInput,
+  WorkflowRunResponseMode,
+  WorkflowWebhookSecretResponse,
+} from './IWorkflowExposureService';
 import { WorkflowExposureDtoMapper } from './workflow-exposure.dto.mapper';
 
 /** Default self-hosted MinIO bucket for the compiled-config claim-check — mirrors the harness's
@@ -34,6 +59,39 @@ const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED
 
 const IDEMPOTENCY_KEY_PREFIX = 'idempotency:workflow-invoke:';
 const IDEMPOTENCY_TTL_SECONDS = 86_400; // 24h — mirrors ConsultationJobService/HarnessInternalService
+
+/** TASK-864 — the inbound webhook's replay window, in seconds, on `X-Hope-Timestamp`. */
+export const WEBHOOK_TRIGGER_REPLAY_WINDOW_SECONDS = 300;
+/** The dedicated pepper `Webhook.hashedSecret` already uses — never `API_KEY_PEPPER`. */
+const WEBHOOK_SECRET_PEPPER_NAME = 'WEBHOOK_SECRET_PEPPER';
+
+/**
+ * TASK-864 §3.4 — which `?mode=` an Output protocol admits. `async` is always allowed (poll
+ * `GET …/runs/{runId}`). Pure; exported for the controller test.
+ */
+export function modeRefusal(graph: unknown, mode: WorkflowRunResponseMode | undefined): string | null {
+  if (mode === undefined || mode === 'async') return null;
+  const protocols = declaredOutputProtocols(graphOf(graph));
+  if (protocols.length === 0) return null; // a legacy palette declares nothing and is unrestricted
+  const required = mode === 'blocking' ? 'http' : 'http-sse';
+  if (protocols.includes(required)) return null;
+  return `mode '${mode}' requires the workflow to publish the '${required}' protocol; it declares [${protocols.join(', ')}]. Use mode=async, or one of the declared protocols.`;
+}
+
+/**
+ * The string an inbound webhook sender signs: `"<timestamp>.<rawBody>"` under HMAC-SHA256 with
+ * the definition's secret, sent as `X-Hope-Signature: sha256=<hex>` (the Stripe/GitHub shape,
+ * and the same header family the OUTBOUND deliveries use). Pure; exported for tests and docs.
+ */
+export function signWebhookTrigger(secret: string, timestamp: string, rawBody: string): string {
+  return `sha256=${createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex')}`;
+}
+
+function signaturesMatch(expected: string, presented: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(presented);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 /**
  * The exposure plane's application service. See
@@ -56,6 +114,11 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // construct the service; absent, a consultation-bound invoke fails loud rather than
     // dispatching with an unverified id.
     @Optional() @Inject(IConsultationService) private readonly consultationService?: IConsultationService,
+    // TASK-864 — the inbound webhook trigger's per-definition secret row and the pepper that
+    // encrypts it. Both optional so a minimal fixture constructs; absent, the webhook plane
+    // fails loud (a 404 on the public route, a 400 on rotation) rather than running unsigned.
+    @Optional() private readonly webhookSecretRepository?: WorkflowWebhookSecretRepository,
+    @Optional() private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -142,6 +205,25 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
+    // TASK-864 §3.4 — a `core` graph declares WHICH trigger kinds may start it and WHICH
+    // protocols its Output publishes. A kind the Trigger did not declare is a 404 (the same
+    // "not a product on this plane" posture as the palette boundary); a `?mode=` the Output
+    // does not publish is a 400 naming the declared protocols — the caller is authenticated
+    // and the definition is theirs, so there is nothing to hide, only something to fix.
+    if (isCoreGraph(graphOf(definition.graph))) {
+      const kinds = declaredTriggerKinds(graphOf(definition.graph));
+      const requiredKind = opts.trigger === 'webhook' ? 'webhook' : consultationBound ? 'consultation' : 'api';
+      if (!kinds.includes(requiredKind)) {
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+          resourceId: definition.id,
+          data: { action: 'invokeRefusedByTriggerKind', slug: definition.slug, requiredKind, declaredKinds: kinds },
+        });
+        throw new NotFoundException(`Workflow '${slug}' not found.`);
+      }
+      const refusal = modeRefusal(definition.graph, opts.mode);
+      if (refusal) throw new BadRequestException(refusal);
+    }
+
     // step 2 (C-8 link 1, at the composition point). A caller may not supply the keys
     // the interpreter reads as identity — 400, never a silent drop: dropping would let a caller
     // believe it had addressed a consultation while the run acted on something else. Checked
@@ -199,7 +281,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       definitionName: definition.name,
       sessionId,
       runId,
-      trigger: 'api invoke',
+      trigger: opts.trigger ?? 'api invoke',
       isSandbox: false,
     });
 
@@ -268,12 +350,126 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     const result = await this.harnessGateway.cancelWorkflowRun(runId);
 
+    // TASK-864 (G9): the read model records CANCELED HERE, at the cancel, instead of waiting for
+    // a later status read to notice. The interpreter's own terminal event, when it arrives,
+    // re-records the same status idempotently.
+    try {
+      await this.workflowRunService.recordRunFinished({
+        tenantId,
+        sessionId: run.sessionId,
+        runId: run.runId,
+        status: 'CANCELED',
+        terminalReason: 'cancelled_by_caller',
+      });
+    } catch {
+      // Best-effort read-model write — the cancel signal already reached the run.
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: run.workflowVersionId,
       data: { action: 'cancel', runId },
     });
 
     return WorkflowExposureDtoMapper.toCancelResponse(runId, result.status);
+  }
+
+  // ============================================================
+  // TASK-864 §3.4 — the INBOUND webhook trigger and its secret
+  // ============================================================
+
+  async triggerByWebhook(hookId: string, input: WebhookTriggerInput): Promise<WorkflowInvokeResponse> {
+    // Every refusal on this UNAUTHENTICATED plane is the same 404: the hook id is the only
+    // public handle, and a distinguishable failure would be an oracle over it.
+    const refuse = (): never => {
+      throw new NotFoundException('Not found.');
+    };
+    if (!this.webhookSecretRepository || !input.signature || !input.timestamp) refuse();
+
+    const row = await this.webhookSecretRepository!.findById(hookId).catch(() => null);
+    if (!row) refuse();
+
+    // Replay window on the SIGNED timestamp.
+    const sentAt = Number(input.timestamp);
+    if (!Number.isFinite(sentAt) || Math.abs(Date.now() / 1000 - sentAt) > WEBHOOK_TRIGGER_REPLAY_WINDOW_SECONDS) refuse();
+
+    const pepper = (await this.secretsService?.getSecretOptional(WEBHOOK_SECRET_PEPPER_NAME)) ?? undefined;
+    let secret: string;
+    try {
+      secret = WebhookService.decryptSecret(row!.encryptedSecret, pepper);
+    } catch {
+      return refuse();
+    }
+    if (!signaturesMatch(signWebhookTrigger(secret, input.timestamp!, input.rawBody), input.signature!)) refuse();
+
+    let body: unknown;
+    try {
+      body = JSON.parse(input.rawBody);
+    } catch {
+      throw new BadRequestException('The webhook body must be a JSON object — the trigger payload.');
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new BadRequestException('The webhook body must be a JSON object — the trigger payload.');
+    }
+
+    // The secret row names the tenant; from here the run is the tenant's, exactly as an API
+    // invoke is. The signature just proved possession of that tenant's key.
+    this.clsService.set('tenantId', row!.tenantId);
+    return this.invoke(row!.workflowSlug, { input: body as Record<string, unknown> }, {
+      idempotencyKey: input.idempotencyKey,
+      trigger: 'webhook',
+      mode: 'async',
+    });
+  }
+
+  async describe(slug: string): Promise<WorkflowSchemaDescription> {
+    this.assertExposureEnabled();
+    const tenantId = this.requireTenantId();
+    const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, slug);
+    if (!definition || exposureBoundaryViolation(definition, {}) !== null) {
+      throw new NotFoundException(`Workflow '${slug}' not found.`);
+    }
+    return describeWorkflow(definition.slug, definition.versionNumber, graphOf(definition.graph));
+  }
+
+  async rotateWebhookSecret(slug: string): Promise<WorkflowWebhookSecretResponse> {
+    const tenantId = this.requireTenantId();
+    if (!this.webhookSecretRepository) {
+      throw new BadRequestException('Inbound webhook secrets are unavailable: no secret store is configured.');
+    }
+    // 404-over-403: an unknown or foreign slug reads as absent.
+    const definition = await this.workflowDefinitionRepository.findPublishedBySlug(tenantId, slug);
+    if (!definition) throw new NotFoundException(`Workflow '${slug}' not found.`);
+
+    const raw = randomBytes(32).toString('hex');
+    const pepper = (await this.secretsService?.getSecretOptional(WEBHOOK_SECRET_PEPPER_NAME)) ?? undefined;
+    const encrypted = WebhookService.encryptSecret(raw, pepper);
+    const rotatedAt = new Date();
+
+    const existing = await this.webhookSecretRepository.findByTenantSlug(tenantId, slug);
+    let saved;
+    if (existing) {
+      existing.encryptedSecret = encrypted;
+      existing.rotatedAt = rotatedAt;
+      existing.updatedBy = this.requestUserId ?? undefined;
+      saved = await this.webhookSecretRepository.updateWithVersion(existing.id, existing, existing.version);
+    } else {
+      saved = await this.webhookSecretRepository.create(
+        WorkflowWebhookSecretFactory.CreateWorkflowWebhookSecret({
+          tenantId,
+          workflowSlug: slug,
+          encryptedSecret: encrypted,
+          rotatedAt,
+          createdBy: this.requestUserId ?? undefined,
+        }),
+      );
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: definition.id,
+      data: { action: 'rotateWebhookSecret', slug, hookId: saved.id },
+    });
+
+    return { slug, secret: raw, rotatedAt: rotatedAt.toISOString(), hookUrl: `/api/v1/hooks/workflows/${saved.id}` };
   }
 
   // ============================================================

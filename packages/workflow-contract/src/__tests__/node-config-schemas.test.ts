@@ -33,6 +33,13 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'agentic.output',
         'agentic.stt',
         'agentic.tts',
+        // TASK-864 — the `core` vocabulary. Every one carries a schema; `core.note`'s is the
+        // comment's own two fields, and `core.data` reuses the Data node's schema verbatim.
+        'core.action',
+        'core.agent',
+        'core.classify',
+        'core.condition',
+        'core.data',
         // lane A — the target catalogue and the guards.
         'agent.discharge_summary',
         'agent.dna_redaction',
@@ -65,7 +72,13 @@ describe('NODE_CONFIG_SCHEMAS', () => {
         'consultation.suggestions',
         'consultation.synthesize',
         'core.end',
+        'core.humanReview',
+        'core.loop',
+        'core.note',
+        'core.output',
         'core.start',
+        'core.trigger',
+        'core.variable',
         // the endpoint stage.
         'feedback.capture',
         'generate.text',

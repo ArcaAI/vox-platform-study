@@ -18,6 +18,8 @@ export interface GraphStoreNode {
    *  `'mandatory'` is a member — see `contracts/registry.contract.md`. */
   safetyClasses: readonly string[];
   config: Record<string, unknown>;
+  /** TASK-864: the enclosing `core.loop` (a group on the canvas); `position` is then relative to it. */
+  parentId?: string;
 }
 
 export interface GraphStoreEdge {

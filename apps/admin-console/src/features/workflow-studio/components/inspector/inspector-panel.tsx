@@ -30,18 +30,26 @@
  * `promptTemplateId` itself, the generic `field-renderers.tsx` string control already renders it
  * and this section steps aside rather than offering a second, duplicate control for the same key.
  */
-import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Skeleton } from '@arcaai/ui';
+import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Field, FieldDescription, FieldLabel, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton } from '@arcaai/ui';
 import { IconLayoutBoard } from '@tabler/icons-react';
 import { useState } from 'react';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
+import { AgentPickerField } from './agent-picker-field';
 import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer } from './field-renderers';
+import { getAtPath, setAtPath } from './field-path';
 import { PromptTemplatePicker } from './prompt-template-picker';
 import { NO_SCHEMA_REASON } from './raw-json-field';
 
 const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
+/** TASK-864 B1 — `core.agent`'s reference, rendered as the agent picker instead of a slug box. */
+const AGENT_REF_PATH = 'agentRef';
+const AGENT_SLUG_PATH = 'agentRef.slug';
+/** TASK-864 B1 — `core.action`'s delegate key and the delegate's own sub-config. */
+const ACTION_KEY_PATH = 'actionKey';
+const ACTION_CONFIG_PATH = 'action';
 const DOCUMENT_TEMPLATE_PATH = 'documentTemplateId';
 const DOCUMENT_VERSION_PATH = 'documentVersionNumber';
 /** The two schema-declared keys `DocumentBindingField` renders as ONE control. */
@@ -58,6 +66,12 @@ export interface InspectorPanelProps {
   onConfigChange: (config: Record<string, unknown>) => void;
   loading?: boolean;
   readOnly?: boolean;
+  /** TASK-864 B1 — run-context references the CEL editor offers (`trigger`, `vars.*`, `nodes.<id>`). */
+  references?: readonly string[];
+  /** TASK-864 B1 — for a `core.action` node: the catalogue actions on offer (deprecated types that map onto `core.action`). */
+  actionOptions?: ReadonlyArray<{ key: string; label: string }>;
+  /** TASK-864 B1 — for a `core.action` node: the chosen delegate's own config schema (rendered under `action`). */
+  actionSchema?: unknown;
 }
 
 function errorsForPath(problems: WorkflowFinding[], path: string): string[] {
@@ -125,7 +139,52 @@ function WholeConfigJsonEditor({ node, onConfigChange }: { node: GraphStoreNode;
   );
 }
 
-export function InspectorPanel({ node, configSchema, problems, onConfigChange, loading, readOnly }: InspectorPanelProps) {
+function ActionKeySection({
+  node,
+  options,
+  onConfigChange,
+  errors,
+}: {
+  node: GraphStoreNode;
+  options: ReadonlyArray<{ key: string; label: string }>;
+  onConfigChange: (config: Record<string, unknown>) => void;
+  errors: string[];
+}) {
+  const id = `${node.id}-${ACTION_KEY_PATH}`;
+  const value = getAtPath(node.config, ACTION_KEY_PATH);
+  return (
+    <Field data-invalid={errors.length > 0 ? 'true' : undefined}>
+      <FieldLabel htmlFor={id}>Action *</FieldLabel>
+      <FieldDescription>The platform action this node runs — its ports and sub-config follow the choice.</FieldDescription>
+      <Select
+        value={typeof value === 'string' ? value : ''}
+        onValueChange={(next) => {
+          // A new delegate has a new sub-config shape: reset `action` rather than carry stale keys.
+          const { [ACTION_CONFIG_PATH]: _omit, ...rest } = node.config;
+          onConfigChange(setAtPath(rest, ACTION_KEY_PATH, next));
+        }}
+      >
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder="Choose an action" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.key} value={option.key}>
+              {option.label} <span className="text-muted-foreground font-mono text-xs">{option.key}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {errors.length > 0 ? (
+        <p role="alert" className="text-destructive text-sm">
+          {errors.join(' ')}
+        </p>
+      ) : null}
+    </Field>
+  );
+}
+
+export function InspectorPanel({ node, configSchema, problems, onConfigChange, loading, readOnly, references, actionOptions, actionSchema }: InspectorPanelProps) {
   if (!node) {
     return (
       <Empty>
@@ -164,13 +223,41 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
   // The document binding's own two descriptors are withheld from the generic renderer, not
   // dropped: `DocumentBindingField` renders both keys, and their paths stay in `knownPaths` so a
   // server finding at either one is still routed to a field rather than to the graph-level list.
-  const descriptors = allDescriptors.filter((descriptor) => !DOCUMENT_BINDING_PATHS.has(descriptor.path));
-  const hasDocumentBinding = descriptors.length !== allDescriptors.length;
-  const knownPaths = new Set(flattenPaths(allDescriptors));
+  // TASK-864 B1 does the same for `core.agent`'s `agentRef` (the picker) and `core.action`'s
+  // `actionKey` + `action` (a select over the catalogue, then the DELEGATE's schema).
+  const isCoreAgent = node.type === 'core.agent';
+  const isCoreAction = node.type === 'core.action' && actionOptions !== undefined;
+  const withheld = new Set<string>([...DOCUMENT_BINDING_PATHS, ...(isCoreAgent ? [AGENT_REF_PATH] : []), ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : [])]);
+  const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
+  const hasDocumentBinding = allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
+  // The delegate's schema, hoisted under `action.` so every generated path lands in the sub-config.
+  const actionDescriptors = isCoreAction && actionSchema !== undefined ? toFieldDescriptors({ type: 'object', properties: { [ACTION_CONFIG_PATH]: actionSchema } }) : [];
+  const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
   const graphLevelErrors = problems.filter((problem) => !knownPaths.has(problem.path ?? ''));
 
   return (
     <fieldset disabled={readOnly} className="flex flex-col gap-4">
+      {isCoreAgent ? (
+        <AgentPickerField
+          id={`${node.id}-${AGENT_SLUG_PATH}`}
+          value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
+          onChange={(slug) => onConfigChange(setAtPath(node.config, AGENT_SLUG_PATH, slug))}
+          errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
+          disabled={readOnly}
+        />
+      ) : null}
+      {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
+      {actionDescriptors.map((descriptor) => (
+        <FieldRenderer
+          key={descriptor.path}
+          descriptor={descriptor}
+          config={node.config}
+          onConfigChange={onConfigChange}
+          errors={errorsForPath(problems, descriptor.path)}
+          idPrefix={node.id}
+          references={references}
+        />
+      ))}
       {descriptors.map((descriptor) => (
         <FieldRenderer
           key={descriptor.path}
@@ -179,6 +266,7 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
           onConfigChange={onConfigChange}
           errors={errorsForPath(problems, descriptor.path)}
           idPrefix={node.id}
+          references={references}
         />
       ))}
       {hasDocumentBinding ? (

@@ -23,7 +23,7 @@ import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { Button, Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@arcaai/ui';
 import { IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
-import { WorkflowCanvas, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
+import { WorkflowCanvas, layoutWorkflowGraph, type WorkflowCanvasEdge, type WorkflowCanvasNode, type WorkflowCanvasPort } from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
@@ -32,6 +32,8 @@ import { useAutosave, useStudioShortcuts, useUnsavedChangesGuard } from '../hook
 import { useCreateWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
+import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
+import { actionKeyOf, effectiveNodePorts } from '../lib/core-ports';
 import { humanizeKey } from '../lib/schema-form';
 import {
   GraphStoreProvider,
@@ -51,6 +53,7 @@ import {
 import type { WorkflowStudioViewMode } from '../store/types';
 import type { WorkflowDefinition, WorkflowFinding, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
 import { InspectorPanel } from './inspector';
+import { CORE_NODE_RENDERERS } from './canvas';
 import { PromptBindingsRail } from './prompt-bindings';
 import { PaletteRail } from './palette';
 import { GraphListEditor } from './list-editor';
@@ -60,6 +63,37 @@ import { PublishDialog } from './publish-dialog';
 import { DefinitionMetadataForm } from './definition-metadata-form';
 
 const VIEW_MODES = ['canvas', 'list'] as const satisfies readonly WorkflowStudioViewMode[];
+/** The one container node type: its body is the set of nodes naming it as `parentId` (TASK-864). */
+const LOOP_NODE_TYPE = 'core.loop';
+const ACTION_NODE_TYPE = 'core.action';
+
+/** A descriptor's ports for THIS instance, in the canvas's per-handle shape (TASK-864 B1). */
+function canvasPortsFor(descriptorByType: ReadonlyMap<string, WorkflowNodeDescriptor>, type: string, config: Record<string, unknown>): WorkflowCanvasNode['ports'] {
+  const ports = effectiveNodePorts(descriptorByType, type, config);
+  if (!ports) return undefined;
+  const toPort = (port: { name: string; primitive: string }): WorkflowCanvasPort => ({ id: port.name, kind: port.primitive === 'control' ? 'control' : 'data', primitive: port.primitive });
+  return { inputs: ports.inputs.map(toPort), outputs: ports.outputs.map(toPort) };
+}
+
+/** Run-context references the CEL editor offers: the trigger, every declared variable, every node. */
+function celReferencesOf(nodes: ReadonlyArray<{ id: string; type: string; config: Record<string, unknown> }>): string[] {
+  const vars = nodes
+    .filter((node) => node.type === 'core.variable')
+    .flatMap((node) => (Array.isArray(node.config.variables) ? node.config.variables : []))
+    .map((variable) => (variable && typeof variable === 'object' ? (variable as { key?: unknown }).key : undefined))
+    .filter((key): key is string => typeof key === 'string' && key.length > 0)
+    .map((key) => `vars.${key}`);
+  return ['trigger', ...vars, ...nodes.map((node) => `nodes.${node.id}`)];
+}
+
+function downloadText(filename: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * The three-panel layout is gated on `[@media(min-width:64rem)_and_(min-height:32rem)]` below.
@@ -105,6 +139,18 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   // node is currently selected, not just at hydration time.
   const descriptorByType = useMemo(() => new Map(registryNodes.map((descriptor) => [descriptor.type, descriptor])), [registryNodes]);
   const selectedNodeConfigSchema = selectedNode ? (descriptorByType.get(selectedNode.type)?.configSchema ?? undefined) : undefined;
+  // TASK-864 B1 — the `core.action` catalogue IS the set of deprecated types that map onto it,
+  // so the inspector's action list is registry-driven, never a hand-kept mirror of ACTION_CATALOGUE.
+  const actionOptions = useMemo(
+    () =>
+      registryNodes
+        .filter((descriptor) => descriptor.deprecated === true && descriptor.replacedBy === ACTION_NODE_TYPE)
+        .map((descriptor) => ({ key: descriptor.type, label: humanizeKey(descriptor.type) }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [registryNodes],
+  );
+  const selectedActionSchema = selectedNode?.type === ACTION_NODE_TYPE ? (descriptorByType.get(actionKeyOf(selectedNode.config) ?? '')?.configSchema ?? undefined) : undefined;
+  const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
 
   const hydratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -242,6 +288,44 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   );
 
   useStudioShortcuts({ enabled: !readOnly, onUndo: handleUndo, onRedo: handleRedo, onDuplicate: duplicateSelected });
+
+  // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
+  // JSON export and undoable JSON import. Layout moves are persisted through the same autosave
+  // path as a drag would be.
+  async function handleAutoLayout() {
+    const { nodes: current, edges: currentEdges } = storeApi.getState();
+    const result = await layoutWorkflowGraph(
+      current.map((node) => ({ id: node.id, parentId: node.parentId, kind: node.type === LOOP_NODE_TYPE ? ('group' as const) : ('node' as const) })),
+      currentEdges.map((edge) => ({ source: edge.source, target: edge.target })),
+    );
+    for (const node of current) {
+      const position = result.positions[node.id];
+      if (position) storeApi.getState().moveNode(node.id, position);
+    }
+    if (!readOnly) {
+      const { nodes: moved, edges: unchanged } = storeApi.getState();
+      autosave.schedule({ graph: toWorkflowGraph(moved, unchanged) });
+    }
+    toast.success('Graph arranged.');
+  }
+  function handleExport() {
+    const { nodes: current, edges: currentEdges } = storeApi.getState();
+    downloadText(GRAPH_EXPORT_FILENAME(definition.slug, definition.versionNumber), exportGraphJson(current, currentEdges));
+    toast.success('Graph exported.');
+  }
+  function handleImport(text: string) {
+    const parsed = parseGraphJson(text);
+    if (!parsed.ok) {
+      toast.error(`Import refused: ${parsed.reason}`);
+      return;
+    }
+    const { nodes: imported, edges: importedEdges } = fromWorkflowGraph(parsed.graph);
+    storeApi.getState().replaceGraph(
+      imported.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
+      importedEdges,
+    );
+    toast.success(`Imported ${imported.length} node${imported.length === 1 ? '' : 's'} — validate before publishing.`);
+  }
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
 
   async function handleValidate() {
@@ -282,6 +366,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     position: node.position,
     safetyClasses: node.safetyClasses,
     config: node.config,
+    ports: canvasPortsFor(descriptorByType, node.type, node.config),
+    kind: node.type === LOOP_NODE_TYPE ? 'group' : 'node',
+    parentId: node.parentId,
+    deprecated: descriptorByType.get(node.type)?.deprecated === true,
     problem: (() => {
       const findings = problemsByNodeId.get(node.id);
       if (!findings || findings.length === 0) return undefined;
@@ -337,6 +425,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
           onUndo={handleUndo}
           onRedo={handleRedo}
           sandboxDefinitionId={definition.id}
+          onAutoLayout={() => void handleAutoLayout()}
+          onExport={handleExport}
+          onImport={handleImport}
         />
       }
       footer={
@@ -364,9 +455,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         <aside className="min-h-0 [@media(min-width:64rem)_and_(min-height:32rem)]:overflow-y-auto" aria-label="Node palette panel">
           <PaletteRail
             descriptors={registryNodes}
-            onAddNode={(descriptor) =>
-              storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, { x: 120, y: 120 + nodes.length * 100 })
-            }
+            onAddNode={(descriptor) => {
+              // TASK-864 B1 — with a loop selected, the new node joins its body (pointer-free
+              // nesting: no drag-into-group is ever required).
+              const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
+              const siblings = parent ? nodes.filter((node) => node.parentId === parent.id).length : nodes.length;
+              const position = parent ? { x: 24 + siblings * 260, y: 56 } : { x: 120, y: 120 + siblings * 100 };
+              storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
+            }}
           />
         </aside>
         <div className="min-h-[26rem] [@media(min-width:64rem)_and_(min-height:32rem)]:min-h-0">
@@ -375,6 +471,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               aria-label={`${name} graph, canvas view`}
               nodes={canvasNodes}
               edges={canvasEdges}
+              nodeTypes={CORE_NODE_RENDERERS}
               readOnly={readOnly}
               selectedNodeId={selectedNodeId}
               onSelect={selectNodeById}
@@ -439,6 +536,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
             onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
             readOnly={readOnly}
+            references={celReferences}
+            actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
+            actionSchema={selectedActionSchema}
           />
           <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
           {/*

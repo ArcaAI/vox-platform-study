@@ -1044,3 +1044,35 @@ class TestSttBatchJobs:
         assert result.progress == 40
         assert result.error_message == "boom"
         assert result.error_code == "ASR_TIMEOUT"
+
+
+class TestResolveAgent:
+    """TASK-864 `core.agent` -> TASK-863 `GET /internal/agents/resolve`, as the route was merged:
+    the slug travels as `agentSlug`, the tenant as BOTH `tenantId` and `X-Tenant-Id`, and no
+    version pin is sent (the route has none — the activity enforces the pin after resolution)."""
+
+    @pytest.mark.asyncio
+    async def test_asks_by_agent_slug_off_the_sibling_internal_mount(self):
+        seen: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["req"] = request
+            return httpx.Response(200, json={"agentId": "a", "slug": "writer", "versionNumber": 2})
+
+        answer = await _client(handler).resolve_agent(slug="writer", tenant_id="tenant-1")
+
+        req = seen["req"]
+        assert req.method == "GET"
+        assert req.url.path == "/api/v1/internal/agents/resolve"
+        assert dict(req.url.params) == {"tenantId": "tenant-1", "agentSlug": "writer"}
+        assert req.headers["X-Service-Token"] == "svc-token"
+        assert req.headers["X-Tenant-Id"] == "tenant-1"
+        assert answer == {"agentId": "a", "slug": "writer", "versionNumber": 2}
+
+    @pytest.mark.asyncio
+    async def test_a_404_raises_so_the_activity_fails_closed(self):
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "not found"})
+
+        with pytest.raises(ApiServiceError):
+            await _client(handler).resolve_agent(slug="ghost", tenant_id="tenant-1")

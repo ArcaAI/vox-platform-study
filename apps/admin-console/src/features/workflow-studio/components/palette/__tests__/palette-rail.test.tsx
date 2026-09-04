@@ -6,6 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it, vi } from 'vitest';
 import { PaletteRail } from '../palette-rail';
+import { humanizeKey } from '../../../lib/schema-form';
 import type { WorkflowNodeDescriptor } from '../../../api/types';
 
 const NOOP: WorkflowNodeDescriptor = {
@@ -76,6 +77,17 @@ describe('PaletteRail', () => {
     render(<PaletteRail descriptors={[NOOP, MANDATORY]} onAddNode={vi.fn()} />);
     expect(screen.getByText(/summarization/i)).toBeTruthy();
     expect(screen.getByText(/utility/i)).toBeTruthy();
+  });
+
+  it('TASK-864: a deprecated type is hidden from the rail, and the core group comes first', () => {
+    const DEPRECATED: WorkflowNodeDescriptor = { ...NOOP, type: 'agent.grammar', paletteKey: 'consultation', deprecated: true, replacedBy: 'core.action' };
+    const CORE: WorkflowNodeDescriptor = { ...NOOP, type: 'core.agent', paletteKey: 'core', classes: ['agent'] };
+    render(<PaletteRail descriptors={[MANDATORY, DEPRECATED, CORE]} onAddNode={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: new RegExp(humanizeKey('agent.grammar'), 'i') })).toBeNull();
+    expect(screen.getByRole('button', { name: new RegExp(humanizeKey('core.agent'), 'i') })).toBeTruthy();
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings[0]).toMatch(/core/i);
+    expect(screen.getByText(/2 of 2 node types/i)).toBeTruthy();
   });
 
   it('0 axe violations', async () => {

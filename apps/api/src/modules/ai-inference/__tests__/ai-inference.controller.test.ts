@@ -230,7 +230,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('emits a TEXT_UNIT + REQUEST row with an nlp:<generated requestId> key and NO consultation attribution', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'user-1', roles: [] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'aspirin 100mg' });
@@ -251,7 +251,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('attributes doctorId when the CLS user is a clinician (DOCTOR/SPECIALIST/CONSULTANT)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'doctor-9', roles: ['DOCTOR'] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -263,7 +263,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('omits doctorId when the CLS user has no clinician role (e.g. a SUPER_ADMIN using the playground)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
     const cls = clsFor({ id: 'admin-1', roles: ['SUPER_ADMIN'] });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -275,7 +275,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('does not emit when no tenantId is available in CLS', async () => {
     const usageLedgerService = { recordUsage: vi.fn() };
     const cls = clsFor({ id: 'user-1' }, null as never);
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 
     await controller.extractEntities({ text: 'x' });
@@ -285,7 +285,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
 
   it('does not emit when no usage-ledger service is wired (test-fixture ergonomics, unaffected proxying)', async () => {
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, undefined);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, undefined);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -296,7 +296,7 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
   it('never fails extractEntities when the ledger rejects (best-effort, like every other emitter in this codebase)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) };
     const cls = clsFor({ id: 'user-1' });
-    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, cls, usageLedgerService);
     const entities = { entities: [], model_version: 'v1' };
     client.classifyTokens.mockResolvedValue(entities);
 
@@ -416,7 +416,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic FAILS CLOSED with 503 when there is no CLS tenant', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor(undefined));
+    const { controller, client } = makeController(undefined, undefined, clsFor(undefined));
 
     await expect(controller.classifyTopic({ text: 'a billing question' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTopic).not.toHaveBeenCalled();
@@ -424,7 +424,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic resolves TenantNlpTaskInstructions and injects instructions + tenant_id', async () => {
     const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.topic', instructionsJson: ['billing', 'appointments'], version: 1 }) };
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
     client.classifyTopic.mockResolvedValue({ predicted_topic: 'billing', available_topics: ['billing', 'appointments'] });
 
     const result = await controller.classifyTopic({ text: 'a billing question', language: 'en' });
@@ -440,7 +440,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
   });
 
   it('classifyTopic proceeds without instructions when the service is unwired (NLP fails closed itself)', async () => {
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, undefined);
+    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, undefined);
     client.classifyTopic.mockResolvedValue({});
 
     await controller.classifyTopic({ text: 'x' });
@@ -450,7 +450,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyTopic degrades to no instructions on a resolution error (never blocks the proxy)', async () => {
     const instructions = { getRow: vi.fn().mockRejectedValue(new Error('db down')) };
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
     client.classifyTopic.mockResolvedValue({});
 
     await controller.classifyTopic({ text: 'x' });
@@ -460,7 +460,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyIntent resolves TenantNlpTaskInstructions (nlp.intent) and injects instructions + tenant_id', async () => {
     const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.intent', instructionsJson: ['schedule_appointment'], version: 1 }) };
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    const { controller, client } = makeController(undefined, undefined, clsFor('t1'), undefined, instructions);
     client.classifyIntent.mockResolvedValue({ predicted_intent: 'schedule_appointment', available_intents: ['schedule_appointment'] });
 
     const result = await controller.classifyIntent({ text: 'book me an appointment' });
@@ -476,7 +476,7 @@ describe('AiInferenceController — nlp/topic, nlp/intent ', () => {
 
   it('classifyIntent FAILS CLOSED with 503 when there is no CLS tenant', async () => {
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    const { controller, client } = makeController(undefined, undefined, undefined, clsFor(undefined));
+    const { controller, client } = makeController(undefined, undefined, clsFor(undefined));
 
     await expect(controller.classifyIntent({ text: 'book me an appointment' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyIntent).not.toHaveBeenCalled();

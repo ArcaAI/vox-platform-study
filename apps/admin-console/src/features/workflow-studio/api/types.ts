@@ -27,6 +27,8 @@ export interface WorkflowGraphNode {
   type: string;
   config: Record<string, unknown>;
   position?: { x: number; y: number };
+  /** TASK-864: the enclosing `core.loop` node — a loop body is the set of nodes naming it. */
+  parentId?: string;
 }
 
 export interface WorkflowGraphEdge {
@@ -148,7 +150,9 @@ export type WorkflowPortPrimitive =
   | 'document'
   | 'edits'
   | 'verdict'
-  | 'context<schemaRef>';
+  | 'context<schemaRef>'
+  /** TASK-864: a consumer-side wildcard — accepts any DATA primitive, never `control`; never produced. */
+  | 'any';
 
 /** One declared port on a node type (`WorkflowNodePortResponse`) — what
  *  `lib/port-compatibility.ts`'s connection predicate checks. */
@@ -189,6 +193,10 @@ export interface WorkflowNodeDescriptor {
   inputs: readonly WorkflowNodePort[];
   /** Declared output ports. */
   outputs: readonly WorkflowNodePort[];
+  /** TASK-864 C1: a legacy type kept for the deprecation window — hidden from the palette rail, still rendered in existing graphs. */
+  deprecated?: boolean | null;
+  /** The `core.*` type (or, for `core.action`, the catalogue key`s host) a deprecated type maps onto. */
+  replacedBy?: string | null;
 }
 
 export interface WorkflowNodeRegistry {
@@ -330,4 +338,18 @@ export interface PromptTemplateVersion {
   content: string;
   changeReason?: string | null;
   createdAt?: string;
+}
+
+/**
+ * One published Agent as the Studio's `core.agent` picker lists it (TASK-864 B1, against
+ * TASK-863 §3.5 `GET /admin/agents?task=`). Mirrored field-for-field; every field beyond
+ * `slug`/`name`/`task` is optional so the picker survives the admin surface landing in stages.
+ */
+export interface AgentOption {
+  slug: string;
+  name: string;
+  task: string;
+  versionNumber?: number;
+  tenantId?: string;
+  description?: string | null;
 }

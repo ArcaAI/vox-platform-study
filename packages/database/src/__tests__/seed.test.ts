@@ -36,7 +36,6 @@ import {
 } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 import { PRE_SUMMARY_CONTENT, SURGERY_NEW_REFERRAL_CONTENT } from '../prisma/db_main/seed/07b-arcaai-clinical-content';
 import {
-  DEFAULT_AI_MODELS,
   DEFAULT_ASR_PIPELINES,
   CUSTOMER_TENANT_ASR_PIPELINES,
   GLOBAL_TENANT_ASR_PIPELINES,
@@ -46,10 +45,9 @@ import {
   ModelCategory,
   ModelTaskType,
   ModelType,
-  backfillCustomerTenantAiModels,
-  CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL,
   ASR_TEMPLATE_SLUGS,
 } from '../prisma/db_main/seed/06-stt';
+import { DEFAULT_AI_MODELS, RETIRED_AI_MODEL_SLUGS, retireCustomerTenantAiModels } from '../prisma/db_main/seed/06-ai-models';
 import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
@@ -310,15 +308,14 @@ describe('Policy Seed Data', () => {
       expect(tenantFullAccess?.scope).toBe(PolicyScope.TENANT);
     });
 
-    // Tenant admins self-serve their own tenant's clone
-    // of the SYSTEM AI model catalog (tenant-scoped `manage AiModel`).
-    it('should grant tenant-scoped manage AiModel in tenant-full-access', () => {
+    // TASK-860: the model registry is a SUPER_ADMIN plane (`manage:all` on the
+    // controller, SYSTEM pin in the service). The tenant-scoped `manage AiModel`
+    // grant that used to open a per-tenant clone is gone — a tenant admin
+    // READS the catalogue through the shared-read widening and never writes it.
+    it('grants NO tenant-scoped AiModel rule in tenant-full-access (registry is super-admin only)', () => {
       const tenantFullAccess = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
       const rule = tenantFullAccess?.rules.find((r) => r.subject === 'AiModel');
-      expect(rule).toBeDefined();
-      const actions = Array.isArray(rule?.action) ? rule?.action : [rule?.action];
-      expect(actions).toContain('manage');
-      expect(JSON.stringify(rule?.conditions)).toContain('${context.tenantId}');
+      expect(rule).toBeUndefined();
     });
 
     it('should include prompt-template-manage policy', () => {
@@ -1379,18 +1376,19 @@ describe('STT Seed Data', () => {
     });
 
     describe('ASR Models (consolidated keepers)', () => {
-      it('should include Whisper Large V3 Turbo model', () => {
-        const whisperTurbo = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-large-v3-turbo');
-        expect(whisperTurbo).toBeDefined();
-        expect(whisperTurbo?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
-        expect(whisperTurbo?.source).toBe(AiModelSource.HUGGINGFACE);
-        expect(whisperTurbo?.modelType).toBe(ModelType.QUANTIZED_MODEL);
+      // TASK-860: the generic OpenAI whisper rows left the catalogue (the
+      // ArcaAI fine-tunes are the platform's ASR); see RETIRED_AI_MODEL_SLUGS.
+      it.each(['whisper-large-v3-turbo', 'whisper-small', 'whisper-large-v3-turbo-gguf'])('should NOT seed the retired generic whisper row %s', (slug) => {
+        expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
       });
 
-      it('should include Whisper Small model (lightweight pipeline)', () => {
-        const whisperSmall = DEFAULT_AI_MODELS.find((m) => m.slug === 'whisper-small');
-        expect(whisperSmall).toBeDefined();
-        expect(whisperSmall?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+      it('should include the ArcaAI ML-EN whisper.cpp fine-tune as the platform ASR default', () => {
+        const row = DEFAULT_AI_MODELS.find((m) => m.slug === 'arcaai-whisper-large-ml-en-gguf');
+        expect(row).toBeDefined();
+        expect(row?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
+        expect(row?.source).toBe(AiModelSource.HUGGINGFACE);
+        expect(row?.libraryName).toBe('whisper.cpp');
+        expect(row?.isPlatformDefaultFor).toEqual(['SPEECH_TO_TEXT']);
       });
 
       it('should include the faster-whisper CT2 int8 model', () => {
@@ -1406,10 +1404,11 @@ describe('STT Seed Data', () => {
         expect(mai?.format).toBe(AiModelFormat.AZURE_FOUNDRY);
       });
 
-      it('should include the parakeet.cpp Nemotron streaming model', () => {
+      it('should include the Nemotron streaming model on the transformers RNNT runtime (D-3)', () => {
         const nemotron = DEFAULT_AI_MODELS.find((m) => m.slug === 'nemotron-3.5-asr-streaming-0.6b');
         expect(nemotron).toBeDefined();
-        expect(nemotron?.format).toBe(AiModelFormat.PARAKEET_CPP);
+        expect(nemotron?.format).toBe(AiModelFormat.SAFETENSOR);
+        expect(nemotron?.libraryName).toBe('transformers');
       });
 
       // The legacy ASR rows are RETIRED (soft-DELETED by
@@ -1542,7 +1541,11 @@ describe('STT Seed Data', () => {
       });
 
       it('should reference valid model slugs in configYaml', () => {
-        const modelSlugs = DEFAULT_AI_MODELS.map((m) => m.slug);
+        // TASK-860: the catalogue is the owner's 35 rows. Seeded pipelines still
+        // reference the retired generic whisper rows; those references are
+        // tolerated ONLY through the retirement ledger until TASK-861 retires the
+        // pipeline surface (the sweep's reference guard keeps existing rows live).
+        const modelSlugs = [...DEFAULT_AI_MODELS.map((m) => m.slug), ...RETIRED_AI_MODEL_SLUGS];
         DEFAULT_ASR_PIPELINES.forEach((pipeline) => {
           const asrMatch = pipeline.configYaml.match(/asr:\s*"([^"]+)"/);
           if (asrMatch) {
@@ -1785,7 +1788,9 @@ describe('STT Seed Data', () => {
 
   describe('STT Seed Data Dependencies', () => {
     it('should have AI Models defined before Pipelines (dependency)', () => {
-      const modelSlugs = DEFAULT_AI_MODELS.map((m) => m.slug);
+      // See 'should reference valid model slugs in configYaml' — ledger slugs
+      // are tolerated until TASK-861.
+      const modelSlugs = [...DEFAULT_AI_MODELS.map((m) => m.slug), ...RETIRED_AI_MODEL_SLUGS];
       DEFAULT_ASR_PIPELINES.forEach((pipeline) => {
         const asrMatch = pipeline.configYaml.match(/asr:\s*"([^"]+)"/);
         const vadMatch = pipeline.configYaml.match(/vad:\s*"([^"]+)"/);
@@ -2061,9 +2066,10 @@ describe('Phase 2 — STT default (CT2 registered; whisper.cpp GGUF effective de
     expect(ct2?.taskType).toBe(ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION);
     expect(ct2?.modelType).toBe(ModelType.QUANTIZED_MODEL);
     expect(ct2?.format).toBe(AiModelFormat.FASTER_WHISPER);
-    // Precision bumped int8 → float16 (CTranslate2's spelling;
-    // NOT the ggml-style "f16" abbreviation — see resolve_ct2_compute_type).
-    expect(ct2?.computeType).toBe('float16');
+    // TASK-860: served int8_float16 (CTranslate2's spelling; NOT the
+    // ggml-style abbreviation — see resolve_ct2_compute_type).
+    expect(ct2?.computeType).toBe('int8_float16');
+    expect(ct2?.libraryName).toBe('faster-whisper');
     // The CT2 artifact points at the real
     // deepdml conversion — resolvable at
     // runtime via FasterWhisperLoader.
@@ -2569,14 +2575,17 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       expect(ollamaModels.length).toBe(0);
     });
 
-    it('should include exactly 6 LM Studio models', () => {
+    // TASK-860: the owner's catalogue keeps four Gemma 4 rows on LM Studio
+    // (E2B QAT, E4B QAT, the DISABLED medical ICD-10 fine-tune, the bf16 E4B
+    // judge alternate); the 12B QAT and MedGemma rows are retired.
+    it('should include exactly 4 LM Studio models', () => {
       const lmsModels = llmModels.filter((m) => m.tags.includes('lm-studio'));
-      expect(lmsModels.length).toBe(6);
+      expect(lmsModels.length).toBe(4);
     });
 
-    it('should include exactly 1 Bedrock model', () => {
+    it('should include no Bedrock model (retired by TASK-860)', () => {
       const bedrockModels = llmModels.filter((m) => m.tags.includes('bedrock'));
-      expect(bedrockModels.length).toBe(1);
+      expect(bedrockModels.length).toBe(0);
     });
 
     it('should include exactly 1 Azure cloud model', () => {
@@ -2584,18 +2593,13 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       expect(azureModels.length).toBe(1);
     });
 
-    it('should include exactly 1 vLLM model', () => {
-      const vllmModels = llmModels.filter((m) => m.tags.includes('vllm'));
-      expect(vllmModels.length).toBe(1);
+    it('should include no vLLM / llama.cpp-server model (retired by TASK-860; OD-1 open)', () => {
+      expect(llmModels.filter((m) => m.tags.includes('vllm')).length).toBe(0);
+      expect(llmModels.filter((m) => m.tags.includes('llama-cpp')).length).toBe(0);
     });
 
-    it('should include exactly 1 llama.cpp model', () => {
-      const llamaCppModels = llmModels.filter((m) => m.tags.includes('llama-cpp'));
-      expect(llamaCppModels.length).toBe(1);
-    });
-
-    it('should be exactly 10 LLM rows (6 owner-approved matrix, Ollama retired by + 2 self-host + 2 bedrock/judge)', () => {
-      expect(llmModels.length).toBe(10);
+    it('should be exactly 5 text-generation rows (4 LM Studio + Azure OpenAI)', () => {
+      expect(llmModels.length).toBe(5);
     });
   });
 
@@ -2620,7 +2624,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
     it('should have the llm tag + a canonical provider on all LLM models', () => {
       llmModels.forEach((model) => {
         expect(model.tags).toContain('llm');
-        expect(['lm-studio', 'azure', 'vllm', 'llama-cpp', 'bedrock']).toContain((model as { provider?: string }).provider);
+        expect(['lm-studio', 'azure']).toContain((model as { provider?: string }).provider);
       });
     });
 
@@ -2636,8 +2640,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat'],
       ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat'],
       ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10'],
-      ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat'],
-      ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it'],
+      ['lms-gemma-4-e4b', 'google/gemma-4-e4b'],
     ] as const;
 
     it.each(EXPECTED_LMS)('should include LM Studio model %s (sourceUri %s)', (slug, sourceUri) => {
@@ -2721,81 +2724,29 @@ describe('STT Local Processing Models retired', () => {
 });
 
 // =============================================================================
-// CUSTOMER-TENANT AI MODEL CATALOG BACKFILL
+// NON-SYSTEM AI MODEL ROWS — RETIRED (TASK-860)
 // =============================================================================
 
-describe('Customer-tenant AI model catalog backfill', () => {
-  const makeMockClient = (findFirstImpl: () => unknown) => {
-    const created: Array<{ data: Record<string, unknown> }> = [];
-    const updated: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
+describe('Non-SYSTEM AI model rows are retired (registry is SYSTEM-only, TASK-860)', () => {
+  it('soft-deletes every row outside the SYSTEM tenant in one idempotent sweep', async () => {
+    const calls: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const client = {
       aiModel: {
-        findFirst: vi.fn(async () => findFirstImpl()),
-        create: vi.fn(async (args: { data: Record<string, unknown> }) => {
-          created.push(args);
-          return args.data;
-        }),
-        update: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
-          updated.push(args);
-          return args.data;
+        updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          calls.push(args);
+          return { count: 2 };
         }),
       },
     };
-    return { client, created, updated };
-  };
 
-  it('targets the global + the ArcaAI customer tenant (not the SYSTEM tenant)', () => {
-    expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toHaveLength(2);
-    expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).not.toContain(SYSTEM_TENANT_ID);
-  });
+    const result = await retireCustomerTenantAiModels(client as never);
 
-  it('clones every SYSTEM model into each customer tenant with a fresh id (no SYSTEM id/tenant leak)', async () => {
-    const { client, created } = makeMockClient(() => null); // nothing exists yet
-    const result = await backfillCustomerTenantAiModels(client as never);
-
-    const expectedCount = DEFAULT_AI_MODELS.length * CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL.length;
-    expect(result.count).toBe(expectedCount);
-    expect(client.aiModel.create).toHaveBeenCalledTimes(expectedCount);
-
-    created.forEach(({ data }) => {
-      // Fresh id (uuid(7) default) — never carries the SYSTEM row id.
-      expect(data).not.toHaveProperty('id');
-      // Bound to a customer tenant, never the SYSTEM tenant.
-      expect(data.tenantId).not.toBe(SYSTEM_TENANT_ID);
-      expect(CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL).toContain(data.tenantId);
-    });
-  });
-
-  it('is idempotent — skips slugs the tenant already owns (provider already set)', async () => {
-    const { client } = makeMockClient(() => ({ id: 'already-exists', provider: 'lm-studio' }));
-    const result = await backfillCustomerTenantAiModels(client as never);
-
-    expect(result.count).toBe(0);
-    expect(result.synced).toBe(0);
-    expect(client.aiModel.create).not.toHaveBeenCalled();
-    expect(client.aiModel.update).not.toHaveBeenCalled();
-  });
-
-  it('column-syncs pre-506 clones — fills provider/architecture (+metaData) ONLY while provider is NULL', async () => {
-    // Pre-506 clones exist (create-only backfill) but predate the new
-    // columns; the guardrail/NLP/TTS resolvers prefer the same-tenant
-    // model row, so a NULL-provider clone would shadow the SYSTEM value.
-    const { client, updated } = makeMockClient(() => ({ id: 'pre-506-clone', provider: null }));
-    const result = await backfillCustomerTenantAiModels(client as never);
-
-    const expectedSynced = DEFAULT_AI_MODELS.length * CUSTOMER_TENANT_IDS_FOR_AIMODEL_BACKFILL.length;
-    expect(result.count).toBe(0);
-    expect(result.synced).toBe(expectedSynced);
-    expect(client.aiModel.create).not.toHaveBeenCalled();
-    updated.forEach(({ where, data }) => {
-      expect(where).toEqual({ id: 'pre-506-clone' });
-      expect(data.provider).toBeTruthy();
-      expect(data.version).toEqual({ increment: 1 });
-      // Never touches tenant-customizable presentation fields.
-      expect(data).not.toHaveProperty('name');
-      expect(data).not.toHaveProperty('tags');
-      expect(data).not.toHaveProperty('resourceStatus');
-    });
+    expect(result.retired).toBe(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.where).toEqual({ tenantId: { not: SYSTEM_TENANT_ID }, resourceStatus: { not: 'DELETED' } });
+    expect(calls[0]!.data.resourceStatus).toBe('DELETED');
+    expect(calls[0]!.data.resourceStatusUpdatedAt).toBeInstanceOf(Date);
+    expect(calls[0]!.data.version).toEqual({ increment: 1 });
   });
 });
 

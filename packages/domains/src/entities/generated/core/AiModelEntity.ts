@@ -22,13 +22,56 @@ export interface IAiModelEntity extends IBaseTaggedEntity {
   // `sarvam`) and model architecture family (`gemma4`, `whisper`, ...).
   provider?: string | null;
   architecture?: string | null;
+  // ── TASK-860 registry identity (Hugging Face taxonomy + bucket) ────────
+  /** Serving library — the Hub's `library_name` facet; loader selection. */
+  libraryName: string;
+  /** Workload that executes the row (`stt` | `nlp` | `tts` | `lmstudio` | `text` | …). */
+  servedBy: string;
+  deploymentKind: Enums.AiDeploymentKind;
+  /** Vendor wire id for CLOUD rows (and the engine-host id for LM Studio rows). */
+  wireModelId?: string | null;
+  license?: string | null;
+  gated: boolean;
+  baseModel?: string | null;
+  languages: string[];
+  /** Hub commit sha the weights were fetched at. */
+  hfRevision?: string | null;
+  /** Key prefix under `s3://hope-models` the weights were published to. */
+  bucketPrefix?: string | null;
+  /** The single file a single-file loader opens inside `bucketPrefix`. */
+  primaryObject?: string | null;
+  /** sha256 of the published `manifest.json`, verified by the inventory job. */
+  manifestDigest?: string | null;
+  /** MEASURED presence of the weights in the bucket — never an admin opinion. */
+  availability: Enums.AiModelAvailability;
+  availabilityCheckedAt?: Date | null;
+  availabilityDetail?: JsonValue | null;
+  /** Super-admin "platform default for task" election. */
+  isPlatformDefaultFor: Enums.AiTaskKind[];
   memorySizeMb?: number | null;
   computeType?: string | null;
+  /** @deprecated TASK-860 — removed in R3. Replaced by `availability`. */
   downloadStatus: Enums.AiModelDownloadStatus;
+  /** @deprecated TASK-860 — removed in R3. DERIVED from `bucketPrefix` by the service; never typed by an operator. */
   localPath?: string | null;
+  /** @deprecated TASK-860 — removed in R3. Replaced by `availabilityCheckedAt`. */
   downloadedAt?: Date | null;
+  /** @deprecated TASK-860 — removed in R3. Replaced by the manifest's `totalBytes`. */
   fileSizeMb?: number | null;
   checksum?: string | null;
+}
+
+/** What the publish processor writes back onto a row once its weights land in the bucket. */
+export interface AiModelPublishRecord {
+  bucketPrefix: string;
+  primaryObject?: string | null;
+  manifestDigest: string;
+  /** Derived by the caller: `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. */
+  localPath: string;
+  fileSizeMb?: number;
+  checksum?: string;
+  hfRevision?: string | null;
+  userId?: string;
 }
 
 export class AiModelEntity extends BaseTaggedEntity {
@@ -50,6 +93,22 @@ export class AiModelEntity extends BaseTaggedEntity {
   // names) survive the DB → entity round-trip. Mirrors
   // `PasswordResetTokenEntity`'s local wiring.
   private _metaData?: IAiModelEntity['metaData'];
+  private _libraryName: IAiModelEntity['libraryName'];
+  private _servedBy: IAiModelEntity['servedBy'];
+  private _deploymentKind: IAiModelEntity['deploymentKind'];
+  private _wireModelId?: IAiModelEntity['wireModelId'];
+  private _license?: IAiModelEntity['license'];
+  private _gated: IAiModelEntity['gated'];
+  private _baseModel?: IAiModelEntity['baseModel'];
+  private _languages: IAiModelEntity['languages'];
+  private _hfRevision?: IAiModelEntity['hfRevision'];
+  private _bucketPrefix?: IAiModelEntity['bucketPrefix'];
+  private _primaryObject?: IAiModelEntity['primaryObject'];
+  private _manifestDigest?: IAiModelEntity['manifestDigest'];
+  private _availability: IAiModelEntity['availability'];
+  private _availabilityCheckedAt?: IAiModelEntity['availabilityCheckedAt'];
+  private _availabilityDetail?: IAiModelEntity['availabilityDetail'];
+  private _isPlatformDefaultFor: IAiModelEntity['isPlatformDefaultFor'];
   private _memorySizeMb?: IAiModelEntity['memorySizeMb'];
   private _computeType?: IAiModelEntity['computeType'];
   private _downloadStatus: IAiModelEntity['downloadStatus'];
@@ -73,6 +132,22 @@ export class AiModelEntity extends BaseTaggedEntity {
     this._provider = init.provider;
     this._architecture = init.architecture;
     this._metaData = init.metaData;
+    this._libraryName = init.libraryName;
+    this._servedBy = init.servedBy;
+    this._deploymentKind = init.deploymentKind;
+    this._wireModelId = init.wireModelId;
+    this._license = init.license;
+    this._gated = init.gated ?? false;
+    this._baseModel = init.baseModel;
+    this._languages = init.languages ?? [];
+    this._hfRevision = init.hfRevision;
+    this._bucketPrefix = init.bucketPrefix;
+    this._primaryObject = init.primaryObject;
+    this._manifestDigest = init.manifestDigest;
+    this._availability = init.availability ?? Enums.AiModelAvailability.UNKNOWN;
+    this._availabilityCheckedAt = init.availabilityCheckedAt;
+    this._availabilityDetail = init.availabilityDetail;
+    this._isPlatformDefaultFor = init.isPlatformDefaultFor ?? [];
     this._memorySizeMb = init.memorySizeMb;
     this._computeType = init.computeType;
     this._downloadStatus = init.downloadStatus;
@@ -185,6 +260,134 @@ export class AiModelEntity extends BaseTaggedEntity {
 
   set metaData(value: IAiModelEntity['metaData']) {
     this.setProperty('metaData', value);
+  }
+
+  get libraryName(): IAiModelEntity['libraryName'] {
+    return this._libraryName;
+  }
+
+  set libraryName(value: IAiModelEntity['libraryName']) {
+    this.setProperty('libraryName', value);
+  }
+
+  get servedBy(): IAiModelEntity['servedBy'] {
+    return this._servedBy;
+  }
+
+  set servedBy(value: IAiModelEntity['servedBy']) {
+    this.setProperty('servedBy', value);
+  }
+
+  get deploymentKind(): IAiModelEntity['deploymentKind'] {
+    return this._deploymentKind;
+  }
+
+  set deploymentKind(value: IAiModelEntity['deploymentKind']) {
+    this.setProperty('deploymentKind', value);
+  }
+
+  get wireModelId(): IAiModelEntity['wireModelId'] {
+    return this._wireModelId;
+  }
+
+  set wireModelId(value: IAiModelEntity['wireModelId']) {
+    this.setProperty('wireModelId', value);
+  }
+
+  get license(): IAiModelEntity['license'] {
+    return this._license;
+  }
+
+  set license(value: IAiModelEntity['license']) {
+    this.setProperty('license', value);
+  }
+
+  get gated(): IAiModelEntity['gated'] {
+    return this._gated;
+  }
+
+  set gated(value: IAiModelEntity['gated']) {
+    this.setProperty('gated', value);
+  }
+
+  get baseModel(): IAiModelEntity['baseModel'] {
+    return this._baseModel;
+  }
+
+  set baseModel(value: IAiModelEntity['baseModel']) {
+    this.setProperty('baseModel', value);
+  }
+
+  get languages(): IAiModelEntity['languages'] {
+    return this._languages;
+  }
+
+  set languages(value: IAiModelEntity['languages']) {
+    this.setProperty('languages', value);
+  }
+
+  get hfRevision(): IAiModelEntity['hfRevision'] {
+    return this._hfRevision;
+  }
+
+  set hfRevision(value: IAiModelEntity['hfRevision']) {
+    this.setProperty('hfRevision', value);
+  }
+
+  get bucketPrefix(): IAiModelEntity['bucketPrefix'] {
+    return this._bucketPrefix;
+  }
+
+  set bucketPrefix(value: IAiModelEntity['bucketPrefix']) {
+    this.setProperty('bucketPrefix', value);
+  }
+
+  get primaryObject(): IAiModelEntity['primaryObject'] {
+    return this._primaryObject;
+  }
+
+  set primaryObject(value: IAiModelEntity['primaryObject']) {
+    this.setProperty('primaryObject', value);
+  }
+
+  get manifestDigest(): IAiModelEntity['manifestDigest'] {
+    return this._manifestDigest;
+  }
+
+  set manifestDigest(value: IAiModelEntity['manifestDigest']) {
+    this.setProperty('manifestDigest', value);
+  }
+
+  get availability(): IAiModelEntity['availability'] {
+    return this._availability;
+  }
+
+  set availability(value: IAiModelEntity['availability']) {
+    this.setProperty('availability', value);
+  }
+
+  get availabilityCheckedAt(): IAiModelEntity['availabilityCheckedAt'] {
+    return this._availabilityCheckedAt;
+  }
+
+  set availabilityCheckedAt(value: IAiModelEntity['availabilityCheckedAt']) {
+    this.setProperty('availabilityCheckedAt', value);
+  }
+
+  get availabilityDetail(): IAiModelEntity['availabilityDetail'] {
+    return this._availabilityDetail;
+  }
+
+  set availabilityDetail(value: IAiModelEntity['availabilityDetail']) {
+    this.setProperty('availabilityDetail', value);
+  }
+
+  get isPlatformDefaultFor(): IAiModelEntity['isPlatformDefaultFor'] {
+    return this._isPlatformDefaultFor;
+  }
+
+  set isPlatformDefaultFor(value: IAiModelEntity['isPlatformDefaultFor']) {
+    this.setProperty('isPlatformDefaultFor', value);
   }
 
   get memorySizeMb(): IAiModelEntity['memorySizeMb'] {
@@ -369,6 +572,53 @@ export class AiModelEntity extends BaseTaggedEntity {
     }
   }
 
+  // ============================================
+  // TASK-860 — registry semantics
+  // ============================================
+
+  /** Cloud rows have no weights; `deploymentKind` is the truth, not the deprecated `format` pseudo-values. */
+  get isCloud(): boolean {
+    return this._deploymentKind === Enums.AiDeploymentKind.CLOUD;
+  }
+
+  /**
+   * Record a MEASURED availability (inventory job / publish processor). Never
+   * called from an admin edit — availability is a fact about the bucket.
+   */
+  public markAvailability(
+    availability: Enums.AiModelAvailability,
+    detail: JsonValue | Record<string, unknown> | null = null,
+    checkedAt: Date = new Date(),
+  ): void {
+    this.setProperty('availability', availability);
+    this.setProperty('availabilityCheckedAt', checkedAt);
+    this.setProperty('availabilityDetail', detail as JsonValue | null);
+  }
+
+  /**
+   * The publish processor's write-back: bucket identity + the derived
+   * `localPath` + AVAILABLE, plus the legacy DOWNLOADED bookkeeping kept in
+   * step until R3 removes it (Python resolvers still read `localPath`).
+   */
+  public recordPublish(record: AiModelPublishRecord): void {
+    this.setProperty('bucketPrefix', record.bucketPrefix);
+    this.setProperty('primaryObject', record.primaryObject ?? null);
+    this.setProperty('manifestDigest', record.manifestDigest);
+    if (record.hfRevision !== undefined) {
+      this.setProperty('hfRevision', record.hfRevision);
+    }
+    this.markAvailability(Enums.AiModelAvailability.AVAILABLE, null);
+    this.markAsDownloaded(record.localPath, record.fileSizeMb, record.checksum, record.userId);
+  }
+
+  /** Replace the platform-default election (de-duplicated, order preserved). */
+  public setPlatformDefaultFor(kinds: Enums.AiTaskKind[], userId?: string): void {
+    this.setProperty('isPlatformDefaultFor', [...new Set(kinds)]);
+    if (userId) {
+      this.setProperty('updatedBy', userId);
+    }
+  }
+
   public override validate(): void {
     super.validate();
     if (!this._name || this._name.trim().length === 0) {
@@ -379,6 +629,15 @@ export class AiModelEntity extends BaseTaggedEntity {
     }
     if (!this._sourceUri || this._sourceUri.trim().length === 0) {
       throw new BusinessException('Model source URI is required');
+    }
+    if (!this._libraryName || this._libraryName.trim().length === 0) {
+      throw new BusinessException('Model libraryName is required');
+    }
+    if (!this._servedBy || this._servedBy.trim().length === 0) {
+      throw new BusinessException('Model servedBy is required');
+    }
+    if (this.isCloud && (!this._wireModelId || this._wireModelId.trim().length === 0)) {
+      throw new BusinessException('A CLOUD model requires a wireModelId');
     }
     // Validate slug format (lowercase, alphanumeric, hyphens only)
     if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(this._slug)) {

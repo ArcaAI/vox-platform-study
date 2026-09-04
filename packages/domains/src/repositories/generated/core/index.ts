@@ -151,3 +151,4 @@ export * from './AgentAssignmentChangeRepository';
 export * from './WorkflowAssignmentRepository';
 export * from './WorkflowAssignmentChangeRepository';
 export * from './WorkflowInvariantRuleRepository';
+export * from './WorkflowWebhookSecretRepository';

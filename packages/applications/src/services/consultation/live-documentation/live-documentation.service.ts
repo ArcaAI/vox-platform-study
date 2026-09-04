@@ -1423,7 +1423,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         stage.nodes.map((node) => ({
           nodeId: node.nodeId,
           type: node.type,
-          canonicalType: canonicalRealtimeNodeType(node.type),
+          canonicalType: canonicalRealtimeNodeType(node.type, node.config),
           stageIndex: stage.stageIndex,
           enabled: node.enabled,
           togglable: realtimeNodeIsTogglable(node.type),

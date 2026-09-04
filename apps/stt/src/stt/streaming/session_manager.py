@@ -517,14 +517,19 @@ class SessionManager:
                 if pipeline_config
                 else "rnnoise"
             )
-            # Engine selector (rnnoise = legacy default).
+            # Engine selector (rnnoise = legacy default). RNNoise degrades to
+            # no denoise when its package is absent (returns False);
+            # DeepFilterNet3 FAILS CLOSED — `initialize()` raises
+            # `ModelLoadError` (TASK-860 R-5), which propagates and fails the
+            # session: a selected denoiser that silently passes audio through
+            # is a wrong answer, not a degraded one.
             denoiser = (
                 DeepFilterNet3StreamingDenoiser(input_sr=target_sr, strength=strength)
                 if denoise_engine_name == "deepfilternet3"
                 else StreamingDenoiser(input_sr=target_sr, strength=strength)
             )
             if not denoiser.initialize():
-                denoiser = None  # engine unavailable, degrade gracefully
+                denoiser = None  # rnnoise unavailable, degrade gracefully
 
         normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
 

@@ -385,5 +385,13 @@ enum ResourceType {
   Agent
   AgentAssignment
 
+  // TASK-864 (owner decision D-5) — the run read model gains a sys-event so a
+  // run-completed WEBHOOK can exist: `recordRunFinished` broadcasts a
+  // `ResourceUpdated` with a PHI-free payload (slug, runId, status,
+  // terminalReason, timestamps, consultationId). This REVERSES the exemption
+  // recorded in workflow-run.prisma's header. APPEND-ONLY: TASK-863 appends
+  // `Agent` / `AgentAssignment` to this same enum in a sibling branch.
+  WorkflowRun
+
   @@schema("core")
 }
