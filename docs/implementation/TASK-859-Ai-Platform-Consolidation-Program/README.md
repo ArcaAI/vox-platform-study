@@ -183,6 +183,12 @@ vox-node admin 52 areas / 413 routes / 386 schemas; `openapi:check`, `portal:che
 
 Base regressions fixed on dev-2.2 along the way: three call-parenthesis typos from the cleanup
 commit (`9a933b360`); two TASK-862 constructor-slot drifts in tests (`f0e9031f7`, `86ff18952`).
+Wave 3 (in progress, three Fable workers in worktrees off dev-2.2): the `06-stt.ts` pipeline-seed
+half + `seedTenantSttConfig` deletion (861 step 11), the `stt` palette residue — `implemented: false`,
+`WF-STT-*` retirement, `stt_placeholder.py` removal with parity kept (861 step 10 / 864 C1) — and the
+gateway items (`start_session` Deprecation headers, `internal/stt` credentials via
+`ProviderCredentialResolver`). e2e baseline on the isolated test stack runs on the merged tree in parallel.
+
 Orchestrator-owned steps still owed after 865: artifact regeneration (`api:route-manifest`,
 `api:openapi`, `api:portal`, `vox-node gen:admin`), the e2e run on the isolated test stack, the
 `06-stt.ts` seed split, the `AiTaskDefault` reader repoint (R3), and the owner decisions OD-1..OD-15
