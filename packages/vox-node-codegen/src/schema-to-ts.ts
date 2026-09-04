@@ -231,7 +231,7 @@ function renderPropertyDoc(schema: OpenApiSchema | undefined): string {
 
 /** Flatten to one line and neutralize any `*&#47;` that would close the comment early. */
 export function sanitizeComment(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/\*\//g, '*\\/').trim;
+  return text.replace(/\s+/g, ' ').replace(/\*\//g, '*\\/').trim();
 }
 
 function escapeSingleQuotes(value: string): string {

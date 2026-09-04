@@ -386,7 +386,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
   // Owner directive 2026-08-19. THREE models, all RUNNING IN `apps/nlp`
   // (guardrail holds zero resident weights), selected from here via
   // `guardrail.pii`, `guardrail.pii.spans` and `guardrail.safety` in
-  // `16-ai-task-default.ts`. They are split BY TASK SHAPE, not by vendor:
+  // `16-ai-routing-policy.ts` (TASK-862). They are split BY TASK SHAPE, not by vendor:
   //
   //   1. token classification + ENTITY EXTRACTION (PII detect/redact/mask):
   //      `gliner2-privacy-filter-pii-multi` — 205M, PII spans ONLY. The

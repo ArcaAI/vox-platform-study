@@ -22,6 +22,10 @@ export class AiProviderConnectionDtoMapper {
       keyVersion: entity.keyVersion ?? null,
       enabled: entity.enabled,
       extraJson: (entity.extraJson as Record<string, unknown> | null) ?? null,
+      maxConcurrent: entity.maxConcurrent ?? null,
+      rpmLimit: entity.rpmLimit ?? null,
+      tpmLimit: entity.tpmLimit ?? null,
+      timeoutS: entity.timeoutS ?? null,
       version: entity.version,
       ...(entity.updatedAt ? { updatedAt: entity.updatedAt.toISOString() } : {}),
     };
@@ -45,6 +49,10 @@ export class AiProviderConnectionDtoMapper {
       keyVersion: null,
       enabled: false,
       extraJson: null,
+      maxConcurrent: null,
+      rpmLimit: null,
+      tpmLimit: null,
+      timeoutS: null,
       version: 0,
     };
   }

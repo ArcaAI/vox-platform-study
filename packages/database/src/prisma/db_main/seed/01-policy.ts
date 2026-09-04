@@ -327,6 +327,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // SYSTEM-owned row stays SUPER_ADMIN-only, enforced imperatively in the service (see the
       // controller's AUTH-NOTE) — this grant can never reach it.
       { action: 'manage', subject: 'WorkflowInvariantRule', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-863 — the first-class Agent (`/admin/agents/**`, `@CanManage('Agent')`) and its
+      // per-scope assignment (`/admin/agent-assignments/**`, which deliberately reuses the
+      // `Agent` subject — assigning an agent is agent governance). Tenant-pinned like the
+      // grants above; a tenant READS SYSTEM's published agents through the shared-read
+      // widening, never through this grant, and can never write a SYSTEM row (404-over-403
+      // in the service).
+      { action: 'manage', subject: 'Agent', conditions: { tenantId: '${context.tenantId}' } },
+      { action: 'manage', subject: 'AgentAssignment', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {

@@ -1,12 +1,16 @@
 import { EffectiveTtsConfigResponse, TenantTtsConfigResponse, TtsPlatformCatalogResponse, UpdateTenantTtsConfigRequest } from './dto';
 
 /**
+ * @deprecated TASK-862 — removed in R3. `TenantTtsConfig` (voice / language /
+ * format routing per tenant) is replaced by a TTS Agent + `AgentAssignment`
+ * (TASK-863). Reads keep working through the window; do not add writers.
+ *
  * Per-tenant TTS configuration service — the non-credential SPEC only (voices,
  * routing, platform limits). BYO provider credentials live on the unified
- * `IProviderConnectionService` (`service='tts'`) — see
- * `TenantTtsConfigAdminController`'s credential routes and the gateway
- * injection sites (`SpeechProxyController`, `TtsWsGateway`), which inject that
- * token directly rather than going through this service.
+ * `IProviderConnectionService` (`service='tts'`) — edited on
+ * `admin/providers/tts/:provider` (the former `admin/tts-config/credentials/**`
+ * facade was removed by TASK-862) and injected by the gateway sites
+ * (`SpeechProxyController`, `TtsWsGateway`) directly, never through this service.
  *
  * `tenantId` is resolved by the controller (a tenant admin is pinned to their
  * CLS tenant; a platform admin may target another tenant or the SYSTEM default).

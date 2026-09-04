@@ -9,7 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import type { IAiRuntimeProfileService } from '../../ai-runtime-profile/IAiRuntimeProfileService';
+import type { IProviderConnectionService } from '../../ai-provider-connection/IProviderConnectionService';
 import type { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import type { AiModelService } from '../../ai-model/aiModel.service';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
@@ -42,7 +42,7 @@ function modelsStub(rows: Record<string, Record<string, unknown>>) {
 }
 
 function serviceWith(taskDefaults?: IAiTaskDefaultService, models?: AiModelService): EffectiveConfigService {
-  const profiles = { list: vi.fn(async () => []) } as unknown as IAiRuntimeProfileService;
+  const profiles = { list: vi.fn(async () => []) } as unknown as IProviderConnectionService;
   return new EffectiveConfigService(settingsStub(), profiles, taskDefaults, models);
 }
 

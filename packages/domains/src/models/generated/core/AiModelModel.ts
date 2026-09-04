@@ -49,6 +49,10 @@ export class AiModel extends BaseTenantDataModel {
   public tags: string[];
   @VirtualDbProperty()
   public routingPolicies: Models.AiRoutingPolicy[] | undefined;
+  @VirtualDbProperty()
+  public agents: Models.Agent[] | undefined;
+  @VirtualDbProperty()
+  public agentFallbacks: Models.AgentModelFallback[] | undefined;
 
   constructor(data: AiModel & BaseTenantDataModel) {
     super(data);
@@ -92,5 +96,7 @@ export class AiModel extends BaseTenantDataModel {
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags ?? [];
     this.routingPolicies = data.routingPolicies;
+    this.agents = data.agents;
+    this.agentFallbacks = data.agentFallbacks;
   }
 }
