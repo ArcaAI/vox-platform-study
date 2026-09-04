@@ -2,6 +2,7 @@ import {
   AiModelServiceModule,
   AiProviderConnectionServiceModule,
   AiTaskDefaultServiceModule,
+  AsrAgentResolverServiceModule,
   DnaWritingStyleServiceModule,
   EffectiveSettingsModule,
   EntitlementsServiceModule,
@@ -75,8 +76,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,
-    // Resolves the caller tenant's STT fallback pointer + BYO provider
-    // overrides for `createStreamSession` injection + `switch-to-fallback`.
+    // TASK-861 — the ONE resolution path (agent → ResolvedAsrSpec + credentials)
+    // for stream/session, transcribe and the fallback surfaces.
+    AsrAgentResolverServiceModule,
+    // Deprecated (TASK-861, removed in R4): the tenant-wide STT fallback pointer +
+    // BYO provider overrides for the legacy `pipelineId` path only.
     TenantSttConfigServiceModule,
     // `IUsageLedgerService` for `TextProxyController`'s
     // generate.stream emission AND `StreamingSessionService`'s
