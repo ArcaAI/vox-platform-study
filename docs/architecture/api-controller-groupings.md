@@ -92,17 +92,16 @@ _3 controllers · 14 handlers_
 
 ### AI runtime shared by all three
 
-Model catalog, provider connections, runtime profiles and task defaults. Tenant→SYSTEM resolution lives here, so a change here moves STT, summarization and consultation at once.
+Model catalog, provider connections (with ceilings + test probe) and routing policies (the elected task defaults). TASK-862 removed the runtime-profile controller and the `admin/ai-providers` alias, and deprecated the task-default controller. Tenant→SYSTEM resolution lives here, so a change here moves STT, summarization and consultation at once.
 
 _7 controllers · 29 handlers_
 
 | Controller                         | Prefix                             | APIs | Auth model | Access scope                                                         | Notes                                        |
 | ---------------------------------- | ---------------------------------- | ---- | ---------- | -------------------------------------------------------------------- | -------------------------------------------- |
 | **AiModelAdminController**         | `api/v1/admin/ai-models`           | 7    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all                | Shares prefix with discovery controller.     |
-| **AiRuntimeProfileController**     | `api/v1/admin/ai-runtime-profiles` | 5    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all                | SUPER_ADMIN / SYSTEM rows.                   |
-| **AiProviderConnectionController** | `api/v1/admin/ai-providers`        | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:GlobalSetting | Legacy LLM alias (service=llm).              |
-| **AiTaskDefaultAdminController**   | `api/v1/admin/ai-task-defaults`    | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:AiTaskDefault | Some keys SUPER_ADMIN in service.            |
-| **ProviderConnectionController**   | `api/v1/admin/providers`           | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:GlobalSetting | Same file as AiProviderConnectionController. |
+| **AiTaskDefaultAdminController**   | `api/v1/admin/ai-task-defaults`    | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:AiTaskDefault | DEPRECATED (TASK-862, R3) — facade over AiRoutingPolicy.            |
+| **AiRoutingPolicyAdminController** | `api/v1/admin/routing-policies`    | 11   | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:AiRoutingPolicy    | THE provider-configuration plane; writes SUPER_ADMIN in service (TASK-862).
+| **ProviderConnectionController**   | `api/v1/admin/providers`           | 5    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:GlobalSetting | THE provider surface + `POST …/test` (TASK-862).Controller. |
 | **AiServiceAdminController**       | `api/v1/admin/ai-services`         | 3    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all                | Read-only guardrail/NLP status proxy.        |
 | **AiModelDiscoveryController**     | `api/v1/admin/ai-models`           | 2    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all                | —                                            |
 
@@ -195,7 +194,6 @@ _18 controllers · 70 handlers_
 | **QueueAdminController**            | `api/v1/admin/queues`              | 12   | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | SUPER_ADMIN BullMQ ops.                  |
 | **EntitlementsAdminController**     | `api/v1/admin/entitlements`        | 11   | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | Plans, tenant overrides, trial expiry.   |
 | **AiModelAdminController**          | `api/v1/admin/ai-models`           | 7    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | Shares prefix with discovery controller. |
-| **AiRuntimeProfileController**      | `api/v1/admin/ai-runtime-profiles` | 5    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | SUPER_ADMIN / SYSTEM rows.               |
 | **McpAdminController**              | `api/v1/admin/mcp-servers`         | 5    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:McpServer  | Writes SUPER_ADMIN-only in service.      |
 | **SchedulerAdminController**        | `api/v1/admin/schedulers`          | 5    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | Pause/resume/cron/toggle.                |
 | **RateLimitAdminController**        | `api/v1/admin/rate-limit`          | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:all             | SUPER_ADMIN policy editor.               |
@@ -227,8 +225,7 @@ _15 controllers · 75 handlers_ (incl. `MonitoringController` 4 and `AdminHealth
 | **TenantAllowedOriginController**      | `api/v1/admin/allowed-origins`        | 6    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:TenantAllowedOrigin                        | Wildcard origins SUPER_ADMIN in service.                                                                               |
 | **TenantStorageConfigAdminController** | `api/v1/admin/tenants/storage/config` | 6    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage                                            | update:Tenant; methods Can*:Storage                                                                                    |
 | **AdminUsageController**               | `api/v1/admin/usage`                  | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:UsageAnalytics                             | top-tenants SUPER_ADMIN in service.                                                                                    |
-| **AiProviderConnectionController**     | `api/v1/admin/ai-providers`           | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:GlobalSetting                         | Legacy LLM alias (service=llm).                                                                                        |
-| **AiTaskDefaultAdminController**       | `api/v1/admin/ai-task-defaults`       | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:AiTaskDefault                         | Some keys SUPER_ADMIN in service.                                                                                      |
+| **AiTaskDefaultAdminController**       | `api/v1/admin/ai-task-defaults`       | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:AiTaskDefault                         | DEPRECATED (TASK-862, R3) — facade over AiRoutingPolicy.                                                                                      |
 | **ProviderConnectionController**       | `api/v1/admin/providers`              | 4    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read/manage:GlobalSetting                         | Same file as AiProviderConnectionController.                                                                           |
 | **RateCardAdminController**            | `api/v1/admin/billing/rate-card`      | 3    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: manage:AiPriceBook                                | Mutations SUPER_ADMIN in service.                                                                                      |
 | **SettingsCatalogController**          | `api/v1/admin/settings`               | 2    | JWT only   | **API key forbidden** (@ForbidApiKey) jwt: read:GlobalSetting                                | —                                                                                                                      |
