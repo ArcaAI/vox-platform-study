@@ -4,9 +4,26 @@ export type ModelCategory = 'MULTI_MODAL' | 'VISION' | 'NLP' | 'AUDIO' | 'TABULA
 export type ModelType = 'BASE_MODEL' | 'FINETUNED_MODEL' | 'QUANTIZED_MODEL' | 'UNKNOWN';
 export type AiModelSource = 'HUGGINGFACE' | 'GITHUB' | 'MLFLOW' | 'LOCAL';
 export type AiModelFormat = 'SAFETENSOR' | 'ONNX' | 'NEMO' | 'PYTORCH' | 'CTRANSLATE2' | 'FASTER_WHISPER' | 'MLX' | 'GGUF' | 'WHISPER_CPP';
+/** @deprecated TASK-860 — removed in R3; read `availability` instead. */
 export type AiModelDownloadStatus = 'NOT_DOWNLOADED' | 'DOWNLOADING' | 'DOWNLOADED' | 'DOWNLOAD_FAILED';
 /** Large gateway enum (46 values) — keep open for forward compatibility. */
 export type ModelTaskType = string;
+/** MEASURED presence of a row's weights in `s3://hope-models` (TASK-860 R-2). */
+export type AiModelAvailability = 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
+export type AiDeploymentKind = 'SELF_HOSTED' | 'CLOUD';
+/** The platform task taxonomy a row can be the platform default for. */
+export type AiTaskKind =
+  | 'TEXT_GENERATION'
+  | 'TRANSLATION'
+  | 'SPEECH_TO_TEXT'
+  | 'TEXT_TO_SPEECH'
+  | 'VISION_EXTRACTION'
+  | 'EMBEDDING'
+  | 'NAMED_ENTITY_RECOGNITION'
+  | 'TEXT_CLASSIFICATION'
+  | 'CONTENT_SAFETY'
+  | 'GROUNDEDNESS'
+  | 'PII_DETECTION';
 
 /** GET /admin/ai-models rows (ModelResponse; ISO timestamps on the wire). */
 export interface AiModel {
@@ -16,18 +33,43 @@ export interface AiModel {
   description?: string | null;
   category: ModelCategory;
   taskType: ModelTaskType;
+  /** The Hugging Face `pipeline_tag` (kebab-case), derived from `taskType`. */
+  pipelineTag: string;
   modelType: ModelType;
   source: AiModelSource;
   sourceUri: string;
   sourceRevision?: string | null;
   format: AiModelFormat;
-  /** Canonical runtime provider id: ollama | lm-studio | azure | bedrock | built-in | sarvam. */
+  // ── Hugging Face taxonomy + serving identity (TASK-860) ──────────────────
+  /** Serving library — the Hub `library_name` facet (`whisper.cpp`, `transformers`, `gliner2`, …). */
+  libraryName: string;
+  /** Workload that executes the model (`stt`, `nlp`, `tts`, `lmstudio`, `text`, …). */
+  servedBy: string;
+  deploymentKind: AiDeploymentKind;
+  /** Vendor wire id for a CLOUD row. */
+  wireModelId?: string | null;
+  license?: string | null;
+  gated: boolean;
+  baseModel?: string | null;
+  languages: string[];
+  hfRevision?: string | null;
+  // ── Bucket identity + measured availability ──────────────────────────────
+  bucketPrefix?: string | null;
+  primaryObject?: string | null;
+  manifestDigest?: string | null;
+  availability: AiModelAvailability;
+  availabilityCheckedAt?: string | null;
+  availabilityDetail?: unknown;
+  isPlatformDefaultFor: AiTaskKind[];
+  /** Canonical runtime provider id: ollama | lm-studio | azure | bedrock | built-in | sarvam | … */
   provider?: string | null;
   /** Model architecture family: gemma4, granite, whisper, ... */
   architecture?: string | null;
   memorySizeMb?: number | null;
   computeType?: string | null;
+  /** @deprecated TASK-860 — read `availability`. */
   downloadStatus: AiModelDownloadStatus;
+  /** DERIVED by the gateway from `bucketPrefix` (+ `primaryObject`); never typed. */
   localPath?: string | null;
   downloadedAt?: string | null;
   fileSizeMb?: number | null;
@@ -51,7 +93,23 @@ export interface PaginatedModels {
   totalPages: number;
 }
 
-export interface CreateModelRequest {
+/** The registry fields shared by create + update (TASK-860). `localPath` is NEVER sent — the gateway derives it. */
+export interface ModelRegistryFields {
+  libraryName: string;
+  servedBy: string;
+  deploymentKind: AiDeploymentKind;
+  wireModelId?: string;
+  license?: string;
+  gated?: boolean;
+  baseModel?: string;
+  languages?: string[];
+  hfRevision?: string;
+  /** Register weights ALREADY in the bucket ("In bucket, not registered → Register"). */
+  bucketPrefix?: string;
+  primaryObject?: string;
+}
+
+export interface CreateModelRequest extends ModelRegistryFields {
   name: string;
   slug: string;
   description?: string;
@@ -67,10 +125,11 @@ export interface CreateModelRequest {
   memorySizeMb?: number;
   computeType?: string;
   tags?: string[];
+  isPlatformDefaultFor?: AiTaskKind[];
 }
 
-/** PATCH /admin/ai-models/:id body (expectedVersion added by the client). */
-export interface UpdateModelRequest {
+/** PATCH /admin/ai-models/:id body (expectedVersion added by the client). Empty strings clear the nullable fields. */
+export interface UpdateModelRequest extends Partial<ModelRegistryFields> {
   name?: string;
   slug?: string;
   description?: string;
@@ -86,13 +145,39 @@ export interface UpdateModelRequest {
   memorySizeMb?: number;
   computeType?: string;
   tags?: string[];
-  /**
-   * Operator/admin weight-directory override (Mode M) — HIGHEST precedence in
-   * every service resolver, ahead of `sourceUri` scheme dispatch. Only the
-   * update DTO accepts it (the create DTO does not); an empty string clears
-   * the override. Also populated by download bookkeeping.
-   */
-  localPath?: string;
+}
+
+/** PATCH /admin/ai-models/:id/platform-default body. */
+export interface SetPlatformDefaultRequest {
+  tasks: AiTaskKind[];
+}
+
+// =============================================================================
+// Inventory (POST admin/ai-models/inventory) — measured availability
+// =============================================================================
+
+export interface ModelInventoryRow {
+  id: string;
+  slug: string;
+  availability: AiModelAvailability;
+  detail: Record<string, unknown>;
+}
+
+/** A manifest-bearing prefix in the bucket that no catalogue row references. */
+export interface UnregisteredBucketPrefix {
+  bucketPrefix: string;
+  layout: 'flat' | 'hf-cache';
+  slug: string | null;
+  version: string | null;
+  objectCount: number;
+  totalBytes: number | null;
+}
+
+export interface ModelInventoryReport {
+  checkedAt: string;
+  counts: { available: number; missing: number; partial: number; notApplicable: number };
+  rows: ModelInventoryRow[];
+  unregistered: UnregisteredBucketPrefix[];
 }
 
 // =============================================================================
@@ -166,11 +251,6 @@ export interface DiscoveryResponse {
   probedAt: string;
 }
 
-/** POST admin/ai-models/discovery/register body. */
-export interface RegisterDiscoveredModelRequest {
-  provider: string;
-  modelName: string;
-  slug?: string;
-  name?: string;
-  description?: string;
-}
+// `POST admin/ai-models/discovery/register` is deprecated (TASK-860, 410 Gone):
+// discovery is READ-ONLY; registration is `createModel` (optionally from an
+// inventory-reported bucket prefix).

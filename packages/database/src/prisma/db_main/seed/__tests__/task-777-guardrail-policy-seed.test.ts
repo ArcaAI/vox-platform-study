@@ -15,7 +15,7 @@
  *      `metaData.policy.medicalValidationCriteria`, VERBATIM from the deleted
  *      `MEDICAL_VALIDATION_CRITERIA` Python literal (commit `567d4baf5^`,
  *      `apps/guardrail/src/guardrail/services/external_text_client.py`).
- *   2. `seedAiModels` (`../06-stt.ts`) is NOT create-only for `AiModel`: it
+ *   2. `seedAiModels` (`../06-ai-models.ts`) is NOT create-only for `AiModel`: it
  *      `update()`s an existing row's `metaData` column (full-column write, the
  *      same mechanism `labelTaxonomy` already relies on in `ai-models/nlp.ts`),
  *      so a `db:seed` re-run against the live dev DB — which already has this
@@ -32,7 +32,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { SYSTEM_TENANT_ID } from '../00-constants';
 import { LLM_AI_MODELS } from '../ai-models/llm';
-import { DEFAULT_AI_MODELS, seedAiModels, backfillCustomerTenantAiModels } from '../06-stt';
+import { DEFAULT_AI_MODELS, seedAiModels, retireCustomerTenantAiModels } from '../06-ai-models';
 
 // Recovered VERBATIM from commit 567d4baf5^ (deleted by 567d4baf5) —
 // apps/guardrail/src/guardrail/services/external_text_client.py::MEDICAL_VALIDATION_CRITERIA.
@@ -103,7 +103,9 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
 
     const update = graniteUpdate(updates);
     expect(update).toBeDefined();
-    expect(update!.data.metaData).toEqual({
+    // TASK-860 added the publisher's `hubArtifact` next to the policy blob;
+    // the policy itself must still travel verbatim.
+    expect(update!.data.metaData).toMatchObject({
       policy: { medicalValidationCriteria: RECOVERED_MEDICAL_VALIDATION_CRITERIA },
     });
   });
@@ -135,53 +137,31 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
 });
 
 // =============================================================================
-// backfillCustomerTenantAiModels — customer clones deliberately don't matter
+// retireCustomerTenantAiModels — the registry is SYSTEM-only (TASK-860): the
+// per-tenant clones the seed used to materialise (and the policy blob they
+// carried) are swept, never re-created.
 // =============================================================================
 
-describe('backfillCustomerTenantAiModels and the policy blob', () => {
-  it('copies metaData.policy onto a BRAND NEW customer-tenant clone (spreads the SYSTEM row verbatim)', async () => {
-    const creates: Array<{ data: Record<string, unknown> }> = [];
+describe('retireCustomerTenantAiModels and the policy blob', () => {
+  it('soft-deletes every non-SYSTEM AiModel row in one sweep and never creates a clone', async () => {
+    const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
     const client = {
       aiModel: {
-        findFirst: vi.fn(async () => null), // no clone exists yet for any tenant/slug
-        create: vi.fn(async (args: { data: Record<string, unknown> }) => {
-          creates.push(args);
-          return {};
-        }),
-      },
-    };
-
-    await backfillCustomerTenantAiModels(client as never);
-
-    const graniteClones = creates.filter((c) => c.data.slug === 'granite-guardian-4.1-8b');
-    // Two customer tenants (Global + ArcaAI) are backfilled.
-    expect(graniteClones.length).toBeGreaterThan(0);
-    for (const clone of graniteClones) {
-      expect(clone.data.tenantId).not.toBe(SYSTEM_TENANT_ID);
-      expect(clone.data.metaData).toEqual({
-        policy: { medicalValidationCriteria: RECOVERED_MEDICAL_VALIDATION_CRITERIA },
-      });
-    }
-  });
-
-  it('does NOT resync metaData onto an ALREADY-POPULATED clone (provider already set — matches the live dev DB)', async () => {
-    const updates: Array<{ data: Record<string, unknown> }> = [];
-    const client = {
-      aiModel: {
-        // Every clone already exists with a non-null provider — the state the
-        // ticket found in the live dev DB (already backfilled long before
-        // authored the policy blob).
-        findFirst: vi.fn(async () => ({ id: 'pre-existing-clone', provider: 'lm-studio' })),
-        update: vi.fn(async (args: { data: Record<string, unknown> }) => {
+        updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
           updates.push(args);
-          return {};
+          return { count: 3 };
         }),
+        create: vi.fn(),
       },
     };
 
-    await backfillCustomerTenantAiModels(client as never);
+    const result = await retireCustomerTenantAiModels(client as never);
 
-    // provider is never null here, so the metaData-resync branch never fires.
-    expect(updates).toHaveLength(0);
+    expect(result.retired).toBe(3);
+    expect(client.aiModel.create).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.where).toEqual({ tenantId: { not: SYSTEM_TENANT_ID }, resourceStatus: { not: 'DELETED' } });
+    expect(updates[0]!.data.resourceStatus).toBe('DELETED');
+    expect(updates[0]!.data.version).toEqual({ increment: 1 });
   });
 });

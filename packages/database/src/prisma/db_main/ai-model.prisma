@@ -1,0 +1,201 @@
+// =============================================================================
+// AI MODEL REGISTRY — the platform catalogue of the shared model bucket
+//
+// One catalogue, SYSTEM-owned. Registry rows live ONLY in the reserved SYSTEM
+// tenant (`00000000-…`); only a platform (super) admin creates, edits,
+// publishes or retires one. Tenants READ the catalogue through the tenant-scope
+// extension's SYSTEM-shared-read widening (`SYSTEM_SHARED_READ_MODELS`) and never
+// hold their own copies — the per-tenant clones the seed used to materialise are
+// gone (TASK-860).
+//
+// Rows are organised the way the Hugging Face Hub organises models:
+//   pipeline_tag (task)  → `taskType`  (the DTO derives the kebab-case HF tag)
+//   library_name         → `libraryName` (which loader serves it)
+//   model                → `slug` + `sourceUri`
+// plus the model-card metadata worth mirroring (`license`, `gated`, `baseModel`,
+// `languages`, `hfRevision`).
+//
+// Weights live in `s3://hope-models`, mounted read-only at `/mnt/models-bucket`
+// in every serving pod. A row states WHERE its weights live (`bucketPrefix`,
+// `primaryObject`, `manifestDigest`) and the inventory job MEASURES whether they
+// are actually there (`availability`). Cloud rows carry no weights: they are
+// `deploymentKind = CLOUD`, name their vendor wire id in `wireModelId`, and are
+// `NOT_APPLICABLE` for availability.
+//
+// No FK from the pipeline surface — models are referenced by slug in pipeline
+// YAML and by `AiTaskDefault.modelSlug`; the ONE exception is
+// `AiRoutingPolicy.modelId` (see the relation comment below).
+// =============================================================================
+
+model AiModel {
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant. ALWAYS the SYSTEM tenant for a registry row (TASK-860 —
+  // `AiModelService` pins it on every write); the column stays so the
+  // tenant-scope extension's shared-read widening keeps working unchanged.
+  tenantId String
+
+  // Core identification
+  name        String // e.g., "Whisper Large V3"
+  slug        String // e.g., "whisper-large-v3" (used in pipeline YAML)
+  description String?
+
+  // Model classification.
+  //
+  // `taskType` IS the Hugging Face `pipeline_tag` (SCREAMING_CASE of the kebab
+  // tag; the DTO derives `pipelineTag` from `MODEL_TASK_TYPE_TO_PIPELINE_TAG`).
+  // The three HOPE extensions — `GUARDRAIL`, `SPEAKER_DIARIZATION`,
+  // `SPEAKER_EMBEDDING` — map onto the nearest Hub tag in that same table.
+  category  ModelCategory // AUDIO
+  taskType  ModelTaskType // AUTOMATIC_SPEECH_RECOGNITION, VOICE_ACTIVITY_DETECTION
+  modelType ModelType // BASE_MODEL, FINETUNED_MODEL, QUANTIZED_MODEL
+
+  // Model source and location
+  //
+  // `sourceUri` scheme grammar honoured by every service's
+  // `resolve_model_dir` (stt, guardrail, nlp, harness):
+  //   hf:<org>/<repo> | <org>/<repo> HuggingFace Hub snapshot (bare id also
+  //                                   accepted); honours HF_HUB_OFFLINE
+  //   file:///abs/path verified in place, never copied
+  //   s3://bucket/prefix downloaded once into the service cache,
+  //                                   single-flight + SHA256-verified
+  // Anything else is a hard `ModelSourceError` — never a silent fallback.
+  // Only `s3://` is supported; `azure-blob://` is deferred.
+  source         AiModelSource // HUGGINGFACE, GITHUB, MLFLOW, LOCAL, S3
+  sourceUri      String // e.g., "openai/whisper-large-v3", "s3://models/minicheck", "file:///opt/models/x"
+  sourceRevision String? // Git revision, MLFlow version, etc.
+
+  // Artifact format — descriptive only since TASK-860. Loader selection is
+  // `libraryName`; the cloud pseudo-values are deprecated (see enums.prisma).
+  format AiModelFormat // SAFETENSOR, ONNX, NEMO, PYTORCH
+
+  // Serving provider + architecture — nullable; set for admin-
+  // selectable task models (LLM/guardrail/NLP/TTS) and backfilled for engines.
+  provider     String? // ollama | lm-studio | azure | bedrock | built-in | sarvam
+  architecture String? // e.g. gemma4, gemma3, qwen3.5, granite, whisper
+
+  // ── Hugging Face taxonomy + serving identity (TASK-860) ──────────────────
+  //
+  // `libraryName` is the Hub's second facet — the serving LIBRARY a loader is
+  // selected by (`faster-whisper`, `whisper.cpp`, `transformers`, `onnxruntime`,
+  // `gliner2`, `llama.cpp`, `lm-studio`, `azure-speech`, ...). Validated against
+  // `AI_MODEL_LIBRARIES` (packages/applications `services/ai-model/constants.ts`,
+  // mirrored by the seed's `shared.ts`). Replaces the overloaded
+  // `format` + `provider` pair for loader selection.
+  libraryName    String
+  // The workload that executes the model: `stt` | `stt-worker` | `nlp` | `tts`
+  // | `tts-worker` | `lmstudio` | `text` | `gateway-proxy`. Documents the owning
+  // service per the platform catalogue; cloud rows are governed by the gateway
+  // (credentials, cascade) and EXECUTED by the owning service.
+  servedBy       String
+  // SELF_HOSTED rows have weights in the bucket; CLOUD rows have none and are
+  // "available" when a provider connection exists (TASK-862). The enum also
+  // carries BYOK for the usage ledger — a registry row never uses it.
+  deploymentKind AiDeploymentKind
+  // Vendor wire id a CLOUD row is invoked with (`saaras:v4`, `gpt-transcribe`,
+  // `MAI-Transcribe-1.5`, an Azure OpenAI deployment name). Null for
+  // self-hosted rows, whose identity is the bucket prefix.
+  wireModelId    String?
+
+  // Model-card metadata mirrored from the Hub (R-3). `hfRevision` is the Hub
+  // commit `sha` the weights were fetched at.
+  license    String?
+  gated      Boolean  @default(false)
+  baseModel  String? // e.g. `snakers4/silero-vad` for the onnx-community mirror
+  languages  String[] @default([]) // ISO 639-1 codes, model-card order
+  hfRevision String?
+
+  // ── Bucket identity (R-2) ───────────────────────────────────────────────
+  //
+  // `bucketPrefix` is the key prefix under `s3://hope-models` the weights were
+  // published to — `<slug>/<version>/` for flat GGUF/CT2/ONNX layouts or
+  // `hf/hub/models--<org>--<repo>/snapshots/<sha>/` for the transformers
+  // family. `primaryObject` names the single file a single-file loader opens
+  // (whisper.cpp `ggml-*.bin`, llama.cpp `*.gguf`); `manifestDigest` is the
+  // sha256 of the published `manifest.json`, which the inventory job verifies.
+  //
+  // `localPath` (deprecated below) is now DERIVED from these by the service:
+  // `/mnt/models-bucket/` + `bucketPrefix` [+ `primaryObject`]. Nobody types it.
+  bucketPrefix   String?
+  primaryObject  String?
+  manifestDigest String?
+
+  // Measured availability, written ONLY by the inventory job
+  // (`ModelInventoryService`) and the publish processor — never by an admin
+  // edit. `availabilityDetail` carries the per-object verification result.
+  availability          AiModelAvailability @default(UNKNOWN)
+  availabilityCheckedAt DateTime?
+  availabilityDetail    Json?               @db.JsonB
+
+  // Super-admin "platform default for task" without a separate screen. Seeds
+  // the SYSTEM `AiRoutingPolicy` election (TASK-862); a task appears here on
+  // at most ONE enabled row.
+  isPlatformDefaultFor AiTaskKind[] @default([])
+
+  // Resource requirements (for scheduling/allocation)
+  memorySizeMb Int? // Estimated GPU/CPU memory in MB
+  computeType  String? // float32, float16, int8
+
+  // ── Deprecated download bookkeeping ─────────────────────────────────────
+  /// @deprecated TASK-860 — removed in R3. Replaced by `availability`.
+  downloadStatus AiModelDownloadStatus @default(NOT_DOWNLOADED)
+  /// @deprecated TASK-860 — removed in R3. Derived from `bucketPrefix` by the
+  /// service; no longer an operator free-text field (the create/update DTOs
+  /// reject it). Python resolvers still read it as the highest-precedence
+  /// override, which is exactly why the service keeps writing the derived value.
+  localPath      String?
+  /// @deprecated TASK-860 — removed in R3. Replaced by `availabilityCheckedAt`.
+  downloadedAt   DateTime?
+  /// @deprecated TASK-860 — removed in R3. Replaced by the manifest's `totalBytes`.
+  fileSizeMb     Int?
+  // SHA256 for verification. When set, single-file artifacts (GGUF/ONNX) are
+  // verified after download and on first use of a pre-existing cache entry;
+  // a mismatch is a HARD error and the model is never served. On directory
+  // snapshots (HF) it is a documented no-op with a warning.
+  checksum       String?
+
+  // Resource status + Audit
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  createdBy               String?            @default("60000000-0000-0000-0000-000000000000")
+  updatedBy               String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  // Tags
+  tags String[] @default([])
+
+  // Relations
+  //
+  // Historically: "NO RELATIONS — models are referenced by slug in pipeline
+  // YAML". That convention still holds for the PIPELINE surface (AsrPipeline
+  // stages, harness weight lookups) and for `AiTaskDefault.modelSlug`.
+  //
+  // makes ONE exception, deliberately: `AiRoutingPolicy.modelId` is a
+  // real FK, because finding F-6 identified the by-slug join as the mechanical
+  // cause of the provider-configuration fragmentation — a configuration could
+  // name a model that did not exist, and nothing could report on which
+  // configurations a model backs. This back-relation exists only to satisfy
+  // Prisma's requirement that a relation be declared on both sides; nothing
+  // reads it.
+  routingPolicies AiRoutingPolicy[] @relation("AiRoutingPolicyModel")
+  // TASK-863 — `Agent.modelId` / `AgentModelFallback.modelId` are real FKs for
+  // the same reason; these back-relations exist only to satisfy Prisma.
+  agents         Agent[]              @relation("AgentModel")
+  agentFallbacks AgentModelFallback[] @relation("AgentFallbackModel")
+
+  // Indexes
+  @@unique([tenantId, slug], name: "AiModel_tenant_slug_unique")
+  @@index([tenantId], name: "AiModel_tenantId_idx")
+  @@index([category], name: "AiModel_category_idx")
+  @@index([taskType], name: "AiModel_taskType_idx")
+  @@index([source], name: "AiModel_source_idx")
+  @@index([format], name: "AiModel_format_idx")
+  @@index([provider], name: "AiModel_provider_idx")
+  @@index([resourceStatus], name: "AiModel_status_idx")
+  @@schema("core")
+}

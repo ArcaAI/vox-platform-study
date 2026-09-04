@@ -45,7 +45,12 @@ function defNames(source: string): string[] {
 
 /** The body of `_resolve_hf`, up to the next top-level `def`. */
 function resolveHfBody(source: string): string {
-  const start = source.search(/^(?:async )?def _resolve_hf\b/m);
+  return defBody(source, '_resolve_hf');
+}
+
+/** The body of a top-level `def <name>`, up to the next top-level `def`. */
+function defBody(source: string, name: string): string {
+  const start = source.search(new RegExp(`^(?:async )?def ${name}\\b`, 'm'));
   if (start === -1) return '';
   const rest = source.slice(start);
   const next = rest.slice(1).search(/^(?:async )?def /m);
@@ -53,6 +58,30 @@ function resolveHfBody(source: string): string {
 }
 
 describe('source_resolver.py — the four copies stay in step', () => {
+  it('every copy honours an EXISTING local_path — file or directory — before any scheme dispatch (TASK-860)', () => {
+    // TASK-860 derives `AiModel.localPath` from the registry's bucket identity:
+    // `/mnt/models-bucket/<bucketPrefix>` for directory loaders and
+    // `…/<bucketPrefix><primaryObject>` for single-file loaders (whisper.cpp,
+    // llama.cpp). The contract that makes both work unchanged is (1) the
+    // override is consulted BEFORE `_resolve_hf` / `_resolve_s3` / `_resolve_file`
+    // and (2) the existence check is `exists()`, never `is_dir()` — a q8_0 row
+    // points at ONE file, and an `is_dir()` guard would silently fall through
+    // to a Hub pull of the whole repo (and whichever quant sorts first).
+    for (const [service, path] of Object.entries(RESOLVERS)) {
+      const body = defBody(read(path), 'resolve_model_dir');
+      expect(body, `${service}: resolve_model_dir() not found in ${path}`).not.toBe('');
+
+      const localPath = body.search(/identity\.local_path/);
+      const firstDispatch = Math.min(...['_resolve_hf(', '_resolve_s3(', '_resolve_file('].map((f) => body.indexOf(f)).filter((i) => i !== -1));
+      expect(localPath, `${service}: resolve_model_dir() never consults identity.local_path`).toBeGreaterThan(-1);
+      expect(localPath, `${service} (${path}) dispatches on source_uri BEFORE honouring local_path`).toBeLessThan(firstDispatch);
+
+      const overrideBranch = body.slice(localPath, firstDispatch);
+      expect(overrideBranch, `${service}: the local_path check must use exists() (files AND directories)`).toMatch(/\.exists\(\)/);
+      expect(overrideBranch, `${service}: the local_path check must not be is_dir()-only`).not.toMatch(/\.is_dir\(\)/);
+    }
+  });
+
   it('every copy declares the same shared core functions', () => {
     // Not "the same functions" — a service may add its own. Every function the
     // SHARED core defines must exist everywhere, or one copy has lost a

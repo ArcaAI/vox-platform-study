@@ -9,9 +9,12 @@ audio, so this provider streams PCM chunks (``native_streaming=True``). The
 from __future__ import annotations
 
 import asyncio
+import glob
+import os
 import time
 from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -31,6 +34,57 @@ from tts.providers.base import (
 logger = get_logger(__name__)
 
 _SAMPLE_RATE = 24000
+
+
+@dataclass(frozen=True)
+class KokoroPaths:
+    """Explicit weight locations inside a published Kokoro prefix (TASK-860)."""
+
+    config_json: str
+    model_pth: str
+    voices_dir: str | None
+
+
+def resolve_kokoro_paths(config: KokoroConfig) -> KokoroPaths | None:
+    """``model_path`` → the explicit `KModel(config, model)` inputs, or None.
+
+    None (empty ``model_path``) means the dev fallback: `KPipeline` pulls
+    `hexgrad/Kokoro-82M` from the Hub itself. A SET path that lacks
+    `config.json` + a `.pth` checkpoint is a misconfiguration and FAILS here —
+    silently falling back to a Hub download would hide a registry row whose
+    weights were never published (`availability: MISSING`).
+    """
+    if not config.model_path:
+        return None
+    root = config.model_path.rstrip("/")
+    config_json = os.path.join(root, "config.json")
+    checkpoints = sorted(glob.glob(os.path.join(root, "*.pth")))
+    if not os.path.isfile(config_json) or not checkpoints:
+        raise FileNotFoundError(
+            f"TTS_KOKORO_MODEL_PATH={config.model_path!r} does not contain config.json and a "
+            ".pth checkpoint — the Kokoro registry row has not been published to the models "
+            "bucket (run the registry inventory), or the path is wrong."
+        )
+    voices_dir = os.path.join(root, "voices")
+    return KokoroPaths(
+        config_json=config_json,
+        model_pth=checkpoints[0],
+        voices_dir=voices_dir if os.path.isdir(voices_dir) else None,
+    )
+
+
+def resolve_kokoro_voice(paths: KokoroPaths | None, voice: str) -> str:
+    """The `.pt` path of a published voice, else the bare voice name.
+
+    `KPipeline.load_single_voice` opens a `.pt` PATH directly and only falls
+    back to `hf_hub_download` for a bare name — so a published voice never
+    touches the Hub, and an unpublished one behaves exactly as before.
+    """
+    if paths is not None and paths.voices_dir:
+        candidate = os.path.join(paths.voices_dir, f"{voice}.pt")
+        if os.path.isfile(candidate):
+            return candidate
+    return voice
 
 # `next()` cannot signal exhaustion across a thread boundary by raising
 # StopIteration (it would be swallowed by the enclosing generator machinery), so
@@ -101,6 +155,9 @@ class KokoroProvider:
         # nothing to warm; inventing a name here would put a voice into the
         # catalog's job without putting it in the catalog.
         self._warmup_voice = warmup_voice
+        # TASK-860: explicit published-weight paths (None = Hub fallback).
+        # Resolved at construction so a misconfigured mount fails at boot.
+        self._paths = resolve_kokoro_paths(config)
         # The pipeline handle lives behind the shared
         # model cache, so it loads on first use and is RELEASED when idle. An
         # explicitly injected `pipeline` bypasses the cache entirely (hermetic
@@ -122,6 +179,18 @@ class KokoroProvider:
         """Build the KPipeline. Runs in a thread — it is a heavy, blocking load."""
         if self._pipeline_factory is not None:
             pipeline = await asyncio.to_thread(self._pipeline_factory)
+        elif self._paths is not None:
+            from kokoro import KModel, KPipeline  # lazy, heavy [local] dep
+
+            paths = self._paths
+
+            def _build_from_paths() -> Any:
+                # Explicit config + checkpoint: bypasses the Hub entirely
+                # (verified in kokoro/model.py — TASK-860 §2.4).
+                kmodel = KModel(config=paths.config_json, model=paths.model_pth)
+                return KPipeline(lang_code="a", model=kmodel)  # 'a' = American English
+
+            pipeline = await asyncio.to_thread(_build_from_paths)
         else:
             from kokoro import KPipeline  # lazy, heavy [local] dep
 
@@ -193,9 +262,9 @@ class KokoroProvider:
         boot-time check at all.
         """
         pipeline = await self._get_pipeline_async()
-        voice = self._warmup_voice
-        if voice is None:
+        if self._warmup_voice is None:
             return
+        voice = resolve_kokoro_voice(self._paths, self._warmup_voice)
         await asyncio.to_thread(lambda: list(pipeline("warm up.", voice=voice)))
 
     async def health(self) -> bool:
@@ -222,7 +291,7 @@ class KokoroProvider:
         # voice is not bound to. There is deliberately no config fallback — one
         # would only ever fire on a path that cannot occur, and would substitute
         # a different voice than the caller asked for if it ever did.
-        voice = req.provider_voice
+        voice = resolve_kokoro_voice(self._paths, req.provider_voice)
         worker = self._get_worker()
 
         if req.fmt == AudioFormat.PCM:
