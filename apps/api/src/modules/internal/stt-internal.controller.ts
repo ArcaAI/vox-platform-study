@@ -1,4 +1,5 @@
 import {
+  AsrAgentResolverService,
   CreateAudioRecordRequest,
   CreateTranscriptRequest,
   IActiveUserContext,
@@ -8,7 +9,6 @@ import {
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
   IProviderConnectionService,
-  ITenantSttConfigService,
   SecretsService,
   StreamingSessionService,
   SttInternalService,
@@ -73,10 +73,12 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 export class SttInternalController {
   constructor(
     private readonly sttInternalService: SttInternalService,
-    // Resolves a tenant's decrypted BYO provider overrides for the batch-worker
-    // PULL path. Optional so positional test construction still
-    // works; the pull route rejects (500-class) when unwired in prod.
-    @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
+    // TASK-861 follow-up — the batch-worker credential PULL resolves through
+    // `AsrAgentResolverService.resolveProviderOverrides` (TASK-862's
+    // `ProviderCredentialResolver` underneath). Same slot the deprecated
+    // `ITenantSttConfigService` held, so positional test construction is
+    // unchanged; the pull route rejects (400) when unwired.
+    @Optional() private readonly asrResolver?: AsrAgentResolverService,
     // Re-establishes a SYSTEM-free CLS tenant context around the tenant-scoped
     // credential read (service-to-service calls carry no user/tenant CLS).
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
@@ -358,11 +360,15 @@ export class SttInternalController {
   }
 
   /**
-   * TASK-861: still the batch worker's credential pull on the agent path too —
-   * the Dramatiq message carries `resolved_spec` (never a key), so the worker
-   * fetches the tenant's cloud credentials here at execution time. Backed by the
-   * deprecated `TenantSttConfigService.resolveProviderOverrides`; repointing it
-   * onto `ProviderCredentialResolver` is a follow-up (the wire shape is identical).
+   * TASK-861 — the batch worker's credential pull on the agent path too: the
+   * Dramatiq message carries `resolved_spec` (never a key), so the worker
+   * fetches the tenant's cloud credentials here at execution time. Resolved
+   * through TASK-862's `ProviderCredentialResolver` via
+   * `AsrAgentResolverService.resolveProviderOverrides` — tenant row → SYSTEM
+   * fallback; a DISABLED tenant row vetoes its provider (left out of the map,
+   * no tier serves it, the BYOK-only STT loader then fails closed); `funding`
+   * derived from the row that served, never stamped here. The wire shape
+   * `apps/stt` parses (`{provider: {api_key, funding, ...}}`) is unchanged.
    */
   @Get('provider-overrides')
   @ApiOperation({ summary: 'Resolve a tenant’s decrypted BYO STT provider overrides (batch-worker pull)' })
@@ -371,13 +377,13 @@ export class SttInternalController {
     if (!tenantId?.trim()) {
       throw new BadRequestException('tenantId query parameter is required');
     }
-    if (!this.sttConfig || !this.cls) {
+    if (!this.asrResolver || !this.cls) {
       throw new BadRequestException('STT provider-override resolution is not configured on this gateway');
     }
     const scopedTenantId = tenantId.trim();
     return this.cls.run(async () => {
       this.cls!.set('tenantId', scopedTenantId);
-      return this.sttConfig!.resolveProviderOverrides(scopedTenantId);
+      return this.asrResolver!.resolveProviderOverrides(scopedTenantId);
     });
   }
 }

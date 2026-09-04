@@ -1,9 +1,11 @@
-import { ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AgentTask } from '@arcaai/domains';
+import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
 import { AgentResolverService } from '../../agent/agent-resolver.service';
 import { ProviderCredentialResolver } from '../../ai-provider-connection/provider-credential-resolver';
-import { isCloudByoProvider } from '../../ai-provider-connection/constants';
+import { CLOUD_BYO_PROVIDERS, isCloudByoProvider } from '../../ai-provider-connection/constants';
+import { ProviderVetoedException } from '../../ai-provider-connection/provider-vetoed.exception';
 import type { ProviderFunding } from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../../tenant-stt-config/platform-limits';
 import { AsrSpecBuildError, buildResolvedAsrSpec } from './build-resolved-asr-spec';
@@ -84,6 +86,50 @@ export class AsrAgentResolverService {
 
     const { providerOverrides, fundingTier } = await this.resolveCredentials(spec, agent, fallbackAgent, tenantId);
     return { spec, ...(providerOverrides ? { providerOverrides } : {}), ...(fundingTier ? { fundingTier } : {}) };
+  }
+
+  /**
+   * TASK-861 follow-up — the batch worker's whole-service credential pull
+   * (`GET internal/stt/provider-overrides?tenantId=`), successor of the
+   * deprecated `TenantSttConfigService.resolveProviderOverrides`.
+   *
+   * The Dramatiq message carries `resolved_spec` and never a key, and the
+   * worker names no provider when it pulls, so every cloud STT provider the
+   * platform knows is resolved through the ONE resolver exactly as
+   * `resolveCredentials` does for a session's chain — tenant row → SYSTEM
+   * fallback, `funding` derived from the row that served — keyed as the
+   * `apps/stt` loaders read it.
+   *
+   * Fail-closed PER PROVIDER, not per pull: a veto (`ProviderVetoedException`,
+   * a DISABLED tenant row) or an entitlement refusal of the platform default
+   * (`QuotaExceededException`) leaves that provider OUT of the map. No tier
+   * serves it, and every STT cloud loader is BYOK-only with no env key, so a
+   * job on that engine fails at load rather than on another tier's credential
+   * — while a tenant that vetoed one provider still transcribes on another.
+   * (A session names its chain, so `resolve` lets the veto propagate as a 409;
+   * a whole-service map cannot tell which provider the job runs on.) A
+   * backend fault propagates — it is never disguised as "no credential".
+   */
+  async resolveProviderOverrides(tenantId: string): Promise<SttProviderOverrides> {
+    if (!this.credentials) {
+      throw new ServiceUnavailableException('Provider credential resolution is not configured on this gateway');
+    }
+    const overrides: SttProviderOverrides = {};
+    for (const provider of CLOUD_BYO_PROVIDERS.stt) {
+      try {
+        const binding = await this.credentials.resolve('stt', provider, tenantId);
+        if (binding) overrides[provider] = binding.override;
+      } catch (error) {
+        if (!(error instanceof ProviderVetoedException) && !(error instanceof QuotaExceededException)) throw error;
+        this.logger.warn({
+          message: 'STT provider credential refused; provider left out of the batch pull',
+          tenantId,
+          provider,
+          reason: error instanceof ProviderVetoedException ? 'vetoed' : 'platform-default-not-entitled',
+        });
+      }
+    }
+    return overrides;
   }
 
   private async resolveFallbackAgent(agent: ResolvedAgent, tenantId: string): Promise<ResolvedAgent | null> {

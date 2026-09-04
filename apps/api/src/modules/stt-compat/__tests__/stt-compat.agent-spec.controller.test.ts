@@ -104,3 +104,33 @@ describe('SttCompatController.switchSession — agent path (TASK-861)', () => {
     expect(sessionService.switchProvider).toHaveBeenCalledWith('session_123456789', 'fallback', 'tenant-1');
   });
 });
+
+describe('SttCompatController.startSession — pipelineId deprecation headers (TASK-861 follow-up)', () => {
+  it('an explicit pipelineId (deprecated path) answers with the same three headers as stream/session + transcribe; the agent path sets none', async () => {
+    const { controller, asrResolver, sessionService } = wire();
+
+    const deprecated = { setHeader: vi.fn() };
+    await controller.startSession({ ...request(), pipelineId: 'pipe-1' } as StartSessionRequest, headers, deprecated as never);
+    expect(asrResolver.resolve).not.toHaveBeenCalled();
+    expect(sessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipe-1' }));
+    expect(deprecated.setHeader).toHaveBeenCalledWith('Deprecation', 'true');
+    expect(deprecated.setHeader).toHaveBeenCalledWith(
+      'X-Deprecation-Notice',
+      'TASK-861 - pipelineId is removed in R4; send agentSlug (or nothing, for the assigned ASR agent)',
+    );
+    expect(deprecated.setHeader).toHaveBeenCalledWith('Link', '</api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"');
+    // No `Sunset` until the removal tags are named (TASK-861 §7.5 Q1 / OD-2).
+    expect(deprecated.setHeader).toHaveBeenCalledTimes(3);
+
+    const agentPath = { setHeader: vi.fn() };
+    await controller.startSession(request(), headers, agentPath as never);
+    expect(asrResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(agentPath.setHeader).not.toHaveBeenCalled();
+  });
+
+  it('the JSON body path is unchanged with no response object (positional test construction, passthrough)', async () => {
+    const { controller } = wire();
+    const out = await controller.startSession({ ...request(), pipelineId: 'pipe-1' } as StartSessionRequest, headers);
+    expect(out).toMatchObject({ message: 'Session started', session_id: 'session_123456789', status: 'active', provider: 'azure' });
+  });
+});

@@ -7,6 +7,7 @@ import {
   StreamingSessionService,
 } from '@arcaai/applications';
 import type { ResolvedAsrSession, SttProviderOverrides } from '@arcaai/applications';
+import type { Response } from 'express';
 import {
   BadRequestException,
   Body,
@@ -19,6 +20,7 @@ import {
   Optional,
   Post,
   Req,
+  Res,
   ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
@@ -26,7 +28,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { StreamSessionTenantBindingService } from '../../common';
+import { markPipelineIdDeprecated, StreamSessionTenantBindingService } from '../../common';
 import { StartSessionRequest } from './dto/start-session.request';
 import { SwitchSessionRequest } from './dto/switch-session.request';
 import { SttCompatSessionMetadataService } from './stt-compat-session-metadata.service';
@@ -117,7 +119,12 @@ export class SttCompatController {
   @Post('start_session')
   @Authorize()
   @ApiOperation({ summary: 'v1-compatible STT session start' })
-  async startSession(@Body() body: StartSessionRequest, @Req() request: CompatRequest = {}): Promise<StartSessionResponse> {
+  async startSession(
+    @Body() body: StartSessionRequest,
+    @Req() request: CompatRequest = {},
+    // Passthrough: the JSON body path is unchanged; only headers are set on it.
+    @Res({ passthrough: true }) res?: Response,
+  ): Promise<StartSessionResponse> {
     const provider = body.provider === 'whisper' ? 'azure' : (body.provider ?? 'azure');
     const response: StartSessionResponse = {
       message: 'Session started',
@@ -126,6 +133,12 @@ export class SttCompatController {
       audio_config: this.mergeAudioConfig(body.audioSettings),
       provider,
     };
+
+    // TASK-861 — an explicit `pipelineId` is the deprecated path: answer with the
+    // same three headers `stream/session` + `transcribe` send (one shared literal).
+    if (body.pipelineId) {
+      markPipelineIdDeprecated(res);
+    }
 
     if (!this.pipelineService || !this.sessionService || !this.sessionBinding) {
       return response;

@@ -57,7 +57,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiRespon
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
-import { StreamSessionTenantBindingService, TenantOwnedResource } from '../../common';
+import { markPipelineIdDeprecated, StreamSessionTenantBindingService, TenantOwnedResource } from '../../common';
 import {
   ALLOWED_AUDIO_MIMES,
   AUDIO_BUCKET,
@@ -184,19 +184,6 @@ export class TranscriptionJobController {
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
     return this.asrResolver.resolve({ tenantId, agentSlug: agentSlug ?? null, departmentId: null });
-  }
-
-  /**
-   * TASK-861 — the deprecated `pipelineId` path answers with the program-wide
-   * deprecation headers (RFC 9745 `Deprecation` + an operator-readable notice).
-   * Set per request because the SAME route serves both paths; `@ApiDeprecated`
-   * is a per-route marker and would mislabel the agent path.
-   */
-  private markPipelineIdDeprecated(res?: Response): void {
-    res?.setHeader('Deprecation', 'true');
-    // ASCII only — Node rejects non-Latin-1 header values with ERR_INVALID_CHAR (a 500 on every call).
-    res?.setHeader('X-Deprecation-Notice', 'TASK-861 - pipelineId is removed in R4; send agentSlug (or nothing, for the assigned ASR agent)');
-    res?.setHeader('Link', '</api/v1/agents?task=SPEECH_TO_TEXT>; rel="successor-version"');
   }
 
   /**
@@ -450,7 +437,7 @@ export class TranscriptionJobController {
     let fallbackPipelineId: string | undefined;
     let resolved: ResolvedAsrSession | undefined;
     if (this.useLegacyPipelinePath(body)) {
-      this.markPipelineIdDeprecated(res);
+      markPipelineIdDeprecated(res);
       fallbackPipelineId = (await this.resolveSttFallbackConfig(tenantId)).fallbackPipelineId;
       pipelineId = body.pipelineId ?? (await this.resolveDefaultPipelineId(fallbackPipelineId));
       // Block cross-tenant pipeline use before any I/O.
@@ -700,7 +687,7 @@ export class TranscriptionJobController {
     const legacyPipelinePath = this.useLegacyPipelinePath(body);
     if (legacyPipelinePath) {
       if (!body.pipelineId) throw new BadRequestException('pipelineId is required when no ASR agent resolver is configured');
-      this.markPipelineIdDeprecated(res);
+      markPipelineIdDeprecated(res);
     }
 
     // HARD-BLOCK a new session when the tenant is at/

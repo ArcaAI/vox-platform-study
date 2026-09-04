@@ -1,10 +1,10 @@
 import {
   AgentServiceModule,
   AiProviderConnectionServiceModule,
+  AsrAgentResolverServiceModule,
   EffectiveConfigServiceModule,
   SttInternalServiceModule,
   StreamingSessionServiceModule,
-  TenantSttConfigServiceModule,
 } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { AgentInternalController } from './agent-internal.controller';
@@ -15,7 +15,8 @@ import { SttInternalController } from './stt-internal.controller';
 
 @Module({
   // EffectiveConfigServiceModule backs the per-service config pull.
-  // TenantSttConfigServiceModule backs the batch-worker BYO override pull.
+  // AsrAgentResolverServiceModule backs the batch-worker BYO override pull
+  // (TASK-861 follow-up: through TASK-862's ProviderCredentialResolver).
   // StreamingSessionServiceModule backs the reaper usage push-back.
   // AiProviderConnectionServiceModule backs `model-registry-credential` — both
   // the generic `ModelRegistryInternalController` route ( follow-on)
@@ -24,7 +25,7 @@ import { SttInternalController } from './stt-internal.controller';
   imports: [
     SttInternalServiceModule,
     EffectiveConfigServiceModule,
-    TenantSttConfigServiceModule,
+    AsrAgentResolverServiceModule,
     StreamingSessionServiceModule,
     AiProviderConnectionServiceModule,
     // TASK-863 — `AgentInternalController` (`/internal/agents/resolve`) resolves through the ONE agent resolver.
