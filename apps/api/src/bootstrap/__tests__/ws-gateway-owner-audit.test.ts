@@ -80,8 +80,9 @@ describe('WebSocket gateway owner-binding audit (G4)', () => {
     expect(() => auditWebSocketGatewayOwnerBinding(app)).toThrow(/AlphaGateway[\s\S]*BetaGateway/);
   });
 
-  it('classifies all three real gateways and nothing else (a stale entry is drift too)', () => {
-    expect(Object.keys(WS_OWNER_BOUND_GATEWAYS).sort()).toEqual(['SttCompatGateway', 'SttWsGateway', 'TtsWsGateway']);
+  it('classifies all four real gateways and nothing else (a stale entry is drift too)', () => {
+    // TASK-864 added `/ws/workflows` (WorkflowWsGateway, `no-owned-session`).
+    expect(Object.keys(WS_OWNER_BOUND_GATEWAYS).sort()).toEqual(['SttCompatGateway', 'SttWsGateway', 'TtsWsGateway', 'WorkflowWsGateway']);
   });
 
   /**
