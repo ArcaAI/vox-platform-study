@@ -16,6 +16,7 @@ import { SttProviderOverrides } from './platform-limits';
  * Mirrors `ITenantTtsConfigService`; STT has a single fallback pointer instead of
  * TTS routing chains.
  */
+/** @deprecated TASK-861 — removed in R4. See `TenantSttConfigService`. */
 export abstract class ITenantSttConfigService {
   /** Raw persisted row for a tenant (version:0 placeholder when none). */
   abstract getRow(tenantId: string): Promise<TenantSttConfigResponse>;

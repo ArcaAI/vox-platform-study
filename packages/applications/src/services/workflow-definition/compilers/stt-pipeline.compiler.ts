@@ -157,6 +157,7 @@ export interface SttWorkflowDefinitionRef {
 }
 
 @Injectable()
+/** @deprecated TASK-861 — removed in R4. The `stt` palette retires (TASK-864 marks it); a published `stt` workflow still compiles into the deprecated `AsrPipeline` for the window. The ASR Agent is the replacement authoring surface. */
 export class SttPipelineCompilerService {
   constructor(private readonly pipelineService: PipelineService) {}
 

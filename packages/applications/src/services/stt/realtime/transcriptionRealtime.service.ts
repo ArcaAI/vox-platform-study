@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { Observable, finalize, map, takeWhile } from 'rxjs';
+import type { ResolvedAsrSpec } from '@arcaai/types';
 import { uuidv7 } from 'uuidv7';
 import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
 import { StorageDescriptor } from '../../baseServices/storage/providers/IBlobStorageProvider';
@@ -321,12 +322,18 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     audioBucketName?: string;
     storage?: StorageDescriptor | null;
     /**
-     * Tenant fallback pipeline the worker re-runs on when the primary ASR
-     * fails. `transcribe_file` has accepted this for a while,
-     * but nothing ever supplied it — so batch auto-fallback was
-     * unreachable in production and a failing primary just failed the job.
+     * @deprecated TASK-861 — removed in R4. Tenant fallback pipeline the worker
+     * re-runs on when the primary ASR fails; superseded by `resolvedSpec.fallback`.
      */
     fallbackPipelineId?: string;
+    /**
+     * TASK-861 — the gateway-resolved ASR spec. When present the worker
+     * assembles the engine chain from it (no DB read) and `pipelineId` is the
+     * spec's runtime key; the spec's own `fallback` block replaces
+     * `fallbackPipelineId`. Sent as a KWARG (never positional) for the same
+     * reason `storage` is.
+     */
+    resolvedSpec?: ResolvedAsrSpec;
   }): Promise<void> {
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
@@ -353,8 +360,10 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       kwargs: {
         // Per-tenant storage descriptor — DEDICATED tenants only.
         ...(params.storage ? { storage: params.storage } : {}),
-        // Tenant fallback pipeline for the worker's in-attempt re-run.
-        ...(params.fallbackPipelineId ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
+        // TASK-861 — the resolved spec carries its own fallback; the deprecated
+        // pointer is sent only on the legacy pipeline path.
+        ...(params.resolvedSpec ? { resolved_spec: params.resolvedSpec } : {}),
+        ...(params.fallbackPipelineId && !params.resolvedSpec ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
       },
       options: {
         redis_message_id: redisMessageId,
