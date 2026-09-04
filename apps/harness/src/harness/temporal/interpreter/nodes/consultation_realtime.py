@@ -25,7 +25,8 @@ substituting an env default (00-project-context.md Principles).
 
 ## W1's incremental path, and the constraint it respects
 
-``nodes/stt_placeholder.py``'s module docstring is explicit that **no per-frame audio and no
+Rule 06's determinism constraint (once spelled out by the retired STT palette's
+``nodes/stt_placeholder.py``, removed by TASK-867) is explicit that **no per-frame audio and no
 per-token transcript may cross a Temporal workflow boundary** — a per-frame signal loop is both
 a determinism risk and a latency disaster. So the batching here is entirely ACTIVITY-SIDE: the
 workflow dispatches this node once, and the activity windows the bound transcript and emits one

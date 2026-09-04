@@ -108,16 +108,6 @@ with workflow.unsafe.imports_passed_through():
         interpreter_guard_moderation,
         interpreter_guard_phi,
     )
-    from harness.temporal.interpreter.nodes.stt_placeholder import (
-        interpreter_stt_asr_engine,
-        interpreter_stt_audio_input,
-        interpreter_stt_diarization,
-        interpreter_stt_language_detection,
-        interpreter_stt_noise_filter,
-        interpreter_stt_phi_hop,
-        interpreter_stt_transcript_output,
-        interpreter_stt_vad,
-    )
     from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
     from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 
@@ -296,86 +286,14 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         default_max_attempts=3,
         output_keys={"next": None},
     ),
-    # STT palette. Mirrors
-    # node-registry.ts's matching eight entries exactly. Every activity here is a documented
-    # PLACEHOLDER (nodes/stt_placeholder.py's module docstring) — the STT palette's real
-    # execution path is compile-to-AsrPipeline + pipelineId binding, never per-node interpreter
-    # dispatch; these entries satisfy the cross-language registry-parity contract compile()
-    # depends on.
-    "stt.audioInput": NodeSpec(
-        key="stt.audioInput",
-        implemented=True,
-        activity=interpreter_stt_audio_input,
-        critical=True,
-        default_timeout_seconds=60,
-        default_max_attempts=3,
-        output_keys={"out": "audio", "bypass": "audio", "next": None},
-    ),
-    "stt.vad": NodeSpec(
-        key="stt.vad",
-        implemented=True,
-        activity=interpreter_stt_vad,
-        critical=False,
-        default_timeout_seconds=60,
-        default_max_attempts=3,
-        output_keys={"out": "audio", "next": None},
-    ),
-    "stt.noiseFilter": NodeSpec(
-        key="stt.noiseFilter",
-        implemented=True,
-        activity=interpreter_stt_noise_filter,
-        critical=False,
-        default_timeout_seconds=60,
-        default_max_attempts=3,
-        output_keys={"out": "audio", "next": None},
-    ),
-    "stt.diarization": NodeSpec(
-        key="stt.diarization",
-        implemented=True,
-        activity=interpreter_stt_diarization,
-        critical=False,
-        default_timeout_seconds=120,
-        default_max_attempts=3,
-        output_keys={"out": "audio", "next": None},
-    ),
-    "stt.languageDetection": NodeSpec(
-        key="stt.languageDetection",
-        implemented=True,
-        activity=interpreter_stt_language_detection,
-        critical=False,
-        default_timeout_seconds=30,
-        default_max_attempts=3,
-        output_keys={"out": "audio", "next": None},
-    ),
-    "stt.asrEngine": NodeSpec(
-        key="stt.asrEngine",
-        implemented=True,
-        activity=interpreter_stt_asr_engine,
-        critical=True,
-        default_timeout_seconds=600,
-        default_max_attempts=2,
-        output_keys={"out": "transcript", "loop": None, "next": None},
-    ),
-    "stt.transcriptOutput": NodeSpec(
-        key="stt.transcriptOutput",
-        implemented=True,
-        activity=interpreter_stt_transcript_output,
-        critical=True,
-        external_write=True,
-        default_timeout_seconds=60,
-        default_max_attempts=3,
-        output_keys={"loop": None, "next": None},
-    ),
-    # PLACEHOLDER — implemented=False, see palette.md. /phi-redactor is not landed.
-    "stt.phiHop": NodeSpec(
-        key="stt.phiHop",
-        implemented=False,
-        activity=interpreter_stt_phi_hop,
-        critical=False,
-        default_timeout_seconds=60,
-        default_max_attempts=1,
-        output_keys={"out": "transcript", "next": None},
-    ),
+    # STT palette — RETIRED, deliberately NO spec (TASK-861 step 10, closed by TASK-867).
+    # The TypeScript registry keeps the eight `stt.*` descriptors for the deprecation window as
+    # `implemented: false`, so `compile()` refuses them upstream; here they are simply absent,
+    # which the interpreter already handles identically (`NODE_REGISTRY.get()` -> None ->
+    # SKIPPED `unsupported_node_type`) and which costs no dead callable — a `NodeSpec` cannot exist
+    # without a registered `@activity.defn`, and `nodes/stt_placeholder.py` is gone.
+    # `test_node_registry_parity.py` pins the asymmetry: an `implemented: false` fixture entry must
+    # have no spec here and no served activity.
     # Consultation palette — all 13 node types from contracts/node-types.md's node
     # table. shipped only 3 (consentGate, phiHop, hitlGate); the other 10 were specified
     # but left unwired, which made the palette unbuildable — DRAFT_CONSULTATION_RULE_SET names
