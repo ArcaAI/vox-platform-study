@@ -21,8 +21,8 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 | `AiRuntimeProfile` (all layers, `/ai-runtime-profiles`) | TASK-862 | R1 | R3 | `Agent.parameters` (hyper-parameters) + `AiProviderConnection` ceilings | planned |
 | `TenantTtsConfig` (+ `admin/tts-config/**`, `/ai-configuration` Voice tab) | TASK-862 / 863 | R1 | R3 | TTS Agent + `AgentAssignment` | planned |
 | `AiRoutingPolicy.candidatesJson` | TASK-862 | R1 | R3 | candidate rows | planned |
-| `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | planned |
-| Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | planned |
+| `AiModel.downloadStatus`, `downloadedAt`, `fileSizeMb`; free-text `localPath`; `AiModelFormat` cloud pseudo-values (`CLOUD_API`, `AZURE_SPEECH`, `AZURE_FOUNDRY`, `SARVAM`, `OPENAI`); `AiModelSource.MLFLOW`, `GITHUB` | TASK-860 | R1 | R3 | `availability`, derived `localPath` from `bucketPrefix`, `deploymentKind` + `libraryName` | marked |
+| Customer-tenant clones of the model catalogue (`backfillCustomerTenantAiModels`) | TASK-860 | R1 (deleted — seed data) | — | SYSTEM-only catalogue with shared read | removed |
 | `ProviderReconciliationRun` + `provider-reconciler*` + `admin/usage/reconciliation` + `/ai-operations/reconciliation` | TASK-862 | R1 (**removed outright**, owner directive) | — | — | planned |
 
 ## API routes
@@ -31,7 +31,7 @@ Status values: `planned` (ticket not started) · `marked` (marker landed) · `re
 |---|---|---|---|---|---|
 | `admin/ai-providers/**` (llm-only alias) | TASK-862 | R1 | R3 | `admin/providers/:service/:provider` | planned |
 | `admin/tts-config/credentials/**`, `admin/stt-config/credentials/**` | TASK-862 | R1 | R3 | `admin/providers/**` + `POST …/test` | planned |
-| `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | planned |
+| `POST admin/ai-models/discovery/register` | TASK-860 | R1 | R3 | registry inventory "register from bucket" | marked |
 | `pipelineId` on `POST audio/transcription-jobs/stream/session`, `POST …/transcribe`, `POST api/stt/start_session` | TASK-861 | R2 | R4 | `agentSlug` | planned |
 | `POST /workflows/:slug/invoke` (alias) | already deprecated in code | — | R3 | `POST /workflows/:slug/runs` | marked |
 
