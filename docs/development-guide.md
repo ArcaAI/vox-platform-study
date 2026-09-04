@@ -200,7 +200,7 @@ Support commands:
 | Harness (`apps/harness`)                     | 8866                    | FastAPI + separate Temporal worker process                                  |
 | Admin console (`apps/admin-console`)         | 5176 (dev)              | Next.js 16 App Router — operator UI                                         |
 | example (`apps/example`)                     | 5173 (dev)              | minimal raw-WebSocket live-transcription demo                               |
-| compat-playground (`apps/compat-playground`) | 5177 (dev)              | v1→v2 SDK migration playground                                              |
+| compat-playground (`apps/compat-playground`) | 5177 (dev, local only) | **Deprecated.** CI disabled; `pnpm compat:dev` still works. |
 | quick-compat-app (`apps/quick-compat-app`)   | 5180 (dev)              | registry-installed SDK smoke app (outside the pnpm workspace)               |
 | PostgreSQL 18                                | 5432                    | `hope-postgres` (TimescaleDB image, pgvector available)                     |
 | Redis 8                                      | 6379                    | BullMQ DB 0, cache DB 1, STT streams DB 2, Text streams DB 3, Dramatiq DB 5 |

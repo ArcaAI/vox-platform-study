@@ -11,6 +11,9 @@
  *   - apps/example/Dockerfile — not built by any job in .gitlab/ci/build.yml
  *     (a standalone raw-WebSocket demo); not part of the build-info schema's
  *     `service` enum.
+ *   - apps/compat-playground/Dockerfile — CI jobs hidden. The
+ *     schema enum keeps `compat-playground` so already-shipped images still
+ *     validate; CI no longer builds a new one.
  *   - apps/stt/docker/Dockerfile.apple — Apple-silicon local dev variant, not
  *     built by CI.
  */
@@ -48,7 +51,6 @@ interface DockerfileCase {
 const RUNNABLE_DOCKERFILES: DockerfileCase[] = [
   { path: 'apps/api/Dockerfile', label: 'api' },
   { path: 'apps/admin-console/Dockerfile', label: 'admin-console' },
-  { path: 'apps/compat-playground/Dockerfile', label: 'compat-playground' },
   { path: 'apps/text/Dockerfile', label: 'text' },
   { path: 'apps/nlp/Dockerfile', label: 'nlp' },
   { path: 'apps/guardrail/Dockerfile', label: 'guardrail' },

@@ -426,7 +426,7 @@ Root `.prettierrc.js` extends `packages/config-eslint/prettier-base.js`: `single
 
 ### 5.5 GitLab CI (`.gitlab-ci.yml` + `.gitlab/ci/*.yml`)
 
-Stages: `install → validate → prepare → test → build → scan → publish → deploy → notify`. Branch pipeline types: main (MR gates only), dev/staging (tests + manual builds + scan), `release-sdk`, `release-playground`, `maintenance/*`. Enforced gates:
+Stages: `install → validate → prepare → test → build → scan → publish → deploy → notify`. Branch pipeline types: main (MR gates only), dev/staging (tests + manual builds + scan), `release-sdk`, `maintenance/*`. Enforced gates:
 
 | Job (file)                                                                                                                    | Enforces                                                                                          |
 | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -436,7 +436,7 @@ Stages: `install → validate → prepare → test → build → scan → publis
 | `lint-python` (validate.yml)                                                                                                  | ruff over stt, text, nlp, guardrail, harness                                                      |
 | `env-drift-check` (validate.yml)                                                                                              | `.env.sample` / `turbo.json#globalEnv` / per-service samples stay in sync (`pnpm env:sync:check`) |
 | `validate-release-tag` (validate.yml)                                                                                         | release tags match the `<SVC>-<M>.<m>.<p>` grammar                                                |
-| `test-api`, `test-packages`, `test-sdk`, `test-admin-console`, `test-compat-playground`, `test-ui-ct` (`.gitlab/ci/test.yml`) | Vitest/Playwright suites                                                                          |
+| `test-api`, `test-packages`, `test-sdk`, `test-admin-console`, `test-ui-ct` (`.gitlab/ci/test.yml`) | Vitest/Playwright suites. `test-compat-playground` is hidden.                          |
 | `test-stt`, `test-text`, `test-tts`, `test-guardrail`, `test-nlp`, `test-harness`, `harness-eval-gate` (test.yml)             | pytest suites + the harness evaluation gate                                                       |
 | `scan-gitleaks` (`.gitlab/ci/scan.yml`)                                                                                       | gitleaks v8.30.1 `detect` with `.gitleaks.toml`                                                   |
 | `scan-*` (scan.yml)                                                                                                           | Trivy image scans per service                                                                     |

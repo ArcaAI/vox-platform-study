@@ -75,7 +75,7 @@ warm-up-base-images:
     # `ALL-` already covers build-lmstudio, which is the only consumer of the
     # ubuntu24.04 CUDA base added above; it has no service tag of its own (see
     # build-lmstudio's own note on the closed <SVC> grammar).
-    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(TEXT|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
 
 # ── Shared Python base image ─────────────────────────────────────────────────
 # Single base image consumed by ALL Python service builds (guardrail, nlp, text,
@@ -191,12 +191,21 @@ build-admin-console:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ADMIN-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
-build-compat-playground:
+# ── compat-playground is DEPRECATED  ───────────────────
+# Hidden, not deleted — same pattern as `.build-vllm`. GitLab never instantiates
+# a dotted top-level key. The app remains in the tree for local `pnpm compat:*`.
+#
+# TO RE-ENABLE: undot this job plus `.test-compat-playground`,
+# `.scan-compat-playground`, `.sbom-compat-playground`, `.sign-compat-playground`;
+# restore the `.github/services.json` entry; restore COMPAT in
+# SERVICE_TAG_PREFIXES and the promote.sh SERVICES= line.
+#
+.build-compat-playground:
   extends: .build-template
   needs:
     - job: warm-up-base-images
       optional: true
-    - job: test-compat-playground
+    - job: .test-compat-playground
       optional: true
     - job: typecheck
       optional: true
@@ -474,7 +483,7 @@ build-database:
 #
 # ── NO SERVICE RELEASE TAG YET ──────────────────────────────────────────────
 # `<SVC>` in the release grammar is a CLOSED set
-# (packages/utils/src/version-grammar.ts): ALL API ADMIN COMPAT GUARD HARNESS
+# (packages/utils/src/version-grammar.ts): ALL API ADMIN GUARD HARNESS
 # NLP TEXT STT TTS. There is no LMS/LMSTUDIO member, and adding one edits
 # packages/**, which is outside this lane's boundary. So this job triggers on
 # branch pushes and `ALL-` only — the same shape as build-qdrant-init and
@@ -606,7 +615,7 @@ verify-lmstudio-runtime:
 #
 # ── NO SERVICE RELEASE TAG YET ──────────────────────────────────────────────
 # `<SVC>` in the release grammar is a CLOSED set
-# (packages/utils/src/version-grammar.ts): ALL API ADMIN COMPAT GUARD HARNESS
+# (packages/utils/src/version-grammar.ts): ALL API ADMIN GUARD HARNESS
 # NLP TEXT STT TTS. There is no VLLM member, and adding one edits packages/**,
 # which is outside this lane's boundary. So this job triggers on branch pushes
 # and `ALL-` only — the same shape as build-lmstudio, build-qdrant-init and
