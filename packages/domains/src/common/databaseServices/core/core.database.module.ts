@@ -10,14 +10,12 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { WorkflowWebhookSecretRepository } from '../../../repositories/generated/core/WorkflowWebhookSecretRepository';
 import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
-import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
 import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
 import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
-import { ProviderReconciliationRunRepository } from '../../../repositories/generated/core/ProviderReconciliationRunRepository';
 import { ServiceReleaseRepository } from '../../../repositories/generated/core/ServiceReleaseRepository';
 import { ServiceInstanceRepository } from '../../../repositories/generated/core/ServiceInstanceRepository';
 import { ChangelogEntryRepository } from '../../../repositories/generated/core/ChangelogEntryRepository';
@@ -103,6 +101,10 @@ import { WorkflowRunRepository } from '../../../repositories/generated/core/Work
 import { WorkflowDefinitionRepository } from '../../../repositories/generated/core/WorkflowDefinitionRepository';
 import { WorkflowAssignmentRepository } from '../../../repositories/generated/core/WorkflowAssignmentRepository';
 import { WorkflowAssignmentChangeRepository } from '../../../repositories/generated/core/WorkflowAssignmentChangeRepository';
+import { AgentRepository } from '../../../repositories/generated/core/AgentRepository';
+import { AgentModelFallbackRepository } from '../../../repositories/generated/core/AgentModelFallbackRepository';
+import { AgentAssignmentRepository } from '../../../repositories/generated/core/AgentAssignmentRepository';
+import { AgentAssignmentChangeRepository } from '../../../repositories/generated/core/AgentAssignmentChangeRepository';
 import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
 import { WorkflowInvariantRuleRepository } from '../../../repositories/generated/core/WorkflowInvariantRuleRepository';
 
@@ -189,7 +191,6 @@ const repositories = [
   AiProviderConnectionRepository,
   // TASK-864 — the inbound workflow webhook trigger's per-definition secret.
   WorkflowWebhookSecretRepository,
-  AiRuntimeProfileRepository,
   // The ordered N-way candidate chain per (tenant, taskKey, policyVersion)
   // Also a SYSTEM_SHARED_READ_MODEL — the SYSTEM row is the
   // platform default every tenant without its own policy must read.
@@ -261,7 +262,6 @@ const repositories = [
   AiUsageOutboxRepository,
   AiUsageRollupHourlyRepository,
   AiUsageRollupDailyRepository,
-  ProviderReconciliationRunRepository,
   AiPriceBookRepository,
   // Tenant billing plane. BillingInvoice is the ONE
   // OCC-written model of the plane (draft edits + the immutable FINALIZE
@@ -294,6 +294,11 @@ const repositories = [
   // Per-scope workflow assignment + its append-only WORM change log.
   WorkflowAssignmentRepository,
   WorkflowAssignmentChangeRepository,
+  // TASK-863 — the first-class Agent substrate.
+  AgentRepository,
+  AgentModelFallbackRepository,
+  AgentAssignmentRepository,
+  AgentAssignmentChangeRepository,
   // Workflow-graph safety rule rows — a SYSTEM_SHARED_READ_MODEL,
   // see tenant-scope.ts for why.
   WorkflowInvariantRuleRepository,

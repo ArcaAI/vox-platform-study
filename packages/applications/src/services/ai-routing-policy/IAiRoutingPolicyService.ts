@@ -1,3 +1,4 @@
+import type { AiModelEntity, AiRoutingPolicyEntity } from '@arcaai/domains';
 import { AiRoutingPolicyResponse, CreateAiRoutingPolicyRequest, EffectiveRoutingPolicyResponse, UpdateAiRoutingPolicyRequest } from './dto';
 import { RoutingRequestContext } from './routing-policy.contract';
 import { ProviderConfigurationExport } from './provider-configuration';
@@ -55,6 +56,32 @@ export interface ResolvedGenerationCapabilities {
   readonly supportedGenerationParams?: readonly string[];
 }
 
+/** How `resolveDefault` reads the two tiers. Both default to the ordinary cascade. */
+export interface ResolveDefaultOptions {
+  /** Read the SYSTEM tier only — for the SUPER_ADMIN-only task keys (`nlp.*`, `harness.*`) whose tenant rows never win at runtime. */
+  systemOnly?: boolean;
+  /** Read the target tenant's OWN rows only, never widening — the "raw editable row" read behind `getRow`. */
+  noWiden?: boolean;
+}
+
+/**
+ * TASK-862 — the answer to "which provider configuration serves NON-AGENT task
+ * X for tenant T right now": the ELECTED default (`isDefault`) of the winning
+ * tier, and the catalogue model its FK names.
+ *
+ * This is the ONE resolution `AiTaskDefaultService` (now a facade) and every
+ * former `AiTaskDefault` reader stand on. `source` names the tier that won;
+ * `policy` is null when neither tier holds a live configuration; `model` is
+ * null when the row names no ENABLED catalogue model.
+ */
+export interface ResolvedTaskDefault {
+  tenantId: string;
+  taskKey: string;
+  source: 'tenant' | 'system' | null;
+  policy: AiRoutingPolicyEntity | null;
+  model: AiModelEntity | null;
+}
+
 /**
  * The provider ROUTING POLICY plane
  *
@@ -68,7 +95,8 @@ export interface ResolvedGenerationCapabilities {
  * a real FK to `AiModel` (the catalogue). Many rows may exist per selection;
  * they form the ordered chain, and EXACTLY ONE may carry `isDefault` — enforced
  * by a partial unique index in the database, keyed on `taskKey` and NOT
- * `taskKind` (F-26). `AiRuntimeProfile` (hyperparameters) still sits alongside.
+ * `taskKind` (F-26). (`AiRuntimeProfile` was retired by TASK-862: connection
+ * ceilings moved to `AiProviderConnection`, hyper-parameters to the Agent.)
  *
  * OD-3 explicitly reverses ruling that `AiTaskDefault` survives.
  *
@@ -142,6 +170,14 @@ export interface IAiRoutingPolicyService {
 
   /** One revision by id. A row outside `tenantId` is a 404, never a 403. */
   getById(id: string, tenantId: string): Promise<AiRoutingPolicyResponse>;
+
+  /**
+   * TASK-862 — the elected default for a NON-AGENT task on the house cascade
+   * (tenant → SYSTEM, widening only on absence). Replaces
+   * `AiTaskDefaultService.getEffective` as the one "default model for task X"
+   * resolution; agents (TASK-863) bind a model directly and never come here.
+   */
+  resolveDefault(tenantId: string, taskKey: string, options?: ResolveDefaultOptions): Promise<ResolvedTaskDefault>;
 
   /**
    * Resolve what actually serves `(tenantId, taskKey)` right now: the winning

@@ -185,3 +185,29 @@ export type { DraftWorkflowRule } from './rule-catalogue';
 // palette-agnostic rows.
 export { validate, ALL_DRAFT_RULES } from './validate';
 export type { ValidateOptions } from './validate';
+
+// TASK-863 — the Agent entity's task-typed configuration contract (parameters / instruction /
+// default I/O per task, protocols, and the checks a JSON Schema cannot express).
+export {
+  AGENT_INSTRUCTION_SCHEMAS,
+  AGENT_IO_DEFAULTS,
+  AGENT_PARAMETER_SCHEMAS,
+  AGENT_PROTOCOLS,
+  AGENT_TASKS,
+  AGENT_TASK_MODEL_TASK_TYPE,
+  AGENT_TASK_SERVICE,
+  AGENT_TOOLS_SCHEMA,
+  agentConfigProblems,
+  hasBlockingAgentProblems,
+  isAgentTask,
+} from './agent-schemas';
+export type {
+  AgentConfigContext,
+  AgentConfigProblem,
+  AgentConfigView,
+  AgentIoDefaults,
+  AgentModelView,
+  AgentProtocol,
+  AgentProviderCapabilities,
+  AgentTask,
+} from './agent-schemas';

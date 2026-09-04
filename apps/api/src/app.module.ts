@@ -58,7 +58,6 @@ import { RateLimitAdminModule } from './modules/admin-rate-limit/rate-limit-admi
 import { AiInferenceModule } from './modules/ai-inference/ai-inference.module';
 import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-provider-connection.module';
 import { AiRoutingPolicyModule } from './modules/ai-routing-policy/ai-routing-policy.module';
-import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
 import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-task-instructions.module';
@@ -132,6 +131,9 @@ import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
+// TASK-863 — /agents (business plane) + /admin/agents, /admin/agent-assignments.
+import { AgentModule } from './modules/agent/agent.module';
+import { AgentAdminModule } from './modules/agent-admin/agent-admin.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
 import { WorkflowInvariantRuleModule } from './modules/workflow-invariant-rule/workflow-invariant-rule.module';
 import { WorkflowAssignmentModule } from './modules/workflow-assignment/workflow-assignment.module';
@@ -439,11 +441,11 @@ const featureModules: any[] = [
   // /admin/nlp-task-instructions (tenant-writable nlp.topic/nlp.intent
   // instruction content — separate subject from AiTaskDefault).
   NlpTaskInstructionsModule,
-  // The config-plane core surfaces: /admin/ai-providers
-  // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
-  // (hyperparameter/context/concurrency profiles, super-admin only).
+  // The config-plane core surface: /admin/providers (provider endpoints +
+  // BYO credentials + connection ceilings + test-connection). TASK-862 removed
+  // `/admin/ai-runtime-profiles` (ceilings moved onto the connection row,
+  // hyper-parameters onto the Agent) and the `/admin/ai-providers` alias.
   AiProviderConnectionModule,
-  AiRuntimeProfileModule,
   // /admin/routing-policies — the ordered N-way candidate chain
   // over those two: which providers serve a task, in what order, and what may
   // happen on failure. Super-admin-authored, enforced imperatively.
@@ -545,6 +547,12 @@ const featureModules: any[] = [
   VoiceProfileModule,
   // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
+  // TASK-863 — /admin/agents + /admin/agent-assignments: the first-class Agent authoring
+  // lifecycle and the department -> tenant -> SYSTEM assignment cascade.
+  AgentAdminModule,
+  // TASK-863 — /agents/**: the Agent business plane (list / describe / invoke / speech /
+  // transcriptions), API key or JWT.
+  AgentModule,
   // /admin/workflow-definitions — WorkflowDefinition CRUD + compile/validate/publish.
   WorkflowDefinitionModule,
   WorkflowInvariantRuleModule,

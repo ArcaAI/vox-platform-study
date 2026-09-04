@@ -11,14 +11,14 @@
 // the channel (owner decision D-1): the pull route is one cached snapshot per
 // service process, forever, so only a knob with no tenant opinion belongs on
 // it. A tenant that wants its own hyperparameters already has a deeper,
-// per-(provider, model) surface — `AiRuntimeProfile`, injected per request by
-// `TextRequestEnrichmentService.applyTextRuntimeProfile`. What is registered
+// per-(provider, model) surface — the Agent's parameters (TASK-863; `AiRuntimeProfile`
+// was retired by TASK-862), injected per request by the agent resolver. What is registered
 // here is strictly the LAST fallback before the in-code floor, for a caller
 // with no resolvable profile at all. Hence `maxScope: 'system'` + `globalOnly`.
 //
 // Resolution order at the service, most specific first (unchanged by this file):
 //   1. the request's own value — a caller that set it always wins,
-//   2. the `AiRuntimeProfile` values the gateway pushed onto the body,
+//   2. the Agent parameter values the gateway pushed onto the body,
 //   3. THIS platform profile, arriving on the PULL channel,
 //   4. the in-code floor.
 //
@@ -50,21 +50,21 @@ const META: Record<TextGenerationKey, { label: string; description: string }> = 
   'text.generation.temperature': {
     label: 'Default sampling temperature',
     description:
-      'Applied only when the request omits `temperature` AND no `AiRuntimeProfile` supplied one. The floor is ' +
+      'Applied only when the request omits `temperature` AND the Agent (TASK-863) supplied none. The floor is ' +
       'near-deterministic on purpose: it is sent to engines nobody profiled, where a high temperature is the ' +
       'difference between a usable clinical note and a plausible-sounding invention.',
   },
   'text.generation.maxTokens': {
     label: 'Default output ceiling (tokens)',
     description:
-      'Applied only when the request omits `max_tokens` AND no `AiRuntimeProfile` supplied one. Bounds the output, ' +
+      'Applied only when the request omits `max_tokens` AND the Agent (TASK-863) supplied none. Bounds the output, ' +
       'and therefore the worst-case bill and latency, for an unprofiled engine — generous enough that a clinical ' +
       'note is not truncated, bounded enough that a runaway generation cannot bill without limit.',
   },
   'text.generation.topP': {
     label: 'Default nucleus sampling (top-p)',
     description:
-      'Applied only when the request omits `top_p` AND no `AiRuntimeProfile` supplied one. Trims the long tail of ' +
+      'Applied only when the request omits `top_p` AND the Agent (TASK-863) supplied none. Trims the long tail of ' +
       'the token distribution; lowering it narrows what the model may say, raising it toward 1.0 removes the trim.',
   },
 };

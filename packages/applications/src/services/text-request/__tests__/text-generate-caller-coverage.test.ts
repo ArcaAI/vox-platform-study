@@ -95,31 +95,5 @@ describe('every gateway caller of TEXT /api/v1/generate injects provider_overrid
   });
 });
 
-/**
- * the SAME gate for the runtime profile.
- *
- * `applyTextRuntimeProfile` is how `AiRuntimeProfile` (the platform admin's
- * per-`(provider, model)` hyperparameters and engine extras) reaches a TEXT
- * request. Only the proxy and the prompt test bench applied it; the realtime
- * lane and every durable summary caller skipped it, so a profile a platform
- * admin saved in the console governed the playground and NOTHING clinical.
- * The first casualty was gemma-4's thinking mode: the one switch that turns it
- * off (`extraJson.reasoning_effort`) had no path to the realtime nodes.
- */
-const SANCTIONED_PROFILE_INJECTORS = ['applyTextRuntimeProfile', 'attachLlmByok'];
-
-describe('every gateway caller of TEXT /api/v1/generate layers the runtime profile', () => {
-  it('has no caller that posts to /generate without applying the resolved runtime profile', () => {
-    const unprofiled = scanGenerateCallers().filter((relativePath) => {
-      const source = readFileSync(resolve(REPO_ROOT, relativePath), 'utf8');
-      return !SANCTIONED_PROFILE_INJECTORS.some((injector) => source.includes(injector));
-    });
-
-    expect(
-      unprofiled,
-      'A TEXT caller that skips `applyTextRuntimeProfile` ignores the platform admin’s runtime profile ' +
-        '(hyperparameters AND engine extras such as `reasoning_effort`) for that provider/model. ' +
-        'Apply it BEFORE `applyTenantProviderOverrides`, as `TextProxyController.applyTextModelSelection` does.',
-    ).toEqual([]);
-  });
-});
+// TASK-862: the runtime-profile gate that used to follow is gone with `AiRuntimeProfile`;
+// generation parameters now travel with the Agent (TASK-863), not a per-caller injector.
