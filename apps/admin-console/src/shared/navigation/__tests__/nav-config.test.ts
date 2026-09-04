@@ -94,17 +94,19 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // TASK-862 REMOVED `/ai-operations/reconciliation` (Provider Reconciliation
   // deleted outright, owner directive 2026-09-04; the URL keeps a one-release
   // redirect to `/ai-operations/consumption`), taking 59 -> 58 and tier 10-19
-  // from 23 -> 22.
-  // TASK-862 also DISSOLVED `/ai-platform` (one-release redirect) into the one
-  // `/ai-providers` screen (tier 20-29): 20-29 stays at 9, total stays 58.
-  it('covers the full 58-route rail map across the four tiers (including /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
-    expect(NAV_ENTRIES).toHaveLength(58);
+  // from 23 -> 22. TASK-862 also DISSOLVED `/ai-platform` (one-release redirect)
+  // into the one `/ai-providers` screen (tier 20-29): 20-29 stays at 9.
+  // TASK-863: /agents is back as a REAL screen (the Agent entity), 58 -> 59,
+  // tier 30-49 21 -> 22.
+  it('covers the full 59-route rail map across the four tiers (including /agents, /ai-providers, /context-schemas, /document-templates, /playground/workbench, /workflow-runs, /workflow-studio, /security-policy)', () => {
+    expect(NAV_ENTRIES).toHaveLength(59);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(9);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
     // The two routes moved to the user menu are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(60);
+    // TASK-862: 62 -> 60; TASK-863: 60 -> 61 (`/agents` returns to the rail as a real screen).
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(61);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -544,6 +546,7 @@ const FROZEN_RAIL_ENTRIES: ReadonlyArray<readonly [string, NavTier, ReadonlyArra
       ['manage', 'Storage'],
     ],
   ],
+  ['/agents', '30-49', [['manage', 'Agent']]],
   ['/prompt-templates', '30-49', [['manage', 'PromptTemplate']]],
   ['/context-schemas', '30-49', [['manage', 'ConsultationContextSchema']]],
   // the clinical document SHAPE catalog. `manage:DocumentTemplate`
@@ -654,9 +657,10 @@ const FROZEN_DOMAIN_MEMBERSHIP: ReadonlyArray<readonly [NavDomainId, readonly st
   // TASK-862 (README §3.4): Knowledge & Agents = Agents (TASK-863) · Workflow
   // Studio · Assignments · Prompt templates · Context schemas · Document
   // templates · Knowledge base — plus Tools & MCP (the tools agents call).
+  // TASK-863: `/agents` (the Agent entity) joins knowledge-agents, 8 -> 9.
   [
     'knowledge-agents',
-    ['/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles', '/tools-mcp', '/workflow-studio', '/workflow-studio/assignments'],
+    ['/agents', '/prompt-templates', '/context-schemas', '/document-templates', '/knowledge', '/dna-writing-styles', '/tools-mcp', '/workflow-studio', '/workflow-studio/assignments'],
   ],
   ['clinical', ['/consultations', '/consent', '/audio/pipelines', '/audio/transcription-jobs']],
   ['workflow-harness', ['/harness/policy', '/harness/observability', '/harness/workflows', '/harness/pipeline-policy', '/workflow-runs']],
@@ -755,7 +759,8 @@ describe('NAV_DOMAINS', () => {
   // `/tools-mcp` → knowledge-agents, `/ai-operations/*` ×3 → platform-ops);
   // knowledge-agents 5 -> 8 (+ `/tools-mcp`, `/workflow-studio`, `/workflow-studio/assignments`);
   // workflow-harness 7 -> 5; platform-ops 8 -> 11.
-  it('partitions the 58 rail routes exactly as the ticket Domain Model does (3·6·8·8·4·5·7·11·6)', () => {
+  // TASK-863: knowledge-agents 8 -> 9 (/agents).
+  it('partitions the 59 rail routes exactly as the ticket Domain Model does (3·6·8·9·4·5·7·11·6)', () => {
     for (const [id, routes] of FROZEN_DOMAIN_MEMBERSHIP) {
       expect(
         NAV_ENTRIES.filter((entry) => entry.domain === id)
@@ -764,7 +769,7 @@ describe('NAV_DOMAINS', () => {
         `domain "${id}" membership drifted`,
       ).toEqual([...routes].sort());
     }
-    expect(NAV_ENTRIES).toHaveLength(58);
+    expect(NAV_ENTRIES).toHaveLength(59);
   });
 
   it('keeps domain orthogonal to tier — /ai-configuration is tenant-tier but AI Platform (OD-2)', () => {

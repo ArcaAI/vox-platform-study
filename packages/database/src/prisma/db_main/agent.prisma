@@ -1,0 +1,236 @@
+// =============================================================================
+// Agent — a first-class, task-typed, publishable entity (TASK-863).
+//
+// An Agent performs exactly ONE task (`AgentTask`: SPEECH_TO_TEXT |
+// TEXT_GENERATION | TEXT_TO_SPEECH) on ONE registered model (`modelId`, a real
+// FK into `AiModel` — the AiRoutingPolicy lesson: a by-slug join let
+// configurations name models that did not exist), plus an ordered chain of
+// fallback models of the same task (`AgentModelFallback`, real FKs — never a
+// JSON array, which cannot be FK-checked or indexed).
+//
+// Rows ARE versions — the `WorkflowDefinition` precedent, deliberately not the
+// head + version + pin governance triple: a published version is the
+// addressable product (`/api/v1/agents/:slug` binds to it, a workflow
+// `core.agent` node references it, run rows pin it). Lineage is the monotone
+// `(tenantId, slug, versionNumber)` key minted as `max + 1` inside the
+// transaction plus a `parentVersionId` provenance edge.
+//
+// What the agent NEVER carries: an engine name, an endpoint, a credential, a
+// wire model id. The model row decides engine/format/weights/provider; the
+// credential is the tenant's (or SYSTEM's) `AiProviderConnection(service <-
+// task, provider <- model)` row, unique per `(tenant, service, provider)`, so
+// the binding is DERIVED and storing a `providerConnectionId` here would be a
+// second place for the cascade to diverge (ticket decision D-2).
+//
+// `compiledConfig` is stamped SERVER-SIDE at publish (fully resolved
+// REFERENCES: model row identity, fallback chain, template version, parameter
+// defaults) and never accepted from a request DTO. PUBLISHED/DEPRECATED rows
+// are hard-immutable for their published bytes and lineage identity —
+// enforced by the service (`assertMutable`), the DTO whitelist, and the
+// `agent_immutability_guard` trigger in the migration (the
+// `workflow_definition_immutability_guard` pattern). The at-most-one-active
+// version per `(tenantId, slug)` invariant is a partial unique index in the
+// same migration; neither is expressible in the Prisma DSL, so `migrate diff`
+// shows permanent drift against this file for exactly those two objects.
+//
+// Tenant scoping: `Agent` and `AgentAssignment` are SYSTEM-shared-read (a
+// tenant reads SYSTEM's published agents as platform defaults / templates,
+// never another tenant's); `AgentModelFallback` and `AgentAssignmentChange`
+// are plain tenant-scoped. `AgentAssignmentChange` has no soft delete
+// (`MODELS_WITHOUT_SOFT_DELETE`) and is WORM at the DB layer via the
+// `agent_assignment_change_worm_guard` trigger.
+// =============================================================================
+
+model Agent {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Stable lineage key; unique per (tenant, slug, versionNumber). Validated
+  // against WORKFLOW_DEFINITION_SLUG_PATTERN at the API boundary.
+  slug        String
+  name        String
+  description String?
+
+  task AgentTask
+
+  versionNumber Int
+  // Provenance edge; no `@relation` (the WorkflowDefinition call) — lineage
+  // reads walk this column directly.
+  parentVersionId String?
+
+  // DRAFT | VALIDATED | PUBLISHED | DEPRECATED — the WorkflowDefinition
+  // lifecycle enum, reused rather than duplicated.
+  status WorkflowDefinitionStatus @default(DRAFT)
+
+  // The movable pointer: the version the resolver serves for new calls. At
+  // most one true per (tenantId, slug) among non-DELETED rows — enforced by
+  // `AgentService.demoteExistingActive` AND the partial unique index
+  // `Agent_tenant_slug_active_unique` in the migration.
+  isActive Boolean @default(false)
+
+  // The ONE registered model backing this agent. `AiModel.taskType` must match
+  // `task` (AGENT_TASK_MODEL_TASK_TYPE) — checked by the service on every
+  // write and again at publish.
+  modelId String
+
+  // Task-specific instruction: { promptTemplateId, promptVersionNumber,
+  // variables, evalGate } | { systemPrompt } (TEXT_GENERATION);
+  // { initialPrompt, hotwords[] } (SPEECH_TO_TEXT); null (TEXT_TO_SPEECH).
+  instruction Json? @db.JsonB
+  // Task-specific hyper-parameters, validated against
+  // AGENT_PARAMETER_SCHEMAS[task] (@arcaai/workflow-contract).
+  parameters Json? @db.JsonB
+  // Authorable JSON-Schema subset; defaults per task (AGENT_IO_DEFAULTS).
+  inputSchema  Json? @db.JsonB
+  outputSchema Json? @db.JsonB
+  // [{ mcpServerId, toolName }] — TEXT_GENERATION only. References, never URLs.
+  tools Json? @db.JsonB
+
+  // Server-stamped at publish; never from a DTO.
+  compiledConfig         Json?   @db.JsonB
+  compiledConfigChecksum String?
+  validationReport       Json?   @db.JsonB
+
+  validatedAt  DateTime?
+  publishedAt  DateTime?
+  deprecatedAt DateTime?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags String[] @default([])
+
+  // relations
+  model     AiModel              @relation("AgentModel", fields: [modelId], references: [id], onDelete: Restrict)
+  fallbacks AgentModelFallback[]
+
+  // constraints + indexes — `map:` names the DB index on @@unique (rule 02).
+  @@unique([tenantId, slug, versionNumber], map: "Agent_tenant_slug_version_unique")
+  @@index([tenantId], name: "Agent_tenantId_idx")
+  @@index([tenantId, task], name: "Agent_tenant_task_idx")
+  @@index([tenantId, slug, isActive], name: "Agent_tenant_slug_isActive_idx")
+  @@index([tenantId, slug, status], name: "Agent_tenant_slug_status_idx")
+  @@index([modelId], name: "Agent_modelId_idx")
+  @@index([parentVersionId], name: "Agent_parentVersionId_idx")
+  @@schema("core")
+}
+
+// Ordered fallback chain for ONE agent version row. Real FKs on both sides so
+// a fallback can never name a model that does not exist, and a model that a
+// live agent depends on cannot be hard-deleted (`onDelete: Restrict`).
+model AgentModelFallback {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  agentId  String
+  priority Int
+  modelId  String
+  enabled  Boolean @default(true)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations — the chain belongs to its agent VERSION row and goes with it.
+  agent Agent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  model AiModel @relation("AgentFallbackModel", fields: [modelId], references: [id], onDelete: Restrict)
+
+  @@unique([agentId, priority], map: "AgentModelFallback_agent_priority_unique")
+  @@index([tenantId], name: "AgentModelFallback_tenantId_idx")
+  @@index([agentId], name: "AgentModelFallback_agentId_idx")
+  @@index([modelId], name: "AgentModelFallback_modelId_idx")
+  @@schema("core")
+}
+
+// WHICH agent serves a task for a scope — mirrors `WorkflowAssignment` exactly:
+// `(scope, scopeId)` over the same `PipelinePolicyScope` enum, resolved by the
+// same first-set-wins `walkCascade` (department → tenant → SYSTEM). `agentSlug`
+// is a LINEAGE key: the ACTIVE PUBLISHED version resolves at call time, so a
+// republish moves every assignment forward without touching a row here.
+model AgentAssignment {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  scope     PipelinePolicyScope @default(TENANT)
+  scopeId   String?
+  task      AgentTask
+  agentSlug String
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, scope, scopeId, task], map: "AgentAssignment_scope_task_unique")
+  @@index([tenantId], name: "AgentAssignment_tenantId_idx")
+  @@index([tenantId, task], name: "AgentAssignment_tenant_task_idx")
+  @@schema("core")
+}
+
+// Append-only WORM change log of agent assignments — the `WorkflowAssignmentChange`
+// shape. Identity only: NO _version / _metadata / updatedAt / resourceStatus.
+// Unlike its sibling, the append-only property is enforced at the DB layer by
+// a BEFORE UPDATE OR DELETE trigger (`agent_assignment_change_worm_guard`) —
+// role-independent, so it holds under any deployment's role names.
+model AgentAssignmentChange {
+  id String @id @default(uuid(7))
+
+  tenantId String
+
+  scope   PipelinePolicyScope @default(TENANT)
+  scopeId String?
+  task    AgentTask
+
+  changedBy         String?
+  assignmentVersion Int?
+
+  // Null `beforeSlug` => created by this change; null `afterSlug` => removed.
+  beforeSlug String?
+  afterSlug  String?
+  reason     String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId], name: "AgentAssignmentChange_tenantId_idx")
+  @@index([tenantId, createdAt], name: "AgentAssignmentChange_tenant_createdAt_idx")
+  @@schema("core")
+}

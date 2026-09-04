@@ -217,6 +217,9 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // which is the only reason this has stayed dormant).
   'HarnessPolicyChange',
   'PipelinePolicyChange',
+  // TASK-863 — the agent-assignment WORM log: identity-only, no
+  // `resourceStatus`; append-only enforced by a DB trigger.
+  'AgentAssignmentChange',
 ]);
 
 /**

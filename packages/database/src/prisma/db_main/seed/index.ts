@@ -40,6 +40,7 @@ import { seedArcaaiWorkflowAuthoring } from './23-arcaai-workflow-authoring';
 import { seedArcaaiTranscriptionAgent, seedPlatformTranscriptionAgentTemplate } from './23a-realtime-transcription-agent';
 import { seedArcaaiExampleConsultationWorkflows, seedExampleConsultationWorkflowTemplates } from './24-example-consultation-workflows';
 import { seedConsentGrant } from './22-consent-grant';
+import { seedAgents } from './25-agents';
 import { seedUser } from './91-user';
 import { seedBootstrapAdmin } from './92-bootstrap-admin';
 import { seedBootstrapTenantAdmin } from './93-bootstrap-tenant-admin';
@@ -348,6 +349,15 @@ export const seed = async () => {
     }
     if (isPhaseEnabled('24-example-consultation-workflows-arcaai', mode)) {
       await seedArcaaiExampleConsultationWorkflows(client);
+      console.log('');
+    }
+    // TASK-863 — first-class Agents: SYSTEM platform defaults (+ their TENANT-scope
+    // assignments, the cascade's last tier) and the Global playground examples. Model
+    // rows are resolved by slug, so this runs AFTER the catalogue (06-stt) and the prompt
+    // templates (07*) it binds; a spec whose model/template is missing is skipped, never
+    // seeded broken. ArcaAI gets nothing — provisioning clones SYSTEM.
+    if (isPhaseEnabled('25-agents', mode)) {
+      await seedAgents(client);
       console.log('');
     }
 

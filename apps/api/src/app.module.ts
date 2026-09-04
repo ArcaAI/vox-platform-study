@@ -131,6 +131,9 @@ import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
+// TASK-863 — /agents (business plane) + /admin/agents, /admin/agent-assignments.
+import { AgentModule } from './modules/agent/agent.module';
+import { AgentAdminModule } from './modules/agent-admin/agent-admin.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
 import { WorkflowInvariantRuleModule } from './modules/workflow-invariant-rule/workflow-invariant-rule.module';
 import { WorkflowAssignmentModule } from './modules/workflow-assignment/workflow-assignment.module';
@@ -544,6 +547,12 @@ const featureModules: any[] = [
   VoiceProfileModule,
   // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
+  // TASK-863 — /admin/agents + /admin/agent-assignments: the first-class Agent authoring
+  // lifecycle and the department -> tenant -> SYSTEM assignment cascade.
+  AgentAdminModule,
+  // TASK-863 — /agents/**: the Agent business plane (list / describe / invoke / speech /
+  // transcriptions), API key or JWT.
+  AgentModule,
   // /admin/workflow-definitions — WorkflowDefinition CRUD + compile/validate/publish.
   WorkflowDefinitionModule,
   WorkflowInvariantRuleModule,

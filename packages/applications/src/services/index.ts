@@ -150,6 +150,13 @@ export * from './workflow-invariant-rule';
 // Per-scope workflow assignment — WHICH definition governs a
 // tenant/department for a palette, resolved with the shared cascade primitive.
 export * from './workflow-assignment';
+// TASK-863 — the first-class, task-typed, publishable Agent: authoring lifecycle
+// (create/validate/publish/newVersion/deprecate), the ONE resolver two callers share
+// (gateway + harness over /internal/agents/resolve), and execution preparation.
+export * from './agent';
+// TASK-863 — per-scope agent assignment: WHICH agent serves a task for a
+// tenant/department (department → tenant → SYSTEM), the WorkflowAssignment shape.
+export * from './agent-assignment';
 // Exposure plane — invoke / status / cancel / list over a tenant's
 // published workflows, through the harness dispatcher.
 export * from './workflow-exposure';
