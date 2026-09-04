@@ -10,7 +10,10 @@ import { Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { ApiDeprecated, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+
+/** TASK-861 — every route on this controller is deprecated; removed in R4 with `TenantSttConfig` (replacement: the ASR Agent's `fallback` block, `/admin/agents`, TASK-863). */
+const DEPRECATION = { ticket: 'TASK-861', removeIn: 'R4', replacement: '/api/v1/admin/agents (task SPEECH_TO_TEXT, TASK-863)' } as const;
 
 /**
  * TenantSttConfigAdminController — the admin surface for a tenant's STT fallback
@@ -46,12 +49,14 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcS
 @RequiredSvcScopes('svc:admin:tenant-stt-config:manage')
 @Controller('admin/stt-config')
 @Authorize()
+/** @deprecated TASK-861 — removed in R4 with `TenantSttConfig`. */
 export class TenantSttConfigAdminController {
   constructor(
     @Inject(ITenantSttConfigService) private readonly configService: ITenantSttConfigService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
+  @ApiDeprecated(DEPRECATION)
   @Get()
   @Authorize(['read', 'TenantSttConfig'])
   @ApiOperation({
@@ -65,6 +70,7 @@ export class TenantSttConfigAdminController {
     return this.configService.getEffective(this.resolveTenantId(tenantId));
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Get('row')
   @Authorize(['read', 'TenantSttConfig'])
   @ApiOperation({
@@ -78,6 +84,7 @@ export class TenantSttConfigAdminController {
     return this.configService.getRow(this.resolveTenantId(tenantId));
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Put('row')
   @Authorize(['manage', 'TenantSttConfig'])
   @RequiresIfMatch()
@@ -105,6 +112,7 @@ export class TenantSttConfigAdminController {
     return this.configService.setFallbackPipeline(this.resolveTenantId(tenantId), dto);
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Get('fallback-candidates')
   @Authorize(['read', 'TenantSttConfig'])
   @ApiOperation({

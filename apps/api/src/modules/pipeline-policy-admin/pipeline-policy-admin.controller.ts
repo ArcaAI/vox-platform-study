@@ -10,7 +10,10 @@ import { BadRequestException, Body, Controller, Get, Put, Query } from '@nestjs/
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+import { ApiDeprecated, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
+
+/** TASK-861 — every route on this controller is deprecated; removed in R4 with `PipelinePolicy` (replacement: node `enabled` flags on the assigned workflow, `/admin/workflow-assignments`, TASK-864). */
+const DEPRECATION = { ticket: 'TASK-861', removeIn: 'R4', replacement: '/api/v1/admin/workflow-assignments (TASK-864)' } as const;
 
 /**
  * PipelinePolicyAdminController — the admin surface
@@ -41,12 +44,14 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey, RequiredSvcS
 @RequiredSvcScopes('svc:admin:pipeline-policy:manage')
 @Controller('admin/harness/pipeline-policy')
 @Authorize()
+/** @deprecated TASK-861 — removed in R4 with `PipelinePolicy`. */
 export class PipelinePolicyAdminController {
   constructor(
     private readonly policyService: PipelinePolicyService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
+  @ApiDeprecated(DEPRECATION)
   @Get()
   @Authorize(['read', 'PipelinePolicy'])
   @ApiOperation({
@@ -65,6 +70,7 @@ export class PipelinePolicyAdminController {
     return this.policyService.getEffective({ tenantId, departmentId: query.departmentId, doctorId: query.doctorId });
   }
 
+  @ApiDeprecated(DEPRECATION)
   @Get('row')
   @Authorize(['read', 'PipelinePolicy'])
   @ApiOperation({
@@ -99,6 +105,7 @@ export class PipelinePolicyAdminController {
   // 403 is PRIVILEGE, not the 404-over-403 cross-tenant posture: the caller may still READ these
   // toggles and their pinned rows, and a cross-tenant target is rejected separately by
   // `resolveTenantId` above. Read is deliberately ungated.
+  @ApiDeprecated(DEPRECATION)
   @Put('row')
   @Authorize(['manage', 'PipelinePolicy'])
   @RequiresIfMatch()
